@@ -1,16 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use num_bigint;
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Error, IdentityId, Int, RowNumber, Time, Uint, Uuid7, err, parse_uuid4,
-	parse_uuid7, util::hex,
+	BitVec, Blob, Date, DateTime, Error, Frame, FrameColumn, FrameColumnData, IdentityId, OwnedFragment, RowNumber,
+	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
+	util::hex,
+	value::container::{
+		BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, TemporalContainer,
+		UndefinedContainer, Utf8Container, UuidContainer,
+	},
 };
 
-use crate::{
-	OrderedF32, OrderedF64, Type, Value,
-	domain::{Frame, FrameColumn},
-};
+use crate::Type;
 
 /// Result type for command operations
 #[derive(Debug)]
@@ -67,14 +68,14 @@ pub fn convert_command_response(payload: crate::CommandResponse) -> Vec<Frame> {
 			.into_iter()
 			.map(|col| FrameColumn {
 				namespace: col.namespace,
-				store: col.store,
+				source: col.store,
 				name: col.name,
-				r#type: col.r#type,
-				data: convert_column_values(col.r#type, col.data),
+				data: convert_column_to_data(col.r#type, col.data),
 			})
 			.collect();
 
-		result.push(Frame::new(frame.row_numbers, columns))
+		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
+		result.push(Frame::with_row_numbers(columns, row_numbers))
 	}
 
 	result
@@ -89,176 +90,397 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 			.into_iter()
 			.map(|col| FrameColumn {
 				namespace: col.namespace,
-				store: col.store,
+				source: col.store,
 				name: col.name,
-				r#type: col.r#type,
-				data: convert_column_values(col.r#type, col.data),
+				data: convert_column_to_data(col.r#type, col.data),
 			})
 			.collect();
 
-		result.push(Frame::new(frame.row_numbers, columns))
+		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
+		result.push(Frame::with_row_numbers(columns, row_numbers))
 	}
 
 	result
 }
 
-fn convert_column_values(target: Type, data: Vec<String>) -> Vec<Value> {
-	data.into_iter().map(|s| parse_value_from_string(&s, &target)).collect()
-}
+fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
+	let len = data.len();
 
-fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
-	if s == "⟪undefined⟫" {
-		return Value::Undefined;
-	}
-
-	match value_type {
-		Type::Undefined => Value::Undefined,
-		Type::Boolean => match s {
-			"true" => Value::Boolean(true),
-			"false" => Value::Boolean(false),
-			_ => Value::Undefined,
-		},
-		Type::Float4 => s
-			.parse::<f32>()
-			.ok()
-			.and_then(|f| OrderedF32::try_from(f).ok())
-			.map(Value::Float4)
-			.unwrap_or(Value::Undefined),
-		Type::Float8 => s
-			.parse::<f64>()
-			.ok()
-			.and_then(|f| OrderedF64::try_from(f).ok())
-			.map(Value::Float8)
-			.unwrap_or(Value::Undefined),
-		Type::Int1 => s.parse::<i8>().map(Value::Int1).unwrap_or(Value::Undefined),
-		Type::Int2 => s.parse::<i16>().map(Value::Int2).unwrap_or(Value::Undefined),
-		Type::Int4 => s.parse::<i32>().map(Value::Int4).unwrap_or(Value::Undefined),
-		Type::Int8 => s.parse::<i64>().map(Value::Int8).unwrap_or(Value::Undefined),
-		Type::Int16 => s.parse::<i128>().map(Value::Int16).unwrap_or(Value::Undefined),
-		Type::Uint1 => s.parse::<u8>().map(Value::Uint1).unwrap_or(Value::Undefined),
-		Type::Uint2 => s.parse::<u16>().map(Value::Uint2).unwrap_or(Value::Undefined),
-		Type::Uint4 => s.parse::<u32>().map(Value::Uint4).unwrap_or(Value::Undefined),
-		Type::Uint8 => s.parse::<u64>().map(Value::Uint8).unwrap_or(Value::Undefined),
-		Type::Uint16 => s.parse::<u128>().map(Value::Uint16).unwrap_or(Value::Undefined),
-		Type::Utf8 => Value::Utf8(s.to_string()),
+	match target {
+		Type::Undefined => FrameColumnData::Undefined(UndefinedContainer::new(len)),
+		Type::Boolean => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(false, false)
+					} else {
+						(s == "true", true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Bool(BoolContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Float4 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0.0f32, false)
+					} else {
+						(s.parse::<f32>().unwrap_or(0.0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Float4(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Float8 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0.0f64, false)
+					} else {
+						(s.parse::<f64>().unwrap_or(0.0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Float8(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Int1 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0i8, false)
+					} else {
+						(s.parse::<i8>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Int1(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Int2 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0i16, false)
+					} else {
+						(s.parse::<i16>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Int2(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Int4 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0i32, false)
+					} else {
+						(s.parse::<i32>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Int4(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Int8 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0i64, false)
+					} else {
+						(s.parse::<i64>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Int8(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Int16 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0i128, false)
+					} else {
+						(s.parse::<i128>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Int16(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Uint1 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0u8, false)
+					} else {
+						(s.parse::<u8>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uint1(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Uint2 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0u16, false)
+					} else {
+						(s.parse::<u16>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uint2(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Uint4 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0u32, false)
+					} else {
+						(s.parse::<u32>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uint4(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Uint8 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0u64, false)
+					} else {
+						(s.parse::<u64>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uint8(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Uint16 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(0u128, false)
+					} else {
+						(s.parse::<u128>().unwrap_or(0), true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uint16(NumberContainer::new(values, BitVec::from_slice(&defined)))
+		}
+		Type::Utf8 => {
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(String::new(), false)
+					} else {
+						(s, true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Utf8(Utf8Container::new(values, BitVec::from_slice(&defined)))
+		}
 		Type::Date => {
-			// Parse date from ISO format (YYYY-MM-DD)
-			let parts: Vec<&str> = s.split('-').collect();
-			if parts.len() == 3 {
-				let year = parts[0].parse::<i32>().unwrap_or(1970);
-				let month = parts[1].parse::<u32>().unwrap_or(1);
-				let day = parts[2].parse::<u32>().unwrap_or(1);
-				Date::from_ymd(year, month, day).map(Value::Date).unwrap_or(Value::Undefined)
-			} else {
-				Value::Undefined
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(Date::from_ymd(1970, 1, 1).unwrap(), false)
+					} else {
+						let parts: Vec<&str> = s.split('-').collect();
+						if parts.len() == 3 {
+							let year = parts[0].parse::<i32>().unwrap_or(1970);
+							let month = parts[1].parse::<u32>().unwrap_or(1);
+							let day = parts[2].parse::<u32>().unwrap_or(1);
+							(
+								Date::from_ymd(year, month, day)
+									.unwrap_or(Date::from_ymd(1970, 1, 1).unwrap()),
+								true,
+							)
+						} else {
+							(Date::from_ymd(1970, 1, 1).unwrap(), false)
+						}
+					}
+				})
+				.unzip();
+			FrameColumnData::Date(TemporalContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::DateTime => {
-			// Try parsing as timestamp first
-			if let Ok(timestamp) = s.parse::<i64>() {
-				DateTime::from_timestamp(timestamp).map(Value::DateTime).unwrap_or(Value::Undefined)
-			} else {
-				// For now, store as string - proper RFC3339
-				// parsing would need chrono
-				Value::Utf8(s.to_string())
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(DateTime::from_timestamp(0).unwrap(), false)
+					} else if let Ok(dt) = parse_datetime(OwnedFragment::testing(&s)) {
+						(dt, true)
+					} else if let Ok(timestamp) = s.parse::<i64>() {
+						(
+							DateTime::from_timestamp(timestamp)
+								.unwrap_or(DateTime::from_timestamp(0).unwrap()),
+							true,
+						)
+					} else {
+						(DateTime::from_timestamp(0).unwrap(), false)
+					}
+				})
+				.unzip();
+			FrameColumnData::DateTime(TemporalContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::Time => {
-			// Parse time from HH:MM:SS.nnnnnnnnn format
-			let parts: Vec<&str> = s.split(':').collect();
-			if parts.len() >= 3 {
-				let hour = parts[0].parse::<u32>().unwrap_or(0);
-				let min = parts[1].parse::<u32>().unwrap_or(0);
-
-				// Handle seconds and nanoseconds
-				let sec_parts: Vec<&str> = parts[2].split('.').collect();
-				let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
-
-				let nano = if sec_parts.len() > 1 {
-					let frac_str = sec_parts[1];
-					let padded = if frac_str.len() < 9 {
-						format!("{:0<9}", frac_str)
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(Time::from_hms(0, 0, 0).unwrap(), false)
 					} else {
-						frac_str[..9].to_string()
-					};
-					padded.parse::<u32>().unwrap_or(0)
-				} else {
-					0
-				};
-
-				Time::from_hms_nano(hour, min, sec, nano).map(Value::Time).unwrap_or(Value::Undefined)
-			} else {
-				Value::Undefined
-			}
+						let parts: Vec<&str> = s.split(':').collect();
+						if parts.len() >= 3 {
+							let hour = parts[0].parse::<u32>().unwrap_or(0);
+							let min = parts[1].parse::<u32>().unwrap_or(0);
+							let sec_parts: Vec<&str> = parts[2].split('.').collect();
+							let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
+							let nano = if sec_parts.len() > 1 {
+								let frac_str = sec_parts[1];
+								let padded = if frac_str.len() < 9 {
+									format!("{:0<9}", frac_str)
+								} else {
+									frac_str[..9].to_string()
+								};
+								padded.parse::<u32>().unwrap_or(0)
+							} else {
+								0
+							};
+							(
+								Time::from_hms_nano(hour, min, sec, nano)
+									.unwrap_or(Time::from_hms(0, 0, 0).unwrap()),
+								true,
+							)
+						} else {
+							(Time::from_hms(0, 0, 0).unwrap(), false)
+						}
+					}
+				})
+				.unzip();
+			FrameColumnData::Time(TemporalContainer::new(values, BitVec::from_slice(&defined)))
 		}
-		Type::Interval => {
-			// For now, store as string - proper ISO 8601 duration
-			// parsing would need additional logic
-			Value::Utf8(s.to_string())
-		}
-		Type::RowNumber => {
-			if let Ok(id) = s.parse::<u64>() {
-				Value::RowNumber(RowNumber::new(id))
-			} else {
-				Value::Undefined
-			}
+		Type::Duration => {
+			// For Duration, store as Utf8 for now (needs proper ISO 8601 parsing)
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(String::new(), false)
+					} else {
+						(s, true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Utf8(Utf8Container::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::Uuid4 => {
-			// Try to parse UUID
-			if let Ok(uuid) = parse_uuid4(s) {
-				Value::Uuid4(uuid)
-			} else {
-				Value::Undefined
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(parse_uuid4("00000000-0000-0000-0000-000000000000").unwrap(), false)
+					} else if let Ok(uuid) = parse_uuid4(&s) {
+						(uuid, true)
+					} else {
+						(parse_uuid4("00000000-0000-0000-0000-000000000000").unwrap(), false)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uuid4(UuidContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::Uuid7 => {
-			// Try to parse UUID
-			if let Ok(uuid) = parse_uuid7(s) {
-				Value::Uuid7(uuid)
-			} else {
-				Value::Undefined
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(parse_uuid7("00000000-0000-7000-8000-000000000000").unwrap(), false)
+					} else if let Ok(uuid) = parse_uuid7(&s) {
+						(uuid, true)
+					} else {
+						(parse_uuid7("00000000-0000-7000-8000-000000000000").unwrap(), false)
+					}
+				})
+				.unzip();
+			FrameColumnData::Uuid7(UuidContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::IdentityId => {
-			// Try to parse UUID for IdentityId
-			if let Ok(uuid) = parse_uuid7(s) {
-				Value::IdentityId(IdentityId::from(Uuid7::from(uuid)))
-			} else {
-				Value::Undefined
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(
+							IdentityId::from(Uuid7::from(
+								parse_uuid7("00000000-0000-7000-8000-000000000000")
+									.unwrap(),
+							)),
+							false,
+						)
+					} else if let Ok(uuid) = parse_uuid7(&s) {
+						(IdentityId::from(Uuid7::from(uuid)), true)
+					} else {
+						(
+							IdentityId::from(Uuid7::from(
+								parse_uuid7("00000000-0000-7000-8000-000000000000")
+									.unwrap(),
+							)),
+							false,
+						)
+					}
+				})
+				.unzip();
+			FrameColumnData::IdentityId(IdentityIdContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::Blob => {
-			// Parse hex string (assuming 0x prefix)
-			if s.starts_with("0x") {
-				if let Ok(bytes) = hex::decode(&s[2..]) {
-					Value::Blob(Blob::new(bytes))
-				} else {
-					Value::Undefined
-				}
-			} else {
-				Value::Undefined
-			}
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(Blob::new(vec![]), false)
+					} else if s.starts_with("0x") {
+						if let Ok(bytes) = hex::decode(&s[2..]) {
+							(Blob::new(bytes), true)
+						} else {
+							(Blob::new(vec![]), false)
+						}
+					} else {
+						(Blob::new(vec![]), false)
+					}
+				})
+				.unzip();
+			FrameColumnData::Blob(BlobContainer::new(values, BitVec::from_slice(&defined)))
 		}
-		Type::Int => s
-			.parse::<num_bigint::BigInt>()
-			.ok()
-			.map(|big_int| Value::Int(Int::from(big_int)))
-			.unwrap_or(Value::Undefined),
-		Type::Uint => s
-			.parse::<num_bigint::BigInt>()
-			.ok()
-			.map(|big_int| Value::Uint(Uint::from(big_int)))
-			.unwrap_or(Value::Undefined),
-		Type::Decimal {
+		Type::Int
+		| Type::Uint
+		| Type::Decimal {
 			..
-		} => {
-			// Parse as Decimal
-			if let Ok(decimal) = s.parse::<Decimal>() {
-				Value::Decimal(decimal)
-			} else {
-				Value::Undefined
-			}
 		}
-		Type::Any => Value::Undefined,
+		| Type::Any => {
+			// For arbitrary-precision types and Any, store as Utf8
+			let (values, defined): (Vec<_>, Vec<_>) = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪undefined⟫" {
+						(String::new(), false)
+					} else {
+						(s, true)
+					}
+				})
+				.unzip();
+			FrameColumnData::Utf8(Utf8Container::new(values, BitVec::from_slice(&defined)))
+		}
 	}
 }

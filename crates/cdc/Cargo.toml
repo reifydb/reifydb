@@ -5,12 +5,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Change Data Capture module for ReifyDB"
 
 [dependencies]
 reifydb-core = {workspace = true}
 reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = { workspace = true }

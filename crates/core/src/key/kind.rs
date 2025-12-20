@@ -5,7 +5,7 @@ use reifydb_type::Error;
 use serde::{Deserialize, Serialize};
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum KeyKind {
 	Namespace = 0x01,
@@ -30,6 +30,21 @@ pub enum KeyKind {
 	RingBuffer = 0x14,
 	NamespaceRingBuffer = 0x15,
 	RingBufferMetadata = 0x16,
+	SourceRetentionPolicy = 0x17,
+	OperatorRetentionPolicy = 0x18,
+	Flow = 0x19,
+	NamespaceFlow = 0x1A,
+	FlowNode = 0x1B,
+	FlowNodeByFlow = 0x1C,
+	FlowEdge = 0x1D,
+	FlowEdgeByFlow = 0x1E,
+	FlowNodeInternalState = 0x1F,
+	Dictionary = 0x20,
+	DictionaryEntry = 0x21,
+	DictionaryEntryIndex = 0x22,
+	NamespaceDictionary = 0x23,
+	DictionarySequence = 0x24,
+	StorageTracker = 0x25,
 }
 
 impl From<KeyKind> for u8 {
@@ -40,7 +55,7 @@ impl From<KeyKind> for u8 {
 impl TryFrom<u8> for KeyKind {
 	type Error = Error;
 
-	fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0x01 => Ok(Self::Namespace),
 			0x02 => Ok(Self::Table),
@@ -64,6 +79,21 @@ impl TryFrom<u8> for KeyKind {
 			0x14 => Ok(Self::RingBuffer),
 			0x15 => Ok(Self::NamespaceRingBuffer),
 			0x16 => Ok(Self::RingBufferMetadata),
+			0x17 => Ok(Self::SourceRetentionPolicy),
+			0x18 => Ok(Self::OperatorRetentionPolicy),
+			0x19 => Ok(Self::Flow),
+			0x1A => Ok(Self::NamespaceFlow),
+			0x1B => Ok(Self::FlowNode),
+			0x1C => Ok(Self::FlowNodeByFlow),
+			0x1D => Ok(Self::FlowEdge),
+			0x1E => Ok(Self::FlowEdgeByFlow),
+			0x1F => Ok(Self::FlowNodeInternalState),
+			0x20 => Ok(Self::Dictionary),
+			0x21 => Ok(Self::DictionaryEntry),
+			0x22 => Ok(Self::DictionaryEntryIndex),
+			0x23 => Ok(Self::NamespaceDictionary),
+			0x24 => Ok(Self::DictionarySequence),
+			0x25 => Ok(Self::StorageTracker),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

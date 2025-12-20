@@ -5,10 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Column-oriented storage for analytical queries in ReifyDB"
 
 [dependencies]
-reifydb-core = { path = "../core" }
-reifydb-type = { path = "../type" }
-reifydb-compression = { path = "../compression" }
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-compression = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }

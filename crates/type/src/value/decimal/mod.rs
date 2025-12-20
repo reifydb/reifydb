@@ -9,8 +9,11 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
-use num_traits::Zero;
-use serde::{Deserialize, Serialize};
+use num_traits::{One, Zero};
+use serde::{
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{self, Visitor},
+};
 
 use super::{int::Int, uint::Uint};
 use crate::{Error, OwnedFragment, Type, error};
@@ -22,12 +25,16 @@ pub use parse::parse_decimal;
 use crate::error::diagnostic::number::invalid_number_format;
 
 #[repr(transparent)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Decimal(pub BigDecimalInner);
 
 impl Decimal {
 	pub fn zero() -> Self {
 		Self(BigDecimalInner::zero())
+	}
+
+	pub fn one() -> Self {
+		Self(BigDecimalInner::one())
 	}
 }
 
@@ -210,8 +217,50 @@ impl Default for Decimal {
 	}
 }
 
+// Serde implementation for string-based serialization
+// This works with both JSON and binary formats (bincode, rmp, etc.)
+impl Serialize for Decimal {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_str(&self.0.to_string())
+	}
+}
+
+struct DecimalVisitor;
+
+impl<'de> Visitor<'de> for DecimalVisitor {
+	type Value = Decimal;
+
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+		formatter.write_str("a decimal number as a string")
+	}
+
+	fn visit_str<E>(self, value: &str) -> Result<Decimal, E>
+	where
+		E: de::Error,
+	{
+		BigDecimalInner::from_str(value).map(Decimal).map_err(|e| E::custom(format!("invalid decimal: {}", e)))
+	}
+}
+
+impl<'de> Deserialize<'de> for Decimal {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		deserializer.deserialize_str(DecimalVisitor)
+	}
+}
+
 #[cfg(test)]
 mod tests {
+	use bincode::{
+		config::standard,
+		serde::{decode_from_slice, encode_to_vec},
+	};
+
 	use super::*;
 
 	#[test]
@@ -241,5 +290,89 @@ mod tests {
 	fn test_display() {
 		let decimal = Decimal::from_str("123.45").unwrap();
 		assert_eq!(format!("{}", decimal), "123.45");
+	}
+
+	#[test]
+	fn test_serde_json() {
+		let decimal = Decimal::from_str("123.456789").unwrap();
+		let json = serde_json::to_string(&decimal).unwrap();
+		assert_eq!(json, "\"123.456789\"");
+
+		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+	}
+
+	#[test]
+	fn test_serde_json_negative() {
+		let decimal = Decimal::from_str("-987.654321").unwrap();
+		let json = serde_json::to_string(&decimal).unwrap();
+		assert_eq!(json, "\"-987.654321\"");
+
+		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+	}
+
+	#[test]
+	fn test_serde_json_zero() {
+		let decimal = Decimal::zero();
+		let json = serde_json::to_string(&decimal).unwrap();
+		assert_eq!(json, "\"0\"");
+
+		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+	}
+
+	#[test]
+	fn test_serde_json_high_precision() {
+		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
+		let json = serde_json::to_string(&decimal).unwrap();
+
+		let deserialized: Decimal = serde_json::from_str(&json).unwrap();
+		assert_eq!(deserialized, decimal);
+	}
+
+	#[test]
+	fn test_serde_bincode() {
+		let decimal = Decimal::from_str("123.456789").unwrap();
+		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+
+		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		assert_eq!(decoded, decimal);
+	}
+
+	#[test]
+	fn test_serde_bincode_negative() {
+		let decimal = Decimal::from_str("-987.654321").unwrap();
+		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+
+		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		assert_eq!(decoded, decimal);
+	}
+
+	#[test]
+	fn test_serde_bincode_zero() {
+		let decimal = Decimal::zero();
+		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+
+		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		assert_eq!(decoded, decimal);
+	}
+
+	#[test]
+	fn test_serde_bincode_high_precision() {
+		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
+		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+
+		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		assert_eq!(decoded, decimal);
+	}
+
+	#[test]
+	fn test_serde_bincode_large_number() {
+		let decimal = Decimal::from_str("999999999999999999999999999999.999999999999999999999999").unwrap();
+		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+
+		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		assert_eq!(decoded, decimal);
 	}
 }

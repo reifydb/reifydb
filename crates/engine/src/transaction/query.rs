@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use tracing::instrument;
 
 use crate::transaction::TransactionCdc;
 
@@ -28,6 +29,7 @@ pub struct StandardQueryTransaction {
 
 impl StandardQueryTransaction {
 	/// Creates a new active query transaction
+	#[instrument(name = "engine::transaction::query::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
 		single: TransactionSingleVersion,
@@ -44,15 +46,18 @@ impl StandardQueryTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
+	#[instrument(name = "engine::transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
 	{
-		self.single.with_query(f)
+		self.single.with_query(keys, f)
 	}
 
 	/// Execute a function with access to the multi query transaction.
 	/// This operates within the same transaction context.
+	#[instrument(name = "engine::transaction::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut <TransactionMultiVersion as MultiVersionTransaction>::Query) -> crate::Result<R>,
@@ -61,6 +66,7 @@ impl StandardQueryTransaction {
 	}
 
 	/// Get access to the CDC transaction interface
+	#[instrument(name = "engine::transaction::query::cdc", level = "trace", skip(self))]
 	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}
@@ -69,57 +75,55 @@ impl StandardQueryTransaction {
 impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
-		self.multi.version()
+		MultiVersionQueryTransaction::version(&self.multi)
 	}
 
 	#[inline]
 	fn id(&self) -> TransactionId {
-		self.multi.id()
+		MultiVersionQueryTransaction::id(&self.multi)
 	}
 
 	#[inline]
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
-		self.multi.get(key)
+		MultiVersionQueryTransaction::get(&mut self.multi, key)
 	}
 
 	#[inline]
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		self.multi.contains_key(key)
+		MultiVersionQueryTransaction::contains_key(&mut self.multi, key)
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.scan()
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+		MultiVersionQueryTransaction::range_batched(&mut self.multi, range, batch_size)
 	}
 
 	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.scan_rev()
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+		MultiVersionQueryTransaction::range_rev_batched(&mut self.multi, range, batch_size)
 	}
 
 	#[inline]
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.range(range)
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
+		MultiVersionQueryTransaction::prefix(&mut self.multi, prefix)
 	}
 
 	#[inline]
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.range_rev(range)
-	}
-
-	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.prefix(prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
-		self.multi.prefix_rev(prefix)
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
+		MultiVersionQueryTransaction::prefix_rev(&mut self.multi, prefix)
 	}
 
 	#[inline]
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		self.multi.read_as_of_version_exclusive(version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(&mut self.multi, version)
 	}
 }
 
@@ -130,8 +134,11 @@ impl QueryTransaction for StandardQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
-		self.single.begin_query()
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		self.single.begin_query(keys)
 	}
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {

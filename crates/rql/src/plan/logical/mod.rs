@@ -4,16 +4,18 @@
 pub mod alter;
 mod create;
 mod mutate;
-mod query;
+pub mod query;
 pub mod resolver;
+pub mod row_predicate;
 mod variable;
 
+use query::window::WindowNode;
 use reifydb_catalog::{
 	CatalogQueryTransaction,
-	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
-	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
+	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
@@ -21,13 +23,15 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
+use tracing::instrument;
 
 use crate::{
 	ast::{
-		Ast, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
+		Ast, AstDataType, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
 		InfixOperator, Token, TokenKind,
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
 			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
@@ -35,12 +39,12 @@ use crate::{
 		tokenize::{Keyword, Literal, Operator},
 	},
 	expression::{AliasExpression, Expression},
-	plan::logical::alter::{AlterTableNode, AlterViewNode},
-	query::QueryString,
+	plan::logical::alter::{AlterFlowNode, AlterTableNode, AlterViewNode},
 };
 
 struct Compiler {}
 
+#[instrument(name = "rql::compile::logical", level = "trace", skip(tx, ast))]
 pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,
@@ -113,7 +117,7 @@ impl Compiler {
 								let namespace_id = ns.id;
 
 								// Check if it's a ring buffer first
-								if tx.find_ring_buffer_by_name(
+								if tx.find_ringbuffer_by_name(
 									namespace_id,
 									target_name,
 								)?
@@ -181,7 +185,7 @@ impl Compiler {
 									let namespace_id = ns.id;
 
 									// Check if it's a ring buffer first
-									if tx.find_ring_buffer_by_name(
+									if tx.find_ringbuffer_by_name(
 										namespace_id,
 										target_name,
 									)?
@@ -313,7 +317,9 @@ impl Compiler {
 					| InfixOperator::Xor(_)
 					| InfixOperator::Call(_)
 					| InfixOperator::As(_)
-					| InfixOperator::TypeAscription(_) => {
+					| InfixOperator::TypeAscription(_)
+					| InfixOperator::In(_)
+					| InfixOperator::NotIn(_) => {
 						let wrapped_map = Self::wrap_scalar_in_map(node);
 						Self::compile_map(wrapped_map, tx)
 					}
@@ -328,12 +334,14 @@ impl Compiler {
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
 			Ast::Join(node) => Self::compile_join(node, tx),
+			Ast::Merge(node) => Self::compile_merge(node, tx),
 			Ast::Take(node) => Self::compile_take(node, tx),
 			Ast::Sort(node) => Self::compile_sort(node, tx),
 			Ast::Distinct(node) => Self::compile_distinct(node, tx),
 			Ast::Map(node) => Self::compile_map(node, tx),
 			Ast::Extend(node) => Self::compile_extend(node, tx),
 			Ast::Apply(node) => Self::compile_apply(node),
+			Ast::Window(node) => Self::compile_window(node, tx),
 			Ast::Identifier(ref id) => {
 				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))
 			}
@@ -460,16 +468,20 @@ pub enum LogicalPlan<'a> {
 	CreateSequence(CreateSequenceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
+	CreateDictionary(CreateDictionaryNode<'a>),
+	CreateFlow(CreateFlowNode<'a>),
 	CreateIndex(CreateIndexNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
 	AlterTable(AlterTableNode<'a>),
 	AlterView(AlterViewNode<'a>),
+	AlterFlow(AlterFlowNode<'a>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'a>),
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
+	InsertDictionary(InsertDictionaryNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
@@ -484,6 +496,7 @@ pub enum LogicalPlan<'a> {
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
+	Merge(MergeNode<'a>),
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode<'a>),
@@ -491,6 +504,7 @@ pub enum LogicalPlan<'a> {
 	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
+	Window(WindowNode<'a>),
 	Generator(GeneratorNode<'a>),
 	VariableSource(VariableSourceNode<'a>),
 	Environment(EnvironmentNode),
@@ -568,12 +582,24 @@ pub struct ElseIfBranch<'a> {
 	pub then_branch: Box<LogicalPlan<'a>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyDef<'a> {
+	pub columns: Vec<PrimaryKeyColumn<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyColumn<'a> {
+	pub column: Fragment<'a>,
+	pub order: Option<SortDirection>,
+}
+
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan<'a>>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
@@ -581,7 +607,8 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan<'a>>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
@@ -601,14 +628,31 @@ pub struct CreateTableNode<'a> {
 	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
 pub struct CreateRingBufferNode<'a> {
-	pub ring_buffer: MaybeQualifiedRingBufferIdentifier<'a>,
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
+}
+
+#[derive(Debug)]
+pub struct CreateDictionaryNode<'a> {
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub value_type: AstDataType<'a>,
+	pub id_type: AstDataType<'a>,
+}
+
+#[derive(Debug)]
+pub struct CreateFlowNode<'a> {
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub as_clause: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
@@ -656,6 +700,11 @@ pub struct InsertRingBufferNode<'a> {
 }
 
 #[derive(Debug)]
+pub struct InsertDictionaryNode<'a> {
+	pub target: MaybeQualifiedDictionaryIdentifier<'a>,
+}
+
+#[derive(Debug)]
 pub struct UpdateTableNode<'a> {
 	pub target: Option<MaybeQualifiedTableIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
@@ -686,28 +735,27 @@ pub struct FilterNode<'a> {
 #[derive(Debug)]
 pub struct JoinInnerNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
-	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
 pub struct JoinLeftNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
-	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
 pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
-	pub with_query: QueryString,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: Option<JoinStrategy>,
+}
+
+#[derive(Debug)]
+pub struct MergeNode<'a> {
+	pub with: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
@@ -732,7 +780,7 @@ pub struct ExtendNode<'a> {
 
 #[derive(Debug)]
 pub struct ApplyNode<'a> {
-	pub operator_name: Fragment<'a>,
+	pub operator: Fragment<'a>,
 	pub arguments: Vec<Expression<'a>>,
 }
 

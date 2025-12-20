@@ -13,14 +13,14 @@ impl<'a> Parser<'a> {
 
 		// Parse the operator name (e.g., counter, sequence,
 		// running_sum)
-		let operator_name = self.parse_identifier()?;
+		let operator = self.parse_identifier()?;
 
 		// Parse arguments if present
 		let arguments = self.parse_tuple()?;
 
 		Ok(AstCall {
 			token,
-			operator_name,
+			operator,
 			arguments,
 		})
 	}

@@ -3,12 +3,12 @@
 
 mod database;
 mod embedded;
-#[cfg(feature = "sub_server")]
+mod intercept;
 mod server;
 pub mod traits;
 
 pub use database::DatabaseBuilder;
 pub use embedded::EmbeddedBuilder;
-#[cfg(feature = "sub_server")]
+pub use intercept::WithInterceptorBuilder;
 pub use server::ServerBuilder;
 pub use traits::WithSubsystem;

@@ -33,6 +33,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Cast(_) => "Cast",
 		Ast::Create(_) => "Create",
 		Ast::Alter(_) => "Alter",
+		Ast::Drop(_) => "Drop",
 		Ast::Describe(_) => "Describe",
 		Ast::Filter(_) => "Filter",
 		Ast::From(_) => "From",
@@ -44,6 +45,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Insert(_) => "Insert",
 		Ast::Update(_) => "Update",
 		Ast::Join(_) => "Join",
+		Ast::Merge(_) => "Merge",
 		Ast::List(_) => "List",
 		Ast::Literal(_) => "Literal",
 		Ast::Nop => "Nop",
@@ -62,8 +64,10 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Apply(_) => "Apply",
 		Ast::Call(_) => "Call",
 		Ast::SubQuery(_) => "SubQuery",
+		Ast::Window(_) => "Window",
 		Ast::StatementExpression(_) => "StatementExpression",
 		Ast::Environment(_) => "Environment",
+		Ast::Rownum(_) => "Rownum",
 	};
 
 	let branch = if is_last {
@@ -100,6 +104,11 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					.map(|sch| format!("{}.", sch.text()))
 					.unwrap_or_default();
 				format!("ALTER SEQUENCE {}{}.{}", namespace, s.sequence.name.text(), s.column.text())
+			}
+			AstAlter::Flow(f) => {
+				let namespace =
+					f.flow.namespace.as_ref().map(|s| format!("{}.", s.text())).unwrap_or_default();
+				format!("ALTER FLOW {}{}", namespace, f.flow.name.text())
 			}
 		},
 		_ => ty.to_string(),
@@ -386,6 +395,10 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 				AstAlter::Sequence(_) => {
 					// Sequence alter doesn't have child
 					// operations
+				}
+				AstAlter::Flow(_) => {
+					// Flow alter doesn't have child operations to display here
+					// The action is part of the flow node itself
 				}
 			}
 			// Return early since we handled the children

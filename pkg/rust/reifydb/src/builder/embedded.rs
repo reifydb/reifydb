@@ -9,13 +9,12 @@ use reifydb_engine::{StandardCommandTransaction, function::FunctionsBuilder};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
-#[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::LoggingBuilder;
-#[cfg(feature = "sub_worker")]
+#[cfg(feature = "sub_tracing")]
+use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
-use super::{DatabaseBuilder, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct EmbeddedBuilder {
@@ -26,9 +25,8 @@ pub struct EmbeddedBuilder {
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	#[cfg(feature = "sub_logging")]
-	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
-	#[cfg(feature = "sub_worker")]
+	#[cfg(feature = "sub_tracing")]
+	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
@@ -49,9 +47,8 @@ impl EmbeddedBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
-			#[cfg(feature = "sub_logging")]
-			logging_configurator: None,
-			#[cfg(feature = "sub_worker")]
+			#[cfg(feature = "sub_tracing")]
+			tracing_configurator: None,
 			worker_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
@@ -86,12 +83,11 @@ impl EmbeddedBuilder {
 		}
 
 		// Add configured subsystems using the proper methods
-		#[cfg(feature = "sub_logging")]
-		if let Some(configurator) = self.logging_configurator {
-			builder = builder.with_logging(configurator);
+		#[cfg(feature = "sub_tracing")]
+		if let Some(configurator) = self.tracing_configurator {
+			builder = builder.with_tracing(configurator);
 		}
 
-		#[cfg(feature = "sub_worker")]
 		if let Some(configurator) = self.worker_configurator {
 			builder = builder.with_worker(configurator);
 		}
@@ -111,12 +107,12 @@ impl EmbeddedBuilder {
 }
 
 impl WithSubsystem for EmbeddedBuilder {
-	#[cfg(feature = "sub_logging")]
-	fn with_logging<F>(mut self, configurator: F) -> Self
+	#[cfg(feature = "sub_tracing")]
+	fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
 	{
-		self.logging_configurator = Some(Box::new(configurator));
+		self.tracing_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -129,7 +125,6 @@ impl WithSubsystem for EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_worker")]
 	fn with_worker<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
@@ -141,5 +136,11 @@ impl WithSubsystem for EmbeddedBuilder {
 	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
 		self.subsystem_factories.push(factory);
 		self
+	}
+}
+
+impl WithInterceptorBuilder for EmbeddedBuilder {
+	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder<StandardCommandTransaction> {
+		&mut self.interceptors
 	}
 }

@@ -42,6 +42,38 @@ impl AggregateFunction for Max {
 				}
 				Ok(())
 			}
+			ColumnData::Float4(container) => {
+				for (group, indices) in groups.iter() {
+					let max_val = indices
+						.iter()
+						.filter_map(|&i| container.get(i))
+						.max_by(|a, b| a.partial_cmp(b).unwrap());
+
+					if let Some(max_val) = max_val {
+						self.maxs
+							.entry(group.clone())
+							.and_modify(|v| *v = f64::max(*v, *max_val as f64))
+							.or_insert(*max_val as f64);
+					}
+				}
+				Ok(())
+			}
+			ColumnData::Int4(container) => {
+				for (group, indices) in groups.iter() {
+					let max_val = indices
+						.iter()
+						.filter_map(|&i| container.get(i))
+						.max_by(|a, b| a.partial_cmp(b).unwrap());
+
+					if let Some(max_val) = max_val {
+						self.maxs
+							.entry(group.clone())
+							.and_modify(|v| *v = f64::max(*v, *max_val as f64))
+							.or_insert(*max_val as f64);
+					}
+				}
+				Ok(())
+			}
 			_ => unimplemented!(),
 		}
 	}

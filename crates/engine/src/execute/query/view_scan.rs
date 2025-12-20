@@ -1,24 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	ops::Bound::{Excluded, Included},
-	sync::Arc,
-};
+use std::sync::Arc;
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::{
-		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange,
-		resolved::ResolvedView,
-	},
-	log_debug,
+	EncodedKey,
+	interface::{EncodableKey, MultiVersionQueryTransaction, RowKey, RowKeyRange, resolved::ResolvedView},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
 use reifydb_type::Fragment;
+use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
@@ -52,6 +46,7 @@ impl<'a> ViewScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for ViewScanNode<'a> {
+	#[instrument(name = "query::scan::view::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -61,6 +56,7 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "query::scan::view::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -74,42 +70,20 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let range = RowKeyRange {
-			source: self.view.def().id.into(),
-		};
-
-		let range = if let Some(_) = &self.last_key {
-			EncodedKeyRange::new(Excluded(self.last_key.clone().unwrap()), Included(range.end().unwrap()))
-		} else {
-			EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
-		};
-
-		log_debug!(
-			"ViewScan: Scanning view {:?} with range {:?} to {:?}",
-			self.view.def().id,
-			range.start,
-			range.end
-		);
+		let range = RowKeyRange::scan_range(self.view.def().id.into(), self.last_key.as_ref());
 
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
-		let mut rows_collected = 0;
 		let mut new_last_key = None;
 
-		let multi_rows: Vec<_> = rx.range(range)?.into_iter().collect();
-
-		log_debug!("ViewScan: Found {} rows for view {:?}", multi_rows.len(), self.view.def().id);
+		let multi_rows: Vec<_> =
+			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect();
 
 		for multi in multi_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&multi.key) {
 				batch_rows.push(multi.values);
 				row_numbers.push(key.row);
 				new_last_key = Some(multi.key);
-				rows_collected += 1;
-
-				if rows_collected >= batch_size {
-					break;
-				}
 			}
 		}
 

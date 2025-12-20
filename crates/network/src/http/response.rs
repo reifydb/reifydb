@@ -59,6 +59,17 @@ impl HttpResponse {
 		self
 	}
 
+	pub fn with_cors_allow_all(mut self) -> Self {
+		self.headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
+		self.headers.insert(
+			"Access-Control-Allow-Methods".to_string(),
+			"GET, POST, PUT, DELETE, OPTIONS".to_string(),
+		);
+		self.headers.insert("Access-Control-Allow-Headers".to_string(), "*".to_string());
+		self.headers.insert("Access-Control-Max-Age".to_string(), "86400".to_string());
+		self
+	}
+
 	pub fn to_bytes(&self) -> Vec<u8> {
 		let mut response = format!("HTTP/1.1 {} {}\r\n", self.status_code, self.status_text);
 

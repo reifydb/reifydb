@@ -6,7 +6,7 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, getConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useCommand with TypeScript Primitive Types', () => {
@@ -17,7 +17,7 @@ describe('useCommand with TypeScript Primitive Types', () => {
     }, 30000);
 
     afterAll(() => {
-        clearAllConnections();
+        clearConnection();
     });
 
     describe('Primitive Type - With Schema Returns JS Primitives', () => {
@@ -131,6 +131,24 @@ describe('useCommand with TypeScript Primitive Types', () => {
                 });
 
                 expect(result.current.result!.rows[0].value).toBeCloseTo(3.141592653589793);
+            });
+
+            it('should handle decimal numbers', async () => {
+                const schema = Schema.object({ amount: Schema.decimal() });
+                const { result } = renderHook(() => 
+                    useCommandOne(
+                        `MAP {amount: cast('123.456789', decimal)}`,
+                        undefined,
+                        schema
+                    )
+                );
+
+                await waitFor(() => {
+                    expect(result.current.isExecuting).toBe(false);
+                });
+
+                expect(result.current.result!.rows[0].amount).toBe('123.456789');
+                expect(typeof result.current.result!.rows[0].amount).toBe('string');
             });
 
             it('should handle integer type', async () => {

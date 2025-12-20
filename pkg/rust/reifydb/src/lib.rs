@@ -14,9 +14,7 @@ pub mod subsystem;
 use std::time::Duration;
 
 pub use api::*;
-#[cfg(feature = "sub_server")]
-pub use builder::ServerBuilder;
-pub use builder::{DatabaseBuilder, EmbeddedBuilder, WithSubsystem};
+pub use builder::{DatabaseBuilder, EmbeddedBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::{Database, DatabaseConfig};
 pub use event::{OnCreateContext, WithEventBus};
@@ -29,42 +27,45 @@ pub use reifydb_core::{
 	Error, Result,
 	event::EventBus,
 	interface::{Identity, MultiVersionTransaction, Params, SingleVersionTransaction},
-	log, log_critical, log_debug, log_error, log_info, log_timed_critical, log_timed_debug, log_timed_error,
-	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn,
 };
+pub use reifydb_derive as derive;
+pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
-pub use reifydb_store_transaction::backend::{
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
-};
-#[cfg(feature = "sub_admin")]
-pub use reifydb_sub_admin as sub_admin;
+pub use reifydb_store_transaction::{backend::BackendStorage, sqlite::SqliteConfig};
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
-#[cfg(feature = "sub_logging")]
-pub use reifydb_sub_logging as sub_logging;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
-#[cfg(feature = "sub_worker")]
+#[cfg(feature = "sub_server_admin")]
+pub use reifydb_sub_server_admin as sub_server_admin;
+#[cfg(feature = "sub_server_http")]
+pub use reifydb_sub_server_http as sub_server_http;
+#[cfg(feature = "sub_server_otel")]
+pub use reifydb_sub_server_otel as sub_server_otel;
+#[cfg(feature = "sub_server_ws")]
+pub use reifydb_sub_server_ws as sub_server_ws;
+#[cfg(feature = "sub_tracing")]
+pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
-pub use reifydb_transaction::{
-	multi::transaction::{optimistic::TransactionOptimistic, serializable::TransactionSerializable},
-	single::TransactionSvl,
-};
+pub use reifydb_transaction::{multi::Transaction, single::TransactionSvl};
 pub use reifydb_type as r#type;
-pub use session::{CommandSession, QuerySession, Session};
+pub use reifydb_type::{
+	Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError,
+	FromValueError, OrderedF32, OrderedF64, TryFromValue, TryFromValueCoerce, Type, Value,
+};
+pub use session::{CommandSession, IntoCommandSession, QuerySession, Session};
 
 /// Default configuration values
 pub mod defaults {
 	use super::Duration;
 
 	/// Default graceful shutdown timeout (30 seconds)
-	pub const GRACEFUL_SHSVTDOWN_TIMEOSVT: Duration = Duration::from_secs(30);
+	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 	/// Default health check interval (5 seconds)
 	pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);

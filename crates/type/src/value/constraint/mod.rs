@@ -13,14 +13,14 @@ pub mod precision;
 pub mod scale;
 
 /// Represents a type with optional constraints
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeConstraint {
 	base_type: Type,
 	constraint: Option<Constraint>,
 }
 
 /// Constraint types for different data types
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
 	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
 	MaxBytes(MaxBytes),
@@ -28,9 +28,23 @@ pub enum Constraint {
 	PrecisionScale(Precision, Scale),
 }
 
+/// FFI-safe representation of a TypeConstraint
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(C)]
+pub struct FFITypeConstraint {
+	/// Base type code (Type::to_u8)
+	pub base_type: u8,
+	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale
+	pub constraint_type: u8,
+	/// First constraint param: MaxBytes value OR precision
+	pub constraint_param1: u32,
+	/// Second constraint param: scale (only for PrecisionScale)
+	pub constraint_param2: u32,
+}
+
 impl TypeConstraint {
-	/// Create an unconstrained type
-	pub fn unconstrained(ty: Type) -> Self {
+	/// Create an unconstrained type (const for use in static contexts)
+	pub const fn unconstrained(ty: Type) -> Self {
 		Self {
 			base_type: ty,
 			constraint: None,
@@ -53,6 +67,47 @@ impl TypeConstraint {
 	/// Get the constraint
 	pub fn constraint(&self) -> &Option<Constraint> {
 		&self.constraint
+	}
+
+	/// Convert to FFI representation
+	pub fn to_ffi(&self) -> FFITypeConstraint {
+		let base_type = self.base_type.to_u8();
+		match &self.constraint {
+			None => FFITypeConstraint {
+				base_type,
+				constraint_type: 0,
+				constraint_param1: 0,
+				constraint_param2: 0,
+			},
+			Some(Constraint::MaxBytes(max)) => FFITypeConstraint {
+				base_type,
+				constraint_type: 1,
+				constraint_param1: max.value(),
+				constraint_param2: 0,
+			},
+			Some(Constraint::PrecisionScale(p, s)) => FFITypeConstraint {
+				base_type,
+				constraint_type: 2,
+				constraint_param1: p.value() as u32,
+				constraint_param2: s.value() as u32,
+			},
+		}
+	}
+
+	/// Create from FFI representation
+	pub fn from_ffi(ffi: FFITypeConstraint) -> Self {
+		let ty = Type::from_u8(ffi.base_type);
+		match ffi.constraint_type {
+			1 => Self::with_constraint(ty, Constraint::MaxBytes(MaxBytes::new(ffi.constraint_param1))),
+			2 => Self::with_constraint(
+				ty,
+				Constraint::PrecisionScale(
+					Precision::new(ffi.constraint_param1 as u8),
+					Scale::new(ffi.constraint_param2 as u8),
+				),
+			),
+			_ => Self::unconstrained(ty),
+		}
 	}
 
 	/// Validate a value against this type constraint

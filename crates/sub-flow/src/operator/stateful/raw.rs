@@ -2,54 +2,44 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
-use reifydb_engine::StandardCommandTransaction;
 
 use super::utils;
-use crate::operator::transform::TransformOperator;
+use crate::{operator::transform::TransformOperator, transaction::FlowTransaction};
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
 pub trait RawStatefulOperator: TransformOperator {
 	/// Get raw bytes for a key
-	fn state_get(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		key: &EncodedKey,
-	) -> crate::Result<Option<EncodedValues>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
 	/// Set raw bytes for a key
-	fn state_set(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		key: &EncodedKey,
-		value: EncodedValues,
-	) -> crate::Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedValues) -> crate::Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
 	/// Remove a key
-	fn state_remove(&self, txn: &mut StandardCommandTransaction, key: &EncodedKey) -> crate::Result<()> {
+	fn state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
 	/// Scan all keys for this operator
-	fn state_scan<'a>(&self, txn: &'a mut StandardCommandTransaction) -> crate::Result<super::StateIterator<'a>> {
+	fn state_scan<'a>(&self, txn: &'a mut FlowTransaction) -> crate::Result<super::StateIterator<'a>> {
 		utils::state_scan(self.id(), txn)
 	}
 
 	/// Range query between keys
 	fn state_range<'a>(
 		&self,
-		txn: &'a mut StandardCommandTransaction,
+		txn: &'a mut FlowTransaction,
 		range: EncodedKeyRange,
 	) -> crate::Result<super::StateIterator<'a>> {
 		utils::state_range(self.id(), txn, range)
 	}
 
 	/// Clear all state for this operator
-	fn state_clear(&self, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
+	fn state_clear(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
 }
@@ -59,12 +49,14 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included};
 
 	use reifydb_core::{
+		CommitVersion,
 		interface::{Engine, FlowNodeId},
+		key::FlowNodeStateKey,
 		util::CowVec,
 	};
 
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	use crate::{Operator, operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
 	// Test implementation of SimpleStatefulOperator
 	impl RawStatefulOperator for TestOperator {}
@@ -72,6 +64,7 @@ mod tests {
 	#[test]
 	fn test_simple_state_get_set() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
@@ -89,6 +82,7 @@ mod tests {
 	#[test]
 	fn test_simple_state_remove() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
@@ -104,6 +98,7 @@ mod tests {
 	#[test]
 	fn test_simple_state_scan() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Add multiple entries
@@ -122,6 +117,7 @@ mod tests {
 	#[test]
 	fn test_simple_state_range() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(2));
 
 		// Add ordered entries
@@ -144,6 +140,7 @@ mod tests {
 	#[test]
 	fn test_simple_state_clear() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(3));
 
 		// Add multiple entries
@@ -154,18 +151,27 @@ mod tests {
 		}
 
 		// Verify entries exist
-		assert_eq!(operator.state_scan(&mut txn).unwrap().count(), 5);
+		let count = {
+			let range = FlowNodeStateKey::node_range(operator.id());
+			txn.range(range).unwrap().count()
+		};
+		assert_eq!(count, 5);
 
 		// Clear all
 		operator.state_clear(&mut txn).unwrap();
 
 		// Verify all cleared
-		assert_eq!(operator.state_scan(&mut txn).unwrap().count(), 0);
+		let count = {
+			let range = FlowNodeStateKey::node_range(operator.id());
+			txn.range(range).unwrap().count()
+		};
+		assert_eq!(count, 0);
 	}
 
 	#[test]
 	fn test_operator_isolation() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator1 = TestOperator::simple(FlowNodeId(10));
 		let operator2 = TestOperator::simple(FlowNodeId(20));
 		let shared_key = test_key("shared");
@@ -188,6 +194,7 @@ mod tests {
 	#[test]
 	fn test_empty_range() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(4));
 
 		// Add some entries
@@ -207,6 +214,7 @@ mod tests {
 	#[test]
 	fn test_overwrite_existing_key() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
 
@@ -227,6 +235,7 @@ mod tests {
 	#[test]
 	fn test_remove_non_existent_key() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
 
@@ -240,6 +249,7 @@ mod tests {
 	#[test]
 	fn test_scan_after_partial_removal() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(7));
 
 		// Add 5 entries
@@ -265,20 +275,24 @@ mod tests {
 		let key = test_key("isolation");
 
 		// Transaction 1: Write a value
-		let mut txn1 = engine.begin_command().unwrap();
+		let mut parent_txn1 = engine.begin_command().unwrap();
+		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1));
 		let value1 = EncodedValues(CowVec::new(vec![1]));
-		operator.state_set(&mut txn1, &key, value1.clone()).unwrap();
+		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
 
 		// Transaction 2: Should not see uncommitted value
-		let mut txn2 = engine.begin_command().unwrap();
-		assert!(operator.state_get(&mut txn2, &key).unwrap().is_none());
+		let parent_txn2 = engine.begin_command().unwrap();
+		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2));
+		assert!(operator.state_get(&mut flow_txn2, &key).unwrap().is_none());
 
 		// Commit transaction 1
-		txn1.commit().unwrap();
+		flow_txn1.commit(&mut parent_txn1).unwrap();
+		parent_txn1.commit().unwrap();
 
 		// Transaction 3: Should now see the value
-		let mut txn3 = engine.begin_command().unwrap();
-		let result = operator.state_get(&mut txn3, &key).unwrap();
+		let parent_txn3 = engine.begin_command().unwrap();
+		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3));
+		let result = operator.state_get(&mut flow_txn3, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value1);
 	}

@@ -28,14 +28,8 @@ impl CatalogStore {
 		// Note: Key encoding uses reverse order, so MAX encodes smaller
 		// than 0
 		let primary_key_range = {
-			let start_key = Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: reifydb_core::interface::PrimaryKeyId(u64::MAX),
-			})
-			.encode();
-			let end_key = Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: reifydb_core::interface::PrimaryKeyId(0),
-			})
-			.encode();
+			let start_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(u64::MAX));
+			let end_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(0));
 
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
@@ -68,6 +62,7 @@ impl CatalogStore {
 							policies: column_def.policies,
 							index: column_def.index,
 							auto_increment: column_def.auto_increment,
+							dictionary_id: None,
 						});
 					}
 
@@ -100,14 +95,8 @@ impl CatalogStore {
 		// Scan all primary key entries from storage using same approach
 		// as list_primary_keys
 		let primary_key_range = {
-			let start_key = Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: reifydb_core::interface::PrimaryKeyId(u64::MAX),
-			})
-			.encode();
-			let end_key = Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: reifydb_core::interface::PrimaryKeyId(0),
-			})
-			.encode();
+			let start_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(u64::MAX));
+			let end_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(0));
 
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};

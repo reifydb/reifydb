@@ -14,6 +14,12 @@ test_each_path! { in "crates/rql/tests/scripts/ast" as ast => run_test }
 test_each_path! { in "crates/rql/tests/scripts/logical_plan" as logical_plan => run_test }
 test_each_path! { in "crates/rql/tests/scripts/physical_plan" as physical_plan => run_test }
 
+// Flow tests
+test_each_path! { in "crates/rql/tests/scripts/tokenize/flow" as tokenize_flow => run_test }
+test_each_path! { in "crates/rql/tests/scripts/ast/flow" as ast_flow => run_test }
+test_each_path! { in "crates/rql/tests/scripts/logical_plan/flow" as logical_plan_flow => run_test }
+test_each_path! { in "crates/rql/tests/scripts/physical_plan/flow" as physical_plan_flow => run_test }
+
 fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
 }
@@ -64,6 +70,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: default_namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -75,6 +82,7 @@ impl testscript::Runner for Runner {
 						table: "orders".to_string(),
 						namespace: default_namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -97,6 +105,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: test_ns.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -128,6 +137,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -139,6 +149,7 @@ impl testscript::Runner for Runner {
 						table: "orders".to_string(),
 						namespace: namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();

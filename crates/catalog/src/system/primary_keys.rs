@@ -26,6 +26,7 @@ pub fn primary_keys() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: SOURCE_ID,
@@ -34,6 +35,7 @@ pub fn primary_keys() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 		})

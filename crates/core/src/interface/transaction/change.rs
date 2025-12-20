@@ -4,13 +4,32 @@
 use reifydb_type::IntoFragment;
 
 use crate::interface::{
-	NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef, RingBufferId, TableDef, TableId,
-	TransactionId, ViewDef, ViewId,
+	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef,
+	RingBufferId, TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
 
 pub trait TransactionalChanges:
-	TransactionalNamespaceChanges + TransactionalRingBufferChanges + TransactionalTableChanges + TransactionalViewChanges
+	TransactionalDictionaryChanges
+	+ TransactionalFlowChanges
+	+ TransactionalNamespaceChanges
+	+ TransactionalRingBufferChanges
+	+ TransactionalTableChanges
+	+ TransactionalViewChanges
 {
+}
+
+pub trait TransactionalDictionaryChanges {
+	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef>;
+
+	fn find_dictionary_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> Option<&DictionaryDef>;
+
+	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool;
+
+	fn is_dictionary_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalNamespaceChanges {
@@ -21,6 +40,16 @@ pub trait TransactionalNamespaceChanges {
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
 
 	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool;
+}
+
+pub trait TransactionalFlowChanges {
+	fn find_flow(&self, id: FlowId) -> Option<&FlowDef>;
+
+	fn find_flow_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&FlowDef>;
+
+	fn is_flow_deleted(&self, id: FlowId) -> bool;
+
+	fn is_flow_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalTableChanges {
@@ -34,17 +63,17 @@ pub trait TransactionalTableChanges {
 }
 
 pub trait TransactionalRingBufferChanges {
-	fn find_ring_buffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
+	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
 
-	fn find_ring_buffer_by_name<'a>(
+	fn find_ringbuffer_by_name<'a>(
 		&self,
 		namespace: NamespaceId,
 		name: impl IntoFragment<'a>,
 	) -> Option<&RingBufferDef>;
 
-	fn is_ring_buffer_deleted(&self, id: RingBufferId) -> bool;
+	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool;
 
-	fn is_ring_buffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_ringbuffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalViewChanges {
@@ -61,10 +90,14 @@ pub trait TransactionalViewChanges {
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
+	/// All dictionary definition changes in order (no coalescing)
+	pub dictionary_def: Vec<Change<DictionaryDef>>,
+	/// All flow definition changes in order (no coalescing)
+	pub flow_def: Vec<Change<FlowDef>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
-	pub ring_buffer_def: Vec<Change<RingBufferDef>>,
+	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
 	/// All view definition changes in order (no coalescing)
@@ -74,6 +107,36 @@ pub struct TransactionalDefChanges {
 }
 
 impl TransactionalDefChanges {
+	pub fn add_dictionary_def_change(&mut self, change: Change<DictionaryDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|d| d.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.dictionary_def.push(change);
+		self.log.push(Operation::Dictionary {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_flow_def_change(&mut self, change: Change<FlowDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|f| f.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.flow_def.push(change);
+		self.log.push(Operation::Flow {
+			id,
+			op,
+		});
+	}
+
 	pub fn add_namespace_def_change(&mut self, change: Change<NamespaceDef>) {
 		let id = change
 			.post
@@ -89,7 +152,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_ring_buffer_def_change(&mut self, change: Change<RingBufferDef>) {
+	pub fn add_ringbuffer_def_change(&mut self, change: Change<RingBufferDef>) {
 		let id = change
 			.post
 			.as_ref()
@@ -97,7 +160,7 @@ impl TransactionalDefChanges {
 			.map(|rb| rb.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.ring_buffer_def.push(change);
+		self.ringbuffer_def.push(change);
 		self.log.push(Operation::RingBuffer {
 			id,
 			op,
@@ -158,6 +221,14 @@ pub enum OperationType {
 /// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
+	Dictionary {
+		id: DictionaryId,
+		op: OperationType,
+	},
+	Flow {
+		id: FlowId,
+		op: OperationType,
+	},
 	Namespace {
 		id: NamespaceId,
 		op: OperationType,
@@ -180,8 +251,10 @@ impl TransactionalDefChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
+			dictionary_def: Vec::new(),
+			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
-			ring_buffer_def: Vec::new(),
+			ringbuffer_def: Vec::new(),
 			table_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
@@ -261,9 +334,32 @@ impl TransactionalDefChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
+		self.dictionary_def.clear();
+		self.flow_def.clear();
 		self.namespace_def.clear();
+		self.ringbuffer_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();
 	}
+}
+
+/// Tracks a table row insertion for post-commit event emission
+#[derive(Debug, Clone)]
+pub struct TableRowInsertion {
+	pub table_id: TableId,
+	pub row_number: reifydb_type::RowNumber,
+	pub encoded: crate::value::encoded::EncodedValues,
+}
+
+/// Tracks row changes across different entity types for post-commit event emission
+#[derive(Debug, Clone)]
+pub enum RowChange {
+	/// A row was inserted into a table
+	TableInsert(TableRowInsertion),
+	// Future variants:
+	// ViewInsert(ViewRowInsertion),
+	// RingBufferInsert(RingBufferRowInsertion),
+	// TableUpdate(TableRowUpdate),
+	// TableDelete(TableRowDelete),
 }

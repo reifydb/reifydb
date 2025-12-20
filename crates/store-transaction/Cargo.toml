@@ -3,18 +3,22 @@ name = "reifydb-store-transaction"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
+description = "Transaction storage for OLTP operations and recent data"
 
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-testing = { workspace = true }
 reifydb-type = { workspace = true }
 
-crossbeam-skiplist = { workspace = true }
+indexmap = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"] }
-
+uuid = { workspace = true }
 
 [dev-dependencies]
 test_each_file = { workspace = true }
-reifydb-testing = { workspace = true}
+reifydb-testing = { workspace = true }

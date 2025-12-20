@@ -35,7 +35,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_uuid4(&self, row: &EncodedValues, index: usize) -> Option<Uuid4> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Uuid4 {
 			Some(self.get_uuid4(row, index))
 		} else {
 			None
@@ -231,5 +231,15 @@ mod tests {
 		// Verify that it's exactly 16 bytes
 		assert_eq!(original_bytes.len(), 16);
 		assert_eq!(retrieved_bytes.len(), 16);
+	}
+
+	#[test]
+	fn test_try_get_uuid4_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_uuid4(&row, 0), None);
 	}
 }

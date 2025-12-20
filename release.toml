@@ -1,0 +1,9 @@
+# ReifyDB Release Configuration
+# Controls which registries to publish to
+
+[publish]
+# Whether to publish Rust crates to crates.io
+crates_io = true
+
+# Whether to publish TypeScript packages to npm
+npm_registry = true

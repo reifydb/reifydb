@@ -5,7 +5,7 @@ use super::{EncodableKey, EncodedKeyRange, KeyKind};
 use crate::{
 	EncodedKey,
 	interface::PrimaryKeyId,
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone)]
@@ -25,21 +25,34 @@ impl EncodableKey for PrimaryKeyKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+
+		let version = de.read_u8().ok()?;
+		if version != VERSION {
 			return None;
 		}
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
-		let primary_key: PrimaryKeyId = keycode::deserialize(&key[2..]).ok()?;
+
+		let primary_key = de.read_u64().ok()?;
+
 		Some(Self {
-			primary_key,
+			primary_key: PrimaryKeyId(primary_key),
 		})
 	}
 }
 
 impl PrimaryKeyKey {
+	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
+		Self {
+			primary_key: primary_key.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::primary_key_start()), Some(Self::primary_key_end()))
 	}

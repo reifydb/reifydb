@@ -16,14 +16,14 @@ use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
 use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 
 fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMultiVersion::serializable(store, single.clone(), eventbus.clone());
+	let multi = Transaction::new(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,
@@ -38,7 +38,7 @@ fn create_test_engine() -> StandardEngine {
 #[test]
 fn test_worker_subsystem_basic_task_execution() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 2,
 			max_queue_size: 100,
@@ -99,7 +99,7 @@ fn test_worker_subsystem_basic_task_execution() {
 #[test]
 fn test_task_priority_ordering() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 1, // Single worker to ensure order
 			max_queue_size: 100,
@@ -152,7 +152,7 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 	// This test ensures that when a worker is blocked, high priority tasks
 	// still get executed before low priority tasks by other workers
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 2, // Two workers
 			max_queue_size: 100,
@@ -297,7 +297,7 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 fn test_priority_with_all_levels() {
 	// Test that all priority levels are correctly ordered
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 1, // Single worker to ensure strict ordering
 			max_queue_size: 100,
@@ -391,7 +391,7 @@ fn test_priority_starvation_prevention() {
 	// Test that low priority tasks eventually get executed even with
 	// continuous high priority submissions
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 2,
 			max_queue_size: 100,

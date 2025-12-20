@@ -104,7 +104,7 @@ impl<CT: CommandTransaction> TablePostDeleteInterceptor<CT> for TransactionalFlo
 impl<CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostInsertContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Insert {
-			_source_id: SourceId::from(ctx.ring_buffer.id),
+			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
 		});
@@ -116,7 +116,7 @@ impl<CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for Transaction
 impl<CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostUpdateContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Update {
-			_source_id: SourceId::from(ctx.ring_buffer.id),
+			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
 			post: ctx.row.to_vec(),
@@ -128,7 +128,7 @@ impl<CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for Transaction
 impl<CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostDeleteContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Delete {
-			_source_id: SourceId::from(ctx.ring_buffer.id),
+			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
 		});
@@ -146,7 +146,7 @@ impl<CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInter
 			// TODO: Convert FlowChange to flow engine Change format
 			// and process through flow engine
 			// for change in changes.drain(..) {
-			// 	log_debug!("Intercepted change: {:?}", change);
+			// 	debug!("Intercepted change: {:?}", change);
 			// 	// The flow engine will be accessed via the
 			// engine/subsystem 	// This interceptor collects
 			// changes for the flow engine }
@@ -161,9 +161,9 @@ impl<CT: CommandTransaction> RegisterInterceptor<CT> for TransactionalFlowInterc
 		interceptors.table_post_insert.add(self.clone());
 		interceptors.table_post_update.add(self.clone());
 		interceptors.table_post_delete.add(self.clone());
-		interceptors.ring_buffer_post_insert.add(self.clone());
-		interceptors.ring_buffer_post_update.add(self.clone());
-		interceptors.ring_buffer_post_delete.add(self.clone());
+		interceptors.ringbuffer_post_insert.add(self.clone());
+		interceptors.ringbuffer_post_update.add(self.clone());
+		interceptors.ringbuffer_post_delete.add(self.clone());
 		interceptors.pre_commit.add(self);
 	}
 }

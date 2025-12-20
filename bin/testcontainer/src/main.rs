@@ -4,34 +4,43 @@
 use std::time::Duration;
 
 use reifydb::{
-	WithSubsystem,
-	core::interface::logging::LogLevel,
-	server,
-	sub_logging::{FormatStyle, LoggingBuilder},
-	sub_server::ServerConfig,
+	WithSubsystem, server, sub_server_admin::AdminConfig, sub_server_http::HttpConfig, sub_server_otel::OtelConfig,
+	sub_server_ws::WsConfig,
 };
-
-fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
-		.buffer_capacity(20000)
-		.batch_size(2000)
-		.flush_interval(Duration::from_millis(50))
-		.immediate_on_error(true)
-		.level(LogLevel::Trace)
-}
+use tracing::{info, info_span};
 
 fn main() {
-	let mut db = server::memory_optimistic()
-		.with_config(ServerConfig::default())
-		.with_logging(logger_configuration)
+	// Build database with integrated OpenTelemetry
+	let mut db = server::memory()
+		.with_http(HttpConfig::default())
+		.with_ws(WsConfig::default())
+		.with_tracing_otel(
+			OtelConfig::new()
+				.service_name("testcontainer")
+				.endpoint("http://localhost:4317")
+				.sample_ratio(1.0)
+				.scheduled_delay(Duration::from_millis(500)),
+			|t| t.with_filter("trace"),
+		)
+		.with_flow(|flow| flow)
+		.with_admin(AdminConfig::default())
 		.build()
 		.unwrap();
 
+	// Test spans to verify OpenTelemetry is working
+	{
+		let span = info_span!("testcontainer_startup", service = "testcontainer");
+		let _guard = span.enter();
+		info!("Database built successfully, testing OpenTelemetry pipeline");
+	}
+
 	// Start the database and wait for signal
 	println!("Starting database...");
+	println!("HTTP server: http://localhost:8091");
+	println!("WebSocket server: ws://localhost:8090");
+	println!("Jaeger UI: http://localhost:16686 (if running)");
+	println!();
 	println!("Press Ctrl+C to stop...");
 
 	db.start_and_await_signal().unwrap();
-
-	println!("Database stopped successfully!");
 }

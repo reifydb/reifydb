@@ -6,6 +6,7 @@ use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, Grou
 use crate::{StandardTransaction, execute::ExecutionContext};
 
 pub mod blob;
+pub mod flow_node_type;
 pub mod generator;
 pub mod math;
 mod registry;

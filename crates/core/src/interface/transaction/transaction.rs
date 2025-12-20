@@ -2,9 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::change::TransactionalDefChanges;
-use crate::interface::{
-	CdcQueryTransaction, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
-	SingleVersionCommandTransaction, SingleVersionQueryTransaction,
+use crate::{
+	EncodedKey,
+	interface::{
+		CdcQueryTransaction, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
+		SingleVersionCommandTransaction, SingleVersionQueryTransaction,
+	},
 };
 
 pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction {
@@ -12,13 +15,16 @@ pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction 
 	where
 		Self: 'a;
 
-	fn begin_single_command(&self) -> crate::Result<Self::SingleVersionCommand<'_>>;
-
-	fn with_single_command<F, R>(&self, f: F) -> crate::Result<R>
+	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>;
+
+	fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut Self::SingleVersionCommand<'_>) -> crate::Result<R>,
 	{
-		let mut tx = self.begin_single_command()?;
+		let mut tx = self.begin_single_command(keys)?;
 		let result = f(&mut tx)?;
 		tx.commit()?;
 		Ok(result)
@@ -37,15 +43,18 @@ pub trait QueryTransaction: MultiVersionQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>>;
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>;
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 
-	fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
+	fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut Self::SingleVersionQuery<'_>) -> crate::Result<R>,
 	{
-		let mut tx = self.begin_single_query()?;
+		let mut tx = self.begin_single_query(keys)?;
 		let result = f(&mut tx)?;
 		Ok(result)
 	}

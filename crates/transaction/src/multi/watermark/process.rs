@@ -147,15 +147,15 @@ impl WatermarkInner {
 			    if let Some(wait_tx) = mark.waiter {
 				let done_until = self.done_until.load(Ordering::SeqCst);
 				if done_until >= mark.version {
-				  let _ = wait_tx; // Close channel.
+					  let _ = wait_tx; // Close channel.
 				} else if mark.version < done_until.saturating_sub(OLD_VERSION_THRESHOLD) {
 				   // Version is so old we know it's irrelevant; skip waiter registration
 				   let _ = wait_tx;
 				} else {
-				  waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
+					  waiters.borrow_mut().entry(mark.version).or_default().push(wait_tx);
 				}
 			    } else {
-				process_one(mark.version, mark.done)
+					process_one(mark.version, mark.done)
 			    }
 			  },
 			  Err(_) => {

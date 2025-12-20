@@ -1,98 +1,57 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
-use reifydb_type::{Blob, RowNumber, Type, internal_error};
+use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
-/// Serializable version of Row data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SerializedRow {
-	number: RowNumber,
-	/// The raw encoded bytes of the encoded
-	#[serde(with = "serde_bytes")]
-	encoded_bytes: Vec<u8>,
-	/// The field names from the layout (for recreating EncodedRowNamedLayout)
-	field_names: Vec<String>,
-	/// The field types from the layout
-	field_types: Vec<Type>,
-}
-
-impl SerializedRow {
-	fn from_row(row: &Row) -> Self {
-		Self {
-			number: row.number,
-			encoded_bytes: row.encoded.as_slice().to_vec(),
-			field_names: row.layout.names().to_vec(),
-			field_types: row.layout.fields.iter().map(|f| f.r#type).collect(),
-		}
-	}
-
-	fn to_row(self) -> Row {
-		use reifydb_core::{
-			util::CowVec,
-			value::encoded::{EncodedValues, EncodedValuesNamedLayout},
-		};
-
-		let fields: Vec<(String, Type)> =
-			self.field_names.into_iter().zip(self.field_types.into_iter()).collect();
-
-		let layout = EncodedValuesNamedLayout::new(fields);
-		let encoded = EncodedValues(CowVec::new(self.encoded_bytes));
-
-		Row {
-			number: self.number,
-			encoded,
-			layout,
-		}
-	}
-}
-
-/// State for tracking the top N rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TakeState {
-	/// Map of encoded numbers to their serialized encoded data
-	/// Using BTreeMap to keep rows sorted by RowNumber
-	rows: BTreeMap<RowNumber, SerializedRow>,
+	active: BTreeMap<RowNumber, usize>,
+	candidates: BTreeMap<RowNumber, usize>,
 }
 
 impl Default for TakeState {
 	fn default() -> Self {
 		Self {
-			rows: BTreeMap::new(),
+			active: BTreeMap::new(),
+			candidates: BTreeMap::new(),
 		}
 	}
 }
 
 pub struct TakeOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
 	layout: EncodedValuesLayout,
 }
 
 impl TakeOperator {
-	pub fn new(node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, limit: usize) -> Self {
 		Self {
+			parent,
 			node,
 			limit,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<TakeState> {
+	fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -107,19 +66,70 @@ impl TakeOperator {
 		let config = standard();
 		decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
+			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state(&self, txn: &mut StandardCommandTransaction, state: &TakeState) -> crate::Result<()> {
+	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
 		self.save_state(txn, state_row)
+	}
+
+	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> crate::Result<Vec<FlowDiff>> {
+		let mut output_diffs = Vec::new();
+
+		while state.active.len() < self.limit && !state.candidates.is_empty() {
+			if let Some((&candidate_row, &count)) = state.candidates.iter().next_back() {
+				state.candidates.remove(&candidate_row);
+				state.active.insert(candidate_row, count);
+
+				let rows = self.parent.get_rows(txn, &[candidate_row])?;
+				if let Some(Some(row)) = rows.first() {
+					output_diffs.push(FlowDiff::Insert {
+						post: row.clone(),
+					});
+				}
+			}
+		}
+
+		Ok(output_diffs)
+	}
+
+	fn evict_to_candidates(
+		&self,
+		state: &mut TakeState,
+		txn: &mut FlowTransaction,
+	) -> crate::Result<Vec<FlowDiff>> {
+		let mut output_diffs = Vec::new();
+		let candidate_limit = self.limit * 4;
+
+		while state.active.len() > self.limit {
+			if let Some((&evicted_row, &count)) = state.active.iter().next() {
+				state.active.remove(&evicted_row);
+				state.candidates.insert(evicted_row, count);
+
+				let rows = self.parent.get_rows(txn, &[evicted_row])?;
+				if let Some(Some(row)) = rows.first() {
+					output_diffs.push(FlowDiff::Remove {
+						pre: row.clone(),
+					});
+				}
+			}
+		}
+
+		while state.candidates.len() > candidate_limit {
+			if let Some((&removed_row, _)) = state.candidates.iter().next() {
+				state.candidates.remove(&removed_row);
+			}
+		}
+
+		Ok(output_diffs)
 	}
 }
 
@@ -140,13 +150,13 @@ impl Operator for TakeOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// Load current state
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
+		let version = change.version;
 
 		for diff in change.diffs {
 			match diff {
@@ -155,31 +165,65 @@ impl Operator for TakeOperator {
 				} => {
 					let row_number = post.number;
 
-					// Add to our tracking
-					state.rows.insert(row_number, SerializedRow::from_row(&post));
-
-					// Keep only the top N rows (highest encoded numbers)
-					// BTreeMap keeps keys sorted, so we can efficiently get the top N
-					while state.rows.len() > self.limit {
-						// Remove the smallest (oldest) encoded number
-						if let Some((&removed_row_num, removed_serialized)) =
-							state.rows.iter().next()
-						{
-							let removed_serialized = removed_serialized.clone();
-							state.rows.remove(&removed_row_num);
-
-							// Emit a remove for the encoded that fell out of the window
-							output_diffs.push(FlowDiff::Remove {
-								pre: removed_serialized.to_row(),
-							});
-						}
+					if state.active.contains_key(&row_number) {
+						*state.active.get_mut(&row_number).unwrap() += 1;
+						continue;
 					}
 
-					// If this encoded is within the limit, emit the insert
-					if state.rows.contains_key(&row_number) {
+					if state.candidates.contains_key(&row_number) {
+						*state.candidates.get_mut(&row_number).unwrap() += 1;
+						continue;
+					}
+
+					if state.active.len() < self.limit {
+						state.active.insert(row_number, 1);
 						output_diffs.push(FlowDiff::Insert {
 							post,
 						});
+					} else {
+						let smallest_active = state.active.keys().next().copied();
+
+						if let Some(smallest) = smallest_active {
+							if row_number > smallest {
+								if let Some(count) = state.active.remove(&smallest) {
+									state.candidates.insert(smallest, count);
+
+									let rows = self
+										.parent
+										.get_rows(txn, &[smallest])?;
+									if let Some(Some(row)) = rows.first() {
+										output_diffs.push(FlowDiff::Remove {
+											pre: row.clone(),
+										});
+									}
+								}
+
+								state.active.insert(row_number, 1);
+								output_diffs.push(FlowDiff::Insert {
+									post,
+								});
+
+								let candidate_limit = self.limit * 4;
+								while state.candidates.len() > candidate_limit {
+									if let Some((&removed_row, _)) =
+										state.candidates.iter().next()
+									{
+										state.candidates.remove(&removed_row);
+									}
+								}
+							} else {
+								state.candidates.insert(row_number, 1);
+
+								let candidate_limit = self.limit * 4;
+								while state.candidates.len() > candidate_limit {
+									if let Some((&removed_row, _)) =
+										state.candidates.iter().next()
+									{
+										state.candidates.remove(&removed_row);
+									}
+								}
+							}
+						}
 					}
 				}
 				FlowDiff::Update {
@@ -188,39 +232,47 @@ impl Operator for TakeOperator {
 				} => {
 					let row_number = post.number;
 
-					// Update our tracking if this encoded is in the window
-					if state.rows.contains_key(&row_number) {
-						state.rows.insert(row_number, SerializedRow::from_row(&post));
+					if state.active.contains_key(&row_number) {
 						output_diffs.push(FlowDiff::Update {
 							pre,
 							post,
 						});
 					}
-					// If not in window, ignore the update
 				}
 				FlowDiff::Remove {
 					pre,
 				} => {
 					let row_number = pre.number;
 
-					// If this encoded was in our window, remove it
-					if state.rows.remove(&row_number).is_some() {
-						output_diffs.push(FlowDiff::Remove {
-							pre,
-						});
+					if let Some(count) = state.active.get_mut(&row_number) {
+						if *count > 1 {
+							*count -= 1;
+						} else {
+							state.active.remove(&row_number);
+							output_diffs.push(FlowDiff::Remove {
+								pre,
+							});
 
-						// Note: When a encoded is removed from the window, we might want to
-						// pull in the next encoded that was previously outside the window.
-						// However, we don't have access to those rows here.
-						// This is a limitation of the current approach.
+							let promoted = self.promote_candidates(&mut state, txn)?;
+							output_diffs.extend(promoted);
+						}
+					} else if let Some(count) = state.candidates.get_mut(&row_number) {
+						if *count > 1 {
+							*count -= 1;
+						} else {
+							state.candidates.remove(&row_number);
+						}
 					}
 				}
 			}
 		}
 
-		// Save the updated state
 		self.save_take_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, change.version, output_diffs))
+		Ok(FlowChange::internal(self.node, version, output_diffs))
+	}
+
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }

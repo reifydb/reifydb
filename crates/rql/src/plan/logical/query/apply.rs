@@ -10,7 +10,7 @@ use crate::{
 impl Compiler {
 	pub(crate) fn compile_apply(ast: AstApply) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Apply(ApplyNode {
-			operator_name: ast.operator_name.into_fragment(),
+			operator: ast.operator.into_fragment(),
 			arguments: ast
 				.expressions
 				.into_iter()

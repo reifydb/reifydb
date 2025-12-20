@@ -15,7 +15,7 @@ mod variable;
 
 use cursor::Cursor;
 use reifydb_type::Error;
-use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_separator};
+use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_quoted_identifier, scan_separator};
 pub use token::{Keyword, Literal, Operator, Separator, Token, TokenKind};
 use variable::scan_variable;
 
@@ -40,6 +40,9 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 			Some(ch) => match ch {
 				// Variables start with $
 				'$' => scan_variable(&mut cursor),
+
+				// Backtick-quoted identifiers
+				'`' => scan_quoted_identifier(&mut cursor),
 
 				// String literals
 				'\'' | '"' => scan_literal(&mut cursor),

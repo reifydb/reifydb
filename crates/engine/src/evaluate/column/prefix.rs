@@ -312,15 +312,9 @@ impl StandardColumnEvaluator {
 				}
 				_ => unimplemented!(),
 			},
-			ColumnData::Interval(_) => match prefix.operator {
+			ColumnData::Duration(_) => match prefix.operator {
 				PrefixOperator::Not(_) => {
 					err!(not_can_not_applied_to_temporal(prefix.full_fragment_owned()))
-				}
-				_ => unimplemented!(),
-			},
-			ColumnData::RowNumber(_) => match prefix.operator {
-				PrefixOperator::Not(_) => {
-					err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
 				}
 				_ => unimplemented!(),
 			},

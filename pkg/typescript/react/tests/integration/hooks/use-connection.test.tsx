@@ -8,7 +8,7 @@ import {afterEach, afterAll, beforeAll, beforeEach, describe, expect, it} from '
 import {renderHook, act, waitFor} from '@testing-library/react';
 // @ts-ignore
 import React from 'react';
-import {useConnection, ConnectionProvider, clearAllConnections} from '../../../src';
+import {useConnection, ConnectionProvider, clearConnection} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe.sequential('useConnection Hook', () => {
@@ -18,26 +18,26 @@ describe.sequential('useConnection Hook', () => {
 
     beforeEach(async () => {
         // Clear all connections before each test to ensure clean state
-        await clearAllConnections();
+        await clearConnection();
     });
 
     afterEach(async () => {
         // Clear all connections after each test
-        await clearAllConnections();
+        await clearConnection();
         // Small delay to ensure cleanup is complete
         await new Promise(resolve => setTimeout(resolve, 100));
     });
 
     afterAll(async () => {
-        await clearAllConnections();
+        await clearConnection();
     });
 
-    it.sequential('should auto-connect on mount without provider', async () => {
+    it.sequential('should connect manually without provider', async () => {
         const {result} = renderHook(() => useConnection());
 
-        // Wait for connection
-        await waitFor(() => {
-            expect(result.current.isConnected || result.current.isConnecting).toBe(true);
+        // Manually connect (no auto-connect)
+        await act(async () => {
+            await result.current.connect();
         });
 
         await waitFor(() => {
@@ -69,6 +69,11 @@ describe.sequential('useConnection Hook', () => {
     it.sequential('should handle manual disconnect', async () => {
         const {result} = renderHook(() => useConnection());
 
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
+
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));
 
@@ -83,6 +88,11 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should handle reconnection', async () => {
         const {result} = renderHook(() => useConnection());
+
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
 
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));
@@ -107,6 +117,11 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should not reconnect if already connected', async () => {
         const {result} = renderHook(() => useConnection());
+
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
 
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));

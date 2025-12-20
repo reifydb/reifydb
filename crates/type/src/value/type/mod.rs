@@ -52,10 +52,8 @@ pub enum Type {
 	DateTime,
 	/// A time value (hour, minute, second, nanosecond)
 	Time,
-	/// An interval representing a duration
-	Interval,
-	/// A encoded identifier (8-byte unsigned integer)
-	RowNumber,
+	/// A duration representing a duration
+	Duration,
 	/// An identity identifier (UUID v7)
 	IdentityId,
 	/// A UUID version 4 (random)
@@ -114,7 +112,7 @@ impl Type {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Interval)
+		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Duration)
 	}
 
 	pub fn is_uuid(&self) -> bool {
@@ -129,36 +127,35 @@ impl Type {
 impl Type {
 	pub fn to_u8(&self) -> u8 {
 		match self {
-			Type::Boolean => 0x0E,
-			Type::Float4 => 0x01,
-			Type::Float8 => 0x02,
-			Type::Int1 => 0x03,
-			Type::Int2 => 0x04,
-			Type::Int4 => 0x05,
-			Type::Int8 => 0x06,
-			Type::Int16 => 0x07,
-			Type::Utf8 => 0x08,
-			Type::Uint1 => 0x09,
-			Type::Uint2 => 0x0A,
-			Type::Uint4 => 0x0B,
-			Type::Uint8 => 0x0C,
-			Type::Uint16 => 0x0D,
-			Type::Date => 0x0F,
-			Type::DateTime => 0x10,
-			Type::Time => 0x11,
-			Type::Interval => 0x12,
-			Type::RowNumber => 0x13,
-			Type::IdentityId => 0x17,
-			Type::Uuid4 => 0x14,
-			Type::Uuid7 => 0x15,
-			Type::Blob => 0x16,
-			Type::Int => 0x18,
-			Type::Uint => 0x1A,
+			Type::Undefined => 0,
+			Type::Float4 => 1,
+			Type::Float8 => 2,
+			Type::Int1 => 3,
+			Type::Int2 => 4,
+			Type::Int4 => 5,
+			Type::Int8 => 6,
+			Type::Int16 => 7,
+			Type::Utf8 => 8,
+			Type::Uint1 => 9,
+			Type::Uint2 => 10,
+			Type::Uint4 => 11,
+			Type::Uint8 => 12,
+			Type::Uint16 => 13,
+			Type::Boolean => 14,
+			Type::Date => 15,
+			Type::DateTime => 16,
+			Type::Time => 17,
+			Type::Duration => 18,
+			Type::IdentityId => 19,
+			Type::Uuid4 => 20,
+			Type::Uuid7 => 21,
+			Type::Blob => 22,
+			Type::Int => 23,
 			Type::Decimal {
 				..
-			} => 0x19,
-			Type::Undefined => 0x00,
-			Type::Any => 0x1B,
+			} => 24,
+			Type::Uint => 25,
+			Type::Any => 26,
 		}
 	}
 }
@@ -166,34 +163,33 @@ impl Type {
 impl Type {
 	pub fn from_u8(value: u8) -> Self {
 		match value {
-			0x00 => Type::Undefined,
-			0x01 => Type::Float4,
-			0x02 => Type::Float8,
-			0x03 => Type::Int1,
-			0x04 => Type::Int2,
-			0x05 => Type::Int4,
-			0x06 => Type::Int8,
-			0x07 => Type::Int16,
-			0x08 => Type::Utf8,
-			0x09 => Type::Uint1,
-			0x0A => Type::Uint2,
-			0x0B => Type::Uint4,
-			0x0C => Type::Uint8,
-			0x0D => Type::Uint16,
-			0x0E => Type::Boolean,
-			0x0F => Type::Date,
-			0x10 => Type::DateTime,
-			0x11 => Type::Time,
-			0x12 => Type::Interval,
-			0x13 => Type::RowNumber,
-			0x14 => Type::Uuid4,
-			0x15 => Type::Uuid7,
-			0x16 => Type::Blob,
-			0x17 => Type::IdentityId,
-			0x18 => Type::Int,
-			0x1A => Type::Uint,
-			0x19 => Type::Decimal,
-			0x1B => Type::Any,
+			0 => Type::Undefined,
+			1 => Type::Float4,
+			2 => Type::Float8,
+			3 => Type::Int1,
+			4 => Type::Int2,
+			5 => Type::Int4,
+			6 => Type::Int8,
+			7 => Type::Int16,
+			8 => Type::Utf8,
+			9 => Type::Uint1,
+			10 => Type::Uint2,
+			11 => Type::Uint4,
+			12 => Type::Uint8,
+			13 => Type::Uint16,
+			14 => Type::Boolean,
+			15 => Type::Date,
+			16 => Type::DateTime,
+			17 => Type::Time,
+			18 => Type::Duration,
+			19 => Type::IdentityId,
+			20 => Type::Uuid4,
+			21 => Type::Uuid7,
+			22 => Type::Blob,
+			23 => Type::Int,
+			24 => Type::Decimal,
+			25 => Type::Uint,
+			26 => Type::Any,
 			_ => unreachable!(),
 		}
 	}
@@ -219,9 +215,8 @@ impl Type {
 			Type::Date => 4,
 			Type::DateTime => 12, // seconds: i64 + nanos: u32
 			Type::Time => 8,
-			Type::Interval => 16, // months: i32 + days: i32 +
+			Type::Duration => 16, // months: i32 + days: i32 +
 			// nanos: i64
-			Type::RowNumber => 8,
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
@@ -258,8 +253,7 @@ impl Type {
 			Type::Date => 4,
 			Type::DateTime => 8,
 			Type::Time => 8,
-			Type::Interval => 8,
-			Type::RowNumber => 8,
+			Type::Duration => 8,
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
@@ -298,8 +292,7 @@ impl Display for Type {
 			Type::Date => f.write_str("Date"),
 			Type::DateTime => f.write_str("DateTime"),
 			Type::Time => f.write_str("Time"),
-			Type::Interval => f.write_str("Interval"),
-			Type::RowNumber => f.write_str("RowNumber"),
+			Type::Duration => f.write_str("Duration"),
 			Type::IdentityId => f.write_str("IdentityId"),
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
@@ -334,8 +327,7 @@ impl From<&Value> for Type {
 			Value::Date(_) => Type::Date,
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
-			Value::Interval(_) => Type::Interval,
-			Value::RowNumber(_) => Type::RowNumber,
+			Value::Duration(_) => Type::Duration,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
@@ -370,8 +362,7 @@ impl FromStr for Type {
 			"DATE" => Ok(Type::Date),
 			"DATETIME" => Ok(Type::DateTime),
 			"TIME" => Ok(Type::Time),
-			"INTERVAL" => Ok(Type::Interval),
-			"ROWNUMBER" | "ROWID" => Ok(Type::RowNumber),
+			"DURATION" | "INTERVAL" => Ok(Type::Duration),
 			"IDENTITYID" | "IDENTITY_ID" => Ok(Type::IdentityId),
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),

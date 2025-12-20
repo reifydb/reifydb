@@ -23,6 +23,10 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Boolean'};
     }
 
+    static decimal(): PrimitiveSchemaNode<'Decimal'> {
+        return {kind: 'primitive', type: 'Decimal'};
+    }
+
     static float4(): PrimitiveSchemaNode<'Float4'> {
         return {kind: 'primitive', type: 'Float4'};
     }
@@ -107,8 +111,8 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Time'};
     }
 
-    static interval(): PrimitiveSchemaNode<'Interval'> {
-        return {kind: 'primitive', type: 'Interval'};
+    static duration(): PrimitiveSchemaNode<'Duration'> {
+        return {kind: 'primitive', type: 'Duration'};
     }
 
     static uuid4(): PrimitiveSchemaNode<'Uuid4'> {
@@ -125,10 +129,6 @@ export class SchemaBuilder {
 
     static undefined(): PrimitiveSchemaNode<'Undefined'> {
         return {kind: 'primitive', type: 'Undefined'};
-    }
-
-    static rownumber(): PrimitiveSchemaNode<'RowNumber'> {
-        return {kind: 'primitive', type: 'RowNumber'};
     }
 
     static identityid(): PrimitiveSchemaNode<'IdentityId'> {
@@ -153,6 +153,10 @@ export class SchemaBuilder {
 
     static booleanValue(): ValueSchemaNode<'Boolean'> {
         return {kind: 'value', type: 'Boolean'};
+    }
+
+    static decimalValue(): ValueSchemaNode<'Decimal'> {
+        return {kind: 'value', type: 'Decimal'};
     }
 
     static int1Value(): ValueSchemaNode<'Int1'> {
@@ -219,8 +223,8 @@ export class SchemaBuilder {
         return {kind: 'value', type: 'Time'};
     }
 
-    static intervalValue(): ValueSchemaNode<'Interval'> {
-        return {kind: 'value', type: 'Interval'};
+    static durationValue(): ValueSchemaNode<'Duration'> {
+        return {kind: 'value', type: 'Duration'};
     }
 
     static uuid4Value(): ValueSchemaNode<'Uuid4'> {
@@ -237,10 +241,6 @@ export class SchemaBuilder {
 
     static blobValue(): ValueSchemaNode<'Blob'> {
         return {kind: 'value', type: 'Blob'};
-    }
-
-    static rowIdValue(): ValueSchemaNode<'RowNumber'> {
-        return {kind: 'value', type: 'RowNumber'};
     }
 
     static identityIdValue(): ValueSchemaNode<'IdentityId'> {

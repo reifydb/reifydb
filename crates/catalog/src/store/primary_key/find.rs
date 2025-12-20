@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
+	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
 	return_internal_error,
 };
 
@@ -30,24 +30,26 @@ impl CatalogStore {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
+			SourceId::Flow(_) => {
+				// Flows don't have primary keys
+				return Ok(None);
+			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SourceId::RingBuffer(ring_buffer_id) => {
-				match Self::get_ring_buffer_pk_id(rx, ring_buffer_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
+			SourceId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
+			SourceId::Dictionary(_) => {
+				// Dictionaries don't have traditional primary keys
+				return Ok(None);
 			}
 		};
 
 		// Fetch the primary key details
-		let primary_key_multi = match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
-			primary_key: primary_key_id,
-		})
-		.encode())?
-		{
+		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",
@@ -70,6 +72,7 @@ impl CatalogStore {
 				policies: column_def.policies,
 				index: column_def.index,
 				auto_increment: column_def.auto_increment,
+				dictionary_id: None,
 			});
 		}
 

@@ -1,0 +1,26 @@
+[package]
+name = "reifydb-sub-tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tracing subsystem for ReifyDB using tracing_subscriber"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-type = { workspace = true }
+
+# Tracing
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+
+# Performance
+crossbeam-channel = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

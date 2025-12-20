@@ -1,10 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogTableCommandOperations, CatalogTableQueryOperations, table::TableToCreate};
-use reifydb_core::value::column::Columns;
+use reifydb_catalog::{
+	CatalogStore, CatalogTableCommandOperations, CatalogTableQueryOperations, primary_key::PrimaryKeyToCreate,
+	table::TableToCreate,
+};
+use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
-use reifydb_type::Value;
+use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
@@ -33,7 +36,37 @@ impl Executor {
 			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
+			retention_policy: None,
 		})?;
+
+		// If primary key is specified, create it immediately
+		if let Some(pk_def) = plan.primary_key {
+			// Get the created table to resolve column IDs
+			let table = txn
+				.find_table_by_name(plan.namespace.def().id, plan.table.text())?
+				.expect("Table should exist after creation");
+
+			let table_columns = CatalogStore::list_columns(txn, table.id)?;
+
+			// Resolve column names to IDs
+			let mut column_ids = Vec::new();
+			for pk_column in pk_def.columns {
+				let column_name = pk_column.column.text();
+				let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
+					return_error!(column_not_found(pk_column.column.into_owned()));
+				};
+				column_ids.push(column.id);
+			}
+
+			// Create primary key
+			CatalogStore::create_primary_key(
+				txn,
+				PrimaryKeyToCreate {
+					source: SourceId::Table(table.id),
+					column_ids,
+				},
+			)?;
+		}
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -70,6 +103,7 @@ mod tests {
 			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
+			primary_key: None,
 		};
 
 		// First creation should succeed
@@ -127,6 +161,7 @@ mod tests {
 			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
+			primary_key: None,
 		};
 
 		let mut stack = Stack::new();
@@ -149,6 +184,7 @@ mod tests {
 			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
+			primary_key: None,
 		};
 
 		let result = instance
@@ -181,6 +217,7 @@ mod tests {
 			table: Fragment::owned_internal("my_table"),
 			if_not_exists: false,
 			columns: vec![],
+			primary_key: None,
 		};
 
 		// With defensive fallback, this now succeeds even with

@@ -2,7 +2,7 @@
 // This file is licensed under the MIT, see license.md file
 
 use crate::{
-	Date, DateTime, Decimal, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
+	Date, DateTime, Decimal, Duration, IdentityId, Time, Type, Uuid4, Uuid7,
 	value::{Int, Uint},
 };
 
@@ -112,9 +112,9 @@ impl GetType for DateTime {
 	}
 }
 
-impl GetType for Interval {
+impl GetType for Duration {
 	fn get_type() -> Type {
-		Type::Interval
+		Type::Duration
 	}
 }
 

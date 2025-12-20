@@ -6,11 +6,10 @@ use reifydb_core::{
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{Type, Value};
 
 use super::utils;
-use crate::stateful::RawStatefulOperator;
+use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -40,33 +39,19 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	fn load_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		key_values: &[Value],
-	) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save state for a specific key
-	fn save_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		key_values: &[Value],
-		row: EncodedValues,
-	) -> crate::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		key_values: &[Value],
-		f: F,
-	) -> crate::Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
@@ -78,7 +63,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Remove state for a key
-	fn remove_state(&self, txn: &mut StandardCommandTransaction, key_values: &[Value]) -> crate::Result<()> {
+	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
 	}
@@ -86,11 +71,12 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::FlowNodeId;
+	use reifydb_core::{CommitVersion, interface::FlowNodeId};
 	use reifydb_type::{Type, Value};
 
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	#[cfg(test)]
+	use crate::operator::stateful::test_utils::test::*;
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
@@ -134,6 +120,7 @@ mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
@@ -153,6 +140,7 @@ mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
@@ -175,6 +163,7 @@ mod tests {
 	#[test]
 	fn test_remove_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
@@ -193,6 +182,7 @@ mod tests {
 	#[test]
 	fn test_multiple_keys() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Create multiple keys with different states

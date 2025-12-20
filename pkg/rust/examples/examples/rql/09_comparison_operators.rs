@@ -9,16 +9,17 @@
 //!
 //! Run with: `make rql-comparison` or `cargo run --bin rql-comparison`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic comparisons with numbers
-	log_info!("Example 1: Numeric comparisons");
+	info!("Example 1: Numeric comparisons");
 	log_query(
 		r#"map {
   10 = 10 as equals_true,
@@ -47,11 +48,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: String comparisons
-	log_info!("\nExample 2: String comparisons");
+	info!("\nExample 2: String comparisons");
 	log_query(
 		r#"map {
   "apple" == "apple" as string_equals,
@@ -74,11 +75,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Boolean comparisons
-	log_info!("\nExample 3: Boolean comparisons");
+	info!("\nExample 3: Boolean comparisons");
 	log_query(
 		r#"map {
   true == true as bool_equals_true,
@@ -99,7 +100,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Set up sample data
@@ -138,7 +139,7 @@ fn main() {
 	.unwrap();
 
 	// Example 4: Equality comparisons in filters
-	log_info!("\nExample 4: Filter with equality (exact match)");
+	info!("\nExample 4: Filter with equality (exact match)");
 	log_query(r#"from test.scores filter grade == "A""#);
 	for frame in db
 		.query_as_root(
@@ -150,11 +151,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Inequality comparisons
-	log_info!("\nExample 5: Filter with inequality (not equal)");
+	info!("\nExample 5: Filter with inequality (not equal)");
 	log_query(r#"from test.scores filter grade != "F""#);
 	for frame in db
 		.query_as_root(
@@ -166,11 +167,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Greater than comparison
-	log_info!("\nExample 6: Filter scores greater than 85");
+	info!("\nExample 6: Filter scores greater than 85");
 	log_query(r#"from test.scores filter score > 85"#);
 	for frame in db
 		.query_as_root(
@@ -182,11 +183,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Less than or equal comparison
-	log_info!("\nExample 7: Filter scores less than or equal to 70");
+	info!("\nExample 7: Filter scores less than or equal to 70");
 	log_query(r#"from test.scores filter score <= 70"#);
 	for frame in db
 		.query_as_root(
@@ -198,11 +199,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 8: BETWEEN operator
-	log_info!("\nExample 8: Filter scores between 70 and 90 (inclusive)");
+	info!("\nExample 8: Filter scores between 70 and 90 (inclusive)");
 	log_query(r#"from test.scores filter score between 70 and 90"#);
 	for frame in db
 		.query_as_root(
@@ -214,11 +215,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 9: Comparisons in computed fields
-	log_info!("\nExample 9: Create computed boolean fields");
+	info!("\nExample 9: Create computed boolean fields");
 	log_query(
 		r#"from test.scores
 map {
@@ -245,11 +246,11 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 10: Chained comparisons
-	log_info!("\nExample 10: Multiple comparisons in filter");
+	info!("\nExample 10: Multiple comparisons in filter");
 	log_query(
 		r#"from test.scores
 filter score >= 80 and score < 95"#,
@@ -264,6 +265,6 @@ filter score >= 80 and score < 95"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

@@ -89,7 +89,7 @@ impl EncodedValuesLayout {
 
 	/// Try to get a Decimal value, returning None if undefined
 	pub fn try_get_decimal(&self, row: &EncodedValues, index: usize) -> Option<Decimal> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && matches!(self.fields[index].r#type, Type::Decimal { .. }) {
 			Some(self.get_decimal(row, index))
 		} else {
 			None
@@ -309,5 +309,15 @@ mod tests {
 		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 		layout3.set_decimal(&mut row3, 0, &huge_neg);
 		assert_eq!(layout3.get_decimal(&row3, 0).to_string(), "-99999999999999999999999999999.999999999");
+	}
+
+	#[test]
+	fn test_try_get_decimal_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_decimal(&row, 0), None);
 	}
 }

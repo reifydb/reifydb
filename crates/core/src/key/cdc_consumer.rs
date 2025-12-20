@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey,
+	EncodedKey, EncodedKeyRange,
 	interface::CdcConsumerId,
-	util::encoding::keycode::{KeySerializer, deserialize},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 /// Trait for types that can be converted to a consumer key
@@ -33,7 +33,16 @@ pub struct CdcConsumerKey {
 	pub consumer: CdcConsumerId,
 }
 
-const VERSION_BYTE: u8 = 1;
+impl CdcConsumerKey {
+	pub fn encoded(consumer: impl Into<CdcConsumerId>) -> EncodedKey {
+		Self {
+			consumer: consumer.into(),
+		}
+		.encode()
+	}
+}
+
+pub const VERSION_BYTE: u8 = 1;
 
 impl EncodableKey for CdcConsumerKey {
 	const KIND: KeyKind = KeyKind::CdcConsumer;
@@ -48,21 +57,19 @@ impl EncodableKey for CdcConsumerKey {
 	where
 		Self: Sized,
 	{
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION_BYTE {
 			return None;
 		}
 
-		let kind: KeyKind = deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let consumer_id: String = deserialize(&key[2..]).ok()?;
+		let consumer_id = de.read_str().ok()?;
 
 		Some(Self {
 			consumer: CdcConsumerId(consumer_id),
@@ -70,9 +77,36 @@ impl EncodableKey for CdcConsumerKey {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CdcConsumerKeyRange;
+
+impl CdcConsumerKeyRange {
+	/// Creates a key range that spans all CDC consumer checkpoint keys
+	///
+	/// Returns an `EncodedKeyRange` that can be used with transaction
+	/// range scan operations to iterate over all registered CDC consumers.
+	pub fn full_scan() -> EncodedKeyRange {
+		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
+	}
+
+	fn start() -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION_BYTE).extend_u8(CdcConsumerKey::KIND as u8);
+		serializer.to_encoded_key()
+	}
+
+	fn end() -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION_BYTE).extend_u8((CdcConsumerKey::KIND as u8).wrapping_sub(1));
+		serializer.to_encoded_key()
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{CdcConsumerKey, EncodableKey};
+	use std::ops::RangeBounds;
+
+	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey};
 	use crate::interface::CdcConsumerId;
 
 	#[test]
@@ -85,5 +119,32 @@ mod tests {
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 
 		assert_eq!(decoded.consumer, CdcConsumerId::new("test-consumer"));
+	}
+
+	#[test]
+	fn test_cdc_consumer_keys_within_range() {
+		// Create several CDC consumer keys
+		let key1 = CdcConsumerKey {
+			consumer: CdcConsumerId::new("consumer-a"),
+		}
+		.encode();
+
+		let key2 = CdcConsumerKey {
+			consumer: CdcConsumerId::new("consumer-b"),
+		}
+		.encode();
+
+		let key3 = CdcConsumerKey {
+			consumer: CdcConsumerId::new("consumer-z"),
+		}
+		.encode();
+
+		// Get the range
+		let range = CdcConsumerKeyRange::full_scan();
+
+		// All CDC consumer keys should fall within the range
+		assert!(range.contains(&key1), "consumer-a key should be in range");
+		assert!(range.contains(&key2), "consumer-b key should be in range");
+		assert!(range.contains(&key3), "consumer-z key should be in range");
 	}
 }

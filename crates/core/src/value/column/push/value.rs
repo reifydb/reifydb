@@ -268,11 +268,11 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 
-			Value::Interval(v) => match self {
-				ColumnData::Interval(_) => self.push(v),
+			Value::Duration(v) => match self {
+				ColumnData::Duration(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::interval(vec![]);
-					if let ColumnData::Interval(new_container) = &mut new_container {
+					let mut new_container = ColumnData::duration(vec![]);
+					if let ColumnData::Duration(new_container) = &mut new_container {
 						for _ in 0..container.len() {
 							new_container.push_undefined();
 						}
@@ -314,20 +314,6 @@ impl ColumnData {
 			},
 
 			Value::Undefined => self.push_undefined(),
-			Value::RowNumber(row_number) => match self {
-				ColumnData::RowNumber(container) => container.push(row_number),
-				ColumnData::Undefined(container) => {
-					let mut new_container = ColumnData::row_number(vec![]);
-					if let ColumnData::RowNumber(new_container) = &mut new_container {
-						for _ in 0..container.len() {
-							new_container.push_undefined();
-						}
-						new_container.push(row_number);
-					}
-					*self = new_container;
-				}
-				_ => unimplemented!(),
-			},
 			Value::IdentityId(id) => match self {
 				ColumnData::IdentityId(container) => container.push(id),
 				ColumnData::Undefined(container) => {
@@ -450,9 +436,7 @@ impl ColumnData {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use reifydb_type::{
-		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64, RowNumber, Time, Uuid4, Uuid7, Value,
-	};
+	use reifydb_type::{Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, Time, Uuid4, Uuid7, Value};
 	use uuid::Uuid;
 
 	use crate::value::column::ColumnData;
@@ -1055,76 +1039,39 @@ mod tests {
 	}
 
 	#[test]
-	fn test_interval() {
-		let interval1 = Interval::from_days(30);
-		let interval2 = Interval::from_hours(24);
-		let mut col = ColumnData::interval(vec![interval1]);
-		col.push_value(Value::Interval(interval2));
-		let ColumnData::Interval(container) = col else {
-			panic!("Expected Interval");
+	fn test_duration() {
+		let duration1 = Duration::from_days(30);
+		let duration2 = Duration::from_hours(24);
+		let mut col = ColumnData::duration(vec![duration1]);
+		col.push_value(Value::Duration(duration2));
+		let ColumnData::Duration(container) = col else {
+			panic!("Expected Duration");
 		};
-		assert_eq!(container.data().as_slice(), &[interval1, interval2]);
+		assert_eq!(container.data().as_slice(), &[duration1, duration2]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
 	}
 
 	#[test]
-	fn test_undefined_interval() {
-		let interval1 = Interval::from_days(30);
-		let mut col = ColumnData::interval(vec![interval1]);
+	fn test_undefined_duration() {
+		let duration1 = Duration::from_days(30);
+		let mut col = ColumnData::duration(vec![duration1]);
 		col.push_value(Value::Undefined);
-		let ColumnData::Interval(container) = col else {
-			panic!("Expected Interval");
+		let ColumnData::Duration(container) = col else {
+			panic!("Expected Duration");
 		};
-		assert_eq!(container.data().as_slice(), &[interval1, Interval::default()]);
+		assert_eq!(container.data().as_slice(), &[duration1, Duration::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
 	#[test]
-	fn test_push_value_to_undefined_interval() {
-		let interval = Interval::from_minutes(90);
+	fn test_push_value_to_undefined_duration() {
+		let duration = Duration::from_minutes(90);
 		let mut col = ColumnData::undefined(1);
-		col.push_value(Value::Interval(interval));
-		let ColumnData::Interval(container) = col else {
-			panic!("Expected Interval");
+		col.push_value(Value::Duration(duration));
+		let ColumnData::Duration(container) = col else {
+			panic!("Expected Duration");
 		};
-		assert_eq!(container.data().as_slice(), &[Interval::default(), interval]);
-		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
-	}
-
-	#[test]
-	fn test_row_number() {
-		let row_number1 = RowNumber::new(1);
-		let row_number2 = RowNumber::new(2);
-		let mut col = ColumnData::row_number(vec![row_number1]);
-		col.push_value(Value::RowNumber(row_number2));
-		let ColumnData::RowNumber(container) = col else {
-			panic!("Expected RowNumber");
-		};
-		assert_eq!(container.data().as_slice(), &[row_number1, row_number2]);
-		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
-	}
-
-	#[test]
-	fn test_undefined_row_number() {
-		let row_number1 = RowNumber::new(1);
-		let mut col = ColumnData::row_number(vec![row_number1]);
-		col.push_value(Value::Undefined);
-		let ColumnData::RowNumber(container) = col else {
-			panic!("Expected RowNumber");
-		};
-		assert_eq!(container.data().as_slice(), &[row_number1, RowNumber::default()]);
-		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
-	}
-
-	#[test]
-	fn test_push_value_to_undefined_row_number() {
-		let row_number = RowNumber::new(42);
-		let mut col = ColumnData::undefined(1);
-		col.push_value(Value::RowNumber(row_number));
-		let ColumnData::RowNumber(container) = col else {
-			panic!("Expected RowNumber");
-		};
-		assert_eq!(container.data().as_slice(), &[RowNumber::default(), row_number]);
+		assert_eq!(container.data().as_slice(), &[Duration::default(), duration]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 

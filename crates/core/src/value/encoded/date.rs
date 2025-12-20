@@ -32,7 +32,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_date(&self, row: &EncodedValues, index: usize) -> Option<Date> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Date {
 			Some(self.get_date(row, index))
 		} else {
 			None
@@ -183,5 +183,15 @@ mod tests {
 			layout.set_date(&mut row, 0, date.clone());
 			assert_eq!(layout.get_date(&row, 0), date);
 		}
+	}
+
+	#[test]
+	fn test_try_get_date_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_date(&row, 0), None);
 	}
 }

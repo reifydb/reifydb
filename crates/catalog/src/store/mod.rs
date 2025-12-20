@@ -3,9 +3,14 @@
 
 pub mod column;
 pub mod column_policy;
+pub mod dictionary;
+pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
 pub mod namespace;
 pub mod primary_key;
-pub mod ring_buffer;
+pub mod retention_policy;
+pub mod ringbuffer;
 pub mod sequence;
 pub mod source;
 pub mod table;

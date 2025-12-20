@@ -1,9 +1,11 @@
 [package]
 name = "reifydb-network"
-version = "0.0.1"
-edition = "2024"
-license = "AGPL-3"
-authors = ["Dominique Chuo <dominique@reifydb.com>"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Network protocol handling for HTTP and WebSocket in ReifyDB"
 
 [dependencies]
 reifydb-core = { workspace = true }
@@ -11,4 +13,3 @@ reifydb-type = { workspace = true }
 reifydb-hash = { workspace = true }
 
 httparse = { workspace = true }
-mio = { workspace = true }

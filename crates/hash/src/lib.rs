@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 mod sha1;
 mod xxh;
 
@@ -57,7 +59,7 @@ impl Hash for Hash64 {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash128(pub u128);
 

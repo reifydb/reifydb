@@ -13,14 +13,20 @@ use std::{
 	time::Duration,
 };
 
+use diagnostic::shutdown;
 use reifydb_core::Result;
-use reifydb_sub_api::{BoxedTask, Scheduler, TaskHandle};
+use reifydb_sub_api::{BoxedOnceTask, BoxedTask, Priority, Scheduler, TaskHandle};
+use reifydb_type::{diagnostic, err, internal_err};
 
 /// Request types for scheduler operations
 pub enum SchedulerRequest {
 	ScheduleEvery {
 		task: BoxedTask,
 		interval: Duration,
+	},
+	Submit {
+		task: BoxedOnceTask,
+		priority: Priority,
 	},
 	Cancel {
 		handle: TaskHandle,
@@ -30,6 +36,7 @@ pub enum SchedulerRequest {
 /// Response types for scheduler operations
 pub enum SchedulerResponse {
 	TaskScheduled(TaskHandle),
+	TaskSubmitted,
 	TaskCancelled,
 	Error(String),
 }
@@ -43,19 +50,7 @@ pub struct SchedulerClient {
 }
 
 impl SchedulerClient {
-	/// Create a new scheduler client
-	pub fn new(sender: Sender<(SchedulerRequest, Sender<SchedulerResponse>)>) -> Self {
-		Self {
-			sender,
-			pending_requests: Arc::new(Mutex::new(VecDeque::new())),
-			next_handle: Arc::new(AtomicU64::new(1)),
-			running: Arc::new(AtomicBool::new(false)),
-		}
-	}
-
-	/// Create a scheduler client with shared queue (for use by
-	/// WorkerSubsystem)
-	pub fn with_queue(
+	pub fn new(
 		sender: Sender<(SchedulerRequest, Sender<SchedulerResponse>)>,
 		pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest, Sender<SchedulerResponse>)>>>,
 		next_handle: Arc<AtomicU64>,
@@ -71,18 +66,12 @@ impl SchedulerClient {
 }
 
 impl Scheduler for SchedulerClient {
-	fn schedule_every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
-		// Check if the subsystem is running
+	fn every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
 		if !self.running.load(Ordering::Relaxed) {
-			// Generate a handle for the task
 			let handle = TaskHandle::from(self.next_handle.fetch_add(1, Ordering::Relaxed));
 
-			// Create a channel for the response (we'll send the
-			// response ourselves)
 			let (response_tx, _response_rx) = mpsc::channel();
 
-			// Queue the request to be processed when the subsystem
-			// starts
 			let request = SchedulerRequest::ScheduleEvery {
 				task,
 				interval,
@@ -93,56 +82,82 @@ impl Scheduler for SchedulerClient {
 				pending.push_back((request, response_tx));
 			}
 
-			// Return the pre-generated handle
 			return Ok(handle);
 		}
 
-		// Normal path when subsystem is running
 		let (response_tx, response_rx) = mpsc::channel();
-
 		let request = SchedulerRequest::ScheduleEvery {
 			task,
 			interval,
 		};
 
-		self.sender
-			.send((request, response_tx))
-			.expect("Failed to send scheduler request: channel disconnected");
+		if self.sender.send((request, response_tx)).is_err() {
+			return err!(shutdown("Scheduler"));
+		}
 
-		// Wait for the response
-		let response = response_rx.recv().expect("Failed to receive scheduler response: channel disconnected");
+		let response = match response_rx.recv() {
+			Ok(resp) => resp,
+			Err(_) => return err!(shutdown("Scheduler")),
+		};
 
 		match response {
 			SchedulerResponse::TaskScheduled(handle) => Ok(handle),
 			SchedulerResponse::Error(msg) => {
-				panic!("Scheduler error: {}", msg)
+				internal_err!(msg)
 			}
-			_ => panic!("Unexpected response from scheduler"),
+			_ => internal_err!("Unexpected response from scheduler"),
+		}
+	}
+
+	fn once(&self, task: BoxedOnceTask) -> reifydb_core::Result<()> {
+		let (response_tx, response_rx) = mpsc::channel();
+
+		let priority = task.priority();
+		let request = SchedulerRequest::Submit {
+			task,
+			priority,
+		};
+
+		if self.sender.send((request, response_tx)).is_err() {
+			return err!(shutdown("Scheduler"));
+		}
+
+		let response = match response_rx.recv() {
+			Ok(resp) => resp,
+			Err(_) => return err!(shutdown("Scheduler")),
+		};
+
+		match response {
+			SchedulerResponse::TaskSubmitted => Ok(()),
+			SchedulerResponse::Error(msg) => {
+				internal_err!(msg)
+			}
+			_ => internal_err!("Unexpected response from scheduler"),
 		}
 	}
 
 	fn cancel(&self, handle: TaskHandle) -> Result<()> {
-		// Create a channel for the response
 		let (response_tx, response_rx) = mpsc::channel();
 
-		// Send the request
 		let request = SchedulerRequest::Cancel {
 			handle,
 		};
 
-		self.sender
-			.send((request, response_tx))
-			.expect("Failed to send scheduler request: channel disconnected");
+		if self.sender.send((request, response_tx)).is_err() {
+			return err!(shutdown("Scheduler"));
+		}
 
-		// Wait for the response
-		let response = response_rx.recv().expect("Failed to receive scheduler response: channel disconnected");
+		let response = match response_rx.recv() {
+			Ok(resp) => resp,
+			Err(_) => return err!(shutdown("Scheduler")),
+		};
 
 		match response {
 			SchedulerResponse::TaskCancelled => Ok(()),
 			SchedulerResponse::Error(msg) => {
-				panic!("Scheduler error: {}", msg)
+				internal_err!(msg)
 			}
-			_ => panic!("Unexpected response from scheduler"),
+			_ => internal_err!("Unexpected response from scheduler"),
 		}
 	}
 }

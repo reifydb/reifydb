@@ -8,36 +8,27 @@ use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
-	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
+	interface::{Cdc, CdcChange, CdcSequencedChange},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
 	BackendConfig, CdcCount, CdcGet, CdcRange, CdcScan, MultiVersionCommit, StandardTransactionStore,
-	TransactionStoreConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
+	TransactionStoreConfig, backend::BackendStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/store/cdc" as backend_cdc_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/store/cdc" as backend_cdc_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as backend_cdc_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as backend_cdc_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 
-	let backend = MemoryBackend::default();
-
 	let config = TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			backend: Backend {
-				multi: BackendMulti::Memory(backend.clone()),
-				single: BackendSingle::Memory(backend.clone()),
-				cdc: BackendCdc::Memory(backend),
-			},
+			storage: BackendStorage::memory(),
 			retention_period: Duration::from_secs(300),
 		}),
 		warm: None,
@@ -50,19 +41,13 @@ fn test_memory(path: &Path) {
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| {
+	temp_dir(|_db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);
 
-		let backend = SqliteBackend::new(SqliteConfig::fast(db_path));
-
 		let config = TransactionStoreConfig {
 			hot: Some(BackendConfig {
-				backend: Backend {
-					multi: BackendMulti::Sqlite(backend.clone()),
-					single: BackendSingle::Sqlite(backend.clone()),
-					cdc: BackendCdc::Sqlite(backend),
-				},
+				storage: BackendStorage::sqlite_in_memory(),
 				retention_period: Duration::from_secs(86400),
 			}),
 			warm: None,
@@ -179,7 +164,6 @@ impl testscript::Runner for Runner {
 						})
 					],
 					version,
-					TransactionId::default(),
 				)?;
 				writeln!(output, "ok")?;
 			}
@@ -261,7 +245,7 @@ impl testscript::Runner for Runner {
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.store.commit(deltas, version, TransactionId::default())?;
+					self.store.commit(deltas, version)?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -682,7 +666,7 @@ impl testscript::Runner for Runner {
 					});
 				}
 
-				self.store.commit(CowVec::new(deltas), version, TransactionId::default())?;
+				self.store.commit(CowVec::new(deltas), version)?;
 				writeln!(output, "ok")?;
 			}
 

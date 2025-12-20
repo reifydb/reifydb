@@ -80,6 +80,7 @@ export function encodeValue(value: any): TypeValuePair {
     if (value instanceof Date) {
         return { type: 'DateTime', value: value.toISOString() };
     }
+
     
     if (value instanceof Uint8Array) {
         const hex = Array.from(value)

@@ -6,7 +6,7 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useQueryExecutor, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useQueryExecutor, getConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQueryExecutor Hook', () => {
@@ -19,7 +19,7 @@ describe('useQueryExecutor Hook', () => {
 
 
     afterAll(() => {
-        clearAllConnections();
+        clearConnection();
     });
 
     it('should execute a simple query', async () => {

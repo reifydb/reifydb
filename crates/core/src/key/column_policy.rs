@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::{ColumnId, ColumnPolicyId},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,35 +30,37 @@ impl EncodableKey for ColumnPolicyKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 16 {
-			return None;
-		}
+		let column = de.read_u64().ok()?;
+		let policy = de.read_u64().ok()?;
 
-		keycode::deserialize(&payload[..8]).ok().zip(keycode::deserialize(&payload[8..]).ok()).map(
-			|(column, policy)| Self {
-				column,
-				policy,
-			},
-		)
+		Some(Self {
+			column: ColumnId(column),
+			policy: ColumnPolicyId(policy),
+		})
 	}
 }
 
 impl ColumnPolicyKey {
+	pub fn encoded(column: impl Into<ColumnId>, policy: impl Into<ColumnPolicyId>) -> EncodedKey {
+		Self {
+			column: column.into(),
+			policy: policy.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(column)), Some(Self::link_end(column)))
 	}

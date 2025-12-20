@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later
+
+[package]
+name = "reifydb-sub-server-ws"
+description = "WebSocket server subsystem for ReifyDB"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+reifydb-sub-server = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-type = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

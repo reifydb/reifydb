@@ -171,6 +171,16 @@ describe('Positional Parameters - Primitive Types', () => {
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
         });
+
+        it('decimal_param', async () => {
+            const frames = await wsClient.command(
+                "MAP $1 as result",
+                ["123.456789"],
+                [Schema.object({result: Schema.decimal()})]
+            );
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toEqual([{result: "123.456789"}]);
+        });
     });
 
     describe('query_positional', () => {
@@ -302,6 +312,16 @@ describe('Positional Parameters - Primitive Types', () => {
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
+        });
+
+        it('decimal_param', async () => {
+            const frames = await wsClient.query(
+                "MAP $1 as result",
+                ["123.456789"],
+                [Schema.object({result: Schema.decimal()})]
+            );
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toEqual([{result: "123.456789"}]);
         });
 
         it('multiple_params', async () => {

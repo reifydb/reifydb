@@ -47,7 +47,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> Option<&'a str> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Utf8 {
 			Some(self.get_utf8(row, index))
 		} else {
 			None
@@ -213,5 +213,15 @@ mod tests {
 		layout.set_undefined(&mut row, 0);
 		assert_eq!(layout.try_get_utf8(&row, 0), None);
 		assert_eq!(layout.try_get_utf8(&row, 2), Some("also defined"));
+	}
+
+	#[test]
+	fn test_try_get_utf8_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_utf8(&row, 0), None);
 	}
 }

@@ -8,8 +8,8 @@ use crate::{
 	ast::parse_str,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
-		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		SourceScanNode, TakeNode, VariableSourceNode,
+		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
+		OrderNode, SourceScanNode, TakeNode, VariableSourceNode,
 		alter::{AlterTableNode, AlterViewNode},
 		compile_logical,
 	},
@@ -63,6 +63,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
+		LogicalPlan::CreateDictionary(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,
@@ -179,6 +180,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		}
 		LogicalPlan::InsertTable(_) => unimplemented!(),
 		LogicalPlan::InsertRingBuffer(_) => unimplemented!(),
+		LogicalPlan::InsertDictionary(_) => unimplemented!(),
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 
@@ -338,8 +340,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			with,
 			on,
 			alias: _,
-			strategy: _,
-			with_query: _,
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Inner) [{}]\n", prefix, branch, on));
@@ -353,8 +353,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			with,
 			on,
 			alias: _,
-			strategy: _,
-			with_query: _,
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
@@ -368,8 +366,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			with,
 			join_type,
 			alias: _,
-			strategy: _,
-			with_query: _,
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",
@@ -379,6 +375,16 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				"{}{}Join(Natural {}) [using common columns]\n",
 				prefix, branch, join_type_str
 			));
+
+			for (i, plan) in with.iter().enumerate() {
+				let last = i == with.len() - 1;
+				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::Merge(MergeNode {
+			with,
+		}) => {
+			output.push_str(&format!("{}{}Merge\n", prefix, branch));
 
 			for (i, plan) in with.iter().enumerate() {
 				let last = i == with.len() - 1;
@@ -480,7 +486,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					"│  "
 				}
 			);
-			output.push_str(&format!("{}├──Operator: {}\n", child_prefix, apply.operator_name.text()));
+			output.push_str(&format!("{}├──Operator: {}\n", child_prefix, apply.operator.text()));
 			if !apply.arguments.is_empty() {
 				output.push_str(&format!(
 					"{}└──Arguments: {} expressions\n",
@@ -636,6 +642,35 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				}
 			}
 		}
+		LogicalPlan::Window(window) => {
+			output.push_str(&format!("{}{} Window\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			output.push_str(&format!("{}├── Window Type: {:?}\n", child_prefix, window.window_type));
+			output.push_str(&format!("{}├── Size: {:?}\n", child_prefix, window.size));
+			if let Some(ref slide) = window.slide {
+				output.push_str(&format!("{}├── Slide: {:?}\n", child_prefix, slide));
+			}
+			if !window.group_by.is_empty() {
+				output.push_str(&format!(
+					"{}├── Group By: {} expressions\n",
+					child_prefix,
+					window.group_by.len()
+				));
+			}
+			output.push_str(&format!(
+				"{}└── Aggregations: {} expressions\n",
+				child_prefix,
+				window.aggregations.len()
+			));
+		}
 		LogicalPlan::Declare(declare_node) => {
 			output.push_str(&format!(
 				"{}{} Declare {} = {} (mutable: {})\n",
@@ -765,6 +800,79 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				}
 			);
 			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
+		}
+		LogicalPlan::CreateFlow(create_flow) => {
+			let flow_name = if let Some(ns) = &create_flow.flow.namespace {
+				format!("{}.{}", ns.text(), create_flow.flow.name.text())
+			} else {
+				create_flow.flow.name.text().to_string()
+			};
+
+			output.push_str(&format!("{}{} CreateFlow: {}", prefix, branch, flow_name));
+
+			if create_flow.if_not_exists {
+				output.push_str(" (IF NOT EXISTS)");
+			}
+
+			output.push_str("\n");
+
+			// Render the AS query as a child
+			if !create_flow.as_clause.is_empty() {
+				for (i, plan) in create_flow.as_clause.iter().enumerate() {
+					let is_last = i == create_flow.as_clause.len() - 1;
+					let new_prefix = format!(
+						"{}{}",
+						prefix,
+						if is_last {
+							"    "
+						} else {
+							"│   "
+						}
+					);
+					render_logical_plan_inner(plan, &new_prefix, is_last, output);
+				}
+			}
+		}
+		LogicalPlan::AlterFlow(alter_flow) => {
+			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
+				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
+			} else {
+				alter_flow.flow.name.text().to_string()
+			};
+
+			use crate::plan::logical::alter::AlterFlowAction;
+			let action_str = match &alter_flow.action {
+				AlterFlowAction::Rename {
+					new_name,
+				} => format!("RENAME TO {}", new_name.text()),
+				AlterFlowAction::SetQuery {
+					..
+				} => "SET QUERY".to_string(),
+				AlterFlowAction::Pause => "PAUSE".to_string(),
+				AlterFlowAction::Resume => "RESUME".to_string(),
+			};
+
+			output.push_str(&format!("{}{} AlterFlow: {} ({})\n", prefix, branch, flow_name, action_str));
+
+			// Render the SetQuery child plan if present
+			if let AlterFlowAction::SetQuery {
+				query,
+			} = &alter_flow.action
+			{
+				for (i, plan) in query.iter().enumerate() {
+					let is_last = i == query.len() - 1;
+					let new_prefix = format!(
+						"{}{}",
+						prefix,
+						if is_last {
+							"    "
+						} else {
+							"│   "
+						}
+					);
+					render_logical_plan_inner(plan, &new_prefix, is_last, output);
+				}
+			}
 		}
 	}
 }

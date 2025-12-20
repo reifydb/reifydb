@@ -13,11 +13,13 @@ pub mod cast;
 pub mod catalog;
 pub mod constraint;
 pub mod conversion;
+pub mod dictionary;
 pub mod engine;
 pub mod flow;
 pub mod function;
+pub mod index;
 pub mod internal;
-pub use internal::{internal, internal_with_context};
+pub use internal::{internal, internal_with_context, shutdown};
 
 use crate::{OwnedFragment, Type, fragment::IntoFragment};
 

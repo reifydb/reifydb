@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::headers::ColumnHeaders;
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
@@ -77,7 +77,7 @@ impl<'a> QueryNode<'a> for ScalarizeNode<'a> {
 			}
 			(rows, cols) => {
 				// Error for non-1x1 frames
-				Err(reifydb_type::Error(internal_error!(
+				Err(reifydb_type::Error(internal!(
 					"Cannot scalarize frame with {} rows and {} columns - expected 1x1 frame",
 					rows,
 					cols

@@ -6,7 +6,10 @@ use std::sync::Arc;
 use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
 use serde::{Deserialize, Serialize};
 
-use super::{ColumnDef, ColumnPolicyKind, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef, ViewDef};
+use super::{
+	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef,
+	ViewDef,
+};
 
 /// Resolved namespace with both identifier and definition
 #[derive(Debug, Clone)]
@@ -223,6 +226,116 @@ impl<'a> ResolvedRingBuffer<'a> {
 	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedRingBuffer<'static> {
 		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
+			identifier: Fragment::owned_internal(self.0.identifier.text()),
+			namespace: self.0.namespace.to_static(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
+/// Resolved flow
+#[derive(Debug, Clone)]
+pub struct ResolvedFlow<'a>(Arc<ResolvedFlowInner<'a>>);
+
+#[derive(Debug)]
+struct ResolvedFlowInner<'a> {
+	pub identifier: Fragment<'a>,
+	pub namespace: ResolvedNamespace<'a>,
+	pub def: FlowDef,
+}
+
+impl<'a> ResolvedFlow<'a> {
+	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: FlowDef) -> Self {
+		Self(Arc::new(ResolvedFlowInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	/// Get the flow name
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	/// Get the flow def
+	pub fn def(&self) -> &FlowDef {
+		&self.0.def
+	}
+
+	/// Get the namespace
+	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+		&self.0.namespace
+	}
+
+	/// Get the identifier
+	pub fn identifier(&self) -> &Fragment<'a> {
+		&self.0.identifier
+	}
+
+	/// Get fully qualified name
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.0.namespace.name(), self.name())
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedFlow<'static> {
+		ResolvedFlow(Arc::new(ResolvedFlowInner {
+			identifier: Fragment::owned_internal(self.0.identifier.text()),
+			namespace: self.0.namespace.to_static(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
+/// Resolved dictionary
+#[derive(Debug, Clone)]
+pub struct ResolvedDictionary<'a>(Arc<ResolvedDictionaryInner<'a>>);
+
+#[derive(Debug)]
+struct ResolvedDictionaryInner<'a> {
+	pub identifier: Fragment<'a>,
+	pub namespace: ResolvedNamespace<'a>,
+	pub def: DictionaryDef,
+}
+
+impl<'a> ResolvedDictionary<'a> {
+	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: DictionaryDef) -> Self {
+		Self(Arc::new(ResolvedDictionaryInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	/// Get the dictionary name
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	/// Get the dictionary def
+	pub fn def(&self) -> &DictionaryDef {
+		&self.0.def
+	}
+
+	/// Get the namespace
+	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+		&self.0.namespace
+	}
+
+	/// Get the identifier
+	pub fn identifier(&self) -> &Fragment<'a> {
+		&self.0.identifier
+	}
+
+	/// Get fully qualified name
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.0.namespace.name(), self.name())
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedDictionary<'static> {
+		ResolvedDictionary(Arc::new(ResolvedDictionaryInner {
 			identifier: Fragment::owned_internal(self.0.identifier.text()),
 			namespace: self.0.namespace.to_static(),
 			def: self.0.def.clone(),
@@ -486,6 +599,8 @@ pub enum ResolvedSource<'a> {
 	DeferredView(ResolvedDeferredView<'a>),
 	TransactionalView(ResolvedTransactionalView<'a>),
 	RingBuffer(ResolvedRingBuffer<'a>),
+	Flow(ResolvedFlow<'a>),
+	Dictionary(ResolvedDictionary<'a>),
 }
 
 impl<'a> ResolvedSource<'a> {
@@ -498,6 +613,8 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => v.identifier(),
 			Self::TransactionalView(v) => v.identifier(),
 			Self::RingBuffer(r) => r.identifier(),
+			Self::Flow(f) => f.identifier(),
+			Self::Dictionary(d) => d.identifier(),
 		}
 	}
 
@@ -510,6 +627,8 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => Some(v.namespace()),
 			Self::TransactionalView(v) => Some(v.namespace()),
 			Self::RingBuffer(r) => Some(r.namespace()),
+			Self::Flow(f) => Some(f.namespace()),
+			Self::Dictionary(d) => Some(d.namespace()),
 		}
 	}
 
@@ -532,6 +651,8 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => v.columns(),
 			Self::TransactionalView(v) => v.columns(),
 			Self::RingBuffer(r) => r.columns(),
+			Self::Flow(_f) => unreachable!(),
+			Self::Dictionary(_d) => unreachable!(), // Dictionary columns are dynamic (id, value)
 		}
 	}
 
@@ -549,6 +670,8 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(_) => "deferred view",
 			Self::TransactionalView(_) => "transactional view",
 			Self::RingBuffer(_) => "ring buffer",
+			Self::Flow(_) => "flow",
+			Self::Dictionary(_) => "dictionary",
 		}
 	}
 
@@ -561,6 +684,8 @@ impl<'a> ResolvedSource<'a> {
 			Self::TransactionalView(v) => Some(format!("{}.{}", v.namespace().name(), v.name())),
 			Self::TableVirtual(t) => Some(format!("{}.{}", t.namespace().name(), t.name())),
 			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
+			Self::Flow(f) => Some(f.fully_qualified_name()),
+			Self::Dictionary(d) => Some(d.fully_qualified_name()),
 		}
 	}
 
@@ -581,7 +706,7 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Convert to a ring buffer if this is a ring buffer source
-	pub fn as_ring_buffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
+	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
 			_ => None,
@@ -597,6 +722,16 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => ResolvedSource::DeferredView(v.to_static()),
 			Self::TransactionalView(v) => ResolvedSource::TransactionalView(v.to_static()),
 			Self::RingBuffer(r) => ResolvedSource::RingBuffer(r.to_static()),
+			Self::Flow(f) => ResolvedSource::Flow(f.to_static()),
+			Self::Dictionary(d) => ResolvedSource::Dictionary(d.to_static()),
+		}
+	}
+
+	/// Convert to a dictionary if this is a dictionary source
+	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary<'a>> {
+		match self {
+			Self::Dictionary(d) => Some(d),
+			_ => None,
 		}
 	}
 }
@@ -710,6 +845,10 @@ pub fn resolved_column_to_number_descriptor<'a>(column: &'a ResolvedColumn<'a>) 
 		ResolvedSource::TransactionalView(view) => {
 			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
 		}
+		ResolvedSource::Flow(flow) => (Some(flow.namespace().name().as_ref()), Some(flow.name().as_ref())),
+		ResolvedSource::Dictionary(dict) => {
+			(Some(dict.namespace().name().as_ref()), Some(dict.name().as_ref()))
+		}
 	};
 
 	let mut descriptor = NumberOfRangeColumnDescriptor::new();
@@ -771,6 +910,7 @@ mod tests {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: ColumnId(2),
@@ -779,6 +919,7 @@ mod tests {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 			primary_key: None,
@@ -854,6 +995,7 @@ mod tests {
 			policies: vec![],
 			index: ColumnIndex(0),
 			auto_increment: false,
+			dictionary_id: None,
 		};
 
 		let column = ResolvedColumn::new(column_ident, source, column_def);

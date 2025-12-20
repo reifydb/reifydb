@@ -17,7 +17,7 @@ use crate::{
 
 pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<PhysicalPlan<'static>>>,
-	pub operator_name: Fragment<'static>,
+	pub operator: Fragment<'static>,
 	pub arguments: Vec<Expression<'static>>,
 }
 
@@ -25,7 +25,7 @@ impl<'a> From<ApplyNode<'a>> for ApplyCompiler {
 	fn from(node: ApplyNode<'a>) -> Self {
 		Self {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
-			operator_name: to_owned_fragment(node.operator),
+			operator: to_owned_fragment(node.operator),
 			arguments: to_owned_expressions(node.expressions),
 		}
 	}
@@ -40,7 +40,7 @@ impl<T: CommandTransaction> CompileOperator<T> for ApplyCompiler {
 		};
 
 		let mut builder = compiler.build_node(Apply {
-			operator_name: self.operator_name.text().to_string(),
+			operator: self.operator.text().to_string(),
 			expressions: self.arguments,
 		});
 

@@ -1,21 +1,34 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use cdc_consumer::{CdcConsumerKey, ToConsumerKey};
+pub use cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange, ToConsumerKey};
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
-pub use flow_node_state::FlowNodeStateKey;
+pub use dictionary::{
+	DictionaryEntryIndexKey, DictionaryEntryIndexKeyRange, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey,
+};
+pub use flow::FlowKey;
+pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
+pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
+pub use flow_node_internal_state::{FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
+pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
-pub use namespace_ring_buffer::NamespaceRingBufferKey;
+pub use namespace_dictionary::NamespaceDictionaryKey;
+pub use namespace_flow::NamespaceFlowKey;
+pub use namespace_ringbuffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
-pub use ring_buffer::{RingBufferKey, RingBufferMetadataKey};
+pub use retention_policy::{
+	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SourceRetentionPolicyKey,
+	SourceRetentionPolicyKeyRange,
+};
+pub use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use system_sequence::SystemSequenceKey;
@@ -31,16 +44,24 @@ mod column;
 mod column_policy;
 mod column_sequence;
 mod columns;
+mod dictionary;
+mod flow;
+mod flow_edge;
+mod flow_node;
+mod flow_node_internal_state;
 mod flow_node_state;
 mod index;
 mod index_entry;
 mod kind;
 mod namespace;
-mod namespace_ring_buffer;
+mod namespace_dictionary;
+mod namespace_flow;
+mod namespace_ringbuffer;
 mod namespace_table;
 mod namespace_view;
 mod primary_key;
-mod ring_buffer;
+mod retention_policy;
+mod ringbuffer;
 mod row;
 mod row_sequence;
 mod system_sequence;
@@ -55,13 +76,16 @@ pub enum Key {
 	Namespace(NamespaceKey),
 	NamespaceTable(NamespaceTableKey),
 	NamespaceView(NamespaceViewKey),
+	NamespaceFlow(NamespaceFlowKey),
 	SystemSequence(SystemSequenceKey),
 	Table(TableKey),
+	Flow(FlowKey),
 	Column(ColumnKey),
 	Columns(ColumnsKey),
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	FlowNodeState(FlowNodeStateKey),
+	FlowNodeInternalState(FlowNodeInternalStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	RowSequence(RowSequenceKey),
@@ -73,6 +97,13 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
+	SourceRetentionPolicy(SourceRetentionPolicyKey),
+	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
+	Dictionary(DictionaryKey),
+	DictionaryEntry(DictionaryEntryKey),
+	DictionaryEntryIndex(DictionaryEntryIndexKey),
+	DictionarySequence(DictionarySequenceKey),
+	NamespaceDictionary(NamespaceDictionaryKey),
 }
 
 impl Key {
@@ -82,13 +113,16 @@ impl Key {
 			Key::Namespace(key) => key.encode(),
 			Key::NamespaceTable(key) => key.encode(),
 			Key::NamespaceView(key) => key.encode(),
+			Key::NamespaceFlow(key) => key.encode(),
 			Key::Table(key) => key.encode(),
+			Key::Flow(key) => key.encode(),
 			Key::Column(key) => key.encode(),
 			Key::Columns(key) => key.encode(),
 			Key::TableColumnPolicy(key) => key.encode(),
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
 			Key::FlowNodeState(key) => key.encode(),
+			Key::FlowNodeInternalState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
@@ -100,6 +134,13 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
+			Key::SourceRetentionPolicy(key) => key.encode(),
+			Key::OperatorRetentionPolicy(key) => key.encode(),
+			Key::Dictionary(key) => key.encode(),
+			Key::DictionaryEntry(key) => key.encode(),
+			Key::DictionaryEntryIndex(key) => key.encode(),
+			Key::DictionarySequence(key) => key.encode(),
+			Key::NamespaceDictionary(key) => key.encode(),
 		}
 	}
 }
@@ -127,6 +168,15 @@ pub trait EncodableKeyRange {
 }
 
 impl Key {
+	pub fn kind(key: impl AsRef<[u8]>) -> Option<KeyKind> {
+		let key = key.as_ref();
+		if key.len() < 2 {
+			return None;
+		}
+
+		keycode::deserialize(&key[1..2]).ok()
+	}
+
 	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;
@@ -140,11 +190,16 @@ impl Key {
 			KeyKind::Namespace => NamespaceKey::decode(&key).map(Self::Namespace),
 			KeyKind::NamespaceTable => NamespaceTableKey::decode(&key).map(Self::NamespaceTable),
 			KeyKind::NamespaceView => NamespaceViewKey::decode(&key).map(Self::NamespaceView),
+			KeyKind::NamespaceFlow => NamespaceFlowKey::decode(&key).map(Self::NamespaceFlow),
 			KeyKind::Table => TableKey::decode(&key).map(Self::Table),
+			KeyKind::Flow => FlowKey::decode(&key).map(Self::Flow),
 			KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
 			KeyKind::Index => IndexKey::decode(&key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(&key).map(Self::IndexEntry),
 			KeyKind::FlowNodeState => FlowNodeStateKey::decode(&key).map(Self::FlowNodeState),
+			KeyKind::FlowNodeInternalState => {
+				FlowNodeInternalStateKey::decode(&key).map(Self::FlowNodeInternalState)
+			}
 			KeyKind::Row => RowKey::decode(&key).map(Self::Row),
 			KeyKind::RowSequence => RowSequenceKey::decode(&key).map(Self::RowSequence),
 			KeyKind::ColumnSequence => ColumnSequenceKey::decode(&key).map(Self::TableColumnSequence),
@@ -161,6 +216,31 @@ impl Key {
 			}
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
+			}
+			KeyKind::SourceRetentionPolicy => {
+				SourceRetentionPolicyKey::decode(&key).map(Self::SourceRetentionPolicy)
+			}
+			KeyKind::OperatorRetentionPolicy => {
+				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
+			}
+			KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow => {
+				// These keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::Dictionary => DictionaryKey::decode(&key).map(Self::Dictionary),
+			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(&key).map(Self::DictionaryEntry),
+			KeyKind::DictionaryEntryIndex => {
+				DictionaryEntryIndexKey::decode(&key).map(Self::DictionaryEntryIndex)
+			}
+			KeyKind::DictionarySequence => {
+				DictionarySequenceKey::decode(&key).map(Self::DictionarySequence)
+			}
+			KeyKind::NamespaceDictionary => {
+				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
+			}
+			KeyKind::StorageTracker => {
+				// Storage tracker keys are used for internal persistence, not through Key enum
+				None
 			}
 		}
 	}

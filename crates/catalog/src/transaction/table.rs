@@ -1,19 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{
-		CommandTransaction, NamespaceId, QueryTransaction, TableDef, TableId, TransactionalChanges,
-		TransactionalTableChanges,
-		interceptor::{TableDefInterceptor, WithInterceptors},
-	},
-	log_warn,
+use reifydb_core::interface::{
+	CommandTransaction, NamespaceId, QueryTransaction, TableDef, TableId, TransactionalChanges,
+	TransactionalTableChanges,
+	interceptor::{TableDefInterceptor, WithInterceptors},
 };
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{table_already_exists, table_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogNamespaceQueryOperations, CatalogStore, store::table::TableToCreate,
@@ -30,7 +28,6 @@ pub trait CatalogTableCommandOperations {
 }
 
 pub trait CatalogTrackTableChangeOperations {
-	// Table tracking methods
 	fn track_table_def_created(&mut self, table: TableDef) -> crate::Result<()>;
 
 	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> crate::Result<()>;
@@ -64,6 +61,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogTableCommandOperations for CT
 {
+	#[instrument(name = "catalog::table::create", level = "debug", skip(self, to_create))]
 	fn create_table(&mut self, to_create: TableToCreate) -> reifydb_core::Result<TableDef> {
 		if let Some(table) = self.find_table_by_name(to_create.namespace, &to_create.table)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -77,6 +75,7 @@ impl<
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogTableQueryOperations for QT {
+	#[instrument(name = "catalog::table::find", level = "trace", skip(self))]
 	fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -97,13 +96,14 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(table) = CatalogStore::find_table(self, id)? {
-			log_warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+			warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(table));
 		}
 
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, name))]
 	fn find_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -131,7 +131,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(table) = CatalogStore::find_table_by_name(self, namespace, name.text())? {
-			log_warn!(
+			warn!(
 				"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
 				namespace
@@ -142,15 +142,17 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::table::get", level = "trace", skip(self))]
 	fn get_table(&mut self, id: TableId) -> reifydb_core::Result<TableDef> {
 		self.find_table(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))
 		})
 	}
 
+	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, name))]
 	fn get_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

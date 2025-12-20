@@ -31,6 +31,13 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
+			SourceId::Flow(flow_id) => {
+				if let Some(flow) = Self::find_flow(rx, flow_id)? {
+					Ok(Some(SourceDef::Flow(flow)))
+				} else {
+					Ok(None)
+				}
+			}
 			SourceId::TableVirtual(table_virtual_id) => {
 				if let Some(table_virtual) =
 					VirtualTableRegistry::find_table_virtual(rx, table_virtual_id)?
@@ -43,10 +50,16 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
-			SourceId::RingBuffer(_ring_buffer_id) => {
-				// TODO: Implement find_ring_buffer when ring
+			SourceId::RingBuffer(_ringbuffer_id) => {
+				// TODO: Implement find_ringbuffer when ring
 				// buffer catalog is ready For now, ring
 				// buffers are not yet queryable
+				Ok(None)
+			}
+			SourceId::Dictionary(_dictionary_id) => {
+				// TODO: Implement find_dictionary when dictionary
+				// catalog is ready For now, dictionaries return
+				// None as they use a different retrieval mechanism
 				Ok(None)
 			}
 		}

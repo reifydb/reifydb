@@ -18,7 +18,7 @@ impl Compiler {
 
 		Ok(LogicalPlan::CreateNamespace(CreateNamespaceNode {
 			namespace,
-			if_not_exists: false,
+			if_not_exists: ast.if_not_exists,
 		}))
 	}
 }

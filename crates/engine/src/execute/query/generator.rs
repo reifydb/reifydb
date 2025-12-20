@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Fragment, diagnostic::function::generator_not_found};
+use reifydb_type::{Fragment, Params, diagnostic::function::generator_not_found};
 
 use crate::{
 	StandardTransaction,
@@ -64,13 +64,17 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		// Use the passed context parameter directly
 		let generator = self.generator.as_ref().unwrap();
 
+		let stored_ctx = self.context.as_ref().unwrap();
 		let evaluation_ctx = ColumnEvaluationContext {
 			target: None,
 			columns: Columns::empty(), // No input columns for generator functions
 			row_count: 1,              // Single evaluation context
 			take: None,
-			params: unsafe { std::mem::transmute(&ctx.params) },
-			stack: unsafe { std::mem::transmute(&ctx.stack) },
+			params: unsafe { std::mem::transmute::<&Params, &'a Params>(&stored_ctx.params) },
+			stack: unsafe {
+				std::mem::transmute::<&crate::stack::Stack, &'a crate::stack::Stack>(&stored_ctx.stack)
+			},
+			is_aggregate_context: false,
 		};
 
 		// Evaluate all parameter expressions into columns

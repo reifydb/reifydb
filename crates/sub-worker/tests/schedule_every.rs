@@ -18,7 +18,7 @@ use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
 use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem};
 use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 use reifydb_type::{diagnostic::internal, error};
 
 fn create_test_engine() -> StandardEngine {
@@ -26,7 +26,7 @@ fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new();
 	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMultiVersion::serializable(store, single.clone(), eventbus.clone());
+	let multi = Transaction::new(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,
@@ -41,7 +41,7 @@ fn create_test_engine() -> StandardEngine {
 #[test]
 fn test_schedule_every_basic_interval_execution() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -53,7 +53,7 @@ fn test_schedule_every_basic_interval_execution() {
 		Ok(())
 	}));
 
-	let handle = instance.schedule_every(Duration::from_millis(30), task).unwrap();
+	let handle = instance.every(Duration::from_millis(30), task).unwrap();
 
 	// Wait for executions with retry logic
 	let mut attempts = 0;
@@ -89,7 +89,7 @@ fn test_schedule_every_priority_ordering() {
 	// Tests that high priority intervals get executed before low priority when
 	// ready
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 1, // Single worker to ensure strict ordering
 			max_queue_size: 100,
@@ -117,8 +117,8 @@ fn test_schedule_every_priority_ordering() {
 	}));
 
 	// Schedule both with the same interval
-	let _high_handle = instance.schedule_every(Duration::from_millis(50), high_task).unwrap();
-	let _low_handle = instance.schedule_every(Duration::from_millis(50), low_task).unwrap();
+	let _high_handle = instance.every(Duration::from_millis(50), high_task).unwrap();
+	let _low_handle = instance.every(Duration::from_millis(50), low_task).unwrap();
 
 	// Wait for a few executions
 	thread::sleep(Duration::from_millis(200));
@@ -153,7 +153,7 @@ fn test_schedule_every_priority_ordering() {
 #[test]
 fn test_schedule_every_cancellation() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -165,7 +165,7 @@ fn test_schedule_every_cancellation() {
 		Ok(())
 	}));
 
-	let handle = instance.schedule_every(Duration::from_millis(20), task).unwrap();
+	let handle = instance.every(Duration::from_millis(20), task).unwrap();
 
 	// Let it run a few times
 	thread::sleep(Duration::from_millis(100));
@@ -188,7 +188,7 @@ fn test_schedule_every_cancellation() {
 #[test]
 fn test_schedule_every_multiple_intervals() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 2,
 			max_queue_size: 100,
@@ -216,8 +216,8 @@ fn test_schedule_every_multiple_intervals() {
 	}));
 
 	// Schedule at different rates
-	let _handle1 = instance.schedule_every(Duration::from_millis(30), task1).unwrap();
-	let _handle2 = instance.schedule_every(Duration::from_millis(60), task2).unwrap();
+	let _handle1 = instance.every(Duration::from_millis(30), task1).unwrap();
+	let _handle2 = instance.every(Duration::from_millis(60), task2).unwrap();
 
 	// Wait for executions
 	thread::sleep(Duration::from_millis(200));
@@ -245,7 +245,7 @@ fn test_schedule_every_multiple_intervals() {
 #[test]
 fn test_schedule_every_task_failure_recovery() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -261,7 +261,7 @@ fn test_schedule_every_task_failure_recovery() {
 		}
 	}));
 
-	let _handle = instance.schedule_every(Duration::from_millis(30), task).unwrap();
+	let _handle = instance.every(Duration::from_millis(30), task).unwrap();
 
 	// Wait for several executions
 	thread::sleep(Duration::from_millis(200));

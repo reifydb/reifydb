@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{IdentityId, OrderedF32, OrderedF64, RowNumber, Type, Uuid4, Uuid7, Value};
+use reifydb_type::{IdentityId, OrderedF32, OrderedF64, Type, Uuid4, Uuid7, Value};
 
 use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
 
@@ -69,8 +69,8 @@ impl EncodedValuesLayout {
 			(Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
 			(Type::Time, Value::Undefined) => self.set_undefined(row, index),
 
-			(Type::Interval, Value::Interval(v)) => self.set_interval(row, index, v.clone()),
-			(Type::Interval, Value::Undefined) => self.set_undefined(row, index),
+			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, v.clone()),
+			(Type::Duration, Value::Undefined) => self.set_undefined(row, index),
 
 			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
 			(Type::Uuid4, Value::Undefined) => self.set_undefined(row, index),
@@ -133,8 +133,7 @@ impl EncodedValuesLayout {
 			Type::Date => Value::Date(self.get_date(row, index)),
 			Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
 			Type::Time => Value::Time(self.get_time(row, index)),
-			Type::Interval => Value::Interval(self.get_interval(row, index)),
-			Type::RowNumber => Value::RowNumber(RowNumber::new(self.get_u64(row, index))),
+			Type::Duration => Value::Duration(self.get_duration(row, index)),
 			Type::IdentityId => {
 				Value::IdentityId(IdentityId::from(Uuid7::from(self.get_uuid7(row, index))))
 			}
@@ -155,7 +154,7 @@ impl EncodedValuesLayout {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
-	use reifydb_type::{Blob, Date, DateTime, Interval, OrderedF32, OrderedF64, Time, Type, Uuid4, Uuid7, Value};
+	use reifydb_type::{Blob, Date, DateTime, Duration, OrderedF32, OrderedF64, Time, Type, Uuid4, Uuid7, Value};
 
 	use crate::value::encoded::EncodedValuesLayout;
 
@@ -387,14 +386,14 @@ mod tests {
 
 	#[test]
 	fn test_temporal_types_roundtrip() {
-		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = layout.allocate();
 
 		let original_values = vec![
 			Value::Date(Date::new(2025, 7, 15).unwrap()),
 			Value::DateTime(DateTime::now()),
 			Value::Time(Time::new(14, 30, 45, 123456789).unwrap()),
-			Value::Interval(Interval::from_seconds(3600)),
+			Value::Duration(Duration::from_seconds(3600)),
 		];
 
 		layout.set_values(&mut row, &original_values);
@@ -406,7 +405,7 @@ mod tests {
 
 	#[test]
 	fn test_temporal_types_with_undefined() {
-		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = layout.allocate();
 
 		let values = vec![
@@ -440,7 +439,7 @@ mod tests {
 			Type::DateTime,
 			Type::Int4,
 			Type::Time,
-			Type::Interval,
+			Type::Duration,
 		]);
 		let mut row = layout.allocate();
 
@@ -451,7 +450,7 @@ mod tests {
 			Value::DateTime(DateTime::new(2015, 10, 21, 16, 29, 0, 0).unwrap()),
 			Value::Int4(88),
 			Value::Time(Time::new(12, 0, 0, 0).unwrap()),
-			Value::Interval(Interval::from_minutes(30)),
+			Value::Duration(Duration::from_minutes(30)),
 		];
 
 		layout.set_values(&mut row, &values);
@@ -620,7 +619,7 @@ mod tests {
 			Type::Date,
 			Type::DateTime,
 			Type::Time,
-			Type::Interval,
+			Type::Duration,
 			Type::Uuid4,
 			Type::Uuid7,
 			Type::Blob,
@@ -645,7 +644,7 @@ mod tests {
 			Value::Date(Date::new(2025, 12, 31).unwrap()),
 			Value::DateTime(DateTime::new(2025, 1, 1, 0, 0, 0, 0).unwrap()),
 			Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
-			Value::Interval(Interval::from_hours(24)),
+			Value::Duration(Duration::from_hours(24)),
 			Value::Uuid4(Uuid4::generate()),
 			Value::Uuid7(Uuid7::generate()),
 			Value::Blob(Blob::new(vec![

@@ -8,12 +8,13 @@
 //!
 //! Run with: `make rql-sort` or `cargo run --bin rql-sort`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Set up sample data
@@ -52,7 +53,7 @@ fn main() {
 	.unwrap();
 
 	// Example 1: Sort by single column (ascending - default)
-	log_info!("Example 1: Sort by price (ascending - default)");
+	info!("Example 1: Sort by price (ascending - default)");
 	log_query(
 		r#"from store.products
 sort price"#,
@@ -67,11 +68,11 @@ sort price"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: Sort by single column (ascending - explicit)
-	log_info!("\nExample 2: Sort by name (ascending - explicit)");
+	info!("\nExample 2: Sort by name (ascending - explicit)");
 	log_query(
 		r#"from store.products
 sort name asc"#,
@@ -86,11 +87,11 @@ sort name asc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Sort by single column (descending)
-	log_info!("\nExample 3: Sort by rating (descending)");
+	info!("\nExample 3: Sort by rating (descending)");
 	log_query(
 		r#"from store.products
 sort rating desc"#,
@@ -105,11 +106,11 @@ sort rating desc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: Sort by multiple columns
-	log_info!("\nExample 4: Sort by category, then by price");
+	info!("\nExample 4: Sort by category, then by price");
 	log_query(
 		r#"from store.products
 sort { category asc, price asc }"#,
@@ -124,11 +125,11 @@ sort { category asc, price asc }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Sort with filter
-	log_info!("\nExample 5: Filter Electronics, then sort by stock descending");
+	info!("\nExample 5: Filter Electronics, then sort by stock descending");
 	log_query(
 		r#"from store.products
 filter category == "Electronics"
@@ -145,11 +146,11 @@ sort stock desc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Sort inline data
-	log_info!("\nExample 6: Sort inline data by score");
+	info!("\nExample 6: Sort inline data by score");
 	log_query(
 		r#"from [
   { name: "Alice", score: 85 },
@@ -174,11 +175,11 @@ sort score desc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Sort with map (projection)
-	log_info!("\nExample 7: Project specific columns, then sort");
+	info!("\nExample 7: Project specific columns, then sort");
 	log_query(
 		r#"from store.products
 map { name, price, rating }
@@ -195,11 +196,11 @@ sort rating desc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 8: Comptokenize sort with mixed directions
-	log_info!("\nExample 8: Sort by category ascending, then rating descending");
+	info!("\nExample 8: Sort by category ascending, then rating descending");
 	log_query(
 		r#"from store.products
 sort { category asc, rating desc }"#,
@@ -214,11 +215,11 @@ sort { category asc, rating desc }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 9: Sort numeric data
-	log_info!("\nExample 9: Sort by id to show original insertion order");
+	info!("\nExample 9: Sort by id to show original insertion order");
 	log_query(
 		r#"from store.products
 sort id asc"#,
@@ -233,6 +234,6 @@ sort id asc"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

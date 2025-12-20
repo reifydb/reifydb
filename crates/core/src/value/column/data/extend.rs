@@ -39,8 +39,7 @@ impl ColumnData {
 			(ColumnData::Date(l), ColumnData::Date(r)) => l.extend(&r)?,
 			(ColumnData::DateTime(l), ColumnData::DateTime(r)) => l.extend(&r)?,
 			(ColumnData::Time(l), ColumnData::Time(r)) => l.extend(&r)?,
-			(ColumnData::Interval(l), ColumnData::Interval(r)) => l.extend(&r)?,
-			(ColumnData::RowNumber(l), ColumnData::RowNumber(r)) => l.extend(&r)?,
+			(ColumnData::Duration(l), ColumnData::Duration(r)) => l.extend(&r)?,
 			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => l.extend(&r)?,
 			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => l.extend(&r)?,
 			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => l.extend(&r)?,
@@ -201,12 +200,12 @@ impl ColumnData {
 						new_container.extend(&r)?;
 						*self = ColumnData::Time(new_container);
 					}
-					ColumnData::Interval(r) => {
+					ColumnData::Duration(r) => {
 						let mut new_container =
 							TemporalContainer::with_capacity(l_len + r.len());
 						new_container.extend_from_undefined(l_len);
 						new_container.extend(&r)?;
-						*self = ColumnData::Interval(new_container);
+						*self = ColumnData::Duration(new_container);
 					}
 					ColumnData::Uuid4(r) => {
 						let mut new_container = UuidContainer::with_capacity(l_len + r.len());
@@ -270,11 +269,6 @@ impl ColumnData {
 							scale,
 						};
 					}
-					ColumnData::RowNumber(_) => {
-						return_error!(engine::frame_error(
-							"Cannot extend RowNumber column from Undefined".to_string()
-						));
-					}
 					ColumnData::IdentityId(_) => {
 						return_error!(engine::frame_error(
 							"Cannot extend IdentityId column from Undefined".to_string()
@@ -311,8 +305,7 @@ impl ColumnData {
 					ColumnData::Date(l) => l.extend_from_undefined(r_len),
 					ColumnData::DateTime(l) => l.extend_from_undefined(r_len),
 					ColumnData::Time(l) => l.extend_from_undefined(r_len),
-					ColumnData::Interval(l) => l.extend_from_undefined(r_len),
-					ColumnData::RowNumber(l) => l.extend_from_undefined(r_len),
+					ColumnData::Duration(l) => l.extend_from_undefined(r_len),
 					ColumnData::IdentityId(l) => l.extend_from_undefined(r_len),
 					ColumnData::Uuid4(l) => l.extend_from_undefined(r_len),
 					ColumnData::Uuid7(l) => l.extend_from_undefined(r_len),

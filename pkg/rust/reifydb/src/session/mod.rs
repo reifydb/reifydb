@@ -11,9 +11,6 @@ mod command;
 #[allow(dead_code)]
 mod query;
 
-#[cfg(feature = "sub_worker")]
-use std::sync::Arc;
-
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
@@ -21,16 +18,15 @@ use reifydb_core::{
 	interface::{Engine as EngineInterface, Identity, Params},
 };
 use reifydb_engine::StandardEngine;
-#[cfg(feature = "sub_worker")]
-use reifydb_sub_api::Scheduler;
+use reifydb_sub_api::SchedulerService;
+use tracing::instrument;
 
 pub trait Session {
 	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
 
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
 
-	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler>;
+	fn scheduler(&self) -> Option<SchedulerService>;
 
 	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;
@@ -44,6 +40,7 @@ pub trait Session {
 }
 
 impl CommandSession {
+	#[instrument(name = "api::session::command::new", level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -51,6 +48,7 @@ impl CommandSession {
 		}
 	}
 
+	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
@@ -62,6 +60,7 @@ impl CommandSession {
 }
 
 impl QuerySession {
+	#[instrument(name = "api::session::query::new", level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -69,6 +68,7 @@ impl QuerySession {
 		}
 	}
 
+	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();

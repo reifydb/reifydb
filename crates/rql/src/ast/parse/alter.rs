@@ -4,8 +4,9 @@
 use reifydb_core::SortDirection;
 
 use crate::ast::{
-	AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
-	AstIndexColumn,
+	AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
+	AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+	identifier::MaybeQualifiedFlowIdentifier,
 	parse::Parser,
 	tokenize::{Keyword, Operator, Separator, Token, TokenKind},
 };
@@ -29,7 +30,12 @@ impl<'a> Parser<'a> {
 			return self.parse_alter_view(token);
 		}
 
-		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, and ALTER VIEW are supported");
+		if self.current()?.is_keyword(Keyword::Flow) {
+			self.consume_keyword(Keyword::Flow)?;
+			return self.parse_alter_flow(token);
+		}
+
+		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, and ALTER FLOW are supported");
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
@@ -301,13 +307,120 @@ impl<'a> Parser<'a> {
 
 		Ok(columns)
 	}
+
+	fn parse_alter_flow(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
+		// Parse the flow identifier (namespace.name or just name)
+		let first_token = self.consume(TokenKind::Identifier)?;
+
+		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
+			// namespace.name format
+			let second_token = self.consume(TokenKind::Identifier)?;
+			MaybeQualifiedFlowIdentifier::new(second_token.fragment.clone())
+				.with_namespace(first_token.fragment.clone())
+		} else {
+			// just name format
+			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
+		};
+
+		// Parse the action
+		let action = if self.current()?.is_keyword(Keyword::Rename) {
+			self.consume_keyword(Keyword::Rename)?;
+			self.consume_keyword(Keyword::To)?;
+			let new_name = self.consume(TokenKind::Identifier)?;
+			AstAlterFlowAction::Rename {
+				new_name: new_name.fragment,
+			}
+		} else if self.current()?.is_keyword(Keyword::Set) {
+			self.consume_keyword(Keyword::Set)?;
+			self.consume_keyword(Keyword::Query)?;
+			self.consume_operator(Operator::As)?;
+
+			// Parse the new query
+			let query = if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
+				// Curly brace syntax
+				self.consume_operator(Operator::OpenCurly)?;
+
+				let mut query_nodes = Vec::new();
+
+				// Parse statements until we hit the closing brace
+				loop {
+					if self.is_eof()
+						|| self.current()?.kind == TokenKind::Operator(Operator::CloseCurly)
+					{
+						break;
+					}
+
+					let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+					query_nodes.push(node);
+				}
+
+				self.consume_operator(Operator::CloseCurly)?;
+
+				AstStatement {
+					nodes: query_nodes,
+					has_pipes: false,
+				}
+			} else {
+				// Direct syntax - parse until semicolon or EOF
+				let mut query_nodes = Vec::new();
+
+				// Parse nodes until we hit a terminator
+				loop {
+					if self.is_eof() {
+						break;
+					}
+
+					// Check for statement terminators
+					if self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
+						break;
+					}
+
+					let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+					query_nodes.push(node);
+
+					// Check if we've consumed everything up to a terminator
+					if self.is_eof()
+						|| self.current()?.kind == TokenKind::Separator(Separator::Semicolon)
+					{
+						break;
+					}
+				}
+
+				AstStatement {
+					nodes: query_nodes,
+					has_pipes: false,
+				}
+			};
+
+			AstAlterFlowAction::SetQuery {
+				query,
+			}
+		} else if self.current()?.is_keyword(Keyword::Pause) {
+			self.consume_keyword(Keyword::Pause)?;
+			AstAlterFlowAction::Pause
+		} else if self.current()?.is_keyword(Keyword::Resume) {
+			self.consume_keyword(Keyword::Resume)?;
+			AstAlterFlowAction::Resume
+		} else {
+			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+				"RENAME, SET, PAUSE, or RESUME",
+				self.current()?.fragment.clone(),
+			)));
+		};
+
+		Ok(AstAlter::Flow(AstAlterFlow {
+			token,
+			flow,
+			action,
+		}))
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
-		parse::Parser, tokenize::tokenize,
+		AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView,
+		AstAlterViewOperation, parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]
@@ -523,6 +636,177 @@ mod tests {
 				}
 			}
 			_ => panic!("Expected AstAlter::View"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_rename() {
+		let tokens = tokenize("ALTER FLOW old_flow RENAME TO new_flow").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "old_flow");
+				assert!(flow.flow.namespace.is_none());
+
+				match &flow.action {
+					AstAlterFlowAction::Rename {
+						new_name,
+					} => {
+						assert_eq!(new_name.text(), "new_flow");
+					}
+					_ => panic!("Expected Rename action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_rename_qualified() {
+		let tokens = tokenize("ALTER FLOW test.old_flow RENAME TO new_flow").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(flow.flow.name.text(), "old_flow");
+
+				match &flow.action {
+					AstAlterFlowAction::Rename {
+						new_name,
+					} => {
+						assert_eq!(new_name.text(), "new_flow");
+					}
+					_ => panic!("Expected Rename action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_set_query() {
+		let tokens = tokenize("ALTER FLOW my_flow SET QUERY AS FROM new_source FILTER active = true").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "my_flow");
+
+				match &flow.action {
+					AstAlterFlowAction::SetQuery {
+						query,
+					} => {
+						assert!(query.len() > 0);
+						// Should have FROM and WHERE nodes
+					}
+					_ => panic!("Expected SetQuery action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_set_query_with_braces() {
+		let tokens = tokenize(
+			r#"
+			ALTER FLOW my_flow SET QUERY AS {
+				FROM new_source
+				FILTER active = true
+				AGGREGATE {total: count(*) } BY category
+			}
+		"#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "my_flow");
+
+				match &flow.action {
+					AstAlterFlowAction::SetQuery {
+						query,
+					} => {
+						assert!(query.len() >= 3); // FROM, FILTER, AGGREGATE
+					}
+					_ => panic!("Expected SetQuery action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_pause() {
+		let tokens = tokenize("ALTER FLOW my_flow PAUSE").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "my_flow");
+
+				match &flow.action {
+					AstAlterFlowAction::Pause => {
+						// Pause action has no additional data
+					}
+					_ => panic!("Expected Pause action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
+		}
+	}
+
+	#[test]
+	fn test_alter_flow_resume() {
+		let tokens = tokenize("ALTER FLOW analytics.my_flow RESUME").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let alter = result.first_unchecked().as_alter();
+
+		match alter {
+			AstAlter::Flow(flow) => {
+				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(flow.flow.name.text(), "my_flow");
+
+				match &flow.action {
+					AstAlterFlowAction::Resume => {
+						// Resume action has no additional data
+					}
+					_ => panic!("Expected Resume action"),
+				}
+			}
+			_ => panic!("Expected AstAlter::Flow"),
 		}
 	}
 }

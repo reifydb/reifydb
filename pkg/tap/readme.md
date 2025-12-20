@@ -128,12 +128,13 @@ expected:
 | uint16 | bigint | u128 | UINT16 | Requires BigInt in TypeScript |
 | float4 | number | f32 | FLOAT4 | Single precision |
 | float8 | number | f64 | FLOAT8 | Double precision |
+| decimal | string | String | DECIMAL | Arbitrary-precision decimal |
 | utf8 | string | String | UTF8 | Unicode text |
 | blob | Uint8Array | Vec<u8> | BLOB | Binary data |
 | date | Date | Date | DATE | Date only |
 | time | Date | Time | TIME | Time only |
 | datetime | Date | DateTime | DATETIME | Date and time |
-| interval | string | String | INTERVAL | ISO 8601 duration |
+| duration | string | String | DURATION | ISO 8601 duration |
 | uuid4 | string | String | UUID4 | UUID version 4 |
 | uuid7 | string | String | UUID7 | UUID version 7 |
 | identity_id | string | String | IDENTITYID | UUID7-based identity |

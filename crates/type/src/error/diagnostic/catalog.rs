@@ -49,6 +49,37 @@ pub fn table_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 	}
 }
 
+pub fn flow_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_030".to_string(),
+		statement: None,
+		message: format!("flow `{}.{}` already exists", namespace, flow),
+		fragment,
+		label: Some("duplicate flow definition".to_string()),
+		help: Some("choose a different name, drop the existing flow or create flow in a different namespace"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn flow_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_031".to_string(),
+		statement: None,
+		message: format!("flow `{}.{}` not found", namespace, flow),
+		fragment,
+		label: Some("unknown flow reference".to_string()),
+		help: Some("ensure the flow exists or create it first using `CREATE FLOW`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
 pub fn view_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, view: &str) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
@@ -80,16 +111,12 @@ pub fn table_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, tab
 	}
 }
 
-pub fn ring_buffer_already_exists<'a>(
-	fragment: impl IntoFragment<'a>,
-	namespace: &str,
-	ring_buffer: &str,
-) -> Diagnostic {
+pub fn ringbuffer_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, ringbuffer: &str) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "CA_005".to_string(),
         statement: None,
-        message: format!("ring buffer `{}.{}` already exists", namespace, ring_buffer),
+        message: format!("ring buffer `{}.{}` already exists", namespace, ringbuffer),
         fragment,
         label: Some("duplicate ring buffer definition".to_string()),
         help: Some("choose a different name, drop the existing ring buffer or create ring buffer in a different namespace".to_string()),
@@ -98,15 +125,72 @@ pub fn ring_buffer_already_exists<'a>(
         cause: None}
 }
 
-pub fn ring_buffer_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, ring_buffer: &str) -> Diagnostic {
+pub fn ringbuffer_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, ringbuffer: &str) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
-		message: format!("ring buffer `{}.{}` not found", namespace, ring_buffer),
+		message: format!("ring buffer `{}.{}` not found", namespace, ringbuffer),
 		fragment,
 		label: Some("unknown ring buffer reference".to_string()),
 		help: Some("ensure the ring buffer exists or create it first using `CREATE RING BUFFER`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn dictionary_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_006".to_string(),
+		statement: None,
+		message: format!("dictionary `{}.{}` already exists", namespace, dictionary),
+		fragment,
+		label: Some("duplicate dictionary definition".to_string()),
+		help: Some("choose a different name, drop the existing dictionary or create dictionary in a different namespace".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn dictionary_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_007".to_string(),
+		statement: None,
+		message: format!("dictionary `{}.{}` not found", namespace, dictionary),
+		fragment,
+		label: Some("unknown dictionary reference".to_string()),
+		help: Some("ensure the dictionary exists or create it first using `CREATE DICTIONARY`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn dictionary_type_mismatch<'a>(
+	fragment: impl IntoFragment<'a>,
+	column: &str,
+	column_type: crate::Type,
+	dictionary: &str,
+	dictionary_value_type: crate::Type,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_008".to_string(),
+		statement: None,
+		message: format!(
+			"column `{}` type `{}` does not match dictionary `{}` value type `{}`",
+			column, column_type, dictionary, dictionary_value_type
+		),
+		fragment,
+		label: Some("type mismatch".to_string()),
+		help: Some(format!(
+			"change the column type to `{}` to match the dictionary value type",
+			dictionary_value_type
+		)),
 		column: None,
 		notes: vec![],
 		cause: None,
@@ -444,6 +528,34 @@ pub fn primary_key_column_not_found<'a>(fragment: impl IntoFragment<'a>, column_
 		fragment,
 		label: Some("invalid column reference in primary key".to_string()),
 		help: Some("ensure all columns referenced in the primary key exist in the table or view".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_022".to_string(),
+		statement: None,
+		message: format!("virtual table `{}.{}` already exists", namespace, name),
+		fragment: OwnedFragment::None,
+		label: Some("duplicate virtual table definition".to_string()),
+		help: Some("choose a different name or unregister the existing virtual table first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_023".to_string(),
+		statement: None,
+		message: format!("virtual table `{}.{}` not found", namespace, name),
+		fragment: OwnedFragment::None,
+		label: Some("unknown virtual table reference".to_string()),
+		help: Some("ensure the virtual table is registered before using it".to_string()),
 		column: None,
 		notes: vec![],
 		cause: None,

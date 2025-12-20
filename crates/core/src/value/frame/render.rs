@@ -54,7 +54,7 @@ impl FrameRenderer {
 		// If we have encoded numbers, calculate width for encoded number column
 		let row_num_col_idx = if has_row_numbers {
 			// Row number column is always first
-			let row_num_header = "__ROW__NUMBER__";
+			let row_num_header = "rownum";
 			col_widths[0] = Self::display_width(row_num_header);
 
 			// Calculate max width needed for encoded numbers
@@ -95,7 +95,7 @@ impl FrameRenderer {
 		// Add encoded number header if present
 		if has_row_numbers {
 			let w = col_widths[0];
-			let name = "__ROW__NUMBER__";
+			let name = "rownum";
 			let pad = w - Self::display_width(name);
 			let l = pad / 2;
 			let r = pad - l;

@@ -482,7 +482,7 @@ impl StandardColumnEvaluator {
 			(ColumnData::Time(l), ColumnData::Time(r)) => {
 				Ok(compare_temporal(l, r, ne.full_fragment_owned()))
 			}
-			(ColumnData::Interval(l), ColumnData::Interval(r)) => {
+			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
 				Ok(compare_temporal(l, r, ne.full_fragment_owned()))
 			}
 			(

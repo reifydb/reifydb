@@ -8,6 +8,7 @@ use query::{
 	assign::AssignNode,
 	compile::compile,
 	declare::DeclareNode,
+	dictionary_scan::DictionaryScan,
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
@@ -16,7 +17,8 @@ use query::{
 	inline::InlineDataNode,
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
-	ring_buffer_scan::RingBufferScan,
+	ringbuffer_scan::RingBufferScan,
+	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	sort::SortNode,
 	table_scan::TableScanNode,
@@ -34,15 +36,18 @@ use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
 };
+use reifydb_transaction::StorageTracker;
+use tracing::instrument;
 
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, generator, math},
 	stack::{Stack, Variable},
+	table_virtual::{TableVirtualUserRegistry, system::FlowOperatorStore},
 };
 
 mod catalog;
-mod mutate;
+pub(crate) mod mutate;
 mod query;
 
 /// Unified trait for query execution nodes following the volcano iterator
@@ -68,7 +73,7 @@ pub(crate) trait QueryNode<'a> {
 pub struct ExecutionContext<'a> {
 	pub executor: Executor,
 	pub source: Option<ResolvedSource<'a>>,
-	pub batch_size: usize,
+	pub batch_size: u64,
 	pub params: Params,
 	pub stack: Stack,
 }
@@ -80,6 +85,7 @@ pub struct Batch<'a> {
 
 pub(crate) enum ExecutionPlan<'a> {
 	Aggregate(AggregateNode<'a>),
+	DictionaryScan(DictionaryScan<'a>),
 	Filter(FilterNode<'a>),
 	IndexScan(IndexScanNode<'a>),
 	InlineData(InlineDataNode<'a>),
@@ -103,6 +109,10 @@ pub(crate) enum ExecutionPlan<'a> {
 	Assign(AssignNode<'a>),
 	Conditional(query::conditional::ConditionalNode<'a>),
 	Scalarize(ScalarizeNode<'a>),
+	// Row-number optimized access
+	RowPointLookup(RowPointLookupNode<'a>),
+	RowListLookup(RowListLookupNode<'a>),
+	RowRangeScan(RowRangeScanNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -128,6 +138,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
+			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
 			ExecutionPlan::IndexScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::InlineData(node) => node.initialize(rx, ctx),
@@ -151,6 +162,9 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowPointLookup(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowListLookup(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowRangeScan(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -161,6 +175,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 	) -> crate::Result<Option<Batch<'a>>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx, ctx),
+			ExecutionPlan::DictionaryScan(node) => node.next(rx, ctx),
 			ExecutionPlan::Filter(node) => node.next(rx, ctx),
 			ExecutionPlan::IndexScan(node) => node.next(rx, ctx),
 			ExecutionPlan::InlineData(node) => node.next(rx, ctx),
@@ -184,12 +199,16 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.next(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
 			ExecutionPlan::Scalarize(node) => node.next(rx, ctx),
+			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx),
+			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx),
+			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx),
 		}
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders<'a>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.headers(),
+			ExecutionPlan::DictionaryScan(node) => node.headers(),
 			ExecutionPlan::Filter(node) => node.headers(),
 			ExecutionPlan::IndexScan(node) => node.headers(),
 			ExecutionPlan::InlineData(node) => node.headers(),
@@ -213,6 +232,9 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.headers(),
 			ExecutionPlan::Conditional(node) => node.headers(),
 			ExecutionPlan::Scalarize(node) => node.headers(),
+			ExecutionPlan::RowPointLookup(node) => node.headers(),
+			ExecutionPlan::RowListLookup(node) => node.headers(),
+			ExecutionPlan::RowRangeScan(node) => node.headers(),
 		}
 	}
 }
@@ -221,6 +243,9 @@ pub struct Executor(Arc<ExecutorInner>);
 
 pub struct ExecutorInner {
 	pub functions: Functions,
+	pub flow_operator_store: FlowOperatorStore,
+	pub virtual_table_registry: TableVirtualUserRegistry,
+	pub stats_tracker: StorageTracker,
 }
 
 impl Clone for Executor {
@@ -238,9 +263,30 @@ impl std::ops::Deref for Executor {
 }
 
 impl Executor {
-	pub fn new(functions: Functions) -> Self {
+	pub fn new(
+		functions: Functions,
+		flow_operator_store: FlowOperatorStore,
+		stats_tracker: StorageTracker,
+	) -> Self {
 		Self(Arc::new(ExecutorInner {
 			functions,
+			flow_operator_store,
+			virtual_table_registry: TableVirtualUserRegistry::new(),
+			stats_tracker,
+		}))
+	}
+
+	pub fn with_virtual_table_registry(
+		functions: Functions,
+		flow_operator_store: FlowOperatorStore,
+		virtual_table_registry: TableVirtualUserRegistry,
+		stats_tracker: StorageTracker,
+	) -> Self {
+		Self(Arc::new(ExecutorInner {
+			functions,
+			flow_operator_store,
+			virtual_table_registry,
+			stats_tracker,
 		}))
 	}
 
@@ -257,11 +303,14 @@ impl Executor {
 				.register_scalar("math::avg", math::scalar::Avg::new)
 				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build(),
+			FlowOperatorStore::new(),
+			StorageTracker::with_defaults(),
 		)
 	}
 }
 
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
+	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
@@ -271,20 +320,20 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 
 		// Populate the stack with parameters so they can be accessed as variables
 		match &cmd.params {
-			reifydb_core::interface::Params::Positional(values) => {
+			Params::Positional(values) => {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
 					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::Named(map) => {
+			Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
 					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::None => {
+			Params::None => {
 				// No parameters to populate
 			}
 		}
@@ -304,6 +353,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 }
 
 impl ExecuteQuery<StandardQueryTransaction> for Executor {
+	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
@@ -313,20 +363,20 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 
 		// Populate the stack with parameters so they can be accessed as variables
 		match &qry.params {
-			reifydb_core::interface::Params::Positional(values) => {
+			Params::Positional(values) => {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
 					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::Named(map) => {
+			Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
 					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::None => {
+			Params::None => {
 				// No parameters to populate
 			}
 		}
@@ -348,6 +398,7 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
 
 impl Executor {
+	#[instrument(name = "executor::plan::query", level = "debug", skip(self, rx, plan, params, stack))]
 	pub(crate) fn execute_query_plan<'a>(
 		&self,
 		rx: &'a mut StandardQueryTransaction,
@@ -358,6 +409,7 @@ impl Executor {
 		match plan {
 			// Query
 			PhysicalPlan::Aggregate(_)
+			| PhysicalPlan::DictionaryScan(_)
 			| PhysicalPlan::Filter(_)
 			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)
@@ -373,16 +425,21 @@ impl Executor {
 			| PhysicalPlan::DeleteRingBuffer(_)
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertDictionary(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::FlowScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Variable(_)
 			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Conditional(_)
-			| PhysicalPlan::Scalarize(_) => {
+			| PhysicalPlan::Scalarize(_)
+			| PhysicalPlan::RowPointLookup(_)
+			| PhysicalPlan::RowListLookup(_)
+			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -394,11 +451,14 @@ impl Executor {
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
+			| PhysicalPlan::AlterFlow(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
+			| PhysicalPlan::CreateFlow(_)
+			| PhysicalPlan::CreateDictionary(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
@@ -407,9 +467,23 @@ impl Executor {
 					"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 				)
 			}
+			PhysicalPlan::Window(_) => {
+				// Window operator requires flow engine for mod
+				// execution
+				unimplemented!(
+					"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				)
+			}
+			PhysicalPlan::Merge(_) => {
+				// Merge operator requires flow engine
+				unimplemented!(
+					"Merge operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				)
+			}
 		}
 	}
 
+	#[instrument(name = "executor::plan::command", level = "debug", skip(self, txn, plan, params, stack))]
 	pub fn execute_command_plan<'a>(
 		&self,
 		txn: &'a mut StandardCommandTransaction,
@@ -425,15 +499,19 @@ impl Executor {
 			}
 			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan)?)),
 			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
-			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
+			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ringbuffer(txn, plan)?)),
+			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan)?)),
+			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan)?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
-			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
-			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, params)?)),
-			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ringbuffer(txn, plan, params)?)),
+			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
+			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ringbuffer(txn, plan, params)?)),
+			PhysicalPlan::InsertDictionary(plan) => Ok(Some(self.insert_dictionary(txn, plan, stack)?)),
 			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params)?)),
-			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ringbuffer(txn, plan, params)?)),
 
 			PhysicalPlan::Aggregate(_)
+			| PhysicalPlan::DictionaryScan(_)
 			| PhysicalPlan::Filter(_)
 			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)
@@ -447,6 +525,7 @@ impl Executor {
 			| PhysicalPlan::Generator(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::FlowScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
@@ -454,7 +533,10 @@ impl Executor {
 			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Apply(_)
 			| PhysicalPlan::Conditional(_)
-			| PhysicalPlan::Scalarize(_) => {
+			| PhysicalPlan::Scalarize(_)
+			| PhysicalPlan::RowPointLookup(_)
+			| PhysicalPlan::RowListLookup(_)
+			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -463,11 +545,22 @@ impl Executor {
 				self.query(&mut std_txn, plan, params, stack)?;
 				Ok(None)
 			}
+			PhysicalPlan::Window(_) => {
+				let mut std_txn = StandardTransaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)
+			}
+			PhysicalPlan::Merge(_) => {
+				let mut std_txn = StandardTransaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)
+			}
+
 			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan)?)),
 			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan)?)),
+			PhysicalPlan::AlterFlow(plan) => Ok(Some(self.execute_alter_flow(txn, plan)?)),
 		}
 	}
 
+	#[instrument(name = "executor::query", level = "debug", skip(self, rx, plan, params, stack))]
 	fn query<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,

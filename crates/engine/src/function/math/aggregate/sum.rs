@@ -28,9 +28,25 @@ impl AggregateFunction for Sum {
 		match &column.data() {
 			ColumnData::Float8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: f64 = indices.iter().filter_map(|&i| container.get(i)).sum();
+					let sum: f64 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 
 					self.sums.insert(group.clone(), Value::float8(sum));
+				}
+				Ok(())
+			}
+			ColumnData::Float4(container) => {
+				for (group, indices) in groups.iter() {
+					let sum: f32 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
+
+					self.sums.insert(group.clone(), Value::float4(sum));
 				}
 				Ok(())
 			}
@@ -44,15 +60,22 @@ impl AggregateFunction for Sum {
 			}
 			ColumnData::Int4(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i32 = indices.iter().filter_map(|&i| container.get(i)).sum();
-
+					let sum: i32 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 					self.sums.insert(group.clone(), Value::Int4(sum));
 				}
 				Ok(())
 			}
 			ColumnData::Int8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i64 = indices.iter().filter_map(|&i| container.get(i)).sum();
+					let sum: i64 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 
 					self.sums.insert(group.clone(), Value::Int8(sum));
 				}

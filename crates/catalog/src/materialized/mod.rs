@@ -1,9 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod dictionary;
+mod flow;
 pub mod load;
 mod namespace;
+mod operator_retention_policy;
 mod primary_key;
+mod source_retention_policy;
 mod table;
 mod view;
 
@@ -11,7 +15,11 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	interface::{NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, ViewDef, ViewId},
+	interface::{
+		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
+		PrimaryKeyId, SourceId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+	},
+	retention::RetentionPolicy,
 	util::MultiVersionContainer,
 };
 
@@ -20,7 +28,10 @@ use crate::system::SystemCatalog;
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
+pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
+pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
+pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -47,8 +58,31 @@ pub struct MaterializedCatalogInner {
 	/// lookups
 	pub(crate) views_by_name: SkipMap<(NamespaceId, String), ViewId>,
 
+	/// MultiVersion flow definitions indexed by flow ID
+	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
+	/// Index from (namespace_id, flow_name) to flow ID for fast name
+	/// lookups
+	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
+
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
+
+	/// MultiVersion source retention policies indexed by source ID
+	pub(crate) source_retention_policies: SkipMap<SourceId, MultiVersionRetentionPolicy>,
+
+	/// MultiVersion operator retention policies indexed by operator ID
+	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
+
+	/// MultiVersion dictionary definitions indexed by dictionary ID
+	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
+
+	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
+	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
+
+	/// User-defined virtual table definitions indexed by ID
+	pub(crate) table_virtual_user: SkipMap<TableVirtualId, Arc<TableVirtualDef>>,
+	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
+	pub(crate) table_virtual_user_by_name: SkipMap<(NamespaceId, String), TableVirtualId>,
 
 	/// System catalog with version information (None until initialized)
 	pub(crate) system_catalog: Option<SystemCatalog>,
@@ -88,7 +122,15 @@ impl MaterializedCatalog {
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),
 			views_by_name: SkipMap::new(),
+			flows: SkipMap::new(),
+			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
+			source_retention_policies: SkipMap::new(),
+			operator_retention_policies: SkipMap::new(),
+			dictionaries: SkipMap::new(),
+			dictionaries_by_name: SkipMap::new(),
+			table_virtual_user: SkipMap::new(),
+			table_virtual_user_by_name: SkipMap::new(),
 			system_catalog: None,
 		}))
 	}
@@ -106,5 +148,80 @@ impl MaterializedCatalog {
 	/// Get the system catalog
 	pub fn system_catalog(&self) -> Option<&SystemCatalog> {
 		self.0.system_catalog.as_ref()
+	}
+
+	/// Register a user-defined virtual table
+	///
+	/// Returns an error if a virtual table with the same name already exists in the namespace.
+	pub fn register_table_virtual_user(&self, def: Arc<TableVirtualDef>) -> crate::Result<()> {
+		let key = (def.namespace, def.name.clone());
+
+		// Check if already exists
+		if self.table_virtual_user_by_name.contains_key(&key) {
+			// Get namespace name for error message
+			let ns_name = self
+				.namespaces
+				.get(&def.namespace)
+				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
+				.unwrap_or_else(|| format!("{}", def.namespace.0));
+			return Err(reifydb_type::Error(
+				reifydb_type::diagnostic::catalog::virtual_table_already_exists(&ns_name, &def.name),
+			));
+		}
+
+		self.table_virtual_user.insert(def.id, def.clone());
+		self.table_virtual_user_by_name.insert(key, def.id);
+		Ok(())
+	}
+
+	/// Unregister a user-defined virtual table by namespace and name
+	pub fn unregister_table_virtual_user(&self, namespace: NamespaceId, name: &str) -> crate::Result<()> {
+		let key = (namespace, name.to_string());
+
+		if let Some(entry) = self.table_virtual_user_by_name.remove(&key) {
+			self.table_virtual_user.remove(entry.value());
+			Ok(())
+		} else {
+			// Get namespace name for error message
+			let ns_name = self
+				.namespaces
+				.get(&namespace)
+				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
+				.unwrap_or_else(|| format!("{}", namespace.0));
+			Err(reifydb_type::Error(reifydb_type::diagnostic::catalog::virtual_table_not_found(
+				&ns_name, name,
+			)))
+		}
+	}
+
+	/// Find a user-defined virtual table by namespace and name
+	pub fn find_table_virtual_user_by_name(
+		&self,
+		namespace: NamespaceId,
+		name: &str,
+	) -> Option<Arc<TableVirtualDef>> {
+		let key = (namespace, name.to_string());
+		self.table_virtual_user_by_name
+			.get(&key)
+			.and_then(|entry| self.table_virtual_user.get(entry.value()).map(|e| e.value().clone()))
+	}
+
+	/// Find a user-defined virtual table by ID
+	pub fn find_table_virtual_user(&self, id: TableVirtualId) -> Option<Arc<TableVirtualDef>> {
+		self.table_virtual_user.get(&id).map(|e| e.value().clone())
+	}
+
+	/// List all user-defined virtual tables in a namespace
+	pub fn list_table_virtual_user_in_namespace(&self, namespace: NamespaceId) -> Vec<Arc<TableVirtualDef>> {
+		self.table_virtual_user
+			.iter()
+			.filter(|e| e.value().namespace == namespace)
+			.map(|e| e.value().clone())
+			.collect()
+	}
+
+	/// List all user-defined virtual tables
+	pub fn list_table_virtual_user_all(&self) -> Vec<Arc<TableVirtualDef>> {
+		self.table_virtual_user.iter().map(|e| e.value().clone()).collect()
 	}
 }

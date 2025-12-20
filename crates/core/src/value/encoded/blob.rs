@@ -47,7 +47,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_blob(&self, row: &EncodedValues, index: usize) -> Option<Blob> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Blob {
 			Some(self.get_blob(row, index))
 		} else {
 			None
@@ -228,5 +228,15 @@ mod tests {
 		let full_range_blob = Blob::from_slice(&all_bytes);
 		layout.set_blob(&mut row, 0, &full_range_blob);
 		assert_eq!(layout.get_blob(&row, 0), full_range_blob);
+	}
+
+	#[test]
+	fn test_try_get_blob_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_blob(&row, 0), None);
 	}
 }

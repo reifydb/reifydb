@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal_error};
+use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal};
 
 use crate::evaluate::column::{StandardColumnEvaluator, cast};
 pub(crate) use crate::evaluate::{ColumnEvaluationContext, RowEvaluationContext};
@@ -44,8 +44,8 @@ impl StandardRowEvaluator {
 		};
 		columns.push(row_number_column);
 
-		for (idx, field) in ctx.row.layout.fields.iter().enumerate() {
-			let value = ctx.row.layout.get_value(&ctx.row.encoded, idx);
+		for (idx, field) in ctx.row.layout.fields().fields.iter().enumerate() {
+			let value = ctx.row.layout.get_value_by_idx(&ctx.row.encoded, idx);
 			// FIXME maybe some auto conversion needs to happen here
 			// Allow undefined values in any field type
 			debug_assert!(
@@ -70,7 +70,7 @@ impl StandardRowEvaluator {
 			data.push_value(value);
 
 			let name = ctx.row.layout.get_name(idx).ok_or_else(|| {
-				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+				Error(internal!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
 			columns.push(Column {
@@ -86,6 +86,7 @@ impl StandardRowEvaluator {
 			take: None,
 			params: ctx.params,
 			stack: &crate::stack::Stack::new(),
+			is_aggregate_context: false,
 		};
 
 		let result = self.evaluator.evaluate(&ctx, &expr)?;
@@ -98,8 +99,8 @@ impl StandardRowEvaluator {
 	pub fn coerce(&self, row: &Row, target_columns: &[ColumnDef]) -> crate::Result<Row> {
 		let mut source_columns = Vec::new();
 
-		for (idx, field) in row.layout.fields.iter().enumerate() {
-			let value = row.layout.get_value(&row.encoded, idx);
+		for (idx, field) in row.layout.fields().fields.iter().enumerate() {
+			let value = row.layout.get_value_by_idx(&row.encoded, idx);
 
 			let mut data = if field.r#type == Type::Undefined {
 				ColumnData::undefined(0)
@@ -109,7 +110,7 @@ impl StandardRowEvaluator {
 			data.push_value(value);
 
 			let name = row.layout.get_name(idx).ok_or_else(|| {
-				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+				Error(internal!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
 			source_columns.push(Column {
@@ -125,6 +126,7 @@ impl StandardRowEvaluator {
 			take: None,
 			params: &Params::None,
 			stack: &crate::stack::Stack::new(),
+			is_aggregate_context: false,
 		};
 
 		let mut values = Vec::with_capacity(target_columns.len());
@@ -147,7 +149,7 @@ impl StandardRowEvaluator {
 		}
 
 		let layout = EncodedValuesNamedLayout::new(names.into_iter().zip(types.into_iter()));
-		let mut encoded = layout.allocate_row();
+		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &values);
 
 		Ok(Row {

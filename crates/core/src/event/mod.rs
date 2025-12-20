@@ -7,9 +7,10 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use crate::log_error;
+use tracing::error;
 
 pub mod catalog;
+pub mod flow;
 pub mod lifecycle;
 pub mod transaction;
 
@@ -61,10 +62,7 @@ where
 					listener.on(event);
 				}));
 				if let Err(_) = result {
-					log_error!(
-						"Event listener panicked for event type {}",
-						std::any::type_name::<E>()
-					);
+					error!("Event listener panicked for event type {}", std::any::type_name::<E>());
 				}
 			}
 		}
@@ -126,7 +124,7 @@ impl EventBus {
 		}));
 
 		if let Err(_) = result {
-			log_error!("Event emission panicked for type {}", std::any::type_name::<E>());
+			error!("Event emission panicked for type {}", std::any::type_name::<E>());
 		}
 	}
 }

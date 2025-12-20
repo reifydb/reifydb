@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7, diagnostic::engine, return_error,
+	Blob, Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -150,15 +150,11 @@ impl<'a> Columns<'a> {
 						vec![Time::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Interval => ColumnData::interval_with_bitvec(
-						vec![Interval::default(); size],
+					Type::Duration => ColumnData::duration_with_bitvec(
+						vec![Duration::default(); size],
 						BitVec::repeat(size, false),
 					),
 					Type::Undefined => column.data().clone(),
-					Type::RowNumber => ColumnData::row_number_with_bitvec(
-						vec![Default::default(); size],
-						BitVec::repeat(size, false),
-					),
 					Type::IdentityId => ColumnData::identity_id_with_bitvec(
 						vec![Default::default(); size],
 						BitVec::repeat(size, false),
@@ -274,8 +270,8 @@ impl<'a> Columns<'a> {
 				(ColumnData::Time(container), Type::Time) => {
 					container.push(layout.get_time(&row, index));
 				}
-				(ColumnData::Interval(container), Type::Interval) => {
-					container.push(layout.get_interval(&row, index));
+				(ColumnData::Duration(container), Type::Duration) => {
+					container.push(layout.get_duration(&row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
 					container.push(layout.get_uuid4(&row, index));
@@ -416,8 +412,8 @@ impl<'a> Columns<'a> {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Interval(container), Type::Interval) => {
-					match layout.try_get_interval(row, index) {
+				(ColumnData::Duration(container), Type::Duration) => {
+					match layout.try_get_duration(row, index) {
 						Some(v) => container.push(v),
 						None => container.push_undefined(),
 					}
@@ -475,7 +471,7 @@ impl<'a> Columns<'a> {
 #[cfg(test)]
 mod tests {
 	mod columns {
-		use reifydb_type::{RowNumber, Uuid4, Uuid7};
+		use reifydb_type::{Uuid4, Uuid7};
 		use uuid::{Timestamp, Uuid};
 
 		use crate::value::column::{Column, ColumnData, Columns};
@@ -729,26 +725,6 @@ mod tests {
 			assert_eq!(
 				test_instance1[0].data(),
 				&ColumnData::uuid7_with_bitvec([uuid1, uuid2, uuid3, uuid4], [true, true, true, false])
-			);
-		}
-
-		#[test]
-		fn test_row_number() {
-			let mut test_instance1 = Columns::new(vec![Column::row_number([RowNumber(1), RowNumber(2)])]);
-
-			let test_instance2 = Columns::new(vec![Column::row_number_with_bitvec(
-				[RowNumber(3), RowNumber(4)],
-				[true, false],
-			)]);
-
-			test_instance1.append_columns(test_instance2).unwrap();
-
-			assert_eq!(
-				test_instance1[0].data(),
-				&ColumnData::row_number_with_bitvec(
-					[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
-					[true, true, true, false]
-				)
 			);
 		}
 

@@ -9,5 +9,7 @@ mod filter;
 mod from;
 mod join;
 mod map;
+mod merge;
 mod order;
 mod take;
+pub mod window;

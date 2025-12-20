@@ -1,0 +1,107 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Complex sequence of mixed operations.
+# Verifies stats remain consistent throughout.
+
+# Phase 1: Multiple inserts
+set a=1
+---
+ok
+
+set b=2
+---
+ok
+
+set c=3
+---
+ok
+
+stats_totals
+---
+total_count: 3
+current_bytes: 30
+historical_bytes: 0
+total_bytes: 30
+
+# Phase 2: Updates
+set a=11
+---
+ok
+
+set b=22
+---
+ok
+
+stats_totals
+---
+total_count: 5
+current_bytes: 32
+historical_bytes: 20
+total_bytes: 52
+
+# Phase 3: Delete
+remove c
+---
+ok
+
+stats_totals
+---
+total_count: 6
+current_bytes: 22
+historical_bytes: 39
+total_bytes: 61
+
+# Phase 4: More updates on remaining keys
+set a=111
+---
+ok
+
+set b=222
+---
+ok
+
+stats_totals
+---
+total_count: 8
+current_bytes: 24
+historical_bytes: 61
+total_bytes: 85
+
+# Phase 5: Drop old versions of key a (keep last 1)
+drop a keep_last_versions=1 version=10
+---
+ok
+
+stats_totals
+---
+total_count: 6
+current_bytes: 24
+historical_bytes: 40
+total_bytes: 64
+
+# Phase 6: Final insert
+set d=4
+---
+ok
+
+stats_totals
+---
+total_count: 7
+current_bytes: 34
+historical_bytes: 40
+total_bytes: 74
+
+# Final full stats check
+stats
+---
+current_count: 3
+current_key_bytes: 27
+current_value_bytes: 7
+historical_count: 4
+historical_key_bytes: 36
+historical_value_bytes: 4
+cdc_count: 9
+cdc_key_bytes: 9
+cdc_value_bytes: 684
+total_bytes: 74

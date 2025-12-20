@@ -166,5 +166,10 @@ fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 		)),
 		Expression::Map(_map_expr) => Fragment::owned_internal("map"),
 		Expression::Extend(_extend_expr) => Fragment::owned_internal("extend"),
+		Expression::In(in_expr) => Fragment::owned_internal(format!(
+			"{} IN {}",
+			simplified_name(&in_expr.value).text(),
+			simplified_name(&in_expr.list).text()
+		)),
 	}
 }

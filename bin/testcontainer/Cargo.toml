@@ -5,11 +5,13 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 
 [[bin]]
 name = "testcontainer"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_logging", "sub_worker", "sub_server"] }
-libc = { workspace = true }
+reifydb = { workspace = true, features = ["sub_tracing", "sub_server_admin", "sub_server_http", "sub_server_ws", "sub_server_otel", "sub_flow"] }
+tokio = { workspace = true }
+tracing = { workspace = true }

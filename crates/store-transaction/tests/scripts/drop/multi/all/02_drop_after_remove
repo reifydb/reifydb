@@ -1,0 +1,41 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests drop after a key has been removed (tombstone exists).
+
+set a=1 version=1
+remove a version=2
+---
+ok
+
+# Key does not exist at version 2 due to tombstone
+contains a version=2
+---
+"a" => false
+
+# But version 1 still exists
+contains a version=1
+---
+"a" => true
+
+# Count shows 1 version (the set, not the tombstone)
+count_versions a
+---
+"a" => 1 versions
+
+# Drop should clean up everything including tombstone
+drop a
+---
+ok
+
+# Now truly gone - 0 versions
+count_versions a
+---
+"a" => 0 versions
+
+# Key doesn't exist at any version
+contains a version=1
+contains a version=2
+---
+"a" => false
+"a" => false

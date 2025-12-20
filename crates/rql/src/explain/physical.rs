@@ -70,6 +70,22 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
+		PhysicalPlan::CreateDictionary(_) => unimplemented!(),
+		PhysicalPlan::CreateFlow(create_flow) => {
+			let mut label =
+				format!("CreateFlow {}.{}", create_flow.namespace.name, create_flow.flow.text());
+
+			if create_flow.if_not_exists {
+				label.push_str(" (IF NOT EXISTS)");
+			}
+
+			write_node_header(output, prefix, is_last, &label);
+
+			// Render the WITH query as a child
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(&create_flow.as_clause, child_prefix, true, output);
+			});
+		}
 		PhysicalPlan::AlterSequence(physical::AlterSequenceNode {
 			sequence,
 			column,
@@ -83,6 +99,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::DeleteRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::InsertTable(_) => unimplemented!(),
 		PhysicalPlan::InsertRingBuffer(_) => unimplemented!(),
+		PhysicalPlan::InsertDictionary(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(physical::AggregateNode {
@@ -217,8 +234,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			right,
 			on,
 			alias: _,
-			strategy: _,
-			right_query: _,
 		}) => {
 			let label = format!(
 				"Join(Inner) on: [{}]",
@@ -236,8 +251,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			right,
 			on,
 			alias: _,
-			strategy: _,
-			right_query: _,
 		}) => {
 			let label = format!(
 				"Join(Left) on: [{}]",
@@ -255,8 +268,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			right,
 			join_type,
 			alias: _,
-			strategy: _,
-			right_query: _,
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",
@@ -264,6 +275,17 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			};
 			let label = format!("Join(Natural {}) [using common columns]", join_type_str);
 			write_node_header(output, prefix, is_last, &label);
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(left, child_prefix, false, output);
+				render_physical_plan_inner(right, child_prefix, true, output);
+			});
+		}
+
+		PhysicalPlan::Merge(physical::MergeNode {
+			left,
+			right,
+		}) => {
+			write_node_header(output, prefix, is_last, "Merge");
 			with_child_prefix(prefix, is_last, |child_prefix| {
 				render_physical_plan_inner(left, child_prefix, false, output);
 				render_physical_plan_inner(right, child_prefix, true, output);
@@ -294,15 +316,24 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("RingBufferScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::FlowScan(node) => {
+			let label = format!("FlowScan {}.{}", node.source.namespace().name(), node.source.name());
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::DictionaryScan(node) => {
+			let label = format!("DictionaryScan {}.{}", node.source.namespace().name(), node.source.name());
+			write_node_header(output, prefix, is_last, &label);
+		}
 
 		PhysicalPlan::Apply(physical::ApplyNode {
-			operator: operator_name,
+			operator,
 			expressions: arguments,
 			input,
 		}) => {
 			let label = format!(
 				"Apply {} [{}]",
-				operator_name.text(),
+				operator.text(),
 				if arguments.is_empty() {
 					"no args".to_string()
 				} else {
@@ -345,6 +376,39 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::AlterView(_) => {
 			write_node_header(output, prefix, is_last, "AlterView");
 		}
+		PhysicalPlan::AlterFlow(alter_flow) => {
+			use crate::plan::physical::AlterFlowAction;
+
+			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
+				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
+			} else {
+				alter_flow.flow.name.text().to_string()
+			};
+
+			let action_str = match &alter_flow.action {
+				AlterFlowAction::Rename {
+					new_name,
+				} => format!("RENAME TO {}", new_name.text()),
+				AlterFlowAction::SetQuery {
+					..
+				} => "SET QUERY".to_string(),
+				AlterFlowAction::Pause => "PAUSE".to_string(),
+				AlterFlowAction::Resume => "RESUME".to_string(),
+			};
+
+			let label = format!("AlterFlow {} ({})", flow_name, action_str);
+			write_node_header(output, prefix, is_last, &label);
+
+			// Render the SetQuery child plan if present
+			if let AlterFlowAction::SetQuery {
+				query,
+			} = &alter_flow.action
+			{
+				with_child_prefix(prefix, is_last, |child_prefix| {
+					render_physical_plan_inner(query, child_prefix, true, output);
+				});
+			}
+		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			let label = format!("VirtualScan: {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
@@ -352,6 +416,15 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::Generator(node) => {
 			let label = format!("Generator: {}", node.name.text());
 			write_node_header(output, prefix, is_last, &label);
+		}
+		PhysicalPlan::Window(node) => {
+			let label = format!("Window: {:?}, Size: {:?}", node.window_type, node.size);
+			write_node_header(output, prefix, is_last, &label);
+
+			if let Some(ref input) = node.input {
+				let child_prefix = format!("{}    ", prefix);
+				render_physical_plan_inner(input, &child_prefix, true, output);
+			}
 		}
 		PhysicalPlan::Declare(declare_node) => {
 			let label = format!(
@@ -433,6 +506,82 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 		PhysicalPlan::Environment(_) => {
 			write_node_header(output, prefix, is_last, "Environment");
+		}
+
+		PhysicalPlan::RowPointLookup(lookup) => {
+			let source_name = match &lookup.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("RowPointLookup (source: {}, row: {})", source_name, lookup.row_number),
+			);
+		}
+
+		PhysicalPlan::RowListLookup(lookup) => {
+			let source_name = match &lookup.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("RowListLookup (source: {}, rows: [{}])", source_name, rows_str),
+			);
+		}
+
+		PhysicalPlan::RowRangeScan(scan) => {
+			let source_name = match &scan.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!(
+					"RowRangeScan (source: {}, range: {}..={})",
+					source_name, scan.start, scan.end
+				),
+			);
 		}
 	}
 }

@@ -58,6 +58,23 @@ pub fn invalid_base64url_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnost
 	}
 }
 
+/// Invalid base58 string in BLOB constructor
+pub fn invalid_base58_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	let value = fragment.text();
+	Diagnostic {
+		code: "BLOB_005".to_string(),
+		statement: None,
+		message: format!("Invalid base58 string: '{}'", value),
+		column: None,
+		fragment,
+		label: Some("Invalid base58 encoding found".to_string()),
+		help: Some("Base58 strings should only contain 1-9, A-H, J-N, P-Z, a-k, m-z characters".to_string()),
+		notes: vec![],
+		cause: None,
+	}
+}
+
 /// Invalid UTF-8 sequence in BLOB
 pub fn invalid_utf8_sequence(error: Utf8Error) -> Diagnostic {
 	Diagnostic {

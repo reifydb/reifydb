@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 //! Subsystem API crate providing common interfaces for ReifyDB subsystems
 //!
 //! This crate contains the core traits and types that all subsystems must implement
@@ -10,4 +12,7 @@ pub mod subsystem;
 pub mod worker;
 
 pub use subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-pub use worker::{BoxedTask, ClosureTask, Priority, SchedulableTask, Scheduler, TaskContext, TaskHandle};
+pub use worker::{
+	BoxedOnceTask, BoxedTask, ClosureTask, OnceClosureTask, OnceTask, Priority, SchedulableTask, Scheduler,
+	SchedulerService, TaskContext, TaskHandle,
+};

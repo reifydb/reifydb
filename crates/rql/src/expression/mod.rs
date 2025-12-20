@@ -3,6 +3,7 @@
 
 mod fragment;
 mod join;
+pub mod json;
 mod name;
 
 pub use join::JoinConditionCompiler;
@@ -14,7 +15,7 @@ use crate::{
 	convert_data_type,
 };
 
-pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
+pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression<'_>>> {
 	let statements = parse_str(rql)?;
 	if statements.is_empty() {
 		return Ok(vec![]);
@@ -99,6 +100,8 @@ pub enum Expression<'a> {
 	Or(OrExpression<'a>),
 
 	Xor(XorExpression<'a>),
+
+	In(InExpression<'a>),
 
 	Type(TypeExpression<'a>),
 
@@ -417,6 +420,24 @@ impl<'a> XorExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InExpression<'a> {
+	pub value: Box<Expression<'a>>,
+	pub list: Box<Expression<'a>>,
+	pub negated: bool,
+	pub fragment: Fragment<'a>,
+}
+
+impl<'a> InExpression<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		Fragment::merge_all([
+			self.value.full_fragment_owned(),
+			self.fragment.clone(),
+			self.list.full_fragment_owned(),
+		])
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnExpression<'a>(pub ColumnIdentifier<'a>);
 
 impl<'a> ColumnExpression<'a> {
@@ -571,6 +592,18 @@ impl<'a> Display for Expression<'a> {
 				..
 			}) => {
 				write!(f, "({} xor {})", left, right)
+			}
+			Expression::In(InExpression {
+				value,
+				list,
+				negated,
+				..
+			}) => {
+				if *negated {
+					write!(f, "({} NOT IN {})", value, list)
+				} else {
+					write!(f, "({} IN {})", value, list)
+				}
 			}
 			Expression::Type(TypeExpression {
 				fragment,
@@ -940,6 +973,26 @@ impl ExpressionCompiler {
 			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
 				fragment: var.token.fragment,
 			})),
+			Ast::Rownum(_rownum) => {
+				// Compile rownum to a column reference for rownum
+				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+				use reifydb_type::{OwnedFragment, ROW_NUMBER_COLUMN_NAME};
+
+				let column = ColumnIdentifier {
+					source: ColumnSource::Source {
+						namespace: Fragment::Owned(OwnedFragment::Internal {
+							text: String::from("_context"),
+						}),
+						source: Fragment::Owned(OwnedFragment::Internal {
+							text: String::from("_context"),
+						}),
+					},
+					name: Fragment::Owned(OwnedFragment::Internal {
+						text: String::from(ROW_NUMBER_COLUMN_NAME),
+					}),
+				};
+				Ok(Expression::Column(ColumnExpression(column)))
+			}
 			Ast::If(if_ast) => {
 				// Compile condition
 				let condition = Box::new(Self::compile(*if_ast.condition)?);
@@ -996,6 +1049,17 @@ impl ExpressionCompiler {
 				Ok(Expression::Extend(ExtendExpression {
 					expressions,
 					fragment: extend.token.fragment,
+				}))
+			}
+			Ast::List(list) => {
+				// Compile list expressions (used for IN [...] syntax)
+				let mut expressions = Vec::with_capacity(list.nodes.len());
+				for ast in list.nodes {
+					expressions.push(Self::compile(ast)?);
+				}
+				Ok(Expression::Tuple(TupleExpression {
+					expressions,
+					fragment: list.token.fragment,
 				}))
 			}
 			ast => unimplemented!("{:?}", ast),
@@ -1168,6 +1232,30 @@ impl ExpressionCompiler {
 				Ok(Expression::Xor(XorExpression {
 					left: Box::new(left),
 					right: Box::new(right),
+					fragment: token.fragment,
+				}))
+			}
+
+			InfixOperator::In(token) => {
+				let value = Self::compile(*ast.left)?;
+				let list = Self::compile(*ast.right)?;
+
+				Ok(Expression::In(InExpression {
+					value: Box::new(value),
+					list: Box::new(list),
+					negated: false,
+					fragment: token.fragment,
+				}))
+			}
+
+			InfixOperator::NotIn(token) => {
+				let value = Self::compile(*ast.left)?;
+				let list = Self::compile(*ast.right)?;
+
+				Ok(Expression::In(InExpression {
+					value: Box::new(value),
+					list: Box::new(list),
+					negated: true,
 					fragment: token.fragment,
 				}))
 			}

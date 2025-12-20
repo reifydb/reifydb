@@ -1,0 +1,11 @@
+[package]
+name = "reifydb-macro-impl"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "MIT"
+repository.workspace = true
+description = "Implementation for ReifyDB derive macros. Not for direct use - use reifydb-macro, reifydb-derive, or reifydb-client-derive instead."
+
+[dependencies]
+proc-macro2 = { workspace = true }

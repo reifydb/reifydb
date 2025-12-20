@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionValues, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey,
-	ViewKind,
+	MultiVersionValues, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey, ViewKind,
 };
 
 use crate::{
@@ -13,11 +12,7 @@ use crate::{
 
 impl CatalogStore {
 	pub fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let Some(multi) = rx.get(&ViewKey {
-			view: id,
-		}
-		.encode())?
-		else {
+		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
 

@@ -8,12 +8,13 @@
 //!
 //! Run with: `make rql-join` or `cargo run --bin rql-join`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Set up sample data with relationships
@@ -105,7 +106,7 @@ fn main() {
 	.unwrap();
 
 	// Example 1: Inner join
-	log_info!("Example 1: Inner join employees with departments");
+	info!("Example 1: Inner join employees with departments");
 	log_query(
 		r#"from company.employees
 inner join {
@@ -124,12 +125,12 @@ inner join {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: Left join (includes all employees, even without
 	// department)
-	log_info!("\nExample 2: Left join employees with departments");
+	info!("\nExample 2: Left join employees with departments");
 	log_query(
 		r#"from company.employees
 left join {
@@ -148,11 +149,11 @@ left join {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Natural join (joins on common column name)
-	log_info!("\nExample 3: Natural join (automatic on dept_id)");
+	info!("\nExample 3: Natural join (automatic on dept_id)");
 	log_query(
 		r#"from company.employees
 natural join { from company.departments }"#,
@@ -167,11 +168,11 @@ natural join { from company.departments }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: Join with filter
-	log_info!("\nExample 4: Join then filter for specific location");
+	info!("\nExample 4: Join then filter for specific location");
 	log_query(
 		r#"from company.employees
 inner join {
@@ -192,11 +193,11 @@ filter location == "Building A""#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Join with projection
-	log_info!("\nExample 5: Join and select specific columns");
+	info!("\nExample 5: Join and select specific columns");
 	log_query(
 		r#"from company.employees
 inner join {
@@ -211,17 +212,17 @@ map { name, dept_name, salary }"#,
 			inner join {
 				from company.departments
 			} departments on dept_id == departments.dept_id
-			map { name, dept_name, salary }
+			map { name, departments_dept_name, salary }
 			"#,
 			Params::None,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Multiple joins
-	log_info!("\nExample 6: Join employees with departments and projects");
+	info!("\nExample 6: Join employees with departments and projects");
 	log_query(
 		r#"from company.employees
 inner join {
@@ -246,11 +247,11 @@ inner join {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Join with aggregation
-	log_info!("\nExample 7: Join and aggregate - average salary by department");
+	info!("\nExample 7: Join and aggregate - average salary by department");
 	log_query(
 		r#"from company.employees
 inner join {
@@ -267,12 +268,12 @@ aggregate { avg(salary), count(emp_id) }
 				from company.departments
 			} departments on dept_id == departments.dept_id
 			aggregate { math::avg(salary), math::count(emp_id) }
-				by dept_name
+				by departments_dept_name
 			"#,
 			Params::None,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

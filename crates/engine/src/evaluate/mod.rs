@@ -58,7 +58,9 @@ impl<'a> TargetColumn<'a> {
 
 	// FIXME remove this
 	/// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_descriptor(&self) -> Option<reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor> {
+	pub fn to_number_descriptor(
+		&self,
+	) -> Option<reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor<'_>> {
 		use reifydb_core::interface::resolved::resolved_column_to_number_descriptor;
 		use reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor;
 
@@ -94,6 +96,9 @@ pub struct ColumnEvaluationContext<'a> {
 	pub take: Option<usize>,
 	pub params: &'a Params,
 	pub stack: &'a Stack,
+	// TODO: This is a temporary hack to support aggregate functions in StandardColumnEvaluator
+	// Should be replaced with proper function detection or separate aggregation methods
+	pub is_aggregate_context: bool,
 }
 
 impl<'a> ColumnEvaluationContext<'a> {
@@ -108,6 +113,7 @@ impl<'a> ColumnEvaluationContext<'a> {
 			take: None,
 			params: &EMPTY_PARAMS,
 			stack: &EMPTY_STACK,
+			is_aggregate_context: false,
 		}
 	}
 

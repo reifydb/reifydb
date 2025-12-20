@@ -4,14 +4,19 @@
 use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId};
+use crate::interface::{
+	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef,
+	ViewId,
+};
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum SourceId {
 	Table(TableId),
 	View(ViewId),
+	Flow(FlowId),
 	TableVirtual(TableVirtualId),
 	RingBuffer(RingBufferId),
+	Dictionary(DictionaryId),
 }
 
 impl std::fmt::Display for SourceId {
@@ -19,8 +24,10 @@ impl std::fmt::Display for SourceId {
 		match self {
 			SourceId::Table(id) => write!(f, "{}", id.0),
 			SourceId::View(id) => write!(f, "{}", id.0),
+			SourceId::Flow(id) => write!(f, "{}", id.0),
 			SourceId::TableVirtual(id) => write!(f, "{}", id.0),
 			SourceId::RingBuffer(id) => write!(f, "{}", id.0),
+			SourceId::Dictionary(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -34,12 +41,20 @@ impl SourceId {
 		Self::View(id.into())
 	}
 
+	pub fn flow(id: impl Into<FlowId>) -> Self {
+		Self::Flow(id.into())
+	}
+
 	pub fn table_virtual(id: impl Into<TableVirtualId>) -> Self {
 		Self::TableVirtual(id.into())
 	}
 
-	pub fn ring_buffer(id: impl Into<RingBufferId>) -> Self {
+	pub fn ringbuffer(id: impl Into<RingBufferId>) -> Self {
 		Self::RingBuffer(id.into())
+	}
+
+	pub fn dictionary(id: impl Into<DictionaryId>) -> Self {
+		Self::Dictionary(id.into())
 	}
 }
 
@@ -55,6 +70,12 @@ impl From<ViewId> for SourceId {
 	}
 }
 
+impl From<FlowId> for SourceId {
+	fn from(id: FlowId) -> Self {
+		SourceId::Flow(id)
+	}
+}
+
 impl From<TableVirtualId> for SourceId {
 	fn from(id: TableVirtualId) -> Self {
 		SourceId::TableVirtual(id)
@@ -67,13 +88,21 @@ impl From<RingBufferId> for SourceId {
 	}
 }
 
+impl From<DictionaryId> for SourceId {
+	fn from(id: DictionaryId) -> Self {
+		SourceId::Dictionary(id)
+	}
+}
+
 impl PartialEq<u64> for SourceId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
 			SourceId::Table(id) => id.0.eq(other),
 			SourceId::View(id) => id.0.eq(other),
+			SourceId::Flow(id) => id.0.eq(other),
 			SourceId::TableVirtual(id) => id.0.eq(other),
 			SourceId::RingBuffer(id) => id.0.eq(other),
+			SourceId::Dictionary(id) => id.0.eq(other),
 		}
 	}
 }
@@ -91,6 +120,15 @@ impl PartialEq<ViewId> for SourceId {
 	fn eq(&self, other: &ViewId) -> bool {
 		match self {
 			SourceId::View(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
+impl PartialEq<FlowId> for SourceId {
+	fn eq(&self, other: &FlowId) -> bool {
+		match self {
+			SourceId::Flow(id) => id.0 == other.0,
 			_ => false,
 		}
 	}
@@ -114,6 +152,15 @@ impl PartialEq<RingBufferId> for SourceId {
 	}
 }
 
+impl PartialEq<DictionaryId> for SourceId {
+	fn eq(&self, other: &DictionaryId) -> bool {
+		match self {
+			SourceId::Dictionary(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<SourceId> for u64 {
 	fn from(source: SourceId) -> u64 {
 		source.as_u64()
@@ -121,13 +168,27 @@ impl From<SourceId> for u64 {
 }
 
 impl SourceId {
+	/// Returns the type discriminant as a u8 value
+	pub fn to_type_u8(&self) -> u8 {
+		match self {
+			SourceId::Table(_) => 1,
+			SourceId::View(_) => 2,
+			SourceId::Flow(_) => 3,
+			SourceId::TableVirtual(_) => 4,
+			SourceId::RingBuffer(_) => 5,
+			SourceId::Dictionary(_) => 6,
+		}
+	}
+
 	/// Returns the raw u64 value regardless of the source type
 	pub fn as_u64(&self) -> u64 {
 		match self {
 			SourceId::Table(id) => id.0,
 			SourceId::View(id) => id.0,
+			SourceId::Flow(id) => id.0,
 			SourceId::TableVirtual(id) => id.0,
 			SourceId::RingBuffer(id) => id.0,
+			SourceId::Dictionary(id) => id.0,
 		}
 	}
 
@@ -136,8 +197,10 @@ impl SourceId {
 		match self {
 			SourceId::Table(table) => SourceId::table(table.0 + 1),
 			SourceId::View(view) => SourceId::view(view.0 + 1),
+			SourceId::Flow(flow) => SourceId::flow(flow.0 + 1),
 			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
-			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
+			SourceId::RingBuffer(ringbuffer) => SourceId::ringbuffer(ringbuffer.0 + 1),
+			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0 + 1),
 		}
 	}
 
@@ -149,10 +212,12 @@ impl SourceId {
 		match self {
 			SourceId::Table(table) => SourceId::table(table.0.wrapping_sub(1)),
 			SourceId::View(view) => SourceId::view(view.0.wrapping_sub(1)),
+			SourceId::Flow(flow) => SourceId::flow(flow.0.wrapping_sub(1)),
 			SourceId::TableVirtual(table_virtual) => {
 				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
-			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0.wrapping_sub(1)),
+			SourceId::RingBuffer(ringbuffer) => SourceId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
+			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0.wrapping_sub(1)),
 		}
 	}
 
@@ -182,6 +247,19 @@ impl SourceId {
 		}
 	}
 
+	pub fn to_flow_id(self) -> crate::Result<FlowId> {
+		if let SourceId::Flow(flow) = self {
+			Ok(flow)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected SourceId::Flow but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-flow source ID \
+				was used in a context that requires a flow ID.",
+				self
+			)
+		}
+	}
+
 	pub fn to_table_virtual_id(self) -> crate::Result<TableVirtualId> {
 		if let SourceId::TableVirtual(table_virtual) = self {
 			Ok(table_virtual)
@@ -195,14 +273,27 @@ impl SourceId {
 		}
 	}
 
-	pub fn to_ring_buffer_id(self) -> crate::Result<RingBufferId> {
-		if let SourceId::RingBuffer(ring_buffer) = self {
-			Ok(ring_buffer)
+	pub fn to_ringbuffer_id(self) -> crate::Result<RingBufferId> {
+		if let SourceId::RingBuffer(ringbuffer) = self {
+			Ok(ringbuffer)
 		} else {
 			return_internal_error!(
 				"Data inconsistency: Expected SourceId::RingBuffer but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-ring-buffer source ID \
 				was used in a context that requires a ring buffer ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_dictionary_id(self) -> crate::Result<DictionaryId> {
+		if let SourceId::Dictionary(dictionary) = self {
+			Ok(dictionary)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected SourceId::Dictionary but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-dictionary source ID \
+				was used in a context that requires a dictionary ID.",
 				self
 			)
 		}
@@ -213,6 +304,7 @@ impl SourceId {
 pub enum SourceDef {
 	Table(TableDef),
 	View(ViewDef),
+	Flow(FlowDef),
 	TableVirtual(TableVirtualDef),
 }
 
@@ -221,6 +313,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => table.id.into(),
 			SourceDef::View(view) => view.id.into(),
+			SourceDef::Flow(flow) => flow.id.into(),
 			SourceDef::TableVirtual(table_virtual) => table_virtual.id.into(),
 		}
 	}
@@ -229,6 +322,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => SourceId::Table(table.id),
 			SourceDef::View(view) => SourceId::View(view.id),
+			SourceDef::Flow(flow) => SourceId::Flow(flow.id),
 			SourceDef::TableVirtual(table_virtual) => SourceId::TableVirtual(table_virtual.id),
 		}
 	}

@@ -5,10 +5,11 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 
 [[bin]]
 name = "reifydb-server"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_admin", "sub_logging", "sub_server"] }
+reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_server_admin", "sub_tracing", "sub_server_http", "sub_server_ws"] }

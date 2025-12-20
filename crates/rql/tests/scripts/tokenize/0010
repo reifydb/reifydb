@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'window { sum(amount) } with { count: 100, slide: 20 }'
+---
+> Line 1:
+>   [  0] Keyword(Window)
+>   [  1] Operator(OpenCurly)
+>   [  2] Identifier("sum")
+>   [  3] Operator(OpenParen)
+>   [  4] Identifier("amount")
+>   [  5] Operator(CloseParen)
+>   [  6] Operator(CloseCurly)
+>   [  7] Keyword(With)
+>   [  8] Operator(OpenCurly)
+>   [  9] Identifier("count")
+>   [ 10] Operator(Colon)
+>   [ 11] Literal(Number)
+>   [ 12] Separator(Comma)
+>   [ 13] Identifier("slide")
+>   [ 14] Operator(Colon)
+>   [ 15] Literal(Number)
+>   [ 16] Operator(CloseCurly)
+> 
+> 

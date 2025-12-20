@@ -4,9 +4,10 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceTableKey, TableDef,
+		ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, NamespaceTableKey, SourceId, TableDef,
 		TableId, TableKey,
 	},
+	retention::RetentionPolicy,
 	return_error,
 };
 use reifydb_type::{OwnedFragment, TypeConstraint};
@@ -15,6 +16,7 @@ use crate::{
 	CatalogStore,
 	store::{
 		column::{ColumnIndex, ColumnToCreate},
+		retention_policy::create::create_source_retention_policy,
 		sequence::SystemSequence,
 		table::layout::{table, table_namespace},
 	},
@@ -27,6 +29,7 @@ pub struct TableColumnToCreate {
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
 	pub fragment: Option<OwnedFragment>,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +38,7 @@ pub struct TableToCreate {
 	pub table: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
+	pub retention_policy: Option<RetentionPolicy>,
 }
 
 impl CatalogStore {
@@ -49,6 +53,10 @@ impl CatalogStore {
 		let table_id = SystemSequence::next_table_id(txn)?;
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table)?;
+
+		if let Some(retention_policy) = &to_create.retention_policy {
+			create_source_retention_policy(txn, SourceId::Table(table_id), retention_policy)?;
+		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
 
@@ -69,13 +77,7 @@ impl CatalogStore {
 		// Initialize with no primary key
 		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
-		txn.set(
-			&TableKey {
-				table,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&TableKey::encoded(table), row)?;
 
 		Ok(())
 	}
@@ -89,14 +91,7 @@ impl CatalogStore {
 		let mut row = table_namespace::LAYOUT.allocate();
 		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
 		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
-		txn.set(
-			&Key::NamespaceTable(NamespaceTableKey {
-				namespace,
-				table,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
 		Ok(())
 	}
 
@@ -123,8 +118,9 @@ impl CatalogStore {
 					constraint: column_to_create.constraint.clone(),
 					if_not_exists: false,
 					policies: column_to_create.policies.clone(),
-					index: ColumnIndex(idx as u16),
+					index: ColumnIndex(idx as u8),
 					auto_increment: column_to_create.auto_increment,
+					dictionary_id: column_to_create.dictionary_id,
 				},
 			)?;
 		}
@@ -154,6 +150,7 @@ mod tests {
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		// First creation should succeed
@@ -176,6 +173,7 @@ mod tests {
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -185,6 +183,7 @@ mod tests {
 			table: "another_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();

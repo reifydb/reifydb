@@ -9,6 +9,7 @@ pub mod cdc;
 pub mod multi;
 pub mod single;
 
+pub use reifydb_store_transaction::{ObjectId, StorageStats, StorageTracker, Tier, TierStats, TransactionStore};
 pub use reifydb_type::Result;
 
 pub struct TransactionVersion;

@@ -1,10 +1,10 @@
 use reifydb_core::{
-	JoinStrategy, JoinType, SortKey,
-	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId},
+	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
+	interface::{FlowEdgeId, FlowId, FlowNodeId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{expression::Expression, query::QueryString};
+use crate::expression::Expression;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowNodeType {
@@ -14,6 +14,9 @@ pub enum FlowNodeType {
 	},
 	SourceView {
 		view: ViewId,
+	},
+	SourceFlow {
+		flow: FlowId,
 	},
 	Filter {
 		conditions: Vec<Expression<'static>>,
@@ -29,14 +32,12 @@ pub enum FlowNodeType {
 		left: Vec<Expression<'static>>,
 		right: Vec<Expression<'static>>,
 		alias: Option<String>,
-		strategy: JoinStrategy,
-		right_query: QueryString,
 	},
 	Aggregate {
 		by: Vec<Expression<'static>>,
 		map: Vec<Expression<'static>>,
 	},
-	Union,
+	Merge,
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -47,12 +48,76 @@ pub enum FlowNodeType {
 		expressions: Vec<Expression<'static>>,
 	},
 	Apply {
-		operator_name: String,
+		operator: String,
 		expressions: Vec<Expression<'static>>,
 	},
 	SinkView {
 		view: ViewId,
 	},
+	Window {
+		window_type: WindowType,
+		size: WindowSize,
+		slide: Option<WindowSlide>,
+		group_by: Vec<Expression<'static>>,
+		aggregations: Vec<Expression<'static>>,
+		min_events: usize,
+		max_window_count: Option<usize>,
+		max_window_age: Option<std::time::Duration>,
+	},
+}
+
+impl FlowNodeType {
+	/// Returns a discriminator value for this node type variant
+	pub fn discriminator(&self) -> u8 {
+		match self {
+			FlowNodeType::SourceInlineData {
+				..
+			} => 0,
+			FlowNodeType::SourceTable {
+				..
+			} => 1,
+			FlowNodeType::SourceView {
+				..
+			} => 2,
+			FlowNodeType::SourceFlow {
+				..
+			} => 3,
+			FlowNodeType::Filter {
+				..
+			} => 4,
+			FlowNodeType::Map {
+				..
+			} => 5,
+			FlowNodeType::Extend {
+				..
+			} => 6,
+			FlowNodeType::Join {
+				..
+			} => 7,
+			FlowNodeType::Aggregate {
+				..
+			} => 8,
+			FlowNodeType::Merge => 9,
+			FlowNodeType::Sort {
+				..
+			} => 10,
+			FlowNodeType::Take {
+				..
+			} => 11,
+			FlowNodeType::Distinct {
+				..
+			} => 12,
+			FlowNodeType::Apply {
+				..
+			} => 13,
+			FlowNodeType::SinkView {
+				..
+			} => 14,
+			FlowNodeType::Window {
+				..
+			} => 15,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

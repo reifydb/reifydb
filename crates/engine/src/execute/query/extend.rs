@@ -9,6 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::{Fragment, diagnostic::query::extend_duplicate_column, return_error};
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -38,12 +39,14 @@ impl<'a> ExtendNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for ExtendNode<'a> {
+	#[instrument(name = "query::extend::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
+	#[instrument(name = "query::extend::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
@@ -73,6 +76,7 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 					take: None,
 					params: &ctx.params,
 					stack: &ctx.stack,
+					is_aggregate_context: false,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -174,11 +178,13 @@ impl<'a> ExtendWithoutInputNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
+	#[instrument(name = "query::extend::noinput::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
+	#[instrument(name = "query::extend::noinput::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
@@ -204,6 +210,7 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 				take: None,
 				params: &stored_ctx.params,
 				stack: &stored_ctx.stack,
+				is_aggregate_context: false,
 			};
 
 			let column = evaluate(&evaluation_context, expr)?;

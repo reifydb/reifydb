@@ -1,0 +1,47 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that drop only affects the specified key.
+
+set a=1 version=1
+set b=2 version=1
+set c=3 version=1
+---
+ok
+
+# All keys have 1 version
+count_versions a
+count_versions b
+count_versions c
+---
+"a" => 1 versions
+"b" => 1 versions
+"c" => 1 versions
+
+# Drop only 'a'
+drop a
+---
+ok
+
+# Only 'a' is gone
+count_versions a
+count_versions b
+count_versions c
+---
+"a" => 0 versions
+"b" => 1 versions
+"c" => 1 versions
+
+contains a version=1
+contains b version=1
+contains c version=1
+---
+"a" => false
+"b" => true
+"c" => true
+
+get b version=1
+get c version=1
+---
+"b" => "2"
+"c" => "3"

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, RowSequenceKey, SourceId, TableId};
+use reifydb_core::interface::{CommandTransaction, RingBufferId, RowSequenceKey, SourceId, TableId};
 use reifydb_type::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
@@ -10,14 +10,52 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub fn next_row_number(txn: &mut impl CommandTransaction, table: TableId) -> crate::Result<RowNumber> {
-		GeneratorU64::next(
-			txn,
-			&RowSequenceKey {
-				source: SourceId::from(table),
-			}
-			.encode(),
-			None,
-		)
-		.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(table)), None).map(RowNumber)
+	}
+
+	/// Allocates a batch of contiguous row numbers for a table.
+	/// Returns a vector containing all allocated row numbers.
+	pub fn next_row_number_batch(
+		txn: &mut impl CommandTransaction,
+		table: TableId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		Self::next_row_number_batch_for_source(txn, SourceId::from(table), count)
+	}
+
+	/// Allocates the next row number for a ring buffer.
+	pub fn next_row_number_for_ringbuffer(
+		txn: &mut impl CommandTransaction,
+		ringbuffer: RingBufferId,
+	) -> crate::Result<RowNumber> {
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(ringbuffer)), None).map(RowNumber)
+	}
+
+	/// Allocates a batch of contiguous row numbers for a ring buffer.
+	/// Returns a vector containing all allocated row numbers.
+	pub fn next_row_number_batch_for_ringbuffer(
+		txn: &mut impl CommandTransaction,
+		ringbuffer: RingBufferId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		Self::next_row_number_batch_for_source(txn, SourceId::from(ringbuffer), count)
+	}
+
+	/// Allocates a batch of contiguous row numbers for any source.
+	fn next_row_number_batch_for_source(
+		txn: &mut impl CommandTransaction,
+		source: SourceId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count)?;
+
+		// Calculate the first row number in the batch
+		// next_batched returns the last allocated ID
+		let first_row_number = last_row_number.saturating_sub(count - 1);
+
+		// Generate all row numbers in the allocated range
+		let row_numbers = (0..count).map(|offset| RowNumber(first_row_number + offset)).collect();
+
+		Ok(row_numbers)
 	}
 }

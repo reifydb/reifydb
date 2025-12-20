@@ -3,25 +3,40 @@
 
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DbPath {
+	File(PathBuf),
+	Tmpfs(PathBuf),  // tmpfs-backed file for WAL support + cleanup
+	Memory(PathBuf), // /dev/shm-backed file for RAM-only storage with WAL support + cleanup
+}
+
 /// Configuration for SQLite storage backend
 #[derive(Debug, Clone)]
 pub struct SqliteConfig {
-	pub(crate) path: PathBuf,
-	pub(crate) flags: OpenFlags,
-	pub(crate) journal_mode: JournalMode,
-	pub(crate) synchronous_mode: SynchronousMode,
-	pub(crate) temp_store: TempStore,
+	pub path: DbPath,
+	pub flags: OpenFlags,
+	pub journal_mode: JournalMode,
+	pub synchronous_mode: SynchronousMode,
+	pub temp_store: TempStore,
+	pub cache_size: u32,
+	pub wal_autocheckpoint: u32,
+	pub page_size: u32, // Page size in bytes (must be power of 2, 512-65536)
+	pub mmap_size: u64, // Memory-mapped I/O size in bytes
 }
 
 impl SqliteConfig {
 	/// Create a new SqliteConfig with the specified database path
 	pub fn new<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
 			temp_store: TempStore::Memory,
+			cache_size: 20000,
+			wal_autocheckpoint: 1000,
+			page_size: 4096, // SQLite default
+			mmap_size: 0,    // Disabled by default
 		}
 	}
 
@@ -32,11 +47,15 @@ impl SqliteConfig {
 	/// - Conservative pool size
 	pub fn safe<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Full,
 			temp_store: TempStore::File,
+			cache_size: 20000,
+			wal_autocheckpoint: 1000,
+			page_size: 4096, // SQLite default
+			mmap_size: 0,    // Disabled by default
 		}
 	}
 
@@ -47,32 +66,90 @@ impl SqliteConfig {
 	/// - Larger pool size for concurrency
 	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Memory,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
+			cache_size: 50000,
+			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for performance
 		}
 	}
 
-	/// Create a test configuration optimized for testing
-	/// - WAL journal mode for concurrent test execution
-	/// - Normal synchronous mode for reliability
-	/// - MEMORY temp store for fastest temp operations
-	/// - Small pool size to minimize locking issues
-	pub fn test<P: AsRef<Path>>(path: P) -> Self {
+	/// Create a tmpfs configuration for temporary database storage
+	/// - Tmpfs-backed database with WAL mode for concurrent access
+	/// - Uses /tmp which may or may not be tmpfs (system-dependent)
+	/// - WAL journal mode for concurrent readers + single writer
+	/// - OFF synchronous mode for maximum speed
+	/// - MEMORY temp store
+	/// - Automatic cleanup on drop
+	pub fn tmpfs() -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_tmpfs_{}.db", uuid::Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Normal,
+			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
+			cache_size: 20000,
+			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
+		}
+	}
+
+	/// Create an in-memory configuration for production use
+	/// - RAM-only database with WAL mode for concurrent access
+	/// - Uses /dev/shm for guaranteed RAM-backed storage
+	/// - WAL journal mode for concurrent readers + single writer
+	/// - NORMAL synchronous mode (safe for RAM storage)
+	/// - MEMORY temp store
+	/// - Automatic cleanup on drop
+	pub fn in_memory() -> Self {
+		Self {
+			path: DbPath::Memory(PathBuf::from(format!(
+				"/dev/shm/reifydb_mem_{}.db",
+				uuid::Uuid::new_v4()
+			))),
+			flags: OpenFlags::default(),
+			journal_mode: JournalMode::Wal,
+			synchronous_mode: SynchronousMode::Off,
+			temp_store: TempStore::Memory,
+			cache_size: 20000,
+			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
+		}
+	}
+
+	/// Create a test configuration optimized for testing with in-memory database
+	/// - RAM-only database with WAL mode for concurrent access
+	/// - Uses /dev/shm for guaranteed RAM-backed storage
+	/// - WAL journal mode for concurrent readers + single writer
+	/// - FULL synchronous mode for test safety
+	/// - MEMORY temp store for fastest temp operations
+	/// - Automatic cleanup on drop
+	pub fn test() -> Self {
+		Self {
+			path: DbPath::Memory(PathBuf::from(format!(
+				"/dev/shm/reifydb_test_{}.db",
+				uuid::Uuid::new_v4()
+			))),
+			flags: OpenFlags::default(),
+			journal_mode: JournalMode::Wal,
+			synchronous_mode: SynchronousMode::Off,
+			temp_store: TempStore::Memory,
+			cache_size: 10000,
+			wal_autocheckpoint: 10000,
+			page_size: 4096, // Default for tests
+			mmap_size: 0,    // Disabled for tests
 		}
 	}
 
 	/// Set the database file path
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {
-		self.path = path.as_ref().to_path_buf();
+		self.path = DbPath::File(path.as_ref().to_path_buf());
 		self
 	}
 
@@ -99,6 +176,33 @@ impl SqliteConfig {
 		self.temp_store = store;
 		self
 	}
+
+	/// Set the cache size in KB (will be negated when passed to SQLite)
+	pub fn cache_size(mut self, size_kb: u32) -> Self {
+		self.cache_size = size_kb;
+		self
+	}
+
+	/// Set WAL auto-checkpoint threshold in pages (0 = disable)
+	pub fn wal_autocheckpoint(mut self, pages: u32) -> Self {
+		self.wal_autocheckpoint = pages;
+		self
+	}
+
+	/// Set the page size in bytes (must be a power of 2 between 512 and 65536)
+	/// Note: This must be set before the database is created. Changing page size
+	/// on an existing database requires a VACUUM operation.
+	pub fn page_size(mut self, size: u32) -> Self {
+		self.page_size = size;
+		self
+	}
+
+	/// Set the memory-mapped I/O size in bytes (0 = disabled)
+	/// Larger values can improve read performance for in-memory databases
+	pub fn mmap_size(mut self, size: u64) -> Self {
+		self.mmap_size = size;
+		self
+	}
 }
 
 impl Default for SqliteConfig {
@@ -110,13 +214,13 @@ impl Default for SqliteConfig {
 /// SQLite database open flags
 #[derive(Debug, Clone)]
 pub struct OpenFlags {
-	pub(crate) read_write: bool,
-	pub(crate) create: bool,
-	pub(crate) full_mutex: bool,
-	pub(crate) no_mutex: bool,
-	pub(crate) shared_cache: bool,
-	pub(crate) private_cache: bool,
-	pub(crate) uri: bool,
+	pub read_write: bool,
+	pub create: bool,
+	pub full_mutex: bool,
+	pub no_mutex: bool,
+	pub shared_cache: bool,
+	pub private_cache: bool,
+	pub uri: bool,
 }
 
 impl OpenFlags {
@@ -273,12 +377,14 @@ mod tests {
 			.journal_mode(JournalMode::Wal)
 			.synchronous_mode(SynchronousMode::Normal)
 			.temp_store(TempStore::Memory)
+			.cache_size(30000)
 			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
-		assert_eq!(config.path, PathBuf::from("/tmp/test.reifydb"));
+		assert_eq!(config.path, DbPath::File(PathBuf::from("/tmp/test.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
+		assert_eq!(config.cache_size, 30000);
 		assert!(config.flags.read_write);
 		assert!(config.flags.create);
 		assert!(config.flags.full_mutex);
@@ -319,7 +425,7 @@ mod tests {
 	#[test]
 	fn test_default_config() {
 		let config = SqliteConfig::default();
-		assert_eq!(config.path, PathBuf::from("reify.reifydb"));
+		assert_eq!(config.path, DbPath::File(PathBuf::from("reify.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
@@ -331,7 +437,7 @@ mod tests {
 			let db_file = db_path.join("safe.reifydb");
 			let config = SqliteConfig::safe(&db_file);
 
-			assert_eq!(config.path, db_file);
+			assert_eq!(config.path, DbPath::File(db_file));
 			assert_eq!(config.journal_mode, JournalMode::Wal);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Full);
 			assert_eq!(config.temp_store, TempStore::File);
@@ -346,13 +452,33 @@ mod tests {
 			let db_file = db_path.join("fast.reifydb");
 			let config = SqliteConfig::fast(&db_file);
 
-			assert_eq!(config.path, db_file);
+			assert_eq!(config.path, DbPath::File(db_file));
 			assert_eq!(config.journal_mode, JournalMode::Memory);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 			assert_eq!(config.temp_store, TempStore::Memory);
 			Ok(())
 		})
 		.expect("test failed");
+	}
+
+	#[test]
+	fn test_tmpfs_config() {
+		let config = SqliteConfig::tmpfs();
+
+		// Path should be Tmpfs variant with /tmp prefix
+		match config.path {
+			DbPath::Tmpfs(path) => {
+				assert!(path.to_string_lossy().starts_with("/tmp/reifydb_tmpfs_"));
+				assert!(path.to_string_lossy().ends_with(".db"));
+			}
+			_ => panic!("Expected DbPath::Tmpfs variant"),
+		}
+
+		assert_eq!(config.journal_mode, JournalMode::Wal);
+		assert_eq!(config.synchronous_mode, SynchronousMode::Off);
+		assert_eq!(config.temp_store, TempStore::Memory);
+		assert_eq!(config.cache_size, 20000);
+		assert_eq!(config.wal_autocheckpoint, 10000);
 	}
 
 	#[test]
@@ -419,11 +545,11 @@ mod tests {
 			// Test with file path
 			let file_path = db_path.join("test.reifydb");
 			let config = SqliteConfig::new(&file_path);
-			assert_eq!(config.path, file_path);
+			assert_eq!(config.path, DbPath::File(file_path));
 
 			// Test with directory path
 			let config = SqliteConfig::new(db_path);
-			assert_eq!(config.path, db_path);
+			assert_eq!(config.path, DbPath::File(db_path.to_path_buf()));
 			Ok(())
 		})
 		.expect("test failed");

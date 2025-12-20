@@ -1,0 +1,21 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'window { count(*) } with { interval: "5s" }'
+---
+> Line 1:
+>   [  0] Keyword(Window)
+>   [  1] Operator(OpenCurly)
+>   [  2] Identifier("count")
+>   [  3] Operator(OpenParen)
+>   [  4] Operator(Asterisk)
+>   [  5] Operator(CloseParen)
+>   [  6] Operator(CloseCurly)
+>   [  7] Keyword(With)
+>   [  8] Operator(OpenCurly)
+>   [  9] Identifier("interval")
+>   [ 10] Operator(Colon)
+>   [ 11] Literal(Text)
+>   [ 12] Operator(CloseCurly)
+> 
+> 

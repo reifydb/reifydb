@@ -22,6 +22,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use reifydb_core::CommitVersion;
+use tracing::instrument;
 
 use crate::multi::watermark::Closer;
 
@@ -66,6 +67,7 @@ impl Deref for WaterMark {
 
 impl WaterMark {
 	/// Create a new WaterMark with given name and closer.
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(thread_name = %thread_name))]
 	pub fn new(thread_name: String, closer: Closer) -> Self {
 		let (tx, rx) = bounded(super::WATERMARK_CHANNEL_SIZE);
 
@@ -92,6 +94,7 @@ impl WaterMark {
 	}
 
 	/// Sets the last index to the given value.
+	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
 	pub fn begin(&self, version: CommitVersion) {
 		// Update last_index to the maximum
 		self.last_index.fetch_max(version.0, Ordering::SeqCst);
@@ -106,6 +109,7 @@ impl WaterMark {
 	}
 
 	/// Sets a single index as done.
+	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = index.0))]
 	pub fn done(&self, index: CommitVersion) {
 		// Handle channel error gracefully
 		let _ = self.tx.send(Mark {

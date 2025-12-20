@@ -49,6 +49,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 			take: None,
 			params: &ctx.params,
 			stack: &ctx.stack,
+			is_aggregate_context: false,
 		},
 		&temp_column_data,
 		target,

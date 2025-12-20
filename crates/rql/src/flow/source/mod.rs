@@ -3,6 +3,7 @@
 
 //! Source-specific compilation implementations
 
+pub(crate) mod flow_scan;
 pub(crate) mod inline_data;
 pub(crate) mod table_scan;
 pub(crate) mod view_scan;

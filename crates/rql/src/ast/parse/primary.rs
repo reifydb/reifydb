@@ -4,7 +4,7 @@
 use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstEnvironment, AstFrom, AstVariable, AstWildcard,
+	Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -54,6 +54,7 @@ impl<'a> Parser<'a> {
 					Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
 					Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
 					Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
+					Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
 					Keyword::Delete => Ok(Ast::Delete(self.parse_delete()?)),
 					Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
 					Keyword::Update => Ok(Ast::Update(self.parse_update()?)),
@@ -61,6 +62,7 @@ impl<'a> Parser<'a> {
 					Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
 					Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
 					Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
+					Keyword::Merge => Ok(Ast::Merge(self.parse_merge()?)),
 					Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
 					Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
 					Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
@@ -70,6 +72,13 @@ impl<'a> Parser<'a> {
 					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
+					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
+					Keyword::Rownum => {
+						let token = self.advance()?;
+						Ok(Ast::Rownum(AstRownum {
+							token,
+						}))
+					}
 					_ => {
 						// Try to parse as statement keyword first, if that fails, treat as
 						// identifier

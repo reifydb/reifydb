@@ -8,16 +8,17 @@
 //!
 //! Run with: `make basic-tables` or `cargo run --bin basic-tables`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database with logging
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Create a namespace to organize our tables
-	log_info!("Creating namespace...");
+	info!("Creating namespace...");
 	log_query("create namespace company");
 	db.command_as_root(
 		r#"
@@ -28,7 +29,7 @@ fn main() {
 	.unwrap();
 
 	// Create a table with various data types
-	log_info!("Creating employees table...");
+	info!("Creating employees table...");
 	log_query(
 		r#"create table company.employees {
     id: int4,
@@ -55,7 +56,7 @@ fn main() {
 	.unwrap();
 
 	// Insert some initial data
-	log_info!("Inserting employees...");
+	info!("Inserting employees...");
 	log_query(
 		r#"from [
     { id: 1, name: "Alice Johnson", age: 28, salary: 75000.0, is_active: true, department: "Engineering" },
@@ -93,7 +94,7 @@ insert company.employees"#,
 		.unwrap();
 
 	for frame in results {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Query with filter - find active employees in Engineering
@@ -109,11 +110,11 @@ insert company.employees"#,
 		.unwrap();
 
 	for frame in results {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Update operation - give everyone in Engineering a raise
-	log_info!("Giving Engineering department a 10% raise...");
+	info!("Giving Engineering department a 10% raise...");
 	log_query(
 		r#"from company.employees
 filter { department = "Engineering" }
@@ -158,11 +159,11 @@ update company.employees"#,
 		.unwrap();
 
 	for frame in results {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Delete operation - remove inactive employees
-	log_info!("Removing inactive employees...");
+	info!("Removing inactive employees...");
 	log_query(
 		r#"from company.employees
 filter { is_active = false }
@@ -190,7 +191,7 @@ delete company.employees"#,
 		.unwrap();
 
 	for frame in results {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Query with different filter - high earners
@@ -206,6 +207,6 @@ delete company.employees"#,
 		.unwrap();
 
 	for frame in results {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

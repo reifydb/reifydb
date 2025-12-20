@@ -5,36 +5,48 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "A modern, real-time database with streaming and analytical capabilities"
 
 [dependencies]
-reifydb-auth = { path = "../../../crates/auth" }
-reifydb-catalog = { path = "../../../crates/catalog" }
-reifydb-cdc = { path = "../../../crates/cdc" }
-reifydb-core = { path = "../../../crates/core" }
-reifydb-engine = { path = "../../../crates/engine" }
-reifydb-network = { path = "../../../crates/network" }
+reifydb-auth = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-cdc = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-network = { workspace = true }
 reifydb-store-transaction = { workspace = true }
-reifydb-rql = { path = "../../../crates/rql" }
-reifydb-transaction = { path = "../../../crates/transaction" }
-reifydb-type = { path = "../../../crates/type" }
+reifydb-rql = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-derive = { workspace = true }
 
+tracing = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-admin = { workspace = true, optional = true }
+reifydb-sub-server-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
-reifydb-sub-logging = { workspace = true, optional = true }
+reifydb-sub-tracing = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
-reifydb-sub-worker = { workspace = true, optional = true }
+reifydb-sub-server-http = { workspace = true, optional = true }
+reifydb-sub-server-otel = { workspace = true, optional = true }
+reifydb-sub-server-ws = { workspace = true, optional = true }
+reifydb-sub-worker = { workspace = true }
 
-libc = { version = "0.2.175" }
+# Dependencies for with_tracing_otel() method
+opentelemetry = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+
+libc = { workspace = true }
 
 [features]
 default = []
 
 # Subsystem features
-sub_admin = ["dep:reifydb-sub-admin"]
 sub_flow = ["dep:reifydb-sub-flow"]
-sub_logging = ["dep:reifydb-sub-logging"]
+sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_server = ["dep:reifydb-sub-server"]
-sub_worker = ["dep:reifydb-sub-worker"]
+sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
+sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
+sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
+sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 
 

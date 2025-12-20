@@ -31,6 +31,8 @@ export interface WsClientOptions {
     url: string;
     timeoutMs?: number;
     token?: string;
+    maxReconnectAttempts?: number;
+    reconnectDelayMs?: number;
 }
 
 type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse;
@@ -51,35 +53,24 @@ export class WsClient {
     private nextId: number;
     private socket: WebSocket;
     private pending = new Map<string, (response: ResponsePayload) => void>();
+    private reconnectAttempts: number = 0;
+    private shouldReconnect: boolean = true;
+    private isReconnecting: boolean = false;
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
         this.nextId = 1;
         this.socket = socket;
 
-        this.socket.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            const {id, type, payload} = msg;
-
-            const handler = this.pending.get(id);
-            if (!handler) {
-                return;
-            }
-
-            this.pending.delete(id);
-            handler({id, type, payload});
-        };
-
-        this.socket.onerror = (err) => {
-            console.error("WebSocket error", err);
-        };
+        this.setupSocketHandlers();
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
+        console.log(`Connecting to WebSocket at ${options.url}`);
         const socket = await createWebSocket(options.url);
 
         // Wait for connection to open if not already open
-        if (socket.readyState !== socket.OPEN) {
+        if (socket.readyState !== 1) {
             await new Promise<void>((resolve, reject) => {
                 const onOpen = () => {
                     socket.removeEventListener("open", onOpen);
@@ -100,6 +91,7 @@ export class WsClient {
 
         socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
+        console.log("Connected successfully to WebSocket");
         return new WsClient(socket, options);
     }
 
@@ -191,6 +183,20 @@ export class WsClient {
     async send(req: CommandRequest | QueryRequest): Promise<any> {
         const id = req.id;
 
+        if (this.socket.readyState !== 1) {
+            throw new ReifyError({
+                id: "connection-error",
+                type: "Err",
+                payload: {
+                    diagnostic: {
+                        code: "CONNECTION_LOST",
+                        message: "Connection lost",
+                        notes: []
+                    }
+                }
+            });
+        }
+
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
@@ -231,14 +237,9 @@ export class WsClient {
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
                         const rawValue = (value as any).valueOf();
-                        // Special handling for RowNumber - ensure it's returned as bigint
-                        if (propertySchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                            transformedRow[key] = BigInt(rawValue);
-                        } else {
-                            transformedRow[key] = rawValue;
-                        }
+                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertySchema.type);
                     } else {
-                        transformedRow[key] = value;
+                        transformedRow[key] = this.coerceToPrimitiveType(value, propertySchema.type);
                     }
                 } else if (propertySchema && propertySchema.kind === 'value') {
                     // Keep Value objects as-is for value schema properties
@@ -256,14 +257,9 @@ export class WsClient {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                const rawValue = row.valueOf();
-                // Special handling for RowNumber - ensure it's returned as bigint
-                if (resultSchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                    return BigInt(rawValue);
-                }
-                return rawValue;
+                return this.coerceToPrimitiveType(row.valueOf(), resultSchema.type);
             }
-            return row;
+            return this.coerceToPrimitiveType(row, resultSchema.type);
         }
 
         // Handle value schema transformation - keep Value objects as-is
@@ -291,8 +287,142 @@ export class WsClient {
         return row;
     }
 
+    /**
+     * Coerce a value to the expected primitive type based on schema.
+     * This handles cases where the server returns a smaller integer type
+     * but the schema expects a bigint type (Int8, Int16, Uint8, Uint16).
+     */
+    private coerceToPrimitiveType(value: any, schemaType: string): any {
+        if (value === undefined || value === null) {
+            return value;
+        }
+
+        // Bigint types: Int8, Int16, Uint8, Uint16
+        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigintTypes.includes(schemaType)) {
+            if (typeof value === 'bigint') {
+                return value;
+            }
+            if (typeof value === 'number') {
+                return BigInt(Math.trunc(value));
+            }
+            if (typeof value === 'string') {
+                return BigInt(value);
+            }
+        }
+
+        return value;
+    }
+
     disconnect() {
+        this.shouldReconnect = false;
         this.socket.close();
+    }
+
+    private handleDisconnect() {
+        this.rejectAllPendingRequests();
+
+        if (!this.shouldReconnect || this.isReconnecting) {
+            return;
+        }
+
+        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
+        if (this.reconnectAttempts >= maxAttempts) {
+            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+            return;
+        }
+
+        this.attemptReconnect();
+    }
+
+    private async attemptReconnect() {
+        this.isReconnecting = true;
+        this.reconnectAttempts++;
+
+        const baseDelay = this.options.reconnectDelayMs ?? 1000;
+        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
+
+        console.log(`Attempting reconnection (${this.reconnectAttempts}/${maxAttempts}): waiting ${delay}ms with exponential backoff`);
+
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        try {
+            const socket = await createWebSocket(this.options.url);
+
+            if (socket.readyState !== 1) {
+                await new Promise<void>((resolve, reject) => {
+                    const onOpen = () => {
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
+                        resolve();
+                    };
+
+                    const onError = () => {
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
+                        reject(new Error("WebSocket connection failed"));
+                    };
+
+                    socket.addEventListener("open", onOpen);
+                    socket.addEventListener("error", onError);
+                });
+            }
+
+            socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
+
+            this.socket = socket;
+            this.setupSocketHandlers();
+            this.reconnectAttempts = 0;
+            this.isReconnecting = false;
+            console.log("Successfully reconnected to WebSocket");
+        } catch (error) {
+            console.error("Reconnection attempt failed:", error);
+            this.isReconnecting = false;
+            this.handleDisconnect();
+        }
+    }
+
+    private setupSocketHandlers() {
+        this.socket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            const {id, type, payload} = msg;
+
+            const handler = this.pending.get(id);
+            if (!handler) {
+                return;
+            }
+
+            this.pending.delete(id);
+            handler({id, type, payload});
+        };
+
+        this.socket.onerror = (err) => {
+            console.error("WebSocket error", err);
+        };
+
+        this.socket.onclose = () => {
+            this.handleDisconnect();
+        };
+    }
+
+    private rejectAllPendingRequests() {
+        const error: ErrorResponse = {
+            id: "connection-error",
+            type: "Err",
+            payload: {
+                diagnostic: {
+                    code: "CONNECTION_LOST",
+                    message: "Connection lost",
+                    notes: []
+                }
+            }
+        };
+
+        for (const handler of this.pending.values()) {
+            handler(error);
+        }
+        this.pending.clear();
     }
 }
 

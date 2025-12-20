@@ -10,30 +10,39 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 pub use command::*;
 use oracle::*;
-use reifydb_core::{CommitVersion, interface::TransactionId};
-use version::VersionProvider;
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
+use reifydb_store_transaction::{
+	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, TransactionStore,
+};
+use reifydb_type::util::hex;
+use tracing::instrument;
+use version::{StandardVersionProvider, VersionProvider};
 
 pub use crate::multi::types::*;
-
-pub mod scan;
-pub mod scan_rev;
+use crate::single::{TransactionSingleVersion, TransactionSvl};
 
 mod command;
-pub mod optimistic;
+mod command_tx;
 mod oracle;
+mod oracle_cleanup;
 pub mod query;
+mod query_tx;
 pub mod range;
 pub mod range_rev;
-pub mod serializable;
 mod version;
 
+pub use command_tx::CommandTransaction;
 pub use oracle::MAX_COMMITTED_TXNS;
+pub use query_tx::QueryTransaction;
 
-use crate::multi::{conflict::ConflictManager, pending::PendingWrites, transaction::query::TransactionManagerQuery};
+use crate::multi::{
+	AwaitWatermarkError, conflict::ConflictManager, pending::PendingWrites,
+	transaction::query::TransactionManagerQuery,
+};
 
 pub struct TransactionManager<L>
 where
@@ -57,6 +66,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
 	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
@@ -78,6 +88,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
 	pub fn new(clock: L) -> crate::Result<Self> {
 		let version = clock.next()?;
 		Ok(Self {
@@ -90,6 +101,7 @@ where
 		})
 	}
 
+	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.inner.version()
 	}
@@ -99,10 +111,12 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(name = "transaction::manager::discard_hint", level = "trace", skip(self))]
 	pub fn discard_hint(&self) -> CommitVersion {
 		self.inner.discard_at_or_below()
 	}
 
+	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
 	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
@@ -113,5 +127,177 @@ where
 				self.inner.version()?,
 			)
 		})
+	}
+
+	/// Wait for the command watermark to reach the specified version.
+	/// Returns Ok(()) if the watermark reaches the version within the timeout,
+	/// or Err(AwaitWatermarkError) if the timeout expires.
+	///
+	/// This is useful for CDC polling to ensure all in-flight commits have
+	/// completed their storage writes before querying for CDC events.
+	#[instrument(name = "transaction::manager::wait_for_watermark", level = "debug", skip(self))]
+	pub fn try_wait_for_watermark(
+		&self,
+		version: CommitVersion,
+		timeout: Duration,
+	) -> Result<(), AwaitWatermarkError> {
+		if self.inner.command.wait_for_mark_timeout(version, timeout) {
+			Ok(())
+		} else {
+			Err(AwaitWatermarkError {
+				version,
+				timeout,
+			})
+		}
+	}
+
+	/// Returns the highest version where ALL prior versions have completed.
+	/// This is useful for CDC polling to know the safe upper bound for fetching
+	/// CDC events - all events up to this version are guaranteed to be in storage.
+	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
+	pub fn done_until(&self) -> CommitVersion {
+		self.inner.command.done_until()
+	}
+
+	/// Returns (query_done_until, command_done_until) for debugging watermark state.
+	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
+		(self.inner.query.done_until(), self.inner.command.done_until())
+	}
+}
+
+// ============================================================================
+// Transaction - The main multi-version transaction type
+// ============================================================================
+
+pub struct Transaction(Arc<Inner>);
+
+pub struct Inner {
+	pub(crate) tm: TransactionManager<StandardVersionProvider>,
+	pub(crate) store: TransactionStore,
+	pub(crate) event_bus: EventBus,
+}
+
+impl Deref for Transaction {
+	type Target = Inner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl Clone for Transaction {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl Inner {
+	fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
+		let tm = TransactionManager::new(StandardVersionProvider::new(single).unwrap()).unwrap();
+
+		Self {
+			tm,
+			store,
+			event_bus,
+		}
+	}
+
+	fn version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version()
+	}
+}
+
+impl Transaction {
+	pub fn testing() -> Self {
+		let store = TransactionStore::testing_memory();
+		let event_bus = EventBus::new();
+		Self::new(
+			store.clone(),
+			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
+			event_bus,
+		)
+	}
+}
+
+impl Transaction {
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
+	pub fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
+		Self(Arc::new(Inner::new(store, single, event_bus)))
+	}
+}
+
+impl Transaction {
+	#[instrument(name = "transaction::version", level = "trace", skip(self))]
+	pub fn version(&self) -> crate::Result<CommitVersion> {
+		self.0.version()
+	}
+
+	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), None)
+	}
+}
+
+impl Transaction {
+	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
+		CommandTransaction::new(self.clone())
+	}
+}
+
+pub enum TransactionType {
+	Query(QueryTransaction),
+	Command(CommandTransaction),
+}
+
+impl Transaction {
+	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
+		Ok(self.store.get(key, version)?.map(|sv| sv.into()))
+	}
+
+	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
+		self.store.contains(key, version)
+	}
+
+	#[instrument(name = "transaction::range_batched", level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
+	pub fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.store.range_batched(range, version, batch_size)
+	}
+
+	pub fn range(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.range_batched(range, version, 1024)
+	}
+
+	pub fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.store.range_rev_batched(range, version, batch_size)
+	}
+
+	pub fn range_rev(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.range_rev_batched(range, version, 1024)
+	}
+
+	/// Get a reference to the underlying transaction store.
+	pub fn store(&self) -> &TransactionStore {
+		&self.store
 	}
 }

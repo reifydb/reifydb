@@ -7,16 +7,17 @@
 //!
 //! Run with: `make rql-take` or `cargo run --bin rql-take`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic take operation
-	log_info!("Example 1: Take first 3 rows from inline data");
+	info!("Example 1: Take first 3 rows from inline data");
 	log_query(
 		r#"from [
   { id: 1, value: "first" },
@@ -43,7 +44,7 @@ take 3"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Set up table data for more examples
@@ -83,7 +84,7 @@ take 3"#,
 	.unwrap();
 
 	// Example 2: Take from a table
-	log_info!("\nExample 2: Take first 5 events from table");
+	info!("\nExample 2: Take first 5 events from table");
 	log_query(r#"from demo.events take 5"#);
 	for frame in db
 		.query_as_root(
@@ -95,11 +96,11 @@ take 3"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Take with filter
-	log_info!("\nExample 3: Filter ERROR events, then take first 2");
+	info!("\nExample 3: Filter ERROR events, then take first 2");
 	log_query(
 		r#"from demo.events
 filter event_type == "ERROR"
@@ -116,11 +117,11 @@ take 2"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: Sort then take (top-N pattern)
-	log_info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
+	info!("\nExample 4: Get 3 most recent events (sort by timestamp desc, take 3)");
 	log_query(
 		r#"from demo.events
 sort timestamp desc
@@ -137,11 +138,11 @@ take 3"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Take with projection
-	log_info!("\nExample 5: Project specific columns, then take");
+	info!("\nExample 5: Project specific columns, then take");
 	log_query(
 		r#"from demo.events
 map { event_type, severity, message }
@@ -158,11 +159,11 @@ take 4"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Comptokenize pipeline with take
-	log_info!("\nExample 6: Comptokenize pipeline - filter high severity, sort, take top 3");
+	info!("\nExample 6: Comptokenize pipeline - filter high severity, sort, take top 3");
 	log_query(
 		r#"from demo.events
 filter severity == "HIGH" or severity == "CRITICAL"
@@ -183,11 +184,11 @@ take 3"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Take 1 (getting single encoded)
-	log_info!("\nExample 7: Take single encoded (take 1)");
+	info!("\nExample 7: Take single encoded (take 1)");
 	log_query(
 		r#"from demo.events
 filter severity == "CRITICAL"
@@ -204,11 +205,11 @@ take 1"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 8: Take with no matching results
-	log_info!("\nExample 8: Take when filter returns no results");
+	info!("\nExample 8: Take when filter returns no results");
 	log_query(
 		r#"from demo.events
 filter severity == "UNKNOWN"
@@ -225,6 +226,6 @@ take 5"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

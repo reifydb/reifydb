@@ -207,6 +207,22 @@ pub(crate) fn calculate_frame_size(payload: &[u8], masked: bool) -> usize {
 	size + payload_len
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// Test against RFC 6455 test vector
+	#[test]
+	fn test_websocket_accept_key() {
+		// From RFC 6455 Section 1.3
+		let key = "dGhlIHNhbXBsZSBub25jZQ==";
+		let expected = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+
+		let actual = calculate_accept_key(key);
+		assert_eq!(actual, expected, "Accept key calculation failed");
+	}
+}
+
 // Simple random number generation for WebSocket key and masking
 mod rand {
 	use std::time::{SystemTime, UNIX_EPOCH};

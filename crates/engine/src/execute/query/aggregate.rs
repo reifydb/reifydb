@@ -9,6 +9,7 @@ use std::{
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
+use tracing::instrument;
 
 use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
@@ -53,6 +54,7 @@ impl<'a> AggregateNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for AggregateNode<'a> {
+	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -63,6 +65,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

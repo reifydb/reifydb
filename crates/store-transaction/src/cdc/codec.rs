@@ -1,30 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey,
-	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
-	return_internal_error,
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, return_internal_error, value::encoded::EncodedValues};
 use reifydb_type::Blob;
 
-use super::layout::*;
+use super::{InternalCdc, InternalCdcChange, InternalCdcSequencedChange, layout::*};
 
-/// Encode a CdcTransaction to a more memory-efficient format
+/// Encode an internal CdcTransaction to a more memory-efficient format
 /// This stores shared metadata once and then encodes all changes compactly
-pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<EncodedValues> {
+pub(crate) fn encode_internal_cdc(transaction: &InternalCdc) -> crate::Result<EncodedValues> {
 	let mut values = CDC_TRANSACTION_LAYOUT.allocate();
 
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut values, CDC_TX_VERSION_FIELD, transaction.version);
 
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut values, CDC_TX_TIMESTAMP_FIELD, transaction.timestamp);
-
-	CDC_TRANSACTION_LAYOUT.set_blob(
-		&mut values,
-		CDC_TX_TRANSACTION_FIELD,
-		&Blob::from_slice(transaction.transaction.as_bytes()),
-	);
 
 	let mut changes_bytes = Vec::new();
 
@@ -33,7 +22,7 @@ pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<Encoded
 	for sequenced_change in &transaction.changes {
 		changes_bytes.extend_from_slice(&sequenced_change.sequence.to_le_bytes());
 
-		let encoded_change = encode_cdc_change(&sequenced_change.change)?;
+		let encoded_change = encode_internal_cdc_change(&sequenced_change.change)?;
 		let change_bytes = encoded_change.as_slice();
 		changes_bytes.extend_from_slice(&(change_bytes.len() as u32).to_le_bytes());
 		changes_bytes.extend_from_slice(change_bytes);
@@ -44,13 +33,10 @@ pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<Encoded
 	Ok(values)
 }
 
-/// Decode a CdcTransaction from its encoded format
-pub(crate) fn decode_cdc_transaction(values: &EncodedValues) -> crate::Result<Cdc> {
+/// Decode an internal CdcTransaction from its encoded format
+pub(crate) fn decode_internal_cdc(values: &EncodedValues) -> crate::Result<InternalCdc> {
 	let version = CDC_TRANSACTION_LAYOUT.get_u64(values, CDC_TX_VERSION_FIELD);
 	let timestamp = CDC_TRANSACTION_LAYOUT.get_u64(values, CDC_TX_TIMESTAMP_FIELD);
-	let transaction_blob = CDC_TRANSACTION_LAYOUT.get_blob(values, CDC_TX_TRANSACTION_FIELD);
-	let transaction = TransactionId::try_from(transaction_blob.as_bytes())?;
-
 	let changes_blob = CDC_TRANSACTION_LAYOUT.get_blob(values, CDC_TX_CHANGES_FIELD);
 	let changes_bytes = changes_blob.as_bytes();
 
@@ -88,26 +74,30 @@ pub(crate) fn decode_cdc_transaction(values: &EncodedValues) -> crate::Result<Cd
 		}
 		let change_bytes = &changes_bytes[offset..offset + change_len];
 		let change_row = EncodedValues(CowVec::new(change_bytes.to_vec()));
-		let change = decode_cdc_change(&change_row)?;
+		let change = decode_internal_cdc_change(&change_row)?;
 		offset += change_len;
 
-		changes.push(CdcSequencedChange {
+		changes.push(InternalCdcSequencedChange {
 			sequence,
 			change,
 		});
 	}
 
-	Ok(Cdc::new(CommitVersion(version), timestamp, transaction, changes))
+	Ok(InternalCdc {
+		version: CommitVersion(version),
+		timestamp,
+		changes,
+	})
 }
 
-/// Encode just the CdcChange part (without metadata)
-fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedValues> {
+/// Encode just the internal CdcChange part (without metadata)
+fn encode_internal_cdc_change(change: &InternalCdcChange) -> crate::Result<EncodedValues> {
 	let mut values = CDC_CHANGE_LAYOUT.allocate();
 
 	match change {
-		CdcChange::Insert {
+		InternalCdcChange::Insert {
 			key,
-			post,
+			post_version,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut values, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Insert as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -115,17 +105,13 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedValues> {
 				CDC_COMPACT_CHANGE_KEY_FIELD,
 				&Blob::from_slice(key.as_slice()),
 			);
-			CDC_CHANGE_LAYOUT.set_undefined(&mut values, CDC_COMPACT_CHANGE_PRE_FIELD);
-			CDC_CHANGE_LAYOUT.set_blob(
-				&mut values,
-				CDC_COMPACT_CHANGE_POST_FIELD,
-				&Blob::from_slice(post.as_slice()),
-			);
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_PRE_VERSION_FIELD, 0u64); // No pre version for insert
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_POST_VERSION_FIELD, post_version.0);
 		}
-		CdcChange::Update {
+		InternalCdcChange::Update {
 			key,
-			pre,
-			post,
+			pre_version,
+			post_version,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut values, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Update as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -133,20 +119,12 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedValues> {
 				CDC_COMPACT_CHANGE_KEY_FIELD,
 				&Blob::from_slice(key.as_slice()),
 			);
-			CDC_CHANGE_LAYOUT.set_blob(
-				&mut values,
-				CDC_COMPACT_CHANGE_PRE_FIELD,
-				&Blob::from_slice(pre.as_slice()),
-			);
-			CDC_CHANGE_LAYOUT.set_blob(
-				&mut values,
-				CDC_COMPACT_CHANGE_POST_FIELD,
-				&Blob::from_slice(post.as_slice()),
-			);
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_PRE_VERSION_FIELD, pre_version.0);
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_POST_VERSION_FIELD, post_version.0);
 		}
-		CdcChange::Delete {
+		InternalCdcChange::Delete {
 			key,
-			pre,
+			pre_version,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut values, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Delete as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -154,61 +132,42 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedValues> {
 				CDC_COMPACT_CHANGE_KEY_FIELD,
 				&Blob::from_slice(key.as_slice()),
 			);
-			match pre {
-				Some(pre_row) => {
-					CDC_CHANGE_LAYOUT.set_blob(
-						&mut values,
-						CDC_COMPACT_CHANGE_PRE_FIELD,
-						&Blob::from_slice(pre_row.as_slice()),
-					);
-				}
-				None => {
-					CDC_CHANGE_LAYOUT.set_undefined(&mut values, CDC_COMPACT_CHANGE_PRE_FIELD);
-				}
-			}
-			CDC_CHANGE_LAYOUT.set_undefined(&mut values, CDC_COMPACT_CHANGE_POST_FIELD);
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_PRE_VERSION_FIELD, pre_version.0);
+			CDC_CHANGE_LAYOUT.set_u64(&mut values, CDC_COMPACT_CHANGE_POST_VERSION_FIELD, 0u64); // No post version for delete
 		}
 	}
 
 	Ok(values)
 }
 
-/// Decode just the CdcChange part
-fn decode_cdc_change(values: &EncodedValues) -> crate::Result<CdcChange> {
+/// Decode just the internal CdcChange part
+fn decode_internal_cdc_change(values: &EncodedValues) -> crate::Result<InternalCdcChange> {
 	let change_type = ChangeType::from(CDC_CHANGE_LAYOUT.get_u8(values, CDC_COMPACT_CHANGE_TYPE_FIELD));
 	let key_blob = CDC_CHANGE_LAYOUT.get_blob(values, CDC_COMPACT_CHANGE_KEY_FIELD);
 	let key = EncodedKey::new(key_blob.as_bytes().to_vec());
 
 	let change = match change_type {
 		ChangeType::Insert => {
-			let post_blob = CDC_CHANGE_LAYOUT.get_blob(values, CDC_COMPACT_CHANGE_POST_FIELD);
-			let post = EncodedValues(CowVec::new(post_blob.as_bytes().to_vec()));
-			CdcChange::Insert {
+			let post_version = CDC_CHANGE_LAYOUT.get_u64(values, CDC_COMPACT_CHANGE_POST_VERSION_FIELD);
+			InternalCdcChange::Insert {
 				key,
-				post,
+				post_version: CommitVersion(post_version),
 			}
 		}
 		ChangeType::Update => {
-			let pre_blob = CDC_CHANGE_LAYOUT.get_blob(values, CDC_COMPACT_CHANGE_PRE_FIELD);
-			let post_blob = CDC_CHANGE_LAYOUT.get_blob(values, CDC_COMPACT_CHANGE_POST_FIELD);
-			let pre = EncodedValues(CowVec::new(pre_blob.as_bytes().to_vec()));
-			let post = EncodedValues(CowVec::new(post_blob.as_bytes().to_vec()));
-			CdcChange::Update {
+			let pre_version = CDC_CHANGE_LAYOUT.get_u64(values, CDC_COMPACT_CHANGE_PRE_VERSION_FIELD);
+			let post_version = CDC_CHANGE_LAYOUT.get_u64(values, CDC_COMPACT_CHANGE_POST_VERSION_FIELD);
+			InternalCdcChange::Update {
 				key,
-				pre,
-				post,
+				pre_version: CommitVersion(pre_version),
+				post_version: CommitVersion(post_version),
 			}
 		}
 		ChangeType::Delete => {
-			let pre = if values.is_defined(CDC_COMPACT_CHANGE_PRE_FIELD) {
-				let pre_blob = CDC_CHANGE_LAYOUT.get_blob(values, CDC_COMPACT_CHANGE_PRE_FIELD);
-				Some(EncodedValues(CowVec::new(pre_blob.as_bytes().to_vec())))
-			} else {
-				None
-			};
-			CdcChange::Delete {
+			let pre_version = CDC_CHANGE_LAYOUT.get_u64(values, CDC_COMPACT_CHANGE_PRE_VERSION_FIELD);
+			InternalCdcChange::Delete {
 				key,
-				pre,
+				pre_version: CommitVersion(pre_version),
 			}
 		}
 	};
@@ -218,30 +177,32 @@ fn decode_cdc_change(values: &EncodedValues) -> crate::Result<CdcChange> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{CdcChange, TransactionId};
-
 	use super::*;
 
 	#[test]
-	fn test_encode_decode_transaction_single_change() {
+	fn test_encode_decode_internal_transaction_single_change() {
 		let key = EncodedKey::new(vec![1, 2, 3]);
-		let post = EncodedValues(CowVec::new(vec![4, 5, 6]));
-		let change = CdcChange::Insert {
+		let post_version = CommitVersion(100);
+		let change = InternalCdcChange::Insert {
 			key: key.clone(),
-			post: post.clone(),
+			post_version,
 		};
 
-		let changes = vec![CdcSequencedChange {
+		let changes = vec![InternalCdcSequencedChange {
 			sequence: 1,
 			change: change.clone(),
 		}];
 
-		let transaction = Cdc::new(CommitVersion(123456789), 1234567890, TransactionId::default(), changes);
+		let transaction = InternalCdc {
+			version: CommitVersion(123456789),
+			timestamp: 1234567890,
+			changes,
+		};
 
-		let encoded = encode_cdc_transaction(&transaction).unwrap();
-		let decoded = decode_cdc_transaction(&encoded).unwrap();
+		let encoded = encode_internal_cdc(&transaction).unwrap();
+		let decoded = decode_internal_cdc(&encoded).unwrap();
 
-		assert_eq!(decoded.version, 123456789);
+		assert_eq!(decoded.version, CommitVersion(123456789));
 		assert_eq!(decoded.timestamp, 1234567890);
 		assert_eq!(decoded.changes.len(), 1);
 		assert_eq!(decoded.changes[0].sequence, 1);
@@ -249,39 +210,42 @@ mod tests {
 	}
 
 	#[test]
-	fn test_encode_decode_transaction_multiple_changes() {
+	fn test_encode_decode_internal_transaction_multiple_changes() {
 		let changes = vec![
-			CdcSequencedChange {
+			InternalCdcSequencedChange {
 				sequence: 1,
-				change: CdcChange::Insert {
+				change: InternalCdcChange::Insert {
 					key: EncodedKey::new(vec![1]),
-					post: EncodedValues(CowVec::new(vec![10])),
+					post_version: CommitVersion(10),
 				},
 			},
-			CdcSequencedChange {
+			InternalCdcSequencedChange {
 				sequence: 2,
-				change: CdcChange::Update {
+				change: InternalCdcChange::Update {
 					key: EncodedKey::new(vec![2]),
-					pre: EncodedValues(CowVec::new(vec![20])),
-					post: EncodedValues(CowVec::new(vec![21])),
+					pre_version: CommitVersion(20),
+					post_version: CommitVersion(21),
 				},
 			},
-			CdcSequencedChange {
+			InternalCdcSequencedChange {
 				sequence: 3,
-				change: CdcChange::Delete {
+				change: InternalCdcChange::Delete {
 					key: EncodedKey::new(vec![3]),
-					pre: Some(EncodedValues(CowVec::new(vec![30]))),
+					pre_version: CommitVersion(30),
 				},
 			},
 		];
 
-		let transaction =
-			Cdc::new(CommitVersion(987654321), 9876543210, TransactionId::default(), changes.clone());
+		let transaction = InternalCdc {
+			version: CommitVersion(987654321),
+			timestamp: 9876543210,
+			changes: changes.clone(),
+		};
 
-		let encoded = encode_cdc_transaction(&transaction).unwrap();
-		let decoded = decode_cdc_transaction(&encoded).unwrap();
+		let encoded = encode_internal_cdc(&transaction).unwrap();
+		let decoded = decode_internal_cdc(&encoded).unwrap();
 
-		assert_eq!(decoded.version, 987654321);
+		assert_eq!(decoded.version, CommitVersion(987654321));
 		assert_eq!(decoded.timestamp, 9876543210);
 		assert_eq!(decoded.changes.len(), 3);
 

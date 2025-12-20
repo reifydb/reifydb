@@ -51,19 +51,19 @@ pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_interval_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+pub fn invalid_duration_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("expected P[n]Y[n]M[n]W[n]D[T[n]H[n]M[n]S] format, found '{}'", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_004".to_string(),
 		statement: None,
-		message: "invalid interval format".to_string(),
+		message: "invalid duration format".to_string(),
 		fragment,
 		label,
 		help: Some("use ISO 8601 duration format starting with 'P' (e.g., P1D, PT2H30M, P1Y2M3DT4H5M6S)"
 			.to_string()),
 		notes: vec![
-			"interval must start with 'P' followed by duration components".to_string(),
+			"duration must start with 'P' followed by duration components".to_string(),
 			"date part: P[n]Y[n]M[n]W[n]D (years, months, weeks, days)".to_string(),
 			"time part: T[n]H[n]M[n]S (hours, minutes, seconds)".to_string(),
 		],
@@ -222,13 +222,13 @@ pub fn invalid_time_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_interval_character<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+pub fn invalid_duration_character<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("character '{}' is not valid in ISO 8601 duration", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_014".to_string(),
 		statement: None,
-		message: format!("invalid character in interval '{}'", fragment.text()),
+		message: format!("invalid character in duration '{}'", fragment.text()),
 		fragment,
 		label,
 		help: Some("use only valid duration units: Y, M, W, D, H, m, S".to_string()),
@@ -241,13 +241,13 @@ pub fn invalid_interval_character<'a>(fragment: impl IntoFragment<'a>) -> Diagno
 	}
 }
 
-pub fn incomplete_interval_specification<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+pub fn incomplete_duration_specification<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("number '{}' is missing a unit specifier", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_015".to_string(),
 		statement: None,
-		message: "incomplete interval specification".to_string(),
+		message: "incomplete duration specification".to_string(),
 		fragment,
 		label,
 		help: Some("add a unit letter after the number (Y, M, W, D, H, M, or S)".to_string()),
@@ -283,7 +283,7 @@ pub fn invalid_unit_in_context<'a>(fragment: impl IntoFragment<'a>, unit: char, 
 	}
 }
 
-pub fn invalid_interval_component_value<'a>(fragment: impl IntoFragment<'a>, unit: char) -> Diagnostic {
+pub fn invalid_duration_component_value<'a>(fragment: impl IntoFragment<'a>, unit: char) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let label = Some(format!("{} value '{}' cannot be parsed as a number", unit_name(unit), fragment.text()));
 	Diagnostic {
@@ -308,12 +308,12 @@ pub fn unrecognized_temporal_pattern<'a>(fragment: impl IntoFragment<'a>) -> Dia
 		message: "unrecognized temporal pattern".to_string(),
 		fragment,
 		label,
-		help: Some("use one of the supported formats: date (YYYY-MM-DD), time (HH:MM:SS), datetime (YYYY-MM-DDTHH:MM:SS), or interval (P...)".to_string()),
+		help: Some("use one of the supported formats: date (YYYY-MM-DD), time (HH:MM:SS), datetime (YYYY-MM-DDTHH:MM:SS), or duration (P...)".to_string()),
 		notes: vec![
 			"date: 2024-03-15".to_string(),
 			"time: 14:30:45".to_string(),
 			"datetime: 2024-03-15T14:30:45".to_string(),
-			"interval: P1Y2M3DT4H5M6S".to_string(),
+			"duration: P1Y2M3DT4H5M6S".to_string(),
 		],
 		column: None,
         cause: None}

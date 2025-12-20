@@ -6,7 +6,7 @@ use std::cmp::min;
 use reifydb_core::value::column::{Column, ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::{
-	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,
+	Date, DateTime, Decimal, Duration, ROW_NUMBER_COLUMN_NAME, Time, Type, Uint, Value,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
@@ -20,11 +20,17 @@ impl StandardColumnEvaluator {
 	) -> crate::Result<Column<'a>> {
 		let name = column.0.name.text();
 
+		// Check for rownum pseudo-column first
+		if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
+			let row_numbers: Vec<u64> = ctx.columns.row_numbers.iter().map(|r| r.value()).collect();
+			return Ok(Column::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnData::uint8(row_numbers)));
+		}
+
 		if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
 			return self.extract_column_data(col, ctx);
 		}
 
-		Ok(Column::new(name.to_string(), ColumnData::undefined(0)))
+		Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
 	}
 
 	fn extract_column_data<'a>(
@@ -429,7 +435,7 @@ impl StandardColumnEvaluator {
 				Ok(col.with_new_data(ColumnData::time_with_bitvec(data, bitvec)))
 			}
 
-			Type::Interval => {
+			Type::Duration => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -438,40 +444,18 @@ impl StandardColumnEvaluator {
 						break;
 					}
 					match v {
-						Value::Interval(i) => {
+						Value::Duration(i) => {
 							data.push(i.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(Interval::default());
+							data.push(Duration::default());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
-				Ok(col.with_new_data(ColumnData::interval_with_bitvec(data, bitvec)))
-			}
-			Type::RowNumber => {
-				let mut data = Vec::new();
-				let mut bitvec = Vec::new();
-				let mut count = 0;
-				for v in col.data().iter() {
-					if count >= take {
-						break;
-					}
-					match v {
-						Value::RowNumber(i) => {
-							data.push(i.clone());
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(RowNumber::default());
-							bitvec.push(false);
-						}
-					}
-					count += 1;
-				}
-				Ok(col.with_new_data(ColumnData::row_number_with_bitvec(data, bitvec)))
+				Ok(col.with_new_data(ColumnData::duration_with_bitvec(data, bitvec)))
 			}
 			Type::IdentityId => {
 				let mut data = Vec::new();
@@ -654,5 +638,57 @@ impl StandardColumnEvaluator {
 				Ok(col.with_new_data(ColumnData::undefined(count)))
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		interface::identifier::{ColumnIdentifier, ColumnSource},
+		value::column::{Column, ColumnData, Columns},
+	};
+	use reifydb_rql::expression::ColumnExpression;
+	use reifydb_type::{Fragment, Params};
+
+	use crate::{
+		evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+		stack::Stack,
+	};
+
+	#[test]
+	fn test_column_not_found_returns_correct_row_count() {
+		// Create context with 5 rows
+		let columns =
+			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
+
+		let ctx = ColumnEvaluationContext {
+			target: None,
+			columns,
+			row_count: 5,
+			take: None,
+			params: &Params::None,
+			stack: &Stack::new(),
+			is_aggregate_context: false,
+		};
+
+		let evaluator = StandardColumnEvaluator::default();
+
+		// Try to access a column that doesn't exist
+		let result = evaluator
+			.column(
+				&ctx,
+				&ColumnExpression(ColumnIdentifier {
+					source: ColumnSource::Alias(Fragment::owned_internal("nonexistent_col")),
+					name: Fragment::owned_internal("nonexistent_col"),
+				}),
+			)
+			.unwrap();
+
+		// The column should have 5 rows (matching row_count), not 0
+		assert_eq!(
+			result.data().len(),
+			5,
+			"Column not found should return column with ctx.row_count rows, not 0"
+		);
 	}
 }

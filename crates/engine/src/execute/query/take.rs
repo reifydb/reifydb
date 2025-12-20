@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::headers::ColumnHeaders;
+use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
@@ -22,6 +23,7 @@ impl<'a> TakeNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for TakeNode<'a> {
+	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -32,12 +34,17 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "query::take::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext<'a>,
 	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
+
+		if self.remaining == 0 {
+			return Ok(None);
+		}
 
 		while let Some(Batch {
 			mut columns,

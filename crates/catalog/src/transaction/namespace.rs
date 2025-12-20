@@ -1,19 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{
-		CommandTransaction, NamespaceDef, NamespaceId, QueryTransaction, TransactionalChanges,
-		TransactionalNamespaceChanges,
-		interceptor::{NamespaceDefInterceptor, WithInterceptors},
-	},
-	log_warn,
+use reifydb_core::interface::{
+	CommandTransaction, NamespaceDef, NamespaceId, QueryTransaction, TransactionalChanges,
+	TransactionalNamespaceChanges,
+	interceptor::{NamespaceDefInterceptor, WithInterceptors},
 };
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{namespace_already_exists, namespace_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
+use tracing::{instrument, warn};
 
 use crate::{CatalogStore, store::namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
 
@@ -53,6 +51,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogNamespaceCommandOperations for CT
 {
+	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, to_create))]
 	fn create_namespace(&mut self, to_create: NamespaceToCreate) -> reifydb_core::Result<NamespaceDef> {
 		if let Some(namespace) = self.find_namespace_by_name(&to_create.name)? {
 			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
@@ -67,6 +66,7 @@ impl<
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogNamespaceQueryOperations
 	for QT
 {
+	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self))]
 	fn find_namespace(&mut self, id: NamespaceId) -> reifydb_core::Result<Option<NamespaceDef>> {
 		// 1. Check transactional changes first
 		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(self, id) {
@@ -86,13 +86,14 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(namespace) = CatalogStore::find_namespace(self, id)? {
-			log_warn!("Namespace with ID {:?} found in storage but not in MaterializedCatalog", id);
+			warn!("Namespace with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(namespace));
 		}
 
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, name))]
 	fn find_namespace_by_name<'a>(
 		&mut self,
 		name: impl IntoFragment<'a>,
@@ -119,22 +120,24 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(namespace) = CatalogStore::find_namespace_by_name(self, name.text())? {
-			log_warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name.text());
+			warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name.text());
 			return Ok(Some(namespace));
 		}
 
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self))]
 	fn get_namespace(&mut self, id: NamespaceId) -> reifydb_core::Result<NamespaceDef> {
 		self.find_namespace(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))
 		})
 	}
 
+	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, name))]
 	fn get_namespace_by_name<'a>(&mut self, name: impl IntoFragment<'a>) -> reifydb_core::Result<NamespaceDef> {
 		let name = name.into_fragment();
 		self.find_namespace_by_name(name.as_borrowed())?

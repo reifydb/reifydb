@@ -5,7 +5,7 @@ use reifydb_core::{
 	Error,
 	interface::{QueryTransaction, SourceDef, SourceId},
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::CatalogStore;
 
@@ -19,11 +19,13 @@ impl CatalogStore {
 			let source_type = match source_id {
 				SourceId::Table(_) => "Table",
 				SourceId::View(_) => "View",
+				SourceId::Flow(_) => "Flow",
 				SourceId::TableVirtual(_) => "TableVirtual",
 				SourceId::RingBuffer(_) => "RingBuffer",
+				SourceId::Dictionary(_) => "Dictionary",
 			};
 
-			Error(internal_error!(
+			Error(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				source_type,
 				source_id

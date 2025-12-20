@@ -35,9 +35,6 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
     const command = useCallback(
         (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
-            console.log('[useCommand] Executing command:', statements);
-            console.log('[useCommand] Client available:', !!client);
-
             // Cancel any ongoing command for THIS instance only
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
@@ -58,8 +55,6 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                     // Call client.command which returns FrameResults (array of frames)
                     // Commands and queries both use the same command method
                     const frameResults = await client?.command(statements, params || null, schemas || []) || [];
-
-                    console.debug("frameResults", frameResults);
 
                     const executionTime = Date.now() - startTime;
                     

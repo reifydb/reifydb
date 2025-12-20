@@ -253,6 +253,24 @@ expected:
     +--------------------+
 ```
 
+### decimal_param
+```yaml
+operation: command
+statement: "MAP $decimal_val as result"
+params:
+  type: named
+  values:
+    decimal_val: "123.456789"
+expected:
+  status: success
+  output: |
+    +-------------+
+    |   result    |
+    +-------------+
+    | 123.456789  |
+    +-------------+
+```
+
 ### utf8_param
 ```yaml
 operation: command
@@ -346,11 +364,11 @@ expected:
 ### interval_param
 ```yaml
 operation: command
-statement: "MAP $interval_val as result"
+statement: "MAP $duration_val as result"
 params:
   type: named
   values:
-    interval_val: "P1DT2H30M"
+    duration_val: "P1DT2H30M"
 expected:
   status: success
   output: |
@@ -413,24 +431,6 @@ expected:
     +----------------------------------------+
     | 018fad5d-f37a-7c94-a716-446655440001  |
     +----------------------------------------+
-```
-
-### rownumber_param
-```yaml
-operation: command
-statement: "MAP $row_val as result"
-params:
-  type: named
-  values:
-    row_val: "123456789"
-expected:
-  status: success
-  output: |
-    +------------+
-    |   result   |
-    +------------+
-    | 123456789  |
-    +------------+
 ```
 
 ## Query Tests

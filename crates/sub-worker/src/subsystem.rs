@@ -22,17 +22,17 @@ use std::{
 use reifydb_core::{
 	Result,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	log_debug, log_warn,
 };
 use reifydb_engine::StandardEngine;
 pub use reifydb_sub_api::Priority;
-use reifydb_sub_api::{BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
+use reifydb_sub_api::{BoxedOnceTask, BoxedTask, HealthStatus, Scheduler, SchedulerService, Subsystem, TaskHandle};
+use tracing::{debug, instrument, warn};
 
 use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
-	scheduler::{SchedulableTaskAdapter, TaskScheduler},
+	scheduler::{OnceTaskAdapter, SchedulableTaskAdapter, TaskScheduler},
 	task::{PoolTask, PrioritizedTask},
-	thread::Thread,
+	tracker::TaskTracker,
 };
 
 /// Configuration for the worker pool
@@ -74,12 +74,16 @@ pub struct WorkerSubsystem {
 	running: Arc<AtomicBool>,
 	stats: Arc<PoolStats>,
 
+	// Rayon execution
+	thread_pool: Option<Arc<rayon::ThreadPool>>,
+	dispatcher_handle: Option<JoinHandle<()>>,
+
+	// Task tracking
+	task_tracker: Arc<TaskTracker>,
+
 	// Task priority queue
 	task_queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
 	task_condvar: Arc<Condvar>,
-
-	// Worker threads
-	workers: Vec<Thread>,
 
 	// Scheduler for periodic tasks
 	scheduler: Arc<Mutex<TaskScheduler>>,
@@ -104,18 +108,15 @@ pub struct WorkerSubsystem {
 }
 
 impl WorkerSubsystem {
-	pub fn with_config_and_engine(config: WorkerConfig, engine: StandardEngine) -> Self {
-		// Create shared state for pending requests and handle
-		// generation
+	#[instrument(name = "worker::subsystem::new", level = "debug", skip(engine))]
+	pub fn new(config: WorkerConfig, engine: StandardEngine) -> Self {
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
 		let next_handle = Arc::new(AtomicU64::new(1));
 		let running = Arc::new(AtomicBool::new(false));
 
-		// Create channel for scheduler requests
 		let (sender, receiver) = mpsc::channel();
 
-		// Create SchedulerClient with access to shared state
-		let scheduler_client = Arc::new(SchedulerClient::with_queue(
+		let scheduler_client = Arc::new(SchedulerClient::new(
 			sender,
 			Arc::clone(&pending_requests),
 			Arc::clone(&next_handle),
@@ -127,9 +128,11 @@ impl WorkerSubsystem {
 			config,
 			running,
 			stats: Arc::new(PoolStats::default()),
+			thread_pool: None,
+			dispatcher_handle: None,
+			task_tracker: Arc::new(TaskTracker::new()),
 			task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(max_queue_size))),
 			task_condvar: Arc::new(Condvar::new()),
-			workers: Vec::new(),
 			scheduler: Arc::new(Mutex::new(TaskScheduler::new())),
 			scheduler_condvar: Arc::new(Condvar::new()),
 			scheduler_handle: None,
@@ -142,11 +145,13 @@ impl WorkerSubsystem {
 	}
 
 	/// Get the scheduler client
-	pub fn get_scheduler(&self) -> Arc<dyn Scheduler> {
-		self.scheduler_client.clone()
+	#[instrument(name = "worker::scheduler::get", level = "trace", skip(self))]
+	pub fn get_scheduler(&self) -> SchedulerService {
+		SchedulerService(self.scheduler_client.clone())
 	}
 
 	/// Submit a one-time task to the pool
+	#[instrument(name = "worker::submit", level = "debug", skip(self, task))]
 	pub fn submit(&self, task: Box<dyn PoolTask>) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			panic!("Worker pool is not running");
@@ -189,6 +194,7 @@ impl WorkerSubsystem {
 	}
 
 	/// Cancel a scheduled task
+	#[instrument(name = "worker::cancel", level = "debug", skip(self))]
 	pub fn cancel_task(&self, handle: TaskHandle) -> Result<()> {
 		let mut scheduler = self.scheduler.lock().unwrap();
 		scheduler.cancel(handle);
@@ -196,18 +202,159 @@ impl WorkerSubsystem {
 	}
 
 	/// Get current pool statistics
+	#[instrument(name = "worker::stats", level = "trace", skip(self))]
 	pub fn stats(&self) -> &PoolStats {
 		&self.stats
 	}
 
 	/// Get number of active workers
+	#[instrument(name = "worker::active_workers", level = "trace", skip(self))]
 	pub fn active_workers(&self) -> usize {
 		self.stats.active_workers.load(Ordering::Relaxed)
 	}
 
 	/// Get number of queued tasks
+	#[instrument(name = "worker::queued_tasks", level = "trace", skip(self))]
 	pub fn queued_tasks(&self) -> usize {
 		self.task_queue.lock().unwrap().len()
+	}
+
+	/// Dispatcher thread that bridges priority queue and Rayon
+	fn run_dispatcher(
+		pool: Arc<rayon::ThreadPool>,
+		queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
+		condvar: Arc<Condvar>,
+		tracker: Arc<TaskTracker>,
+		stats: Arc<PoolStats>,
+		running: Arc<AtomicBool>,
+		engine: StandardEngine,
+	) {
+		debug!("Dispatcher thread started");
+
+		while running.load(Ordering::Relaxed) {
+			// Wait for tasks in priority queue
+			let task = {
+				let mut queue_guard = queue.lock().unwrap();
+
+				// Wait for tasks or shutdown signal
+				while queue_guard.is_empty() && running.load(Ordering::Relaxed) {
+					let (guard, timeout_result) =
+						condvar.wait_timeout(queue_guard, Duration::from_millis(100)).unwrap();
+					queue_guard = guard;
+
+					// Check state periodically even on timeout
+					if timeout_result.timed_out() {
+						continue;
+					}
+				}
+
+				queue_guard.pop()
+			};
+
+			if let Some(prioritized_task) = task {
+				// Update stats
+				stats.tasks_queued.fetch_sub(1, Ordering::Relaxed);
+
+				// Register task with tracker
+				let (task_id, cancel_token) = tracker.register(None);
+
+				// Submit to Rayon for execution
+				let tracker_clone = Arc::clone(&tracker);
+				let stats_clone = Arc::clone(&stats);
+				let engine_clone = engine.clone();
+
+				pool.spawn(move || {
+					// Check cancellation before starting
+					if cancel_token.is_cancelled() {
+						tracker_clone.complete(task_id);
+						return;
+					}
+
+					// Update stats
+					stats_clone.active_workers.fetch_add(1, Ordering::Relaxed);
+
+					// Create task context
+					let ctx = crate::task::InternalTaskContext {
+						cancel_token: Some(cancel_token.clone()),
+						engine: engine_clone,
+					};
+
+					// Execute task
+					let start = std::time::Instant::now();
+					let result = prioritized_task.task.execute(&ctx);
+					let duration = start.elapsed();
+
+					// Log slow tasks
+					if duration > Duration::from_secs(5) {
+						warn!(
+							"Task '{}' took {:?} to execute",
+							prioritized_task.task.name(),
+							duration
+						);
+					}
+
+					// Update stats based on result
+					match result {
+						Ok(_) => {
+							stats_clone.tasks_completed.fetch_add(1, Ordering::Relaxed);
+						}
+						Err(e) => {
+							warn!("Task '{}' failed: {}", prioritized_task.task.name(), e);
+							stats_clone.tasks_failed.fetch_add(1, Ordering::Relaxed);
+						}
+					}
+
+					stats_clone.active_workers.fetch_sub(1, Ordering::Relaxed);
+					tracker_clone.complete(task_id);
+				});
+			}
+		}
+
+		// Drain remaining tasks on shutdown
+		Self::drain_queue(pool, queue, tracker, stats, engine);
+
+		debug!("Dispatcher thread stopped");
+	}
+
+	/// Drain queue during shutdown
+	fn drain_queue(
+		pool: Arc<rayon::ThreadPool>,
+		queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
+		tracker: Arc<TaskTracker>,
+		stats: Arc<PoolStats>,
+		engine: StandardEngine,
+	) {
+		debug!("Draining task queue during shutdown");
+
+		loop {
+			let task = {
+				let mut queue_guard = queue.lock().unwrap();
+				queue_guard.pop()
+			};
+
+			match task {
+				Some(prioritized_task) => {
+					stats.tasks_queued.fetch_sub(1, Ordering::Relaxed);
+
+					// Still execute tasks during shutdown for graceful completion
+					let (task_id, _) = tracker.register(None);
+					let tracker_clone = Arc::clone(&tracker);
+					let stats_clone = Arc::clone(&stats);
+					let engine_clone = engine.clone();
+
+					pool.spawn(move || {
+						let ctx = crate::task::InternalTaskContext {
+							cancel_token: None,
+							engine: engine_clone,
+						};
+						let _ = prioritized_task.task.execute(&ctx);
+						stats_clone.tasks_completed.fetch_add(1, Ordering::Relaxed);
+						tracker_clone.complete(task_id);
+					});
+				}
+				None => break,
+			}
+		}
 	}
 
 	/// Start the scheduler thread
@@ -251,6 +398,32 @@ impl WorkerSubsystem {
 								);
 								SchedulerResponse::TaskScheduled(handle)
 							}
+							SchedulerRequest::Submit {
+								task,
+								priority: _,
+							} => {
+								let adapter = Box::new(OnceTaskAdapter::new(
+									task,
+									engine.clone(),
+								));
+								// Submit directly to task queue
+								drop(sched);
+								{
+									let mut queue = task_queue.lock().unwrap();
+									if queue.len() < max_queue_size {
+										queue.push(PrioritizedTask::new(
+											adapter,
+										));
+										stats.tasks_queued.fetch_add(
+											1,
+											Ordering::Relaxed,
+										);
+										task_condvar.notify_one();
+									}
+								}
+								sched = scheduler.lock().unwrap();
+								SchedulerResponse::TaskSubmitted
+							}
 							SchedulerRequest::Cancel {
 								handle,
 							} => {
@@ -293,6 +466,32 @@ impl WorkerSubsystem {
 											);
 										SchedulerResponse::TaskScheduled(handle)
 									}
+									SchedulerRequest::Submit {
+										task,
+										priority: _,
+									} => {
+										let adapter =
+											Box::new(OnceTaskAdapter::new(
+												task,
+												engine.clone(),
+											));
+										drop(sched);
+
+										{
+											let mut queue = task_queue
+												.lock()
+												.unwrap();
+											if queue.len() < max_queue_size
+											{
+												queue.push(PrioritizedTask::new(adapter));
+												stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
+												task_condvar
+													.notify_one();
+											}
+										}
+										sched = scheduler.lock().unwrap();
+										SchedulerResponse::TaskSubmitted
+									}
 									SchedulerRequest::Cancel {
 										handle,
 									} => {
@@ -313,8 +512,9 @@ impl WorkerSubsystem {
 					if sched.task_count() == 0 {
 						// No scheduled tasks, wait for notification with timeout
 						let result = scheduler_condvar
-							.wait_timeout(sched, Duration::from_millis(100))
+							.wait_timeout(sched, Duration::from_millis(1))
 							.unwrap();
+
 						sched = result.0;
 
 						// Check again if we should exit
@@ -339,8 +539,8 @@ impl WorkerSubsystem {
 							Duration::from_millis(0)
 						}
 					} else {
-						// No scheduled tasks, wait indefinitely
-						Duration::from_secs(3600)
+						// No scheduled tasks, wait briefly to check for shutdown
+						Duration::from_secs(1)
 					};
 
 					drop(sched);
@@ -351,9 +551,7 @@ impl WorkerSubsystem {
 
 						for task in ready_tasks {
 							if queue.len() >= max_queue_size {
-								log_warn!(
-									"Scheduler: Queue full, dropping scheduled task"
-								);
+								warn!("Scheduler: Queue full, dropping scheduled task");
 								break;
 							}
 
@@ -380,75 +578,134 @@ impl WorkerSubsystem {
 
 impl Subsystem for WorkerSubsystem {
 	fn name(&self) -> &'static str {
-		"Worker"
+		"sub-worker"
 	}
 
+	#[instrument(name = "worker::subsystem::start", level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already running
 		}
 
+		debug!("Starting worker subsystem with {} workers", self.config.num_workers);
+
+		// Create Rayon thread pool
+		let pool = rayon::ThreadPoolBuilder::new()
+			.num_threads(self.config.num_workers)
+			.thread_name(|i| format!("rayon-worker-{}", i))
+			.panic_handler(|panic_info| {
+				warn!("Worker thread panicked: {:?}", panic_info);
+			})
+			.build()
+			.map_err(|e| {
+				reifydb_core::error!(reifydb_core::diagnostic::internal(format!(
+					"Failed to create thread pool: {}",
+					e
+				)))
+			})?;
+
+		self.thread_pool = Some(Arc::new(pool));
 		self.running.store(true, Ordering::Relaxed);
 
-		// Start worker threads
-		for i in 0..self.config.num_workers {
-			let mut worker = Thread::new(
-				i,
-				Arc::clone(&self.task_queue),
-				Arc::clone(&self.task_condvar),
-				Arc::clone(&self.running),
-				Arc::clone(&self.stats),
-				self.config.task_timeout_warning,
-			);
-			worker.start();
-			self.workers.push(worker);
+		// Start dispatcher thread
+		{
+			let pool = Arc::clone(self.thread_pool.as_ref().unwrap());
+			let queue = Arc::clone(&self.task_queue);
+			let condvar = Arc::clone(&self.task_condvar);
+			let tracker = Arc::clone(&self.task_tracker);
+			let stats = Arc::clone(&self.stats);
+			let running = Arc::clone(&self.running);
+			let engine = self.engine.clone();
+
+			let handle = thread::Builder::new()
+				.name("worker-dispatcher".to_string())
+				.spawn(move || {
+					Self::run_dispatcher(pool, queue, condvar, tracker, stats, running, engine)
+				})
+				.map_err(|e| {
+					reifydb_core::error!(reifydb_core::diagnostic::internal(format!(
+						"Failed to spawn dispatcher thread: {}",
+						e
+					)))
+				})?;
+
+			self.dispatcher_handle = Some(handle);
 		}
 
 		// Start scheduler thread
 		self.start_scheduler();
 
-		log_debug!("Started with {} workers", self.config.num_workers);
+		debug!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
 
+	#[instrument(name = "worker::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Shutting down...");
-		self.running.store(false, Ordering::Relaxed);
+		debug!("Worker pool shutting down...");
 
-		// Wake scheduler so it can exit
+		self.running.store(false, Ordering::Relaxed);
+		debug!("Signaled threads to stop");
+
+		self.task_condvar.notify_all();
 		self.scheduler_condvar.notify_all();
 
-		// Wake all worker threads repeatedly to ensure they exit
-		// This handles the race condition where a thread might miss the
-		// first notify
-		for _ in 0..3 {
-			self.task_condvar.notify_all();
-			std::thread::sleep(Duration::from_millis(1));
+		let cancelled_count = {
+			let mut queue = self.task_queue.lock().unwrap();
+			let count = queue.len();
+			queue.clear();
+			count
+		};
+
+		if cancelled_count > 0 {
+			debug!("Cancelled {} queued tasks", cancelled_count);
 		}
 
-		// Stop scheduler
+		// Join scheduler thread
 		if let Some(handle) = self.scheduler_handle.take() {
 			let _ = handle.join();
 		}
 
-		// Stop all workers
-		for worker in self.workers.drain(..) {
-			worker.shutdown();
+		// Join dispatcher thread
+		if let Some(handle) = self.dispatcher_handle.take() {
+			let _ = handle.join();
 		}
 
-		log_debug!("Shutdown complete");
+		debug!("Scheduler and dispatcher threads stopped");
+
+		let active_count = self.task_tracker.active_count();
+		if active_count > 0 {
+			debug!("Waiting for {} active tasks to complete...", active_count);
+		}
+
+		let timeout = Duration::from_secs(10);
+		if !self.task_tracker.wait_for_completion(timeout) {
+			let remaining = self.task_tracker.active_count();
+			warn!(
+				"Timeout waiting for tasks to complete. {} tasks still running. Forcing shutdown.",
+				remaining
+			);
+
+			self.thread_pool = None;
+			warn!("Worker pool shutdown forced with {} tasks still active", remaining);
+		} else {
+			self.thread_pool = None;
+			debug!("All tasks completed, worker pool shutdown complete");
+		}
+
 		Ok(())
 	}
 
+	#[instrument(name = "worker::subsystem::is_running", level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running.load(Ordering::Relaxed)
 	}
 
+	#[instrument(name = "worker::subsystem::health_status", level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if !self.is_running() {
 			return HealthStatus::Unknown;
@@ -502,12 +759,18 @@ impl Drop for WorkerSubsystem {
 }
 
 impl Scheduler for WorkerSubsystem {
-	fn schedule_every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
+	fn every(&self, interval: Duration, task: BoxedTask) -> Result<TaskHandle> {
 		let adapter = Box::new(SchedulableTaskAdapter::new(task, self.engine.clone()));
 		let priority = adapter.priority();
 		self.schedule_every_internal(adapter, interval, priority)
 	}
+
 	fn cancel(&self, handle: TaskHandle) -> Result<()> {
 		self.cancel_task(handle)
+	}
+
+	fn once(&self, task: BoxedOnceTask) -> Result<()> {
+		let adapter = Box::new(OnceTaskAdapter::new(task, self.engine.clone()));
+		WorkerSubsystem::submit(self, adapter)
 	}
 }

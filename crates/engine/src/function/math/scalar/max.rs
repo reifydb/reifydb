@@ -9,7 +9,7 @@ pub struct Max;
 
 impl Max {
 	pub fn new() -> Self {
-		Self {}
+		Self
 	}
 }
 

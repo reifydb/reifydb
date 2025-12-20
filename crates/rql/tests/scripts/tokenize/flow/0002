@@ -1,0 +1,21 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'CREATE FLOW my_flow (id INT, name TEXT) AS from users'
+---
+> Line 1:
+>   [  0] Keyword(Create)
+>   [  1] Keyword(Flow)
+>   [  2] Identifier("my_flow")
+>   [  3] Operator(OpenParen)
+>   [  4] Identifier("id")
+>   [  5] Identifier("INT")
+>   [  6] Separator(Comma)
+>   [  7] Identifier("name")
+>   [  8] Identifier("TEXT")
+>   [  9] Operator(CloseParen)
+>   [ 10] Operator(As)
+>   [ 11] Keyword(From)
+>   [ 12] Identifier("users")
+> 
+> 

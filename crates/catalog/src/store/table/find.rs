@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionValues, NamespaceId, NamespaceTableKey, QueryTransaction, TableDef, TableId, TableKey,
+	MultiVersionValues, NamespaceId, NamespaceTableKey, QueryTransaction, TableDef, TableId, TableKey,
 };
 
 use crate::{
@@ -12,11 +12,7 @@ use crate::{
 
 impl CatalogStore {
 	pub fn find_table(rx: &mut impl QueryTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
-		let Some(multi) = rx.get(&TableKey {
-			table,
-		}
-		.encode())?
-		else {
+		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
 

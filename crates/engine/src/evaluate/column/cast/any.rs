@@ -192,18 +192,9 @@ pub fn from_any<'a>(
 							result.push_undefined();
 						}
 					}
-					ColumnData::Interval(c) => {
+					ColumnData::Duration(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
-						} else {
-							result.push_undefined();
-						}
-					}
-					ColumnData::RowNumber(c) => {
-						if c.is_defined(0) {
-							// Extract the u64 from RowNumber and push it
-							let row_num = *c.get(0).unwrap();
-							result.push::<u64>(row_num.into());
 						} else {
 							result.push_undefined();
 						}

@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
 				Operator::Slash => Ok(InfixOperator::Divide(token)),
 				Operator::Percent => Ok(InfixOperator::Rem(token)),
 				Operator::ColonEqual => Ok(InfixOperator::Assign(token)),
-				Operator::Equal => Ok(InfixOperator::Assign(token)),
+				Operator::Equal => Ok(InfixOperator::Equal(token)),
 				Operator::DoubleEqual => Ok(InfixOperator::Equal(token)),
 				Operator::BangEqual => Ok(InfixOperator::NotEqual(token)),
 				Operator::LeftAngle => Ok(InfixOperator::LessThan(token)),

@@ -11,24 +11,24 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 
-use crate::multi::transaction::serializable::{CommandTransaction, QueryTransaction, TransactionSerializable};
+use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transaction};
 
-impl WithEventBus for TransactionSerializable {
+impl WithEventBus for Transaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl MultiVersionTransaction for TransactionSerializable {
+impl MultiVersionTransaction for Transaction {
 	type Query = QueryTransaction;
 	type Command = CommandTransaction;
 
 	fn begin_query(&self) -> Result<Self::Query, Error> {
-		self.begin_query()
+		Transaction::begin_query(self)
 	}
 
 	fn begin_command(&self) -> Result<Self::Command, Error> {
-		self.begin_command()
+		Transaction::begin_command(self)
 	}
 }
 
@@ -53,32 +53,30 @@ impl MultiVersionQueryTransaction for QueryTransaction {
 		QueryTransaction::contains_key(self, key)
 	}
 
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::scan(self)?;
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
+		let iter = QueryTransaction::range_batched(self, range, batch_size)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::scan_rev(self)?;
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
+		let iter = QueryTransaction::range_rev_batched(self, range, batch_size)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::range(self, range)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::range_rev(self, range)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		let iter = QueryTransaction::prefix(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		let iter = QueryTransaction::prefix_rev(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
@@ -110,8 +108,12 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(CommandTransaction::contains_key(self, key)?)
 	}
 
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan()?.map(|tv| MultiVersionValues {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
+		let iter = self.range_batched(range, batch_size)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),
 			version: tv.version(),
@@ -120,8 +122,12 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(Box::new(iter))
 	}
 
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan_rev()?.map(|tv| MultiVersionValues {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
+		let iter = self.range_rev_batched(range, batch_size)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),
 			version: tv.version(),
@@ -130,27 +136,7 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(Box::new(iter))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range(range)?.map(|tv| MultiVersionValues {
-			key: tv.key().clone(),
-			values: tv.values().clone(),
-			version: tv.version(),
-		});
-
-		Ok(Box::new(iter))
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range_rev(range)?.map(|tv| MultiVersionValues {
-			key: tv.key().clone(),
-			values: tv.values().clone(),
-			version: tv.version(),
-		});
-
-		Ok(Box::new(iter))
-	}
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		let iter = self.prefix(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),
@@ -160,7 +146,7 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(Box::new(iter))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		let iter = self.prefix_rev(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),

@@ -1,0 +1,82 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that dropped keys can be set and removed again.
+
+# Insert and drop
+set a=1 version=1
+---
+ok
+
+count_versions a
+---
+"a" => 1 versions
+
+drop a
+---
+ok
+
+count_versions a
+---
+"a" => 0 versions
+
+contains a version=1
+---
+"a" => false
+
+# Set again after drop
+set a=new version=2
+---
+ok
+
+count_versions a
+---
+"a" => 1 versions
+
+contains a version=2
+---
+"a" => true
+
+get a version=2
+---
+"a" => "new"
+
+# Remove the re-inserted key
+remove a version=3
+---
+ok
+
+contains a version=3
+---
+"a" => false
+
+# Set again after remove
+set a=final version=4
+---
+ok
+
+get a version=4
+---
+"a" => "final"
+
+# Drop again
+drop a
+---
+ok
+
+count_versions a
+---
+"a" => 0 versions
+
+# And set once more
+set a=resurrected version=5
+---
+ok
+
+count_versions a
+---
+"a" => 1 versions
+
+get a version=5
+---
+"a" => "resurrected"

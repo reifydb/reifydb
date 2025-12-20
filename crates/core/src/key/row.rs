@@ -9,7 +9,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, catalog::SourceId},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -34,28 +34,20 @@ impl EncodableKey for RowKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 17 {
-			// 9 bytes for source + 8 bytes for encoded
-			return None;
-		}
-
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let row: RowNumber = keycode::deserialize(&payload[9..]).ok()?;
+		let source = de.read_source_id().ok()?;
+		let row = de.read_row_number().ok()?;
 
 		Some(Self {
 			source,
@@ -71,29 +63,44 @@ pub struct RowKeyRange {
 
 impl RowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 9 {
-			return None;
-		}
+		let source = de.read_source_id().ok()?;
 
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
 		Some(RowKeyRange {
 			source,
 		})
+	}
+
+	/// Create a range for scanning rows from a source
+	///
+	/// If `last_key` is provided, creates a range that continues from after that key.
+	/// Otherwise, creates a range that includes all rows for the source.
+	///
+	/// The caller is responsible for limiting the number of results returned.
+	pub fn scan_range(source: SourceId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let range = RowKeyRange {
+			source,
+		};
+
+		if let Some(last_key) = last_key {
+			EncodedKeyRange::new(Bound::Excluded(last_key.clone()), Bound::Included(range.end().unwrap()))
+		} else {
+			EncodedKeyRange::new(
+				Bound::Included(range.start().unwrap()),
+				Bound::Included(range.end().unwrap()),
+			)
+		}
 	}
 }
 
@@ -131,6 +138,14 @@ impl EncodableKeyRange for RowKeyRange {
 }
 
 impl RowKey {
+	pub fn encoded(source: impl Into<SourceId>, row: impl Into<RowNumber>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			row: row.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
 		EncodedKeyRange::start_end(Some(Self::source_start(source)), Some(Self::source_end(source)))

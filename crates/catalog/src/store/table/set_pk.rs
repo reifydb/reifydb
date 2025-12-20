@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, Key, PrimaryKeyId, TableId, TableKey},
+	interface::{CommandTransaction, PrimaryKeyId, TableId, TableKey},
 	return_internal_error,
 };
 
@@ -16,11 +16,7 @@ impl CatalogStore {
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&Key::Table(TableKey {
-			table: table_id,
-		})
-		.encode())?
-		{
+		let multi = match txn.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Table with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -31,13 +27,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(
-			&Key::Table(TableKey {
-				table: table_id,
-			})
-			.encode(),
-			updated_row,
-		)?;
+		txn.set(&TableKey::encoded(table_id), updated_row)?;
 
 		Ok(())
 	}

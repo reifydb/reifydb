@@ -4,6 +4,5 @@ replace-with = "vendored-sources"
 [source.vendored-sources]
 directory = "vendor"
 
-# Enable offline builds
 [net]
 offline = true

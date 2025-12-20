@@ -1,27 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
-use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, Type};
+use std::sync::Arc;
 
-use crate::{
-	Operator,
-	flow::{FlowChange, FlowDiff},
-};
+use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_rql::expression::Expression;
+use reifydb_type::{Params, RowNumber, Type};
+
+use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 // Static empty params instance for use in RowEvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct MapOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl MapOperator {
-	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			expressions,
 		}
@@ -35,19 +37,17 @@ impl Operator for MapOperator {
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction,
+		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut result = Vec::new();
 
-		for (i, diff) in change.diffs.into_iter().enumerate() {
+		for diff in change.diffs.into_iter() {
 			match diff {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// let projected = self.project_row(&post, evaluator)?;
-
 					let projected = match self.project_row(&post, evaluator) {
 						Ok(projected) => projected,
 						Err(err) => {
@@ -82,6 +82,10 @@ impl Operator for MapOperator {
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
+
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
+	}
 }
 
 impl MapOperator {
@@ -106,10 +110,9 @@ impl MapOperator {
 					if let Expression::AccessSource(access_expr) = expr {
 						let col_name = access_expr.column.name.text();
 
-						// Find the column by name in the encoded
-						let names = row.layout.names();
-						if let Some(col_idx) = names.iter().position(|n| n == col_name) {
-							row.layout.get_value(&row.encoded, col_idx)
+						// Get the column by name using the new API
+						if let Some(value) = row.layout.get_value(&row.encoded, col_name) {
+							value
 						} else {
 							return Err(e);
 						}
@@ -118,11 +121,11 @@ impl MapOperator {
 						if let Expression::AccessSource(access_expr) = &*alias_expr.expression {
 							let col_name = access_expr.column.name.text();
 
-							// Find the column by name in the encoded
-							let names = row.layout.names();
-							if let Some(col_idx) = names.iter().position(|n| n == col_name)
+							// Get the column by name using the new API
+							if let Some(value) =
+								row.layout.get_value(&row.encoded, col_name)
 							{
-								row.layout.get_value(&row.encoded, col_idx)
+								value
 							} else {
 								return Err(e);
 							}
@@ -154,7 +157,7 @@ impl MapOperator {
 		let layout = EncodedValuesNamedLayout::new(fields);
 
 		// Allocate and populate the new encoded
-		let mut encoded_row = layout.allocate_row();
+		let mut encoded_row = layout.allocate();
 		layout.set_values(&mut encoded_row, &values);
 
 		Ok(Row {

@@ -1,27 +1,62 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
+use std::mem::take;
 
-use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
-use reifydb_store_transaction::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-	SingleVersionScan, SingleVersionScanRev,
-};
+use indexmap::IndexMap;
+use parking_lot::{RwLock as ParkingRwLock, RwLockWriteGuard as ParkingRwLockWriteGuard};
+use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction};
+use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
+use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
+use self_cell::self_cell;
+use tracing::debug_span;
 
 use super::*;
-use crate::single::svl::{
-	range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter,
-};
+
+type WriteGuard<'a> = ParkingRwLockWriteGuard<'a, ()>;
+
+// Safe self-referential struct that owns both the Arc and the write guard borrowing from it
+self_cell! {
+	pub struct KeyWriteLock {
+		owner: Arc<ParkingRwLock<()>>,
+		#[covariant]
+		dependent: WriteGuard,
+	}
+}
 
 pub struct SvlCommandTransaction<'a> {
-	pending: HashMap<EncodedKey, Delta>,
-	completed: bool,
-	store: RwLockWriteGuard<'a, TransactionStore>,
+	pub(super) inner: &'a TransactionSvlInner,
+	pub(super) keys: Vec<EncodedKey>,
+	pub(super) _key_locks: Vec<KeyWriteLock>,
+	pub(super) pending: IndexMap<EncodedKey, Delta>,
+	pub(super) completed: bool,
+}
+
+impl<'a> SvlCommandTransaction<'a> {
+	pub(super) fn new(inner: &'a TransactionSvlInner, keys: Vec<EncodedKey>, key_locks: Vec<KeyWriteLock>) -> Self {
+		Self {
+			inner,
+			keys,
+			_key_locks: key_locks,
+			pending: IndexMap::new(),
+			completed: false,
+		}
+	}
+
+	#[inline]
+	fn check_key_allowed(&self, key: &EncodedKey) -> crate::Result<()> {
+		if self.keys.iter().any(|k| k == key) {
+			Ok(())
+		} else {
+			Err(error!(key_out_of_scope(hex::encode(&key))))
+		}
+	}
 }
 
 impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+		self.check_key_allowed(key)?;
+
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
@@ -34,13 +69,23 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 				Delta::Remove {
 					..
 				} => Ok(None),
+				Delta::Drop {
+					..
+				} => Ok(None),
 			};
 		}
 
-		self.store.get(key)
+		let _span = debug_span!("svl_get_from_store").entered();
+		let store = {
+			let _lock_span = debug_span!("svl_acquire_store_read_lock").entered();
+			self.inner.store.read().unwrap()
+		};
+		store.get(key)
 	}
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+		self.check_key_allowed(key)?;
+
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
@@ -49,88 +94,22 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 				Delta::Remove {
 					..
 				} => Ok(false),
+				Delta::Drop {
+					..
+				} => Ok(false),
 			};
 		}
 
 		// Then check storage
-		self.store.contains(key)
-	}
-
-	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
-		let iter = SvlScanIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
-	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
-		let iter = SvlScanRevIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), false)?;
-		let iter = SvlRangeIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
-		let iter = SvlRangeRevIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-}
-
-impl<'a> SvlCommandTransaction<'a> {
-	pub(super) fn new(store: RwLockWriteGuard<'a, TransactionStore>) -> Self {
-		Self {
-			pending: HashMap::new(),
-			completed: false,
-			store,
-		}
-	}
-
-	/// Helper method to prepare scan data by cloning and sorting pending
-	/// items and collecting committed items from storage.
-	fn prepare_scan_data(
-		&mut self,
-		range: Option<EncodedKeyRange>,
-		reverse: bool,
-	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionValues>)> {
-		// Clone and optionally filter pending items from the buffer
-		let mut pending_items: Vec<(EncodedKey, Delta)> = match &range {
-			Some(r) => self
-				.pending
-				.iter()
-				.filter(|(k, _)| r.contains(&**k))
-				.map(|(k, v)| (k.clone(), v.clone()))
-				.collect(),
-			None => self.pending.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-		};
-
-		// Sort pending items by key (forward or reverse)
-		if reverse {
-			pending_items.sort_by(|(l, _), (r, _)| r.cmp(l));
-		} else {
-			pending_items.sort_by(|(l, _), (r, _)| l.cmp(r));
-		}
-
-		// Get committed items from storage
-		let committed_items: Vec<SingleVersionValues> = {
-			match (range, reverse) {
-				(Some(r), true) => self.store.range_rev(r)?.collect(),
-				(Some(r), false) => self.store.range(r)?.collect(),
-				(None, true) => self.store.scan_rev()?.collect(),
-				(None, false) => self.store.scan()?.collect(),
-			}
-		};
-
-		Ok((pending_items, committed_items))
+		let store = self.inner.store.read().unwrap();
+		store.contains(key)
 	}
 }
 
 impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
+		self.check_key_allowed(key)?;
+
 		let delta = Delta::Set {
 			key: key.clone(),
 			values,
@@ -140,6 +119,8 @@ impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 	}
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+		self.check_key_allowed(key)?;
+
 		self.pending.insert(
 			key.clone(),
 			Delta::Remove {
@@ -150,10 +131,19 @@ impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 	}
 
 	fn commit(mut self) -> crate::Result<()> {
+		let _span = debug_span!("svl_commit").entered();
+
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			self.store.commit(CowVec::new(deltas))?;
+			let mut store = {
+				let _lock_span = debug_span!("svl_acquire_store_write_lock").entered();
+				self.inner.store.write().unwrap()
+			};
+			{
+				let _commit_span = debug_span!("svl_store_commit").entered();
+				store.commit(CowVec::new(deltas))?;
+			}
 		}
 
 		self.completed = true;

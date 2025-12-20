@@ -5,7 +5,7 @@ use reifydb_core::value::column::Column;
 use reifydb_rql::expression::Expression;
 
 pub(crate) use crate::evaluate::ColumnEvaluationContext;
-use crate::function::{Functions, blob, math, text};
+use crate::function::{Functions, blob, flow_node_type, math, text};
 
 mod access;
 mod alias;
@@ -39,13 +39,17 @@ impl Default for StandardColumnEvaluator {
 				.register_scalar("math::power", math::scalar::Power::new)
 				.register_scalar("math::round", math::scalar::Round::new)
 				.register_scalar("blob::hex", blob::BlobHex::new)
+				.register_scalar("blob::b58", blob::BlobB58::new)
 				.register_scalar("blob::b64", blob::BlobB64::new)
 				.register_scalar("blob::b64url", blob::BlobB64url::new)
 				.register_scalar("blob::utf8", blob::BlobUtf8::new)
+				.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
 				.register_scalar("text::trim", text::TextTrim::new)
 				.register_scalar("text::upper", text::TextUpper::new)
 				.register_scalar("text::substring", text::TextSubstring::new)
 				.register_scalar("text::length", text::TextLength::new)
+				.register_scalar("text::format_bytes", text::FormatBytes::new)
+				.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
 				.build(),
 		}
 	}
@@ -73,6 +77,7 @@ impl StandardColumnEvaluator {
 			Expression::Equal(expr) => self.equal(ctx, expr),
 			Expression::NotEqual(expr) => self.not_equal(ctx, expr),
 			Expression::Between(expr) => self.between(ctx, expr),
+			Expression::In(expr) => self.in_expr(ctx, expr),
 			Expression::And(expr) => self.and(ctx, expr),
 			Expression::Or(expr) => self.or(ctx, expr),
 			Expression::Xor(expr) => self.xor(ctx, expr),
@@ -101,13 +106,17 @@ pub fn evaluate<'a>(ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) ->
 			.register_scalar("math::power", math::scalar::Power::new)
 			.register_scalar("math::round", math::scalar::Round::new)
 			.register_scalar("blob::hex", blob::BlobHex::new)
+			.register_scalar("blob::b58", blob::BlobB58::new)
 			.register_scalar("blob::b64", blob::BlobB64::new)
 			.register_scalar("blob::b64url", blob::BlobB64url::new)
 			.register_scalar("blob::utf8", blob::BlobUtf8::new)
+			.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
 			.register_scalar("text::trim", text::TextTrim::new)
 			.register_scalar("text::upper", text::TextUpper::new)
 			.register_scalar("text::substring", text::TextSubstring::new)
 			.register_scalar("text::length", text::TextLength::new)
+			.register_scalar("text::format_bytes", text::FormatBytes::new)
+			.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
 			.build(),
 	};
 

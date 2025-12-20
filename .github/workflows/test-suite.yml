@@ -48,6 +48,11 @@ jobs:
       - name: 🛠️ Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: 🛠️ Build fixture
+        run: |
+          cd testsuite/
+          make fixture
+
       - name: 🧪 Run test suite
         run: |
           echo "▶ Running ${{ matrix.suite }}"

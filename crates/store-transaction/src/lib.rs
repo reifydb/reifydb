@@ -10,27 +10,30 @@ pub mod backend;
 pub(crate) mod cdc;
 pub mod config;
 mod multi;
+// pub mod retention;
 mod single;
+pub mod stats;
 mod store;
 
 use std::collections::Bound;
 
 pub use cdc::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
-pub use config::{BackendConfig, MergeConfig, RetentionConfig, TransactionStoreConfig};
+pub use config::{BackendConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig};
 pub use multi::*;
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	interface::{Cdc, MultiVersionValues, SingleVersionValues},
 };
 pub use single::*;
+pub use stats::{ObjectId, StorageStats, StorageTracker, Tier, TierStats};
 pub use store::StandardTransactionStore;
 
 pub mod memory {
-	pub use crate::backend::memory::MemoryBackend;
+	pub use crate::backend::memory::MemoryPrimitiveStorage;
 }
 pub mod sqlite {
-	pub use crate::backend::sqlite::{SqliteBackend, SqliteConfig};
+	pub use crate::backend::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
 }
 
 pub struct TransactionStoreVersion;
@@ -63,6 +66,13 @@ impl TransactionStore {
 	pub fn testing_memory() -> Self {
 		TransactionStore::Standard(StandardTransactionStore::testing_memory())
 	}
+
+	/// Get access to the storage tracker.
+	pub fn stats_tracker(&self) -> &StorageTracker {
+		match self {
+			TransactionStore::Standard(store) => store.stats_tracker(),
+		}
+	}
 }
 
 // MultiVersion trait implementations
@@ -86,31 +96,9 @@ impl MultiVersionContains for TransactionStore {
 
 impl MultiVersionCommit for TransactionStore {
 	#[inline]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
-			TransactionStore::Standard(store) => store.commit(deltas, version, transaction),
-		}
-	}
-}
-
-impl MultiVersionScan for TransactionStore {
-	type ScanIter<'a> = <StandardTransactionStore as MultiVersionScan>::ScanIter<'a>;
-
-	#[inline]
-	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		match self {
-			TransactionStore::Standard(store) => MultiVersionScan::scan(store, version),
-		}
-	}
-}
-
-impl MultiVersionScanRev for TransactionStore {
-	type ScanIterRev<'a> = <StandardTransactionStore as MultiVersionScanRev>::ScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
-		match self {
-			TransactionStore::Standard(store) => MultiVersionScanRev::scan_rev(store, version),
+			TransactionStore::Standard(store) => store.commit(deltas, version),
 		}
 	}
 }
@@ -119,9 +107,16 @@ impl MultiVersionRange for TransactionStore {
 	type RangeIter<'a> = <StandardTransactionStore as MultiVersionRange>::RangeIter<'a>;
 
 	#[inline]
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIter<'_>> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionRange::range(store, range, version),
+			TransactionStore::Standard(store) => {
+				MultiVersionRange::range_batched(store, range, version, batch_size)
+			}
 		}
 	}
 }
@@ -130,9 +125,16 @@ impl MultiVersionRangeRev for TransactionStore {
 	type RangeIterRev<'a> = <StandardTransactionStore as MultiVersionRangeRev>::RangeIterRev<'a>;
 
 	#[inline]
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionRangeRev::range_rev(store, range, version),
+			TransactionStore::Standard(store) => {
+				MultiVersionRangeRev::range_rev_batched(store, range, version, batch_size)
+			}
 		}
 	}
 }
@@ -165,28 +167,6 @@ impl SingleVersionCommit for TransactionStore {
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		match self {
 			TransactionStore::Standard(store) => SingleVersionCommit::commit(store, deltas),
-		}
-	}
-}
-
-impl SingleVersionScan for TransactionStore {
-	type ScanIter<'a> = <StandardTransactionStore as SingleVersionScan>::ScanIter<'a>;
-
-	#[inline]
-	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		match self {
-			TransactionStore::Standard(store) => SingleVersionScan::scan(store),
-		}
-	}
-}
-
-impl SingleVersionScanRev for TransactionStore {
-	type ScanIterRev<'a> = <StandardTransactionStore as SingleVersionScanRev>::ScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		match self {
-			TransactionStore::Standard(store) => SingleVersionScanRev::scan_rev(store),
 		}
 	}
 }

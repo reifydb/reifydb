@@ -8,10 +8,12 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
+mod flow;
 mod sequence;
 mod table;
 mod view;
 
+pub use flow::{AlterFlowAction, AlterFlowNode};
 pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, AlterTableOperation};
 pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
@@ -24,6 +26,7 @@ impl Compiler {
 			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, tx),
 			AstAlter::Table(node) => Self::compile_alter_table(node, tx),
 			AstAlter::View(node) => Self::compile_alter_view(node, tx),
+			AstAlter::Flow(node) => Self::compile_alter_flow(node, tx),
 		}
 	}
 }

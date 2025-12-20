@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec,
-	interface::{
-		CommandTransaction, QueryTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction,
-		ToConsumerKey,
-	},
+	interface::{CommandTransaction, QueryTransaction, ToConsumerKey},
 	value::encoded::EncodedValues,
 };
 
@@ -19,11 +16,11 @@ impl CdcCheckpoint {
 	) -> reifydb_core::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 
-		txn.with_single_query(|txn| txn.get(&key))?
-			.and_then(|record| {
-				if record.values.len() >= 8 {
+		txn.get(&key)?
+			.and_then(|multi| {
+				if multi.values.len() >= 8 {
 					let mut buffer = [0u8; 8];
-					buffer.copy_from_slice(&record.values[0..8]);
+					buffer.copy_from_slice(&multi.values[0..8]);
 					Some(CommitVersion(u64::from_be_bytes(buffer)))
 				} else {
 					None
@@ -40,6 +37,6 @@ impl CdcCheckpoint {
 	) -> reifydb_core::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.0.to_be_bytes().to_vec();
-		txn.with_single_command(|txn| txn.set(&key, EncodedValues(CowVec::new(version_bytes))))
+		txn.set(&key, EncodedValues(CowVec::new(version_bytes)))
 	}
 }

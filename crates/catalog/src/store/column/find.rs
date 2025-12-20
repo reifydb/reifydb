@@ -5,7 +5,7 @@ use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 
 use crate::{
 	CatalogStore,
-	store::column::{ColumnDef, ColumnId, layout::table_column},
+	store::column::{ColumnDef, ColumnId, layout::source_column},
 };
 
 impl CatalogStore {
@@ -16,8 +16,8 @@ impl CatalogStore {
 	) -> crate::Result<Option<ColumnDef>> {
 		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|multi| {
 			let row = multi.values;
-			let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
-			let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);
+			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
+			let name = source_column::LAYOUT.get_utf8(&row, source_column::NAME);
 
 			if name == column_name {
 				Some(column)

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { decode } from '../src/decoder';
-import { BooleanValue, Int4Value, Utf8Value, UndefinedValue } from '../src/value';
+import { BooleanValue, DecimalValue, Int4Value, Utf8Value, UndefinedValue } from '../src/value';
 
 describe('decode', () => {
     it('should decode Boolean type with "true" value', () => {
@@ -116,6 +116,60 @@ describe('decode', () => {
 
     it('should handle round-trip encoding/decoding for Utf8', () => {
         const original = new Utf8Value('hello world');
+        const encoded = original.encode();
+        const decoded = decode(encoded);
+        
+        expect(decoded.type).toBe(original.type);
+        expect(decoded.valueOf()).toBe(original.valueOf());
+    });
+
+    it('should decode Decimal type with positive decimal value', () => {
+        const pair = { type: 'Decimal' as const, value: '123.456' };
+        const result = decode(pair);
+        
+        expect(result).toBeInstanceOf(DecimalValue);
+        expect(result.type).toBe('Decimal');
+        expect(result.valueOf()).toBe('123.456');
+    });
+
+    it('should decode Decimal type with negative decimal value', () => {
+        const pair = { type: 'Decimal' as const, value: '-987.654' };
+        const result = decode(pair);
+        
+        expect(result).toBeInstanceOf(DecimalValue);
+        expect(result.type).toBe('Decimal');
+        expect(result.valueOf()).toBe('-987.654');
+    });
+
+    it('should decode Decimal type with integer value', () => {
+        const pair = { type: 'Decimal' as const, value: '42' };
+        const result = decode(pair);
+        
+        expect(result).toBeInstanceOf(DecimalValue);
+        expect(result.type).toBe('Decimal');
+        expect(result.valueOf()).toBe('42');
+    });
+
+    it('should decode Decimal type with large decimal value', () => {
+        const pair = { type: 'Decimal' as const, value: '999999999999999999999.123456789' };
+        const result = decode(pair);
+        
+        expect(result).toBeInstanceOf(DecimalValue);
+        expect(result.type).toBe('Decimal');
+        expect(result.valueOf()).toBe('999999999999999999999.123456789');
+    });
+
+    it('should decode Decimal type with empty value', () => {
+        const pair = { type: 'Decimal' as const, value: '' };
+        const result = decode(pair);
+        
+        expect(result).toBeInstanceOf(DecimalValue);
+        expect(result.type).toBe('Decimal');
+        expect(result.valueOf()).toBe('');
+    });
+
+    it('should handle round-trip encoding/decoding for Decimal', () => {
+        const original = new DecimalValue('123.456');
         const encoded = original.encode();
         const decoded = decode(encoded);
         

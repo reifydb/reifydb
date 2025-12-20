@@ -62,6 +62,7 @@ impl Executor {
 				take: None,
 				params: &EMPTY_PARAMS,
 				stack: &EMPTY_STACK,
+				is_aggregate_context: false,
 			},
 			&plan.value,
 		)?;

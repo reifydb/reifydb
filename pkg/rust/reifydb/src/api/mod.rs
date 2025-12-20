@@ -5,40 +5,26 @@ use std::time::Duration;
 
 use reifydb_core::event::EventBus;
 use reifydb_store_transaction::{
-	BackendConfig, TransactionStore, TransactionStoreConfig,
-	backend::{
-		Backend,
-		cdc::BackendCdc,
-		memory::MemoryBackend,
-		multi::BackendMulti,
-		single::BackendSingle,
-		sqlite::{SqliteBackend, SqliteConfig},
-	},
+	BackendConfig, TransactionStore, TransactionStoreConfig, backend::BackendStorage, sqlite::SqliteConfig,
 };
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 pub mod embedded;
-
-#[cfg(feature = "sub_server")]
 pub mod server;
 
 /// Convenience function to create in-memory storage
 pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let memory = MemoryBackend::default();
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			backend: Backend {
-				multi: BackendMulti::Memory(memory.clone()),
-				single: BackendSingle::Memory(memory.clone()),
-				cdc: BackendCdc::Memory(memory.clone()),
-			},
+			storage: BackendStorage::memory(),
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	});
 
 	(
@@ -52,21 +38,17 @@ pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, 
 /// Convenience function to create SQLite storage
 pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let sqlite = SqliteBackend::new(config);
 
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			backend: Backend {
-				multi: BackendMulti::Sqlite(sqlite.clone()),
-				single: BackendSingle::Sqlite(sqlite.clone()),
-				cdc: BackendCdc::Sqlite(sqlite.clone()),
-			},
+			storage: BackendStorage::sqlite(config),
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	});
 
 	(
@@ -77,18 +59,17 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 	)
 }
 
-/// Convenience function to create an optimistic transaction layer
-pub fn optimistic(
+/// Convenience function to create a transaction layer
+pub fn transaction(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	let multi = TransactionMultiVersion::optimistic(input.0, input.1.clone(), input.3.clone());
+	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone());
 	(multi, input.1, input.2, input.3)
 }
 
-/// Convenience function to create a serializable transaction layer
+/// Backwards-compat alias for transaction()
 pub fn serializable(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	let multi = TransactionMultiVersion::serializable(input.0, input.1.clone(), input.3.clone());
-	(multi, input.1, input.2, input.3)
+	transaction(input)
 }

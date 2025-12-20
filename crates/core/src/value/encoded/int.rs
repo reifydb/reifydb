@@ -106,7 +106,7 @@ impl EncodedValuesLayout {
 
 	/// Try to get a Int value, returning None if undefined
 	pub fn try_get_int(&self, row: &EncodedValues, index: usize) -> Option<Int> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Int {
 			Some(self.get_int(row, index))
 		} else {
 			None
@@ -270,5 +270,15 @@ mod tests {
 		);
 		layout.set_int(&mut row3, 0, &huge_neg);
 		assert_eq!(layout.get_int(&row3, 0), huge_neg);
+	}
+
+	#[test]
+	fn test_try_get_int_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_int(&row, 0), None);
 	}
 }

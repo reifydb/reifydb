@@ -181,6 +181,7 @@ impl<'a> InlineDataNode<'a> {
 						take: None,
 						params: &ctx.params,
 						stack: &ctx.stack,
+						is_aggregate_context: false,
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;
@@ -241,6 +242,7 @@ impl<'a> InlineDataNode<'a> {
 							take: None,
 							params: &ctx.params,
 							stack: &ctx.stack,
+							is_aggregate_context: false,
 						};
 
 						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
@@ -275,6 +277,7 @@ impl<'a> InlineDataNode<'a> {
 						take: None,
 						params: &ctx.params,
 						stack: &ctx.stack,
+						is_aggregate_context: false,
 					};
 
 					if let Ok(demoted) =
@@ -344,6 +347,7 @@ impl<'a> InlineDataNode<'a> {
 						take: None,
 						params: &ctx.params,
 						stack: &ctx.stack,
+						is_aggregate_context: false,
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;

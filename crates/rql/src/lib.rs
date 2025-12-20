@@ -15,7 +15,6 @@ pub mod expression;
 #[allow(dead_code, unused_variables)]
 pub mod flow;
 pub mod plan;
-pub mod query;
 
 pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {
@@ -38,7 +37,7 @@ pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 		"date" => Type::Date,
 		"datetime" => Type::DateTime,
 		"time" => Type::Time,
-		"interval" => Type::Interval,
+		"duration" => Type::Duration,
 		"uuid4" => Type::Uuid4,
 		"uuid7" => Type::Uuid7,
 		"blob" => Type::Blob,

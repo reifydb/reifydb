@@ -8,19 +8,20 @@
 //!
 //! Run with: `make rql-map` or `cargo run --bin rql-map`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: MAP with constants
-	log_info!("Example 1: MAP with constants");
+	info!("Example 1: MAP with constants");
 	log_query(r#"map { 42 as answer, "hello" as greeting }"#);
 	for frame in db.query_as_root(r#"map { 42 as answer, "hello" as greeting }"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +----------+------------+
 		// |  answer  |  greeting  |
@@ -30,13 +31,13 @@ fn main() {
 	}
 
 	// Example 2: MAP with arithmetic expressions
-	log_info!("\nExample 2: MAP with arithmetic expressions");
+	info!("\nExample 2: MAP with arithmetic expressions");
 	log_query(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#);
 	for frame in db
 		.query_as_root(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#, Params::None)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +-------+-----------+------------+
 		// |  sum  |  product  |  quotient  |
@@ -46,7 +47,7 @@ fn main() {
 	}
 
 	// Example 3: MAP to project columns from inline data
-	log_info!("\nExample 3: MAP to project specific columns");
+	info!("\nExample 3: MAP to project specific columns");
 	log_query(
 		r#"from [{ id: 1, name: "Alice", age: 30, city: "NYC" }]
 map { name, age }"#,
@@ -61,7 +62,7 @@ map { name, age }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +--------+-------+
 		// |  name  |  age  |
@@ -71,7 +72,7 @@ map { name, age }"#,
 	}
 
 	// Example 4: MAP with field renaming
-	log_info!("\nExample 4: MAP with field renaming");
+	info!("\nExample 4: MAP with field renaming");
 	log_query(
 		r#"from [{ first_name: "Bob", years: 25 }]
 map { first_name as name, years as age }"#,
@@ -86,7 +87,7 @@ map { first_name as name, years as age }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +--------+-------+
 		// |  name  |  age  |
@@ -96,10 +97,10 @@ map { first_name as name, years as age }"#,
 	}
 
 	// Example 5: MAP with computed fields
-	log_info!("\nExample 5: MAP with computed fields");
+	info!("\nExample 5: MAP with computed fields");
 
 	// Create sample data with prices
-	log_info!("Setting up product data...");
+	info!("Setting up product data...");
 	log_query(
 		r#"from [
   { product: "Widget", price: 100, quantity: 5 },
@@ -135,7 +136,7 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +-----------+---------+------------+---------+-------+
 		// |  product  |  price  |  quantity  |  total  |  tax  |
@@ -147,7 +148,7 @@ map {
 	}
 
 	// Example 6: MAP with comptokenize expressions
-	log_info!("\nExample 6: MAP with comptokenize expressions");
+	info!("\nExample 6: MAP with comptokenize expressions");
 
 	// Create a table for more realistic example
 	db.command_as_root("create namespace sales", Params::None).unwrap();
@@ -203,7 +204,7 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +------------+-----------+-------------------+---------------+
 		// |  customer  |  subtotal |  discount_amount  |  final_total  |
@@ -215,7 +216,7 @@ map {
 	}
 
 	// Example 7: MAP with boolean expressions
-	log_info!("\nExample 7: MAP with boolean expressions");
+	info!("\nExample 7: MAP with boolean expressions");
 	log_query(
 		r#"from [{ value: 10 }, { value: 20 }, { value: 5 }]
 map { value, value > 15 as is_high, value <= 10 as is_low }"#,
@@ -231,7 +232,7 @@ map { value, value > 15 as is_high, value <= 10 as is_low }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +---------+-----------+----------+
 		// |  value  |  is_high  |  is_low  |

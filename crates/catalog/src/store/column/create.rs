@@ -3,9 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::{
-		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, EncodableKey, Key, SourceId, TableId,
-	},
+	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, SourceId, TableId},
 	return_error,
 };
 use reifydb_type::{Constraint, OwnedFragment, Type, TypeConstraint};
@@ -33,8 +31,8 @@ use crate::{
 			ColumnDef, ColumnIndex,
 			layout::{
 				column,
-				column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, TABLE, VALUE},
-				table_column,
+				column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, SOURCE, VALUE},
+				source_column,
 			},
 		},
 		sequence::SystemSequence,
@@ -44,14 +42,15 @@ use crate::{
 pub struct ColumnToCreate<'a> {
 	pub fragment: Option<OwnedFragment>,
 	pub namespace_name: &'a str,
-	pub table: TableId,
-	pub table_name: &'a str,
+	pub table: TableId,      // FIXME refactor to source: SourceId
+	pub table_name: &'a str, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
 	pub if_not_exists: bool,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 impl CatalogStore {
@@ -96,10 +95,10 @@ impl CatalogStore {
 
 		let mut row = column::LAYOUT.allocate();
 		column::LAYOUT.set_u64(&mut row, ID, id);
-		column::LAYOUT.set_u64(&mut row, TABLE, source);
+		column::LAYOUT.set_u64(&mut row, SOURCE, source);
 		column::LAYOUT.set_utf8(&mut row, NAME, &column_to_create.column);
 		column::LAYOUT.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
-		column::LAYOUT.set_u16(&mut row, INDEX, column_to_create.index);
+		column::LAYOUT.set_u8(&mut row, INDEX, column_to_create.index);
 		column::LAYOUT.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
@@ -107,26 +106,17 @@ impl CatalogStore {
 		let blob = reifydb_type::Blob::from(constraint_bytes);
 		column::LAYOUT.set_blob(&mut row, CONSTRAINT, &blob);
 
-		txn.set(
-			&Key::Columns(ColumnsKey {
-				column: id,
-			})
-			.encode(),
-			row,
-		)?;
+		// Store dictionary_id (0 means no dictionary)
+		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
+		column::LAYOUT.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
-		let mut row = table_column::LAYOUT.allocate();
-		table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
-		table_column::LAYOUT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
-		table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
-		txn.set(
-			&ColumnKey {
-				source,
-				column: id,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&ColumnsKey::encoded(id), row)?;
+
+		let mut row = source_column::LAYOUT.allocate();
+		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
+		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
+		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);
+		txn.set(&ColumnKey::encoded(source, id), row)?;
 
 		for policy in column_to_create.policies {
 			Self::create_column_policy(txn, id, policy)?;
@@ -139,6 +129,7 @@ impl CatalogStore {
 			index: column_to_create.index,
 			policies: Self::list_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
+			dictionary_id: column_to_create.dictionary_id,
 		})
 	}
 }
@@ -170,6 +161,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -188,6 +180,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -226,6 +219,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -259,6 +253,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -282,6 +277,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -303,6 +299,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -329,6 +326,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -348,6 +346,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();

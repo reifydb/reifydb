@@ -20,7 +20,7 @@ use reifydb_core::{
 	interceptor::StandardInterceptorFactory,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, QueryTransaction, SingleVersionQueryTransaction, SourceId, TableId,
+		MultiVersionCommandTransaction, MultiVersionQueryTransaction, SourceId, TableId,
 	},
 	key::RowKey,
 	util::{CowVec, mock_time_set},
@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]
@@ -37,7 +37,7 @@ fn test_consumer_lifecycle() {
 	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(100));
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(100), None);
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	assert!(!test_instance.is_running());
@@ -65,7 +65,7 @@ fn test_event_processing() {
 
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -109,7 +109,7 @@ fn test_checkpoint_persistence() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50));
+	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -123,7 +123,7 @@ fn test_checkpoint_persistence() {
 
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
-	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50));
+	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
@@ -133,8 +133,7 @@ fn test_checkpoint_persistence() {
 	let changes_second_run = consumer2_clone.get_total_changes();
 	assert_eq!(changes_second_run, 2, "Should have processed only 2 new changes");
 
-	let txn = engine.begin_query().expect("Failed to begin transaction");
-	let mut txn = txn.begin_single_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
 		consumer: consumer_id,
 	}
@@ -158,7 +157,7 @@ fn test_error_handling() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -191,7 +190,7 @@ fn test_empty_events_handling() {
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -226,10 +225,10 @@ fn test_multiple_consumers() {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50));
+	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50), None);
 	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1);
 
-	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75));
+	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance1.start().expect("Failed to start consumer 1");
@@ -253,8 +252,7 @@ fn test_multiple_consumers() {
 	assert_eq!(changes1_after, 5, "Consumer 1 should have processed 5 changes total");
 	assert_eq!(changes2_after, 5, "Consumer 2 should have processed 5 changes total");
 
-	let txn = engine.begin_query().expect("Failed to begin transaction");
-	let mut txn = txn.begin_single_query().unwrap();
+	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 
 	let consumer1_key = CdcConsumerKey {
 		consumer: consumer_id1,
@@ -310,7 +308,7 @@ fn test_non_table_events_filtered() {
 
 	txn.commit().expect("Failed to commit transaction");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -353,7 +351,7 @@ fn test_rapid_start_stop() {
 	let consumer_id = CdcConsumerId::flow_consumer();
 
 	for _ in 0..5 {
-		let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(100));
+		let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(100), None);
 		let mut test_instance = PollConsumer::new(config, engine.clone(), consumer.clone());
 
 		test_instance.start().expect("Failed to start consumer");
@@ -366,6 +364,236 @@ fn test_rapid_start_stop() {
 	}
 }
 
+#[test]
+fn test_batch_size_limits_processing() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert 25 events
+	insert_test_events(&engine, 25).expect("Failed to insert test events");
+
+	// Set batch size to 10
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(10));
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for processing - should take at least 3 cycles (10, 10, 5)
+	thread::sleep(Duration::from_millis(300));
+
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 25, "Should have processed all 25 changes");
+
+	let process_count = consumer_clone.get_process_count();
+	assert!(process_count >= 3, "Should have been called at least 3 times (for batches of 10, 10, 5)");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_batch_size_one_processes_sequentially() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert 5 events
+	insert_test_events(&engine, 5).expect("Failed to insert test events");
+
+	// Set batch size to 1
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(1));
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for processing
+	thread::sleep(Duration::from_millis(400));
+
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 5, "Should have processed all 5 changes");
+
+	let process_count = consumer_clone.get_process_count();
+	assert!(process_count >= 5, "Should have been called at least 5 times (one per event)");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_batch_size_none_processes_all_at_once() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert 20 events
+	insert_test_events(&engine, 20).expect("Failed to insert test events");
+
+	// Set batch size to None (unbounded)
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for processing
+	thread::sleep(Duration::from_millis(150));
+
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 20, "Should have processed all 20 changes");
+
+	let process_count = consumer_clone.get_process_count();
+	assert!(process_count <= 2, "Should have been called at most 2 times with unbounded batch");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_batch_size_larger_than_events() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert 5 events
+	insert_test_events(&engine, 5).expect("Failed to insert test events");
+
+	// Set batch size to 100 (much larger than number of events)
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(100));
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for processing
+	thread::sleep(Duration::from_millis(150));
+
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 5, "Should have processed all 5 changes");
+
+	let process_count = consumer_clone.get_process_count();
+	assert!(process_count <= 2, "Should have processed efficiently in 1-2 calls");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_batch_size_with_checkpoint_resume() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert 15 events
+	insert_test_events(&engine, 15).expect("Failed to insert test events");
+
+	// Set batch size to 5
+	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), Some(5));
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for partial processing
+	thread::sleep(Duration::from_millis(180));
+	test_instance.stop().expect("Failed to stop consumer");
+
+	let changes_first_run = consumer_clone.get_total_changes();
+	assert!(changes_first_run >= 5, "Should have processed at least one batch of 5");
+
+	// Insert more events
+	insert_test_events(&engine, 3).expect("Failed to insert more test events");
+
+	// Start a new consumer with same ID and batch size
+	let consumer2 = TestConsumer::new();
+	let consumer2_clone = consumer2.clone();
+	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), Some(5));
+	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
+
+	test_instance2.start().expect("Failed to start consumer");
+	thread::sleep(Duration::from_millis(250));
+	test_instance2.stop().expect("Failed to stop consumer");
+
+	let changes_second_run = consumer2_clone.get_total_changes();
+	let total_expected = 18 - changes_first_run;
+	assert_eq!(changes_second_run, total_expected, "Should have processed remaining events plus new ones");
+
+	test_instance2.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_batch_size_exact_match() {
+	let engine = create_test_engine();
+	let consumer = TestConsumer::new();
+	let consumer_clone = consumer.clone();
+	let consumer_id = CdcConsumerId::flow_consumer();
+
+	// Insert exactly 10 events
+	insert_test_events(&engine, 10).expect("Failed to insert test events");
+
+	// Set batch size to 10 (exact match)
+	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(10));
+	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
+
+	test_instance.start().expect("Failed to start consumer");
+
+	// Wait for processing
+	thread::sleep(Duration::from_millis(150));
+
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 10, "Should have processed all 10 changes");
+
+	let process_count = consumer_clone.get_process_count();
+	assert!(process_count <= 2, "Should have processed in 1-2 calls with exact batch size match");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_multiple_consumers_different_batch_sizes() {
+	let engine = create_test_engine();
+
+	let consumer1 = TestConsumer::new();
+	let consumer1_clone = consumer1.clone();
+	let consumer_id1 = CdcConsumerId::new("consumer-batch-3");
+
+	let consumer2 = TestConsumer::new();
+	let consumer2_clone = consumer2.clone();
+	let consumer_id2 = CdcConsumerId::new("consumer-unbounded");
+
+	// Insert 10 events
+	insert_test_events(&engine, 10).expect("Failed to insert test events");
+
+	// Consumer 1 with batch size 3
+	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50), Some(3));
+	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1);
+
+	// Consumer 2 with no batch limit (None)
+	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75), None);
+	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
+
+	test_instance1.start().expect("Failed to start consumer 1");
+	test_instance2.start().expect("Failed to start consumer 2");
+
+	// Wait for processing
+	thread::sleep(Duration::from_millis(400));
+
+	let changes1 = consumer1_clone.get_total_changes();
+	let changes2 = consumer2_clone.get_total_changes();
+
+	// Both should process all events
+	assert_eq!(changes1, 10, "Consumer 1 should have processed all 10 changes");
+	assert_eq!(changes2, 10, "Consumer 2 should have processed all 10 changes");
+
+	// Consumer 1 should have more process calls due to smaller batch size
+	let process_count1 = consumer1_clone.get_process_count();
+	let process_count2 = consumer2_clone.get_process_count();
+
+	assert!(process_count1 >= 4, "Consumer 1 should have at least 4 calls (10 events / batch size 3)");
+	assert!(process_count2 <= 2, "Consumer 2 should have at most 2 calls (unbounded)");
+
+	test_instance1.stop().expect("Failed to stop consumer 1");
+	test_instance2.stop().expect("Failed to stop consumer 2");
+}
+
 fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
@@ -373,7 +601,7 @@ fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new();
 	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMultiVersion::optimistic(store, single.clone(), eventbus.clone());
+	let multi = Transaction::new(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,

@@ -15,8 +15,6 @@ pub trait SingleVersionStore:
 	+ SingleVersionContains
 	+ SingleVersionSet
 	+ SingleVersionRemove
-	+ SingleVersionScan
-	+ SingleVersionScanRev
 	+ SingleVersionRange
 	+ SingleVersionRangeRev
 	+ 'static
@@ -60,22 +58,6 @@ pub trait SingleVersionRemove: SingleVersionCommit {
 
 pub trait SingleVersionIter: Iterator<Item = SingleVersionValues> + Send {}
 impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionValues> + Send {}
-
-pub trait SingleVersionScan {
-	type ScanIter<'a>: SingleVersionIter
-	where
-		Self: 'a;
-
-	fn scan(&self) -> crate::Result<Self::ScanIter<'_>>;
-}
-
-pub trait SingleVersionScanRev {
-	type ScanIterRev<'a>: SingleVersionIter
-	where
-		Self: 'a;
-
-	fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>>;
-}
 
 pub trait SingleVersionRange {
 	type Range<'a>: SingleVersionIter

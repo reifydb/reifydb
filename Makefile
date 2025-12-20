@@ -68,6 +68,17 @@ help:
 	@printf "  %-25s %s\n" "build-testcontainer" "Build test container"
 	@printf "  %-25s %s\n" "push-testcontainer" "Push test container to registry"
 	@echo ""
+	@echo "  📦 Release Management"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "show-version" "Display current version"
+	@printf "  %-25s %s\n" "release" "Release with auto-increment patch version"
+	@printf "  %-25s %s\n" "release VERSION=x.y.z" "Release specific version"
+	@printf "  %-25s %s\n" "release-patch" "Quick patch release"
+	@printf "  %-25s %s\n" "release-minor" "Quick minor release"
+	@printf "  %-25s %s\n" "release-major" "Quick major release"
+	@printf "  %-25s %s\n" "release-dry-run" "Preview release without executing"
+	@printf "  %-25s %s\n" "help-release" "Show detailed release help"
+	@echo ""
 	@echo "  📊 Other"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "check" "Check for uncommitted changes"
@@ -77,6 +88,7 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@echo "  make test-dev      # Fast feedback during development"
 	@echo "  make test          # Full test before committing"
+	@echo "  make release       # Release a new version"
 	@echo ""
 
 # =============================================================================
@@ -147,3 +159,4 @@ include mk/clean.mk
 include mk/build.mk
 include mk/format.mk
 include mk/container.mk
+include mk/release.mk

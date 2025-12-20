@@ -6,8 +6,9 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
-	memory, optimistic,
-	sub_server::ServerConfig,
+	memory,
+	sub_server_ws::WsConfig,
+	transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, WsBlockingSession, WsClient};
@@ -24,7 +25,7 @@ impl WsRunner {
 	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_config(ServerConfig::new().bind_addr("::1:0"))
+			.with_ws(WsConfig::default().bind_addr("::1:0"))
 			.build()
 			.unwrap();
 
@@ -76,7 +77,7 @@ impl testscript::Runner for WsRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server().unwrap().port().unwrap();
+		let port = server.sub_server_ws().unwrap().port().unwrap();
 
 		let client = Client::ws_from_url(&format!("ws://::1:{}", port))?;
 
@@ -112,5 +113,5 @@ impl testscript::Runner for WsRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as ws => test_ws }
 
 fn test_ws(path: &Path) {
-	retry(3, || testscript::run_path(&mut WsRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut WsRunner::new(transaction(memory())), path)).expect("test failed")
 }

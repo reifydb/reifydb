@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod consumer;
 mod factory;
 pub mod intercept;
 
-use std::{any::Any, time::Duration};
+use std::{any::Any, path::PathBuf, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
 use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
@@ -18,10 +17,10 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
+use reifydb_sub_api::{HealthStatus, Priority, SchedulerService, Subsystem};
+use tracing::instrument;
 
-use self::consumer::FlowConsumer;
-use crate::builder::OperatorFactory;
+use crate::{builder::OperatorFactory, consumer::FlowConsumer};
 
 pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer
@@ -32,6 +31,10 @@ pub struct FlowSubsystemConfig {
 	pub priority: Priority,
 	/// Custom operator factories
 	pub operators: Vec<(String, OperatorFactory)>,
+	/// Maximum batch size for CDC polling (None = unbounded)
+	pub max_batch_size: Option<u64>,
+	/// Directory to scan for FFI operator shared libraries
+	pub operators_dir: Option<PathBuf>,
 }
 
 pub struct FlowSubsystem {
@@ -40,15 +43,17 @@ pub struct FlowSubsystem {
 }
 
 impl FlowSubsystem {
+	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
+		let scheduler = ioc.resolve::<SchedulerService>().ok();
 
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir, scheduler);
 
 		Ok(Self {
 			consumer: PollConsumer::new(
-				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval),
-				engine,
+				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval, cfg.max_batch_size),
+				engine.clone(),
 				consumer,
 			),
 			running: false,
@@ -64,9 +69,10 @@ impl Drop for FlowSubsystem {
 
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
-		"Flow"
+		"sub-flow"
 	}
 
+	#[instrument(name = "flow::subsystem::start", level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
@@ -78,6 +84,7 @@ impl Subsystem for FlowSubsystem {
 		Ok(())
 	}
 
+	#[instrument(name = "flow::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
@@ -88,10 +95,12 @@ impl Subsystem for FlowSubsystem {
 		Ok(())
 	}
 
+	#[instrument(name = "flow::subsystem::is_running", level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running
 	}
 
+	#[instrument(name = "flow::subsystem::health_status", level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

@@ -254,6 +254,24 @@ expected:
     +--------------------+
 ```
 
+### decimal_param
+```yaml
+operation: command
+statement: "MAP $1 as result"
+params:
+  type: positional
+  values:
+    - "123.456789"
+expected:
+  status: success
+  output: |
+    +-------------+
+    |   result    |
+    +-------------+
+    | 123.456789  |
+    +-------------+
+```
+
 ### utf8_param
 ```yaml
 operation: command
@@ -414,24 +432,6 @@ expected:
     +----------------------------------------+
     | 018fad5d-f37a-7c94-a716-446655440001  |
     +----------------------------------------+
-```
-
-### rownumber_param
-```yaml
-operation: command
-statement: "MAP $1 as result"
-params:
-  type: positional
-  values:
-    - "123456789"
-expected:
-  status: success
-  output: |
-    +------------+
-    |   result   |
-    +------------+
-    | 123456789  |
-    +------------+
 ```
 
 ### multiple_params

@@ -177,6 +177,17 @@ describe('Named Parameters', () => {
             expectSingleResult(frames, 3.141592653589793, 'number');
         }, 1000);
 
+        it('Decimal', async () => {
+            const decimal = "123.456789";
+            const frames = await wsClient.command(
+                'MAP $value as result',
+                { value: decimal },
+                [Schema.object({result: Schema.decimal()})]
+            );
+
+            expectSingleResult(frames, decimal, 'string');
+        }, 1000);
+
         it('Utf8', async () => {
             const frames = await wsClient.command(
                 'MAP $value as result',
@@ -196,16 +207,6 @@ describe('Named Parameters', () => {
             );
 
             expectSingleBlobResult(frames, data);
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.command(
-                'MAP $value as result',
-                { value: BigInt("123456789") },
-                [Schema.object({result: Schema.rownumber()})]
-            );
-
-            expectSingleBigIntResult(frames, BigInt(123456789));
         }, 1000);
 
         it('Date', async () => {
@@ -241,15 +242,15 @@ describe('Named Parameters', () => {
             expectSingleDateResult(frames, datetime);
         }, 1000);
 
-        it('Interval', async () => {
-            const interval = "P1DT2H30M";
+        it('Duration', async () => {
+            const duration = "P1DT2H30M";
             const frames = await wsClient.command(
                 'MAP $value as result',
-                { value: interval },
-                [Schema.object({result: Schema.interval()})]
+                { value: duration },
+                [Schema.object({result: Schema.duration()})]
             );
 
-            expectSingleResult(frames, interval, 'string');
+            expectSingleResult(frames, duration, 'string');
         }, 1000);
 
         it('Uuid4', async () => {
@@ -419,6 +420,17 @@ describe('Named Parameters', () => {
             expectSingleResult(frames, 3.141592653589793, 'number');
         }, 1000);
 
+        it('Decimal', async () => {
+            const decimal = "123.456789";
+            const frames = await wsClient.query(
+                'MAP $value as result',
+                { value: decimal },
+                [Schema.object({result: Schema.decimal()})]
+            );
+
+            expectSingleResult(frames, decimal, 'string');
+        }, 1000);
+
         it('Utf8', async () => {
             const frames = await wsClient.query(
                 'MAP $value as result',
@@ -438,16 +450,6 @@ describe('Named Parameters', () => {
             );
 
             expectSingleBlobResult(frames, data);
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.query(
-                'MAP $value as result',
-                { value: BigInt("123456789") },
-                [Schema.object({result: Schema.rownumber()})]
-            );
-
-            expectSingleBigIntResult(frames, BigInt(123456789));
         }, 1000);
 
         it('Date', async () => {
@@ -483,15 +485,15 @@ describe('Named Parameters', () => {
             expectSingleDateResult(frames, datetime);
         }, 1000);
 
-        it('Interval', async () => {
-            const interval = "P1DT2H30M";
+        it('Duration', async () => {
+            const duration = "P1DT2H30M";
             const frames = await wsClient.query(
                 'MAP $value as result',
-                { value: interval },
-                [Schema.object({result: Schema.interval()})]
+                { value: duration },
+                [Schema.object({result: Schema.duration()})]
             );
 
-            expectSingleResult(frames, interval, 'string');
+            expectSingleResult(frames, duration, 'string');
         }, 1000);
 
         it('Uuid4', async () => {

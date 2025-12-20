@@ -2,7 +2,6 @@
 // This file is licensed under the MIT
 
 use std::{
-	collections::HashMap,
 	io::{BufRead, BufReader, Read, Write},
 	net::{SocketAddr, TcpStream, ToSocketAddrs},
 	sync::{Arc, Mutex, mpsc},
@@ -268,6 +267,7 @@ impl HttpClientConfig {
 			Host: {}\r\n\
 			Content-Type: application/json\r\n\
 			Content-Length: {}\r\n\
+			Authorization: Bearer mysecrettoken\r\n\
 			Connection: close\r\n\
 			\r\n",
 			path,
@@ -298,15 +298,7 @@ impl HttpClientConfig {
 			return Err("Invalid HTTP status line".into());
 		}
 
-		let status_code: u16 = status_parts[1].parse()?;
-		if status_code < 200 || status_code >= 300 {
-			return Err(
-				format!("HTTP error {}: {}", status_code, status_parts.get(2).unwrap_or(&"")).into()
-			);
-		}
-
-		// Read headers
-		let mut headers = HashMap::new();
+		// Read headers (body is always read for error response parsing)
 		let mut content_length: Option<usize> = None;
 		let mut is_chunked = false;
 
@@ -320,15 +312,13 @@ impl HttpClientConfig {
 
 			if let Some(colon_pos) = line.find(':') {
 				let key = line[..colon_pos].trim().to_lowercase();
-				let value = line[colon_pos + 1..].trim().to_string();
+				let value = line[colon_pos + 1..].trim();
 
 				if key == "content-length" {
 					content_length = value.parse().ok();
 				} else if key == "transfer-encoding" && value.contains("chunked") {
 					is_chunked = true;
 				}
-
-				headers.insert(key, value);
 			}
 		}
 

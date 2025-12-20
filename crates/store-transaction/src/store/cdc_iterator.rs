@@ -86,7 +86,7 @@ impl<'a> Iterator for CdcMergingIterator<'a> {
 mod tests {
 	use reifydb_core::{
 		CowVec, EncodedKey,
-		interface::{CdcChange, CdcSequencedChange, TransactionId},
+		interface::{CdcChange, CdcSequencedChange},
 		value::encoded::EncodedValues,
 	};
 
@@ -124,20 +124,15 @@ mod tests {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn create_values(data: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(data.as_bytes().to_vec()))
-	}
-
 	fn create_cdc(version: u64, timestamp: u64, key: &str, value: &str) -> Cdc {
 		Cdc::new(
 			CommitVersion::from(version),
 			timestamp,
-			TransactionId::default(),
 			vec![CdcSequencedChange {
 				sequence: 0,
 				change: CdcChange::Insert {
 					key: create_key(key),
-					post: create_values(value),
+					post: EncodedValues(CowVec::new(value.as_bytes().to_vec())), /* Create encoded value for the post data */
 				},
 			}],
 		)

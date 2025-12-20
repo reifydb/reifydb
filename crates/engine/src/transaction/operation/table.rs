@@ -1,12 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
-	Row,
-	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef,
+		EncodableKey, MultiVersionCommandTransaction, RowChange, RowKey, TableDef, TableRowInsertion,
 		interceptor::TableInterceptor,
 	},
 	value::encoded::EncodedValues,
@@ -16,7 +13,7 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber>;
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()>;
 
 	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
 
@@ -24,10 +21,8 @@ pub(crate) trait TableOperations {
 }
 
 impl TableOperations for StandardCommandTransaction {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber> {
-		let row_number = RowSequence::next_row_number(self, table.id)?;
-
-		TableInterceptor::pre_insert(self, &table, &row)?;
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
+		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 
 		self.set(
 			&RowKey {
@@ -40,18 +35,14 @@ impl TableOperations for StandardCommandTransaction {
 
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
-		let layout = table.get_named_layout();
+		// Track insertion for post-commit event emission
+		self.row_changes.push(RowChange::TableInsert(TableRowInsertion {
+			table_id: table.id,
+			row_number,
+			encoded: row,
+		}));
 
-		self.event_bus().emit(TableInsertedEvent {
-			table,
-			row: Row {
-				number: row_number,
-				encoded: row,
-				layout,
-			},
-		});
-
-		Ok(row_number)
+		Ok(())
 	}
 
 	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {

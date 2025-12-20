@@ -1,0 +1,37 @@
+[package]
+name = "reifydb-sub-server-otel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "OpenTelemetry/Jaeger tracing subsystem for ReifyDB"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-sub-server = { workspace = true }
+
+# Tracing ecosystem
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+# OpenTelemetry core
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+
+# OpenTelemetry exporters (feature-gated)
+opentelemetry-otlp = { workspace = true, optional = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Performance
+parking_lot = { workspace = true }
+
+[features]
+default = ["otlp"]
+otlp = ["dep:opentelemetry-otlp"]

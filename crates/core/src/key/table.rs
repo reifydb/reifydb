@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::TableId,
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,32 +25,34 @@ impl EncodableKey for TableKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 8 {
-			return None;
-		}
+		let table = de.read_u64().ok()?;
 
-		keycode::deserialize(&payload[..8]).ok().map(|table| Self {
-			table,
+		Some(Self {
+			table: TableId(table),
 		})
 	}
 }
 
 impl TableKey {
+	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
+		Self {
+			table: table.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::table_start()), Some(Self::table_end()))
 	}

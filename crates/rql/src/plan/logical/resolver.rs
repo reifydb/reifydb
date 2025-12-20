@@ -7,8 +7,8 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		resolved::{
-			ResolvedDeferredView, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, ResolvedTable,
-			ResolvedTableVirtual, ResolvedTransactionalView,
+			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
+			ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 		},
 	},
 };
@@ -44,21 +44,26 @@ pub fn resolve_unresolved_source(
 	let name_fragment = Fragment::owned_internal(name_str.to_string());
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::owned_internal(a.text()));
 
-	// Check if it's a system table
-	// FIXME this is broken
+	// Check for user-defined virtual tables first (in any namespace)
+	if let Some(virtual_def) = tx.find_table_virtual_user_by_name(ns_def.id, name_str) {
+		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(
+			name_fragment,
+			namespace,
+			(*virtual_def).clone(),
+		)));
+	}
+
+	// Check if it's a system table (namespace = "system")
+	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		// For system tables, we use a placeholder TableVirtualDef
-		// In a real implementation, this would come from the system catalog
 		use reifydb_core::interface::{NamespaceId, TableVirtualId};
 		let def = TableVirtualDef {
-			id: TableVirtualId(0),     // Placeholder ID
-			namespace: NamespaceId(0), // System namespace ID
+			id: TableVirtualId(0),     // Placeholder ID - compile.rs handles actual lookup
+			namespace: NamespaceId(1), // System namespace ID
 			name: name_str.to_string(),
-			columns: vec![], // Would be populated with actual columns
+			columns: vec![], // Columns are populated at execution time
 		};
 
-		// ResolvedTableVirtual doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
 		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(name_fragment, namespace, def)));
 	}
 
@@ -70,13 +75,13 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try ring buffer
-	if let Some(ring_buffer) = tx.find_ring_buffer_by_name(ns_def.id, name_str)? {
+	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ring_buffer)));
+		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ringbuffer)));
 	}
 
-	// Try views
+	// Try views FIRST (deferred views share name with their flow)
 	if let Some(view) = tx.find_view_by_name(ns_def.id, name_str)? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
@@ -92,6 +97,18 @@ pub fn resolve_unresolved_source(
 			)),
 		};
 		return Ok(resolved_source);
+	}
+
+	// Try dictionaries
+	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str)? {
+		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
+	}
+
+	// Try flows (after views, since deferred views take precedence)
+	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str)? {
+		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
+		// For now, just create without alias
+		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
 	}
 
 	// Not found

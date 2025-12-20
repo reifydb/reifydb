@@ -4,6 +4,13 @@
 /bin/*/target/
 /pkg/rust/*/target/
 /pkg/rust/tests/*/target/
+
+# Ignore workspace member lock files - only root Cargo.lock should exist
+/bin/*/Cargo.lock
+/crates/*/Cargo.lock
+/pkg/rust/*/Cargo.lock
+!/Cargo.lock
+
 .idea
 .run
 .venv
@@ -13,3 +20,7 @@
 **/node_modules/
 .claude/
 plan*.md
+.publish-status-*
+
+#vendoring
+vendor/**/opentelemetry-proto/.vscode/settings.json

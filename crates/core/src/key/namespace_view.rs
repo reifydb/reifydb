@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::{NamespaceId, ViewId},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,35 +30,37 @@ impl EncodableKey for NamespaceViewKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 16 {
-			return None;
-		}
+		let namespace = de.read_u64().ok()?;
+		let view = de.read_u64().ok()?;
 
-		keycode::deserialize(&payload[..8]).ok().zip(keycode::deserialize(&payload[8..]).ok()).map(
-			|(namespace, view)| Self {
-				namespace,
-				view,
-			},
-		)
+		Some(Self {
+			namespace: NamespaceId(namespace),
+			view: ViewId(view),
+		})
 	}
 }
 
 impl NamespaceViewKey {
+	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+		Self {
+			namespace: namespace.into(),
+			view: view.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
 	}

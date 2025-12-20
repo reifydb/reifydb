@@ -212,12 +212,12 @@ impl WebSocketClient {
 		// Build handshake request
 		let request = format!(
 			"GET / HTTP/1.1\r\n\
-             Host: localhost\r\n\
-             Upgrade: websocket\r\n\
-             Connection: Upgrade\r\n\
-             Sec-WebSocket-Key: {}\r\n\
-             Sec-WebSocket-Version: 13\r\n\
-             \r\n",
+Host: localhost\r\n\
+Upgrade: websocket\r\n\
+Connection: Upgrade\r\n\
+Sec-WebSocket-Key: {}\r\n\
+Sec-WebSocket-Version: 13\r\n\
+\r\n",
 			key
 		);
 
@@ -262,10 +262,16 @@ impl WebSocketClient {
 			return Err(format!("Invalid handshake response: {}", response_str).into());
 		}
 
-		// Verify Sec-WebSocket-Accept
+		// Verify Sec-WebSocket-Accept (case-insensitive header search)
 		let expected_accept = calculate_accept_key(&key);
-		if !response_str.contains(&format!("Sec-WebSocket-Accept: {}", expected_accept)) {
-			return Err("Invalid Sec-WebSocket-Accept".into());
+		let response_lower = response_str.to_lowercase();
+		let accept_pattern = format!("sec-websocket-accept: {}", expected_accept).to_lowercase();
+		if !response_lower.contains(&accept_pattern) {
+			return Err(format!(
+				"Invalid Sec-WebSocket-Accept. Expected: {}, Response: {}",
+				expected_accept, response_str
+			)
+			.into());
 		}
 
 		self.is_connected = true;

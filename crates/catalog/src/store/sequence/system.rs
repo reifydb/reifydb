@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		ColumnId, ColumnPolicyId, CommandTransaction, EncodableKey, NamespaceId, PrimaryKeyId, RingBufferId,
+		ColumnId, ColumnPolicyId, CommandTransaction, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId,
 		SystemSequenceKey, TableId, ViewId,
 	},
 };
@@ -15,61 +15,21 @@ use crate::{
 	system::ids::sequences::{COLUMN, COLUMN_POLICY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, SOURCE},
 };
 
-static NAMESPACE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: NAMESPACE,
-	}
-	.encode()
-});
+static NAMESPACE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(NAMESPACE));
 
-static SOURCE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: SOURCE,
-	}
-	.encode()
-});
+static SOURCE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(SOURCE));
 
-static COLUMN_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: COLUMN,
-	}
-	.encode()
-});
+static COLUMN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN));
 
-static COLUMN_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: COLUMN_POLICY,
-	}
-	.encode()
-});
+static COLUMN_POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_POLICY));
 
-pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: FLOW,
-	}
-	.encode()
-});
+pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW));
 
-pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: FLOW_NODE,
-	}
-	.encode()
-});
+pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_NODE));
 
-pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: FLOW_EDGE,
-	}
-	.encode()
-});
+pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_EDGE));
 
-static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| {
-	SystemSequenceKey {
-		sequence: PRIMARY_KEY,
-	}
-	.encode()
-});
+static PRIMARY_KEY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(PRIMARY_KEY));
 
 pub(crate) struct SystemSequence {}
 
@@ -98,7 +58,11 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None).map(PrimaryKeyId)
 	}
 
-	pub(crate) fn next_ring_buffer_id(txn: &mut impl CommandTransaction) -> crate::Result<RingBufferId> {
+	pub(crate) fn next_ringbuffer_id(txn: &mut impl CommandTransaction) -> crate::Result<RingBufferId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(RingBufferId)
+	}
+
+	pub(crate) fn next_dictionary_id(txn: &mut impl CommandTransaction) -> crate::Result<DictionaryId> {
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(DictionaryId)
 	}
 }

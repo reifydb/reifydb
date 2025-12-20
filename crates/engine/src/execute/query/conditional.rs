@@ -59,6 +59,7 @@ impl<'a> ConditionalNode<'a> {
 			take: None,
 			params: &ctx.params,
 			stack: &ctx.stack,
+			is_aggregate_context: false,
 		};
 
 		// Evaluate the condition expression

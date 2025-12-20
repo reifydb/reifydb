@@ -3,44 +3,39 @@
 # =============================================================================
 
 # Benchmark targets
-.PHONY: bench bench-all bench-memory-optimistic bench-rql bench-rql-tokenize bench-rql-parse bench-rql-logical
+.PHONY: bench bench-all bench-store bench-transaction
 
 bench: bench-all
 
 bench-all:
 	@echo "🏃‍♂️ Running all ReifyDB benchmarks..."
-	@cd ../bench && $(MAKE) bench-all
+	cargo bench -p reifydb-benches $(CARGO_OFFLINE)
 
-bench-memory-optimistic:
-	@echo "🏃‍♂️ Running memory optimistic transaction benchmarks..."
-	@cd ../bench && $(MAKE) bench-memory-optimistic
+bench-store:
+	@echo "🏃‍♂️ Running store benchmarks..."
+	cargo bench -p reifydb-benches --bench store $(CARGO_OFFLINE)
 
-bench-rql: bench-rql-tokenize bench-rql-parse bench-rql-logical
-
-bench-rql-tokenize:
-	@echo "🏃‍♂️ Running RQL tokenization benchmarks..."
-	@cd ../bench && $(MAKE) bench-rql-tokenize
-
-bench-rql-parse:
-	@echo "🏃‍♂️ Running RQL parsing benchmarks..."
-	@cd ../bench && $(MAKE) bench-rql-parse
-
-bench-rql-logical:
-	@echo "🏃‍♂️ Running RQL logical planning benchmarks..."
-	@cd ../bench && $(MAKE) bench-rql-logical
+bench-transaction:
+	@echo "🏃‍♂️ Running transaction benchmarks..."
+	cargo bench -p reifydb-benches --bench transaction $(CARGO_OFFLINE)
 
 # Benchmark utilities
 .PHONY: bench-baseline bench-compare bench-report
 
 bench-baseline:
 	@echo "💾 Saving benchmark baseline..."
-	@cd ../bench && $(MAKE) bench-baseline
+	cargo bench -p reifydb-benches $(CARGO_OFFLINE) -- --save-baseline main
 
 bench-compare:
 	@echo "📊 Comparing benchmarks to baseline..."
-	@cd ../bench && $(MAKE) bench-compare
+	cargo bench -p reifydb-benches $(CARGO_OFFLINE) -- --baseline main
 
 bench-report:
 	@echo "📈 Opening benchmark reports..."
-	@cd ../bench && $(MAKE) bench-report
-
+	@if [ -d "target/criterion" ]; then \
+		xdg-open target/criterion/report/index.html 2>/dev/null || \
+		open target/criterion/report/index.html 2>/dev/null || \
+		echo "Reports available at: target/criterion/report/index.html"; \
+	else \
+		echo "No benchmark reports found. Run 'make bench' first."; \
+	fi

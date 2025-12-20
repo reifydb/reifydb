@@ -72,6 +72,7 @@ impl<'a> QueryNode<'a> for DeclareNode<'a> {
 					take: None,
 					params: &stored_ctx.params,
 					stack: &stored_ctx.stack,
+					is_aggregate_context: false,
 				};
 
 				let result_column = evaluate(&evaluation_context, expr)?;

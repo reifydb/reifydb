@@ -92,3 +92,19 @@ pub fn transaction_already_rolled_back() -> Diagnostic {
 		cause: None,
 	}
 }
+
+/// Attempted to access a key outside the transaction's declared key scope
+pub fn key_out_of_scope(key: String) -> Diagnostic {
+	Diagnostic {
+		code: "TXN_010".to_string(),
+		statement: None,
+		message: format!("Key '{}' is not in the transaction's declared key scope", key),
+		column: None,
+		fragment: OwnedFragment::None,
+		label: None,
+		help: Some("Declare the key when beginning the transaction or use a different transaction scope"
+			.to_string()),
+		notes: vec![],
+		cause: None,
+	}
+}

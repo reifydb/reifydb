@@ -45,14 +45,12 @@ export class Connection {
     async connect(url?: string, options?: Omit<WsClientOptions, 'url'>): Promise<void> {
         // Don't connect if already connected or connecting
         if (this.state.isConnected || this.state.isConnecting) {
-            console.debug('[Connection] Already connected or connecting, skipping wsConnection attempt');
             return;
         }
 
         const connectUrl = url || this.config.url || DEFAULT_CONFIG.url!;
         const connectOptions = {...this.config.options, ...options};
 
-        console.debug('[Connection] Attempting to connect to:', connectUrl);
         this.updateState({
             isConnecting: true,
             connectionError: null,
@@ -61,7 +59,6 @@ export class Connection {
         try {
             const client = await Client.connect_ws(connectUrl, connectOptions);
 
-            console.debug('[Connection] Successfully connected to WebSocket');
             this.updateState({
                 client,
                 isConnected: true,

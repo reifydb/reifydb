@@ -133,21 +133,21 @@ mod tests {
 
 	#[test]
 	fn test_set_temporal_types() {
-		use reifydb_type::{Date, DateTime, Interval, Time};
+		use reifydb_type::{Date, DateTime, Duration, Time};
 
-		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
+		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = layout.allocate();
 
 		// Set temporal values
 		let date = Date::new(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
-		let interval = Interval::from_days(7);
+		let duration = Duration::from_days(7);
 
 		layout.set_date(&mut row, 0, date.clone());
 		layout.set_datetime(&mut row, 1, datetime.clone());
 		layout.set_time(&mut row, 2, time.clone());
-		layout.set_interval(&mut row, 3, interval.clone());
+		layout.set_duration(&mut row, 3, duration.clone());
 
 		// Verify all are defined
 		assert!(row.is_defined(0));
@@ -168,7 +168,7 @@ mod tests {
 		assert_eq!(layout.try_get_date(&row, 0), None);
 		assert_eq!(layout.try_get_datetime(&row, 1), Some(datetime));
 		assert_eq!(layout.try_get_time(&row, 2), None);
-		assert_eq!(layout.try_get_interval(&row, 3), Some(interval));
+		assert_eq!(layout.try_get_duration(&row, 3), Some(duration));
 	}
 
 	#[test]

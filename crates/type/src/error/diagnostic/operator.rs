@@ -52,7 +52,7 @@ pub fn not_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> D
         notes: vec![
             "NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)".to_string(),
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
-            "Temporal types include Date, DateTime, Time, and Interval".to_string()
+            "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
         cause: None}
 }
@@ -124,7 +124,7 @@ pub fn and_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> D
         notes: vec![
             "AND is a logical operator that combines boolean values".to_string(),
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
-            "Temporal types include Date, DateTime, Time, and Interval".to_string()
+            "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
         cause: None}
 }
@@ -196,7 +196,7 @@ pub fn or_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> Di
         notes: vec![
             "OR is a logical operator that combines boolean values".to_string(),
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
-            "Temporal types include Date, DateTime, Time, and Interval".to_string()
+            "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
         cause: None}
 }
@@ -268,7 +268,7 @@ pub fn xor_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> D
         notes: vec![
             "XOR is a logical operator that performs exclusive or on boolean values".to_string(),
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
-            "Temporal types include Date, DateTime, Time, and Interval".to_string()
+            "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
         cause: None}
 }

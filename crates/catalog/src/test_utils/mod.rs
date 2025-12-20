@@ -2,16 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicyKind, CommandTransaction, NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
+	ColumnPolicyKind, CommandTransaction, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus,
+	NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
 };
-use reifydb_type::TypeConstraint;
+use reifydb_type::{Blob, TypeConstraint};
 
 use crate::{
 	CatalogStore,
 	store::{
 		column::{ColumnIndex, ColumnToCreate},
+		flow::create::FlowToCreate,
 		namespace::NamespaceToCreate,
-		ring_buffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
+		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		table::TableToCreate,
 		view::ViewToCreate,
 	},
@@ -60,6 +62,7 @@ pub fn create_table(
 			table: table.to_string(),
 			namespace: namespace_def.id,
 			columns: columns.to_vec(),
+			retention_policy: None,
 		},
 	)
 	.unwrap()
@@ -87,8 +90,9 @@ pub fn create_test_column(
 			constraint,
 			if_not_exists: false,
 			policies,
-			index: ColumnIndex(columns.len() as u16),
+			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
+			dictionary_id: None,
 		},
 	)
 	.unwrap();
@@ -115,30 +119,30 @@ pub fn create_view(
 	.unwrap()
 }
 
-pub fn ensure_test_ring_buffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
+pub fn ensure_test_ringbuffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_ring_buffer_by_name(txn, namespace.id, "test_ring_buffer").unwrap() {
+	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").unwrap() {
 		return result;
 	}
-	create_ring_buffer(txn, "test_namespace", "test_ring_buffer", 100, &[])
+	create_ringbuffer(txn, "test_namespace", "test_ringbuffer", 100, &[])
 }
 
-pub fn create_ring_buffer(
+pub fn create_ringbuffer(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
-	ring_buffer: &str,
+	ringbuffer: &str,
 	capacity: u64,
 	columns: &[RingBufferColumnToCreate],
 ) -> RingBufferDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
-	CatalogStore::create_ring_buffer(
+	CatalogStore::create_ringbuffer(
 		txn,
 		RingBufferToCreate {
 			fragment: None,
-			ring_buffer: ring_buffer.to_string(),
+			ringbuffer: ringbuffer.to_string(),
 			namespace: namespace_def.id,
 			capacity,
 			columns: columns.to_vec(),
@@ -147,31 +151,91 @@ pub fn create_ring_buffer(
 	.unwrap()
 }
 
-pub fn create_test_ring_buffer_column(
+pub fn create_test_ringbuffer_column(
 	txn: &mut impl CommandTransaction,
-	ring_buffer_id: RingBufferId,
+	ringbuffer_id: RingBufferId,
 	name: &str,
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
 ) {
-	let columns = CatalogStore::list_columns(txn, ring_buffer_id).unwrap();
+	let columns = CatalogStore::list_columns(txn, ringbuffer_id).unwrap();
 
 	CatalogStore::create_column(
 		txn,
-		ring_buffer_id,
+		ringbuffer_id,
 		ColumnToCreate {
 			fragment: None,
 			namespace_name: "test_namespace",
-			table: TableId(0), /* Not used - source is passed
-			                    * separately */
-			table_name: "test_ring_buffer",
+			table: TableId(0),
+			table_name: "test_ringbuffer",
 			column: name.to_string(),
 			constraint,
 			if_not_exists: false,
 			policies,
-			index: ColumnIndex(columns.len() as u16),
+			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
+			dictionary_id: None,
 		},
 	)
 	.unwrap();
+}
+
+pub fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
+	// First look up the namespace to get its ID
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+
+	CatalogStore::create_flow(
+		txn,
+		FlowToCreate {
+			fragment: None,
+			name: flow.to_string(),
+			namespace: namespace_def.id,
+			status: FlowStatus::Active,
+		},
+	)
+	.unwrap()
+}
+
+pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
+	let namespace = ensure_test_namespace(txn);
+
+	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
+		return result;
+	}
+	create_flow(txn, "test_namespace", "test_flow")
+}
+
+pub fn create_flow_node(txn: &mut impl CommandTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
+	use crate::store::sequence::flow::next_flow_node_id;
+
+	let node_id = next_flow_node_id(txn).unwrap();
+	let node_def = FlowNodeDef {
+		id: node_id,
+		flow: flow_id,
+		node_type,
+		data: Blob::from(data),
+	};
+
+	CatalogStore::create_flow_node(txn, &node_def).unwrap();
+	node_def
+}
+
+pub fn create_flow_edge(
+	txn: &mut impl CommandTransaction,
+	flow_id: FlowId,
+	source: FlowNodeId,
+	target: FlowNodeId,
+) -> FlowEdgeDef {
+	use crate::store::sequence::flow::next_flow_edge_id;
+
+	let edge_id = next_flow_edge_id(txn).unwrap();
+	let edge_def = FlowEdgeDef {
+		id: edge_id,
+		flow: flow_id,
+		source,
+		target,
+	};
+
+	CatalogStore::create_flow_edge(txn, &edge_def).unwrap();
+	edge_def
 }

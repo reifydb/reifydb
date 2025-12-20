@@ -255,8 +255,8 @@ fn create_diff(expected: &str, actual: &str) -> String {
 	}
 
 	// Limit to first 3 hunks to reduce noise
-	let hunks_to_show = hunks.iter().take(3).cloned().collect::<Vec<_>>();
-	let remaining_hunks = hunks.len().saturating_sub(3);
+	let hunks_to_show = hunks.iter().take(20).cloned().collect::<Vec<_>>();
+	let remaining_hunks = hunks.len().saturating_sub(20);
 
 	// Render hunks
 	for (hunk_start, hunk_end) in &hunks_to_show {

@@ -5,7 +5,7 @@ use std::{sync::Arc, thread, time::Instant};
 
 use encoding::keycode;
 use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
-use reifydb_transaction::multi::transaction::optimistic::TransactionOptimistic;
+use reifydb_transaction::multi::Transaction;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
@@ -26,7 +26,7 @@ pub fn oracle_performance_benchmark() {
 	for &num_txns in &test_sizes {
 		println!("Testing with {} transactions...", num_txns);
 
-		let engine = TransactionOptimistic::testing();
+		let engine = Transaction::testing();
 
 		let start = Instant::now();
 
@@ -68,7 +68,7 @@ pub fn concurrent_oracle_benchmark() {
 			num_threads, txns_per_thread, total_txns
 		);
 
-		let engine = Arc::new(TransactionOptimistic::testing());
+		let engine = Arc::new(Transaction::testing());
 		let start = Instant::now();
 
 		let mut handles = vec![];
@@ -107,7 +107,7 @@ pub fn concurrent_oracle_benchmark() {
 pub fn conflict_detection_benchmark() {
 	println!("=== Conflict Detection Performance Benchmark ===\n");
 
-	let engine = TransactionOptimistic::testing();
+	let engine = Transaction::testing();
 
 	// Pre-populate with some data to create realistic conflict scenarios
 	for i in 0..1000 {

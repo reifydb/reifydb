@@ -64,22 +64,22 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let layout = EncodedValuesLayout::new(&[Type::Interval]);
+	let layout = EncodedValuesLayout::new(&[Type::Duration]);
 	let mut row = layout.allocate();
 
 	let intervals = [
-		Interval::from_seconds(0),
-		Interval::from_seconds(-1),
-		Interval::from_days(365),
-		Interval::from_weeks(-52),
-		Interval::new(12, 30, 123456789),            // Complex interval
-		Interval::new(-12, -30, -123456789),         // Negative complex
-		Interval::new(i32::MAX, i32::MAX, i64::MAX), // Max values
-		Interval::new(i32::MIN, i32::MIN, i64::MIN), // Min values
+		Duration::from_seconds(0),
+		Duration::from_seconds(-1),
+		Duration::from_days(365),
+		Duration::from_weeks(-52),
+		Duration::new(12, 30, 123456789),            // Complex interval
+		Duration::new(-12, -30, -123456789),         // Negative complex
+		Duration::new(i32::MAX, i32::MAX, i64::MAX), // Max values
+		Duration::new(i32::MIN, i32::MIN, i64::MIN), // Min values
 	];
 
 	for interval in intervals {
-		layout.set_interval(&mut row, 0, interval);
-		assert_eq!(layout.get_interval(&row, 0), interval);
+		layout.set_duration(&mut row, 0, interval);
+		assert_eq!(layout.get_duration(&row, 0), interval);
 	}
 }

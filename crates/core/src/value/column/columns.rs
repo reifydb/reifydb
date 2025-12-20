@@ -91,8 +91,7 @@ impl<'a> Columns<'a> {
 				Value::Date(v) => ColumnData::date([v.clone()]),
 				Value::DateTime(v) => ColumnData::datetime([v.clone()]),
 				Value::Time(v) => ColumnData::time([v.clone()]),
-				Value::Interval(v) => ColumnData::interval([v.clone()]),
-				Value::RowNumber(v) => ColumnData::row_number([v]),
+				Value::Duration(v) => ColumnData::duration([v.clone()]),
 				Value::IdentityId(v) => ColumnData::identity_id([v]),
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
@@ -155,7 +154,7 @@ impl<'a> Columns<'a> {
 		self.iter().map(|c| c.data().get_value(i)).collect()
 	}
 
-	pub fn column(&self, name: &str) -> Option<&Column> {
+	pub fn column(&self, name: &str) -> Option<&Column<'_>> {
 		self.iter().find(|col| col.name().text() == name)
 	}
 
@@ -230,10 +229,10 @@ impl<'a> Columns<'a> {
 		}
 	}
 
-	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
-		let _source = ring_buffer.clone();
+	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer<'a>) -> Self {
+		let _source = ringbuffer.clone();
 
-		let columns: Vec<Column> = ring_buffer
+		let columns: Vec<Column> = ringbuffer
 			.columns()
 			.iter()
 			.map(|col| {
@@ -275,7 +274,7 @@ impl<'a> Columns<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::{Date, DateTime, Interval, Time};
+	use reifydb_type::{Date, DateTime, Duration, Time};
 
 	use super::*;
 
@@ -284,13 +283,13 @@ mod tests {
 		let date = Date::from_ymd(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
-		let interval = Interval::from_days(30);
+		let duration = Duration::from_days(30);
 
 		let columns = Columns::single_row([
 			("date_col", Value::Date(date.clone())),
 			("datetime_col", Value::DateTime(datetime.clone())),
 			("time_col", Value::Time(time.clone())),
-			("interval_col", Value::Interval(interval.clone())),
+			("interval_col", Value::Duration(duration.clone())),
 		]);
 
 		assert_eq!(columns.len(), 4);
@@ -300,7 +299,7 @@ mod tests {
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("datetime_col").unwrap().data().get_value(0), Value::DateTime(datetime));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
-		assert_eq!(columns.column("interval_col").unwrap().data().get_value(0), Value::Interval(interval));
+		assert_eq!(columns.column("interval_col").unwrap().data().get_value(0), Value::Duration(duration));
 	}
 
 	#[test]

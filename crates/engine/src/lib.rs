@@ -6,6 +6,7 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_type::Result;
 
+pub mod bulk_insert;
 mod engine;
 pub mod environment;
 mod evaluate;
@@ -13,10 +14,11 @@ pub mod execute;
 #[allow(dead_code)]
 pub mod function;
 pub(crate) mod interceptor;
-pub(crate) mod stack;
+pub mod stack;
 pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
+pub mod util;
 
 pub use engine::StandardEngine;
 pub use evaluate::{

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
-	interface::{ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey, SourceId},
+	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, SourceId},
 	return_error, return_internal_error,
 };
 
@@ -54,13 +54,7 @@ impl CatalogStore {
 		LAYOUT.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
-		txn.set(
-			&Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: id,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&PrimaryKeyKey::encoded(id), row)?;
 
 		// Update the table or view to reference this primary key
 		match to_create.source {
@@ -70,14 +64,26 @@ impl CatalogStore {
 			SourceId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
+			SourceId::Flow(_) => {
+				// Flows don't support primary keys
+				return_internal_error!(
+					"Cannot create primary key for flow. Flows do not support primary keys."
+				);
+			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			SourceId::RingBuffer(ring_buffer_id) => {
-				Self::set_ring_buffer_primary_key(txn, ring_buffer_id, id)?;
+			SourceId::RingBuffer(ringbuffer_id) => {
+				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id)?;
+			}
+			SourceId::Dictionary(_) => {
+				// Dictionaries don't support traditional primary keys
+				return_internal_error!(
+					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
+				);
 			}
 		}
 
@@ -120,6 +126,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -138,6 +145,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -242,8 +250,9 @@ mod tests {
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					if_not_exists: false,
 					policies: vec![],
-					index: ColumnIndex(i as u16),
+					index: ColumnIndex(i as u8),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			)
 			.unwrap();
@@ -296,6 +305,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -419,6 +429,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -432,6 +443,7 @@ mod tests {
 				table: "test_table2".to_string(),
 				namespace: namespace.id,
 				columns: vec![],
+				retention_policy: None,
 			},
 		)
 		.unwrap();
@@ -451,6 +463,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();

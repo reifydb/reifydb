@@ -8,16 +8,24 @@ use std::{
 };
 
 use reifydb_core::Result;
+use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Priority, TaskHandle};
+
+use crate::tracker::CancellationToken;
 
 /// Internal context provided to tasks during execution
 pub struct InternalTaskContext {
-	/// Unique ID for this task execution
-	pub task_id: u64,
-	/// Worker ID executing this task
-	pub worker_id: usize,
-	/// Time when task started
-	pub start_time: Instant,
+	/// Cancellation token for this task
+	pub cancel_token: Option<CancellationToken>,
+	/// Engine for database access
+	pub engine: StandardEngine,
+}
+
+impl InternalTaskContext {
+	/// Check if task has been cancelled
+	pub fn is_cancelled(&self) -> bool {
+		self.cancel_token.as_ref().map(|t| t.is_cancelled()).unwrap_or(false)
+	}
 }
 
 /// Trait for tasks that can be executed by the worker pool

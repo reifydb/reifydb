@@ -42,7 +42,39 @@ impl AggregateFunction for Min {
 				}
 				Ok(())
 			}
+			ColumnData::Float4(container) => {
+				for (group, indices) in groups.iter() {
+					let min_val = indices
+						.iter()
+						.filter_map(|&i| container.get(i))
+						.min_by(|a, b| a.partial_cmp(b).unwrap());
+
+					if let Some(min_val) = min_val {
+						self.mins
+							.entry(group.clone())
+							.and_modify(|v| *v = f64::min(*v, *min_val as f64))
+							.or_insert(*min_val as f64);
+					}
+				}
+				Ok(())
+			}
 			ColumnData::Int2(container) => {
+				for (group, indices) in groups.iter() {
+					let min_val = indices
+						.iter()
+						.filter_map(|&i| container.get(i))
+						.min_by(|a, b| a.partial_cmp(b).unwrap());
+
+					if let Some(min_val) = min_val {
+						self.mins
+							.entry(group.clone())
+							.and_modify(|v| *v = f64::min(*v, *min_val as f64))
+							.or_insert(*min_val as f64);
+					}
+				}
+				Ok(())
+			}
+			ColumnData::Int4(container) => {
 				for (group, indices) in groups.iter() {
 					let min_val = indices
 						.iter()

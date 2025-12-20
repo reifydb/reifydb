@@ -7,7 +7,10 @@ use std::{
 	ops::Deref,
 };
 
+use reifydb_type::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+
+use crate::interface::NamespaceId;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -205,4 +208,59 @@ impl<'de> Deserialize<'de> for FlowEdgeId {
 
 		deserializer.deserialize_u64(U64Visitor)
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FlowStatus {
+	Active,
+	Paused,
+	Failed,
+}
+
+impl FlowStatus {
+	/// Convert FlowStatus to u8 for storage
+	pub fn to_u8(self) -> u8 {
+		match self {
+			FlowStatus::Active => 0,
+			FlowStatus::Paused => 1,
+			FlowStatus::Failed => 2,
+		}
+	}
+
+	/// Create FlowStatus from u8, defaulting to Failed for unknown values
+	pub fn from_u8(value: u8) -> Self {
+		match value {
+			0 => FlowStatus::Active,
+			1 => FlowStatus::Paused,
+			2 => FlowStatus::Failed,
+			_ => FlowStatus::Failed, // Default to Failed for unknown statuses
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlowDef {
+	pub id: FlowId,
+	pub namespace: NamespaceId,
+	pub name: String,
+	pub status: FlowStatus,
+}
+
+/// Catalog definition for a flow node
+/// The node type and its data are stored as a type discriminator and serialized blob
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowNodeDef {
+	pub id: FlowNodeId,
+	pub flow: FlowId,
+	pub node_type: u8, // FlowNodeType discriminator
+	pub data: Blob,    // Serialized FlowNodeType data
+}
+
+/// Catalog definition for a flow edge
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowEdgeDef {
+	pub id: FlowEdgeId,
+	pub flow: FlowId,
+	pub source: FlowNodeId,
+	pub target: FlowNodeId,
 }

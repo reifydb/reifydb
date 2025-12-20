@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Flow subsystem for stream processing and data flows"
 
 [dependencies]
 reifydb-cdc = { workspace = true }
@@ -12,15 +13,25 @@ reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-hash = { workspace = true }
+reifydb-flow-operator-abi = { workspace = true }
+reifydb-flow-operator-sdk = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-transaction = {workspace = true}
 reifydb-type = { workspace = true }
 
 serde = { workspace = true }
 serde_bytes = { workspace = true}
 serde_json = { workspace = true }
 bincode = { workspace = true }
+libloading = { workspace = true }
+
+crossbeam-channel = { workspace = true }
+indexmap = { workspace = true }
+parking_lot = { workspace = true}
+tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-store-transaction = { workspace = true}
 reifydb-transaction = { workspace = true}
+rand = { workspace = true}

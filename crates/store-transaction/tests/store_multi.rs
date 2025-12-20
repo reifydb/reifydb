@@ -14,36 +14,27 @@ use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{MultiVersionValues, TransactionId},
+	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
 	BackendConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
-	MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, StandardTransactionStore, TransactionStoreConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
+	MultiVersionRangeRev, StandardTransactionStore, TransactionStoreConfig, backend::BackendStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/store/multi" as store_multi_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/store/multi" as store_multi_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/multi" as store_multi_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/multi" as store_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(BackendMulti::Memory(MemoryBackend::default())), path)
-		.expect("test failed")
+	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| {
-		testscript::run_path(
-			&mut Runner::new(BackendMulti::Sqlite(SqliteBackend::new(SqliteConfig::fast(db_path)))),
-			path,
-		)
-	})
-	.expect("test failed")
+	temp_dir(|_db_path| testscript::run_path(&mut Runner::new(BackendStorage::sqlite_in_memory()), path))
+		.expect("test failed")
 }
 
 /// Runs engine tests.
@@ -53,21 +44,18 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(backend: BackendMulti) -> Self {
+	fn new(storage: BackendStorage) -> Self {
 		Self {
 			store: StandardTransactionStore::new(TransactionStoreConfig {
 				hot: Some(BackendConfig {
-					backend: Backend {
-						multi: backend,
-						single: BackendSingle::Memory(MemoryBackend::default()),
-						cdc: BackendCdc::Memory(MemoryBackend::default()),
-					},
+					storage,
 					retention_period: Duration::from_millis(200),
 				}),
 				warm: None,
 				cold: None,
 				retention: Default::default(),
 				merge_config: Default::default(),
+				stats: Default::default(),
 			})
 			.unwrap(),
 			version: CommitVersion(0),
@@ -109,9 +97,12 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.scan(version)?)
+					print(&mut output, self.store.range(EncodedKeyRange::all(), version).unwrap())
 				} else {
-					print(&mut output, self.store.scan_rev(version)?)
+					print(
+						&mut output,
+						self.store.range_rev(EncodedKeyRange::all(), version).unwrap(),
+					)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
@@ -169,7 +160,6 @@ impl testscript::Runner for Runner {
 						})
 					],
 					version,
-					TransactionId::default(),
 				)?;
 			}
 
@@ -192,7 +182,6 @@ impl testscript::Runner for Runner {
 						})
 					],
 					version,
-					TransactionId::default(),
 				)?
 			}
 

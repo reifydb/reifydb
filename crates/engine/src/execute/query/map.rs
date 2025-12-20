@@ -9,6 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::Fragment;
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -38,12 +39,14 @@ impl<'a> MapNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for MapNode<'a> {
+	#[instrument(name = "query::map::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
+	#[instrument(name = "query::map::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
@@ -71,6 +74,7 @@ impl<'a> QueryNode<'a> for MapNode<'a> {
 					take: None,
 					params: &stored_ctx.params,
 					stack: &stored_ctx.stack,
+					is_aggregate_context: false,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -146,11 +150,13 @@ impl<'a> MapWithoutInputNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
+	#[instrument(name = "query::map::noinput::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
+	#[instrument(name = "query::map::noinput::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
@@ -176,6 +182,7 @@ impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
 					take: None,
 					params: &stored_ctx.params,
 					stack: &stored_ctx.stack,
+					is_aggregate_context: false,
 				},
 				&expr,
 			)?;

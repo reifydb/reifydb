@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Transaction management and concurrency control for ReifyDB"
 
 [features]
 test-stress = []
@@ -16,7 +17,11 @@ reifydb-store-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
 crossbeam-channel = { workspace = true }
+crossbeam-skiplist = { workspace = true }
+indexmap = { workspace = true }
 parking_lot = { workspace = true }
+self_cell = { workspace = true }
+tracing = { workspace = true }
 
 
 [dev-dependencies]

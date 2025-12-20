@@ -5,9 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Core database interfaces and data structures for ReifyDB"
 
 [dependencies]
 reifydb-type = { workspace = true }
+tracing = { workspace = true }
 crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 once_cell = { workspace = true }
@@ -19,5 +21,8 @@ bigdecimal = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
-
+reifydb-catalog = {workspace = true}
+reifydb-cdc = {workspace = true}
+reifydb-engine = {workspace = true}
+reifydb-store-transaction = {workspace = true}
+reifydb-transaction = {workspace = true}

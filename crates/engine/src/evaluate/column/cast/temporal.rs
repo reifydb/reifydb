@@ -3,8 +3,8 @@
 
 use reifydb_core::value::{column::ColumnData, container::Utf8Container};
 use reifydb_type::{
-	BorrowedFragment, Date, DateTime, Interval, LazyFragment, OwnedFragment, Time, Type, diagnostic::cast, error,
-	parse_date, parse_datetime, parse_interval, parse_time,
+	BorrowedFragment, Date, DateTime, Duration, LazyFragment, OwnedFragment, Time, Type, diagnostic::cast, error,
+	parse_date, parse_datetime, parse_duration, parse_time,
 };
 
 pub fn to_temporal<'a>(
@@ -21,7 +21,7 @@ pub fn to_temporal<'a>(
 			Type::Date => to_date(container, lazy_fragment),
 			Type::DateTime => to_datetime(container, lazy_fragment),
 			Type::Time => to_time(container, lazy_fragment),
-			Type::Interval => to_interval(container, lazy_fragment),
+			Type::Duration => to_duration(container, lazy_fragment),
 			_ => {
 				let source_type = data.get_type();
 				reifydb_type::err!(cast::unsupported_cast(
@@ -115,4 +115,4 @@ macro_rules! impl_to_temporal {
 impl_to_temporal!(to_date, Date, Type::Date, parse_date);
 impl_to_temporal!(to_datetime, DateTime, Type::DateTime, parse_datetime);
 impl_to_temporal!(to_time, Time, Type::Time, parse_time);
-impl_to_temporal!(to_interval, Interval, Type::Interval, parse_interval);
+impl_to_temporal!(to_duration, Duration, Type::Duration, parse_duration);

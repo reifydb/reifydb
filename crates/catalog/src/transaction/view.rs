@@ -1,19 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{
-		CommandTransaction, NamespaceId, QueryTransaction, TransactionalChanges, TransactionalViewChanges,
-		ViewDef, ViewId,
-		interceptor::{ViewDefInterceptor, WithInterceptors},
-	},
-	log_warn,
+use reifydb_core::interface::{
+	CommandTransaction, NamespaceId, QueryTransaction, TransactionalChanges, TransactionalViewChanges, ViewDef,
+	ViewId,
+	interceptor::{ViewDefInterceptor, WithInterceptors},
 };
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{view_already_exists, view_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogNamespaceQueryOperations, CatalogStore, store::view::ViewToCreate,
@@ -63,6 +61,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogViewCommandOperations for CT
 {
+	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
 	fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
 		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -76,6 +75,7 @@ impl<
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogViewQueryOperations for QT {
+	#[instrument(name = "catalog::view::find", level = "trace", skip(self))]
 	fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -96,13 +96,14 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(view) = CatalogStore::find_view(self, id)? {
-			log_warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+			warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(view));
 		}
 
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, name))]
 	fn find_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -129,7 +130,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(view) = CatalogStore::find_view_by_name(self, namespace, name.text())? {
-			log_warn!(
+			warn!(
 				"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
 				namespace
@@ -140,15 +141,17 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
+	#[instrument(name = "catalog::view::get", level = "trace", skip(self))]
 	fn get_view(&mut self, id: ViewId) -> reifydb_core::Result<ViewDef> {
 		self.find_view(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))
 		})
 	}
 
+	#[instrument(name = "catalog::view::get_by_name", level = "trace", skip(self, name))]
 	fn get_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

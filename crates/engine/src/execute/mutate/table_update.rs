@@ -18,7 +18,7 @@ use reifydb_type::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
-	return_error,
+	internal_error, return_error,
 };
 
 use super::primary_key;
@@ -29,6 +29,7 @@ use crate::{
 		query::compile::compile,
 	},
 	stack::Stack,
+	transaction::operation::DictionaryOperations,
 };
 
 impl Executor {
@@ -59,7 +60,22 @@ impl Executor {
 			unimplemented!("Cannot infer target table from pipeline - no table found")
 		};
 
-		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
+		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
+		let table_types: Vec<Type> = table
+			.columns
+			.iter()
+			.map(|c| {
+				if let Some(dict_id) = c.dictionary_id {
+					CatalogStore::find_dictionary(txn, dict_id)
+						.ok()
+						.flatten()
+						.map(|d| d.id_type)
+						.unwrap_or_else(|| c.constraint.get_type())
+				} else {
+					c.constraint.get_type()
+				}
+			})
+			.collect();
 		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
@@ -129,6 +145,28 @@ impl Executor {
 							return Err(e);
 						}
 
+						// Dictionary encoding: if column has a dictionary binding, encode the
+						// value
+						let value = if let Some(dict_id) = table_column.dictionary_id {
+							let dictionary = CatalogStore::find_dictionary(
+								wrapped_txn.command_mut(),
+								dict_id,
+							)?
+							.ok_or_else(|| {
+								internal_error!(
+									"Dictionary {:?} not found for column {}",
+									dict_id,
+									table_column.name
+								)
+							})?;
+							let entry_id = wrapped_txn
+								.command_mut()
+								.insert_into_dictionary(&dictionary, &value)?;
+							entry_id.to_value()
+						} else {
+							value
+						};
+
 						match value {
 							Value::Boolean(v) => layout.set_bool(&mut row, table_idx, v),
 							Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
@@ -149,10 +187,9 @@ impl Executor {
 								layout.set_datetime(&mut row, table_idx, v)
 							}
 							Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-							Value::Interval(v) => {
-								layout.set_interval(&mut row, table_idx, v)
+							Value::Duration(v) => {
+								layout.set_duration(&mut row, table_idx, v)
 							}
-							Value::RowNumber(_v) => {}
 							Value::IdentityId(v) => {
 								layout.set_identity_id(&mut row, table_idx, v)
 							}

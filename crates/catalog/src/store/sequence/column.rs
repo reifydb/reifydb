@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnId, ColumnSequenceKey, CommandTransaction, EncodableKey, SourceId};
+use reifydb_core::interface::{ColumnId, ColumnSequenceKey, CommandTransaction, SourceId};
 use reifydb_type::{Type, Value};
 
 use crate::{
@@ -21,11 +21,7 @@ impl ColumnSequence {
 		column: ColumnId,
 	) -> crate::Result<Value> {
 		let column = CatalogStore::get_column(txn, column)?;
-		let key = ColumnSequenceKey {
-			source: source.into(),
-			column: column.id,
-		}
-		.encode();
+		let key = ColumnSequenceKey::encoded(source, column.id);
 
 		Ok(match column.constraint.get_type() {
 			Type::Int1 => Value::Int1(GeneratorI8::next(txn, &key, None)?),
@@ -59,11 +55,7 @@ impl ColumnSequence {
 
 		debug_assert!(value.get_type() == column.constraint.get_type());
 
-		let key = ColumnSequenceKey {
-			source: source.into(),
-			column: column.id,
-		}
-		.encode();
+		let key = ColumnSequenceKey::encoded(source, column.id);
 		match value {
 			Value::Int1(v) => GeneratorI8::set(txn, &key, v),
 			Value::Int2(v) => GeneratorI16::set(txn, &key, v),

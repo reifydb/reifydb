@@ -1,0 +1,77 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that multiple updates accumulate historical entries.
+# Each update adds another entry to historical.
+
+# Insert initial value
+set a=1
+---
+ok
+
+stats
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+cdc_count: 1
+cdc_key_bytes: 1
+cdc_value_bytes: 76
+total_bytes: 10
+
+# First update
+set a=2
+---
+ok
+
+stats
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+historical_count: 1
+historical_key_bytes: 9
+historical_value_bytes: 1
+cdc_count: 2
+cdc_key_bytes: 2
+cdc_value_bytes: 152
+total_bytes: 20
+
+# Second update
+set a=3
+---
+ok
+
+stats
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+historical_count: 2
+historical_key_bytes: 18
+historical_value_bytes: 2
+cdc_count: 3
+cdc_key_bytes: 3
+cdc_value_bytes: 228
+total_bytes: 30
+
+# Third update
+set a=4
+---
+ok
+
+stats
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+historical_count: 3
+historical_key_bytes: 27
+historical_value_bytes: 3
+cdc_count: 4
+cdc_key_bytes: 4
+cdc_value_bytes: 304
+total_bytes: 40

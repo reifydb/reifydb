@@ -5,28 +5,80 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 
+mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod dictionaries;
+mod flow_edges;
+mod flow_node_types;
+mod flow_nodes;
+mod flow_operator_inputs;
+mod flow_operator_outputs;
+mod flow_operators;
+mod flows;
 mod namespaces;
+mod operator_retention_policies;
 mod primary_key_columns;
 mod primary_keys;
+mod ringbuffers;
 mod sequence;
+mod source_retention_policies;
+mod storage_stats_dictionary;
+mod storage_stats_flow;
+mod storage_stats_flow_node;
+mod storage_stats_index;
+mod storage_stats_ringbuffer;
+mod storage_stats_table;
+mod storage_stats_view;
 mod tables;
+mod tables_virtual;
+mod types;
 mod versions;
 mod views;
 
+use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
+use dictionaries::dictionaries;
+use flow_edges::flow_edges;
+use flow_node_types::flow_node_types;
+use flow_nodes::flow_nodes;
+use flow_operator_inputs::flow_operator_inputs;
+use flow_operator_outputs::flow_operator_outputs;
+use flow_operators::flow_operators;
+use flows::flows;
 use namespaces::namespaces;
+use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use sequence::sequences;
+use source_retention_policies::source_retention_policies;
+use storage_stats_dictionary::dictionary_storage_stats;
+use storage_stats_flow::flow_storage_stats;
+use storage_stats_flow_node::flow_node_storage_stats;
+use storage_stats_index::index_storage_stats;
+use storage_stats_ringbuffer::ringbuffer_storage_stats;
+use storage_stats_table::table_storage_stats;
+use storage_stats_view::view_storage_stats;
 use tables::tables;
+use tables_virtual::virtual_tables;
+use types::types;
 use versions::versions;
 use views::views;
 
+use crate::system::ringbuffers::ringbuffers;
+
 pub mod ids {
 	pub mod columns {
+		pub mod cdc_consumers {
+			use reifydb_core::interface::ColumnId;
+
+			pub const CONSUMER_ID: ColumnId = ColumnId(1);
+			pub const CHECKPOINT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [CONSUMER_ID, CHECKPOINT];
+		}
+
 		pub mod sequences {
 			use reifydb_core::interface::ColumnId;
 
@@ -70,6 +122,39 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
 		}
 
+		pub mod flows {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const STATUS: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, STATUS];
+		}
+
+		pub mod flow_nodes {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const FLOW_ID: ColumnId = ColumnId(2);
+			pub const NODE_TYPE: ColumnId = ColumnId(3);
+			pub const DATA: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, NODE_TYPE, DATA];
+		}
+
+		pub mod flow_edges {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const FLOW_ID: ColumnId = ColumnId(2);
+			pub const SOURCE: ColumnId = ColumnId(3);
+			pub const TARGET: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, SOURCE, TARGET];
+		}
+
 		pub mod columns {
 			use reifydb_core::interface::ColumnId;
 
@@ -80,9 +165,22 @@ pub mod ids {
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
 			pub const AUTO_INCREMENT: ColumnId = ColumnId(7);
+			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 7] =
-				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT];
+			pub const ALL: [ColumnId; 8] =
+				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+		}
+
+		pub mod dictionaries {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const VALUE_TYPE: ColumnId = ColumnId(4);
+			pub const ID_TYPE: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, VALUE_TYPE, ID_TYPE];
 		}
 
 		pub mod primary_keys {
@@ -92,6 +190,18 @@ pub mod ids {
 			pub const SOURCE_ID: ColumnId = ColumnId(2);
 
 			pub const ALL: [ColumnId; 2] = [ID, SOURCE_ID];
+		}
+
+		pub mod ringbuffers {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const CAPACITY: ColumnId = ColumnId(4);
+			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID];
 		}
 
 		pub mod primary_key_columns {
@@ -125,6 +235,90 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, TYPE];
 		}
+
+		pub mod source_retention_policies {
+			use reifydb_core::interface::ColumnId;
+
+			pub const SOURCE_ID: ColumnId = ColumnId(1);
+			pub const SOURCE_TYPE: ColumnId = ColumnId(2);
+			pub const POLICY_TYPE: ColumnId = ColumnId(3);
+			pub const CLEANUP_MODE: ColumnId = ColumnId(4);
+			pub const VALUE: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [SOURCE_ID, SOURCE_TYPE, POLICY_TYPE, CLEANUP_MODE, VALUE];
+		}
+
+		pub mod operator_retention_policies {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR_ID: ColumnId = ColumnId(1);
+			pub const POLICY_TYPE: ColumnId = ColumnId(2);
+			pub const CLEANUP_MODE: ColumnId = ColumnId(3);
+			pub const VALUE: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, POLICY_TYPE, CLEANUP_MODE, VALUE];
+		}
+
+		pub mod flow_operators {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
+			pub const API: ColumnId = ColumnId(3);
+			pub const CAP_INSERT: ColumnId = ColumnId(4);
+			pub const CAP_UPDATE: ColumnId = ColumnId(5);
+			pub const CAP_DELETE: ColumnId = ColumnId(6);
+			pub const CAP_DROP: ColumnId = ColumnId(7);
+			pub const CAP_GET_ROWS: ColumnId = ColumnId(8);
+			pub const CAP_TICK: ColumnId = ColumnId(9);
+
+			pub const ALL: [ColumnId; 9] = [
+				OPERATOR,
+				LIBRARY_PATH,
+				API,
+				CAP_INSERT,
+				CAP_UPDATE,
+				CAP_DELETE,
+				CAP_GET_ROWS,
+				CAP_DROP,
+				CAP_TICK,
+			];
+		}
+
+		pub mod flow_operator_inputs {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const POSITION: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const DESCRIPTION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
+		}
+
+		pub mod flow_operator_outputs {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const POSITION: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const DESCRIPTION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
+		}
+
+		pub mod virtual_tables {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
+		}
 	}
 
 	pub mod sequences {
@@ -150,22 +344,64 @@ pub mod ids {
 		pub const NAMESPACES: TableVirtualId = TableVirtualId(2);
 		pub const TABLES: TableVirtualId = TableVirtualId(3);
 		pub const VIEWS: TableVirtualId = TableVirtualId(4);
+		pub const FLOWS: TableVirtualId = TableVirtualId(13);
 		pub const COLUMNS: TableVirtualId = TableVirtualId(5);
 		pub const COLUMN_POLICIES: TableVirtualId = TableVirtualId(6);
 		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
 		pub const PRIMARY_KEY_COLUMNS: TableVirtualId = TableVirtualId(8);
 		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
+		pub const SOURCE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
+		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
+		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
+		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
+		pub const FLOW_NODES: TableVirtualId = TableVirtualId(15);
+		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
+		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
+		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
+		pub const TYPES: TableVirtualId = TableVirtualId(19);
+		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
+		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
+		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
+		pub const RINGBUFFERS: TableVirtualId = TableVirtualId(23);
+		pub const TABLE_STORAGE_STATS: TableVirtualId = TableVirtualId(24);
+		pub const VIEW_STORAGE_STATS: TableVirtualId = TableVirtualId(25);
+		pub const FLOW_STORAGE_STATS: TableVirtualId = TableVirtualId(26);
+		pub const FLOW_NODE_STORAGE_STATS: TableVirtualId = TableVirtualId(27);
+		pub const INDEX_STORAGE_STATS: TableVirtualId = TableVirtualId(28);
+		pub const RINGBUFFER_STORAGE_STATS: TableVirtualId = TableVirtualId(29);
+		pub const DICTIONARY_STORAGE_STATS: TableVirtualId = TableVirtualId(30);
 
-		pub const ALL: [TableVirtualId; 9] = [
+		pub const ALL: [TableVirtualId; 30] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
 			VIEWS,
+			FLOWS,
 			COLUMNS,
 			COLUMN_POLICIES,
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
+			SOURCE_RETENTION_POLICIES,
+			OPERATOR_RETENTION_POLICIES,
+			CDC_CONSUMERS,
+			FLOW_OPERATORS,
+			FLOW_NODES,
+			FLOW_EDGES,
+			DICTIONARIES,
+			VIRTUAL_TABLES,
+			TYPES,
+			FLOW_NODE_TYPES,
+			FLOW_OPERATOR_INPUTS,
+			FLOW_OPERATOR_OUTPUTS,
+			RINGBUFFERS,
+			TABLE_STORAGE_STATS,
+			VIEW_STORAGE_STATS,
+			FLOW_STORAGE_STATS,
+			FLOW_NODE_STORAGE_STATS,
+			INDEX_STORAGE_STATS,
+			RINGBUFFER_STORAGE_STATS,
+			DICTIONARY_STORAGE_STATS,
 		];
 	}
 }
@@ -212,6 +448,11 @@ impl SystemCatalog {
 		views()
 	}
 
+	/// Get the flows virtual table definition
+	pub fn get_system_flows_table_def() -> Arc<TableVirtualDef> {
+		flows()
+	}
+
 	/// Get the columns virtual table definition
 	pub fn get_system_columns_table_def() -> Arc<TableVirtualDef> {
 		columns()
@@ -235,5 +476,105 @@ impl SystemCatalog {
 	/// Get the system versions virtual table definition
 	pub fn get_system_versions_table_def() -> Arc<TableVirtualDef> {
 		versions()
+	}
+
+	/// Get the source_retention_policies virtual table definition
+	pub fn get_system_source_retention_policies_table_def() -> Arc<TableVirtualDef> {
+		source_retention_policies()
+	}
+
+	/// Get the operator_retention_policies virtual table definition
+	pub fn get_system_operator_retention_policies_table_def() -> Arc<TableVirtualDef> {
+		operator_retention_policies()
+	}
+
+	/// Get the cdc_consumers virtual table definition
+	pub fn get_system_cdc_consumers_table_def() -> Arc<TableVirtualDef> {
+		cdc_consumers()
+	}
+
+	/// Get the flow_operators virtual table definition
+	pub fn get_system_flow_operators_table_def() -> Arc<TableVirtualDef> {
+		flow_operators()
+	}
+
+	/// Get the flow_nodes virtual table definition
+	pub fn get_system_flow_nodes_table_def() -> Arc<TableVirtualDef> {
+		flow_nodes()
+	}
+
+	/// Get the flow_edges virtual table definition
+	pub fn get_system_flow_edges_table_def() -> Arc<TableVirtualDef> {
+		flow_edges()
+	}
+
+	/// Get the dictionaries virtual table definition
+	pub fn get_system_dictionaries_table_def() -> Arc<TableVirtualDef> {
+		dictionaries()
+	}
+
+	/// Get the virtual_tables virtual table definition
+	pub fn get_system_virtual_tables_table_def() -> Arc<TableVirtualDef> {
+		virtual_tables()
+	}
+
+	/// Get the types virtual table definition
+	pub fn get_system_types_table_def() -> Arc<TableVirtualDef> {
+		types()
+	}
+
+	/// Get the flow_node_types virtual table definition
+	pub fn get_system_flow_node_types_table_def() -> Arc<TableVirtualDef> {
+		flow_node_types()
+	}
+
+	/// Get the flow_operator_inputs virtual table definition
+	pub fn get_system_flow_operator_inputs_table_def() -> Arc<TableVirtualDef> {
+		flow_operator_inputs()
+	}
+
+	/// Get the flow_operator_outputs virtual table definition
+	pub fn get_system_flow_operator_outputs_table_def() -> Arc<TableVirtualDef> {
+		flow_operator_outputs()
+	}
+
+	/// Get the ringbuffers virtual table definition
+	pub fn get_system_ringbuffers_table_def() -> Arc<TableVirtualDef> {
+		ringbuffers()
+	}
+
+	/// Get the table_storage_stats virtual table definition
+	pub fn get_system_table_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		table_storage_stats()
+	}
+
+	/// Get the view_storage_stats virtual table definition
+	pub fn get_system_view_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		view_storage_stats()
+	}
+
+	/// Get the flow_storage_stats virtual table definition
+	pub fn get_system_flow_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		flow_storage_stats()
+	}
+
+	/// Get the flow_node_storage_stats virtual table definition
+	pub fn get_system_flow_node_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		flow_node_storage_stats()
+	}
+
+	/// Get the index_storage_stats virtual table definition
+	pub fn get_system_index_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		index_storage_stats()
+	}
+
+	/// Get the ringbuffer_storage_stats virtual table definition
+	pub fn get_system_ringbuffer_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		ringbuffer_storage_stats()
+	}
+
+	/// Get the dictionary_storage_stats virtual table definition
+	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		dictionary_storage_stats()
 	}
 }

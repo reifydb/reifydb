@@ -12,7 +12,7 @@ use common::{
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	memory, optimistic,
+	memory, transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{ChannelResponse, ResponseMessage, WsChannelSession, WsClient};
@@ -223,7 +223,7 @@ impl testscript::Runner for ChannelRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = common::start_server_and_get_port(server)?;
+		let port = common::start_server_and_get_ws_port(server)?;
 
 		let client = common::connect_ws(("::1", port))?;
 		let (session, receiver) = client.channel_session(Some("mysecrettoken".to_string()))?;
@@ -277,5 +277,5 @@ impl testscript::Runner for ChannelRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_ws => test_channel }
 
 fn test_channel(path: &Path) {
-	retry(3, || testscript::run_path(&mut ChannelRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut ChannelRunner::new(transaction(memory())), path)).expect("test failed")
 }

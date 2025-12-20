@@ -110,7 +110,7 @@ impl EncodedValuesLayout {
 
 	/// Try to get a Uint value, returning None if undefined
 	pub fn try_get_uint(&self, row: &EncodedValues, index: usize) -> Option<Uint> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Uint {
 			Some(self.get_uint(row, index))
 		} else {
 			None
@@ -266,5 +266,15 @@ mod tests {
 		// Should store as 0 since Uint can't handle negative values
 		let retrieved = layout.get_uint(&row1, 0);
 		assert_eq!(retrieved, Uint::from(0));
+	}
+
+	#[test]
+	fn test_try_get_uint_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_uint(&row, 0), None);
 	}
 }

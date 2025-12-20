@@ -9,6 +9,7 @@ pub mod event;
 pub mod interceptor;
 pub mod interface;
 pub mod key;
+pub mod retention;
 mod row;
 mod sort;
 pub mod util;
@@ -17,14 +18,12 @@ pub mod value;
 pub use common::*;
 pub use interface::TransactionId;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::{Error, diagnostic, err, error, return_error, return_internal_error};
-
-pub type Result<T> = std::result::Result<T, Error>;
+pub use reifydb_type::{Error, Result, async_cow_vec, diagnostic, err, error, return_error, return_internal_error};
 pub use row::Row;
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, RetryError, WaitGroup, ioc, retry};
 pub use value::{
-	encoded::{EncodedKey, EncodedKeyRange},
+	encoded::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange},
 	frame::*,
 };
 

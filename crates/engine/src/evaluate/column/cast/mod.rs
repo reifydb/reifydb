@@ -327,4 +327,36 @@ mod tests {
 		let diagnostic = err.0;
 		assert_eq!(diagnostic.code, "CAST_001");
 	}
+
+	#[test]
+	fn test_cast_text_to_decimal() {
+		let mut ctx = ColumnEvaluationContext::testing();
+		let result = evaluate(
+			&mut ctx,
+			&Cast(CastExpression {
+				fragment: Fragment::owned_empty(),
+				expression: Box::new(Constant(ConstantExpression::Text {
+					fragment: Fragment::owned_internal("123.456789"),
+				})),
+				to: TypeExpression {
+					fragment: Fragment::owned_empty(),
+					ty: Type::Decimal,
+				},
+			}),
+		)
+		.unwrap();
+
+		if let ColumnData::Decimal {
+			container,
+			..
+		} = result.data()
+		{
+			assert_eq!(container.len(), 1);
+			assert!(container.is_defined(0));
+			let value = &container[0];
+			assert_eq!(value.to_string(), "123.456789");
+		} else {
+			panic!("Expected Decimal column data");
+		}
+	}
 }

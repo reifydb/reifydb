@@ -1,0 +1,39 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests deleting a key that doesn't exist.
+# This should NOT create any stats entries (no previous version to track).
+
+# Initial state - empty
+stats
+---
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
+total_bytes: 0
+
+# Delete a nonexistent key
+# Key "missing" = 7 bytes, versioned = 15 bytes (7 + 8)
+remove missing
+---
+ok
+
+# Current should remain 0 (nothing was there)
+stats_current
+---
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+
+# Historical should have just the tombstone
+stats_historical
+---
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0

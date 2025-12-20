@@ -1,6 +1,6 @@
 {
   "name": "@reifydb/react",
-  "version": "0.0.1-alpha.7",
+  "version": "0.1.6",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,6 +13,7 @@
     "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:coverage": "pnpm test:integration:coverage",
     "pretest:integration": "pnpm build",
+    "prepublishOnly": "pnpm build",
     "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
@@ -45,7 +46,8 @@
     "license.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "linkWorkspacePackages": false
   },
   "license": "MIT"
 }

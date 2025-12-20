@@ -5,7 +5,7 @@ use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::FlowNodeId,
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,27 +26,20 @@ impl EncodableKey for FlowNodeStateKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 8 {
-			return None;
-		}
-
-		let node_id: u64 = keycode::deserialize(&payload[..8]).ok()?;
-		let key_bytes = payload[8..].to_vec();
+		let node_id = de.read_u64().ok()?;
+		let key_bytes = de.read_raw(de.remaining()).ok()?.to_vec();
 
 		Some(Self {
 			node: FlowNodeId(node_id),
@@ -70,6 +63,10 @@ impl FlowNodeStateKey {
 		}
 	}
 
+	pub fn encoded(node: impl Into<FlowNodeId>, key: impl Into<Vec<u8>>) -> EncodedKey {
+		Self::new(node.into(), key.into()).encode()
+	}
+
 	/// Create a range for scanning all entries of a specific operator
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {
 		let range = FlowNodeStateKeyRange::new(node);
@@ -90,26 +87,20 @@ impl FlowNodeStateKeyRange {
 	}
 
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != FlowNodeStateKey::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 8 {
-			return None;
-		}
+		let node_id = de.read_u64().ok()?;
 
-		let node_id: u64 = keycode::deserialize(&payload[..8]).ok()?;
 		Some(Self {
 			node: FlowNodeId(node_id),
 		})

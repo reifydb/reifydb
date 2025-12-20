@@ -5,7 +5,7 @@ use crate::{
 	EncodedKey,
 	interface::{ColumnId, SourceId},
 	key::{EncodableKey, KeyKind},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,32 +30,35 @@ impl EncodableKey for ColumnSequenceKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 17 {
-			// 9 bytes for source + 8 bytes for column
-			return None;
-		}
+		let source = de.read_source_id().ok()?;
+		let column = de.read_u64().ok()?;
 
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let column = keycode::deserialize(&payload[9..17]).ok()?;
 		Some(Self {
 			source,
-			column,
+			column: ColumnId(column),
 		})
+	}
+}
+
+impl ColumnSequenceKey {
+	pub fn encoded(source: impl Into<SourceId>, column: impl Into<ColumnId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			column: column.into(),
+		}
+		.encode()
 	}
 }
 

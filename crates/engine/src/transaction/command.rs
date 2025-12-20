@@ -18,14 +18,19 @@ use reifydb_core::{
 	},
 	interface::{
 		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
-		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
+		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction, RowChange,
 		SingleVersionTransaction, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
 	value::encoded::EncodedValues,
 };
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{
+	cdc::TransactionCdc,
+	multi::{TransactionMultiVersion, pending::PendingWrites},
+	single::TransactionSingleVersion,
+};
+use tracing::instrument;
 
 use crate::transaction::query::StandardQueryTransaction;
 
@@ -34,8 +39,8 @@ use crate::transaction::query::StandardQueryTransaction;
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction {
-	pub(crate) multi: TransactionMultiVersion,
-	pub(crate) single: TransactionSingleVersion,
+	pub multi: TransactionMultiVersion,
+	pub single: TransactionSingleVersion,
 	pub(crate) cdc: TransactionCdc,
 	state: TransactionState,
 
@@ -43,6 +48,9 @@ pub struct StandardCommandTransaction {
 	pub(crate) event_bus: EventBus,
 	pub(crate) changes: TransactionalDefChanges,
 	pub(crate) catalog: MaterializedCatalog,
+
+	// Track row changes for post-commit events
+	pub(crate) row_changes: Vec<RowChange>,
 
 	pub(crate) interceptors: Interceptors<Self>,
 	// Marker to prevent Send and Sync
@@ -58,6 +66,7 @@ enum TransactionState {
 
 impl StandardCommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
+	#[instrument(name = "engine::transaction::command::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingleVersion,
@@ -78,10 +87,12 @@ impl StandardCommandTransaction {
 			catalog,
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
+			row_changes: Vec::new(),
 			_not_send_sync: PhantomData,
 		})
 	}
 
+	#[instrument(name = "engine::transaction::command::event_bus", level = "trace", skip(self))]
 	pub fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
@@ -103,6 +114,7 @@ impl StandardCommandTransaction {
 	/// Commit the transaction.
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
+	#[instrument(name = "engine::transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
@@ -113,9 +125,10 @@ impl StandardCommandTransaction {
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
+			let row_changes = std::mem::take(&mut self.row_changes);
 
 			let version = multi.commit()?;
-			TransactionInterceptor::post_commit(self, id, version, changes)?;
+			TransactionInterceptor::post_commit(self, id, version, changes, row_changes)?;
 
 			Ok(version)
 		} else {
@@ -125,6 +138,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Rollback the transaction.
+	#[instrument(name = "engine::transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
 		if let Some(multi) = self.cmd.take() {
@@ -137,31 +151,46 @@ impl StandardCommandTransaction {
 	}
 
 	/// Get access to the CDC transaction interface
+	#[instrument(name = "engine::transaction::command::cdc", level = "trace", skip(self))]
 	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}
 
-	/// Execute a function with query access to the single transaction.
-	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
-	{
-		self.check_active()?;
-		self.single.with_query(f)
+	/// Get access to the pending writes in this transaction
+	///
+	/// This allows checking for key conflicts when committing FlowTransactions
+	/// to ensure they operate on non-overlapping keyspaces.
+	#[instrument(name = "engine::transaction::command::pending_writes", level = "trace", skip(self))]
+	pub fn pending_writes(&self) -> &PendingWrites {
+		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	/// Execute a function with query access to the single transaction.
-	pub fn with_single_command<F, R>(&self, f: F) -> crate::Result<R>
+	#[instrument(name = "engine::transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+	{
+		self.check_active()?;
+		self.single.with_query(keys, f)
+	}
+
+	/// Execute a function with query access to the single transaction.
+	#[instrument(name = "engine::transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
+	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		self.single.with_command(f)
+		self.single.with_command(keys, f)
 	}
 
 	/// Execute a function with a query transaction view.
 	/// This creates a new query transaction using the stored multi-version storage.
 	/// The query transaction will operate independently but share the same single/CDC storage.
+	#[instrument(name = "engine::transaction::command::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
@@ -178,6 +207,11 @@ impl StandardCommandTransaction {
 		f(&mut query_txn)
 	}
 
+	#[instrument(
+		name = "engine::transaction::command::with_multi_query_as_of_exclusive",
+		level = "trace",
+		skip(self, f)
+	)]
 	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
@@ -196,6 +230,11 @@ impl StandardCommandTransaction {
 		f(&mut query_txn)
 	}
 
+	#[instrument(
+		name = "engine::transaction::command::with_multi_query_as_of_inclusive",
+		level = "trace",
+		skip(self, f)
+	)]
 	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
@@ -224,66 +263,62 @@ impl MaterializedCatalogTransaction for StandardCommandTransaction {
 impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
-		self.cmd.as_ref().unwrap().version()
+		MultiVersionQueryTransaction::version(self.cmd.as_ref().unwrap())
 	}
 
 	#[inline]
 	fn id(&self) -> TransactionId {
-		self.cmd.as_ref().unwrap().id()
+		MultiVersionQueryTransaction::id(self.cmd.as_ref().unwrap())
 	}
 
 	#[inline]
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().get(key)
+		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_key(key)
+		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().scan()
+		MultiVersionQueryTransaction::range_batched(self.cmd.as_mut().unwrap(), range, batch_size)
 	}
 
 	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().scan_rev()
+		MultiVersionQueryTransaction::range_rev_batched(self.cmd.as_mut().unwrap(), range, batch_size)
 	}
 
 	#[inline]
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().range(range)
+		MultiVersionQueryTransaction::prefix(self.cmd.as_mut().unwrap(), prefix)
 	}
 
 	#[inline]
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().range_rev(range)
-	}
-
-	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix(prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix_rev(prefix)
+		MultiVersionQueryTransaction::prefix_rev(self.cmd.as_mut().unwrap(), prefix)
 	}
 
 	#[inline]
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version)
 	}
 }
 
@@ -291,27 +326,27 @@ impl MultiVersionCommandTransaction for StandardCommandTransaction {
 	#[inline]
 	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set(key, row)
+		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row)
 	}
 
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove(key)
+		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
 	fn commit(mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
-		self.cmd.take().unwrap().commit()
+		MultiVersionCommandTransaction::commit(self.cmd.take().unwrap())
 	}
 
 	#[inline]
 	fn rollback(mut self) -> crate::Result<()> {
 		self.check_active()?;
 		self.state = TransactionState::RolledBack;
-		self.cmd.take().unwrap().rollback()
+		MultiVersionCommandTransaction::rollback(self.cmd.take().unwrap())
 	}
 }
 
@@ -326,9 +361,12 @@ impl QueryTransaction for StandardCommandTransaction {
 
 	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		self.check_active()?;
-		self.single.begin_query()
+		self.single.begin_query(keys)
 	}
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
@@ -340,9 +378,12 @@ impl QueryTransaction for StandardCommandTransaction {
 impl CommandTransaction for StandardCommandTransaction {
 	type SingleVersionCommand<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Command<'a>;
 
-	fn begin_single_command(&self) -> crate::Result<Self::SingleVersionCommand<'_>> {
+	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		self.check_active()?;
-		self.single.begin_command()
+		self.single.begin_command(keys)
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {
@@ -390,40 +431,40 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self.interceptors.table_post_delete
 	}
 
-	fn ring_buffer_pre_insert_interceptors(
+	fn ringbuffer_pre_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreInsertInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_insert
+		&mut self.interceptors.ringbuffer_pre_insert
 	}
 
-	fn ring_buffer_post_insert_interceptors(
+	fn ringbuffer_post_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostInsertInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_insert
+		&mut self.interceptors.ringbuffer_post_insert
 	}
 
-	fn ring_buffer_pre_update_interceptors(
+	fn ringbuffer_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_update
+		&mut self.interceptors.ringbuffer_pre_update
 	}
 
-	fn ring_buffer_post_update_interceptors(
+	fn ringbuffer_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_update
+		&mut self.interceptors.ringbuffer_post_update
 	}
 
-	fn ring_buffer_pre_delete_interceptors(
+	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_delete
+		&mut self.interceptors.ringbuffer_pre_delete
 	}
 
-	fn ring_buffer_post_delete_interceptors(
+	fn ringbuffer_post_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_delete
+		&mut self.interceptors.ringbuffer_post_delete
 	}
 
 	fn pre_commit_interceptors(
@@ -547,6 +588,43 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction>,
 	> {
 		&mut self.interceptors.view_def_pre_delete
+	}
+
+	// Ring buffer definition interceptors
+	fn ringbuffer_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ringbuffer_def_post_create
+	}
+
+	fn ringbuffer_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ringbuffer_def_pre_update
+	}
+
+	fn ringbuffer_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ringbuffer_def_post_update
+	}
+
+	fn ringbuffer_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ringbuffer_def_pre_delete
 	}
 }
 

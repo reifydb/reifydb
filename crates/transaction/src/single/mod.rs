@@ -4,6 +4,7 @@
 mod svl;
 
 use reifydb_core::{
+	EncodedKey,
 	event::EventBus,
 	interface::{SingleVersionTransaction, WithEventBus},
 };
@@ -41,16 +42,22 @@ impl SingleVersionTransaction for TransactionSingleVersion {
 	type Command<'a> = SvlCommandTransaction<'a>;
 
 	#[inline]
-	fn begin_query(&self) -> reifydb_core::Result<Self::Query<'_>> {
+	fn begin_query<'a, I>(&self, keys: I) -> reifydb_core::Result<Self::Query<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		match self {
-			TransactionSingleVersion::SingleVersionLock(t) => t.begin_query(),
+			TransactionSingleVersion::SingleVersionLock(t) => t.begin_query(keys),
 		}
 	}
 
 	#[inline]
-	fn begin_command(&self) -> reifydb_core::Result<Self::Command<'_>> {
+	fn begin_command<'a, I>(&self, keys: I) -> reifydb_core::Result<Self::Command<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		match self {
-			TransactionSingleVersion::SingleVersionLock(t) => t.begin_command(),
+			TransactionSingleVersion::SingleVersionLock(t) => t.begin_command(keys),
 		}
 	}
 }

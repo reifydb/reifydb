@@ -172,6 +172,16 @@ describe('Named Parameters - Primitive Types', () => {
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
         });
+
+        it('decimal_param', async () => {
+            const frames = await wsClient.command(
+                "MAP $decimal_val as result",
+                {decimal_val: "123.456789"},
+                [Schema.object({result: Schema.decimal()})]
+            );
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toEqual([{result: "123.456789"}]);
+        });
     });
 
     describe('query_named', () => {
@@ -303,6 +313,16 @@ describe('Named Parameters - Primitive Types', () => {
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
+        });
+
+        it('decimal_param', async () => {
+            const frames = await wsClient.query(
+                "MAP $decimal_val as result",
+                {decimal_val: "123.456789"},
+                [Schema.object({result: Schema.decimal()})]
+            );
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toEqual([{result: "123.456789"}]);
         });
     });
 });

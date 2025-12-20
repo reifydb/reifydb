@@ -36,6 +36,7 @@ pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedC
 				policies: column_def.policies,
 				index: column_def.index,
 				auto_increment: column_def.auto_increment,
+				dictionary_id: None,
 			});
 		}
 

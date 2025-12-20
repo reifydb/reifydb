@@ -12,28 +12,43 @@ mod builder;
 mod conversion;
 pub mod flow;
 pub mod graph;
+pub mod loader;
 pub mod node;
 mod operator;
 mod source;
 
-use reifydb_catalog::store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
-use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
+use bincode::{config::standard, serde::encode_to_vec};
+use reifydb_catalog::{
+	CatalogStore,
+	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
+};
+use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, ViewDef};
+use reifydb_type::Blob;
 
 use self::{
 	conversion::to_owned_physical_plan,
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
-		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
+		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, merge::MergeCompiler, sort::SortCompiler,
+		take::TakeCompiler, window::WindowCompiler,
 	},
-	source::{inline_data::InlineDataCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler},
+	source::{
+		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
+		view_scan::ViewScanCompiler,
+	},
 };
 use crate::plan::physical::PhysicalPlan;
 
-/// Public API for compiling logical plans to Flows
-pub fn compile_flow(txn: &mut impl CommandTransaction, plan: PhysicalPlan, sink: &ViewDef) -> crate::Result<Flow> {
+/// Public API for compiling logical plans to Flows with an existing flow ID.
+pub fn compile_flow(
+	txn: &mut impl CommandTransaction,
+	plan: PhysicalPlan,
+	sink: Option<&ViewDef>,
+	flow_id: FlowId,
+) -> crate::Result<Flow> {
 	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
-	let compiler = FlowCompiler::new(txn)?;
+	let compiler = FlowCompiler::new(txn, flow_id);
 	compiler.compile(owned_plan, sink)
 }
 
@@ -48,13 +63,13 @@ pub(crate) struct FlowCompiler<T: CommandTransaction> {
 }
 
 impl<T: CommandTransaction> FlowCompiler<T> {
-	/// Creates a new FlowCompiler instance
-	pub fn new(txn: &mut T) -> crate::Result<Self> {
-		Ok(Self {
-			builder: Flow::builder(next_flow_id(txn)?),
+	/// Creates a new FlowCompiler instance with an existing flow ID
+	pub fn new(txn: &mut T, flow_id: FlowId) -> Self {
+		Self {
+			builder: Flow::builder(flow_id),
 			txn: txn as *mut T,
 			sink: None,
-		})
+		}
 	}
 
 	/// Gets the next available operator ID
@@ -70,27 +85,63 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Adds an edge between two nodes
 	fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
 		let edge_id = self.next_edge_id()?;
+		let flow_id = self.builder.id();
+
+		// Create the catalog entry
+		let edge_def = FlowEdgeDef {
+			id: edge_id,
+			flow: flow_id,
+			source: *from,
+			target: *to,
+		};
+
+		// Persist to catalog
+		unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def)? };
+
+		// Add to in-memory builder
 		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
+		let flow_id = self.builder.id();
+
+		// Serialize the node type to blob
+		let data = encode_to_vec(&node_type, standard()).map_err(|e| {
+			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+		})?;
+
+		// Create the catalog entry
+		let node_def = FlowNodeDef {
+			id: node_id,
+			flow: flow_id,
+			node_type: node_type.discriminator(),
+			data: Blob::from(data),
+		};
+
+		// Persist to catalog
+		unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def)? };
+
+		// Add to in-memory builder
 		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
 		Ok(flow_node_id)
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: &ViewDef) -> crate::Result<Flow> {
-		// Store sink view for terminal nodes
-		self.sink = Some(sink.clone());
+	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: Option<&ViewDef>) -> crate::Result<Flow> {
+		// Store sink view for terminal nodes (if provided)
+		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(plan)?;
 
-		let result_node = self.add_node(FlowNodeType::SinkView {
-			view: sink.id,
-		})?;
+		// Only add SinkView node if sink is provided
+		if let Some(sink_view) = sink {
+			let result_node = self.add_node(FlowNodeType::SinkView {
+				view: sink_view.id,
+			})?;
 
-		self.add_edge(&root_node_id, &result_node)?;
+			self.add_edge(&root_node_id, &result_node)?;
+		}
 
 		Ok(self.builder.build())
 	}
@@ -118,23 +169,29 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
+			PhysicalPlan::Merge(merge) => MergeCompiler::from(merge).compile(self),
 
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
+			| PhysicalPlan::CreateFlow(_)
+			| PhysicalPlan::CreateDictionary(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
+			| PhysicalPlan::AlterFlow(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertDictionary(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::DeleteRingBuffer(_) => {
 				unreachable!()
 			}
+			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self),
 			PhysicalPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
 				// For now, return a placeholder
@@ -148,6 +205,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// TODO: Implement GeneratorCompiler for flow
 				unimplemented!("Generator compilation not yet implemented for flow")
 			}
+			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self),
 			PhysicalPlan::Declare(_) => {
 				panic!("Declare statements are not supported in flow graphs");
 			}
@@ -171,97 +229,29 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::Environment(_) => {
 				panic!("Environment operations are not supported in flow graphs");
 			}
+
+			PhysicalPlan::RowPointLookup(_) => {
+				// TODO: Implement optimized row point lookup for flow graphs
+				unimplemented!("RowPointLookup compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::RowListLookup(_) => {
+				// TODO: Implement optimized row list lookup for flow graphs
+				unimplemented!("RowListLookup compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::RowRangeScan(_) => {
+				// TODO: Implement optimized row range scan for flow graphs
+				unimplemented!("RowRangeScan compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::DictionaryScan(_) => {
+				// TODO: Implement DictionaryScan for flow graphs
+				unimplemented!("DictionaryScan compilation not yet implemented for flow")
+			}
 		}
 	}
 }
-
-/// Compiles a physical plan and returns both the operator ID and its output
-// /// namespace
-// pub(crate) fn compile_plan_with_definition(
-// 	&mut self,
-// 	plan: PhysicalPlan,
-// ) -> crate::Result<(FlowNodeId, FlowNodeDef)> {
-// 	match plan {
-// 		PhysicalPlan::TableScan(table_scan) => {
-// 			// The table_scan already has the table
-// 			// definition
-// 			let table = table_scan.source.def();
-// 			let namespace_def = table_scan.source.namespace().def();
-//
-// 			let namespace = FlowNodeDef::new(
-// 				table.columns.clone(),
-// 				Some(namespace_def.name.clone()),
-// 				Some(table.name.clone()),
-// 			);
-//
-// 			let node_id = TableScanCompiler::from(table_scan).compile(self)?;
-// 			Ok((node_id, namespace))
-// 		}
-// 		PhysicalPlan::ViewScan(view_scan) => {
-// 			// The view_scan already has the view definition
-// 			let view = view_scan.source.def();
-// 			let namespace_def = view_scan.source.namespace().def();
-//
-// 			let namespace = FlowNodeDef::new(
-// 				view.columns.clone(),
-// 				Some(namespace_def.name.clone()),
-// 				Some(view.name.clone()),
-// 			);
-//
-// 			let node_id = ViewScanCompiler::from(view_scan).compile(self)?;
-// 			Ok((node_id, namespace))
-// 		}
-// 		PhysicalPlan::JoinInner(join) => {
-// 			// The JoinCompiler will handle compilation with
-// 			// namespace tracking
-// 			let node_id = JoinCompiler::from(join).compile(self)?;
-// 			// For now return empty namespace - we could
-// 			// extract it from the flow operator if needed
-// 			Ok((node_id, FlowNodeDef::empty()))
-// 		}
-// 		PhysicalPlan::JoinLeft(join) => {
-// 			// The JoinCompiler will handle compilation with
-// 			// namespace tracking
-// 			let node_id = JoinCompiler::from(join).compile(self)?;
-// 			// For now return empty namespace - we could
-// 			// extract it from the flow operator if needed
-// 			Ok((node_id, FlowNodeDef::empty()))
-// 		}
-// 		PhysicalPlan::Map(map) => {
-// 			// Map needs special handling to compute output
-// 			// namespace
-// 			let map_compiler = MapCompiler::from(map);
-//
-// 			// Get input namespace if there's an input
-// 			let input_schema = if let Some(ref input) = map_compiler.input {
-// 				// We need to compile the input first to
-// 				// get its namespace Clone the input
-// 				// since we need to use it twice
-// 				let input_plan = to_owned_physical_plan(*input.clone());
-// 				let (_, namespace) = self.compile_plan_with_definition(input_plan)?;
-// 				namespace
-// 			} else {
-// 				FlowNodeDef::empty()
-// 			};
-//
-// 			// Compute the output namespace
-// 			// Pass the sink view schema for type inference
-// 			let output_schema =
-// 				map_compiler.compute_output_schema(&input_schema, self.sink.as_ref());
-//
-// 			// Now compile the Map operator
-// 			let node_id = map_compiler.compile(self)?;
-//
-// 			Ok((node_id, output_schema))
-// 		}
-// 		// For other operators, compile normally and return
-// 		// empty namespace for now
-// 		_ => {
-// 			let node_id = self.compile_plan(plan)?;
-// 			Ok((node_id, FlowNodeDef::empty()))
-// 		}
-// 	}
-// }
 
 /// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator<T: CommandTransaction> {
@@ -275,5 +265,6 @@ pub use self::{
 		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
 	},
 	flow::{Flow, FlowBuilder},
+	loader::load_flow,
 	node::{FlowEdge, FlowNode, FlowNodeType},
 };

@@ -5,19 +5,22 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Query execution and processing engine for ReifyDB"
 
 [dependencies]
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-flow-operator-abi = { workspace = true }
+reifydb-hash = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
+tracing = { workspace = true }
+bincode = { workspace = true }
 once_cell = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-reifydb-testing = { workspace = true }

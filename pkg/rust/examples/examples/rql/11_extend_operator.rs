@@ -7,33 +7,34 @@
 //!
 //! Run with: `make rql-extend` or `cargo run --bin rql-extend`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Standalone EXTEND with constants (creates a single-encoded
 	// frame)
-	log_info!("Example 1: Standalone EXTEND with constants");
+	info!("Example 1: Standalone EXTEND with constants");
 	log_query(r#"extend { total: 42, tax: 3.14 }"#);
 
 	for frame in db.query_as_root(r#"extend { total: 42, tax: 3.14 }"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: Standalone EXTEND with single expression
-	log_info!("\nExample 2: Standalone EXTEND with computed value");
+	info!("\nExample 2: Standalone EXTEND with computed value");
 	log_query(r#"extend result: 100 + 23"#);
 
 	for frame in db.query_as_root(r#"extend result: 100 + 23"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: EXTEND with inline data to add computed columns
-	log_info!("\nExample 3: EXTEND with existing frame (inline data)");
+	info!("\nExample 3: EXTEND with existing frame (inline data)");
 	log_query(
 		r#"from [{ name: "Alice", price: 100 }]
 extend { total: price * 1.1, tax: price * 0.1 }"#,
@@ -49,11 +50,11 @@ extend { total: price * 1.1, tax: price * 0.1 }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: EXTEND with multiple rows
-	log_info!("\nExample 4: EXTEND with multiple rows");
+	info!("\nExample 4: EXTEND with multiple rows");
 	log_query(
 		r#"from [{ value: 10 }, { value: 20 }]
 extend result: value * 2"#,
@@ -69,11 +70,11 @@ extend result: value * 2"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Compare EXTEND vs MAP behavior
-	log_info!("\nExample 5: EXTEND vs MAP - column preservation");
+	info!("\nExample 5: EXTEND vs MAP - column preservation");
 	log_query(
 		r#"from [{ id: 1, name: "Bob", age: 25 }]
 extend category: age > 30"#,
@@ -89,8 +90,8 @@ extend category: age > 30"#,
 		)
 		.unwrap()
 	{
-		log_info!("EXTEND result (preserves all original columns):");
-		log_info!("{}", frame);
+		info!("EXTEND result (preserves all original columns):");
+		info!("{}", frame);
 	}
 
 	log_query(
@@ -108,12 +109,12 @@ map { name, category: age > 30 }"#,
 		)
 		.unwrap()
 	{
-		log_info!("MAP result (only selected columns):");
-		log_info!("{}", frame);
+		info!("MAP result (only selected columns):");
+		info!("{}", frame);
 	}
 
 	// Example 6: EXTEND with complex calculations
-	log_info!("\nExample 6: EXTEND with complex calculations");
+	info!("\nExample 6: EXTEND with complex calculations");
 	log_query(
 		r#"from [
   { product: "Widget", price: 100, quantity: 5 },
@@ -143,6 +144,6 @@ extend {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

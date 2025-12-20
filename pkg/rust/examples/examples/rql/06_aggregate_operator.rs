@@ -8,12 +8,13 @@
 //!
 //! Run with: `make rql-aggregate` or `cargo run --bin rql-aggregate`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Set up sample sales data
@@ -55,7 +56,7 @@ fn main() {
 	.unwrap();
 
 	// Example 1: Simple average
-	log_info!("Example 1: Calculate average price by product");
+	info!("Example 1: Calculate average price by product");
 	log_query(
 		r#"from sales.transactions
 aggregate math::avg(price) by product"#,
@@ -70,11 +71,11 @@ aggregate math::avg(price) by product"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: Group by with average
-	log_info!("\nExample 2: Average price by category");
+	info!("\nExample 2: Average price by category");
 	log_query(
 		r#"from sales.transactions
 aggregate math::avg(price) by category
@@ -91,11 +92,11 @@ sort category"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Multiple aggregations
-	log_info!("\nExample 3: Multiple aggregations by region");
+	info!("\nExample 3: Multiple aggregations by region");
 	log_query(
 		r#"from sales.transactions
 aggregate { math::avg(price), math::sum(quantity), math::count(id) } by region
@@ -112,11 +113,11 @@ sort region"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: Aggregate with filter
-	log_info!("\nExample 4: Average price for Electronics only");
+	info!("\nExample 4: Average price for Electronics only");
 	log_query(
 		r#"from sales.transactions
 filter category == "Electronics"
@@ -133,11 +134,11 @@ aggregate { math::avg(price), math::sum(quantity) } by product"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Count aggregation
-	log_info!("\nExample 5: Count transactions by month");
+	info!("\nExample 5: Count transactions by month");
 	log_query(
 		r#"
 from sales.transactions
@@ -155,11 +156,11 @@ sort month"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Sum aggregation
-	log_info!("\nExample 6: Total revenue (price * quantity) by category");
+	info!("\nExample 6: Total revenue (price * quantity) by category");
 	log_query(
 		r#"from sales.transactions
 map { category, price * quantity as revenue }
@@ -176,11 +177,11 @@ aggregate math::sum(revenue) by category"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Group by multiple columns
-	log_info!("\nExample 7: Aggregate by category and region");
+	info!("\nExample 7: Aggregate by category and region");
 	log_query(
 		r#"
 from sales.transactions
@@ -198,6 +199,6 @@ sort { category, region }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

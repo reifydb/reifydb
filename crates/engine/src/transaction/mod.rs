@@ -40,10 +40,13 @@ impl<'a> QueryTransaction for StandardTransaction<'a> {
 	where
 		Self: 'b;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
+	fn begin_single_query<'k, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'k EncodedKey>,
+	{
 		match self {
-			Self::Command(txn) => txn.begin_single_query(),
-			Self::Query(txn) => txn.begin_single_query(),
+			Self::Command(txn) => txn.begin_single_query(keys),
+			Self::Query(txn) => txn.begin_single_query(keys),
 		}
 	}
 
@@ -84,42 +87,36 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 		}
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		match self {
-			Self::Command(txn) => txn.scan(),
-			Self::Query(txn) => txn.scan(),
+			Self::Command(txn) => txn.range_batched(range, batch_size),
+			Self::Query(txn) => txn.range_batched(range, batch_size),
 		}
 	}
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		match self {
-			Self::Command(txn) => txn.scan_rev(),
-			Self::Query(txn) => txn.scan_rev(),
+			Self::Command(txn) => txn.range_rev_batched(range, batch_size),
+			Self::Query(txn) => txn.range_rev_batched(range, batch_size),
 		}
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
-		match self {
-			Self::Command(txn) => txn.range(range),
-			Self::Query(txn) => txn.range(range),
-		}
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
-		match self {
-			Self::Command(txn) => txn.range_rev(range),
-			Self::Query(txn) => txn.range_rev(range),
-		}
-	}
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
 		}
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),

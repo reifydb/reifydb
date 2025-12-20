@@ -41,6 +41,7 @@ impl Compiler {
 			table: create.table.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
+			primary_key: create.primary_key,
 		}))
 	}
 }

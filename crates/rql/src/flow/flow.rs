@@ -2,7 +2,6 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::interface::{FlowId, FlowNodeId};
 use reifydb_type::Result;
-use serde::{Deserialize, Serialize};
 
 use super::{
 	graph::DirectedGraph,
@@ -14,7 +13,7 @@ pub struct Flow {
 	inner: Arc<FlowInner>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct FlowInner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
@@ -41,6 +40,11 @@ impl FlowBuilder {
 			id: id.into(),
 			graph: DirectedGraph::new(),
 		}
+	}
+
+	/// Get the flow ID
+	pub fn id(&self) -> FlowId {
+		self.id
 	}
 
 	/// Add a node to the flow during construction
@@ -77,28 +81,6 @@ impl FlowBuilder {
 				graph: self.graph,
 			}),
 		}
-	}
-}
-
-// Custom serialization for Flow to work with Arc<Inner>
-impl Serialize for Flow {
-	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.inner.serialize(serializer)
-	}
-}
-
-impl<'de> Deserialize<'de> for Flow {
-	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'de>,
-	{
-		let inner = FlowInner::deserialize(deserializer)?;
-		Ok(Flow {
-			inner: Arc::new(inner),
-		})
 	}
 }
 

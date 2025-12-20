@@ -1,30 +1,32 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
+use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
 	interface::FlowNodeId,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
+use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -77,7 +79,7 @@ impl DistinctLayout {
 	/// Update the layout with a new encoded, keeping the most defined types
 	fn update_from_row(&mut self, row: &Row) {
 		let names = row.layout.names();
-		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
+		let types: Vec<Type> = row.layout.fields().fields.iter().map(|f| f.r#type).collect();
 
 		if self.names.is_empty() {
 			self.names = names.to_vec();
@@ -118,7 +120,8 @@ struct DistinctEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctState {
 	/// Map from hash of distinct expressions to entry
-	entries: HashMap<Hash128, DistinctEntry>,
+	/// Using IndexMap to preserve insertion order for "first occurrence" semantics
+	entries: IndexMap<Hash128, DistinctEntry>,
 	/// Shared layout information
 	layout: DistinctLayout,
 }
@@ -126,21 +129,23 @@ struct DistinctState {
 impl Default for DistinctState {
 	fn default() -> Self {
 		Self {
-			entries: HashMap::new(),
+			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
 		}
 	}
 }
 
 pub struct DistinctOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 	layout: EncodedValuesLayout,
 }
 
 impl DistinctOperator {
-	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			expressions,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
@@ -170,7 +175,7 @@ impl DistinctOperator {
 		Ok(xxh3_128(&data))
 	}
 
-	fn load_distinct_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<DistinctState> {
+	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -185,17 +190,13 @@ impl DistinctOperator {
 		let config = standard();
 		decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize DistinctState: {}", e)))
+			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
-	fn save_distinct_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		state: &DistinctState,
-	) -> crate::Result<()> {
+	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize DistinctState: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -222,7 +223,7 @@ impl Operator for DistinctOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -287,7 +288,7 @@ impl Operator for DistinctOperator {
 								entry.count -= 1;
 							} else {
 								// Last instance - remove from state
-								state.entries.remove(&pre_hash);
+								state.entries.shift_remove(&pre_hash);
 								result.push(FlowDiff::Remove {
 									pre,
 								});
@@ -324,7 +325,7 @@ impl Operator for DistinctOperator {
 						if entry.count > 1 {
 							entry.count -= 1;
 						} else {
-							let removed_entry = state.entries.remove(&hash);
+							let removed_entry = state.entries.shift_remove(&hash);
 							if let Some(entry) = removed_entry {
 								let stored_row = entry.first_row.to_row(&state.layout);
 								result.push(FlowDiff::Remove {
@@ -340,5 +341,9 @@ impl Operator for DistinctOperator {
 		self.save_distinct_state(txn, &state)?;
 
 		Ok(FlowChange::internal(self.node, change.version, result))
+	}
+
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }

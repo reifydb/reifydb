@@ -4,43 +4,47 @@
 mod alter;
 mod create;
 
-pub use alter::{AlterTableNode, AlterViewNode};
+pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
 	CatalogStore,
-	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
-	JoinStrategy, JoinType, SortKey,
+	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
 	interface::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
 		resolved::{
-			ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedSource,
-			ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
+			ResolvedSequence, ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 };
 use reifydb_type::{
 	Fragment, Type, TypeConstraint,
 	diagnostic::{
-		catalog::{ring_buffer_not_found, table_not_found},
+		catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
 		function::internal_error,
 	},
 	return_error,
 };
+use tracing::instrument;
 
 use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
 	plan::{
 		logical,
-		logical::LogicalPlan,
+		logical::{
+			LogicalPlan,
+			row_predicate::{RowPredicate, extract_row_predicate},
+		},
 		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
 	},
-	query::QueryString,
 };
 
 struct Compiler {}
 
+#[instrument(name = "rql::compile::physical", level = "trace", skip(rx, logical))]
 pub fn compile_physical<'a>(
 	rx: &mut impl QueryTransaction,
 	logical: Vec<LogicalPlan<'a>>,
@@ -78,7 +82,11 @@ impl Compiler {
 				}
 
 				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(Self::compile_create_ring_buffer(rx, create)?);
+					stack.push(Self::compile_create_ringbuffer(rx, create)?);
+				}
+
+				LogicalPlan::CreateFlow(create) => {
+					stack.push(Self::compile_create_flow(rx, create)?);
 				}
 
 				LogicalPlan::CreateDeferredView(create) => {
@@ -87,6 +95,10 @@ impl Compiler {
 
 				LogicalPlan::CreateTransactionalView(create) => {
 					stack.push(Self::compile_create_transactional(rx, create)?);
+				}
+
+				LogicalPlan::CreateDictionary(create) => {
+					stack.push(Self::compile_create_dictionary(rx, create)?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
@@ -101,8 +113,67 @@ impl Compiler {
 					stack.push(Self::compile_alter_view(rx, alter)?);
 				}
 
+				LogicalPlan::AlterFlow(alter) => {
+					stack.push(Self::compile_alter_flow(rx, alter)?);
+				}
+
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Try to optimize rownum predicates for O(1)/O(k) access
+					if let Some(predicate) = extract_row_predicate(&filter.condition) {
+						// Check if input is a scan node we can optimize
+						let source = match &input {
+							PhysicalPlan::TableScan(scan) => {
+								Some(ResolvedSource::Table(scan.source.clone()))
+							}
+							PhysicalPlan::ViewScan(scan) => {
+								Some(ResolvedSource::View(scan.source.clone()))
+							}
+							PhysicalPlan::RingBufferScan(scan) => {
+								Some(ResolvedSource::RingBuffer(scan.source.clone()))
+							}
+							_ => None,
+						};
+
+						if let Some(source) = source {
+							match predicate {
+								RowPredicate::Point(row_number) => {
+									stack.push(PhysicalPlan::RowPointLookup(
+										RowPointLookupNode {
+											source,
+											row_number,
+										},
+									));
+									continue;
+								}
+								RowPredicate::List(row_numbers) => {
+									stack.push(PhysicalPlan::RowListLookup(
+										RowListLookupNode {
+											source,
+											row_numbers,
+										},
+									));
+									continue;
+								}
+								RowPredicate::Range {
+									start,
+									end,
+								} => {
+									stack.push(PhysicalPlan::RowRangeScan(
+										RowRangeScanNode {
+											source,
+											start,
+											end,
+										},
+									));
+									continue;
+								}
+							}
+						}
+					}
+
+					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
 						input: Box::new(input),
@@ -200,36 +271,33 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = delete.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = delete.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
@@ -287,39 +355,75 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = insert_rb.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = insert_rb.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
+						input: Box::new(input),
+						target,
+					}))
+				}
+
+				LogicalPlan::InsertDictionary(insert_dict) => {
+					let input = stack.pop().unwrap();
+
+					// Resolve the dictionary
+					let dictionary_id = insert_dict.target.clone();
+					let namespace_name =
+						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(dictionary_def) = CatalogStore::find_dictionary_by_name(
+						rx,
+						namespace_def.id,
+						dictionary_id.name.text(),
+					)?
+					else {
+						return_error!(dictionary_not_found(
+							dictionary_id.name.clone().into_owned(),
+							&namespace_def.name,
+							dictionary_id.name.text()
+						));
+					};
+
+					let namespace_id = dictionary_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedDictionary::new(
+						dictionary_id.name.clone(),
+						resolved_namespace,
+						dictionary_def,
+					);
+
+					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
 						input: Box::new(input),
 						target,
 					}))
@@ -406,36 +510,33 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = update_rb.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = update_rb.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
@@ -450,10 +551,8 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
-						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
-						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -463,10 +562,8 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
-						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
-						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -476,10 +573,17 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
-						right_query: join.with_query,
 						join_type: join.join_type,
 						alias: join.alias,
-						strategy: join.strategy.unwrap_or_default(),
+					}));
+				}
+
+				LogicalPlan::Merge(merge) => {
+					let left = stack.pop().unwrap();
+					let right = Self::compile(rx, merge.with)?.unwrap();
+					stack.push(PhysicalPlan::Merge(MergeNode {
+						left: Box::new(left),
+						right: Box::new(right),
 					}));
 				}
 
@@ -532,6 +636,7 @@ impl Compiler {
 								policies: vec![],
 								index: ColumnIndex(0),
 								auto_increment: false,
+								dictionary_id: None,
 							};
 
 							ResolvedColumn::new(col.name, resolved_source, column_def)
@@ -563,7 +668,7 @@ impl Compiler {
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(Box::new);
 					stack.push(PhysicalPlan::Apply(ApplyNode {
-						operator: apply.operator_name,
+						operator: apply.operator,
 						expressions: apply.arguments,
 						input,
 					}));
@@ -648,7 +753,7 @@ impl Compiler {
 								},
 							));
 						}
-						ResolvedSource::RingBuffer(resolved_ring_buffer) => {
+						ResolvedSource::RingBuffer(resolved_ringbuffer) => {
 							// Ring buffers cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
@@ -656,7 +761,25 @@ impl Compiler {
 								);
 							}
 							stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
-								source: resolved_ring_buffer.clone(),
+								source: resolved_ringbuffer.clone(),
+							}));
+						}
+						ResolvedSource::Flow(resolved_flow) => {
+							// Flows cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("flows do not support indexes yet");
+							}
+							stack.push(PhysicalPlan::FlowScan(FlowScanNode {
+								source: resolved_flow.clone(),
+							}));
+						}
+						ResolvedSource::Dictionary(resolved_dictionary) => {
+							// Dictionaries cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("dictionaries do not support indexes");
+							}
+							stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
+								source: resolved_dictionary.clone(),
 							}));
 						}
 					}
@@ -667,6 +790,21 @@ impl Compiler {
 					stack.push(PhysicalPlan::Take(TakeNode {
 						take: take.take,
 						input: Box::new(input),
+					}));
+				}
+
+				LogicalPlan::Window(window) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Window(WindowNode {
+						window_type: window.window_type,
+						size: window.size,
+						slide: window.slide,
+						group_by: window.group_by,
+						aggregations: window.aggregations,
+						min_events: window.min_events,
+						max_window_count: window.max_window_count,
+						max_window_age: window.max_window_age,
+						input,
 					}));
 				}
 
@@ -838,15 +976,19 @@ pub enum PhysicalPlan<'a> {
 	CreateNamespace(CreateNamespaceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
+	CreateFlow(CreateFlowNode<'a>),
+	CreateDictionary(CreateDictionaryNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
 	AlterTable(AlterTableNode<'a>),
 	AlterView(AlterViewNode<'a>),
+	AlterFlow(AlterFlowNode<'a>),
 	// Mutate
 	Delete(DeleteTableNode<'a>),
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
+	InsertDictionary(InsertDictionaryNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
@@ -863,9 +1005,14 @@ pub enum PhysicalPlan<'a> {
 	Distinct(DistinctNode<'a>),
 	Filter(FilterNode<'a>),
 	IndexScan(IndexScanNode<'a>),
+	// Row-number optimized access
+	RowPointLookup(RowPointLookupNode<'a>),
+	RowListLookup(RowListLookupNode<'a>),
+	RowRangeScan(RowRangeScanNode<'a>),
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
+	Merge(MergeNode<'a>),
 	Take(TakeNode<'a>),
 	Sort(SortNode<'a>),
 	Map(MapNode<'a>),
@@ -876,7 +1023,10 @@ pub enum PhysicalPlan<'a> {
 	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
+	FlowScan(FlowScanNode<'a>),
+	DictionaryScan(DictionaryScanNode<'a>),
 	Generator(GeneratorNode<'a>),
+	Window(WindowNode<'a>),
 	// Auto-scalarization for 1x1 frames
 	Scalarize(ScalarizeNode<'a>),
 }
@@ -887,7 +1037,16 @@ pub struct CreateDeferredViewNode<'a> {
 	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateFlowNode<'a> {
+	pub namespace: NamespaceDef,
+	pub flow: Fragment<'a>,
+	pub if_not_exists: bool,
+	pub as_clause: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -896,7 +1055,8 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -911,15 +1071,26 @@ pub struct CreateTableNode<'a> {
 	pub table: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateRingBufferNode<'a> {
 	pub namespace: ResolvedNamespace<'a>,
-	pub ring_buffer: Fragment<'a>,
+	pub ringbuffer: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateDictionaryNode<'a> {
+	pub namespace: NamespaceDef,
+	pub dictionary: Fragment<'a>,
+	pub if_not_exists: bool,
+	pub value_type: Type,
+	pub id_type: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -1038,6 +1209,12 @@ pub struct InsertRingBufferNode<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct InsertDictionaryNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub target: ResolvedDictionary<'a>,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateTableNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
 	pub target: Option<ResolvedTable<'a>>,
@@ -1059,30 +1236,30 @@ pub struct UpdateRingBufferNode<'a> {
 pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
-	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinLeftNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
-	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinNaturalNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
-	pub right_query: QueryString,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
-	pub strategy: JoinStrategy,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeNode<'a> {
+	pub left: Box<PhysicalPlan<'a>>,
+	pub right: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1137,6 +1314,16 @@ pub struct RingBufferScanNode<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct FlowScanNode<'a> {
+	pub source: ResolvedFlow<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DictionaryScanNode<'a> {
+	pub source: ResolvedDictionary<'a>,
+}
+
+#[derive(Debug, Clone)]
 pub struct GeneratorNode<'a> {
 	pub name: Fragment<'a>,
 	pub expressions: Vec<Expression<'a>>,
@@ -1160,4 +1347,46 @@ pub struct TableVirtualPushdownContext<'a> {
 pub struct TakeNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
 	pub take: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowNode<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub window_type: WindowType,
+	pub size: WindowSize,
+	pub slide: Option<WindowSlide>,
+	pub group_by: Vec<Expression<'a>>,
+	pub aggregations: Vec<Expression<'a>>,
+	pub min_events: usize,
+	pub max_window_count: Option<usize>,
+	pub max_window_age: Option<std::time::Duration>,
+}
+
+/// O(1) point lookup by row number: `filter rownum == N`
+#[derive(Debug, Clone)]
+pub struct RowPointLookupNode<'a> {
+	/// The source to look up in (table, ring buffer, etc.)
+	pub source: ResolvedSource<'a>,
+	/// The row number to fetch
+	pub row_number: u64,
+}
+
+/// O(k) list lookup by row numbers: `filter rownum in [a, b, c]`
+#[derive(Debug, Clone)]
+pub struct RowListLookupNode<'a> {
+	/// The source to look up in
+	pub source: ResolvedSource<'a>,
+	/// The row numbers to fetch
+	pub row_numbers: Vec<u64>,
+}
+
+/// Range scan by row numbers: `filter rownum between X and Y`
+#[derive(Debug, Clone)]
+pub struct RowRangeScanNode<'a> {
+	/// The source to scan
+	pub source: ResolvedSource<'a>,
+	/// Start of the range (inclusive)
+	pub start: u64,
+	/// End of the range (inclusive)
+	pub end: u64,
 }

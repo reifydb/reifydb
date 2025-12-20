@@ -117,9 +117,9 @@ pub fn encode_primary_key(
 				let val = layout.get_datetime(row, table_idx);
 				index_layout.set_datetime(&mut index_key, pk_idx, val);
 			}
-			Type::Interval => {
-				let val = layout.get_interval(row, table_idx);
-				index_layout.set_interval(&mut index_key, pk_idx, val);
+			Type::Duration => {
+				let val = layout.get_duration(row, table_idx);
+				index_layout.set_duration(&mut index_key, pk_idx, val);
 			}
 			Type::Uuid4 => {
 				let val = layout.get_uuid4(row, table_idx);
@@ -132,10 +132,6 @@ pub fn encode_primary_key(
 			Type::IdentityId => {
 				let val = layout.get_identity_id(row, table_idx);
 				index_layout.set_identity_id(&mut index_key, pk_idx, val);
-			}
-			Type::RowNumber => {
-				// RowNumber shouldn't be in a primary key
-				panic!("RowNumber columns cannot be used in primary keys");
 			}
 			Type::Int => {
 				// Int columns in primary keys not yet

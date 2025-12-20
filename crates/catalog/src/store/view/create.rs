@@ -5,8 +5,8 @@ use ViewKind::Deferred;
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		ColumnIndex, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceViewKey, TableId, ViewDef,
-		ViewId, ViewKey, ViewKind, ViewKind::Transactional,
+		ColumnIndex, CommandTransaction, NamespaceId, NamespaceViewKey, TableId, ViewDef, ViewId, ViewKey,
+		ViewKind, ViewKind::Transactional,
 	},
 	return_error,
 };
@@ -93,13 +93,7 @@ impl CatalogStore {
 		);
 		view::LAYOUT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
-		txn.set(
-			&ViewKey {
-				view,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&ViewKey::encoded(view), row)?;
 
 		Ok(())
 	}
@@ -113,14 +107,7 @@ impl CatalogStore {
 		let mut row = view_namespace::LAYOUT.allocate();
 		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
 		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
-		txn.set(
-			&Key::NamespaceView(NamespaceViewKey {
-				namespace,
-				view,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
 		Ok(())
 	}
 
@@ -145,8 +132,9 @@ impl CatalogStore {
 					constraint: column_to_create.constraint.clone(),
 					if_not_exists: false,
 					policies: vec![],
-					index: ColumnIndex(idx as u16),
+					index: ColumnIndex(idx as u8),
 					auto_increment: false,
+					dictionary_id: None, // Views don't support dictionaries yet
 				},
 			)?;
 		}

@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	Error,
-	interface::{ColumnsKey, EncodableKey, QueryTransaction},
+	interface::{ColumnsKey, DictionaryId, QueryTransaction},
 };
-use reifydb_type::{Constraint, Type, TypeConstraint, internal_error};
+use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
 use crate::store::column::layout::column::LAYOUT;
 
@@ -36,30 +36,25 @@ use crate::{
 	CatalogStore,
 	store::column::{
 		ColumnDef, ColumnId, ColumnIndex,
-		layout::column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, VALUE},
+		layout::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
 	},
 };
 
 impl CatalogStore {
 	pub fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let multi = rx
-			.get(&ColumnsKey {
-				column,
-			}
-			.encode())?
-			.ok_or_else(|| {
-				Error(internal_error!(
-					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-					column
-				))
-			})?;
+		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
+			Error(internal!(
+				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				column
+			))
+		})?;
 
 		let row = multi.values;
 
 		let id = ColumnId(LAYOUT.get_u64(&row, ID));
 		let name = LAYOUT.get_utf8(&row, NAME).to_string();
 		let base_type = Type::from_u8(LAYOUT.get_u8(&row, VALUE));
-		let index = ColumnIndex(LAYOUT.get_u16(&row, INDEX));
+		let index = ColumnIndex(LAYOUT.get_u8(&row, INDEX));
 		let auto_increment = LAYOUT.get_bool(&row, AUTO_INCREMENT);
 
 		// Reconstruct constraint from stored blob
@@ -67,6 +62,14 @@ impl CatalogStore {
 		let constraint = match decode_constraint(constraint_bytes.as_bytes()) {
 			Some(c) => TypeConstraint::with_constraint(base_type, c),
 			None => TypeConstraint::unconstrained(base_type),
+		};
+
+		// Read dictionary_id (0 means no dictionary)
+		let dict_id_raw = LAYOUT.get_u64(&row, DICTIONARY_ID);
+		let dictionary_id = if dict_id_raw == 0 {
+			None
+		} else {
+			Some(DictionaryId(dict_id_raw))
 		};
 
 		let policies = Self::list_column_policies(rx, id)?;
@@ -78,6 +81,7 @@ impl CatalogStore {
 			index,
 			policies,
 			auto_increment,
+			dictionary_id,
 		})
 	}
 }

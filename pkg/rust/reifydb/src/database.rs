@@ -10,22 +10,21 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result, event::lifecycle::OnStartEvent, interface::WithEventBus, log_debug, log_error, log_timed_trace,
-	log_warn,
-};
+use reifydb_core::{Result, event::lifecycle::OnStartEvent, interface::WithEventBus};
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::HealthStatus;
-#[cfg(feature = "sub_worker")]
-use reifydb_sub_api::Scheduler;
+use reifydb_sub_api::{HealthStatus, SchedulerService};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
-#[cfg(feature = "sub_server")]
-use reifydb_sub_server::ServerSubsystem;
+#[cfg(feature = "sub_server_http")]
+use reifydb_sub_server_http::HttpSubsystem;
+#[cfg(feature = "sub_server_ws")]
+use reifydb_sub_server_ws::WsSubsystem;
+use reifydb_sub_worker::WorkerSubsystem;
+use tracing::{debug, error, instrument, warn};
 
 use crate::{
 	boot::Bootloader,
-	defaults::{GRACEFUL_SHSVTDOWN_TIMEOSVT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
+	defaults::{GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
 	health::{ComponentHealth, HealthMonitor},
 	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
 	subsystem::Subsystems,
@@ -41,7 +40,7 @@ pub struct DatabaseConfig {
 impl DatabaseConfig {
 	pub fn new() -> Self {
 		Self {
-			graceful_shutdown_timeout: GRACEFUL_SHSVTDOWN_TIMEOSVT,
+			graceful_shutdown_timeout: GRACEFUL_SHUTDOWN_TIMEOUT,
 			health_check_interval: HEALTH_CHECK_INTERVAL,
 			max_startup_time: MAX_STARTUP_TIME,
 		}
@@ -76,19 +75,27 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
-	#[cfg(feature = "sub_worker")]
-	scheduler: Arc<dyn Scheduler>,
+	scheduler: Option<SchedulerService>,
 }
 
 impl Database {
+	pub fn sub_worker(&self) -> Option<&WorkerSubsystem> {
+		self.subsystem::<WorkerSubsystem>()
+	}
+
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server")]
-	pub fn sub_server(&self) -> Option<&ServerSubsystem> {
-		self.subsystems.get::<ServerSubsystem>()
+	#[cfg(feature = "sub_server_http")]
+	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
+		self.subsystem::<HttpSubsystem>()
+	}
+
+	#[cfg(feature = "sub_server_ws")]
+	pub fn sub_server_ws(&self) -> Option<&WsSubsystem> {
+		self.subsystem::<WsSubsystem>()
 	}
 }
 
@@ -98,7 +105,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler>,
+		scheduler: Option<SchedulerService>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -107,7 +114,6 @@ impl Database {
 			config,
 			health_monitor,
 			running: false,
-			#[cfg(feature = "sub_worker")]
 			scheduler,
 		}
 	}
@@ -128,32 +134,28 @@ impl Database {
 		self.subsystems.subsystem_count()
 	}
 
+	#[instrument(name = "api::database::start", level = "info", skip(self))]
 	pub fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(()); // Already running
 		}
 
-		log_timed_trace!("Bootloader setup", { self.bootloader.load()? });
+		self.bootloader.load()?;
 
-		log_debug!("Starting system with {} subsystems", self.subsystem_count());
+		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		log_timed_trace!("Database initialization", {
-			self.engine.event_bus().emit(OnStartEvent {});
-		});
+		self.engine.event_bus().emit(OnStartEvent {});
 
 		// Start all subsystems
-		match log_timed_trace!("Starting all subsystems", {
-			let result = self.subsystems.start_all(self.config.max_startup_time);
-			result
-		}) {
+		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;
-				log_debug!("System started successfully");
+				debug!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
 			Err(e) => {
-				log_error!("System startup failed: {}", e);
+				error!("System startup failed: {}", e);
 				// Update system health to reflect failure
 				self.health_monitor.update_component_health(
 					"system".to_string(),
@@ -167,12 +169,13 @@ impl Database {
 		}
 	}
 
+	#[instrument(name = "api::database::stop", level = "info", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Stopping system gracefully");
+		debug!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
@@ -181,7 +184,7 @@ impl Database {
 
 		match result {
 			Ok(()) => {
-				log_debug!("System stopped successfully");
+				debug!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,
@@ -190,7 +193,7 @@ impl Database {
 				Ok(())
 			}
 			Err(e) => {
-				log_warn!("System shutdown completed with errors: {}", e);
+				warn!("System shutdown completed with errors: {}", e);
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Warning {
@@ -237,24 +240,26 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	#[cfg(feature = "sub_worker")]
-	pub fn scheduler(&self) -> Arc<dyn Scheduler> {
+	pub fn scheduler(&self) -> Option<SchedulerService> {
 		self.scheduler.clone()
 	}
 
 	pub fn await_signal(&self) -> Result<()> {
-		static RUNNING: AtomicBool = AtomicBool::new(true);
+		self.await_signal_with_shutdown(|| Ok(()))
+	}
 
-		extern "C" fn handle_signal(sig: libc::c_int) {
-			let signal_name = match sig {
-				libc::SIGINT => "SIGINT (Ctrl+C)",
-				libc::SIGTERM => "SIGTERM",
-				libc::SIGQUIT => "SIGQUIT",
-				libc::SIGHUP => "SIGHUP",
-				_ => "Unknown signal",
-			};
-			log_debug!("Received {}, signaling shutdown...", signal_name);
+	pub fn await_signal_with_shutdown<F>(&self, on_shutdown: F) -> Result<()>
+	where
+		F: FnOnce() -> Result<()>,
+	{
+		static RUNNING: AtomicBool = AtomicBool::new(true);
+		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
+
+		extern "C" fn handle_signal(_sig: libc::c_int) {
+			// SAFETY: Only async-signal-safe operations are allowed here.
+			// We only use atomic operations, which are signal-safe.
 			RUNNING.store(false, Ordering::SeqCst);
+			SIGNAL_RECEIVED.store(true, Ordering::SeqCst);
 		}
 
 		unsafe {
@@ -264,21 +269,39 @@ impl Database {
 			libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t);
 		}
 
-		log_debug!("Waiting for termination signal...");
+		debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
 			std::thread::sleep(Duration::from_millis(100));
+
+			// Log the signal reception outside the signal handler
+			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {
+				debug!("Received termination signal, initiating shutdown...");
+				break;
+			}
 		}
+
+		on_shutdown()?;
 
 		Ok(())
 	}
 
 	pub fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start_and_await_signal_with_shutdown(|| Ok(()))
+	}
+
+	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
+	where
+		F: FnOnce() -> Result<()>,
+	{
 		self.start()?;
-		log_debug!("Database started, waiting for termination signal...");
+		debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;
 
-		log_debug!("Signal received, shutting down database...");
+		debug!("Signal received, running shutdown handler...");
+		on_shutdown()?;
+
+		debug!("Shutdown handler completed, shutting down database...");
 		self.stop()?;
 
 		Ok(())
@@ -288,7 +311,7 @@ impl Database {
 impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
-			log_warn!("System being dropped while running, attempting graceful shutdown");
+			warn!("System being dropped while running, attempting graceful shutdown");
 			let _ = self.stop();
 		}
 	}
@@ -303,8 +326,7 @@ impl Session for Database {
 		session.into_query_session(self.engine.clone())
 	}
 
-	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler> {
+	fn scheduler(&self) -> Option<SchedulerService> {
 		self.scheduler.clone()
 	}
 }

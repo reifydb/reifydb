@@ -4,6 +4,7 @@
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value};
+use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
@@ -40,6 +41,7 @@ impl<'a> LeftJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
+	#[instrument(name = "query::join::left::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -47,13 +49,14 @@ impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "query::join::left::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext<'a>,
 	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_initialized(), "LeftJoinNode::next() called before initialize()");
-		let stored_ctx = self.context.get();
+		let _stored_ctx = self.context.get();
 
 		if self.headers.is_some() {
 			return Ok(None);
@@ -92,8 +95,9 @@ impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
 					columns: Columns::new(eval_columns),
 					row_count: 1,
 					take: Some(1),
-					params: &stored_ctx.params,
-					stack: &stored_ctx.stack,
+					params: &ctx.params,
+					stack: &ctx.stack,
+					is_aggregate_context: false,
 				};
 
 				let all_true = self.on.iter().fold(true, |acc, cond| {

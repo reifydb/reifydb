@@ -9,7 +9,7 @@ pub struct Min;
 
 impl Min {
 	pub fn new() -> Self {
-		Self {}
+		Self
 	}
 }
 

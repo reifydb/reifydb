@@ -3,12 +3,13 @@
 
 use std::ops::Index;
 
-use reifydb_core::{IndexType, JoinStrategy, JoinType, SortDirection};
+use reifydb_core::{IndexType, JoinType, SortDirection};
 use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedFunctionIdentifier,
+		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedSourceIdentifier,
@@ -63,6 +64,7 @@ pub enum Ast<'a> {
 	Cast(AstCast<'a>),
 	Create(AstCreate<'a>),
 	Alter(AstAlter<'a>),
+	Drop(AstDrop<'a>),
 	Describe(AstDescribe<'a>),
 	Distinct(AstDistinct<'a>),
 	Filter(AstFilter<'a>),
@@ -76,6 +78,7 @@ pub enum Ast<'a> {
 	Insert(AstInsert<'a>),
 	Update(AstUpdate<'a>),
 	Join(AstJoin<'a>),
+	Merge(AstMerge<'a>),
 	Take(AstTake<'a>),
 	List(AstList<'a>),
 	Literal(AstLiteral<'a>),
@@ -92,7 +95,9 @@ pub enum Ast<'a> {
 	Extend(AstExtend<'a>),
 	Tuple(AstTuple<'a>),
 	Wildcard(AstWildcard<'a>),
+	Window(AstWindow<'a>),
 	StatementExpression(AstStatementExpression<'a>),
+	Rownum(AstRownum<'a>),
 }
 
 impl<'a> Default for Ast<'a> {
@@ -112,6 +117,7 @@ impl<'a> Ast<'a> {
 			Ast::Cast(node) => &node.token,
 			Ast::Create(node) => node.token(),
 			Ast::Alter(node) => node.token(),
+			Ast::Drop(node) => node.token(),
 			Ast::Describe(node) => match node {
 				AstDescribe::Query {
 					token,
@@ -152,6 +158,7 @@ impl<'a> Ast<'a> {
 					..
 				} => token,
 			},
+			Ast::Merge(node) => &node.token,
 			Ast::Nop => unreachable!(),
 			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
@@ -164,8 +171,10 @@ impl<'a> Ast<'a> {
 			Ast::Extend(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
+			Ast::Window(node) => &node.token,
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
+			Ast::Rownum(node) => &node.token,
 		}
 	}
 
@@ -395,6 +404,17 @@ impl<'a> Ast<'a> {
 		}
 	}
 
+	pub fn is_merge(&self) -> bool {
+		matches!(self, Ast::Merge(_))
+	}
+	pub fn as_merge(&self) -> &AstMerge<'a> {
+		if let Ast::Merge(result) = self {
+			result
+		} else {
+			panic!("not merge")
+		}
+	}
+
 	pub fn is_take(&self) -> bool {
 		matches!(self, Ast::Take(_))
 	}
@@ -595,6 +615,18 @@ impl<'a> Ast<'a> {
 		}
 	}
 
+	pub fn is_window(&self) -> bool {
+		matches!(self, Ast::Window(_))
+	}
+
+	pub fn as_window(&self) -> &AstWindow<'a> {
+		if let Ast::Window(result) = self {
+			result
+		} else {
+			panic!("not window")
+		}
+	}
+
 	pub fn is_statement_expression(&self) -> bool {
 		matches!(self, Ast::StatementExpression(_))
 	}
@@ -604,6 +636,18 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not statement expression")
+		}
+	}
+
+	pub fn is_rownum(&self) -> bool {
+		matches!(self, Ast::Rownum(_))
+	}
+
+	pub fn as_rownum(&self) -> &AstRownum<'a> {
+		if let Ast::Rownum(result) = self {
+			result
+		} else {
+			panic!("not rownum")
 		}
 	}
 }
@@ -617,14 +661,14 @@ pub struct AstCast<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstApply<'a> {
 	pub token: Token<'a>,
-	pub operator_name: UnqualifiedIdentifier<'a>,
+	pub operator: UnqualifiedIdentifier<'a>,
 	pub expressions: Vec<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCall<'a> {
 	pub token: Token<'a>,
-	pub operator_name: UnqualifiedIdentifier<'a>,
+	pub operator: UnqualifiedIdentifier<'a>,
 	pub arguments: AstTuple<'a>,
 }
 
@@ -665,10 +709,12 @@ impl<'a> Index<usize> for AstInline<'a> {
 pub enum AstCreate<'a> {
 	DeferredView(AstCreateDeferredView<'a>),
 	TransactionalView(AstCreateTransactionalView<'a>),
+	Flow(AstCreateFlow<'a>),
 	Namespace(AstCreateNamespace<'a>),
 	Series(AstCreateSeries<'a>),
 	Table(AstCreateTable<'a>),
 	RingBuffer(AstCreateRingBuffer<'a>),
+	Dictionary(AstCreateDictionary<'a>),
 	Index(AstCreateIndex<'a>),
 }
 
@@ -677,6 +723,21 @@ pub enum AstAlter<'a> {
 	Sequence(AstAlterSequence<'a>),
 	Table(AstAlterTable<'a>),
 	View(AstAlterView<'a>),
+	Flow(AstAlterFlow<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstDrop<'a> {
+	Flow(AstDropFlow<'a>),
+	// Future: Table, View, Namespace, etc.
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropFlow<'a> {
+	pub token: Token<'a>,
+	pub if_exists: bool,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub cascade: bool, // CASCADE or RESTRICT (false = RESTRICT)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -728,11 +789,31 @@ pub enum AstAlterViewOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterFlow<'a> {
+	pub token: Token<'a>,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub action: AstAlterFlowAction<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterFlowAction<'a> {
+	Rename {
+		new_name: Fragment<'a>,
+	},
+	SetQuery {
+		query: AstStatement<'a>,
+	},
+	Pause,
+	Resume,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView<'a> {
 	pub token: Token<'a>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -741,12 +822,23 @@ pub struct AstCreateTransactionalView<'a> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateFlow<'a> {
+	pub token: Token<'a>,
+	pub or_replace: bool,
+	pub if_not_exists: bool,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub as_clause: AstStatement<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateNamespace<'a> {
 	pub token: Token<'a>,
 	pub namespace: MaybeQualifiedNamespaceIdentifier<'a>,
+	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -761,14 +853,25 @@ pub struct AstCreateTable<'a> {
 	pub token: Token<'a>,
 	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateRingBuffer<'a> {
 	pub token: Token<'a>,
-	pub ring_buffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
+	pub ringbuffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub capacity: u64,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateDictionary<'a> {
+	pub token: Token<'a>,
+	pub if_not_exists: bool,
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+	pub value_type: AstDataType<'a>,
+	pub id_type: AstDataType<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -794,6 +897,7 @@ pub struct AstColumnToCreate<'a> {
 	pub ty: AstDataType<'a>,
 	pub policies: Option<AstPolicyBlock<'a>>,
 	pub auto_increment: bool,
+	pub dictionary: Option<MaybeQualifiedDictionaryIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -812,6 +916,11 @@ pub struct AstIndexColumn<'a> {
 	pub order: Option<SortDirection>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstPrimaryKeyDef<'a> {
+	pub columns: Vec<AstIndexColumn<'a>>,
+}
+
 impl<'a> AstCreate<'a> {
 	pub fn token(&self) -> &Token<'a> {
 		match self {
@@ -820,6 +929,10 @@ impl<'a> AstCreate<'a> {
 				..
 			}) => token,
 			AstCreate::TransactionalView(AstCreateTransactionalView {
+				token,
+				..
+			}) => token,
+			AstCreate::Flow(AstCreateFlow {
 				token,
 				..
 			}) => token,
@@ -836,6 +949,10 @@ impl<'a> AstCreate<'a> {
 				..
 			}) => token,
 			AstCreate::RingBuffer(AstCreateRingBuffer {
+				token,
+				..
+			}) => token,
+			AstCreate::Dictionary(AstCreateDictionary {
 				token,
 				..
 			}) => token,
@@ -859,6 +976,21 @@ impl<'a> AstAlter<'a> {
 				..
 			}) => token,
 			AstAlter::View(AstAlterView {
+				token,
+				..
+			}) => token,
+			AstAlter::Flow(AstAlterFlow {
+				token,
+				..
+			}) => token,
+		}
+	}
+}
+
+impl<'a> AstDrop<'a> {
+	pub fn token(&self) -> &Token<'a> {
+		match self {
+			AstDrop::Flow(AstDropFlow {
 				token,
 				..
 			}) => token,
@@ -993,6 +1125,8 @@ pub enum InfixOperator<'a> {
 	And(Token<'a>),
 	Or(Token<'a>),
 	Xor(Token<'a>),
+	In(Token<'a>),
+	NotIn(Token<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1042,22 +1176,25 @@ pub enum AstJoin<'a> {
 		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
 	LeftJoin {
 		token: Token<'a>,
 		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
 	NaturalJoin {
 		token: Token<'a>,
 		with: AstSubQuery<'a>,
 		join_type: Option<JoinType>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstMerge<'a> {
+	pub token: Token<'a>,
+	pub with: AstSubQuery<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1259,6 +1396,11 @@ pub struct AstVariable<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstRownum<'a> {
+	pub token: Token<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstEnvironment<'a> {
 	pub token: Token<'a>,
 }
@@ -1289,6 +1431,20 @@ pub struct AstElseIf<'a> {
 	pub token: Token<'a>,
 	pub condition: Box<Ast<'a>>,
 	pub then_block: Box<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstWindow<'a> {
+	pub token: Token<'a>,
+	pub config: Vec<AstWindowConfig<'a>>,
+	pub aggregations: Vec<Ast<'a>>,
+	pub group_by: Vec<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstWindowConfig<'a> {
+	pub key: UnqualifiedIdentifier<'a>,
+	pub value: Ast<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -5,7 +5,7 @@ use std::{
 	cmp,
 	collections::{BinaryHeap, HashMap},
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicU64, Ordering},
 	},
 	time::{Duration, Instant},
@@ -13,7 +13,7 @@ use std::{
 
 use reifydb_core::Result;
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle};
+use reifydb_sub_api::{BoxedOnceTask, BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle};
 
 use crate::task::{InternalTaskContext, PoolTask, ScheduledTask};
 
@@ -44,6 +44,48 @@ impl PoolTask for SchedulableTaskAdapter {
 
 	fn name(&self) -> &str {
 		self.task.name()
+	}
+}
+
+/// Adapter from OnceTask to PoolTask
+///
+/// This adapter wraps a BoxedOnceTask in a Mutex so it can be
+/// executed once through the PoolTask interface. After execution,
+/// the task is consumed.
+pub(crate) struct OnceTaskAdapter {
+	task: Mutex<Option<BoxedOnceTask>>,
+	engine: StandardEngine,
+}
+
+impl OnceTaskAdapter {
+	pub(crate) fn new(task: BoxedOnceTask, engine: StandardEngine) -> Self {
+		Self {
+			task: Mutex::new(Some(task)),
+			engine,
+		}
+	}
+}
+
+impl PoolTask for OnceTaskAdapter {
+	fn execute(&self, _ctx: &InternalTaskContext) -> Result<()> {
+		// Take the task out of the Mutex. This can only be done once.
+		let task = self.task.lock().unwrap().take();
+		if let Some(task) = task {
+			let core_ctx = CoreTaskContext::new(self.engine.clone());
+			task.execute_once(&core_ctx)
+		} else {
+			panic!("OnceTask already executed");
+		}
+	}
+
+	fn priority(&self) -> Priority {
+		self.task.lock().unwrap().as_ref().map(|t| t.priority()).unwrap_or(Priority::Normal)
+	}
+
+	fn name(&self) -> &str {
+		// Name is called before execute, so task should still be present
+		// Return a generic name since we can't borrow from Mutex
+		"once-task"
 	}
 }
 

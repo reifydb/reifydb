@@ -50,20 +50,18 @@ impl<'a> TableVirtual<'a> for ColumnsTable {
 		let mut column_types = Vec::new();
 		let mut positions = Vec::new();
 		let mut auto_increments = Vec::new();
+		let mut dictionary_ids = Vec::new();
 
 		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
 			source_ids.push(info.source_id.as_u64());
-			store_types.push(if info.is_view {
-				1u8
-			} else {
-				0u8
-			});
+			store_types.push(info.source_id.to_type_u8());
 			column_names.push(info.column.name);
 			column_types.push(info.column.constraint.get_type().to_u8());
 			positions.push(info.column.index.0);
 			auto_increments.push(info.column.auto_increment);
+			dictionary_ids.push(info.column.dictionary_id.map(|d| d.0).unwrap_or(0));
 		}
 
 		let columns = vec![
@@ -89,11 +87,15 @@ impl<'a> TableVirtual<'a> for ColumnsTable {
 			},
 			Column {
 				name: Fragment::owned_internal("position"),
-				data: ColumnData::uint2(positions),
+				data: ColumnData::uint1(positions),
 			},
 			Column {
 				name: Fragment::owned_internal("auto_increment"),
 				data: ColumnData::bool(auto_increments),
+			},
+			Column {
+				name: Fragment::owned_internal("dictionary_id"),
+				data: ColumnData::uint8(dictionary_ids),
 			},
 		];
 

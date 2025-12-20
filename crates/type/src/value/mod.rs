@@ -12,12 +12,15 @@ mod as_string;
 pub mod blob;
 pub mod boolean;
 pub mod constraint;
+pub mod container;
 mod date;
 mod datetime;
 pub mod decimal;
+mod dictionary_entry_id;
+mod duration;
+pub mod frame;
 mod identity;
 pub mod int;
-mod interval;
 mod into;
 pub mod is;
 pub mod number;
@@ -26,23 +29,26 @@ mod ordered_f64;
 pub mod row_number;
 pub mod temporal;
 mod time;
+mod try_from;
 mod r#type;
 pub mod uint;
 pub mod uuid;
 
 pub use blob::Blob;
-pub use constraint::{Constraint, TypeConstraint};
+pub use constraint::{Constraint, FFITypeConstraint, TypeConstraint};
 pub use date::Date;
 pub use datetime::DateTime;
 pub use decimal::Decimal;
+pub use dictionary_entry_id::DictionaryEntryId;
+pub use duration::Duration;
 pub use identity::IdentityId;
 pub use int::Int;
-pub use interval::Interval;
 pub use into::IntoValue;
 pub use ordered_f32::OrderedF32;
 pub use ordered_f64::OrderedF64;
 pub use row_number::RowNumber;
 pub use time::Time;
+pub use try_from::{FromValueError, TryFromValue, TryFromValueCoerce};
 pub use r#type::{GetType, Type};
 pub use uint::Uint;
 pub use uuid::{Uuid4, Uuid7};
@@ -86,10 +92,8 @@ pub enum Value {
 	DateTime(DateTime),
 	/// A time value (hour, minute, second, nanosecond)
 	Time(Time),
-	/// An interval representing a duration
-	Interval(Interval),
-	/// A encoded number (8-byte unsigned integer)
-	RowNumber(RowNumber),
+	/// A duration representing a duration
+	Duration(Duration),
 	/// An identity identifier (UUID v7)
 	IdentityId(IdentityId),
 	/// A UUID version 4 (random)
@@ -181,12 +185,8 @@ impl Value {
 		Value::Time(v.into())
 	}
 
-	pub fn interval(v: impl Into<Interval>) -> Self {
-		Value::Interval(v.into())
-	}
-
-	pub fn row_number(v: impl Into<RowNumber>) -> Self {
-		Value::RowNumber(v.into())
+	pub fn duration(v: impl Into<Duration>) -> Self {
+		Value::Duration(v.into())
 	}
 
 	pub fn identity_id(v: impl Into<IdentityId>) -> Self {
@@ -230,8 +230,7 @@ impl PartialOrd for Value {
 			(Value::Date(l), Value::Date(r)) => l.partial_cmp(r),
 			(Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
-			(Value::Interval(l), Value::Interval(r)) => l.partial_cmp(r),
-			(Value::RowNumber(l), Value::RowNumber(r)) => l.partial_cmp(r),
+			(Value::Duration(l), Value::Duration(r)) => l.partial_cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
@@ -271,8 +270,7 @@ impl Ord for Value {
 			(Value::Date(l), Value::Date(r)) => l.cmp(r),
 			(Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
-			(Value::Interval(l), Value::Interval(r)) => l.cmp(r),
-			(Value::RowNumber(l), Value::RowNumber(r)) => l.cmp(r),
+			(Value::Duration(l), Value::Duration(r)) => l.cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
@@ -307,8 +305,7 @@ impl Display for Value {
 			Value::Date(value) => Display::fmt(value, f),
 			Value::DateTime(value) => Display::fmt(value, f),
 			Value::Time(value) => Display::fmt(value, f),
-			Value::Interval(value) => Display::fmt(value, f),
-			Value::RowNumber(value) => Display::fmt(value, f),
+			Value::Duration(value) => Display::fmt(value, f),
 			Value::IdentityId(value) => Display::fmt(value, f),
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
@@ -343,8 +340,7 @@ impl Value {
 			Value::Date(_) => Type::Date,
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
-			Value::Interval(_) => Type::Interval,
-			Value::RowNumber(_) => Type::RowNumber,
+			Value::Duration(_) => Type::Duration,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,

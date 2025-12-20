@@ -5,7 +5,7 @@ use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 
 use crate::{
 	CatalogStore,
-	store::column::{ColumnDef, ColumnId, layout::table_column},
+	store::column::{ColumnDef, ColumnId, layout::source_column},
 };
 
 /// Extended column information for system catalogs
@@ -27,7 +27,7 @@ impl CatalogStore {
 			.range(ColumnKey::full_scan(source))?
 			.map(|multi| {
 				let row = multi.values;
-				ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))
+				ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID))
 			})
 			.collect::<Vec<_>>();
 
@@ -69,6 +69,19 @@ impl CatalogStore {
 			}
 		}
 
+		// Get all ring buffers
+		let ringbuffers = CatalogStore::list_ringbuffers_all(rx)?;
+		for ringbuffer in ringbuffers {
+			let columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
+			for column in columns {
+				result.push(ColumnInfo {
+					column,
+					source_id: ringbuffer.id.into(),
+					is_view: false,
+				});
+			}
+		}
+
 		Ok(result)
 	}
 }
@@ -105,6 +118,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -123,6 +137,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();

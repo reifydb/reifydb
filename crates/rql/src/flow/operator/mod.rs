@@ -10,5 +10,7 @@ pub(crate) mod extend;
 pub(crate) mod filter;
 pub(crate) mod join;
 pub(crate) mod map;
+pub(crate) mod merge;
 pub(crate) mod sort;
 pub(crate) mod take;
+pub(crate) mod window;

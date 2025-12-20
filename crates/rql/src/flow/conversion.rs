@@ -11,9 +11,9 @@ use crate::{
 		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
 		EqExpression, Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression,
-		IdentExpression, IfExpression, LessThanEqExpression, LessThanExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
-		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+		IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MapExpression,
+		MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
+		RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	plan::physical::PhysicalPlan,
 };
@@ -133,6 +133,12 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::If(if_expr) => Expression::If(to_owned_if_expression(if_expr)),
 		Expression::Map(map_expr) => Expression::Map(to_owned_map_expression(map_expr)),
 		Expression::Extend(extend_expr) => Expression::Extend(to_owned_extend_expression(extend_expr)),
+		Expression::In(in_expr) => Expression::In(InExpression {
+			value: Box::new(to_owned_expression(*in_expr.value)),
+			list: Box::new(to_owned_expression(*in_expr.list)),
+			negated: in_expr.negated,
+			fragment: Fragment::Owned(in_expr.fragment.into_owned()),
+		}),
 	}
 }
 
@@ -263,16 +269,16 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
-			strategy: node.strategy.clone(),
-			right_query: node.right_query.clone(),
 		}),
 		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
-			strategy: node.strategy.clone(),
-			right_query: node.right_query.clone(),
+		}),
+		PhysicalPlan::Merge(node) => PhysicalPlan::Merge(crate::plan::physical::MergeNode {
+			left: Box::new(to_owned_physical_plan(*node.left)),
+			right: Box::new(to_owned_physical_plan(*node.right)),
 		}),
 		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
@@ -342,6 +348,42 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 				})
 				.collect(),
 		}),
+		PhysicalPlan::Window(node) => PhysicalPlan::Window(crate::plan::physical::WindowNode {
+			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
+			window_type: node.window_type,
+			size: node.size,
+			slide: node.slide,
+			group_by: to_owned_expressions(node.group_by),
+			aggregations: to_owned_expressions(node.aggregations),
+			min_events: node.min_events,
+			max_window_count: node.max_window_count,
+			max_window_age: node.max_window_age,
+		}),
+		PhysicalPlan::FlowScan(node) => {
+			// For FlowScan, convert the resolved flow to owned
+			PhysicalPlan::FlowScan(crate::plan::physical::FlowScanNode {
+				source: node.source.to_static(),
+			})
+		}
+		PhysicalPlan::RowPointLookup(node) => {
+			PhysicalPlan::RowPointLookup(crate::plan::physical::RowPointLookupNode {
+				source: node.source.to_static(),
+				row_number: node.row_number,
+			})
+		}
+		PhysicalPlan::RowListLookup(node) => {
+			PhysicalPlan::RowListLookup(crate::plan::physical::RowListLookupNode {
+				source: node.source.to_static(),
+				row_numbers: node.row_numbers,
+			})
+		}
+		PhysicalPlan::RowRangeScan(node) => {
+			PhysicalPlan::RowRangeScan(crate::plan::physical::RowRangeScanNode {
+				source: node.source.to_static(),
+				start: node.start,
+				end: node.end,
+			})
+		}
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
 	}
 }

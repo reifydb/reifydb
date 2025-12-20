@@ -407,8 +407,6 @@ mod tests {
 					left: vec![],
 					right: vec![],
 					alias: None,
-					strategy: reifydb_core::JoinStrategy::Stateful,
-					right_query: crate::query::QueryString("".to_string()),
 				},
 				SinkView {
 					view: ViewId(700),

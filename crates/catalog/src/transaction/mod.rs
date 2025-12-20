@@ -5,10 +5,13 @@ use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, TransactionalChanges, interceptor::WithInterceptors,
 };
 
+mod dictionary;
+mod flow;
 mod namespace;
-mod ring_buffer;
+mod ringbuffer;
 mod source;
 mod table;
+mod table_virtual_user;
 mod view;
 
 pub trait MaterializedCatalogTransaction {
@@ -17,6 +20,7 @@ pub trait MaterializedCatalogTransaction {
 
 pub trait CatalogCommandTransaction:
 	CatalogQueryTransaction
+	+ CatalogDictionaryCommandOperations
 	+ CatalogNamespaceCommandOperations
 	+ CatalogRingBufferCommandOperations
 	+ CatalogTableCommandOperations
@@ -25,7 +29,9 @@ pub trait CatalogCommandTransaction:
 }
 
 pub trait CatalogTrackChangeOperations:
-	CatalogTrackNamespaceChangeOperations
+	CatalogTrackDictionaryChangeOperations
+	+ CatalogTrackFlowChangeOperations
+	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackViewChangeOperations
@@ -33,10 +39,13 @@ pub trait CatalogTrackChangeOperations:
 }
 
 pub trait CatalogQueryTransaction:
-	CatalogNamespaceQueryOperations
+	CatalogDictionaryQueryOperations
+	+ CatalogFlowQueryOperations
+	+ CatalogNamespaceQueryOperations
 	+ CatalogRingBufferQueryOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
+	+ CatalogTableVirtualUserQueryOperations
 	+ CatalogViewQueryOperations
 {
 }
@@ -53,14 +62,19 @@ impl<
 {
 }
 
+pub use dictionary::{
+	CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations, CatalogTrackDictionaryChangeOperations,
+};
+pub use flow::{CatalogFlowQueryOperations, CatalogTrackFlowChangeOperations};
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };
-pub use ring_buffer::{
+pub use ringbuffer::{
 	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations, CatalogTrackRingBufferChangeOperations,
 };
 pub use source::CatalogSourceQueryOperations;
 pub use table::{CatalogTableCommandOperations, CatalogTableQueryOperations, CatalogTrackTableChangeOperations};
+pub use table_virtual_user::CatalogTableVirtualUserQueryOperations;
 pub use view::{CatalogTrackViewChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations};
 
 use crate::MaterializedCatalog;

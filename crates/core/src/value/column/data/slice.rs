@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Uint, Value};
+use reifydb_type::{Date, DateTime, Decimal, Duration, Int, Time, Uint, Value};
 
 use crate::value::column::ColumnData;
 
@@ -210,12 +210,12 @@ impl AsSlice<Time> for ColumnData {
 	}
 }
 
-impl AsSlice<Interval> for ColumnData {
-	fn as_slice(&self) -> &[Interval] {
+impl AsSlice<Duration> for ColumnData {
+	fn as_slice(&self) -> &[Duration] {
 		match self {
-			ColumnData::Interval(container) => container.data().as_slice(),
+			ColumnData::Duration(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Interval>()` on ColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Duration>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}

@@ -10,8 +10,8 @@ import {waitForDatabase} from "../setup";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    Float4Value, Float8Value, Utf8Value, BlobValue, RowNumberValue,
-    DateValue, TimeValue, DateTimeValue, IntervalValue,
+    Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue,
+    DateValue, TimeValue, DateTimeValue, DurationValue,
     Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
     Schema
 } from "@reifydb/core";
@@ -179,6 +179,16 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
         }, 1000);
 
+        it('Decimal', async () => {
+            const frames = await wsClient.command(
+                'MAP $1 as result',
+                [new DecimalValue("123.456789")],
+                [Schema.object({result: Schema.decimalValue()})]
+            );
+
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
+        }, 1000);
+
         it('Utf8', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
@@ -198,16 +208,6 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.command(
-                'MAP $1 as result',
-                [new RowNumberValue(BigInt("123456789"))],
-                [Schema.object({result: Schema.rowIdValue()})]
-            );
-
-            expectSingleValueResult(frames, new RowNumberValue(BigInt("123456789")));
         }, 1000);
 
         it('Date', async () => {
@@ -242,14 +242,14 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
-        it('Interval', async () => {
+        it('Duration', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
-                [new IntervalValue("P1DT2H30M")],
-                [Schema.object({result: Schema.intervalValue()})]
+                [new DurationValue("P1DT2H30M")],
+                [Schema.object({result: Schema.durationValue()})]
             );
 
-            expectSingleValueResult(frames, new IntervalValue("P1DT2H30M"));
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {
@@ -428,6 +428,16 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
         }, 1000);
 
+        it('Decimal', async () => {
+            const frames = await wsClient.query(
+                'MAP $1 as result',
+                [new DecimalValue("123.456789")],
+                [Schema.object({result: Schema.decimalValue()})]
+            );
+
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
+        }, 1000);
+
         it('Utf8', async () => {
             const frames = await wsClient.query(
                 'MAP $1 as result',
@@ -447,16 +457,6 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.query(
-                'MAP $1 as result',
-                [new RowNumberValue(BigInt("123456789"))],
-                [Schema.object({result: Schema.rowIdValue()})]
-            );
-
-            expectSingleValueResult(frames, new RowNumberValue(BigInt("123456789")));
         }, 1000);
 
         it('Date', async () => {
@@ -491,14 +491,14 @@ describe('Positional Parameters', () => {
             expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
-        it('Interval', async () => {
+        it('Duration', async () => {
             const frames = await wsClient.query(
                 'MAP $1 as result',
-                [new IntervalValue("P1DT2H30M")],
-                [Schema.object({result: Schema.intervalValue()})]
+                [new DurationValue("P1DT2H30M")],
+                [Schema.object({result: Schema.durationValue()})]
             );
 
-            expectSingleValueResult(frames, new IntervalValue("P1DT2H30M"));
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {

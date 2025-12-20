@@ -10,12 +10,8 @@ use reifydb_core::{
 	CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
-	interface::{
-		MultiVersionTransaction,
-		version::{ComponentType, HasVersion, SystemVersion},
-	},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
-	log_timed_debug,
 };
 use reifydb_engine::{
 	EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
@@ -27,13 +23,13 @@ use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
-#[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
-#[cfg(feature = "sub_worker")]
+#[cfg(feature = "sub_tracing")]
+use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{
 	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
 };
+use tracing::debug;
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -44,13 +40,12 @@ use crate::{
 pub struct DatabaseBuilder {
 	config: DatabaseConfig,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
-	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	#[cfg(feature = "sub_logging")]
-	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
-	#[cfg(feature = "sub_worker")]
 	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	#[cfg(feature = "sub_tracing")]
+	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 }
@@ -73,12 +68,11 @@ impl DatabaseBuilder {
 		Self {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
-			subsystems: Vec::new(),
+			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
-			#[cfg(feature = "sub_logging")]
-			logging_factory: None,
-			#[cfg(feature = "sub_worker")]
+			#[cfg(feature = "sub_tracing")]
+			tracing_factory: None,
 			worker_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
@@ -105,21 +99,20 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_logging")]
-	pub fn with_logging<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
-	{
-		self.logging_factory = Some(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
-		self
-	}
-
-	#[cfg(feature = "sub_worker")]
 	pub fn with_worker<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
 	{
 		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_tracing")]
+	pub fn with_tracing<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+	{
+		self.tracing_factory = Some(Box::new(TracingSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
@@ -133,7 +126,7 @@ impl DatabaseBuilder {
 	}
 
 	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
-		self.subsystems.push(factory);
+		self.factories.push(factory);
 		self
 	}
 
@@ -158,22 +151,24 @@ impl DatabaseBuilder {
 	}
 
 	pub fn subsystem_count(&self) -> usize {
-		self.subsystems.len()
+		self.factories.len()
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
-		// Add configured or default subsystems
-		#[cfg(feature = "sub_logging")]
-		self.subsystems.push(self.logging_factory.unwrap_or_else(|| Box::new(LoggingSubsystemFactory::new())));
+		// Collect interceptors from all factories
+		// Note: We process logging and flow factories separately before adding to self.factories
 
-		#[cfg(feature = "sub_worker")]
-		self.subsystems.push(self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::new())));
+		#[cfg(feature = "sub_tracing")]
+		if let Some(ref factory) = self.tracing_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
+		}
 
 		#[cfg(feature = "sub_flow")]
-		self.subsystems.push(self.flow_factory.unwrap_or_else(|| Box::new(FlowSubsystemFactory::new())));
+		if let Some(ref factory) = self.flow_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
+		}
 
-		// Collect interceptors from all factories
-		for factory in &self.subsystems {
+		for factory in &self.factories {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
@@ -185,9 +180,7 @@ impl DatabaseBuilder {
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
 
-		// Build Functions with default functions plus user configurator
 		let functions = if let Some(configurator) = self.functions_configurator {
-			// Start with default functions and apply user configurator
 			let default_builder = Functions::builder()
 				.register_aggregate("math::sum", math::aggregate::Sum::new)
 				.register_aggregate("math::min", math::aggregate::Min::new)
@@ -203,7 +196,6 @@ impl DatabaseBuilder {
 			None
 		};
 
-		// First create the engine (needed by subsystems)
 		let engine = StandardEngine::with_functions(
 			multi.clone(),
 			single.clone(),
@@ -218,9 +210,6 @@ impl DatabaseBuilder {
 
 		// Collect all versions
 		let mut all_versions = Vec::new();
-
-		// Add core component versions using the version structs from
-		// each crate
 		all_versions.push(SystemVersion {
 			name: "reifydb".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
@@ -239,21 +228,45 @@ impl DatabaseBuilder {
 		all_versions.push(NetworkVersion.version());
 
 		// Create subsystems from factories and collect their versions
+		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.
+		// Add logging FIRST so it's stopped LAST and can log shutdown messages from other subsystems.
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
-		for factory in self.subsystems {
+		// 1. Add tracing subsystem first (stopped last during shutdown)
+		#[cfg(feature = "sub_tracing")]
+		if let Some(factory) = self.tracing_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// Get the scheduler - it must exist when feature is enabled
-		#[cfg(feature = "sub_worker")]
-		let scheduler = subsystems
-			.get::<WorkerSubsystem>()
-			.map(|w| w.get_scheduler())
-			.expect("Worker subsystem should always be created when feature is enabled");
+		// 2. Add worker subsystem second (always ensure it exists, use default if not configured)
+		let worker_factory = self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::default()));
+		let subsystem = worker_factory.create(&self.ioc)?;
+		all_versions.push(subsystem.version());
+		subsystems.add_subsystem(subsystem);
+
+		// Register SchedulerService in IoC for other subsystems to use
+		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
+		if let Some(ref sched) = scheduler {
+			self.ioc = self.ioc.register(sched.clone());
+		}
+
+		// 3. Add flow subsystem third
+		#[cfg(feature = "sub_flow")]
+		if let Some(factory) = self.flow_factory {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		// 4. Add other custom subsystems last (stopped first during shutdown)
+		for factory in self.factories {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
 
 		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {
@@ -271,14 +284,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(
-			engine,
-			subsystems,
-			self.config,
-			health_monitor,
-			#[cfg(feature = "sub_worker")]
-			scheduler,
-		))
+		Ok(Database::new(engine, subsystems, self.config, health_monitor, scheduler))
 	}
 
 	/// Load the materialized catalog from storage
@@ -295,9 +301,8 @@ impl DatabaseBuilder {
 			catalog.clone(),
 		);
 
-		log_timed_debug!("Loading materialized catalog", {
-			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
-		});
+		debug!("Loading materialized catalog");
+		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
 
 		Ok(())
 	}
