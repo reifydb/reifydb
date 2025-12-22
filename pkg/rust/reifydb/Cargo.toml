@@ -29,7 +29,6 @@ reifydb-sub-server = { workspace = true, optional = true }
 reifydb-sub-server-http = { workspace = true, optional = true }
 reifydb-sub-server-otel = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
-reifydb-sub-worker = { workspace = true }
 
 # Async dependencies
 async-trait = { workspace = true }

@@ -35,7 +35,8 @@ impl Executor {
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) =
+			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
@@ -150,7 +151,8 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							).await?
+							)
+							.await?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -160,7 +162,8 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value).await?;
+								.insert_into_dictionary(&dictionary, &value)
+								.await?;
 							entry_id.to_value()
 						} else {
 							value
@@ -202,11 +205,10 @@ impl Executor {
 
 					// Update the encoded using interceptors
 					use crate::transaction::operation::RingBufferOperations;
-					wrapped_txn.command_mut().update_ringbuffer(
-						ringbuffer.clone(),
-						row_number,
-						row,
-					).await?;
+					wrapped_txn
+						.command_mut()
+						.update_ringbuffer(ringbuffer.clone(), row_number, row)
+						.await?;
 
 					updated_count += 1;
 				}

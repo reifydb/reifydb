@@ -5,8 +5,7 @@ use std::time::Duration;
 
 use bincode::{config::standard, serde::decode_from_slice};
 use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
-use reifydb_rql::expression::json::JsonExpression;
-use reifydb_rql::flow::FlowNodeType;
+use reifydb_rql::{expression::json::JsonExpression, flow::FlowNodeType};
 use reifydb_type::internal;
 use serde::Serialize;
 

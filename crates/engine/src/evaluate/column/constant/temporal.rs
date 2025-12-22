@@ -11,11 +11,7 @@ pub struct TemporalParser;
 impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
-	pub fn from_temporal<'a>(
-		fragment: Fragment,
-		target: Type,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	pub fn from_temporal<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
 		Self::parse_temporal_type(fragment, target, row_count)
 	}
 

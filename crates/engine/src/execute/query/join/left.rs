@@ -44,7 +44,11 @@ impl LeftJoinNode {
 #[async_trait]
 impl QueryNode for LeftJoinNode {
 	#[instrument(name = "query::join::left::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx).await?;
 		self.right.initialize(rx, ctx).await?;

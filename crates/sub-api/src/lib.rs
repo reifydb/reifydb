@@ -9,10 +9,5 @@
 //! and use to interact with the ReifyDB system.
 
 pub mod subsystem;
-pub mod worker;
 
 pub use subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-pub use worker::{
-	BoxedOnceTask, BoxedTask, ClosureTask, OnceClosureTask, OnceTask, Priority, SchedulableTask, Scheduler,
-	SchedulerService, TaskContext, TaskHandle,
-};

@@ -18,14 +18,13 @@ use reifydb_core::{
 	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, SchedulerService};
+use reifydb_sub_api::HealthStatus;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::WsSubsystem;
-use reifydb_sub_worker::WorkerSubsystem;
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
@@ -81,14 +80,9 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
-	scheduler: Option<SchedulerService>,
 }
 
 impl Database {
-	pub fn sub_worker(&self) -> Option<&WorkerSubsystem> {
-		self.subsystem::<WorkerSubsystem>()
-	}
-
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
@@ -111,7 +105,6 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		scheduler: Option<SchedulerService>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -120,7 +113,6 @@ impl Database {
 			config,
 			health_monitor,
 			running: false,
-			scheduler,
 		}
 	}
 
@@ -246,10 +238,6 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	pub fn scheduler(&self) -> Option<SchedulerService> {
-		self.scheduler.clone()
-	}
-
 	/// Execute a transactional command as root user.
 	pub async fn command_as_root(
 		&self,
@@ -350,9 +338,5 @@ impl Session for Database {
 
 	fn query_session(&self, session: impl IntoQuerySession) -> Result<QuerySession> {
 		session.into_query_session(self.engine.clone())
-	}
-
-	fn scheduler(&self) -> Option<SchedulerService> {
-		self.scheduler.clone()
 	}
 }

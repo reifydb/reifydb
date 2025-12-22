@@ -13,11 +13,7 @@ pub(crate) struct NumberParser;
 impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
-	pub(crate) fn from_number<'a>(
-		fragment: Fragment,
-		target: Type,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	pub(crate) fn from_number<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
 		match target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -105,9 +101,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -126,9 +124,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -147,9 +147,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -168,9 +170,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -189,9 +193,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -210,9 +216,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -231,9 +239,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -252,9 +262,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 
@@ -273,9 +285,11 @@ impl NumberParser {
 				))
 			}
 		} else {
-			return_error!(
-				cast::invalid_number(fragment.clone(), ty, number::invalid_number_format(fragment, ty),)
-			)
+			return_error!(cast::invalid_number(
+				fragment.clone(),
+				ty,
+				number::invalid_number_format(fragment, ty),
+			))
 		}
 	}
 

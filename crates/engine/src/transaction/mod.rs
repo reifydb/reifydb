@@ -228,8 +228,8 @@ impl<'a> StandardTransaction<'a> {
 	}
 }
 
-use reifydb_core::interface::{QueryTransaction, SingleVersionQueryTransaction, CdcQueryTransaction};
 use async_trait::async_trait;
+use reifydb_core::interface::{CdcQueryTransaction, QueryTransaction, SingleVersionQueryTransaction};
 
 // StandardTransaction already has MultiVersionQueryTransaction methods defined above,
 // but we need the trait implementation for trait bounds
@@ -263,11 +263,7 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 		}
 	}
 
-	async fn range_batch(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
+	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
 		match self {
 			Self::Command(txn) => txn.range_batch(range, batch_size).await,
 			Self::Query(txn) => txn.range_batch(range, batch_size).await,
@@ -294,10 +290,12 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 }
 
 impl<'a> QueryTransaction for StandardTransaction<'a> {
-	type SingleVersionQuery<'b> = <StandardQueryTransaction as QueryTransaction>::SingleVersionQuery<'b>
+	type SingleVersionQuery<'b>
+		= <StandardQueryTransaction as QueryTransaction>::SingleVersionQuery<'b>
 	where
 		Self: 'b;
-	type CdcQuery<'b> = <StandardQueryTransaction as QueryTransaction>::CdcQuery<'b>
+	type CdcQuery<'b>
+		= <StandardQueryTransaction as QueryTransaction>::CdcQuery<'b>
 	where
 		Self: 'b;
 

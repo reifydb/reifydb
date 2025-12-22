@@ -114,7 +114,8 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 		// Process all pending table inserts
 		for pending in self.pending_tables {
-			let table_result = execute_table_insert::<V>(&mut txn, &pending, std::any::TypeId::of::<V>()).await?;
+			let table_result =
+				execute_table_insert::<V>(&mut txn, &pending, std::any::TypeId::of::<V>()).await?;
 			result.tables.push(table_result);
 		}
 
@@ -148,10 +149,12 @@ async fn execute_table_insert<V: ValidationMode>(
 	};
 
 	// 1. Look up namespace and table from catalog
-	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace).await?
+	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)
+		.await?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
-	let table = CatalogStore::find_table_by_name(txn, namespace.id, &pending.table).await?
+	let table = CatalogStore::find_table_by_name(txn, namespace.id, &pending.table)
+		.await?
 		.ok_or_else(|| BulkInsertError::table_not_found(Fragment::None, &pending.namespace, &pending.table))?;
 
 	// 2. Build layout for encoding - use dictionary ID type for dictionary-encoded columns
@@ -190,13 +193,14 @@ async fn execute_table_insert<V: ValidationMode>(
 		// Handle dictionary encoding
 		for (idx, col) in table.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = CatalogStore::find_dictionary(txn, dict_id).await?.ok_or_else(|| {
-					reifydb_type::internal_error!(
-						"Dictionary {:?} not found for column {}",
-						dict_id,
-						col.name
-					)
-				})?;
+				let dictionary =
+					CatalogStore::find_dictionary(txn, dict_id).await?.ok_or_else(|| {
+						reifydb_type::internal_error!(
+							"Dictionary {:?} not found for column {}",
+							dict_id,
+							col.name
+						)
+					})?;
 				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx]).await?;
 				values[idx] = entry_id.to_value();
 			}
@@ -278,11 +282,13 @@ async fn execute_ringbuffer_insert<V: ValidationMode>(
 	use crate::transaction::operation::DictionaryOperations;
 
 	// 1. Look up namespace and ring buffer from catalog
-	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace).await?
+	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)
+		.await?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
-	let ringbuffer =
-		CatalogStore::find_ringbuffer_by_name(txn, namespace.id, &pending.ringbuffer).await?.ok_or_else(|| {
+	let ringbuffer = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, &pending.ringbuffer)
+		.await?
+		.ok_or_else(|| {
 			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
 		})?;
 
@@ -321,13 +327,14 @@ async fn execute_ringbuffer_insert<V: ValidationMode>(
 		// Handle dictionary encoding
 		for (idx, col) in ringbuffer.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = CatalogStore::find_dictionary(txn, dict_id).await?.ok_or_else(|| {
-					reifydb_type::internal_error!(
-						"Dictionary {:?} not found for column {}",
-						dict_id,
-						col.name
-					)
-				})?;
+				let dictionary =
+					CatalogStore::find_dictionary(txn, dict_id).await?.ok_or_else(|| {
+						reifydb_type::internal_error!(
+							"Dictionary {:?} not found for column {}",
+							dict_id,
+							col.name
+						)
+					})?;
 				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx]).await?;
 				values[idx] = entry_id.to_value();
 			}

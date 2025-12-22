@@ -31,7 +31,8 @@ impl Executor {
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let dictionary_name = plan.target.name();
-		let Some(dictionary) = CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name).await?
+		let Some(dictionary) =
+			CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name).await?
 		else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
@@ -85,8 +86,9 @@ impl Executor {
 				let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type)?;
 
 				// Insert into dictionary
-				let entry_id =
-					crate::util::block_on(std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value))?;
+				let entry_id = crate::util::block_on(
+					std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value),
+				)?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),

@@ -33,7 +33,8 @@ impl Executor {
 				namespace: plan.namespace.id,
 				status: FlowStatus::Active,
 			},
-		).await?;
+		)
+		.await?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
 		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id).await?;

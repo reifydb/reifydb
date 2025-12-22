@@ -30,7 +30,6 @@ members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
-    "crates/sub-worker",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -76,7 +75,6 @@ default-members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
-    "crates/sub-worker",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -152,7 +150,6 @@ reifydb-sub-api = { version = "0.1.6", path = "crates/sub-api" }
 reifydb-sub-server-admin = { version = "0.1.6", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.1.6", path = "crates/sub-flow" }
 reifydb-sub-tracing = { version = "0.1.6", path = "crates/sub-tracing" }
-reifydb-sub-worker = { version = "0.1.6", path = "crates/sub-worker" }
 reifydb-sub-server = { version = "0.1.6", path = "crates/sub-server" }
 reifydb-sub-server-http = { version = "0.1.6", path = "crates/sub-server-http" }
 reifydb-sub-server-otel = { version = "0.1.6", path = "crates/sub-server-otel" }

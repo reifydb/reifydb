@@ -47,7 +47,8 @@ impl Executor {
 				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await? else {
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await?
+			else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -145,7 +146,8 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							).await?
+							)
+							.await?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -155,7 +157,8 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value).await?;
+								.insert_into_dictionary(&dictionary, &value)
+								.await?;
 							entry_id.to_value()
 						} else {
 							value
@@ -213,18 +216,23 @@ impl Executor {
 					if let Some(pk_def) =
 						primary_key::get_primary_key(wrapped_txn.command_mut(), &table).await?
 					{
-						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key).await? {
+						if let Some(old_row_data) =
+							wrapped_txn.command_mut().get(&row_key).await?
+						{
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &layout,
 							)?;
 
-							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
-								table.id,
-								IndexId::primary(pk_def.id),
-								old_key,
-							)
-							.encode()).await?;
+							wrapped_txn
+								.command_mut()
+								.remove(&IndexEntryKey::new(
+									table.id,
+									IndexId::primary(pk_def.id),
+									old_key,
+								)
+								.encode())
+								.await?;
 						}
 
 						let new_key = primary_key::encode_primary_key(
@@ -239,15 +247,18 @@ impl Executor {
 							u64::from(row_number),
 						);
 
-						wrapped_txn.command_mut().set(
-							&IndexEntryKey::new(
-								table.id,
-								IndexId::primary(pk_def.id),
-								new_key,
+						wrapped_txn
+							.command_mut()
+							.set(
+								&IndexEntryKey::new(
+									table.id,
+									IndexId::primary(pk_def.id),
+									new_key,
+								)
+								.encode(),
+								row_number_encoded,
 							)
-							.encode(),
-							row_number_encoded,
-						).await?;
+							.await?;
 					}
 
 					wrapped_txn.command_mut().set(&row_key, row).await?;

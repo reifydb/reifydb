@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
@@ -90,15 +90,21 @@ impl RingBufferScan {
 #[async_trait]
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "query::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(&mut self, txn: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		txn: &mut StandardTransaction<'a>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
 				crate::StandardTransaction::Command(cmd_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id).await?
+					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id)
+						.await?
 				}
 				crate::StandardTransaction::Query(query_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id).await?
+					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id)
+						.await?
 				}
 			};
 			self.metadata = metadata;
@@ -223,9 +229,9 @@ impl<'a> RingBufferScan {
 				for row_idx in 0..row_count {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded_value) =
-							crate::util::block_on(txn.get_from_dictionary(dictionary, entry_id))?
-						{
+						if let Some(decoded_value) = crate::util::block_on(
+							txn.get_from_dictionary(dictionary, entry_id),
+						)? {
 							new_data.push_value(decoded_value);
 						} else {
 							new_data.push_value(reifydb_type::Value::Undefined);

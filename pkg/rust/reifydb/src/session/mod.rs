@@ -20,15 +20,12 @@ use reifydb_core::{
 	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::SchedulerService;
 use tracing::instrument;
 
 pub trait Session {
 	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
 
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
-
-	fn scheduler(&self) -> Option<SchedulerService>;
 }
 
 impl CommandSession {

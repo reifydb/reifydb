@@ -90,11 +90,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	}
 
 	#[inline]
-	async fn range_batch(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
+	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
 		MultiVersionQueryTransaction::range_batch(&mut self.multi, range, batch_size).await
 	}
 

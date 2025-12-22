@@ -45,7 +45,8 @@ impl Executor {
 				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await? else {
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await?
+			else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -138,7 +139,8 @@ impl Executor {
 							IndexId::primary(pk_def.id),
 							index_key,
 						)
-						.encode()).await?;
+						.encode())
+							.await?;
 					}
 				}
 
@@ -159,7 +161,8 @@ impl Executor {
 				.range(EncodedKeyRange::new(
 					Included(range.start().unwrap()),
 					Included(range.end().unwrap()),
-				)).await?;
+				))
+				.await?;
 			let rows = batch.items;
 
 			for multi in rows {
@@ -179,7 +182,8 @@ impl Executor {
 						IndexId::primary(pk_def.id),
 						index_key,
 					)
-					.encode()).await?;
+					.encode())
+						.await?;
 				}
 
 				// Remove the encoded

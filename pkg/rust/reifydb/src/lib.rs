@@ -51,7 +51,6 @@ pub use reifydb_sub_server_otel as sub_server_otel;
 pub use reifydb_sub_server_ws as sub_server_ws;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
-pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{multi::TransactionMulti, single::TransactionSvl};
 pub use reifydb_type as r#type;

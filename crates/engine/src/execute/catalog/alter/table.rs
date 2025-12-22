@@ -1,19 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{primary_key::PrimaryKeyToCreate, CatalogStore};
+use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
 use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
 use reifydb_type::{
+	Fragment, Value,
 	diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		query::column_not_found,
-	}, return_error,
-	Fragment,
-	Value,
+	},
+	return_error,
 };
 
-use crate::{execute::Executor, StandardCommandTransaction};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) async fn alter_table<'a>(

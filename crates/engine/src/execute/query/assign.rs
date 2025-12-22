@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::plan::{physical, physical::AssignValue};
 
@@ -42,7 +42,11 @@ impl AssignNode {
 
 #[async_trait]
 impl QueryNode for AssignNode {
-	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}

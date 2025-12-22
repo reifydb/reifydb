@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::{
 	collections::{BTreeSet, HashMap},
 	sync::Arc,
 };
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedSource,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},

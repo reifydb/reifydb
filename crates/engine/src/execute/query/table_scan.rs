@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey,
@@ -205,9 +205,9 @@ impl<'a> TableScanNode {
 				for row_idx in 0..row_count {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded_value) =
-							crate::util::block_on(rx.get_from_dictionary(dictionary, entry_id))?
-						{
+						if let Some(decoded_value) = crate::util::block_on(
+							rx.get_from_dictionary(dictionary, entry_id),
+						)? {
 							new_data.push_value(decoded_value);
 						} else {
 							// ID not found in dictionary, use undefined

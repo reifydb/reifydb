@@ -25,7 +25,11 @@ impl<'a> ScalarizeNode {
 
 #[async_trait]
 impl QueryNode for ScalarizeNode {
-	async fn initialize<'a>(&mut self, rx: &mut crate::StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		self.frame_consumed = false;

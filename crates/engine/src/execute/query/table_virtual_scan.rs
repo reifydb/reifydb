@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::Fragment;
 use tracing::instrument;
@@ -45,7 +45,11 @@ impl VirtualScanNode {
 #[async_trait]
 impl QueryNode for VirtualScanNode {
 	#[instrument(name = "query::scan::virtual::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});

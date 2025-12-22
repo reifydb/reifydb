@@ -123,7 +123,11 @@ pub(crate) enum ExecutionPlan {
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
 #[async_trait]
 impl QueryNode for Box<ExecutionPlan> {
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		(**self).initialize(rx, ctx).await
 	}
 
@@ -142,7 +146,11 @@ impl QueryNode for Box<ExecutionPlan> {
 
 #[async_trait]
 impl QueryNode for ExecutionPlan {
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx).await,
 			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx).await,
@@ -319,7 +327,11 @@ impl Executor {
 #[async_trait(?Send)]
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	async fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	async fn execute_command(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		cmd: Command<'_>,
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -348,8 +360,9 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement).await? {
-				if let Some(er) =
-					self.execute_command_plan(txn, plan, cmd.params.clone(), &mut persistent_stack).await?
+				if let Some(er) = self
+					.execute_command_plan(txn, plan, cmd.params.clone(), &mut persistent_stack)
+					.await?
 				{
 					result.push(Frame::from(er));
 				}
@@ -392,8 +405,9 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement).await? {
-				if let Some(er) =
-					self.execute_query_plan(txn, plan, qry.params.clone(), &mut persistent_stack).await?
+				if let Some(er) = self
+					.execute_query_plan(txn, plan, qry.params.clone(), &mut persistent_stack)
+					.await?
 				{
 					result.push(Frame::from(er));
 				}
@@ -502,7 +516,9 @@ impl Executor {
 	) -> crate::Result<Option<Columns>> {
 		match plan {
 			PhysicalPlan::AlterSequence(plan) => Ok(Some(self.alter_table_sequence(txn, plan).await?)),
-			PhysicalPlan::CreateDeferredView(plan) => Ok(Some(self.create_deferred_view(txn, plan).await?)),
+			PhysicalPlan::CreateDeferredView(plan) => {
+				Ok(Some(self.create_deferred_view(txn, plan).await?))
+			}
 			PhysicalPlan::CreateTransactionalView(plan) => {
 				Ok(Some(self.create_transactional_view(txn, plan).await?))
 			}
@@ -512,12 +528,20 @@ impl Executor {
 			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan).await?)),
 			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan).await?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params).await?)),
-			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ringbuffer(txn, plan, params).await?)),
+			PhysicalPlan::DeleteRingBuffer(plan) => {
+				Ok(Some(self.delete_ringbuffer(txn, plan, params).await?))
+			}
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack).await?)),
-			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ringbuffer(txn, plan, params).await?)),
-			PhysicalPlan::InsertDictionary(plan) => Ok(Some(self.insert_dictionary(txn, plan, stack).await?)),
+			PhysicalPlan::InsertRingBuffer(plan) => {
+				Ok(Some(self.insert_ringbuffer(txn, plan, params).await?))
+			}
+			PhysicalPlan::InsertDictionary(plan) => {
+				Ok(Some(self.insert_dictionary(txn, plan, stack).await?))
+			}
 			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params).await?)),
-			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ringbuffer(txn, plan, params).await?)),
+			PhysicalPlan::UpdateRingBuffer(plan) => {
+				Ok(Some(self.update_ringbuffer(txn, plan, params).await?))
+			}
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::DictionaryScan(_)

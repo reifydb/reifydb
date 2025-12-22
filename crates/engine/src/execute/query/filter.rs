@@ -36,7 +36,11 @@ impl FilterNode {
 #[async_trait]
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "query::filter::initialize")]
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx).await?;
 		Ok(())

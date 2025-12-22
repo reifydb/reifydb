@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::{
 	collections::{HashMap, HashSet},
 	sync::Arc,
 };
 
+use async_trait::async_trait;
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value, diagnostic};
@@ -57,7 +57,11 @@ impl AggregateNode {
 #[async_trait]
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
-	async fn initialize<'a>(&mut self, rx: &mut crate::StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx).await?;
 		// Already has context from constructor
 		Ok(())

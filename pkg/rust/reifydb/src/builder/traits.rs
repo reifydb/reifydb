@@ -7,7 +7,6 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_sub_worker::WorkerBuilder;
 
 pub trait WithSubsystem: Sized {
 	#[cfg(feature = "sub_tracing")]
@@ -19,10 +18,6 @@ pub trait WithSubsystem: Sized {
 	fn with_flow<F>(self, configurator: F) -> Self
 	where
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static;
-
-	fn with_worker<F>(self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static;
 
 	fn with_subsystem(self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self;
 }

@@ -34,7 +34,8 @@ impl Executor {
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) =
+			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
@@ -135,7 +136,8 @@ impl Executor {
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
 						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id).await?
+							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
+								.await?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -145,7 +147,8 @@ impl Executor {
 								})?;
 						let entry_id = std_txn
 							.command_mut()
-							.insert_into_dictionary(&dictionary, &value).await?;
+							.insert_into_dictionary(&dictionary, &value)
+							.await?;
 						entry_id.to_value()
 					} else {
 						value
@@ -161,7 +164,9 @@ impl Executor {
 				// If buffer is full, delete the oldest entry first
 				if metadata.is_full() {
 					let oldest_row = RowNumber(metadata.head);
-					std_txn.command_mut().remove_from_ringbuffer(ringbuffer.clone(), oldest_row).await?;
+					std_txn.command_mut()
+						.remove_from_ringbuffer(ringbuffer.clone(), oldest_row)
+						.await?;
 					// Advance head to next oldest item
 					metadata.head += 1;
 					metadata.count -= 1;
@@ -173,17 +178,16 @@ impl Executor {
 					RowSequence::next_row_number_for_ringbuffer(
 						std_txn.command_mut(),
 						ringbuffer.id,
-					).await?
+					)
+					.await?
 				};
 
 				// Store the row
 				{
 					let _store_span = debug_span!("store_row").entered();
-					std_txn.command_mut().insert_ringbuffer_at(
-						ringbuffer.clone(),
-						row_number,
-						row,
-					).await?;
+					std_txn.command_mut()
+						.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)
+						.await?;
 				}
 
 				// Update metadata

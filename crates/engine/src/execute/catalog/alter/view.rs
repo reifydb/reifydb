@@ -78,7 +78,8 @@ impl Executor {
 							source: SourceId::View(view.id),
 							column_ids,
 						},
-					).await?;
+					)
+					.await?;
 
 					let pk_name = name
 						.map(|n| n.text().to_string())

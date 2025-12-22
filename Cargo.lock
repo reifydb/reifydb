@@ -1484,7 +1484,6 @@ dependencies = [
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
  "reifydb-sub-tracing",
- "reifydb-sub-worker",
  "reifydb-transaction",
  "reifydb-type",
  "tokio",
@@ -1869,22 +1868,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "reifydb-sub-worker"
-version = "0.1.6"
-dependencies = [
- "crossbeam-skiplist",
- "rayon",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-store-transaction",
- "reifydb-sub-api",
- "reifydb-transaction",
- "reifydb-type",
- "tracing",
 ]
 
 [[package]]

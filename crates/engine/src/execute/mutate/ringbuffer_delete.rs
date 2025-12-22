@@ -35,7 +35,8 @@ impl Executor {
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) =
+			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));

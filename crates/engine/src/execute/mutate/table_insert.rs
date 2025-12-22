@@ -131,7 +131,8 @@ impl Executor {
 							std_txn.command_mut(),
 							table.id,
 							table_column.id,
-						).await?;
+						)
+						.await?;
 					}
 
 					// Create ResolvedColumn for this column
@@ -158,7 +159,8 @@ impl Executor {
 					let value = if let Some(dict_id) = table_column.dictionary_id {
 						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id).await?
+							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
+								.await?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -168,7 +170,8 @@ impl Executor {
 								})?;
 						let entry_id = std_txn
 							.command_mut()
-							.insert_into_dictionary(&dictionary, &value).await?;
+							.insert_into_dictionary(&dictionary, &value)
+							.await?;
 						entry_id.to_value()
 					} else {
 						value

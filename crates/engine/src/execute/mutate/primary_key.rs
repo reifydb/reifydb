@@ -165,7 +165,10 @@ pub fn encode_primary_key(
 }
 
 /// Helper to load the primary key definition if the table has one
-pub async fn get_primary_key(txn: &mut impl QueryTransaction, table: &TableDef) -> crate::Result<Option<PrimaryKeyDef>> {
+pub async fn get_primary_key(
+	txn: &mut impl QueryTransaction,
+	table: &TableDef,
+) -> crate::Result<Option<PrimaryKeyDef>> {
 	if let Some(_pk_id) = CatalogStore::get_table_pk_id(txn, table.id).await? {
 		CatalogStore::find_primary_key(txn, table.id).await
 	} else {

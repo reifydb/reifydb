@@ -38,7 +38,8 @@ impl Executor {
 				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
-		).await?;
+		)
+		.await?;
 
 		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 

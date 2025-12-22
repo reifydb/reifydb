@@ -13,7 +13,11 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait RingBufferOperations {
-	async fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;
+	async fn insert_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		row: EncodedValues,
+	) -> crate::Result<RowNumber>;
 
 	async fn insert_ringbuffer_at(
 		&mut self,
@@ -33,7 +37,11 @@ pub(crate) trait RingBufferOperations {
 }
 
 impl RingBufferOperations for StandardCommandTransaction {
-	async fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
+	async fn insert_ringbuffer(
+		&mut self,
+		_ringbuffer: RingBufferDef,
+		_row: EncodedValues,
+	) -> crate::Result<RowNumber> {
 		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
 		// This is different from tables which use RowSequence::next_row_number
 		// The caller must provide the correct row_number based on head/tail position

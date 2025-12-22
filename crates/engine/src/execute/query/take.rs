@@ -26,7 +26,11 @@ impl TakeNode {
 #[async_trait]
 impl QueryNode for TakeNode {
 	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(&mut self, rx: &mut crate::StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		Ok(())

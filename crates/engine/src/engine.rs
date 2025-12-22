@@ -89,7 +89,14 @@ impl EngineInterface for StandardEngine {
 		let _error_sender = sender.clone();
 
 		tokio::task::spawn_blocking(move || {
-			crate::util::block_on_local(execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token))
+			crate::util::block_on_local(execute_command_sync(
+				&engine,
+				&identity,
+				&rql,
+				params,
+				&sender,
+				&cancel_token,
+			))
 		});
 
 		Box::pin(stream)
@@ -106,7 +113,14 @@ impl EngineInterface for StandardEngine {
 		let _error_sender = sender.clone();
 
 		tokio::task::spawn_blocking(move || {
-			crate::util::block_on_local(execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token))
+			crate::util::block_on_local(execute_query_sync(
+				&engine,
+				&identity,
+				&rql,
+				params,
+				&sender,
+				&cancel_token,
+			))
 		});
 
 		Box::pin(stream)
@@ -138,14 +152,17 @@ async fn execute_command_sync(
 	};
 
 	// Execute command - call executor directly to avoid trait object indirection
-	let result = engine.executor.execute_command(
-		&mut txn,
-		Command {
-			rql,
-			params,
-			identity,
-		},
-	).await;
+	let result = engine
+		.executor
+		.execute_command(
+			&mut txn,
+			Command {
+				rql,
+				params,
+				identity,
+			},
+		)
+		.await;
 
 	match result {
 		Ok(frames) => {
@@ -197,14 +214,17 @@ async fn execute_query_sync(
 	};
 
 	// Execute query - call executor directly to avoid trait object indirection
-	let result = engine.executor.execute_query(
-		&mut txn,
-		Query {
-			rql,
-			params,
-			identity,
-		},
-	).await;
+	let result = engine
+		.executor
+		.execute_query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+				identity,
+			},
+		)
+		.await;
 
 	match result {
 		Ok(frames) => {
@@ -227,7 +247,11 @@ async fn execute_query_sync(
 #[async_trait(?Send)]
 impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 	#[inline]
-	async fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	async fn execute_command(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		cmd: Command<'_>,
+	) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd).await
 	}
 }

@@ -29,10 +29,12 @@ impl Executor {
 			// namespace exists
 		}
 
-		let result = txn.create_namespace(NamespaceToCreate {
-			namespace_fragment: Some(plan.namespace.clone().into_owned()),
-			name: plan.namespace.text().to_string(),
-		}).await?;
+		let result = txn
+			.create_namespace(NamespaceToCreate {
+				namespace_fragment: Some(plan.namespace.clone().into_owned()),
+				name: plan.namespace.text().to_string(),
+			})
+			.await?;
 
 		Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
 	}

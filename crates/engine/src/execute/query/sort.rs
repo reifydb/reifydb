@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::cmp::Ordering::Equal;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
@@ -37,7 +37,11 @@ impl<'a> SortNode {
 #[async_trait]
 impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "query::sort::initialize")]
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		Ok(())

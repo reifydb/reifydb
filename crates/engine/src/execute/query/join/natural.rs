@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use std::collections::HashSet;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	JoinType,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -61,7 +61,11 @@ impl NaturalJoinNode {
 #[async_trait]
 impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "query::join::natural::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx).await?;
 		self.right.initialize(rx, ctx).await?;

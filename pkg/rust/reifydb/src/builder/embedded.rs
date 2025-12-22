@@ -11,7 +11,6 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_sub_worker::WorkerBuilder;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
@@ -27,7 +26,6 @@ pub struct EmbeddedBuilder {
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
-	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 }
@@ -49,7 +47,6 @@ impl EmbeddedBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
-			worker_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 		}
@@ -88,10 +85,6 @@ impl EmbeddedBuilder {
 			builder = builder.with_tracing(configurator);
 		}
 
-		if let Some(configurator) = self.worker_configurator {
-			builder = builder.with_worker(configurator);
-		}
-
 		#[cfg(feature = "sub_flow")]
 		if let Some(configurator) = self.flow_configurator {
 			builder = builder.with_flow(configurator);
@@ -122,14 +115,6 @@ impl WithSubsystem for EmbeddedBuilder {
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	fn with_worker<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
-	{
-		self.worker_configurator = Some(Box::new(configurator));
 		self
 	}
 

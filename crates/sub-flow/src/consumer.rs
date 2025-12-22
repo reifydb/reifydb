@@ -16,7 +16,6 @@ use reifydb_core::{
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
-use reifydb_sub_api::SchedulerService;
 use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
 use tracing::{instrument, trace_span};
 
@@ -33,7 +32,6 @@ use crate::{
 pub struct FlowConsumer {
 	engine: StandardEngine,
 	flow_engine: FlowEngine,
-	scheduler: Option<SchedulerService>,
 	catalog_cache: FlowCatalog,
 }
 
@@ -42,7 +40,6 @@ impl FlowConsumer {
 		engine: StandardEngine,
 		operators: Vec<(String, OperatorFactory)>,
 		operators_dir: Option<PathBuf>,
-		scheduler: Option<SchedulerService>,
 	) -> Self {
 		let mut registry = TransformOperatorRegistry::new();
 
@@ -63,7 +60,6 @@ impl FlowConsumer {
 		let result = Self {
 			engine: engine.clone(),
 			flow_engine,
-			scheduler,
 			catalog_cache: FlowCatalog::new(),
 		};
 
@@ -377,13 +373,8 @@ impl FlowConsumer {
 			return Ok(());
 		}
 
-		// Process all flow units through the worker
-		// Use parallel worker pool if scheduler is available, otherwise fall back to single-threaded
-		let worker: Box<dyn WorkerPool> = if let Some(scheduler) = &self.scheduler {
-			Box::new(ParallelWorkerPool::new(scheduler.clone()))
-		} else {
-			Box::new(SameThreadedWorker::new())
-		};
+		let worker: Box<dyn WorkerPool> = Box::new(SameThreadedWorker::new());
+
 		// let worker = Box::new(SameThreadedWorker::new());
 		let _worker_span = trace_span!(
 			"flow::worker_process",

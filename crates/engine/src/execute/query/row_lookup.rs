@@ -8,9 +8,9 @@
 //! - `RowListLookupNode`: Multiple discrete rows O(k) lookup
 //! - `RowRangeScanNode`: Row number range scan
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::{EncodableKey, MultiVersionQueryTransaction, RowKey, catalog::SourceId, resolved::ResolvedSource},
 	value::{

@@ -14,11 +14,7 @@ pub(crate) struct TextParser;
 
 impl TextParser {
 	/// Parse text to a specific target type with detailed error handling
-	pub(crate) fn from_text<'a>(
-		fragment: Fragment,
-		target: Type,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	pub(crate) fn from_text<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
 		match target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -187,11 +183,7 @@ impl TextParser {
 		}
 	}
 
-	fn parse_decimal<'a>(
-		fragment: Fragment,
-		target: Type,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	fn parse_decimal<'a>(fragment: Fragment, target: Type, row_count: usize) -> crate::Result<ColumnData> {
 		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(e) => return_error!(cast::invalid_number(fragment, target, e.diagnostic())),

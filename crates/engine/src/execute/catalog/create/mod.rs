@@ -38,7 +38,8 @@ impl Executor {
 				namespace: view.namespace,
 				status: FlowStatus::Active,
 			},
-		).await?;
+		)
+		.await?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
 		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id).await?;

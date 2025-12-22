@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogStore;
-use reifydb_core::diagnostic::catalog::namespace_not_found;
-use reifydb_core::{interface::FlowStatus, return_error, value::column::Columns};
+use reifydb_core::{
+	diagnostic::catalog::namespace_not_found, interface::FlowStatus, return_error, value::column::Columns,
+};
 use reifydb_rql::plan::physical::{AlterFlowAction, AlterFlowNode};
 use reifydb_type::{Fragment, Value};
 
-use crate::{execute::Executor, StandardCommandTransaction};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) async fn execute_alter_flow<'a>(
@@ -26,7 +27,7 @@ impl Executor {
 				.namespace
 				.clone()
 				.unwrap_or_else(|| Fragment::internal("default".to_string()));
-			
+
 			return_error!(namespace_not_found(ns_fragment, namespace_name,));
 		};
 
