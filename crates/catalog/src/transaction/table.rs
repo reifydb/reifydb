@@ -59,7 +59,8 @@ impl<
 		+ CatalogTrackTableChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogTableCommandOperations for CT
 {
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, to_create))]
@@ -80,8 +81,8 @@ impl<
 }
 
 #[async_trait]
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogTableQueryOperations
-	for QT
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send + 'static>
+	CatalogTableQueryOperations for QT
 {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self))]
 	async fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {

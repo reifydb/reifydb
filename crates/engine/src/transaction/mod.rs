@@ -223,6 +223,7 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 	}
 }
 
+#[async_trait]
 impl<'a> QueryTransaction for StandardTransaction<'a> {
 	type SingleVersionQuery<'b>
 		= <StandardQueryTransaction as QueryTransaction>::SingleVersionQuery<'b>
@@ -233,20 +234,20 @@ impl<'a> QueryTransaction for StandardTransaction<'a> {
 	where
 		Self: 'b;
 
-	fn begin_single_query<'b, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'c, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'b EncodedKey> + Send,
+		I: IntoIterator<Item = &'c EncodedKey> + Send,
 	{
 		match self {
-			StandardTransaction::Command(txn) => txn.begin_single_query(keys),
-			StandardTransaction::Query(txn) => txn.begin_single_query(keys),
+			StandardTransaction::Command(txn) => txn.begin_single_query(keys).await,
+			StandardTransaction::Query(txn) => txn.begin_single_query(keys).await,
 		}
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
 		match self {
-			StandardTransaction::Command(txn) => txn.begin_cdc_query(),
-			StandardTransaction::Query(txn) => txn.begin_cdc_query(),
+			StandardTransaction::Command(txn) => txn.begin_cdc_query().await,
+			StandardTransaction::Query(txn) => txn.begin_cdc_query().await,
 		}
 	}
 }

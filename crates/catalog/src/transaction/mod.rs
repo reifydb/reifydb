@@ -50,7 +50,10 @@ pub trait CatalogQueryTransaction:
 {
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogQueryTransaction for QT {}
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + 'static> CatalogQueryTransaction
+	for QT
+{
+}
 
 impl<
 	CT: CommandTransaction
@@ -58,7 +61,8 @@ impl<
 		+ CatalogTrackChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogCommandTransaction for CT
 {
 }

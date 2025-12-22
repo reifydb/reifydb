@@ -346,6 +346,7 @@ impl WithEventBus for StandardCommandTransaction {
 	}
 }
 
+#[async_trait]
 impl QueryTransaction for StandardCommandTransaction {
 	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
 
@@ -365,6 +366,7 @@ impl QueryTransaction for StandardCommandTransaction {
 	}
 }
 
+#[async_trait]
 impl CommandTransaction for StandardCommandTransaction {
 	type SingleVersionCommand<'a> = <TransactionSingle as SingleVersionTransaction>::Command<'a>;
 

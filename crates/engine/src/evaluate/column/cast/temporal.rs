@@ -69,7 +69,7 @@ macro_rules! impl_to_temporal {
 								// For string literals, if the source text exactly
 								// matches the value being parsed, or contains it
 								// with quotes, it's a string literal
-								if source_text == val.as_str()
+								if source_text.as_str() == val.as_str()
 									|| source_text.contains(&format!(
 										"\"{}\"",
 										val.as_str()

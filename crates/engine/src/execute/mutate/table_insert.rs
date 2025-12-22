@@ -90,7 +90,7 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone()).await;
 
 		// Initialize the operator before execution
 		input_node.initialize(&mut std_txn, &execution_context).await?;

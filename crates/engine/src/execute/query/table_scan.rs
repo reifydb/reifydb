@@ -169,7 +169,7 @@ impl QueryNode for TableScanNode {
 		{
 			let dict_count = self.dictionaries.iter().filter(|d| d.is_some()).count();
 			let _span = debug_span!("decode_dictionary_columns", dict_count).entered();
-			self.decode_dictionary_columns(&mut columns, rx)?;
+			self.decode_dictionary_columns(&mut columns, rx).await?;
 		}
 
 		// Restore row numbers (they get cleared during column transformation)

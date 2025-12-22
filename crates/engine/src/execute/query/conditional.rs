@@ -131,7 +131,7 @@ impl QueryNode for ConditionalNode {
 		if self.evaluate_condition(&self.condition, stored_ctx)? {
 			// Compile and execute then branch
 			self.executed = true;
-			let mut then_node = compile(self.then_branch_plan.clone(), rx, stored_ctx.clone());
+			let mut then_node = compile(self.then_branch_plan.clone(), rx, stored_ctx.clone()).await;
 			then_node.initialize(rx, stored_ctx).await?;
 			return then_node.next(rx, ctx).await;
 		}
@@ -142,7 +142,7 @@ impl QueryNode for ConditionalNode {
 				// Compile and execute this else if branch
 				self.executed = true;
 				let mut else_if_node =
-					compile(else_if.then_branch_plan.clone(), rx, stored_ctx.clone());
+					compile(else_if.then_branch_plan.clone(), rx, stored_ctx.clone()).await;
 				else_if_node.initialize(rx, stored_ctx).await?;
 				return else_if_node.next(rx, ctx).await;
 			}
@@ -151,7 +151,7 @@ impl QueryNode for ConditionalNode {
 		// Execute else branch if present
 		if let Some(else_branch_plan) = &self.else_branch_plan {
 			self.executed = true;
-			let mut else_node = compile(else_branch_plan.clone(), rx, stored_ctx.clone());
+			let mut else_node = compile(else_branch_plan.clone(), rx, stored_ctx.clone()).await;
 			else_node.initialize(rx, stored_ctx).await?;
 			return else_node.next(rx, ctx).await;
 		}

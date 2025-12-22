@@ -93,7 +93,7 @@ impl Executor {
 
 		{
 			let mut wrapped_txn = StandardTransaction::from(txn);
-			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
+			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone())).await;
 
 			input_node.initialize(&mut wrapped_txn, &context).await?;
 

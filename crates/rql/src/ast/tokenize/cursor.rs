@@ -177,7 +177,7 @@ impl<'a> Cursor<'a> {
 	/// position
 	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment {
 		Fragment::Statement {
-			text: Arc::from(&self.input[start_pos..self.pos]),
+			text: Arc::from(self.input[start_pos..self.pos].to_string()),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
@@ -193,7 +193,7 @@ impl<'a> Cursor<'a> {
 		start_column: u32,
 	) -> Fragment {
 		Fragment::Statement {
-			text: Arc::from(&self.input[text_start..text_end]),
+			text: Arc::from(self.input[text_start..text_end].to_string()),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}

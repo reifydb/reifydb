@@ -194,7 +194,7 @@ impl QueryNode for RingBufferScan {
 			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
 
 			// Decode dictionary columns
-			self.decode_dictionary_columns(&mut columns, txn)?;
+			self.decode_dictionary_columns(&mut columns, txn).await?;
 
 			// Restore row numbers
 			columns.row_numbers = reifydb_core::util::CowVec::new(row_numbers);

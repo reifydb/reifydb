@@ -57,7 +57,8 @@ impl<
 		+ CatalogTrackDictionaryChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogDictionaryCommandOperations for CT
 {
 	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, to_create))]
@@ -79,7 +80,7 @@ impl<
 }
 
 #[async_trait]
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send>
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send + 'static>
 	CatalogDictionaryQueryOperations for QT
 {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self))]

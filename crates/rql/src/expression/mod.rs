@@ -873,10 +873,10 @@ impl ExpressionCompiler {
 				let column = ColumnIdentifier {
 					source: ColumnSource::Source {
 						namespace: Fragment::Internal {
-							text: String::from("_context"),
+							text: Arc::new("_context".to_string()),
 						},
 						source: Fragment::Internal {
-							text: String::from("_context"),
+							text: Arc::new("_context".to_string()),
 						},
 					},
 					name: identifier.token.fragment.clone(),
@@ -982,14 +982,14 @@ impl ExpressionCompiler {
 				let column = ColumnIdentifier {
 					source: ColumnSource::Source {
 						namespace: Fragment::Internal {
-							text: String::from("_context"),
+							text: Arc::new("_context".to_string()),
 						},
 						source: Fragment::Internal {
-							text: String::from("_context"),
+							text: Arc::new("_context".to_string()),
 						},
 					},
 					name: Fragment::Internal {
-						text: String::from(ROW_NUMBER_COLUMN_NAME),
+						text: Arc::new(String::from(ROW_NUMBER_COLUMN_NAME)),
 					},
 				};
 				Ok(Expression::Column(ColumnExpression(column)))

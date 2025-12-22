@@ -82,7 +82,8 @@ impl Executor {
 					params: params.clone(),
 					stack: Stack::new(),
 				}),
-			);
+			)
+			.await;
 
 			let context = ExecutionContext {
 				executor: self.clone(),

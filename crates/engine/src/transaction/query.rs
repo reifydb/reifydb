@@ -109,6 +109,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	}
 }
 
+#[async_trait]
 impl QueryTransaction for StandardQueryTransaction {
 	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
 	type CdcQuery<'a>

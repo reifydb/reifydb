@@ -18,7 +18,7 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		// Check if namespace already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_namespace_by_name(plan.namespace.clone()).await? {
+		if let Some(_) = txn.find_namespace_by_name(plan.namespace.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.text().to_string())),

@@ -37,7 +37,7 @@ pub trait CatalogRingBufferQueryOperations: Send {
 }
 
 #[async_trait]
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBufferQueryOperations for QT {
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send + 'static> CatalogRingBufferQueryOperations for QT {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self))]
 	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
 		CatalogStore::find_ringbuffer(self, id).await
@@ -97,7 +97,8 @@ impl<
 		+ CatalogTrackRingBufferChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogRingBufferCommandOperations for CT
 {
 	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, to_create))]

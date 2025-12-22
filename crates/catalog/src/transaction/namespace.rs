@@ -53,7 +53,8 @@ impl<
 		+ CatalogTrackNamespaceChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogNamespaceCommandOperations for CT
 {
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, to_create))]
@@ -72,7 +73,7 @@ impl<
 }
 
 #[async_trait]
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send>
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send + 'static>
 	CatalogNamespaceQueryOperations for QT
 {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self))]

@@ -59,7 +59,8 @@ impl<
 		+ CatalogTrackViewChangeOperations
 		+ WithInterceptors<CT>
 		+ TransactionalChanges
-		+ Send,
+		+ Send
+		+ 'static,
 > CatalogViewCommandOperations for CT
 {
 	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
@@ -80,8 +81,8 @@ impl<
 }
 
 #[async_trait]
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogViewQueryOperations
-	for QT
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send + 'static>
+	CatalogViewQueryOperations for QT
 {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self))]
 	async fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {

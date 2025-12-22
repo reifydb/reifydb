@@ -154,7 +154,7 @@ impl<'a> DeclareNode {
 		// For now, execute just the last plan as a simple implementation
 		// TODO: Implement proper pipeline chaining for complex cases
 		let execution_context = Arc::new(ctx.clone());
-		let mut node = compile(last_plan.clone(), rx, execution_context.clone());
+		let mut node = compile(last_plan.clone(), rx, execution_context.clone()).await;
 
 		// Initialize the operator before execution
 		node.initialize(rx, &execution_context).await?;
@@ -162,7 +162,7 @@ impl<'a> DeclareNode {
 		let mut result: Option<Columns> = None;
 		let mut mutable_context = (*execution_context).clone();
 
-		while let Some(crate::execute::Batch {
+		while let Some(Batch {
 			columns,
 		}) = node.next(rx, &mut mutable_context).await?
 		{

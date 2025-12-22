@@ -608,7 +608,7 @@ impl Executor {
 			params: params.clone(),
 			stack: stack.clone(),
 		};
-		let mut node = compile(plan, rx, Arc::new(context.clone()));
+		let mut node = compile(plan, rx, Arc::new(context.clone())).await;
 
 		// Initialize the operator before execution
 		node.initialize(rx, &context).await?;

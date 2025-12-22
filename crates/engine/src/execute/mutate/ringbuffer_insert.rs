@@ -79,7 +79,7 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone()).await;
 
 		let mut inserted_count = 0;
 

@@ -201,7 +201,7 @@ fn extract_source(source: &ColumnSource) -> (String, String) {
 // Helper to create an internal fragment
 fn internal_fragment(text: &str) -> Fragment {
 	Fragment::Internal {
-		text: Arc::from(text),
+		text: Arc::from(text.to_string()),
 	}
 }
 

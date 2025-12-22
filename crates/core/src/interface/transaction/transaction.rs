@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
+
 use super::change::TransactionalDefChanges;
 use crate::{
 	EncodedKey,
@@ -10,6 +12,7 @@ use crate::{
 	},
 };
 
+#[async_trait]
 pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction {
 	type SingleVersionCommand<'a>: SingleVersionCommandTransaction
 	where
@@ -23,6 +26,7 @@ pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction 
 	fn get_changes(&self) -> &TransactionalDefChanges;
 }
 
+#[async_trait]
 pub trait QueryTransaction: MultiVersionQueryTransaction {
 	type SingleVersionQuery<'a>: SingleVersionQueryTransaction
 	where

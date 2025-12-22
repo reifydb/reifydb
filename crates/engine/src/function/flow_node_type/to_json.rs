@@ -305,10 +305,10 @@ mod tests {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: Arc::from("_context"),
+					text: Arc::new("_context".to_string()),
 				},
 				source: Fragment::Internal {
-					text: Arc::from("_context"),
+					text: Arc::new("_context".to_string()),
 				},
 			},
 			name: Fragment::Internal {
@@ -330,7 +330,7 @@ mod tests {
 			left: Box::new(left),
 			right: Box::new(right),
 			fragment: Fragment::Internal {
-				text: Arc::from(">"),
+				text: Arc::new(">".to_string()),
 			},
 		})
 	}
@@ -342,7 +342,7 @@ mod tests {
 			}),
 			expression: Box::new(expr),
 			fragment: Fragment::Internal {
-				text: Arc::from("as"),
+				text: Arc::new("as".to_string()),
 			},
 		})
 	}
