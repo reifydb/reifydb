@@ -200,9 +200,9 @@ mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
-	#[test]
-	fn test_first_row_number() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_first_row_number() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -213,9 +213,9 @@ mod tests {
 		assert!(is_new);
 	}
 
-	#[test]
-	fn test_duplicate_key_same_row_number() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_duplicate_key_same_row_number() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -235,9 +235,9 @@ mod tests {
 		assert_eq!(row_num1, row_num2);
 	}
 
-	#[test]
-	fn test_sequential_row_numbers() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_sequential_row_numbers() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -251,9 +251,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_mixed_new_and_existing() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_mixed_new_and_existing() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -288,9 +288,9 @@ mod tests {
 		assert!(!new1_again);
 	}
 
-	#[test]
-	fn test_multiple_providers_isolated() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_multiple_providers_isolated() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
@@ -314,9 +314,9 @@ mod tests {
 		assert_eq!(rn2_2.0, 2);
 	}
 
-	#[test]
-	fn test_counter_persistence() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_counter_persistence() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
@@ -337,9 +337,9 @@ mod tests {
 		assert!(is_new);
 	}
 
-	#[test]
-	fn test_large_row_numbers() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_large_row_numbers() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
@@ -365,9 +365,9 @@ mod tests {
 		assert!(is_new);
 	}
 
-	#[test]
-	fn test_batch_mixed_existing_and_new_keys() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_batch_mixed_existing_and_new_keys() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));

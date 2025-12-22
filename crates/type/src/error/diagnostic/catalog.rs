@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
-pub fn namespace_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_001".to_string(),
 		statement: None,
@@ -18,8 +18,8 @@ pub fn namespace_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: 
 	}
 }
 
-pub fn namespace_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn namespace_not_found(fragment: Fragment, namespace: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_002".to_string(),
 		statement: None,
@@ -33,8 +33,8 @@ pub fn namespace_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str)
 	}
 }
 
-pub fn table_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, table: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn table_already_exists(fragment: Fragment, namespace: &str, table: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
@@ -49,8 +49,8 @@ pub fn table_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 	}
 }
 
-pub fn flow_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn flow_already_exists(fragment: Fragment, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_030".to_string(),
 		statement: None,
@@ -65,8 +65,8 @@ pub fn flow_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str,
 	}
 }
 
-pub fn flow_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn flow_not_found(fragment: Fragment, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_031".to_string(),
 		statement: None,
@@ -80,8 +80,8 @@ pub fn flow_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow
 	}
 }
 
-pub fn view_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, view: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
@@ -96,8 +96,8 @@ pub fn view_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str,
 	}
 }
 
-pub fn table_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, table: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
@@ -111,8 +111,8 @@ pub fn table_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, tab
 	}
 }
 
-pub fn ringbuffer_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, ringbuffer: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn ringbuffer_already_exists(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
         code: "CA_005".to_string(),
         statement: None,
@@ -125,8 +125,8 @@ pub fn ringbuffer_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace:
         cause: None}
 }
 
-pub fn ringbuffer_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, ringbuffer: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -140,8 +140,8 @@ pub fn ringbuffer_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 	}
 }
 
-pub fn dictionary_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -155,8 +155,8 @@ pub fn dictionary_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace:
 	}
 }
 
-pub fn dictionary_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_007".to_string(),
 		statement: None,
@@ -171,13 +171,13 @@ pub fn dictionary_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 }
 
 pub fn dictionary_type_mismatch<'a>(
-	fragment: impl IntoFragment<'a>,
+	fragment: Fragment,
 	column: &str,
 	column_type: crate::Type,
 	dictionary: &str,
 	dictionary_value_type: crate::Type,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_008".to_string(),
 		statement: None,
@@ -197,13 +197,8 @@ pub fn dictionary_type_mismatch<'a>(
 	}
 }
 
-pub fn table_column_already_exists<'a>(
-	fragment: impl IntoFragment<'a>,
-	namespace: &str,
-	table: &str,
-	column: &str,
-) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn table_column_already_exists<'a>(fragment: Fragment, namespace: &str, table: &str, column: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
@@ -217,8 +212,8 @@ pub fn table_column_already_exists<'a>(
 	}
 }
 
-pub fn view_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, view: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
@@ -232,13 +227,8 @@ pub fn view_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, view
 	}
 }
 
-pub fn view_column_already_exists<'a>(
-	fragment: impl IntoFragment<'a>,
-	namespace: &str,
-	view: &str,
-	column: &str,
-) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn view_column_already_exists<'a>(fragment: Fragment, namespace: &str, view: &str, column: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
@@ -252,8 +242,8 @@ pub fn view_column_already_exists<'a>(
 	}
 }
 
-pub fn auto_increment_invalid_type<'a>(fragment: impl IntoFragment<'a>, column: &str, ty: crate::Type) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: crate::Type) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -275,7 +265,7 @@ pub fn table_column_policy_already_exists(policy: &str, column: &str) -> Diagnos
 		code: "CA_008".to_string(),
 		statement: None,
 		message: format!("policy `{policy:?}` already exists for column `{}`", column),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("duplicate column policy".to_string()),
 		help: Some("remove the existing policy first".to_string()),
 		column: None,
@@ -289,7 +279,7 @@ pub fn index_variable_length_not_supported() -> Diagnostic {
 		code: "CA_009".to_string(),
 		statement: None,
 		message: "variable-length types (UTF8, BLOB) are not supported in indexes".to_string(),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("unsupported type for indexing".to_string()),
 		help: Some("only fixed-size types can be indexed currently".to_string()),
 		column: None,
@@ -306,7 +296,7 @@ pub fn index_types_directions_mismatch(types_len: usize, directions_len: usize) 
 			"mismatch between number of types ({}) and directions ({})",
 			types_len, directions_len
 		),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("length mismatch".to_string()),
 		help: Some("each indexed field must have a corresponding sort direction".to_string()),
 		column: None,
@@ -315,8 +305,8 @@ pub fn index_types_directions_mismatch(types_len: usize, directions_len: usize) 
 	}
 }
 
-pub fn namespace_already_pending_in_transaction<'a>(namespace_name: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = namespace_name.into_fragment().into_owned();
+pub fn namespace_already_pending_in_transaction(namespace_name: Fragment) -> Diagnostic {
+	let fragment = namespace_name;
 	let name = fragment.text();
 	Diagnostic {
 		code: "CA_011".to_string(),
@@ -334,12 +324,9 @@ pub fn namespace_already_pending_in_transaction<'a>(namespace_name: impl IntoFra
 	}
 }
 
-pub fn table_already_pending_in_transaction<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	table_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let table_fragment = table_name.into_fragment().into_owned();
+pub fn table_already_pending_in_transaction(namespace_name: Fragment, table_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let table_fragment = table_name;
 	let namespace = namespace_fragment.text();
 	let table = table_fragment.text();
 	Diagnostic {
@@ -358,12 +345,9 @@ pub fn table_already_pending_in_transaction<'a>(
 	}
 }
 
-pub fn view_already_pending_in_transaction<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	view_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let view_fragment = view_name.into_fragment().into_owned();
+pub fn view_already_pending_in_transaction(namespace_name: Fragment, view_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let view_fragment = view_name;
 	let namespace = namespace_fragment.text();
 	let view = view_fragment.text();
 	Diagnostic {
@@ -382,8 +366,8 @@ pub fn view_already_pending_in_transaction<'a>(
 	}
 }
 
-pub fn cannot_update_deleted_namespace<'a>(namespace_name: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = namespace_name.into_fragment().into_owned();
+pub fn cannot_update_deleted_namespace(namespace_name: Fragment) -> Diagnostic {
+	let fragment = namespace_name;
 	let name = fragment.text();
 	Diagnostic {
 		code: "CA_014".to_string(),
@@ -398,12 +382,9 @@ pub fn cannot_update_deleted_namespace<'a>(namespace_name: impl IntoFragment<'a>
 	}
 }
 
-pub fn cannot_update_deleted_table<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	table_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let table_fragment = table_name.into_fragment().into_owned();
+pub fn cannot_update_deleted_table(namespace_name: Fragment, table_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let table_fragment = table_name;
 	let namespace = namespace_fragment.text();
 	let table = table_fragment.text();
 	Diagnostic {
@@ -422,12 +403,9 @@ pub fn cannot_update_deleted_table<'a>(
 	}
 }
 
-pub fn cannot_update_deleted_view<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	view_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let view_fragment = view_name.into_fragment().into_owned();
+pub fn cannot_update_deleted_view(namespace_name: Fragment, view_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let view_fragment = view_name;
 	let namespace = namespace_fragment.text();
 	let view = view_fragment.text();
 	Diagnostic {
@@ -446,8 +424,8 @@ pub fn cannot_update_deleted_view<'a>(
 	}
 }
 
-pub fn cannot_delete_already_deleted_namespace<'a>(namespace_name: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = namespace_name.into_fragment().into_owned();
+pub fn cannot_delete_already_deleted_namespace(namespace_name: Fragment) -> Diagnostic {
+	let fragment = namespace_name;
 	let name = fragment.text();
 	Diagnostic {
 		code: "CA_017".to_string(),
@@ -462,12 +440,9 @@ pub fn cannot_delete_already_deleted_namespace<'a>(namespace_name: impl IntoFrag
 	}
 }
 
-pub fn cannot_delete_already_deleted_table<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	table_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let table_fragment = table_name.into_fragment().into_owned();
+pub fn cannot_delete_already_deleted_table(namespace_name: Fragment, table_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let table_fragment = table_name;
 	let namespace = namespace_fragment.text();
 	let table = table_fragment.text();
 	Diagnostic {
@@ -483,12 +458,9 @@ pub fn cannot_delete_already_deleted_table<'a>(
 	}
 }
 
-pub fn cannot_delete_already_deleted_view<'a>(
-	namespace_name: impl IntoFragment<'a>,
-	view_name: impl IntoFragment<'a>,
-) -> Diagnostic {
-	let namespace_fragment = namespace_name.into_fragment().into_owned();
-	let view_fragment = view_name.into_fragment().into_owned();
+pub fn cannot_delete_already_deleted_view(namespace_name: Fragment, view_name: Fragment) -> Diagnostic {
+	let namespace_fragment = namespace_name;
+	let view_fragment = view_name;
 	let namespace = namespace_fragment.text();
 	let view = view_fragment.text();
 	Diagnostic {
@@ -504,8 +476,8 @@ pub fn cannot_delete_already_deleted_view<'a>(
 	}
 }
 
-pub fn primary_key_empty<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn primary_key_empty(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_020".to_string(),
 		statement: None,
@@ -519,8 +491,8 @@ pub fn primary_key_empty<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn primary_key_column_not_found<'a>(fragment: impl IntoFragment<'a>, column_id: u64) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn primary_key_column_not_found(fragment: Fragment, column_id: u64) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "CA_021".to_string(),
 		statement: None,
@@ -539,7 +511,7 @@ pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
 		code: "CA_022".to_string(),
 		statement: None,
 		message: format!("virtual table `{}.{}` already exists", namespace, name),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("duplicate virtual table definition".to_string()),
 		help: Some("choose a different name or unregister the existing virtual table first".to_string()),
 		column: None,
@@ -553,7 +525,7 @@ pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 		code: "CA_023".to_string(),
 		statement: None,
 		message: format!("virtual table `{}.{}` not found", namespace, name),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("unknown virtual table reference".to_string()),
 		help: Some("ensure the virtual table is registered before using it".to_string()),
 		column: None,

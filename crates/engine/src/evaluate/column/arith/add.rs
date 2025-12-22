@@ -14,11 +14,7 @@ use reifydb_type::{
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn add<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		add: &AddExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn add(&self, ctx: &ColumnEvaluationContext, add: &AddExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &add.left)?;
 		let right = self.evaluate(ctx, &add.right)?;
 		let target = Type::promote(left.get_type(), right.get_type());
@@ -1148,7 +1144,7 @@ impl StandardColumnEvaluator {
 			}),
 
 			_ => return_error!(add_cannot_be_applied_to_incompatible_types(
-				&add.full_fragment_owned(),
+				add.full_fragment_owned(),
 				left.get_type(),
 				right.get_type(),
 			)),
@@ -1156,13 +1152,13 @@ impl StandardColumnEvaluator {
 	}
 }
 
-fn add_numeric<'a, L, R>(
+fn add_numeric<L, R>(
 	ctx: &ColumnEvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -1198,7 +1194,7 @@ where
 		let binding = fragment.fragment();
 		let fragment_text = binding.text();
 		return Ok(Column {
-			name: Fragment::owned_internal(fragment_text),
+			name: Fragment::internal(fragment_text),
 			data,
 		});
 	}
@@ -1220,18 +1216,18 @@ where
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
 	Ok(Column {
-		name: Fragment::owned_internal(fragment_text),
+		name: Fragment::internal(fragment_text),
 		data,
 	})
 }
 
-fn add_numeric_clone<'a, L, R>(
+fn add_numeric_clone<L, R>(
 	ctx: &ColumnEvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
@@ -1259,7 +1255,7 @@ where
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
 	Ok(Column {
-		name: Fragment::owned_internal(fragment_text),
+		name: Fragment::internal(fragment_text),
 		data,
 	})
 }
@@ -1289,13 +1285,13 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 	)
 }
 
-fn concat_strings<'a>(
+fn concat_strings(
 	ctx: &ColumnEvaluationContext,
 	l: &Utf8Container,
 	r: &Utf8Container,
 	target: Type,
-	fragment: Fragment<'_>,
-) -> crate::Result<Column<'a>> {
+	fragment: Fragment,
+) -> crate::Result<Column> {
 	debug_assert_eq!(l.len(), r.len());
 
 	let mut data = ctx.pooled(target, l.len());
@@ -1309,19 +1305,19 @@ fn concat_strings<'a>(
 		}
 	}
 	Ok(Column {
-		name: Fragment::owned_internal(fragment.text()),
+		name: Fragment::internal(fragment.text()),
 		data,
 	})
 }
 
-fn concat_string_with_other<'a>(
+fn concat_string_with_other(
 	ctx: &ColumnEvaluationContext,
 	string_data: &Utf8Container,
 	other_data: &ColumnData,
 	string_is_left: bool,
 	target: Type,
-	fragment: Fragment<'a>,
-) -> crate::Result<Column<'a>> {
+	fragment: Fragment,
+) -> crate::Result<Column> {
 	debug_assert_eq!(string_data.len(), other_data.len());
 
 	let mut data = ctx.pooled(target, string_data.len());

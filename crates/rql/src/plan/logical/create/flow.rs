@@ -12,9 +12,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_flow<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateFlow<'a>,
+		ast: AstCreateFlow,
 		tx: &'a mut T,
-	) -> Pin<Box<dyn std::future::Future<Output = crate::Result<LogicalPlan<'a>>> + 'a>> {
+	) -> Pin<Box<dyn std::future::Future<Output = crate::Result<LogicalPlan>> + 'a>> {
 		Box::pin(async move {
 			// Use the flow identifier directly from AST
 			let flow = ast.flow;

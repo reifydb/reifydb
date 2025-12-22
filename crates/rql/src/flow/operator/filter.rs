@@ -15,12 +15,12 @@ use crate::{
 };
 
 pub(crate) struct FilterCompiler {
-	pub input: Box<PhysicalPlan<'static>>,
-	pub conditions: Vec<Expression<'static>>,
+	pub input: Box<PhysicalPlan>,
+	pub conditions: Vec<Expression>,
 }
 
-impl<'a> From<FilterNode<'a>> for FilterCompiler {
-	fn from(node: FilterNode<'a>) -> Self {
+impl From<FilterNode> for FilterCompiler {
+	fn from(node: FilterNode) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			conditions: to_owned_expressions(node.conditions),

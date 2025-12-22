@@ -89,7 +89,7 @@ fn decode_cleanup_mode(mode: u8) -> Option<CleanupMode> {
 mod tests {
 	use super::*;
 
-	#[test]
+	#[tokio::test]
 	fn test_encode_decode_keep_forever() {
 		let policy = RetentionPolicy::KeepForever;
 		let encoded = encode_retention_policy(&policy);
@@ -97,7 +97,7 @@ mod tests {
 		assert_eq!(policy, decoded);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_encode_decode_keep_versions() {
 		let policy = RetentionPolicy::KeepVersions {
 			count: 100,

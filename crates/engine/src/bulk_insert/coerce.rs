@@ -36,7 +36,7 @@ pub(super) fn coerce_columns(
 		let target = col.constraint.get_type();
 		let source_data = &column_data[col_idx];
 
-		let coerced = cast_column_data(&ctx, source_data, target, || Fragment::owned_internal(&col.name))?;
+		let coerced = cast_column_data(&ctx, source_data, target, || Fragment::internal(&col.name))?;
 		coerced_columns.push(coerced);
 	}
 

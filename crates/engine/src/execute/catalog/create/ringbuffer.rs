@@ -12,14 +12,14 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_ringbuffer<'a>(
+	pub(crate) async fn create_ringbuffer(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateRingBufferNode,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Check if ring buffer already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_ringbuffer_by_name(plan.namespace.def().id, plan.ringbuffer.text())? {
+		if let Some(_) = txn.find_ringbuffer_by_name(plan.namespace.def().id, plan.ringbuffer.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -37,7 +37,7 @@ impl Executor {
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			capacity: plan.capacity,
-		})?;
+		}).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -60,19 +60,19 @@ mod tests {
 		test_utils::create_test_command_transaction,
 	};
 
-	#[test]
-	fn test_create_ringbuffer() {
+	#[tokio::test]
+	async fn test_create_ringbuffer() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let resolved_namespace =
-			ResolvedNamespace::new(Fragment::owned_internal("test_namespace"), namespace.clone());
+			ResolvedNamespace::new(Fragment::internal("test_namespace"), namespace.clone());
 
 		let mut plan = CreateRingBufferNode {
 			namespace: resolved_namespace.clone(),
-			ringbuffer: Fragment::owned_internal("test_ringbuffer"),
+			ringbuffer: Fragment::internal("test_ringbuffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -88,6 +88,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -104,6 +105,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -124,19 +126,19 @@ mod tests {
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
 
-	#[test]
-	fn test_create_same_ringbuffer_in_different_schema() {
+	#[tokio::test]
+	async fn test_create_same_ringbuffer_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
-		let another_schema = create_namespace(&mut txn, "another_schema");
+		let namespace = ensure_test_namespace(&mut txn).await;
+		let another_schema = create_namespace(&mut txn, "another_schema").await;
 
-		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let namespace_ident = Fragment::internal("test_namespace");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ringbuffer: Fragment::owned_internal("test_ringbuffer"),
+			ringbuffer: Fragment::internal("test_ringbuffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -151,16 +153,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_ringbuffer".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
-		let namespace_ident = Fragment::owned_internal("another_schema");
+		let namespace_ident = Fragment::internal("another_schema");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ringbuffer: Fragment::owned_internal("test_ringbuffer"),
+			ringbuffer: Fragment::internal("test_ringbuffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -174,6 +177,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -181,12 +185,12 @@ mod tests {
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
-	#[test]
-	fn test_create_ringbuffer_missing_schema() {
+	#[tokio::test]
+	async fn test_create_ringbuffer_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace_ident = Fragment::owned_internal("missing_schema");
+		let namespace_ident = Fragment::internal("missing_schema");
 		let namespace_def = NamespaceDef {
 			id: NamespaceId(999),
 			name: "missing_schema".to_string(),
@@ -194,7 +198,7 @@ mod tests {
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ringbuffer: Fragment::owned_internal("my_ringbuffer"),
+			ringbuffer: Fragment::internal("my_ringbuffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -212,6 +216,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

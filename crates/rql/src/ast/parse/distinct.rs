@@ -10,8 +10,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Separator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct<'a>> {
+impl Parser {
+	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, has_braces) = self.parse_identifiers()?;
@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
 
 	/// Parse a comma-separated list of column identifiers with optional
 	/// braces Returns (identifiers, had_braces) tuple
-	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'a>>, bool)> {
+	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier>, bool)> {
 		if self.is_eof() {
 			return Ok((vec![], false));
 		}

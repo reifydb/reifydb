@@ -74,10 +74,10 @@ mod tests {
 		test_utils::{create_flow, create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_by_flow() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -87,20 +87,20 @@ mod tests {
 		assert_eq!(nodes[0].id, node.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_by_flow_empty() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
 		assert!(nodes.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_by_flow_multiple() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -117,10 +117,10 @@ mod tests {
 		assert!(ids.contains(&node3.id));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_all() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -130,18 +130,18 @@ mod tests {
 		assert_eq!(nodes.len(), 2);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_all_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
 		assert!(nodes.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_nodes_all_multiple_flows() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");

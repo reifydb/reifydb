@@ -14,11 +14,11 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 pub struct ExtendOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression<'static>>,
+	expressions: Vec<Expression>,
 }
 
 impl ExtendOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

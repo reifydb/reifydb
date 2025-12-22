@@ -14,11 +14,7 @@ use reifydb_type::{
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn rem<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		rem: &RemExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn rem(&self, ctx: &ColumnEvaluationContext, rem: &RemExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &rem.left)?;
 		let right = self.evaluate(ctx, &rem.right)?;
 		let target = Type::promote(left.get_type(), right.get_type());
@@ -1117,8 +1113,8 @@ fn rem_numeric<'a, L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -1174,8 +1170,8 @@ fn rem_numeric_clone<'a, L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

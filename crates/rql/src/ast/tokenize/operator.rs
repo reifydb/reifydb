@@ -104,7 +104,7 @@ static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> = LazyLock::new
 });
 
 /// Scan for an operator token
-pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_operator(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

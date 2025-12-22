@@ -7,7 +7,7 @@ use reifydb_core::interface::{
 	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId,
 	TransactionalRingBufferChanges,
 };
-use reifydb_type::IntoFragment;
+use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -66,12 +66,8 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_ringbuffer_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&RingBufferDef> {
-		let name = name.into_fragment();
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&RingBufferDef> {
+		let name = name.into();
 		// Find the last change for this ring buffer name
 		for change in self.changes.ringbuffer_def.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
@@ -99,8 +95,8 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|rb| rb.id == id).unwrap_or(false))
 	}
 
-	fn is_ringbuffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
+	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
+		let name = name.into();
 		// Check if this ring buffer was deleted in this transaction
 		self.changes.ringbuffer_def.iter().any(|change| {
 			change.op == Delete
@@ -118,10 +114,10 @@ impl TransactionalRingBufferChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_ringbuffer_by_name<'a>(
+	fn find_ringbuffer_by_name(
 		&self,
 		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
+		_name: impl Into<Fragment>,
 	) -> Option<&RingBufferDef> {
 		None
 	}
@@ -130,7 +126,7 @@ impl TransactionalRingBufferChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_ringbuffer_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
+	fn is_ringbuffer_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
 		false
 	}
 }

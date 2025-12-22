@@ -10,12 +10,12 @@ use crate::{
 };
 
 pub(crate) struct MergeCompiler {
-	pub left: Box<PhysicalPlan<'static>>,
-	pub right: Box<PhysicalPlan<'static>>,
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
 }
 
-impl<'a> From<MergeNode<'a>> for MergeCompiler {
-	fn from(node: MergeNode<'a>) -> Self {
+impl From<MergeNode> for MergeCompiler {
+	fn from(node: MergeNode) -> Self {
 		Self {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),

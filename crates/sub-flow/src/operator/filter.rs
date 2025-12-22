@@ -17,11 +17,11 @@ static EMPTY_PARAMS: Params = Params::None;
 pub struct FilterOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	conditions: Vec<Expression<'static>>,
+	conditions: Vec<Expression>,
 }
 
 impl FilterOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, conditions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, conditions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

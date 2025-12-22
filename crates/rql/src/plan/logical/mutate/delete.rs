@@ -12,10 +12,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_delete<'a, T: CatalogQueryTransaction>(
-		ast: AstDelete<'a>,
+	pub(crate) async fn compile_delete<T: CatalogQueryTransaction>(
+		ast: AstDelete,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		if let Some(unresolved) = &ast.target {
 			// Check in the catalog whether the target is a table or ring buffer
 			let namespace_name = unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or("default");

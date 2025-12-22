@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
@@ -13,16 +14,16 @@ use crate::{
 	stack::Variable,
 };
 
-pub(crate) struct DeclareNode<'a> {
+pub(crate) struct DeclareNode {
 	name: String,
-	value: LetValue<'a>,
+	value: LetValue,
 	mutable: bool,
-	context: Option<Arc<ExecutionContext<'a>>>,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
-impl<'a> DeclareNode<'a> {
-	pub fn new(physical_node: physical::DeclareNode<'a>) -> Self {
+impl DeclareNode {
+	pub fn new(physical_node: physical::DeclareNode) -> Self {
 		let name_text = physical_node.name.text();
 		// Strip the '$' prefix if present
 		let clean_name = if name_text.starts_with('$') {
@@ -41,17 +42,18 @@ impl<'a> DeclareNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for DeclareNode<'a> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for DeclareNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "DeclareNode::next() called before initialize()");
 
 		// Declare statements execute once and return no data
@@ -80,7 +82,7 @@ impl<'a> QueryNode<'a> for DeclareNode<'a> {
 			}
 			LetValue::Statement(physical_plans) => {
 				// Execute the pipeline of physical plans
-				self.execute_statement_pipeline(rx, ctx, physical_plans)?
+				self.execute_statement_pipeline(rx, ctx, physical_plans).await?
 			}
 		};
 
@@ -93,22 +95,18 @@ impl<'a> QueryNode<'a> for DeclareNode<'a> {
 				} else {
 					// Empty column -> store as frame
 					Variable::frame(unsafe {
-						std::mem::transmute::<Columns<'_>, Columns<'static>>(
-							result_columns.clone(),
-						)
+						std::mem::transmute::<Columns, Columns>(result_columns.clone())
 					})
 				}
 			} else {
 				// No columns -> store as frame
 				Variable::frame(unsafe {
-					std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
+					std::mem::transmute::<Columns, Columns>(result_columns.clone())
 				})
 			}
 		} else {
 			// Multiple columns or rows -> store as frame
-			Variable::frame(unsafe {
-				std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
-			})
+			Variable::frame(unsafe { std::mem::transmute::<Columns, Columns>(result_columns.clone()) })
 		};
 
 		// Store the variable in the stack with mutable access
@@ -117,9 +115,9 @@ impl<'a> QueryNode<'a> for DeclareNode<'a> {
 		self.executed = true;
 
 		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column<'a>
+		// SAFETY: The columns come from evaluate() which returns Column
 		// so they genuinely have lifetime 'a through the query execution
-		let result_columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(result_columns) };
+		let result_columns = unsafe { std::mem::transmute::<Columns, Columns>(result_columns) };
 
 		// Return the result as a single batch for debugging/inspection
 		Ok(Some(Batch {
@@ -127,20 +125,20 @@ impl<'a> QueryNode<'a> for DeclareNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Declare statements don't produce meaningful column headers
 		None
 	}
 }
 
-impl<'a> DeclareNode<'a> {
+impl<'a> DeclareNode {
 	/// Execute a pipeline of physical plans and return the final result
-	fn execute_statement_pipeline(
+	async fn execute_statement_pipeline(
 		&self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-		physical_plans: &[physical::PhysicalPlan<'a>],
-	) -> crate::Result<Columns<'a>> {
+		ctx: &mut ExecutionContext,
+		physical_plans: &[physical::PhysicalPlan],
+	) -> crate::Result<Columns> {
 		if physical_plans.is_empty() {
 			return Ok(Columns::empty());
 		}
@@ -155,14 +153,14 @@ impl<'a> DeclareNode<'a> {
 		let mut node = compile(last_plan.clone(), rx, execution_context.clone());
 
 		// Initialize the operator before execution
-		node.initialize(rx, &execution_context)?;
+		node.initialize(rx, &execution_context).await?;
 
 		let mut result: Option<Columns> = None;
 		let mut mutable_context = (*execution_context).clone();
 
 		while let Some(crate::execute::Batch {
 			columns,
-		}) = node.next(rx, &mut mutable_context)?
+		}) = node.next(rx, &mut mutable_context).await?
 		{
 			if let Some(mut result_columns) = result.take() {
 				result_columns.append_columns(columns)?;

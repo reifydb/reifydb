@@ -42,7 +42,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_table_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Set primary key
@@ -56,7 +56,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_table_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Try to set primary key on non-existent table
 		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1)).await;

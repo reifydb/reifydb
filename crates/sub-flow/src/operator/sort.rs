@@ -14,11 +14,11 @@ use crate::{
 pub struct SortOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	_expressions: Vec<Expression<'static>>,
+	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

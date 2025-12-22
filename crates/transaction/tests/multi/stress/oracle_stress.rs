@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_transaction::multi::{Transaction, transaction::MAX_COMMITTED_TXNS};
+use reifydb_transaction::multi::{TransactionMulti, transaction::MAX_COMMITTED_TXNS};
 
 use crate::{as_key, as_values};
 
@@ -11,7 +11,7 @@ use crate::{as_key, as_values};
 /// exceeded
 #[tokio::test]
 async fn test_oracle_committed_txns_cleanup() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Number of transactions to create (exceeds MAX_COMMITTED_TXNS)
 	const NUM_TXNS: usize = 2 * MAX_COMMITTED_TXNS;
@@ -51,7 +51,7 @@ async fn test_oracle_committed_txns_cleanup() {
 /// Test high concurrency with many simultaneous transactions
 #[tokio::test]
 async fn test_oracle_high_concurrency() {
-	let engine = Arc::new(Transaction::testing().await);
+	let engine = Arc::new(TransactionMulti::testing().await);
 
 	const NUM_THREADS: usize = 100;
 	const TXN_PER_THREAD: usize = 50;
@@ -92,7 +92,7 @@ async fn test_oracle_high_concurrency() {
 /// Test that Oracle handles version overflow gracefully
 #[tokio::test]
 async fn test_oracle_version_boundaries() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Create transactions to test version boundaries
 	for i in 0..10_000 {

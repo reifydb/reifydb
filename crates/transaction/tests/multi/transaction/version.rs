@@ -11,7 +11,7 @@
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::{
-	Transaction,
+	TransactionMulti,
 	transaction::{range::TransactionRangeIter, range_rev::TransactionRangeRevIter},
 };
 
@@ -19,7 +19,7 @@ use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[tokio::test]
 async fn test_versions() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	let k0 = as_key!(0);
 

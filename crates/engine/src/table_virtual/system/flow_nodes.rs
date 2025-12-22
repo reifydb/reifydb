@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,18 +33,23 @@ impl FlowNodes {
 	}
 }
 
-impl<'a> TableVirtual<'a> for FlowNodes {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for FlowNodes {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let nodes = CatalogStore::list_flow_nodes_all(txn)?;
+		let nodes = CatalogStore::list_flow_nodes_all(txn).await?;
 
 		let mut ids = ColumnData::uint8_with_capacity(nodes.len());
 		let mut flow_ids = ColumnData::uint8_with_capacity(nodes.len());
@@ -59,19 +65,19 @@ impl<'a> TableVirtual<'a> for FlowNodes {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ids,
 			},
 			Column {
-				name: Fragment::owned_internal("flow_id"),
+				name: Fragment::internal("flow_id"),
 				data: flow_ids,
 			},
 			Column {
-				name: Fragment::owned_internal("node_type"),
+				name: Fragment::internal("node_type"),
 				data: node_types,
 			},
 			Column {
-				name: Fragment::owned_internal("data"),
+				name: Fragment::internal("data"),
 				data: data_column,
 			},
 		];

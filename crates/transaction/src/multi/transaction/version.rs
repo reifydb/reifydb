@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_type::Type;
 use tokio::sync::Mutex;
 
-use crate::single::TransactionSingleVersion;
+use crate::single::TransactionSingle;
 
 const BLOCK_SIZE: u64 = 100_000;
 
@@ -58,12 +58,12 @@ impl VersionBlock {
 
 #[derive(Clone)]
 pub struct StandardVersionProvider {
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 	current_block: Arc<Mutex<VersionBlock>>,
 }
 
 impl StandardVersionProvider {
-	pub async fn new(single: TransactionSingleVersion) -> crate::Result<Self> {
+	pub async fn new(single: TransactionSingle) -> crate::Result<Self> {
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&single).await?;
 		let first_block = VersionBlock::new(current_version);
@@ -77,7 +77,7 @@ impl StandardVersionProvider {
 		})
 	}
 
-	async fn load_current_version(single: &TransactionSingleVersion) -> crate::Result<u64> {
+	async fn load_current_version(single: &TransactionSingle) -> crate::Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
@@ -88,7 +88,7 @@ impl StandardVersionProvider {
 		}
 	}
 
-	async fn persist_version(single: &TransactionSingleVersion, version: u64) -> crate::Result<()> {
+	async fn persist_version(single: &TransactionSingle, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
@@ -141,7 +141,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_new_version_provider() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		// Should start at version 0
@@ -150,7 +150,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_next_version_sequential() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		assert_eq!(provider.next().await.unwrap(), 1);
@@ -165,7 +165,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_version_persistence() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 
 		// Create first provider and get some versions
 		{
@@ -184,7 +184,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		// Exhaust the first block
@@ -204,7 +204,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_version_allocation() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 		let provider = Arc::new(StandardVersionProvider::new(single).await.unwrap());
 
 		let mut handles = vec![];
@@ -283,7 +283,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_load_existing_version() {
-		let single = TransactionSingleVersion::testing();
+		let single = TransactionSingle::testing();
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

@@ -42,7 +42,7 @@ mod tests {
 
 	use super::*;
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_operator_retention_policy() {
 		let catalog = MaterializedCatalog::new();
 		let operator = FlowNodeId(100);
@@ -67,7 +67,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_operator_retention_policy_update() {
 		let catalog = MaterializedCatalog::new();
 		let operator = FlowNodeId(42);
@@ -94,7 +94,7 @@ mod tests {
 		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(10)), Some(policy_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_operator_retention_policy_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let operator = FlowNodeId(999);
@@ -119,7 +119,7 @@ mod tests {
 		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(1)), Some(policy));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_operator_retention_policy_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let operator = FlowNodeId(777);

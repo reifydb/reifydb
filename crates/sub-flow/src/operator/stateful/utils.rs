@@ -143,9 +143,9 @@ mod tests {
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
-	#[test]
-	fn test_state_get_existing() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_get_existing() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("get");
@@ -160,9 +160,9 @@ mod tests {
 		assert_row_eq(&result.unwrap(), &value);
 	}
 
-	#[test]
-	fn test_state_get_non_existing() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_get_non_existing() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
@@ -171,9 +171,9 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
-	fn test_state_set_and_update() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_set_and_update() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
@@ -191,9 +191,9 @@ mod tests {
 		assert_row_eq(&result, &value2);
 	}
 
-	#[test]
-	fn test_state_remove() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_remove() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("remove");
@@ -208,9 +208,9 @@ mod tests {
 		assert!(state_get(node_id, &mut txn, &key).unwrap().is_none());
 	}
 
-	#[test]
-	fn test_state_scan() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_scan() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
@@ -231,9 +231,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_state_range() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_range() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
@@ -253,9 +253,9 @@ mod tests {
 		assert_eq!(entries.len(), 2);
 	}
 
-	#[test]
-	fn test_state_range_open_ended() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_range_open_ended() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
@@ -278,9 +278,9 @@ mod tests {
 		assert_eq!(entries.len(), 2); // range_3, range_4
 	}
 
-	#[test]
-	fn test_state_clear() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_state_clear() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
@@ -309,9 +309,9 @@ mod tests {
 		assert_eq!(count, 0);
 	}
 
-	#[test]
-	fn test_load_or_create_row_existing() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_load_or_create_row_existing() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_existing");
@@ -326,9 +326,9 @@ mod tests {
 		assert_row_eq(&result, &value);
 	}
 
-	#[test]
-	fn test_load_or_create_row_new() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_load_or_create_row_new() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
@@ -340,9 +340,9 @@ mod tests {
 		assert!(result.len() > 0);
 	}
 
-	#[test]
-	fn test_save_row() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_save_row() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("save");
@@ -357,16 +357,16 @@ mod tests {
 		assert_row_eq(&result.unwrap(), &value);
 	}
 
-	#[test]
-	fn test_empty_key() {
+	#[tokio::test]
+	async fn test_empty_key() {
 		let key = empty_key();
 		assert_eq!(key.len(), 0);
 		assert!(key.as_ref().is_empty());
 	}
 
-	#[test]
-	fn test_multiple_nodes_isolation() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_multiple_nodes_isolation() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -391,9 +391,9 @@ mod tests {
 		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());
 	}
 
-	#[test]
-	fn test_large_values() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_large_values() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");

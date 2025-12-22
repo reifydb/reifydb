@@ -15,12 +15,12 @@ use crate::{
 };
 
 pub(crate) struct MapCompiler {
-	pub input: Option<Box<PhysicalPlan<'static>>>,
-	pub expressions: Vec<Expression<'static>>,
+	pub input: Option<Box<PhysicalPlan>>,
+	pub expressions: Vec<Expression>,
 }
 
-impl<'a> From<MapNode<'a>> for MapCompiler {
-	fn from(node: MapNode<'a>) -> Self {
+impl From<MapNode> for MapCompiler {
+	fn from(node: MapNode) -> Self {
 		Self {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			expressions: to_owned_expressions(node.map),

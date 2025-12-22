@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Error, OwnedFragment, Type, Value,
+	Error, Fragment, Type, Value,
 	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 };
 
@@ -137,7 +137,7 @@ impl TypeConstraint {
 					if byte_len > max_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::utf8_exceeds_max_bytes(
-								OwnedFragment::None,
+								Fragment::None,
 								byte_len,
 								max_value
 							)
@@ -152,7 +152,7 @@ impl TypeConstraint {
 					if byte_len > max_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::blob_exceeds_max_bytes(
-								OwnedFragment::None,
+								Fragment::None,
 								byte_len,
 								max_value
 							)
@@ -173,7 +173,7 @@ impl TypeConstraint {
 					if byte_len > max_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::int_exceeds_max_bytes(
-								OwnedFragment::None,
+								Fragment::None,
 								byte_len,
 								max_value
 							)
@@ -194,7 +194,7 @@ impl TypeConstraint {
 					if byte_len > max_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
-								OwnedFragment::None,
+								Fragment::None,
 								byte_len,
 								max_value
 							)
@@ -229,7 +229,7 @@ impl TypeConstraint {
 					if decimal_scale > scale_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::decimal_exceeds_scale(
-								OwnedFragment::None,
+								Fragment::None,
 								decimal_scale,
 								scale_value
 							)
@@ -238,7 +238,7 @@ impl TypeConstraint {
 					if decimal_precision > precision_value {
 						return Err(crate::error!(
 							crate::error::diagnostic::constraint::decimal_exceeds_precision(
-								OwnedFragment::None,
+								Fragment::None,
 								decimal_precision,
 								precision_value
 							)

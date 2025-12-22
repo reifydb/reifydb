@@ -66,7 +66,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
 
@@ -80,7 +80,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_column_policy_duplicate_error() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(

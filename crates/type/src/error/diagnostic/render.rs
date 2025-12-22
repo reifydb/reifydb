@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use super::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::fragment::Fragment;
 
 pub trait DiagnosticRenderer {
 	fn render(&self, diagnostic: &Diagnostic) -> String;
@@ -36,7 +36,7 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "  {}", diagnostic.message);
 		let _ = writeln!(output);
 
-		if let OwnedFragment::Statement {
+		if let Fragment::Statement {
 			line,
 			column,
 			text,
@@ -108,7 +108,7 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
 		// Location info
-		if let OwnedFragment::Statement {
+		if let Fragment::Statement {
 			line,
 			column,
 			text,

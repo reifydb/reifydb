@@ -43,10 +43,10 @@ mod tests {
 		test_utils::{create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_edge_ok() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -62,9 +62,9 @@ mod tests {
 		assert_eq!(found.target, node2.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_edge_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
 		assert!(result.is_none());

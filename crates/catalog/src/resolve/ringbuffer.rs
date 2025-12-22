@@ -10,16 +10,13 @@ use crate::{
 };
 
 /// Resolve a ring buffer ID to a fully resolved ring buffer with namespace and identifiers
-pub async fn resolve_ringbuffer<'a, T>(
-	txn: &mut T,
-	ringbuffer_id: RingBufferId,
-) -> crate::Result<ResolvedRingBuffer<'a>>
+pub async fn resolve_ringbuffer<T>(txn: &mut T, ringbuffer_id: RingBufferId) -> crate::Result<ResolvedRingBuffer>
 where
 	T: CatalogRingBufferQueryOperations + CatalogNamespaceQueryOperations,
 {
 	let ringbuffer_def = txn.get_ringbuffer(ringbuffer_id).await?;
 	let resolved_namespace = resolve_namespace(txn, ringbuffer_def.namespace).await?;
-	let ringbuffer_ident = Fragment::owned_internal(ringbuffer_def.name.clone());
+	let ringbuffer_ident = Fragment::internal(ringbuffer_def.name.clone());
 
 	Ok(ResolvedRingBuffer::new(ringbuffer_ident, resolved_namespace, ringbuffer_def))
 }

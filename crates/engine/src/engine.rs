@@ -3,6 +3,7 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	CommitVersion, Frame,
@@ -17,9 +18,9 @@ use reifydb_core::{
 use reifydb_transaction::{
 	cdc::TransactionCdc,
 	multi::{AwaitWatermarkError, TransactionMultiVersion},
-	single::TransactionSingleVersion,
+	single::TransactionSingle,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::{Fragment, TypeConstraint};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -49,7 +50,7 @@ impl EngineInterface for StandardEngine {
 	type Query = StandardQueryTransaction;
 
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	async fn begin_command(&self) -> crate::Result<Self::Command> {
+	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
@@ -57,21 +58,20 @@ impl EngineInterface for StandardEngine {
 			.post_commit
 			.add(Arc::new(CatalogEventInterceptor::new(self.event_bus.clone(), self.catalog.clone())));
 
-		StandardCommandTransaction::new(
+		crate::util::block_on(StandardCommandTransaction::new(
 			self.multi.clone(),
 			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
 			self.catalog.clone(),
 			interceptors,
-		)
-		.await
+		))
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	async fn begin_query(&self) -> crate::Result<Self::Query> {
+	fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
-			self.multi.begin_query().await?,
+			crate::util::block_on(self.multi.begin_query())?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
@@ -86,10 +86,10 @@ impl EngineInterface for StandardEngine {
 		let cancel_token = CancellationToken::new();
 
 		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-		let error_sender = sender.clone();
+		let _error_sender = sender.clone();
 
-		tokio::spawn(async move {
-			execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token).await;
+		tokio::task::spawn_blocking(move || {
+			crate::util::block_on_local(execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token))
 		});
 
 		Box::pin(stream)
@@ -103,10 +103,10 @@ impl EngineInterface for StandardEngine {
 		let cancel_token = CancellationToken::new();
 
 		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-		let error_sender = sender.clone();
+		let _error_sender = sender.clone();
 
-		tokio::spawn(async move {
-			execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token).await;
+		tokio::task::spawn_blocking(move || {
+			crate::util::block_on_local(execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token))
 		});
 
 		Box::pin(stream)
@@ -128,7 +128,7 @@ async fn execute_command_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_command().await;
+	let txn_result = engine.begin_command();
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {
@@ -137,15 +137,15 @@ async fn execute_command_sync(
 		}
 	};
 
-	// Execute command
-	let result = engine.execute_command(
+	// Execute command - call executor directly to avoid trait object indirection
+	let result = engine.executor.execute_command(
 		&mut txn,
 		Command {
 			rql,
 			params,
 			identity,
 		},
-	);
+	).await;
 
 	match result {
 		Ok(frames) => {
@@ -187,7 +187,7 @@ async fn execute_query_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_query().await;
+	let txn_result = engine.begin_query();
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {
@@ -196,15 +196,15 @@ async fn execute_query_sync(
 		}
 	};
 
-	// Execute query
-	let result = engine.execute_query(
+	// Execute query - call executor directly to avoid trait object indirection
+	let result = engine.executor.execute_query(
 		&mut txn,
 		Query {
 			rql,
 			params,
 			identity,
 		},
-	);
+	).await;
 
 	match result {
 		Ok(frames) => {
@@ -224,17 +224,19 @@ async fn execute_query_sync(
 	}
 }
 
+#[async_trait(?Send)]
 impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 	#[inline]
-	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_command(txn, cmd)
+	async fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+		self.executor.execute_command(txn, cmd).await
 	}
 }
 
+#[async_trait(?Send)]
 impl ExecuteQuery<StandardQueryTransaction> for StandardEngine {
 	#[inline]
-	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_query(txn, qry)
+	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+		self.executor.execute_query(txn, qry).await
 	}
 }
 
@@ -254,7 +256,7 @@ impl Deref for StandardEngine {
 
 pub struct EngineInner {
 	multi: TransactionMultiVersion,
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 	cdc: TransactionCdc,
 	event_bus: EventBus,
 	executor: Executor,
@@ -266,7 +268,7 @@ pub struct EngineInner {
 impl StandardEngine {
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
@@ -277,7 +279,7 @@ impl StandardEngine {
 
 	pub fn with_functions(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
@@ -327,12 +329,12 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn single(&self) -> &TransactionSingleVersion {
+	pub fn single(&self) -> &TransactionSingle {
 		&self.single
 	}
 
 	#[inline]
-	pub fn single_owned(&self) -> TransactionSingleVersion {
+	pub fn single_owned(&self) -> TransactionSingle {
 		self.single.clone()
 	}
 
@@ -363,8 +365,8 @@ impl StandardEngine {
 
 	/// Get the current version from the transaction manager
 	#[inline]
-	pub fn current_version(&self) -> crate::Result<CommitVersion> {
-		self.multi.current_version()
+	pub async fn current_version(&self) -> crate::Result<CommitVersion> {
+		self.multi.current_version().await
 	}
 
 	/// Wait for the watermark to reach the specified version.
@@ -446,7 +448,7 @@ impl StandardEngine {
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
 				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					OwnedFragment::None,
+					Fragment::None,
 					namespace,
 				))
 			})?;
@@ -487,7 +489,7 @@ impl StandardEngine {
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
 				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					OwnedFragment::None,
+					Fragment::None,
 					namespace,
 				))
 			})?;
@@ -529,7 +531,7 @@ impl StandardEngine {
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
 				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					OwnedFragment::None,
+					Fragment::None,
 					namespace,
 				))
 			})?;

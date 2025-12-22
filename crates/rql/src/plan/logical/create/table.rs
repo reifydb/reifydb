@@ -15,10 +15,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_table<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateTable<'a>,
+	pub(crate) async fn compile_create_table<T: CatalogQueryTransaction>(
+		ast: AstCreateTable,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		// Get the table's namespace for dictionary resolution

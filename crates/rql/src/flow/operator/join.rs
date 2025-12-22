@@ -19,14 +19,14 @@ use crate::{
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
-	pub left: Box<PhysicalPlan<'static>>,
-	pub right: Box<PhysicalPlan<'static>>,
-	pub on: Vec<Expression<'static>>,
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
+	pub on: Vec<Expression>,
 	pub alias: Option<String>,
 }
 
-impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
-	fn from(node: JoinInnerNode<'a>) -> Self {
+impl From<JoinInnerNode> for JoinCompiler {
+	fn from(node: JoinInnerNode) -> Self {
 		Self {
 			join_type: Inner,
 			left: Box::new(to_owned_physical_plan(*node.left)),
@@ -37,8 +37,8 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 	}
 }
 
-impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
-	fn from(node: JoinLeftNode<'a>) -> Self {
+impl From<JoinLeftNode> for JoinCompiler {
+	fn from(node: JoinLeftNode) -> Self {
 		Self {
 			join_type: Left,
 			left: Box::new(to_owned_physical_plan(*node.left)),
@@ -93,9 +93,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 }
 
 // Extract the left and right column references from join conditions
-pub(crate) fn extract_join_keys(
-	conditions: &[Expression<'static>],
-) -> (Vec<Expression<'static>>, Vec<Expression<'static>>) {
+pub(crate) fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
 	let mut left_keys = Vec::new();
 	let mut right_keys = Vec::new();
 

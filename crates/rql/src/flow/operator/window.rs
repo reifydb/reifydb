@@ -18,19 +18,19 @@ use crate::{
 };
 
 pub(crate) struct WindowCompiler {
-	pub input: Option<Box<PhysicalPlan<'static>>>,
+	pub input: Option<Box<PhysicalPlan>>,
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,
-	pub group_by: Vec<Expression<'static>>,
-	pub aggregations: Vec<Expression<'static>>,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
 	pub max_window_age: Option<std::time::Duration>,
 }
 
-impl<'a> From<WindowNode<'a>> for WindowCompiler {
-	fn from(node: WindowNode<'a>) -> Self {
+impl From<WindowNode> for WindowCompiler {
+	fn from(node: WindowNode) -> Self {
 		Self {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			window_type: node.window_type,

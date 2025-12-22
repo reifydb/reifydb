@@ -56,11 +56,7 @@ impl Default for StandardColumnEvaluator {
 }
 
 impl StandardColumnEvaluator {
-	pub fn evaluate<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &Expression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub fn evaluate(&self, ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Column> {
 		match expr {
 			Expression::AccessSource(expr) => self.access(ctx, expr),
 			Expression::Alias(expr) => self.alias(ctx, expr),
@@ -96,7 +92,7 @@ impl StandardColumnEvaluator {
 	}
 }
 
-pub fn evaluate<'a>(ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>> {
+pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Column> {
 	let evaluator = StandardColumnEvaluator {
 		functions: Functions::builder()
 			.register_scalar("math::abs", math::scalar::Abs::new)

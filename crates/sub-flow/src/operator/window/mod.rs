@@ -128,8 +128,8 @@ pub struct WindowOperator {
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,
-	pub group_by: Vec<Expression<'static>>,
-	pub aggregations: Vec<Expression<'static>>,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
 	pub layout: EncodedValuesLayout,
 	pub column_evaluator: StandardColumnEvaluator,
 	pub row_number_provider: RowNumberProvider,
@@ -145,8 +145,8 @@ impl WindowOperator {
 		window_type: WindowType,
 		size: WindowSize,
 		slide: Option<WindowSlide>,
-		group_by: Vec<Expression<'static>>,
-		aggregations: Vec<Expression<'static>>,
+		group_by: Vec<Expression>,
+		aggregations: Vec<Expression>,
 		min_events: usize,
 		max_window_count: Option<usize>,
 		max_window_age: Option<std::time::Duration>,
@@ -291,7 +291,7 @@ impl WindowOperator {
 			}
 
 			columns.push(Column {
-				name: Fragment::owned_internal(field_name.clone()),
+				name: Fragment::internal(field_name.clone()),
 				data: column_data,
 			});
 		}

@@ -15,10 +15,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_insert<'a, T: CatalogQueryTransaction>(
-		ast: AstInsert<'a>,
+	pub(crate) async fn compile_insert<T: CatalogQueryTransaction>(
+		ast: AstInsert,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Get the target, if None it means the target will come from a pipeline
 		let Some(unresolved_target) = ast.target else {
 			// TODO: Handle pipeline case where target comes from previous operation

@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod error;
-mod fragment;
+pub mod fragment;
 mod params;
 pub mod util;
 pub mod value;
@@ -14,9 +14,7 @@ pub use util::{BitVec, BitVecInner, BitVecIter, CowVec};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub use fragment::{
-	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment, StatementColumn, StatementLine,
-};
+pub use fragment::{Fragment, LazyFragment, StatementColumn, StatementLine};
 pub use params::Params;
 pub use value::{
 	Blob, Constraint, Date, DateTime, Decimal, DictionaryEntryId, Duration, FFITypeConstraint, FromValueError,

@@ -10,7 +10,7 @@ use crate::value::column::{ColumnData, Columns};
 pub type GroupKey = Vec<Value>;
 pub type GroupByView = HashMap<GroupKey, Vec<usize>>;
 
-impl<'a> Columns<'a> {
+impl Columns {
 	pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
 		let row_count = self.first().map_or(0, |c| c.data().len());
 

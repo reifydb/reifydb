@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
@@ -13,14 +14,14 @@ use crate::{
 	stack::Variable,
 };
 
-pub(crate) struct VariableNode<'a> {
-	variable_expr: VariableExpression<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct VariableNode {
+	variable_expr: VariableExpression,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
-impl<'a> VariableNode<'a> {
-	pub fn new(variable_expr: VariableExpression<'a>) -> Self {
+impl VariableNode {
+	pub fn new(variable_expr: VariableExpression) -> Self {
 		Self {
 			variable_expr,
 			context: None,
@@ -29,17 +30,18 @@ impl<'a> VariableNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for VariableNode<'a> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for VariableNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
 
 		// Variables execute once and return their data
@@ -58,7 +60,7 @@ impl<'a> QueryNode<'a> for VariableNode<'a> {
 				data.push_value(value.clone());
 
 				let column = Column {
-					name: Fragment::owned_internal(variable_name),
+					name: Fragment::internal(variable_name),
 					data,
 				};
 
@@ -68,7 +70,7 @@ impl<'a> QueryNode<'a> for VariableNode<'a> {
 
 				// Transmute the columns to extend their lifetime
 				// SAFETY: The columns are created here and genuinely have lifetime 'a
-				let columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(columns) };
+				let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
 
 				Ok(Some(Batch {
 					columns,
@@ -81,7 +83,7 @@ impl<'a> QueryNode<'a> for VariableNode<'a> {
 				// Clone the columns and transmute to extend lifetime
 				// SAFETY: The columns come from the stack which has lifetime 'a
 				let columns = frame_columns.clone();
-				let columns = unsafe { std::mem::transmute::<Columns<'static>, Columns<'a>>(columns) };
+				let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
 
 				Ok(Some(Batch {
 					columns,
@@ -94,7 +96,7 @@ impl<'a> QueryNode<'a> for VariableNode<'a> {
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Variable headers depend on the variable type, can't determine ahead of time
 		None
 	}

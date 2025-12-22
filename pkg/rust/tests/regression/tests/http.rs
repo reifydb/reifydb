@@ -9,7 +9,7 @@ use reifydb::{
 	memory,
 	sub_server_http::HttpConfig,
 	transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{Client, HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
@@ -24,7 +24,7 @@ pub struct HttpRunner {
 }
 
 impl HttpRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
 			.with_http(HttpConfig::default().bind_addr("::1:0"))

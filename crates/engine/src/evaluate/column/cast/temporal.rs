@@ -3,15 +3,11 @@
 
 use reifydb_core::value::{column::ColumnData, container::Utf8Container};
 use reifydb_type::{
-	BorrowedFragment, Date, DateTime, Duration, LazyFragment, OwnedFragment, Time, Type, diagnostic::cast, error,
-	parse_date, parse_datetime, parse_duration, parse_time,
+	Date, DateTime, Duration, Fragment, LazyFragment, Time, Type, diagnostic::cast, error, parse_date,
+	parse_datetime, parse_duration, parse_time,
 };
 
-pub fn to_temporal<'a>(
-	data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -42,7 +38,7 @@ macro_rules! impl_to_temporal {
 		#[inline]
 		fn $fn_name<'a>(
 			container: &Utf8Container,
-			lazy_fragment: impl LazyFragment<'a>,
+			lazy_fragment: impl LazyFragment,
 		) -> crate::Result<ColumnData> {
 			let mut out = ColumnData::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
@@ -50,7 +46,7 @@ macro_rules! impl_to_temporal {
 					let val = &container[idx];
 					// Use internal fragment for parsing - positions will be replaced with actual
 					// source positions
-					let temp_fragment = BorrowedFragment::new_internal(val.as_str());
+					let temp_fragment = Fragment::internal(val.as_str());
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting
@@ -58,14 +54,14 @@ macro_rules! impl_to_temporal {
 
 						// Handle fragment replacement based on the context
 						// For Internal fragments (from parsing), we need to adjust position
-						if let OwnedFragment::Internal {
+						if let Fragment::Internal {
 							text: error_text,
 						} = &e.0.fragment
 						{
 							// Check if we're dealing with a string literal (Statement
 							// fragment) that contains position information we can use
 							// for sub-fragments
-							if let OwnedFragment::Statement {
+							if let Fragment::Statement {
 								text: source_text,
 								..
 							} = &proper_fragment

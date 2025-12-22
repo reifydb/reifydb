@@ -10,7 +10,7 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_type::{
-	IntoFragment,
+	Fragment,
 	diagnostic::catalog::{ringbuffer_already_exists, ringbuffer_not_found},
 };
 use tracing::instrument;
@@ -21,18 +21,18 @@ use crate::{CatalogStore, store::ringbuffer::create::RingBufferToCreate, transac
 pub trait CatalogRingBufferQueryOperations: Send {
 	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>>;
 
-	async fn find_ringbuffer_by_name<'a>(
+	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<Option<RingBufferDef>>;
 
 	async fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef>;
 
-	async fn get_ringbuffer_by_name<'a>(
+	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<RingBufferDef>;
 }
 
@@ -44,12 +44,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBu
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_by_name", level = "trace", skip(self, name))]
-	async fn find_ringbuffer_by_name<'a>(
+	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let name = name.into_fragment();
+		let name = name.into();
 		CatalogStore::find_ringbuffer_by_name(self, namespace, name.text()).await
 	}
 
@@ -59,12 +59,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBu
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get_by_name", level = "trace", skip(self, name))]
-	async fn get_ringbuffer_by_name<'a>(
+	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<RingBufferDef> {
-		let name = name.into_fragment();
+		let name = name.into();
 		let name_text = name.text().to_string();
 		let ringbuffer = self.find_ringbuffer_by_name(namespace, name.clone()).await?;
 		match ringbuffer {
@@ -104,7 +104,7 @@ impl<
 	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, to_create))]
 	async fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef> {
 		if let Some(_ringbuffer) =
-			self.find_ringbuffer_by_name(to_create.namespace, &to_create.ringbuffer).await?
+			self.find_ringbuffer_by_name(to_create.namespace, to_create.ringbuffer.as_str()).await?
 		{
 			let namespace = CatalogStore::get_namespace(self, to_create.namespace).await?;
 			return_error!(ringbuffer_already_exists(

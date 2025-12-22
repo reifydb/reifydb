@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::IntoFragment;
+use reifydb_type::Fragment;
 
 use crate::interface::{
 	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef,
@@ -21,69 +21,61 @@ pub trait TransactionalChanges:
 pub trait TransactionalDictionaryChanges {
 	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef>;
 
-	fn find_dictionary_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&DictionaryDef>;
+	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&DictionaryDef>;
 
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool;
 
-	fn is_dictionary_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool;
 }
 
 pub trait TransactionalNamespaceChanges {
 	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef>;
 
-	fn find_namespace_by_name<'a>(&self, name: impl IntoFragment<'a>) -> Option<&NamespaceDef>;
+	fn find_namespace_by_name(&self, name: impl Into<Fragment>) -> Option<&NamespaceDef>;
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
 
-	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool;
+	fn is_namespace_deleted_by_name(&self, name: impl Into<Fragment>) -> bool;
 }
 
 pub trait TransactionalFlowChanges {
 	fn find_flow(&self, id: FlowId) -> Option<&FlowDef>;
 
-	fn find_flow_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&FlowDef>;
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&FlowDef>;
 
 	fn is_flow_deleted(&self, id: FlowId) -> bool;
 
-	fn is_flow_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool;
 }
 
 pub trait TransactionalTableChanges {
 	fn find_table(&self, id: TableId) -> Option<&TableDef>;
 
-	fn find_table_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&TableDef>;
+	fn find_table_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&TableDef>;
 
 	fn is_table_deleted(&self, id: TableId) -> bool;
 
-	fn is_table_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
 	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
 
-	fn find_ringbuffer_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&RingBufferDef>;
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&RingBufferDef>;
 
 	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool;
 
-	fn is_ringbuffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool;
 }
 
 pub trait TransactionalViewChanges {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef>;
 
-	fn find_view_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&ViewDef>;
+	fn find_view_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&ViewDef>;
 
 	fn is_view_deleted(&self, id: ViewId) -> bool;
 
-	fn is_view_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool;
 }
 
 #[derive(Default, Debug, Clone)]

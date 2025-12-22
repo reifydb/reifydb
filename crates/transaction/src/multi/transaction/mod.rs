@@ -24,7 +24,7 @@ use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
 pub use crate::multi::types::*;
-use crate::single::{TransactionSingleVersion, TransactionSvl};
+use crate::single::{TransactionSingle, TransactionSvl};
 
 mod command;
 mod command_tx;
@@ -168,7 +168,7 @@ where
 // Transaction - The main multi-version transaction type
 // ============================================================================
 
-pub struct Transaction(Arc<Inner>);
+pub struct TransactionMulti(Arc<Inner>);
 
 pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
@@ -176,7 +176,7 @@ pub struct Inner {
 	pub(crate) event_bus: EventBus,
 }
 
-impl Deref for Transaction {
+impl Deref for TransactionMulti {
 	type Target = Inner;
 
 	fn deref(&self) -> &Self::Target {
@@ -184,18 +184,14 @@ impl Deref for Transaction {
 	}
 }
 
-impl Clone for Transaction {
+impl Clone for TransactionMulti {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
 impl Inner {
-	async fn new(
-		store: TransactionStore,
-		single: TransactionSingleVersion,
-		event_bus: EventBus,
-	) -> crate::Result<Self> {
+	async fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
 		let version_provider = StandardVersionProvider::new(single).await?;
 		let tm = TransactionManager::new(version_provider).await?;
 
@@ -211,13 +207,13 @@ impl Inner {
 	}
 }
 
-impl Transaction {
+impl TransactionMulti {
 	pub async fn testing() -> Self {
 		let store = TransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
 			store.clone(),
-			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
+			TransactionSingle::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
 			event_bus,
 		)
 		.await
@@ -225,18 +221,18 @@ impl Transaction {
 	}
 }
 
-impl Transaction {
+impl TransactionMulti {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
 	pub async fn new(
 		store: TransactionStore,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		event_bus: EventBus,
 	) -> crate::Result<Self> {
 		Ok(Self(Arc::new(Inner::new(store, single, event_bus).await?)))
 	}
 }
 
-impl Transaction {
+impl TransactionMulti {
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
 	pub async fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version().await
@@ -248,7 +244,7 @@ impl Transaction {
 	}
 }
 
-impl Transaction {
+impl TransactionMulti {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub async fn begin_command(&self) -> crate::Result<CommandTransaction> {
 		CommandTransaction::new(self.clone()).await
@@ -260,7 +256,7 @@ pub enum TransactionType {
 	Command(CommandTransaction),
 }
 
-impl Transaction {
+impl TransactionMulti {
 	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub async fn get(
 		&self,

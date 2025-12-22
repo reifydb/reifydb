@@ -42,11 +42,11 @@ use crate::plan::physical::PhysicalPlan;
 /// Public API for compiling logical plans to Flows with an existing flow ID.
 pub async fn compile_flow(
 	txn: &mut impl CommandTransaction,
-	plan: PhysicalPlan<'_>,
+	plan: PhysicalPlan,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
 ) -> crate::Result<Flow> {
-	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
+	// Convert PhysicalPlan to PhysicalPlan at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
 	let compiler = FlowCompiler::new(txn, flow_id);
 	compiler.compile(owned_plan, sink).await
@@ -129,7 +129,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub(crate) async fn compile(mut self, plan: PhysicalPlan<'_>, sink: Option<&ViewDef>) -> crate::Result<Flow> {
+	pub(crate) async fn compile(mut self, plan: PhysicalPlan, sink: Option<&ViewDef>) -> crate::Result<Flow> {
 		// Store sink view for terminal nodes (if provided)
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(plan).await?;
@@ -149,7 +149,14 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Compiles a physical plan operator into the FlowGraph
-	pub(crate) async fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> crate::Result<FlowNodeId> {
+	pub(crate) fn compile_plan(
+		&mut self,
+		plan: PhysicalPlan,
+	) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::Result<FlowNodeId>> + '_>> {
+		Box::pin(async move { self.compile_plan_impl(plan).await })
+	}
+
+	async fn compile_plan_impl(&mut self, plan: PhysicalPlan) -> crate::Result<FlowNodeId> {
 		match plan {
 			PhysicalPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow

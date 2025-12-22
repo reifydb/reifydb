@@ -30,17 +30,17 @@ mod tests {
 		test_utils::{create_namespace, create_table, ensure_test_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]);
-		create_table(&mut txn, "namespace_two", "table_two", &[]);
-		create_table(&mut txn, "namespace_three", "table_three", &[]);
+		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
+		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
+		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
 
 		let result = CatalogStore::get_table(&mut txn, TableId(1026)).unwrap();
 
@@ -49,17 +49,17 @@ mod tests {
 		assert_eq!(result.name, "table_two");
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]);
-		create_table(&mut txn, "namespace_two", "table_two", &[]);
-		create_table(&mut txn, "namespace_three", "table_three", &[]);
+		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
+		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
+		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
 
 		let err = CatalogStore::get_table(&mut txn, TableId(42)).unwrap_err();
 

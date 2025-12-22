@@ -40,10 +40,10 @@ mod tests {
 		view::{ViewColumnToCreate, ViewToCreate},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_view_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create a view
 		let view = CatalogStore::create_deferred_view(
@@ -81,10 +81,10 @@ mod tests {
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_view_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create a view
 		let view = CatalogStore::create_deferred_view(
@@ -108,9 +108,9 @@ mod tests {
 		assert!(pk_id.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_view_pk_id_nonexistent_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Get the primary key ID for non-existent view - should be None
 		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).unwrap();

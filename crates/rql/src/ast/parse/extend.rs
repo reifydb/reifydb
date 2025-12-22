@@ -5,8 +5,8 @@ use reifydb_type::{diagnostic::operation::extend_multiple_expressions_without_br
 
 use crate::ast::{AstExtend, parse::Parser, tokenize::Keyword};
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend<'a>> {
+impl Parser {
+	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend> {
 		let token = self.consume_keyword(Keyword::Extend)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true)?;

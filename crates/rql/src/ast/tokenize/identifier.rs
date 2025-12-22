@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Scan for an identifier token
-pub fn scan_identifier<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_identifier(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
@@ -25,7 +25,7 @@ pub fn scan_identifier<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 }
 
 /// Scan for a backtick-quoted identifier (`...`)
-pub fn scan_quoted_identifier<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_quoted_identifier(cursor: &mut Cursor) -> Option<Token> {
 	if cursor.peek()? != '`' {
 		return None;
 	}

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
@@ -15,22 +16,22 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode, query::compile::compile},
 };
 
-pub(crate) struct ConditionalNode<'a> {
-	condition: Expression<'a>,
-	then_branch_plan: PhysicalPlan<'a>,
-	else_ifs: Vec<ElseIfBranch<'a>>,
-	else_branch_plan: Option<PhysicalPlan<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct ConditionalNode {
+	condition: Expression,
+	then_branch_plan: PhysicalPlan,
+	else_ifs: Vec<ElseIfBranch>,
+	else_branch_plan: Option<PhysicalPlan>,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
-pub(crate) struct ElseIfBranch<'a> {
-	condition: Expression<'a>,
-	then_branch_plan: PhysicalPlan<'a>,
+pub(crate) struct ElseIfBranch {
+	condition: Expression,
+	then_branch_plan: PhysicalPlan,
 }
 
-impl<'a> ConditionalNode<'a> {
-	pub fn new(physical_node: physical::ConditionalNode<'a>) -> Self {
+impl<'a> ConditionalNode {
+	pub fn new(physical_node: physical::ConditionalNode) -> Self {
 		// Store the physical plans for lazy compilation
 		let mut else_ifs = Vec::new();
 		for physical_else_if in physical_node.else_ifs {
@@ -50,7 +51,7 @@ impl<'a> ConditionalNode<'a> {
 		}
 	}
 
-	fn evaluate_condition(&self, condition: &Expression<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<bool> {
+	fn evaluate_condition(&self, condition: &Expression, ctx: &ExecutionContext) -> crate::Result<bool> {
 		// Create evaluation context for the condition
 		let evaluation_context = ColumnEvaluationContext {
 			target: None,
@@ -101,17 +102,18 @@ impl<'a> ConditionalNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for ConditionalNode<'a> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for ConditionalNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ConditionalNode::next() called before initialize()");
 
 		// Conditional statements execute once
@@ -126,8 +128,8 @@ impl<'a> QueryNode<'a> for ConditionalNode<'a> {
 			// Compile and execute then branch
 			self.executed = true;
 			let mut then_node = compile(self.then_branch_plan.clone(), rx, stored_ctx.clone());
-			then_node.initialize(rx, stored_ctx)?;
-			return then_node.next(rx, ctx);
+			then_node.initialize(rx, stored_ctx).await?;
+			return then_node.next(rx, ctx).await;
 		}
 
 		// Check else if conditions
@@ -137,8 +139,8 @@ impl<'a> QueryNode<'a> for ConditionalNode<'a> {
 				self.executed = true;
 				let mut else_if_node =
 					compile(else_if.then_branch_plan.clone(), rx, stored_ctx.clone());
-				else_if_node.initialize(rx, stored_ctx)?;
-				return else_if_node.next(rx, ctx);
+				else_if_node.initialize(rx, stored_ctx).await?;
+				return else_if_node.next(rx, ctx).await;
 			}
 		}
 
@@ -146,8 +148,8 @@ impl<'a> QueryNode<'a> for ConditionalNode<'a> {
 		if let Some(else_branch_plan) = &self.else_branch_plan {
 			self.executed = true;
 			let mut else_node = compile(else_branch_plan.clone(), rx, stored_ctx.clone());
-			else_node.initialize(rx, stored_ctx)?;
-			return else_node.next(rx, ctx);
+			else_node.initialize(rx, stored_ctx).await?;
+			return else_node.next(rx, ctx).await;
 		}
 
 		// No conditions matched and no else branch
@@ -155,7 +157,7 @@ impl<'a> QueryNode<'a> for ConditionalNode<'a> {
 		Ok(None)
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Conditionals don't produce meaningful column headers
 		// The actual headers depend on which branch is executed
 		None

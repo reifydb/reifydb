@@ -9,13 +9,13 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_transaction::multi::Transaction;
+use reifydb_transaction::multi::TransactionMulti;
 
 use crate::{as_key, as_values};
 
 #[tokio::test]
 async fn test_rollback_same_tx() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
@@ -24,7 +24,7 @@ async fn test_rollback_same_tx() {
 
 #[tokio::test]
 async fn test_rollback_different_tx() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();

@@ -12,16 +12,16 @@
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
 use reifydb_store_transaction::MultiVersionBatch;
 
-use super::{Transaction, query::TransactionManagerQuery, version::StandardVersionProvider};
+use super::{TransactionMulti, query::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;
 
 pub struct QueryTransaction {
-	pub(crate) engine: Transaction,
+	pub(crate) engine: TransactionMulti,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
 impl QueryTransaction {
-	pub async fn new(engine: Transaction, version: Option<CommitVersion>) -> crate::Result<Self> {
+	pub async fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version).await?;
 		Ok(Self {
 			engine,

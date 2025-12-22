@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::system::{SystemCatalog, ids::table_virtual};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl TablesVirtual {
 	}
 }
 
-impl<'a> TableVirtual<'a> for TablesVirtual {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for TablesVirtual {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -110,19 +116,19 @@ impl<'a> TableVirtual<'a> for TablesVirtual {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: id_col,
 			},
 			Column {
-				name: Fragment::owned_internal("namespace_id"),
+				name: Fragment::internal("namespace_id"),
 				data: ns_col,
 			},
 			Column {
-				name: Fragment::owned_internal("name"),
+				name: Fragment::internal("name"),
 				data: name_col,
 			},
 			Column {
-				name: Fragment::owned_internal("kind"),
+				name: Fragment::internal("kind"),
 				data: kind_col,
 			},
 		];

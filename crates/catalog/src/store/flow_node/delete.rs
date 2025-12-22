@@ -37,7 +37,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_flow_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -55,7 +55,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_node_removes_from_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -75,7 +75,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_nonexistent_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Deleting a non-existent node should succeed silently
 		CatalogStore::delete_flow_node(&mut txn, FlowNodeId(999)).await.unwrap();
@@ -83,7 +83,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_one_node_keeps_others() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 

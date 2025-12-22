@@ -11,7 +11,7 @@
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::{
-	Transaction,
+	TransactionMulti,
 	transaction::{range::TransactionRangeIter, range_rev::TransactionRangeRevIter},
 };
 
@@ -19,7 +19,7 @@ use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[tokio::test]
 async fn test_iter() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -43,7 +43,7 @@ async fn test_iter() {
 
 #[tokio::test]
 async fn test_iter2() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -86,7 +86,7 @@ async fn test_iter2() {
 
 #[tokio::test]
 async fn test_iter3() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
@@ -136,7 +136,7 @@ async fn test_iter3() {
 /// Read at ts=1 -> c1
 #[tokio::test]
 async fn test_iter_edge_case() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// c1
 	{
@@ -233,7 +233,7 @@ async fn test_iter_edge_case() {
 /// Read at ts=1 -> c1
 #[tokio::test]
 async fn test_iter_edge_case2() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// c1
 	{

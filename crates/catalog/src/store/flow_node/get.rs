@@ -32,7 +32,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_flow_node_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -47,7 +47,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_flow_node_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let err = CatalogStore::get_flow_node(&mut txn, FlowNodeId(999)).await.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");

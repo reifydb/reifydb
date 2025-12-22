@@ -34,9 +34,9 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_ringbuffer_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
@@ -44,9 +44,9 @@ mod tests {
 		assert_eq!(pk_id, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_ringbuffer_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set primary key
@@ -59,9 +59,9 @@ mod tests {
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_ringbuffer_pk_id_nonexistent_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, RingBufferId(999)).unwrap();
 

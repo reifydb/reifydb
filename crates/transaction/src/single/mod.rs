@@ -14,17 +14,17 @@ pub use svl::{SvlCommandTransaction, SvlQueryTransaction, TransactionSvl};
 
 #[repr(u8)]
 #[derive(Clone)]
-pub enum TransactionSingleVersion {
+pub enum TransactionSingle {
 	SingleVersionLock(TransactionSvl) = 0,
 }
 
-impl TransactionSingleVersion {
+impl TransactionSingle {
 	pub fn svl(store: TransactionStore, bus: EventBus) -> Self {
 		Self::SingleVersionLock(TransactionSvl::new(store, bus))
 	}
 }
 
-impl TransactionSingleVersion {
+impl TransactionSingle {
 	pub fn testing() -> Self {
 		Self::SingleVersionLock(TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default()))
 	}
@@ -33,7 +33,8 @@ impl TransactionSingleVersion {
 	pub async fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut <Self as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut <Self as SingleVersionTransaction>::Query<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		let mut tx = self.begin_query(keys).await?;
 		f(&mut tx)
@@ -43,7 +44,8 @@ impl TransactionSingleVersion {
 	pub async fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut <Self as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut <Self as SingleVersionTransaction>::Command<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		let mut tx = self.begin_command(keys).await?;
 		let result = f(&mut tx)?;
@@ -52,16 +54,16 @@ impl TransactionSingleVersion {
 	}
 }
 
-impl WithEventBus for TransactionSingleVersion {
+impl WithEventBus for TransactionSingle {
 	fn event_bus(&self) -> &EventBus {
 		match self {
-			TransactionSingleVersion::SingleVersionLock(t) => t.event_bus(),
+			TransactionSingle::SingleVersionLock(t) => t.event_bus(),
 		}
 	}
 }
 
 #[async_trait]
-impl SingleVersionTransaction for TransactionSingleVersion {
+impl SingleVersionTransaction for TransactionSingle {
 	type Query<'a> = SvlQueryTransaction<'a>;
 	type Command<'a> = SvlCommandTransaction<'a>;
 
@@ -71,7 +73,7 @@ impl SingleVersionTransaction for TransactionSingleVersion {
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		match self {
-			TransactionSingleVersion::SingleVersionLock(t) => t.begin_query(keys).await,
+			TransactionSingle::SingleVersionLock(t) => t.begin_query(keys).await,
 		}
 	}
 
@@ -81,7 +83,7 @@ impl SingleVersionTransaction for TransactionSingleVersion {
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		match self {
-			TransactionSingleVersion::SingleVersionLock(t) => t.begin_command(keys).await,
+			TransactionSingle::SingleVersionLock(t) => t.begin_command(keys).await,
 		}
 	}
 }

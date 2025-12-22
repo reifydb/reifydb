@@ -86,18 +86,18 @@ mod tests {
 		_create_operator_retention_policy, create_source_retention_policy,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_source_retention_policies_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_source_retention_policies_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Create policies for different sources
 		let table_source = SourceId::Table(TableId(1));
@@ -129,18 +129,18 @@ mod tests {
 		assert!(policies.iter().any(|p| p.source == ringbuffer_source && p.policy == ringbuffer_policy));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_operator_retention_policies_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_operator_retention_policies_multiple() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Create policies for different operators
 		let operator1 = FlowNodeId(100);
@@ -172,9 +172,9 @@ mod tests {
 		assert!(policies.iter().any(|p| p.operator == operator3 && p.policy == policy3));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_source_retention_policies_after_updates() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let source = SourceId::Table(TableId(42));
 
@@ -199,9 +199,9 @@ mod tests {
 		assert_eq!(policies[0].policy, policy2);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_operator_retention_policies_after_updates() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let operator = FlowNodeId(999);
 

@@ -15,10 +15,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_ringbuffer<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateRingBuffer<'a>,
+	pub(crate) async fn compile_create_ringbuffer<T: CatalogQueryTransaction>(
+		ast: AstCreateRingBuffer,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
 		// Get the ring buffer's namespace for dictionary resolution

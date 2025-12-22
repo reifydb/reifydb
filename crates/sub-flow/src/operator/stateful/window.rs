@@ -67,7 +67,7 @@ mod tests {
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
-	fn test_window_key(window_id: u64) -> EncodedKey {
+	async fn test_window_key(window_id: u64) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
@@ -81,8 +81,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_window_key_encoding() {
+	#[tokio::test]
+	async fn test_window_key_encoding() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Test different window IDs
@@ -99,8 +99,8 @@ mod tests {
 		assert!(key2 > key100);
 	}
 
-	#[test]
-	fn test_create_state() {
+	#[tokio::test]
+	async fn test_create_state() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let state = operator.create_state();
 
@@ -108,9 +108,9 @@ mod tests {
 		assert!(state.len() > 0);
 	}
 
-	#[test]
-	fn test_load_save_window_state() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_load_save_window_state() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
@@ -128,9 +128,9 @@ mod tests {
 		assert_eq!(state2.as_ref()[0], 0xAB);
 	}
 
-	#[test]
-	fn test_multiple_windows() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_multiple_windows() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -149,9 +149,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_expire_before() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_expire_before() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -184,9 +184,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_expire_empty_range() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_expire_empty_range() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -211,9 +211,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_expire_all() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_expire_all() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -238,9 +238,9 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_sliding_window_simulation() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_sliding_window_simulation() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::new(FlowNodeId(1));
 

@@ -20,18 +20,18 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn insert_dictionary<'a>(
+	pub(crate) async fn insert_dictionary<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: InsertDictionaryNode<'a>,
+		plan: InsertDictionaryNode,
 		stack: &mut Stack,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
 
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let dictionary_name = plan.target.name();
-		let Some(dictionary) = CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name)?
+		let Some(dictionary) = CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name).await?
 		else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
@@ -50,7 +50,7 @@ impl Executor {
 		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context)?;
+		input_node.initialize(&mut std_txn, &execution_context).await?;
 
 		// Collect all inserted (id, value) pairs
 		let mut ids: Vec<Value> = Vec::new();
@@ -59,7 +59,7 @@ impl Executor {
 
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context)?
+		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
 		{
 			let row_count = columns.row_count();
 
@@ -86,7 +86,7 @@ impl Executor {
 
 				// Insert into dictionary
 				let entry_id =
-					std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value)?;
+					crate::util::block_on(std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value))?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),
@@ -106,15 +106,15 @@ impl Executor {
 			// No entries inserted - return empty result
 			return Ok(Columns::new(vec![
 				Column {
-					name: Fragment::owned_internal("namespace"),
+					name: Fragment::internal("namespace"),
 					data: ColumnData::utf8(vec![namespace.name.clone()]),
 				},
 				Column {
-					name: Fragment::owned_internal("dictionary"),
+					name: Fragment::internal("dictionary"),
 					data: ColumnData::utf8(vec![dictionary.name.clone()]),
 				},
 				Column {
-					name: Fragment::owned_internal("inserted"),
+					name: Fragment::internal("inserted"),
 					data: ColumnData::uint8(vec![0]),
 				},
 			]));
@@ -128,11 +128,11 @@ impl Executor {
 
 		Ok(Columns::new(vec![
 			Column {
-				name: Fragment::owned_internal("namespace"),
+				name: Fragment::internal("namespace"),
 				data: ColumnData::utf8(vec![namespace.name.clone(); ids.len()]),
 			},
 			Column {
-				name: Fragment::owned_internal("dictionary"),
+				name: Fragment::internal("dictionary"),
 				data: ColumnData::utf8(vec![dictionary.name.clone(); ids.len()]),
 			},
 			id_column,
@@ -177,7 +177,7 @@ fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> crate::Re
 }
 
 /// Build the ID column based on the dictionary's id_type
-fn build_id_column(ids: &[Value], id_type: Type) -> crate::Result<Column<'static>> {
+fn build_id_column(ids: &[Value], id_type: Type) -> crate::Result<Column> {
 	let data = match id_type {
 		Type::Uint1 => {
 			let vals: Vec<u8> = ids
@@ -243,13 +243,13 @@ fn build_id_column(ids: &[Value], id_type: Type) -> crate::Result<Column<'static
 	};
 
 	Ok(Column {
-		name: Fragment::owned_internal("id"),
+		name: Fragment::internal("id"),
 		data,
 	})
 }
 
 /// Build the value column based on the dictionary's value_type
-fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column<'static>> {
+fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column> {
 	let data = match value_type {
 		Type::Utf8 => {
 			let vals: Vec<String> = values
@@ -349,7 +349,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Colum
 	};
 
 	Ok(Column {
-		name: Fragment::owned_internal("value"),
+		name: Fragment::internal("value"),
 		data,
 	})
 }

@@ -15,13 +15,13 @@ use crate::{
 };
 
 pub(crate) struct AggregateCompiler {
-	pub input: Box<PhysicalPlan<'static>>,
-	pub by: Vec<Expression<'static>>,
-	pub map: Vec<Expression<'static>>,
+	pub input: Box<PhysicalPlan>,
+	pub by: Vec<Expression>,
+	pub map: Vec<Expression>,
 }
 
-impl<'a> From<AggregateNode<'a>> for AggregateCompiler {
-	fn from(node: AggregateNode<'a>) -> Self {
+impl From<AggregateNode> for AggregateCompiler {
+	fn from(node: AggregateNode) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			by: to_owned_expressions(node.by),

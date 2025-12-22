@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -17,16 +18,16 @@ use crate::{
 	function::{GeneratorContext, GeneratorFunction},
 };
 
-pub(crate) struct GeneratorNode<'a> {
-	function_name: Fragment<'a>,
-	expressions: Vec<Expression<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct GeneratorNode {
+	function_name: Fragment,
+	expressions: Vec<Expression>,
+	context: Option<Arc<ExecutionContext>>,
 	exhausted: bool,
 	generator: Option<Box<dyn GeneratorFunction>>,
 }
 
-impl<'a> GeneratorNode<'a> {
-	pub fn new(function_name: Fragment<'a>, parameter_expressions: Vec<Expression<'a>>) -> Self {
+impl GeneratorNode {
+	pub fn new(function_name: Fragment, parameter_expressions: Vec<Expression>) -> Self {
 		Self {
 			function_name,
 			expressions: parameter_expressions,
@@ -37,8 +38,9 @@ impl<'a> GeneratorNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for GeneratorNode<'a> {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for GeneratorNode {
+	async fn initialize<'a>(&mut self, _txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let generator = ctx
@@ -52,11 +54,11 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		txn: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -99,16 +101,16 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		self.exhausted = true;
 
 		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from generator.generate() which returns Columns<'a>
+		// SAFETY: The columns come from generator.generate() which returns Columns
 		// so they genuinely have lifetime 'a through the query execution
-		let columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(columns) };
+		let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
 
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		None
 	}
 }

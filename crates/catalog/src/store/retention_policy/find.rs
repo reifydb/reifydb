@@ -45,9 +45,9 @@ mod tests {
 		_create_operator_retention_policy, create_source_retention_policy,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(42));
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -61,18 +61,18 @@ mod tests {
 		assert_eq!(found, Some(policy));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(9999));
 
 		let found = CatalogStore::find_source_retention_policy(&mut txn, source).unwrap();
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_operator_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(999);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -86,9 +86,9 @@ mod tests {
 		assert_eq!(found, Some(policy));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_operator_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(9999);
 
 		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();

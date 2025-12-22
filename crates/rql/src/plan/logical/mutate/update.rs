@@ -12,10 +12,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_update<'a, T: CatalogQueryTransaction>(
-		ast: AstUpdate<'a>,
+	pub(crate) async fn compile_update<T: CatalogQueryTransaction>(
+		ast: AstUpdate,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Get the target, if None it means the target will come from a pipeline
 		let Some(unresolved) = &ast.target else {
 			// For pipeline case, we don't know if it's a table or ring buffer yet

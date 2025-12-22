@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::{
 	collections::{BTreeSet, HashMap},
 	sync::Arc,
@@ -21,15 +22,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub(crate) struct InlineDataNode<'a> {
-	rows: Vec<Vec<AliasExpression<'a>>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct InlineDataNode {
+	rows: Vec<Vec<AliasExpression>>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
-impl<'a> InlineDataNode<'a> {
-	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext<'a>>) -> Self {
+impl InlineDataNode {
+	pub fn new(rows: Vec<Vec<AliasExpression>>, context: Arc<ExecutionContext>) -> Self {
 		// Clone the Arc to extract headers without borrowing issues
 		let cloned_context = context.clone();
 		let headers =
@@ -43,28 +44,29 @@ impl<'a> InlineDataNode<'a> {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnHeaders<'a> {
+	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnHeaders {
 		ColumnHeaders {
-			columns: source.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
 	}
 }
 
-impl<'a> QueryNode<'a> for InlineDataNode<'a> {
-	fn initialize(
+#[async_trait]
+impl QueryNode for InlineDataNode {
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap().clone();
 
@@ -93,12 +95,12 @@ impl<'a> QueryNode<'a> for InlineDataNode<'a> {
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
 }
 
-impl<'a> InlineDataNode<'a> {
+impl<'a> InlineDataNode {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {
@@ -141,7 +143,7 @@ impl<'a> InlineDataNode<'a> {
 		}
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next_infer_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch>> {
 		// Collect all unique column names across all rows
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
@@ -291,7 +293,7 @@ impl<'a> InlineDataNode<'a> {
 			// if needed
 
 			columns.push(Column {
-				name: Fragment::owned_internal(column_name),
+				name: Fragment::internal(column_name),
 				data: column_data,
 			});
 		}
@@ -304,7 +306,7 @@ impl<'a> InlineDataNode<'a> {
 		}))
 	}
 
-	fn next_with_source(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next_with_source(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
 		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
 

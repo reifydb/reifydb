@@ -10,9 +10,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_dictionary<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateDictionary<'a>,
+		ast: AstCreateDictionary,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::CreateDictionary(CreateDictionaryNode {
 			dictionary: ast.dictionary,
 			if_not_exists: ast.if_not_exists,

@@ -9,13 +9,13 @@ use serde::{Deserialize, Serialize};
 
 /// Column identifier with source qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnIdentifier<'a> {
-	pub source: ColumnSource<'a>,
-	pub name: Fragment<'a>,
+pub struct ColumnIdentifier {
+	pub source: ColumnSource,
+	pub name: Fragment,
 }
 
-impl<'a> ColumnIdentifier<'a> {
-	pub fn with_source(namespace: Fragment<'a>, source: Fragment<'a>, name: Fragment<'a>) -> Self {
+impl ColumnIdentifier {
+	pub fn with_source(namespace: Fragment, source: Fragment, name: Fragment) -> Self {
 		Self {
 			source: ColumnSource::Source {
 				namespace,
@@ -25,68 +25,68 @@ impl<'a> ColumnIdentifier<'a> {
 		}
 	}
 
-	pub fn with_alias(alias: Fragment<'a>, name: Fragment<'a>) -> Self {
+	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
 			source: ColumnSource::Alias(alias),
 			name,
 		}
 	}
 
-	pub fn into_owned(self) -> ColumnIdentifier<'static> {
+	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
 			source: self.source.into_owned(),
-			name: Fragment::Owned(self.name.into_owned()),
+			name: self.name.into_owned(),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnIdentifier<'static> {
+	pub fn to_static(&self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			source: self.source.to_static(),
-			name: Fragment::owned_internal(self.name.text()),
+			source: self.source.clone(),
+			name: Fragment::internal(self.name.text()),
 		}
 	}
 }
 
 /// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ColumnSource<'a> {
+pub enum ColumnSource {
 	/// Fully qualified by namespace.source
 	Source {
-		namespace: Fragment<'a>,
-		source: Fragment<'a>,
+		namespace: Fragment,
+		source: Fragment,
 	},
 	/// Qualified by alias (which maps to a fully qualified source)
-	Alias(Fragment<'a>),
+	Alias(Fragment),
 }
 
-impl<'a> ColumnSource<'a> {
-	pub fn into_owned(self) -> ColumnSource<'static> {
+impl ColumnSource {
+	pub fn into_owned(self) -> ColumnSource {
 		match self {
 			ColumnSource::Source {
 				namespace,
 				source,
 			} => ColumnSource::Source {
-				namespace: Fragment::Owned(namespace.into_owned()),
-				source: Fragment::Owned(source.into_owned()),
+				namespace: namespace.into_owned(),
+				source: source.into_owned(),
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::Owned(alias.into_owned())),
+			ColumnSource::Alias(alias) => ColumnSource::Alias(alias.into_owned()),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnSource<'static> {
+	pub fn to_static(&self) -> ColumnSource {
 		match self {
 			ColumnSource::Source {
 				namespace,
 				source,
 			} => ColumnSource::Source {
-				namespace: Fragment::owned_internal(namespace.text()),
-				source: Fragment::owned_internal(source.text()),
+				namespace: Fragment::internal(namespace.text()),
+				source: Fragment::internal(source.text()),
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::owned_internal(alias.text())),
+			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::internal(alias.text())),
 		}
 	}
 
-	pub fn as_fragment(&self) -> &Fragment<'a> {
+	pub fn as_fragment(&self) -> &Fragment {
 		match self {
 			ColumnSource::Source {
 				source,

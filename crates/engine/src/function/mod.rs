@@ -17,7 +17,7 @@ pub use registry::{Functions, FunctionsBuilder};
 use crate::execute::Executor;
 
 pub struct ScalarFunctionContext<'a> {
-	pub columns: &'a Columns<'a>,
+	pub columns: &'a Columns,
 	pub row_count: usize,
 }
 
@@ -26,7 +26,7 @@ pub trait ScalarFunction: Send + Sync {
 }
 
 pub struct AggregateFunctionContext<'a> {
-	pub column: &'a Column<'a>,
+	pub column: &'a Column,
 	pub groups: &'a GroupByView,
 }
 
@@ -36,16 +36,12 @@ pub trait AggregateFunction: Send + Sync {
 	fn finalize(&mut self) -> crate::Result<(Vec<GroupKey>, ColumnData)>;
 }
 
-pub struct GeneratorContext<'a> {
-	pub params: Columns<'a>,
-	pub execution: ExecutionContext<'a>,
+pub struct GeneratorContext {
+	pub params: Columns,
+	pub execution: ExecutionContext,
 	pub executor: Executor,
 }
 
 pub trait GeneratorFunction: Send + Sync {
-	fn generate<'a>(
-		&self,
-		txn: &mut StandardTransaction<'a>,
-		ctx: GeneratorContext<'a>,
-	) -> crate::Result<Columns<'a>>;
+	fn generate<'a>(&self, txn: &mut StandardTransaction<'a>, ctx: GeneratorContext) -> crate::Result<Columns>;
 }

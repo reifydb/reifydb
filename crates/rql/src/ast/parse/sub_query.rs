@@ -7,9 +7,9 @@ use crate::ast::{
 	tokenize::Operator::{self, CloseCurly, OpenCurly},
 };
 
-impl<'a> Parser<'a> {
+impl Parser {
 	/// Parse a subquery enclosed in braces: { query statement }
-	pub(crate) fn parse_sub_query(&mut self) -> crate::Result<AstSubQuery<'a>> {
+	pub(crate) fn parse_sub_query(&mut self) -> crate::Result<AstSubQuery> {
 		let token = self.consume_operator(OpenCurly)?;
 		let statement = self.parse_sub_query_statement()?;
 		self.consume_operator(CloseCurly)?;
@@ -22,7 +22,7 @@ impl<'a> Parser<'a> {
 
 	/// Parse the statement inside a subquery
 	/// This is similar to the main parse() but stops at CloseCurly
-	fn parse_sub_query_statement(&mut self) -> crate::Result<AstStatement<'a>> {
+	fn parse_sub_query_statement(&mut self) -> crate::Result<AstStatement> {
 		let mut nodes = Vec::new();
 		let mut has_pipes = false;
 

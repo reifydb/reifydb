@@ -9,12 +9,12 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
 
 impl Executor {
-	pub(crate) fn create_deferred_view<'a>(
+	pub(crate) async fn create_deferred_view<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDeferredViewNode,
-	) -> crate::Result<Columns<'a>> {
-		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.text())? {
+	) -> crate::Result<Columns> {
+		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -24,14 +24,14 @@ impl Executor {
 			}
 		}
 
-		let result = block_on(txn.create_view(ViewToCreate {
+		let result = txn.create_view(ViewToCreate {
 			fragment: Some(plan.view.clone().into_owned()),
 			name: plan.view.text().to_string(),
 			namespace: plan.namespace.id,
 			columns: plan.columns,
-		}))?;
+		}).await?;
 
-		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
+		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -53,19 +53,19 @@ mod tests {
 		execute::Executor, stack::Stack, test_utils::create_test_command_transaction_with_internal_schema,
 	};
 
-	#[test]
-	fn test_create_view() {
+	#[tokio::test]
+	async fn test_create_view() {
 		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let mut plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: Fragment::internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			as_clause: Box::new(InlineData(InlineDataNode {
@@ -83,6 +83,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 
@@ -100,6 +101,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 
@@ -117,16 +119,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[test]
-	fn test_create_same_view_in_different_schema() {
+	#[tokio::test]
+	async fn test_create_same_view_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 		let another_schema = create_namespace(&mut txn, "another_schema");
 
 		let plan = CreateDeferredViewNode {
@@ -134,7 +137,7 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: Fragment::internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			as_clause: Box::new(InlineData(InlineDataNode {
@@ -151,6 +154,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 
@@ -162,7 +166,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: Fragment::owned_internal("test_view"),
+			view: Fragment::internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			as_clause: Box::new(InlineData(InlineDataNode {
@@ -178,6 +182,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -185,8 +190,8 @@ mod tests {
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
-	#[test]
-	fn test_create_view_missing_schema() {
+	#[tokio::test]
+	async fn test_create_view_missing_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
@@ -195,7 +200,7 @@ mod tests {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: Fragment::owned_internal("my_view"),
+			view: Fragment::internal("my_view"),
 			if_not_exists: false,
 			columns: vec![],
 			as_clause: Box::new(InlineData(InlineDataNode {
@@ -211,6 +216,7 @@ mod tests {
 			Params::default(),
 			&mut stack,
 		)
+		.await
 		.unwrap_err();
 	}
 }

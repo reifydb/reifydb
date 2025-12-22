@@ -9,19 +9,19 @@ use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 use super::super::{CompileOperator, FlowCompiler, FlowNodeType};
 use crate::{Result, plan::physical::TableScanNode};
 
-pub(crate) struct TableScanCompiler<'a> {
-	pub table_scan: TableScanNode<'a>,
+pub(crate) struct TableScanCompiler {
+	pub table_scan: TableScanNode,
 }
 
-impl<'a> From<TableScanNode<'a>> for TableScanCompiler<'a> {
-	fn from(table_scan: TableScanNode<'a>) -> Self {
+impl From<TableScanNode> for TableScanCompiler {
+	fn from(table_scan: TableScanNode) -> Self {
 		Self {
 			table_scan,
 		}
 	}
 }
 
-impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler<'a> {
+impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		compiler.build_node(SourceTable {
 			table: self.table_scan.source.def().id,

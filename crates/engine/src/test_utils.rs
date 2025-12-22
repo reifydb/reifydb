@@ -10,10 +10,10 @@ use reifydb_catalog::{
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_store_transaction::TransactionStore;
-pub use reifydb_transaction::multi::Transaction;
+pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
 	cdc::TransactionCdc,
-	single::{TransactionSingleVersion, TransactionSvl},
+	single::{TransactionSingle, TransactionSvl},
 };
 use reifydb_type::{Type, TypeConstraint};
 
@@ -24,9 +24,9 @@ pub async fn create_test_command_transaction() -> StandardCommandTransaction {
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
-	let single = TransactionSingleVersion::SingleVersionLock(single_svl.clone());
+	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = Transaction::new(store, single.clone(), event_bus.clone()).await;
+	let multi = TransactionMulti::new(store, single.clone(), event_bus.clone()).await.unwrap();
 
 	StandardCommandTransaction::new(multi, single, cdc, event_bus, MaterializedCatalog::new(), Interceptors::new())
 		.await
@@ -38,9 +38,9 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
-	let single = TransactionSingleVersion::SingleVersionLock(single_svl.clone());
+	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = Transaction::new(store.clone(), single.clone(), event_bus.clone()).await;
+	let multi = TransactionMulti::new(store.clone(), single.clone(), event_bus.clone()).await.unwrap();
 	let mut result = StandardCommandTransaction::new(
 		multi,
 		single,
@@ -59,6 +59,7 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 			name: "reifydb".to_string(),
 		},
 	)
+	.await
 	.unwrap();
 
 	CatalogStore::create_table(
@@ -88,6 +89,7 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 			retention_policy: None,
 		},
 	)
+	.await
 	.unwrap();
 
 	result

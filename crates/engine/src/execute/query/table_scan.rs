@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
@@ -24,10 +25,10 @@ use crate::{
 	transaction::operation::DictionaryOperations,
 };
 
-pub(crate) struct TableScanNode<'a> {
-	table: ResolvedTable<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+pub(crate) struct TableScanNode {
+	table: ResolvedTable,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
@@ -37,10 +38,10 @@ pub(crate) struct TableScanNode<'a> {
 	exhausted: bool,
 }
 
-impl<'a> TableScanNode<'a> {
+impl TableScanNode {
 	pub fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
-		table: ResolvedTable<'a>,
-		context: Arc<ExecutionContext<'a>>,
+		table: ResolvedTable,
+		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
 	) -> crate::Result<Self> {
 		// Look up dictionaries and build storage types
@@ -49,7 +50,7 @@ impl<'a> TableScanNode<'a> {
 
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+				if let Some(dict) = crate::util::block_on(CatalogStore::find_dictionary(rx, dict_id))? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -66,7 +67,7 @@ impl<'a> TableScanNode<'a> {
 		let row_layout = EncodedValuesLayout::new(&storage_types);
 
 		let headers = ColumnHeaders {
-			columns: table.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -82,23 +83,24 @@ impl<'a> TableScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for TableScanNode<'a> {
+#[async_trait]
+impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::initialize")]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -115,8 +117,10 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		let mut new_last_key = None;
 
 		let multi_rows: Vec<_> = {
-			let _span = debug_span!("range_batched", batch_size).entered();
-			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect()
+			let _span = debug_span!("range_batch", batch_size);
+			let batch = rx.range_batch(range, batch_size).await?;
+			drop(_span);
+			batch.items.into_iter().take(batch_size as usize).collect()
 		};
 
 		{
@@ -149,7 +153,7 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 				.iter()
 				.enumerate()
 				.map(|(idx, col)| Column {
-					name: Fragment::owned_internal(&col.name),
+					name: Fragment::internal(&col.name),
 					data: ColumnData::with_capacity(self.storage_types[idx], 0),
 				})
 				.collect()
@@ -176,16 +180,16 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
-impl<'a> TableScanNode<'a> {
+impl<'a> TableScanNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
 	fn decode_dictionary_columns(
 		&self,
-		columns: &mut Columns<'a>,
+		columns: &mut Columns,
 		rx: &mut crate::StandardTransaction<'a>,
 	) -> crate::Result<()> {
 		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
@@ -202,7 +206,7 @@ impl<'a> TableScanNode<'a> {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 						if let Some(decoded_value) =
-							rx.get_from_dictionary(dictionary, entry_id)?
+							crate::util::block_on(rx.get_from_dictionary(dictionary, entry_id))?
 						{
 							new_data.push_value(decoded_value);
 						} else {

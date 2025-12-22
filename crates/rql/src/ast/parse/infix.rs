@@ -9,8 +9,8 @@ use crate::ast::{
 	tokenize::{Operator, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_infix(&mut self, left: Ast<'a>) -> crate::Result<AstInfix<'a>> {
+impl Parser {
+	pub(crate) fn parse_infix(&mut self, left: Ast) -> crate::Result<AstInfix> {
 		let precedence = self.current_precedence()?;
 		let operator = self.parse_infix_operator()?;
 
@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator<'a>> {
+	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {

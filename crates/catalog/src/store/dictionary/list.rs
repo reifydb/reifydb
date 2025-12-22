@@ -75,20 +75,20 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_dictionaries_empty() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
 
 		assert!(result.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_dictionaries_multiple() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create multiple dictionaries
 		for i in 0..3 {
@@ -107,10 +107,10 @@ mod tests {
 		assert_eq!(result.len(), 3);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_dictionaries_different_namespaces() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
@@ -154,10 +154,10 @@ mod tests {
 		assert_eq!(ns2_dicts.len(), 3);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_all_dictionaries() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,

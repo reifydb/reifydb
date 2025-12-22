@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, NamespaceDef, NamespaceKey};
-use reifydb_type::{OwnedFragment, diagnostic::catalog::namespace_already_exists, return_error};
+use reifydb_type::{Fragment, diagnostic::catalog::namespace_already_exists, return_error};
 
 use crate::{
 	CatalogStore,
@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct NamespaceToCreate {
-	pub namespace_fragment: Option<OwnedFragment>,
+	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
 }
 
@@ -24,7 +24,10 @@ impl CatalogStore {
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
 		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name).await? {
-			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
+			return_error!(namespace_already_exists(
+				to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name
+			));
 		}
 
 		let namespace_id = SystemSequence::next_namespace_id(txn).await?;
@@ -48,7 +51,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let to_create = NamespaceToCreate {
 			namespace_fragment: None,

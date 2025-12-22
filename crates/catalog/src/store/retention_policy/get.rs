@@ -55,7 +55,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_source_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::View(ViewId(100));
 
 		let policy = RetentionPolicy::KeepForever;
@@ -68,7 +68,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_source_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::RingBuffer(RingBufferId(9999));
 
 		let err = CatalogStore::get_source_retention_policy(&mut txn, source).await.unwrap_err();
@@ -80,7 +80,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_operator_retention_policy_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(777);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -96,7 +96,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_operator_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(9999);
 
 		let err = CatalogStore::get_operator_retention_policy(&mut txn, operator).await.unwrap_err();

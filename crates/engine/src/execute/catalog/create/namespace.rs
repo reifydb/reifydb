@@ -11,14 +11,14 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
 
 impl Executor {
-	pub(crate) fn create_namespace<'a>(
+	pub(crate) async fn create_namespace<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateNamespaceNode,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Check if namespace already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_namespace_by_name(plan.namespace.as_borrowed())? {
+		if let Some(_) = txn.find_namespace_by_name(plan.namespace.clone()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.text().to_string())),
@@ -29,10 +29,10 @@ impl Executor {
 			// namespace exists
 		}
 
-		let result = block_on(txn.create_namespace(NamespaceToCreate {
+		let result = txn.create_namespace(NamespaceToCreate {
 			namespace_fragment: Some(plan.namespace.clone().into_owned()),
 			name: plan.namespace.text().to_string(),
-		}))?;
+		}).await?;
 
 		Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
 	}
@@ -46,13 +46,13 @@ mod tests {
 
 	use crate::{execute::Executor, stack::Stack, test_utils::create_test_command_transaction};
 
-	#[test]
-	fn test_create_namespace() {
+	#[tokio::test]
+	async fn test_create_namespace() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let mut plan = CreateNamespaceNode {
-			namespace: Fragment::owned_internal("my_schema"),
+			namespace: Fragment::internal("my_schema"),
 			if_not_exists: false,
 		};
 
@@ -65,6 +65,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 
@@ -81,6 +82,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
@@ -96,6 +98,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

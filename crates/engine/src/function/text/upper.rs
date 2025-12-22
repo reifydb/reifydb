@@ -64,14 +64,14 @@ mod tests {
 
 	use super::*;
 
-	#[test]
-	fn test_upper_simple() {
+	#[tokio::test]
+	async fn test_upper_simple() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec!["hello world".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -97,8 +97,8 @@ mod tests {
 		assert_eq!(container[0], "HELLO WORLD");
 	}
 
-	#[test]
-	fn test_upper_mixed_case() {
+	#[tokio::test]
+	async fn test_upper_mixed_case() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec![
@@ -109,7 +109,7 @@ mod tests {
 		];
 		let bitvec = vec![true, true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -137,8 +137,8 @@ mod tests {
 		assert_eq!(container[3], "LOWERCASE");
 	}
 
-	#[test]
-	fn test_upper_special_characters() {
+	#[tokio::test]
+	async fn test_upper_special_characters() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec![
@@ -148,7 +148,7 @@ mod tests {
 		];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -175,8 +175,8 @@ mod tests {
 		assert_eq!(container[2], "WITH SPACES & PUNCTUATION!");
 	}
 
-	#[test]
-	fn test_upper_unicode() {
+	#[tokio::test]
+	async fn test_upper_unicode() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec![
@@ -186,7 +186,7 @@ mod tests {
 		];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -213,14 +213,14 @@ mod tests {
 		assert_eq!(container[2], "ÑOÑO");
 	}
 
-	#[test]
-	fn test_upper_empty_and_whitespace() {
+	#[tokio::test]
+	async fn test_upper_empty_and_whitespace() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec!["".to_string(), "   ".to_string(), "\t\n\r".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -247,14 +247,14 @@ mod tests {
 		assert_eq!(container[2], "\t\n\r");
 	}
 
-	#[test]
-	fn test_upper_with_null_data() {
+	#[tokio::test]
+	async fn test_upper_with_null_data() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec!["hello".to_string(), "".to_string(), "world".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -284,8 +284,8 @@ mod tests {
 		assert_eq!(container[2], "WORLD");
 	}
 
-	#[test]
-	fn test_upper_multibyte_characters() {
+	#[tokio::test]
+	async fn test_upper_multibyte_characters() {
 		let function = TextUpper::new();
 
 		let utf8_data = vec![
@@ -296,7 +296,7 @@ mod tests {
 		];
 		let bitvec = vec![true, true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -325,15 +325,15 @@ mod tests {
 		assert_eq!(container[3], "العربية");
 	}
 
-	#[test]
-	fn test_upper_emoji_and_symbols() {
+	#[tokio::test]
+	async fn test_upper_emoji_and_symbols() {
 		let function = TextUpper::new();
 
 		let utf8_data =
 			vec!["hello 🌍 world".to_string(), "test 💻 code".to_string(), "data 📊 analysis".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

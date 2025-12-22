@@ -61,9 +61,9 @@ mod tests {
 	// Test implementation of SimpleStatefulOperator
 	impl RawStatefulOperator for TestOperator {}
 
-	#[test]
-	fn test_simple_state_get_set() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_simple_state_get_set() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("simple_test");
@@ -79,9 +79,9 @@ mod tests {
 		assert_row_eq(&result.unwrap(), &value);
 	}
 
-	#[test]
-	fn test_simple_state_remove() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_simple_state_remove() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("remove_test");
@@ -95,9 +95,9 @@ mod tests {
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
 	}
 
-	#[test]
-	fn test_simple_state_scan() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_simple_state_scan() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -114,9 +114,9 @@ mod tests {
 		assert_eq!(scanned.len(), 3);
 	}
 
-	#[test]
-	fn test_simple_state_range() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_simple_state_range() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(2));
 
@@ -137,9 +137,9 @@ mod tests {
 		assert_eq!(range_result[2].1.as_ref()[0], 4);
 	}
 
-	#[test]
-	fn test_simple_state_clear() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_simple_state_clear() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(3));
 
@@ -168,9 +168,9 @@ mod tests {
 		assert_eq!(count, 0);
 	}
 
-	#[test]
-	fn test_operator_isolation() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_operator_isolation() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator1 = TestOperator::simple(FlowNodeId(10));
 		let operator2 = TestOperator::simple(FlowNodeId(20));
@@ -191,9 +191,9 @@ mod tests {
 		assert_row_eq(&result2, &value2);
 	}
 
-	#[test]
-	fn test_empty_range() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_empty_range() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(4));
 
@@ -211,9 +211,9 @@ mod tests {
 		assert_eq!(range_result.len(), 0);
 	}
 
-	#[test]
-	fn test_overwrite_existing_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_overwrite_existing_key() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
@@ -232,9 +232,9 @@ mod tests {
 		assert_row_eq(&result, &value2);
 	}
 
-	#[test]
-	fn test_remove_non_existent_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_remove_non_existent_key() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
@@ -246,9 +246,9 @@ mod tests {
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
 	}
 
-	#[test]
-	fn test_scan_after_partial_removal() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_scan_after_partial_removal() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(7));
 
@@ -268,8 +268,8 @@ mod tests {
 		assert_eq!(remaining.len(), 3);
 	}
 
-	#[test]
-	fn test_transaction_isolation() {
+	#[tokio::test]
+	async fn test_transaction_isolation() {
 		let engine = create_test_engine();
 		let operator = TestOperator::simple(FlowNodeId(8));
 		let key = test_key("isolation");

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::ColumnData;
-use reifydb_type::{OwnedFragment, value::Blob};
+use reifydb_type::{Fragment, value::Blob};
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
 
@@ -30,7 +30,7 @@ impl ScalarFunction for BlobB64url {
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let b64url_str = &container[i];
-						let blob = Blob::from_b64url(OwnedFragment::internal(b64url_str))?;
+						let blob = Blob::from_b64url(Fragment::internal(b64url_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
@@ -55,15 +55,15 @@ mod tests {
 	use super::*;
 	use crate::function::ScalarFunctionContext;
 
-	#[test]
-	fn test_blob_b64url_valid_input() {
+	#[tokio::test]
+	async fn test_blob_b64url_valid_input() {
 		let function = BlobB64url::new();
 
 		// "Hello!" in base64url is "SGVsbG8h" (no padding needed)
 		let b64url_data = vec!["SGVsbG8h".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -89,14 +89,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), "Hello!".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b64url_empty_string() {
+	#[tokio::test]
+	async fn test_blob_b64url_empty_string() {
 		let function = BlobB64url::new();
 
 		let b64url_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -122,8 +122,8 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[] as &[u8]);
 	}
 
-	#[test]
-	fn test_blob_b64url_url_safe_characters() {
+	#[tokio::test]
+	async fn test_blob_b64url_url_safe_characters() {
 		let function = BlobB64url::new();
 
 		// Base64url uses - and _ instead of + and /
@@ -131,7 +131,7 @@ mod tests {
 		let b64url_data = vec!["SGVsbG9fV29ybGQtSGVsbG8".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -157,8 +157,8 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), "Hello_World-Hello".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b64url_no_padding() {
+	#[tokio::test]
+	async fn test_blob_b64url_no_padding() {
 		let function = BlobB64url::new();
 
 		// Base64url typically omits padding characters
@@ -166,7 +166,7 @@ mod tests {
 		let b64url_data = vec!["SGVsbG8".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -192,8 +192,8 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), "Hello".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b64url_multiple_rows() {
+	#[tokio::test]
+	async fn test_blob_b64url_multiple_rows() {
 		let function = BlobB64url::new();
 
 		// "A" = "QQ", "BC" = "QkM", "DEF" = "REVG" (no padding in
@@ -201,7 +201,7 @@ mod tests {
 		let b64url_data = vec!["QQ".to_string(), "QkM".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -232,14 +232,14 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b64url_with_null_data() {
+	#[tokio::test]
+	async fn test_blob_b64url_with_null_data() {
 		let function = BlobB64url::new();
 
 		let b64url_data = vec!["QQ".to_string(), "".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -270,8 +270,8 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b64url_binary_data() {
+	#[tokio::test]
+	async fn test_blob_b64url_binary_data() {
 		let function = BlobB64url::new();
 
 		// Binary data: [0xde, 0xad, 0xbe, 0xef] in base64url is
@@ -279,7 +279,7 @@ mod tests {
 		let b64url_data = vec!["3q2-7w".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -305,8 +305,8 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_b64url_invalid_input_should_error() {
+	#[tokio::test]
+	async fn test_blob_b64url_invalid_input_should_error() {
 		let function = BlobB64url::new();
 
 		// Using standard base64 characters that are invalid in
@@ -314,7 +314,7 @@ mod tests {
 		let b64url_data = vec!["invalid+base64/chars".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -330,15 +330,15 @@ mod tests {
 		assert!(result.is_err(), "Expected error for invalid base64url input");
 	}
 
-	#[test]
-	fn test_blob_b64url_with_standard_base64_padding_should_error() {
+	#[tokio::test]
+	async fn test_blob_b64url_with_standard_base64_padding_should_error() {
 		let function = BlobB64url::new();
 
 		// Base64url typically doesn't use padding, so this should error
 		let b64url_data = vec!["SGVsbG8=".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

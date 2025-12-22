@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 	interceptor::{ViewDefInterceptor, WithInterceptors},
 };
 use reifydb_type::{
-	IntoFragment,
+	Fragment,
 	diagnostic::catalog::{view_already_exists, view_not_found},
 	error, internal, return_error,
 };
@@ -41,18 +41,18 @@ pub trait CatalogTrackViewChangeOperations {
 pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
 	async fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
 
-	async fn find_view_by_name<'a>(
+	async fn find_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<Option<ViewDef>>;
 
 	async fn get_view(&mut self, id: ViewId) -> crate::Result<ViewDef>;
 
-	async fn get_view_by_name<'a>(
+	async fn get_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<ViewDef>;
 }
 
@@ -68,9 +68,13 @@ impl<
 {
 	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
 	async fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
-		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name).await? {
+		if let Some(view) = self.find_view_by_name(to_create.namespace, to_create.name.as_str()).await? {
 			let namespace = self.get_namespace(to_create.namespace).await?;
-			return_error!(view_already_exists(to_create.fragment, &namespace.name, &view.name));
+			return_error!(view_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&view.name
+			));
 		}
 		let result = CatalogStore::create_deferred_view(self, to_create).await?;
 		self.track_view_def_created(result.clone())?;
@@ -112,22 +116,22 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, name))]
-	async fn find_view_by_name<'a>(
+	async fn find_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> reifydb_core::Result<Option<ViewDef>> {
-		let name = name.into_fragment();
+		let name = name.into();
 
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(view) = TransactionalViewChanges::find_view_by_name(self, namespace, name.as_borrowed()) {
+		if let Some(view) = TransactionalViewChanges::find_view_by_name(self, namespace, name.clone()) {
 			return Ok(Some(view.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalViewChanges::is_view_deleted_by_name(self, namespace, name.as_borrowed()) {
+		if TransactionalViewChanges::is_view_deleted_by_name(self, namespace, name.clone()) {
 			return Ok(None);
 		}
 
@@ -160,17 +164,17 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::view::get_by_name", level = "trace", skip(self, name))]
-	async fn get_view_by_name<'a>(
+	async fn get_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> reifydb_core::Result<ViewDef> {
-		let name = name.into_fragment();
+		let name = name.into();
 
 		let namespace_name = self.get_namespace(namespace).await?.name;
 
-		self.find_view_by_name(namespace, name.as_borrowed())
+		self.find_view_by_name(namespace, name.clone())
 			.await?
-			.ok_or_else(|| error!(view_not_found(name.as_borrowed(), &namespace_name, name.text())))
+			.ok_or_else(|| error!(view_not_found(name.clone(), &namespace_name, name.text())))
 	}
 }

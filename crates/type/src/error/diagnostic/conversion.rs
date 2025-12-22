@@ -1,4 +1,4 @@
-use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// Array conversion error
 pub fn array_conversion_error(err: std::array::TryFromSliceError) -> Diagnostic {
@@ -7,7 +7,7 @@ pub fn array_conversion_error(err: std::array::TryFromSliceError) -> Diagnostic 
 		statement: None,
 		message: format!("Array conversion error: {}", err),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check array size requirements".to_string()),
 		notes: vec![],
@@ -22,7 +22,7 @@ pub fn utf8_conversion_error(err: std::string::FromUtf8Error) -> Diagnostic {
 		statement: None,
 		message: format!("UTF-8 conversion error: {}", err),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check string encoding".to_string()),
 		notes: vec![],
@@ -37,7 +37,7 @@ pub fn integer_conversion_error(err: std::num::TryFromIntError) -> Diagnostic {
 		statement: None,
 		message: format!("Integer conversion error: {}", err),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check integer range limits".to_string()),
 		notes: vec![],

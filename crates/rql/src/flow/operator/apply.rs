@@ -16,13 +16,13 @@ use crate::{
 };
 
 pub(crate) struct ApplyCompiler {
-	pub input: Option<Box<PhysicalPlan<'static>>>,
-	pub operator: Fragment<'static>,
-	pub arguments: Vec<Expression<'static>>,
+	pub input: Option<Box<PhysicalPlan>>,
+	pub operator: Fragment,
+	pub arguments: Vec<Expression>,
 }
 
-impl<'a> From<ApplyNode<'a>> for ApplyCompiler {
-	fn from(node: ApplyNode<'a>) -> Self {
+impl From<ApplyNode> for ApplyCompiler {
+	fn from(node: ApplyNode) -> Self {
 		Self {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			operator: to_owned_fragment(node.operator),

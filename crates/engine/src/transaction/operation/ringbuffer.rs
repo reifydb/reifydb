@@ -10,30 +10,30 @@ use reifydb_core::{
 };
 use reifydb_type::RowNumber;
 
-use crate::{StandardCommandTransaction, util::block_on};
+use crate::StandardCommandTransaction;
 
 pub(crate) trait RingBufferOperations {
-	fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;
+	async fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;
 
-	fn insert_ringbuffer_at(
+	async fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: RingBufferDef,
 		row_number: RowNumber,
 		row: EncodedValues,
 	) -> crate::Result<()>;
 
-	fn update_ringbuffer(
+	async fn update_ringbuffer(
 		&mut self,
 		ringbuffer: RingBufferDef,
 		id: RowNumber,
 		row: EncodedValues,
 	) -> crate::Result<()>;
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()>;
+	async fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()>;
 }
 
 impl RingBufferOperations for StandardCommandTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
+	async fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> crate::Result<RowNumber> {
 		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
 		// This is different from tables which use RowSequence::next_row_number
 		// The caller must provide the correct row_number based on head/tail position
@@ -42,7 +42,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		)
 	}
 
-	fn insert_ringbuffer_at(
+	async fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: RingBufferDef,
 		row_number: RowNumber,
@@ -55,25 +55,25 @@ impl RingBufferOperations for StandardCommandTransaction {
 		.encode();
 
 		// Check if we're overwriting existing data (for ring buffer circular behavior)
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let old_row = self.get(&key).await?.map(|v| v.values);
 
 		// If there's an existing encoded, we need to delete it first with interceptors
 		if let Some(ref existing) = old_row {
-			block_on(RingBufferInterceptor::pre_delete(self, &ringbuffer, row_number))?;
+			RingBufferInterceptor::pre_delete(self, &ringbuffer, row_number).await?;
 			// Don't actually remove, we'll overwrite
-			block_on(RingBufferInterceptor::post_delete(self, &ringbuffer, row_number, existing))?;
+			RingBufferInterceptor::post_delete(self, &ringbuffer, row_number, existing).await?;
 		}
 
-		block_on(RingBufferInterceptor::pre_insert(self, &ringbuffer, &row))?;
+		RingBufferInterceptor::pre_insert(self, &ringbuffer, &row).await?;
 
-		self.set(&key, row.clone())?;
+		self.set(&key, row.clone()).await?;
 
-		block_on(RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row))?;
+		RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row).await?;
 
 		Ok(())
 	}
 
-	fn update_ringbuffer(
+	async fn update_ringbuffer(
 		&mut self,
 		ringbuffer: RingBufferDef,
 		id: RowNumber,
@@ -86,20 +86,20 @@ impl RingBufferOperations for StandardCommandTransaction {
 		.encode();
 
 		// Get the current encoded before updating (for post-update interceptor)
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let old_row = self.get(&key).await?.map(|v| v.values);
 
-		block_on(RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row))?;
+		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row).await?;
 
-		self.set(&key, row.clone())?;
+		self.set(&key, row.clone()).await?;
 
 		if let Some(ref old) = old_row {
-			block_on(RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old))?;
+			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old).await?;
 		}
 
 		Ok(())
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
+	async fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey {
 			source: ringbuffer.id.into(),
 			row: id,
@@ -107,18 +107,18 @@ impl RingBufferOperations for StandardCommandTransaction {
 		.encode();
 
 		// Get the encoded before removing (for post-delete interceptor)
-		let deleted_row = match self.get(&key)? {
+		let deleted_row = match self.get(&key).await? {
 			Some(v) => v.values,
 			None => return Ok(()), // Nothing to delete
 		};
 
 		// Execute pre-delete interceptors
-		block_on(RingBufferInterceptor::pre_delete(self, &ringbuffer, id))?;
+		RingBufferInterceptor::pre_delete(self, &ringbuffer, id).await?;
 
 		// Remove the encoded from the database
-		self.remove(&key)?;
+		self.remove(&key).await?;
 
-		block_on(RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row))?;
+		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row).await?;
 
 		Ok(())
 	}

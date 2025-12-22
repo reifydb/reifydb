@@ -58,7 +58,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_flow() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
@@ -81,7 +81,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
@@ -104,7 +104,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_flow_rename() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
@@ -139,7 +139,7 @@ mod tests {
 		assert_eq!(catalog.find_flow(flow_id, CommitVersion(2)), Some(flow_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_flow_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
@@ -166,7 +166,7 @@ mod tests {
 		assert!(catalog.find_flow_by_name(namespace2, "movable_flow", CommitVersion(2)).is_some());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_flow_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
@@ -191,7 +191,7 @@ mod tests {
 		assert_eq!(catalog.find_flow(flow_id, CommitVersion(1)), Some(flow));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_multiple_flows_in_namespace() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -211,7 +211,7 @@ mod tests {
 		assert_eq!(catalog.find_flow_by_name(namespace_id, "flow3", CommitVersion(1)), Some(flow3));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_flow_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);

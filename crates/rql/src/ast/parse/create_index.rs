@@ -14,12 +14,12 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
+impl Parser {
 	pub(crate) fn peek_is_index_creation(&mut self) -> crate::Result<bool> {
 		Ok(matches!(self.current()?.kind, TokenKind::Keyword(Index) | TokenKind::Keyword(Unique)))
 	}
 
-	pub(crate) fn parse_create_index(&mut self, create_token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	pub(crate) fn parse_create_index(&mut self, create_token: Token) -> crate::Result<AstCreate> {
 		let index_type = self.parse_index_type()?;
 
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -69,7 +69,7 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn parse_index_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'a>>> {
+	fn parse_index_columns(&mut self) -> crate::Result<Vec<AstIndexColumn>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;

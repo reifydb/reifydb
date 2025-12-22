@@ -13,8 +13,8 @@ use crate::{
 	},
 };
 
-impl<'a> Columns<'a> {
-	pub fn append_columns(&mut self, other: Columns<'a>) -> crate::Result<()> {
+impl Columns {
+	pub fn append_columns(&mut self, other: Columns) -> crate::Result<()> {
 		if self.len() != other.len() {
 			return_error!(engine::frame_error("mismatched column count".to_string()));
 		}
@@ -40,7 +40,7 @@ impl<'a> Columns<'a> {
 	}
 }
 
-impl<'a> Columns<'a> {
+impl Columns {
 	pub fn append_rows(
 		&mut self,
 		layout: &EncodedValuesLayout,
@@ -1574,14 +1574,14 @@ mod tests {
 			assert_eq!(*test_instance[1].data(), ColumnData::uint16_with_bitvec([0], [false]));
 		}
 
-		fn test_instance_with_columns<'a>() -> Columns<'a> {
+		fn test_instance_with_columns() -> Columns {
 			Columns::new(vec![
 				Column {
-					name: Fragment::owned_internal("int2"),
+					name: Fragment::internal("int2"),
 					data: ColumnData::int2(vec![1]),
 				},
 				Column {
-					name: Fragment::owned_internal("bool"),
+					name: Fragment::internal("bool"),
 					data: ColumnData::bool(vec![true]),
 				},
 			])

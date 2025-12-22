@@ -16,10 +16,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_let<'a, T: CatalogQueryTransaction>(
-		ast: AstLet<'a>,
+	pub(crate) async fn compile_let<T: CatalogQueryTransaction>(
+		ast: AstLet,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => LetValue::Expression(ExpressionCompiler::compile(*expr)?),
 			AstLetValue::Statement(statement) => {
@@ -29,16 +29,16 @@ impl Compiler {
 		};
 
 		Ok(LogicalPlan::Declare(DeclareNode {
-			name: Fragment::owned_internal(ast.name.text().to_string()),
+			name: Fragment::internal(ast.name.text().to_string()),
 			value,
 			mutable: ast.mutable,
 		}))
 	}
 
-	pub(crate) async fn compile_if<'a, T: CatalogQueryTransaction>(
-		ast: AstIf<'a>,
+	pub(crate) async fn compile_if<T: CatalogQueryTransaction>(
+		ast: AstIf,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Compile the condition expression
 		let condition = ExpressionCompiler::compile(*ast.condition)?;
 
@@ -63,7 +63,7 @@ impl Compiler {
 		} else {
 			let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 				kind: TokenKind::Literal(Literal::Undefined),
-				fragment: Fragment::owned_internal("undefined"),
+				fragment: Fragment::internal("undefined"),
 			})));
 			let wrapped_map = Self::wrap_scalar_in_map(undefined_literal);
 			Some(Box::new(Self::compile_map(wrapped_map, tx)?))

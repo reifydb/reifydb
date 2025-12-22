@@ -7,13 +7,13 @@ use reifydb_core::event::EventBus;
 use reifydb_store_transaction::{
 	BackendConfig, TransactionStore, TransactionStoreConfig, backend::BackendStorage, sqlite::SqliteConfig,
 };
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
+pub fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
@@ -27,16 +27,11 @@ pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, 
 		stats: Default::default(),
 	});
 
-	(
-		store.clone(),
-		TransactionSingleVersion::svl(store.clone(), eventbus.clone()),
-		TransactionCdc::new(store),
-		eventbus,
-	)
+	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)
 }
 
 /// Convenience function to create SQLite storage
-pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
+pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 
 	let store = TransactionStore::standard(TransactionStoreConfig {
@@ -51,25 +46,20 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 		stats: Default::default(),
 	});
 
-	(
-		store.clone(),
-		TransactionSingleVersion::svl(store.clone(), eventbus.clone()),
-		TransactionCdc::new(store),
-		eventbus,
-	)
+	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)
 }
 
 /// Convenience function to create a transaction layer
 pub fn transaction(
-	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
-) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
+	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
+) -> (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus) {
 	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone());
 	(multi, input.1, input.2, input.3)
 }
 
 /// Backwards-compat alias for transaction()
 pub fn serializable(
-	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
-) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
+	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
+) -> (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus) {
 	transaction(input)
 }

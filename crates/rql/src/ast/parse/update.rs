@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_update(&mut self) -> crate::Result<AstUpdate<'a>> {
+impl Parser {
+	pub(crate) fn parse_update(&mut self) -> crate::Result<AstUpdate> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
 		// Check if there's a target specified (optional)

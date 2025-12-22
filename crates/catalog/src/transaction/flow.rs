@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{FlowDef, FlowId, NamespaceId, QueryTransaction},
 	return_error,
 };
-use reifydb_type::{IntoFragment, diagnostic::catalog::flow_not_found};
+use reifydb_type::{Fragment, diagnostic::catalog::flow_not_found};
 use tracing::instrument;
 
 use crate::{CatalogStore, transaction::MaterializedCatalogTransaction};
@@ -15,18 +15,18 @@ use crate::{CatalogStore, transaction::MaterializedCatalogTransaction};
 pub trait CatalogFlowQueryOperations: Send {
 	async fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>>;
 
-	async fn find_flow_by_name<'a>(
+	async fn find_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<Option<FlowDef>>;
 
 	async fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef>;
 
-	async fn get_flow_by_name<'a>(
+	async fn get_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<FlowDef>;
 }
 
@@ -38,12 +38,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogFlowQu
 	}
 
 	#[instrument(name = "catalog::flow::find_by_name", level = "trace", skip(self, name))]
-	async fn find_flow_by_name<'a>(
+	async fn find_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<Option<FlowDef>> {
-		let name = name.into_fragment();
+		let name = name.into();
 		CatalogStore::find_flow_by_name(self, namespace, name.text()).await
 	}
 
@@ -53,12 +53,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogFlowQu
 	}
 
 	#[instrument(name = "catalog::flow::get_by_name", level = "trace", skip(self, name))]
-	async fn get_flow_by_name<'a>(
+	async fn get_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<FlowDef> {
-		let name = name.into_fragment();
+		let name = name.into();
 		let name_text = name.text().to_string();
 		let flow = self.find_flow_by_name(namespace, name.clone()).await?;
 		match flow {

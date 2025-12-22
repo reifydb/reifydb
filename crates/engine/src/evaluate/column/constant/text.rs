@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::{
-	Int, IntoFragment, Type, Uint, diagnostic::cast, parse_bool, parse_decimal, parse_float, parse_primitive_int,
+	Fragment, Int, Type, Uint, diagnostic::cast, parse_bool, parse_decimal, parse_float, parse_primitive_int,
 	parse_primitive_uint, return_error,
 };
 use temporal::TemporalParser;
@@ -15,11 +15,10 @@ pub(crate) struct TextParser;
 impl TextParser {
 	/// Parse text to a specific target type with detailed error handling
 	pub(crate) fn from_text<'a>(
-		fragment: impl IntoFragment<'a>,
+		fragment: Fragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
 		match target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -49,17 +48,15 @@ impl TextParser {
 		}
 	}
 
-	fn parse_bool<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_bool(&fragment) {
+	fn parse_bool<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+		match parse_bool(fragment.clone()) {
 			Ok(value) => Ok(ColumnData::bool(vec![value; row_count])),
 			Err(err) => return_error!(cast::invalid_boolean(fragment, err.diagnostic())),
 		}
 	}
 
-	fn parse_float4<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_float::<f32>(&fragment) {
+	fn parse_float4<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+		match parse_float::<f32>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float4(vec![v; row_count])),
 			Err(err) => {
 				return_error!(cast::invalid_number(fragment, Type::Float4, err.diagnostic()))
@@ -67,9 +64,8 @@ impl TextParser {
 		}
 	}
 
-	fn parse_float8<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_float::<f64>(&fragment) {
+	fn parse_float8<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+		match parse_float::<f64>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
 			Err(err) => {
 				return_error!(cast::invalid_number(fragment, Type::Float8, err.diagnostic()))
@@ -77,10 +73,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_int1<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_int1<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::int1(vec![
-			match parse_primitive_int::<i8>(&fragment) {
+			match parse_primitive_int::<i8>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Int1, e.diagnostic())),
 			};
@@ -88,10 +83,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int2<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_int2<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::int2(vec![
-			match parse_primitive_int::<i16>(&fragment) {
+			match parse_primitive_int::<i16>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Int2, e.diagnostic())),
 			};
@@ -99,10 +93,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int4<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_int4<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::int4(vec![
-			match parse_primitive_int::<i32>(&fragment) {
+			match parse_primitive_int::<i32>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Int4, e.diagnostic())),
 			};
@@ -110,10 +103,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int8<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_int8<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::int8(vec![
-			match parse_primitive_int::<i64>(&fragment) {
+			match parse_primitive_int::<i64>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Int8, e.diagnostic())),
 			};
@@ -121,10 +113,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int16<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_int16<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::int16(vec![
-			match parse_primitive_int::<i128>(&fragment) {
+			match parse_primitive_int::<i128>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Int16, e.diagnostic())),
 			};
@@ -132,10 +123,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint1<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_uint1<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::uint1(vec![
-			match parse_primitive_uint::<u8>(&fragment) {
+			match parse_primitive_uint::<u8>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint1, e.diagnostic())),
 			};
@@ -143,10 +133,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint2<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_uint2<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::uint2(vec![
-			match parse_primitive_uint::<u16>(&fragment) {
+			match parse_primitive_uint::<u16>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint2, e.diagnostic())),
 			};
@@ -154,10 +143,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint4<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_uint4<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::uint4(vec![
-			match parse_primitive_uint::<u32>(&fragment) {
+			match parse_primitive_uint::<u32>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint4, e.diagnostic())),
 			};
@@ -165,10 +153,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint8<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_uint8<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::uint8(vec![
-			match parse_primitive_uint::<u64>(&fragment) {
+			match parse_primitive_uint::<u64>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint8, e.diagnostic())),
 			};
@@ -176,10 +163,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint16<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
+	fn parse_uint16<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
 		Ok(ColumnData::uint16(vec![
-			match parse_primitive_uint::<u128>(&fragment) {
+			match parse_primitive_uint::<u128>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint16, e.diagnostic())),
 			};
@@ -187,29 +173,26 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_primitive_int::<Int>(&fragment) {
+	fn parse_int<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+		match parse_primitive_int::<Int>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
 			Err(e) => return_error!(cast::invalid_number(fragment, Type::Int, e.diagnostic())),
 		}
 	}
 
-	fn parse_uint<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_primitive_uint::<Uint>(&fragment) {
+	fn parse_uint<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
+		match parse_primitive_uint::<Uint>(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
 			Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint, e.diagnostic())),
 		}
 	}
 
 	fn parse_decimal<'a>(
-		fragment: impl IntoFragment<'a>,
+		fragment: Fragment,
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		let fragment = fragment.into_fragment();
-		match parse_decimal(&fragment) {
+		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(e) => return_error!(cast::invalid_number(fragment, target, e.diagnostic())),
 		}

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -15,23 +16,23 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub(crate) struct IndexScanNode<'a> {
+pub(crate) struct IndexScanNode {
 	_table: TableDef, // FIXME needs to work with different sources
 	_index_id: IndexId,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	_row_layout: EncodedValuesLayout,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
 }
 
-impl<'a> IndexScanNode<'a> {
-	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
+impl IndexScanNode {
+	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedValuesLayout::new(&data);
 
 		let headers = ColumnHeaders {
-			columns: table.columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: table.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -46,17 +47,18 @@ impl<'a> IndexScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for IndexScanNode<'a> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for IndexScanNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		unimplemented!()
 		// let ctx = self.context.as_ref().unwrap();
@@ -129,8 +131,8 @@ impl<'a> QueryNode<'a> for IndexScanNode<'a> {
 		// if ctx.preserve_row_numbers {
 		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of TableDef
 		// 	let row_number_column = Column::( {
-		// 		source: Fragment::owned_internal(&self.table.name),
-		// 		name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+		// 		source: Fragment::internal(&self.table.name),
+		// 		name: Fragment::internal(ROW_NUMBER_COLUMN_NAME),
 		// 		data: ColumnData::row_number(row_numbers),
 		// 	});
 		// 	columns.0.push(row_number_column);
@@ -141,7 +143,7 @@ impl<'a> QueryNode<'a> for IndexScanNode<'a> {
 		// }))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }

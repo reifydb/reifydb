@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Fragment, IntoFragment, Type};
+use reifydb_type::{Fragment, Type};
 
 mod columns;
 mod compressed;
@@ -20,15 +20,15 @@ pub use data::ColumnData;
 pub use view::group_by::{GroupByView, GroupKey};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Column<'a> {
-	pub name: Fragment<'a>,
+pub struct Column {
+	pub name: Fragment,
 	pub data: ColumnData,
 }
 
-impl<'a> Column<'a> {
-	pub fn new(name: impl IntoFragment<'a>, data: ColumnData) -> Self {
+impl Column {
+	pub fn new(name: impl Into<Fragment>, data: ColumnData) -> Self {
 		Self {
-			name: name.into_fragment(),
+			name: name.into(),
 			data,
 		}
 	}
@@ -37,18 +37,18 @@ impl<'a> Column<'a> {
 		self.data.get_type()
 	}
 
-	pub fn with_new_data(&self, data: ColumnData) -> Column<'a> {
+	pub fn with_new_data(&self, data: ColumnData) -> Column {
 		Column {
 			name: self.name.clone(),
 			data,
 		}
 	}
 
-	pub fn name(&self) -> &Fragment<'a> {
+	pub fn name(&self) -> &Fragment {
 		&self.name
 	}
 
-	pub fn name_owned(&self) -> Fragment<'a> {
+	pub fn name_owned(&self) -> Fragment {
 		self.name.clone()
 	}
 
@@ -61,14 +61,14 @@ impl<'a> Column<'a> {
 	}
 
 	/// Convert to a 'static lifetime version
-	pub fn to_static(&self) -> Column<'static> {
+	pub fn to_static(&self) -> Column {
 		Column {
-			name: self.name.clone().to_static(),
+			name: self.name.clone(),
 			data: self.data.clone(),
 		}
 	}
 
-	pub fn int1(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i8>) -> Self {
+	pub fn int1(name: impl Into<Fragment>, data: impl IntoIterator<Item = i8>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::int1(data),
@@ -76,7 +76,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn int1_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i8>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -86,7 +86,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn int2(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i16>) -> Self {
+	pub fn int2(name: impl Into<Fragment>, data: impl IntoIterator<Item = i16>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::int2(data),
@@ -94,7 +94,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn int2_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i16>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -104,7 +104,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn int4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i32>) -> Self {
+	pub fn int4(name: impl Into<Fragment>, data: impl IntoIterator<Item = i32>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::int4(data),
@@ -112,7 +112,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn int4_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i32>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -122,7 +122,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn int8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i64>) -> Self {
+	pub fn int8(name: impl Into<Fragment>, data: impl IntoIterator<Item = i64>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::int8(data),
@@ -130,7 +130,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn int8_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i64>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -140,7 +140,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn int16(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i128>) -> Self {
+	pub fn int16(name: impl Into<Fragment>, data: impl IntoIterator<Item = i128>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::int16(data),
@@ -148,7 +148,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn int16_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i128>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -158,7 +158,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uint1(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u8>) -> Self {
+	pub fn uint1(name: impl Into<Fragment>, data: impl IntoIterator<Item = u8>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uint1(data),
@@ -166,7 +166,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uint1_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u8>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -176,7 +176,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uint2(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u16>) -> Self {
+	pub fn uint2(name: impl Into<Fragment>, data: impl IntoIterator<Item = u16>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uint2(data),
@@ -184,7 +184,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uint2_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u16>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -194,7 +194,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uint4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u32>) -> Self {
+	pub fn uint4(name: impl Into<Fragment>, data: impl IntoIterator<Item = u32>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uint4(data),
@@ -202,7 +202,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uint4_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u32>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -212,7 +212,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uint8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u64>) -> Self {
+	pub fn uint8(name: impl Into<Fragment>, data: impl IntoIterator<Item = u64>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uint8(data),
@@ -220,7 +220,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uint8_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u64>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -230,7 +230,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uint16(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u128>) -> Self {
+	pub fn uint16(name: impl Into<Fragment>, data: impl IntoIterator<Item = u128>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uint16(data),
@@ -238,7 +238,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uint16_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u128>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -248,7 +248,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn float4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = f32>) -> Self {
+	pub fn float4(name: impl Into<Fragment>, data: impl IntoIterator<Item = f32>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::float4(data),
@@ -256,7 +256,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn float4_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f32>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -266,7 +266,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn float8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = f64>) -> Self {
+	pub fn float8(name: impl Into<Fragment>, data: impl IntoIterator<Item = f64>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::float8(data),
@@ -274,7 +274,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn float8_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f64>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -284,7 +284,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn bool(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = bool>) -> Self {
+	pub fn bool(name: impl Into<Fragment>, data: impl IntoIterator<Item = bool>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::bool(data),
@@ -292,7 +292,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn bool_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = bool>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -302,7 +302,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn utf8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = String>) -> Self {
+	pub fn utf8(name: impl Into<Fragment>, data: impl IntoIterator<Item = String>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::utf8(data),
@@ -310,7 +310,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn utf8_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = String>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -320,14 +320,14 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn undefined(name: impl Into<Fragment<'a>>, row_count: usize) -> Self {
+	pub fn undefined(name: impl Into<Fragment>, row_count: usize) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::undefined(row_count),
 		}
 	}
 
-	pub fn uuid4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = reifydb_type::Uuid4>) -> Self {
+	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = reifydb_type::Uuid4>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid4(data),
@@ -335,7 +335,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uuid4_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = reifydb_type::Uuid4>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {
@@ -345,7 +345,7 @@ impl<'a> Column<'a> {
 		}
 	}
 
-	pub fn uuid7(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = reifydb_type::Uuid7>) -> Self {
+	pub fn uuid7(name: impl Into<Fragment>, data: impl IntoIterator<Item = reifydb_type::Uuid7>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid7(data),
@@ -353,7 +353,7 @@ impl<'a> Column<'a> {
 	}
 
 	pub fn uuid7_with_bitvec(
-		name: impl Into<Fragment<'a>>,
+		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = reifydb_type::Uuid7>,
 		bitvec: impl Into<crate::BitVec>,
 	) -> Self {

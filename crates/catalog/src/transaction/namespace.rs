@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 	interceptor::{NamespaceDefInterceptor, WithInterceptors},
 };
 use reifydb_type::{
-	IntoFragment,
+	Fragment,
 	diagnostic::catalog::{namespace_already_exists, namespace_not_found},
 	error, internal, return_error,
 };
@@ -39,17 +39,11 @@ pub trait CatalogTrackNamespaceChangeOperations {
 pub trait CatalogNamespaceQueryOperations: Send {
 	async fn find_namespace(&mut self, id: NamespaceId) -> crate::Result<Option<NamespaceDef>>;
 
-	async fn find_namespace_by_name<'a>(
-		&mut self,
-		name: impl IntoFragment<'a> + Send,
-	) -> crate::Result<Option<NamespaceDef>>;
+	async fn find_namespace_by_name(&mut self, name: impl Into<Fragment>) -> crate::Result<Option<NamespaceDef>>;
 
 	async fn get_namespace(&mut self, id: NamespaceId) -> crate::Result<NamespaceDef>;
 
-	async fn get_namespace_by_name<'a>(
-		&mut self,
-		name: impl IntoFragment<'a> + Send,
-	) -> crate::Result<NamespaceDef>;
+	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment>) -> crate::Result<NamespaceDef>;
 }
 
 #[async_trait(?Send)]
@@ -64,8 +58,11 @@ impl<
 {
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, to_create))]
 	async fn create_namespace(&mut self, to_create: NamespaceToCreate) -> reifydb_core::Result<NamespaceDef> {
-		if let Some(namespace) = self.find_namespace_by_name(&to_create.name).await? {
-			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
+		if let Some(namespace) = self.find_namespace_by_name(to_create.name.as_str()).await? {
+			return_error!(namespace_already_exists(
+				to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name
+			));
 		}
 		let result = CatalogStore::create_namespace(self, to_create).await?;
 		self.track_namespace_def_created(result.clone())?;
@@ -106,22 +103,21 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, name))]
-	async fn find_namespace_by_name<'a>(
+	async fn find_namespace_by_name(
 		&mut self,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> reifydb_core::Result<Option<NamespaceDef>> {
-		let name = name.into_fragment();
+		let name = name.into();
 
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace_by_name(self, name.as_borrowed())
-		{
+		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace_by_name(self, name.clone()) {
 			return Ok(Some(namespace.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalNamespaceChanges::is_namespace_deleted_by_name(self, name.as_borrowed()) {
+		if TransactionalNamespaceChanges::is_namespace_deleted_by_name(self, name.clone()) {
 			return Ok(None);
 		}
 
@@ -150,13 +146,10 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, name))]
-	async fn get_namespace_by_name<'a>(
-		&mut self,
-		name: impl IntoFragment<'a> + Send,
-	) -> reifydb_core::Result<NamespaceDef> {
-		let name = name.into_fragment();
-		self.find_namespace_by_name(name.as_borrowed())
+	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment>) -> reifydb_core::Result<NamespaceDef> {
+		let name = name.into();
+		self.find_namespace_by_name(name.clone())
 			.await?
-			.ok_or_else(|| error!(namespace_not_found(name.as_borrowed(), name.text())))
+			.ok_or_else(|| error!(namespace_not_found(name.clone(), name.text())))
 	}
 }

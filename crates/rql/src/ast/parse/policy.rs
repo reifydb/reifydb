@@ -11,8 +11,8 @@ use crate::ast::{
 	tokenize::{Keyword::Policy, Literal, Operator, Separator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock<'a>> {
+impl Parser {
+	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock> {
 		let token = self.consume_keyword(Policy)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -39,7 +39,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	fn parse_policy_kind(&mut self) -> crate::Result<(Token<'a>, AstPolicyKind)> {
+	fn parse_policy_kind(&mut self) -> crate::Result<(Token, AstPolicyKind)> {
 		let identifier = self.consume(Identifier)?;
 		let ty = match identifier.fragment.text() {
 			"saturation" => AstPolicyKind::Saturation,

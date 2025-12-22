@@ -15,12 +15,12 @@ use crate::{
 };
 
 pub(crate) struct ExtendCompiler {
-	pub input: Option<Box<PhysicalPlan<'static>>>,
-	pub expressions: Vec<Expression<'static>>,
+	pub input: Option<Box<PhysicalPlan>>,
+	pub expressions: Vec<Expression>,
 }
 
-impl<'a> From<ExtendNode<'a>> for ExtendCompiler {
-	fn from(node: ExtendNode<'a>) -> Self {
+impl From<ExtendNode> for ExtendCompiler {
+	fn from(node: ExtendNode) -> Self {
 		Self {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			expressions: to_owned_expressions(node.extend),

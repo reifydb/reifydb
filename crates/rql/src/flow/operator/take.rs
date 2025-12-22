@@ -11,12 +11,12 @@ use crate::{
 };
 
 pub(crate) struct TakeCompiler {
-	pub input: Box<PhysicalPlan<'static>>,
+	pub input: Box<PhysicalPlan>,
 	pub limit: usize,
 }
 
-impl<'a> From<TakeNode<'a>> for TakeCompiler {
-	fn from(node: TakeNode<'a>) -> Self {
+impl From<TakeNode> for TakeCompiler {
+	fn from(node: TakeNode) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			limit: node.take,

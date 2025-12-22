@@ -63,11 +63,11 @@ mod tests {
 		test_utils::{create_flow, create_namespace, ensure_test_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name_ok() {
-		let mut txn = create_test_command_transaction();
-		let _namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "flow_one");
 		create_flow(&mut txn, "namespace_two", "flow_two");
@@ -77,19 +77,19 @@ mod tests {
 		assert_eq!(result.namespace, namespace_two.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name_empty() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "some_flow").unwrap();
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name_not_found() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		create_flow(&mut txn, "test_namespace", "flow_one");
 		create_flow(&mut txn, "test_namespace", "flow_two");
@@ -98,11 +98,11 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		let _namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "my_flow");
 
@@ -111,10 +111,10 @@ mod tests {
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_name_case_sensitive() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		create_flow(&mut txn, "test_namespace", "MyFlow");
 
@@ -126,10 +126,10 @@ mod tests {
 		assert!(result.is_some());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_id() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
 
 		let flow = create_flow(&mut txn, "test_namespace", "test_flow");
 
@@ -138,9 +138,9 @@ mod tests {
 		assert_eq!(result.name, "test_flow");
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_flow_by_id_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::find_flow(&mut txn, 999.into()).unwrap();
 		assert!(result.is_none());

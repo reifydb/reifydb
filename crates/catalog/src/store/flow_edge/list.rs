@@ -75,10 +75,10 @@ mod tests {
 		test_utils::{create_flow, create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_by_flow() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -90,20 +90,20 @@ mod tests {
 		assert_eq!(edges[0].id, edge.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_by_flow_empty() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut txn, flow.id).unwrap();
 		assert!(edges.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_by_flow_multiple() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -122,10 +122,10 @@ mod tests {
 		assert!(ids.contains(&edge2.id));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_all() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn);
 
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
@@ -137,18 +137,18 @@ mod tests {
 		assert_eq!(edges.len(), 1);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_all_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let edges = CatalogStore::list_flow_edges_all(&mut txn).unwrap();
 		assert!(edges.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flow_edges_all_multiple_flows() {
-		let mut txn = create_test_command_transaction();
-		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");

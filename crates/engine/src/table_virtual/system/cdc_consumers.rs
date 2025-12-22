@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
@@ -32,18 +33,23 @@ impl CdcConsumers {
 	}
 }
 
-impl<'a> TableVirtual<'a> for CdcConsumers {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for CdcConsumers {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let consumer_states = get_all_consumer_states(txn)?;
+		let consumer_states = get_all_consumer_states(txn).await?;
 
 		let mut consumer_ids = ColumnData::utf8_with_capacity(consumer_states.len());
 		let mut checkpoints = ColumnData::uint8_with_capacity(consumer_states.len());
@@ -55,11 +61,11 @@ impl<'a> TableVirtual<'a> for CdcConsumers {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("consumer_id"),
+				name: Fragment::internal("consumer_id"),
 				data: consumer_ids,
 			},
 			Column {
-				name: Fragment::owned_internal("checkpoint"),
+				name: Fragment::internal("checkpoint"),
 				data: checkpoints,
 			},
 		];

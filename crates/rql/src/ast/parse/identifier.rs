@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Error, Fragment, OwnedFragment, diagnostic::ast::unexpected_token_error};
+use reifydb_type::{Error, Fragment, diagnostic::ast::unexpected_token_error};
 
 use crate::ast::{
 	identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
@@ -9,15 +9,15 @@ use crate::ast::{
 	tokenize::{Literal, Operator, Token, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
+impl Parser {
+	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier> {
 		let token = self.consume(TokenKind::Identifier)?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
 	/// Used in expression contexts where hyphens should remain as operators
-	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
+	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier> {
 		let token = self.advance()?;
 		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
 		Ok(UnqualifiedIdentifier::new(token))
@@ -27,7 +27,7 @@ impl<'a> Parser<'a> {
 	/// Used in DDL contexts where hyphenated identifiers are supported
 	/// Consumes: (identifier|keyword) [-(identifier|keyword)]*
 	/// Returns: UnqualifiedIdentifier with combined text
-	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
+	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier> {
 		let first_token = self.advance()?;
 
 		// Helper to check if a token can be used as an identifier part
@@ -67,11 +67,11 @@ impl<'a> Parser<'a> {
 			|| !is_identifier_like(&self.tokens[self.position + 1])
 		{
 			let combined_text = parts.join("");
-			let fragment = Fragment::Owned(OwnedFragment::Statement {
+			let fragment = Fragment::Statement {
 				text: combined_text,
 				line: start_line,
 				column: start_column,
-			});
+			};
 			return Ok(UnqualifiedIdentifier::from_fragment(fragment));
 		}
 
@@ -110,12 +110,12 @@ impl<'a> Parser<'a> {
 			)));
 		}
 
-		// Create OwnedFragment with combined text
-		let fragment = Fragment::Owned(OwnedFragment::Statement {
+		// Create Fragment with combined text
+		let fragment = Fragment::Statement {
 			text: combined_text,
 			line: start_line,
 			column: start_column,
-		});
+		};
 
 		Ok(UnqualifiedIdentifier::from_fragment(fragment))
 	}
@@ -124,7 +124,7 @@ impl<'a> Parser<'a> {
 	/// Handles patterns like: column, table.column, namespace.table.column,
 	/// alias.column
 	/// Supports hyphenated identifiers like: my-column, my-table.my-column
-	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'a>> {
+	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier> {
 		let first = self.parse_identifier_with_hyphens()?;
 
 		// Check for qualification
@@ -162,9 +162,7 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse a column identifier, but also accept keywords as column names
-	pub(crate) fn parse_column_identifier_or_keyword(
-		&mut self,
-	) -> crate::Result<MaybeQualifiedColumnIdentifier<'a>> {
+	pub(crate) fn parse_column_identifier_or_keyword(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier> {
 		// For simple cases where keywords can be column names
 		let first = self.advance()?;
 

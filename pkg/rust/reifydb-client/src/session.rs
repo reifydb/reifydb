@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 
 use reifydb_type::{
-	BitVec, Blob, Date, DateTime, Error, Frame, FrameColumn, FrameColumnData, IdentityId, OwnedFragment, RowNumber,
+	BitVec, Blob, Date, DateTime, Error, Fragment, Frame, FrameColumn, FrameColumnData, IdentityId, RowNumber,
 	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
 	util::hex,
 	value::container::{
@@ -321,7 +321,7 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.map(|s| {
 					if s == "⟪undefined⟫" {
 						(DateTime::from_timestamp(0).unwrap(), false)
-					} else if let Ok(dt) = parse_datetime(OwnedFragment::testing(&s)) {
+					} else if let Ok(dt) = parse_datetime(Fragment::testing(&s)) {
 						(dt, true)
 					} else if let Ok(timestamp) = s.parse::<i64>() {
 						(
@@ -392,11 +392,19 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.into_iter()
 				.map(|s| {
 					if s == "⟪undefined⟫" {
-						(parse_uuid4("00000000-0000-0000-0000-000000000000").unwrap(), false)
-					} else if let Ok(uuid) = parse_uuid4(&s) {
+						(
+							parse_uuid4("00000000-0000-0000-0000-000000000000".into())
+								.unwrap(),
+							false,
+						)
+					} else if let Ok(uuid) = parse_uuid4(s.into()) {
 						(uuid, true)
 					} else {
-						(parse_uuid4("00000000-0000-0000-0000-000000000000").unwrap(), false)
+						(
+							parse_uuid4("00000000-0000-0000-0000-000000000000".into())
+								.unwrap(),
+							false,
+						)
 					}
 				})
 				.unzip();
@@ -407,11 +415,19 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.into_iter()
 				.map(|s| {
 					if s == "⟪undefined⟫" {
-						(parse_uuid7("00000000-0000-7000-8000-000000000000").unwrap(), false)
-					} else if let Ok(uuid) = parse_uuid7(&s) {
+						(
+							parse_uuid7("00000000-0000-7000-8000-000000000000".into())
+								.unwrap(),
+							false,
+						)
+					} else if let Ok(uuid) = parse_uuid7(s.into()) {
 						(uuid, true)
 					} else {
-						(parse_uuid7("00000000-0000-7000-8000-000000000000").unwrap(), false)
+						(
+							parse_uuid7("00000000-0000-7000-8000-000000000000".into())
+								.unwrap(),
+							false,
+						)
 					}
 				})
 				.unzip();
@@ -424,18 +440,22 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 					if s == "⟪undefined⟫" {
 						(
 							IdentityId::from(Uuid7::from(
-								parse_uuid7("00000000-0000-7000-8000-000000000000")
-									.unwrap(),
+								parse_uuid7(
+									"00000000-0000-7000-8000-000000000000".into(),
+								)
+								.unwrap(),
 							)),
 							false,
 						)
-					} else if let Ok(uuid) = parse_uuid7(&s) {
+					} else if let Ok(uuid) = parse_uuid7(s.into()) {
 						(IdentityId::from(Uuid7::from(uuid)), true)
 					} else {
 						(
 							IdentityId::from(Uuid7::from(
-								parse_uuid7("00000000-0000-7000-8000-000000000000")
-									.unwrap(),
+								parse_uuid7(
+									"00000000-0000-7000-8000-000000000000".into(),
+								)
+								.unwrap(),
 							)),
 							false,
 						)

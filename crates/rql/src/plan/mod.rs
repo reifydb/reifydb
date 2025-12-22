@@ -17,10 +17,10 @@ use crate::{
 pub mod logical;
 pub mod physical;
 
-pub type RowToInsert = Vec<Expression<'static>>;
+pub type RowToInsert = Vec<Expression>;
 
 #[instrument(name = "rql::plan", level = "trace", skip(rx, statement))]
-pub async fn plan<'a, T>(rx: &mut T, statement: AstStatement<'a>) -> crate::Result<Option<PhysicalPlan<'a>>>
+pub async fn plan<'a, T>(rx: &mut T, statement: AstStatement) -> crate::Result<Option<PhysicalPlan>>
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {

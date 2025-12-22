@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb_core::CommitVersion;
 
-pub use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transaction};
+pub use crate::multi::transaction::{CommandTransaction, QueryTransaction, TransactionMulti};
 
 pub mod conflict;
 pub mod marker;
@@ -16,7 +16,7 @@ pub mod types;
 pub mod watermark;
 
 /// Backwards-compat type alias
-pub type TransactionMultiVersion = Transaction;
+pub type TransactionMultiVersion = TransactionMulti;
 
 /// Backwards-compat type alias
 pub type StandardQueryTransaction = QueryTransaction;
@@ -39,7 +39,7 @@ impl std::fmt::Display for AwaitWatermarkError {
 
 impl std::error::Error for AwaitWatermarkError {}
 
-impl Transaction {
+impl TransactionMulti {
 	/// Wait for the watermark to reach the specified version.
 	/// Returns Ok(()) if the watermark reaches the version within the timeout,
 	/// or Err(AwaitWatermarkError) if the timeout expires.

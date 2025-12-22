@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowDef, FlowId, FlowKey, FlowStatus, NamespaceFlowKey, NamespaceId},
 	return_error,
 };
-use reifydb_type::OwnedFragment;
+use reifydb_type::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -18,7 +18,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct FlowToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub name: String,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
@@ -31,7 +31,11 @@ impl CatalogStore {
 		// Check if flow already exists
 		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, &to_create.name).await? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
-			return_error!(flow_already_exists(to_create.fragment, &namespace.name, &to_create.name));
+			return_error!(flow_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&to_create.name
+			));
 		}
 
 		let flow_id = next_flow_id(txn).await?;
@@ -87,7 +91,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = FlowToCreate {
@@ -111,7 +115,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_flow_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create two flows
@@ -164,7 +168,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_flow_multiple_namespaces() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
 		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 

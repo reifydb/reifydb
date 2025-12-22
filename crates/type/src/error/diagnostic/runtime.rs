@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// Variable is not defined in the current scope
 pub fn variable_not_found(name: &str) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn variable_not_found(name: &str) -> Diagnostic {
 		statement: None,
 		message: format!("Variable '{}' is not defined", name),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some(format!("Define the variable using 'let {} = <value>' before using it", name)),
 		notes: vec![],
@@ -28,7 +28,7 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 			name
 		),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some(format!(
 			"Extract a scalar value from the dataframe using '${} | only()', '${} | first()', or '${} | first_or_undefined()'",
@@ -51,7 +51,7 @@ pub fn variable_is_immutable(name: &str) -> Diagnostic {
 		statement: None,
 		message: format!("Cannot reassign immutable variable '{}'", name),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Use 'let mut $name := value' to declare a mutable variable".to_string()),
 		notes: vec!["Only mutable variables can be reassigned".to_string()],

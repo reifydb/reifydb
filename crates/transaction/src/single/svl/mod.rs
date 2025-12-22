@@ -14,7 +14,6 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::TransactionStore;
 use tokio::sync::RwLock as TokioRwLock;
-use tracing::debug_span;
 
 mod read;
 mod write;

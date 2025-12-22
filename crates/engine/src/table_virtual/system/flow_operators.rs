@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
@@ -39,13 +40,18 @@ impl FlowOperators {
 	}
 }
 
-impl<'a> TableVirtual<'a> for FlowOperators {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for FlowOperators {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -79,39 +85,39 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("operator"),
+				name: Fragment::internal("operator"),
 				data: operators,
 			},
 			Column {
-				name: Fragment::owned_internal("library_path"),
+				name: Fragment::internal("library_path"),
 				data: library_paths,
 			},
 			Column {
-				name: Fragment::owned_internal("api"),
+				name: Fragment::internal("api"),
 				data: apis,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_insert"),
+				name: Fragment::internal("cap_insert"),
 				data: cap_inserts,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_update"),
+				name: Fragment::internal("cap_update"),
 				data: cap_updates,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_delete"),
+				name: Fragment::internal("cap_delete"),
 				data: cap_deletes,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_get_rows"),
+				name: Fragment::internal("cap_get_rows"),
 				data: cap_get_rows_list,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_drop"),
+				name: Fragment::internal("cap_drop"),
 				data: cap_drops,
 			},
 			Column {
-				name: Fragment::owned_internal("cap_tick"),
+				name: Fragment::internal("cap_tick"),
 				data: cap_ticks,
 			},
 		];

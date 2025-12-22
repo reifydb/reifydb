@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, SourceId, TableId},
 	return_error,
 };
-use reifydb_type::{Constraint, OwnedFragment, Type, TypeConstraint};
+use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
 
 /// Encodes a constraint to a byte vector for storage
 fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
@@ -40,7 +40,7 @@ use crate::{
 };
 
 pub struct ColumnToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
 	pub table: TableId,     // FIXME refactor to source: SourceId
 	pub table_name: String, // FIXME refactor to source_name
@@ -64,7 +64,7 @@ impl CatalogStore {
 		// FIXME policies
 		if let Some(column) = Self::find_column_by_name(txn, source, &column_to_create.column).await? {
 			return_error!(table_column_already_exists(
-				None::<OwnedFragment>,
+				Fragment::None,
 				&column_to_create.namespace_name,
 				&column_to_create.table_name,
 				&column.name,
@@ -84,7 +84,7 @@ impl CatalogStore {
 
 			if !is_integer_type {
 				return_error!(auto_increment_invalid_type(
-					column_to_create.fragment,
+					column_to_create.fragment.unwrap_or_else(|| Fragment::None),
 					&column_to_create.column,
 					base_type,
 				));
@@ -144,7 +144,7 @@ mod test {
 
 	#[tokio::test]
 	async fn test_create_column() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(
@@ -204,7 +204,7 @@ mod test {
 
 	#[tokio::test]
 	async fn test_create_column_with_auto_increment() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(
@@ -237,7 +237,7 @@ mod test {
 
 	#[tokio::test]
 	async fn test_auto_increment_invalid_type() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 
 		// Try to create a text column with auto_increment
@@ -315,7 +315,7 @@ mod test {
 
 	#[tokio::test]
 	async fn test_column_already_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(

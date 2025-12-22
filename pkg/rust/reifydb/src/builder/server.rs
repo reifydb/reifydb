@@ -22,14 +22,14 @@ use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct ServerBuilder {
 	multi: TransactionMultiVersion,
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
@@ -45,7 +45,7 @@ pub struct ServerBuilder {
 impl ServerBuilder {
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {

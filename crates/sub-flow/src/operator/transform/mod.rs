@@ -11,10 +11,7 @@ pub mod registry;
 pub trait TransformOperator: Operator {}
 
 pub trait TransformOperatorFactory: Send + Sync {
-	fn create_from_expressions(
-		node: FlowNodeId,
-		expressions: &[Expression<'static>],
-	) -> crate::Result<BoxedOperator>;
+	fn create_from_expressions(node: FlowNodeId, expressions: &[Expression]) -> crate::Result<BoxedOperator>;
 }
 
 pub mod extract {
@@ -56,12 +53,8 @@ pub mod extract {
 				fragment,
 			}) => Ok(fragment.text().to_string()),
 			Expression::Column(col) => {
-				// Convert Fragment to string
-				match &col.0.name {
-					reifydb_type::Fragment::Owned(owned) => Ok(owned.to_string()),
-					reifydb_type::Fragment::Borrowed(borrowed) => Ok(borrowed.text().to_string()),
-					_ => unimplemented!(),
-				}
+				// Fragment is now fully owned, just get the text
+				Ok(col.0.name.text().to_string())
 			}
 			_ => panic!("Expected string value"),
 		}

@@ -12,16 +12,16 @@ use crate::{
 };
 
 /// Load and merge all batches from a node into a single Columns
-pub fn load_and_merge_all<'a>(
-	node: &mut Box<ExecutionPlan<'a>>,
+pub async fn load_and_merge_all<'a>(
+	node: &mut Box<ExecutionPlan>,
 	rx: &mut StandardTransaction<'a>,
-	ctx: &mut ExecutionContext<'a>,
-) -> crate::Result<Columns<'a>> {
+	ctx: &mut ExecutionContext,
+) -> crate::Result<Columns> {
 	let mut result: Option<Columns> = None;
 
 	while let Some(Batch {
 		columns,
-	}) = node.next(rx, ctx)?
+	}) = node.next(rx, ctx).await?
 	{
 		if let Some(mut acc) = result.take() {
 			acc.append_columns(columns)?;
@@ -91,13 +91,13 @@ pub fn resolve_column_names(
 }
 
 /// Build evaluation columns for join conditions
-pub fn build_eval_columns<'a>(
-	left_columns: &Columns<'a>,
-	right_columns: &Columns<'a>,
+pub fn build_eval_columns(
+	left_columns: &Columns,
+	right_columns: &Columns,
 	left_row: &[Value],
 	right_row: &[Value],
-	alias: &Option<Fragment<'a>>,
-) -> Vec<Column<'a>> {
+	alias: &Option<Fragment>,
+) -> Vec<Column> {
 	let mut eval_columns = Vec::new();
 
 	for (idx, col) in left_columns.iter().enumerate() {
@@ -108,7 +108,7 @@ pub fn build_eval_columns<'a>(
 		if let Some(alias) = alias {
 			// For aliased columns, create a name that includes the alias prefix
 			// This matches how the AccessSource expression expects to find the column
-			let aliased_name = Fragment::owned_internal(format!("{}.{}", alias.text(), col.name().text()));
+			let aliased_name = Fragment::internal(format!("{}.{}", alias.text(), col.name().text()));
 			eval_columns.push(Column {
 				name: aliased_name,
 				data: ColumnData::from(right_row[idx].clone()),
@@ -122,22 +122,22 @@ pub fn build_eval_columns<'a>(
 }
 
 /// Common context holder for join nodes
-pub struct JoinContext<'a> {
-	pub context: Option<Arc<ExecutionContext<'a>>>,
+pub struct JoinContext {
+	pub context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> JoinContext<'a> {
+impl JoinContext {
 	pub fn new() -> Self {
 		Self {
 			context: None,
 		}
 	}
 
-	pub fn set(&mut self, ctx: &ExecutionContext<'a>) {
+	pub fn set(&mut self, ctx: &ExecutionContext) {
 		self.context = Some(Arc::new(ctx.clone()));
 	}
 
-	pub fn get(&self) -> &Arc<ExecutionContext<'a>> {
+	pub fn get(&self) -> &Arc<ExecutionContext> {
 		self.context.as_ref().expect("Join context not initialized")
 	}
 

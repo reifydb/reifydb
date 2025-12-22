@@ -20,7 +20,7 @@ pub use token::{Keyword, Literal, Operator, Separator, Token, TokenKind};
 use variable::scan_variable;
 
 /// Tokenize the input string into a vector of tokens
-pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
+pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters
 	// with minimum of 8 and maximum reasonable limit

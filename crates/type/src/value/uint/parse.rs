@@ -6,14 +6,14 @@ use std::borrow::Cow;
 use num_bigint::BigInt;
 
 use crate::{
-	Error, IntoFragment, Type, err,
+	Error, Fragment, Type, err,
 	error::diagnostic::number::{invalid_number_format, number_out_of_range},
 	return_error,
 	value::uint::Uint,
 };
 
-pub fn parse_uint<'a>(fragment: impl IntoFragment<'a>) -> Result<Uint, Error> {
-	let fragment = fragment.into_fragment();
+pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
+	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
@@ -99,124 +99,124 @@ pub fn parse_uint<'a>(fragment: impl IntoFragment<'a>) -> Result<Uint, Error> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_parse_uint_valid_zero() {
-		assert_eq!(parse_uint(OwnedFragment::testing("0")).unwrap(), Uint::zero());
+		assert_eq!(parse_uint(Fragment::testing("0")).unwrap(), Uint::zero());
 	}
 
 	#[test]
 	fn test_parse_uint_valid_positive() {
-		let result = parse_uint(OwnedFragment::testing("12345")).unwrap();
+		let result = parse_uint(Fragment::testing("12345")).unwrap();
 		assert_eq!(format!("{}", result), "12345");
 	}
 
 	#[test]
 	fn test_parse_uint_large_positive() {
 		let large_num = "123456789012345678901234567890";
-		let result = parse_uint(OwnedFragment::testing(large_num)).unwrap();
+		let result = parse_uint(Fragment::testing(large_num)).unwrap();
 		assert_eq!(format!("{}", result), large_num);
 	}
 
 	#[test]
 	fn test_parse_uint_scientific_notation() {
-		let result = parse_uint(OwnedFragment::testing("1e5")).unwrap();
+		let result = parse_uint(Fragment::testing("1e5")).unwrap();
 		assert_eq!(format!("{}", result), "100000");
 	}
 
 	#[test]
 	fn test_parse_uint_scientific_decimal() {
-		let result = parse_uint(OwnedFragment::testing("2.5e3")).unwrap();
+		let result = parse_uint(Fragment::testing("2.5e3")).unwrap();
 		assert_eq!(format!("{}", result), "2500");
 	}
 
 	#[test]
 	fn test_parse_uint_float_truncation() {
-		let result = parse_uint(OwnedFragment::testing("123.789")).unwrap();
+		let result = parse_uint(Fragment::testing("123.789")).unwrap();
 		assert_eq!(format!("{}", result), "123");
 	}
 
 	#[test]
 	fn test_parse_uint_float_truncation_zero() {
-		let result = parse_uint(OwnedFragment::testing("0.999")).unwrap();
+		let result = parse_uint(Fragment::testing("0.999")).unwrap();
 		assert_eq!(format!("{}", result), "0");
 	}
 
 	#[test]
 	fn test_parse_uint_with_underscores() {
-		let result = parse_uint(OwnedFragment::testing("1_234_567")).unwrap();
+		let result = parse_uint(Fragment::testing("1_234_567")).unwrap();
 		assert_eq!(format!("{}", result), "1234567");
 	}
 
 	#[test]
 	fn test_parse_uint_with_leading_space() {
-		let result = parse_uint(OwnedFragment::testing(" 12345")).unwrap();
+		let result = parse_uint(Fragment::testing(" 12345")).unwrap();
 		assert_eq!(format!("{}", result), "12345");
 	}
 
 	#[test]
 	fn test_parse_uint_with_trailing_space() {
-		let result = parse_uint(OwnedFragment::testing("12345 ")).unwrap();
+		let result = parse_uint(Fragment::testing("12345 ")).unwrap();
 		assert_eq!(format!("{}", result), "12345");
 	}
 
 	#[test]
 	fn test_parse_uint_with_both_spaces() {
-		let result = parse_uint(OwnedFragment::testing(" 12345 ")).unwrap();
+		let result = parse_uint(Fragment::testing(" 12345 ")).unwrap();
 		assert_eq!(format!("{}", result), "12345");
 	}
 
 	#[test]
 	fn test_parse_uint_negative_integer() {
-		assert!(parse_uint(OwnedFragment::testing("-12345")).is_err());
+		assert!(parse_uint(Fragment::testing("-12345")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_negative_float() {
-		assert!(parse_uint(OwnedFragment::testing("-123.45")).is_err());
+		assert!(parse_uint(Fragment::testing("-123.45")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_negative_scientific() {
-		assert!(parse_uint(OwnedFragment::testing("-1e5")).is_err());
+		assert!(parse_uint(Fragment::testing("-1e5")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_negative_zero_float() {
 		// This should be handled gracefully - negative zero should
 		// become positive zero
-		let result = parse_uint(OwnedFragment::testing("-0.0")).unwrap();
+		let result = parse_uint(Fragment::testing("-0.0")).unwrap();
 		assert_eq!(format!("{}", result), "0");
 	}
 
 	#[test]
 	fn test_parse_uint_invalid_empty() {
-		assert!(parse_uint(OwnedFragment::testing("")).is_err());
+		assert!(parse_uint(Fragment::testing("")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_invalid_whitespace() {
-		assert!(parse_uint(OwnedFragment::testing("   ")).is_err());
+		assert!(parse_uint(Fragment::testing("   ")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_invalid_text() {
-		assert!(parse_uint(OwnedFragment::testing("abc")).is_err());
+		assert!(parse_uint(Fragment::testing("abc")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_invalid_multiple_dots() {
-		assert!(parse_uint(OwnedFragment::testing("1.2.3")).is_err());
+		assert!(parse_uint(Fragment::testing("1.2.3")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_infinity() {
-		assert!(parse_uint(OwnedFragment::testing("inf")).is_err());
+		assert!(parse_uint(Fragment::testing("inf")).is_err());
 	}
 
 	#[test]
 	fn test_parse_uint_negative_infinity() {
-		assert!(parse_uint(OwnedFragment::testing("-inf")).is_err());
+		assert!(parse_uint(Fragment::testing("-inf")).is_err());
 	}
 }

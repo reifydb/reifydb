@@ -9,12 +9,12 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_flow<'a>(
+	pub(crate) async fn create_flow<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateFlowNode,
-	) -> crate::Result<Columns<'a>> {
-		if let Some(_) = txn.find_flow_by_name(plan.namespace.id, plan.flow.text())? {
+	) -> crate::Result<Columns> {
+		if let Some(_) = txn.find_flow_by_name(plan.namespace.id, plan.flow.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -33,10 +33,10 @@ impl Executor {
 				namespace: plan.namespace.id,
 				status: FlowStatus::Active,
 			},
-		)?;
+		).await?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
-		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id)?;
+		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

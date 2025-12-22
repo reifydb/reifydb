@@ -32,7 +32,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_update_ringbuffer_metadata() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		// Get initial metadata
@@ -66,7 +66,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_update_ringbuffer_metadata_wrap_around() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		let mut metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)

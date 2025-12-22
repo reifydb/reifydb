@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic, value::DateTime};
+use crate::{Fragment, error::diagnostic::Diagnostic, value::DateTime};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context
@@ -53,7 +53,7 @@ pub fn internal_with_context(
 		statement: None,
 		message: detailed_message,
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some(format!("Internal invariant violated at {}:{}:{}", file, line, column)),
 		help: Some(help_message),
 		notes: vec![
@@ -82,7 +82,7 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 		statement: None,
 		message: format!("{} is shutting down", component),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some(format!("{} is no longer accepting requests", component)),
 		help: Some(format!(
 			"This operation failed because {} is shutting down.\n\

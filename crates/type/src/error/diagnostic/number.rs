@@ -2,14 +2,13 @@
 // This file is licensed under the MIT, see license.md file
 
 use crate::{
-	OwnedFragment, Type,
+	Fragment, Type,
 	error::diagnostic::{Diagnostic, util::value_range},
-	fragment::IntoFragment,
 	value::constraint::{precision::Precision, scale::Scale},
 };
 
-pub fn invalid_number_format<'a>(fragment: impl IntoFragment<'a>, target: Type) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_number_format(fragment: Fragment, target: Type) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("'{}' is not a valid {} number", fragment.text(), target));
 
 	let (help, notes) = match target {
@@ -100,12 +99,12 @@ impl<'a> NumberOfRangeColumnDescriptor<'a> {
 	}
 }
 
-pub fn number_out_of_range<'a>(
-	fragment: impl IntoFragment<'a>,
+pub fn number_out_of_range(
+	fragment: Fragment,
 	target: Type,
 	descriptor: Option<&NumberOfRangeColumnDescriptor>,
 ) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+	let fragment = fragment;
 
 	let range = value_range(target);
 
@@ -151,7 +150,7 @@ pub fn nan_not_allowed() -> Diagnostic {
 		code: "NUMBER_003".to_string(),
 		statement: None,
 		message: "NaN not allowed".to_string(),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label,
 		help: Some("use a finite number or undefined instead".to_string()),
 		notes: vec![],
@@ -160,8 +159,8 @@ pub fn nan_not_allowed() -> Diagnostic {
 	}
 }
 
-pub fn integer_precision_loss<'a>(fragment: impl IntoFragment<'a>, source_type: Type, target: Type) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn integer_precision_loss(fragment: Fragment, source_type: Type, target: Type) -> Diagnostic {
+	let fragment = fragment;
 	let is_signed = source_type.is_signed_integer();
 
 	let (min_limit, max_limit) = match target {
@@ -207,15 +206,15 @@ pub fn integer_precision_loss<'a>(fragment: impl IntoFragment<'a>, source_type: 
 	}
 }
 
-pub fn decimal_scale_exceeds_precision<'a>(
-	fragment: impl IntoFragment<'a>,
+pub fn decimal_scale_exceeds_precision(
+	fragment: Fragment,
 	scale: impl Into<Scale>,
 	precision: impl Into<Precision>,
 ) -> Diagnostic {
 	let scale = scale.into();
 	let precision = precision.into();
 
-	let fragment = fragment.into_fragment().into_owned();
+	let fragment = fragment;
 	let label = Some(format!("scale ({}) cannot be greater than precision ({})", scale, precision));
 
 	Diagnostic {
@@ -243,7 +242,7 @@ pub fn decimal_precision_invalid(precision: u8) -> Diagnostic {
 		code: "NUMBER_006".to_string(),
 		statement: None,
 		message: "invalid decimal precision".to_string(),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label,
 		help: Some("use a precision value of at least 1".to_string()),
 		notes: vec![

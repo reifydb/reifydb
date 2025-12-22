@@ -14,12 +14,12 @@ use crate::{
 };
 
 pub(crate) struct SortCompiler {
-	pub input: Box<PhysicalPlan<'static>>,
+	pub input: Box<PhysicalPlan>,
 	pub by: Vec<SortKey>,
 }
 
-impl<'a> From<SortNode<'a>> for SortCompiler {
-	fn from(node: SortNode<'a>) -> Self {
+impl From<SortNode> for SortCompiler {
+	fn from(node: SortNode) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
 			by: node.by, // SortKey doesn't contain fragments

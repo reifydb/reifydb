@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_transaction::multi::Transaction;
+use reifydb_transaction::multi::TransactionMulti;
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
@@ -9,7 +9,7 @@ use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 async fn test_write() {
 	let key = as_key!("foo");
 
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 	{
 		let mut tx = engine.begin_command().await.unwrap();
 		assert_eq!(tx.version(), 1);
@@ -30,7 +30,7 @@ async fn test_write() {
 
 #[tokio::test]
 async fn test_multiple_write() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	{
 		let mut txn = engine.begin_command().await.unwrap();

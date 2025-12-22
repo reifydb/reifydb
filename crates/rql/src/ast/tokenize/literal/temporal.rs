@@ -4,7 +4,7 @@
 use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor};
 
 /// Scan for temporal literal (dates/times starting with @)
-pub fn scan_temporal<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
 	if cursor.peek() != Some('@') {
 		return None;
 	}

@@ -5,26 +5,26 @@ use reifydb_core::{
 	error,
 	interface::{NamespaceId, QueryTransaction, SourceDef, SourceId},
 };
-use reifydb_type::{IntoFragment, internal};
+use reifydb_type::{Fragment, internal};
 use tracing::instrument;
 
 use crate::{CatalogTableQueryOperations, CatalogViewQueryOperations};
 
 pub trait CatalogSourceQueryOperations {
-	async fn find_source_by_name<'a>(
+	async fn find_source_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		source: impl IntoFragment<'a> + Send,
+		source: impl Into<Fragment>,
 	) -> crate::Result<Option<SourceDef>>;
 
 	async fn find_source(&mut self, id: SourceId) -> crate::Result<Option<SourceDef>>;
 
 	async fn get_source(&mut self, id: SourceId) -> crate::Result<SourceDef>;
 
-	async fn get_source_by_name<'a>(
+	async fn get_source_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a> + Send,
+		name: impl Into<Fragment>,
 	) -> crate::Result<SourceDef>;
 }
 
@@ -32,10 +32,10 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 	for T
 {
 	#[instrument(name = "catalog::source::find_by_name", level = "trace", skip(self, _source))]
-	async fn find_source_by_name<'a>(
+	async fn find_source_by_name(
 		&mut self,
 		_namespace: NamespaceId,
-		_source: impl IntoFragment<'a> + Send,
+		_source: impl Into<Fragment>,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
 	}
@@ -67,10 +67,10 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 	}
 
 	#[instrument(name = "catalog::source::get_by_name", level = "trace", skip(self, _name))]
-	async fn get_source_by_name<'a>(
+	async fn get_source_by_name(
 		&mut self,
 		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a> + Send,
+		_name: impl Into<Fragment>,
 	) -> reifydb_core::Result<SourceDef> {
 		todo!()
 	}

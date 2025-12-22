@@ -6,7 +6,7 @@ use reifydb_catalog::transaction::CatalogTrackTableChangeOperations;
 use reifydb_core::interface::{
 	Change, NamespaceId, OperationType, OperationType::Delete, TableDef, TableId, TransactionalTableChanges,
 };
-use reifydb_type::IntoFragment;
+use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -60,8 +60,8 @@ impl TransactionalTableChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_table_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&TableDef> {
-		let name = name.into_fragment();
+	fn find_table_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&TableDef> {
+		let name = name.into();
 		self.changes.table_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name.text())
 		})
@@ -75,8 +75,8 @@ impl TransactionalTableChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|t| t.id) == Some(id))
 	}
 
-	fn is_table_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
+	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
+		let name = name.into();
 		self.changes.table_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
@@ -93,7 +93,7 @@ impl TransactionalTableChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_table_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> Option<&TableDef> {
+	fn find_table_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> Option<&TableDef> {
 		None
 	}
 
@@ -101,7 +101,7 @@ impl TransactionalTableChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_table_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
+	fn is_table_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
 		false
 	}
 }
@@ -118,7 +118,7 @@ mod tests {
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper functions to create test definitions
-	fn test_table_def(id: u64, namespace_id: u64, name: &str) -> TableDef {
+	async fn test_table_def(id: u64, namespace_id: u64, name: &str).await -> TableDef {
 		TableDef {
 			id: TableId(id),
 			namespace: NamespaceId(namespace_id),
@@ -131,11 +131,11 @@ mod tests {
 	mod track_table_def_created {
 		use super::*;
 
-		#[test]
-		fn test_successful_creation() {
-			let mut txn = create_test_command_transaction();
+		#[tokio::test]
+		async fn test_successful_creation() {
+			let mut txn = create_test_command_transaction().await;
 
-			let table = test_table_def(1, 1, "test_table");
+			let table = test_table_def(1, 1, "test_table").await;
 			let result = txn.track_table_def_created(table.clone());
 			assert!(result.is_ok());
 
@@ -161,12 +161,12 @@ mod tests {
 	mod track_table_def_updated {
 		use super::*;
 
-		#[test]
-		fn test_multiple_updates_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let table_v1 = test_table_def(1, 1, "table_v1");
-			let table_v2 = test_table_def(1, 1, "table_v2");
-			let table_v3 = test_table_def(1, 1, "table_v3");
+		#[tokio::test]
+		async fn test_multiple_updates_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let table_v1 = test_table_def(1, 1, "table_v1").await;
+			let table_v2 = test_table_def(1, 1, "table_v2").await;
+			let table_v3 = test_table_def(1, 1, "table_v3").await;
 
 			// First update
 			txn.track_table_def_updated(table_v1.clone(), table_v2.clone()).unwrap();
@@ -191,11 +191,11 @@ mod tests {
 			assert_eq!(txn.changes.log.len(), 2);
 		}
 
-		#[test]
-		fn test_create_then_update_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let table_v1 = test_table_def(1, 1, "table_v1");
-			let table_v2 = test_table_def(1, 1, "table_v2");
+		#[tokio::test]
+		async fn test_create_then_update_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let table_v1 = test_table_def(1, 1, "table_v1").await;
+			let table_v2 = test_table_def(1, 1, "table_v2").await;
 
 			// First track creation
 			txn.track_table_def_created(table_v1.clone()).unwrap();
@@ -222,10 +222,10 @@ mod tests {
 	mod track_table_def_deleted {
 		use super::*;
 
-		#[test]
-		fn test_delete_after_create_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let table = test_table_def(1, 1, "test_table");
+		#[tokio::test]
+		async fn test_delete_after_create_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let table = test_table_def(1, 1, "test_table").await;
 
 			// First track creation
 			txn.track_table_def_created(table.clone()).unwrap();
@@ -248,10 +248,10 @@ mod tests {
 			assert_eq!(txn.changes.log.len(), 2);
 		}
 
-		#[test]
-		fn test_normal_delete() {
-			let mut txn = create_test_command_transaction();
-			let table = test_table_def(1, 1, "test_table");
+		#[tokio::test]
+		async fn test_normal_delete() {
+			let mut txn = create_test_command_transaction().await;
+			let table = test_table_def(1, 1, "test_table").await;
 
 			let result = txn.track_table_def_deleted(table.clone());
 			assert!(result.is_ok());

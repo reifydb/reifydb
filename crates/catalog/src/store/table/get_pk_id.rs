@@ -39,9 +39,9 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_table_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		// Create a column
@@ -82,9 +82,9 @@ mod tests {
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_table_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		// Get the primary key ID - should be None
@@ -93,9 +93,9 @@ mod tests {
 		assert!(pk_id.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_table_pk_id_nonexistent_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Get the primary key ID for non-existent table - should be
 		// None

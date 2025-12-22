@@ -71,10 +71,10 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_exists() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -96,19 +96,19 @@ mod tests {
 		assert_eq!(found.id_type, Type::Uint2);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::find_dictionary(&mut txn, DictionaryId(999)).unwrap();
 
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_by_name_exists() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
 			namespace: namespace.id,
@@ -130,20 +130,20 @@ mod tests {
 		assert_eq!(found.id_type, Type::Uint4);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_by_name_not_exists() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "nonexistent_dict").unwrap();
 
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		// Create namespace2
 		let namespace2 = CatalogStore::create_namespace(

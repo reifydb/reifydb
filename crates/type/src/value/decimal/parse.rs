@@ -6,12 +6,11 @@ use std::{borrow::Cow, str::FromStr};
 use bigdecimal::BigDecimal as BigDecimalInner;
 
 use crate::{
-	Error, IntoFragment, Type, error::diagnostic::number::invalid_number_format, return_error,
-	value::decimal::Decimal,
+	Error, Fragment, Type, error::diagnostic::number::invalid_number_format, return_error, value::decimal::Decimal,
 };
 
-pub fn parse_decimal<'a>(fragment: impl IntoFragment<'a>) -> Result<Decimal, Error> {
-	let fragment = fragment.into_fragment();
+pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
+	// Fragment is already owned, no conversion needed
 	let fragment_owned = fragment.clone().into_owned();
 	let raw_value = fragment.text();
 
@@ -40,45 +39,45 @@ pub fn parse_decimal<'a>(fragment: impl IntoFragment<'a>) -> Result<Decimal, Err
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_parse_decimal_integer() {
-		let decimal = parse_decimal(OwnedFragment::testing("123")).unwrap();
+		let decimal = parse_decimal(Fragment::testing("123")).unwrap();
 		assert_eq!(decimal.to_string(), "123");
 	}
 
 	#[test]
 	fn test_parse_decimal_with_fractional() {
-		let decimal = parse_decimal(OwnedFragment::testing("123.45")).unwrap();
+		let decimal = parse_decimal(Fragment::testing("123.45")).unwrap();
 		assert_eq!(decimal.to_string(), "123.45");
 	}
 
 	#[test]
 	fn test_parse_decimal_with_underscores() {
-		let decimal = parse_decimal(OwnedFragment::testing("1_234.56")).unwrap();
+		let decimal = parse_decimal(Fragment::testing("1_234.56")).unwrap();
 		assert_eq!(decimal.to_string(), "1234.56");
 	}
 
 	#[test]
 	fn test_parse_decimal_negative() {
-		let decimal = parse_decimal(OwnedFragment::testing("-123.45")).unwrap();
+		let decimal = parse_decimal(Fragment::testing("-123.45")).unwrap();
 		assert_eq!(decimal.to_string(), "-123.45");
 	}
 
 	#[test]
 	fn test_parse_decimal_empty() {
-		assert!(parse_decimal(OwnedFragment::testing("")).is_err());
+		assert!(parse_decimal(Fragment::testing("")).is_err());
 	}
 
 	#[test]
 	fn test_parse_decimal_invalid() {
-		assert!(parse_decimal(OwnedFragment::testing("not_a_number")).is_err());
+		assert!(parse_decimal(Fragment::testing("not_a_number")).is_err());
 	}
 
 	#[test]
 	fn test_parse_decimal_scientific_notation() {
-		let decimal = parse_decimal(OwnedFragment::testing("1.23e2")).unwrap();
+		let decimal = parse_decimal(Fragment::testing("1.23e2")).unwrap();
 		assert_eq!(decimal.to_string(), "123");
 	}
 }

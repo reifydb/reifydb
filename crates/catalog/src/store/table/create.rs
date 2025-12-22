@@ -10,7 +10,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	return_error,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{
 	CatalogStore,
@@ -28,13 +28,13 @@ pub struct TableColumnToCreate {
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub table: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
@@ -50,7 +50,11 @@ impl CatalogStore {
 
 		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table).await? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
-			return_error!(table_already_exists(to_create.fragment, &namespace.name, &table.name));
+			return_error!(table_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&table.name
+			));
 		}
 
 		let table_id = SystemSequence::next_table_id(txn).await?;
@@ -146,7 +150,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
@@ -170,7 +174,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_table_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = TableToCreate {

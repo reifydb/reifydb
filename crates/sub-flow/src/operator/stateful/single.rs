@@ -70,8 +70,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_default_key() {
+	#[tokio::test]
+	async fn test_default_key() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = operator.key();
 
@@ -79,8 +79,8 @@ mod tests {
 		assert_eq!(key.len(), 0);
 	}
 
-	#[test]
-	fn test_create_state() {
+	#[tokio::test]
+	async fn test_create_state() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let state = operator.create_state();
 
@@ -88,9 +88,9 @@ mod tests {
 		assert!(state.len() > 0);
 	}
 
-	#[test]
-	fn test_load_save_state() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_load_save_state() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -107,9 +107,9 @@ mod tests {
 		assert_eq!(state2.as_ref()[0], 0x33);
 	}
 
-	#[test]
-	fn test_update_state() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_update_state() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -128,9 +128,9 @@ mod tests {
 		assert_eq!(loaded.as_ref()[0], 0x77);
 	}
 
-	#[test]
-	fn test_clear_state() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_clear_state() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
@@ -149,9 +149,9 @@ mod tests {
 		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
 	}
 
-	#[test]
-	fn test_multiple_operators_isolated() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_multiple_operators_isolated() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
@@ -179,9 +179,9 @@ mod tests {
 		assert_eq!(state2.as_ref()[0], 0x22);
 	}
 
-	#[test]
-	fn test_counter_simulation() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_counter_simulation() {
+		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::new(FlowNodeId(1));
 

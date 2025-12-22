@@ -97,7 +97,7 @@ impl fmt::Display for SchemaNotFoundError {
 pub struct SourceNotFoundError {
 	pub namespace: String,
 	pub name: String,
-	pub fragment: reifydb_type::OwnedFragment,
+	pub fragment: reifydb_type::Fragment,
 }
 
 impl fmt::Display for SourceNotFoundError {
@@ -116,7 +116,7 @@ impl SourceNotFoundError {
 		namespace: String,
 		name: String,
 		_expected: &str,
-		fragment: reifydb_type::OwnedFragment,
+		fragment: reifydb_type::Fragment,
 	) -> Self {
 		// Could extend this to include expected type in the error
 		Self {
@@ -172,7 +172,7 @@ impl fmt::Display for FunctionNotFoundError {
 
 /// Check if a fragment represents an injected default namespace
 pub fn is_default_namespace(fragment: &reifydb_type::Fragment) -> bool {
-	matches!(fragment, reifydb_type::Fragment::Owned(reifydb_type::OwnedFragment::Internal { .. }))
+	matches!(fragment, reifydb_type::Fragment::Internal { .. })
 }
 
 #[cfg(test)]
@@ -192,14 +192,14 @@ mod tests {
 		let err = SourceNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::OwnedFragment::None,
+			fragment: reifydb_type::Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
 		let err = SourceNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::OwnedFragment::None,
+			fragment: reifydb_type::Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'myschema.users' does not exist");
 	}

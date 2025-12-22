@@ -138,12 +138,12 @@ impl Default for DistinctState {
 pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression<'static>>,
+	expressions: Vec<Expression>,
 	layout: EncodedValuesLayout,
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
-	Fragment, IntoFragment, Type, Value,
+	Fragment, Type, Value,
 	diagnostic::{catalog::ringbuffer_not_found, engine},
 	internal_error, return_error,
 };
@@ -25,51 +25,48 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn update_ringbuffer<'a>(
+	pub(crate) async fn update_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: UpdateRingBufferNode<'a>,
+		plan: UpdateRingBufferNode,
 		params: Params,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
 		else {
-			let fragment = plan.target.name().into_fragment();
+			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata - we need it to validate that rows exist
-		let Some(metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-			let fragment = plan.target.name().into_fragment();
+		let Some(metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id).await? else {
+			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
 
 		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let ringbuffer_types: Vec<Type> = ringbuffer
-			.columns
-			.iter()
-			.map(|c| {
-				if let Some(dict_id) = c.dictionary_id {
-					CatalogStore::find_dictionary(txn, dict_id)
-						.ok()
-						.flatten()
-						.map(|d| d.id_type)
-						.unwrap_or_else(|| c.constraint.get_type())
-				} else {
-					c.constraint.get_type()
-				}
-			})
-			.collect();
+		let mut ringbuffer_types: Vec<Type> = Vec::new();
+		for c in &ringbuffer.columns {
+			if let Some(dict_id) = c.dictionary_id {
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+					Ok(Some(d)) => d.id_type,
+					_ => c.constraint.get_type(),
+				};
+				ringbuffer_types.push(dict_type);
+			} else {
+				ringbuffer_types.push(c.constraint.get_type());
+			}
+		}
 		let layout = EncodedValuesLayout::new(&ringbuffer_types);
 
 		// Create resolved source for the ring buffer
-		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
+		let namespace_ident = Fragment::internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let rb_ident = Fragment::owned_internal(ringbuffer.name.clone());
+		let rb_ident = Fragment::internal(ringbuffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
 		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
 
@@ -91,12 +88,12 @@ impl Executor {
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
 			// Initialize the operator before execution
-			input_node.initialize(&mut wrapped_txn, &context)?;
+			input_node.initialize(&mut wrapped_txn, &context).await?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context).await?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
@@ -128,7 +125,7 @@ impl Executor {
 						};
 
 						// Create a ResolvedColumn for this ring buffer column
-						let column_ident = Fragment::borrowed_internal(&rb_column.name);
+						let column_ident = Fragment::internal(&rb_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							context.source.clone().unwrap(),
@@ -153,7 +150,7 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							)?
+							).await?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -163,7 +160,7 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value)?;
+								.insert_into_dictionary(&dictionary, &value).await?;
 							entry_id.to_value()
 						} else {
 							value
@@ -209,7 +206,7 @@ impl Executor {
 						ringbuffer.clone(),
 						row_number,
 						row,
-					)?;
+					).await?;
 
 					updated_count += 1;
 				}

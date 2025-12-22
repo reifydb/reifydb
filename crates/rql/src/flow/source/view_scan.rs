@@ -9,19 +9,19 @@ use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 use super::super::{CompileOperator, FlowCompiler, FlowNodeType};
 use crate::{Result, plan::physical::ViewScanNode};
 
-pub(crate) struct ViewScanCompiler<'a> {
-	pub view_scan: ViewScanNode<'a>,
+pub(crate) struct ViewScanCompiler {
+	pub view_scan: ViewScanNode,
 }
 
-impl<'a> From<ViewScanNode<'a>> for ViewScanCompiler<'a> {
-	fn from(view_scan: ViewScanNode<'a>) -> Self {
+impl From<ViewScanNode> for ViewScanCompiler {
+	fn from(view_scan: ViewScanNode) -> Self {
 		Self {
 			view_scan,
 		}
 	}
 }
 
-impl<'a, T: CommandTransaction> CompileOperator<T> for ViewScanCompiler<'a> {
+impl<T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
 	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		compiler.build_node(SourceView {
 			view: self.view_scan.source.def().id,

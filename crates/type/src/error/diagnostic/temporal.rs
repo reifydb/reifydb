@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
-pub fn invalid_date_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_date_format(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("expected YYYY-MM-DD format, found '{}'", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_001".to_string(),
@@ -19,8 +19,8 @@ pub fn invalid_date_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_datetime_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_datetime_format(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("expected YYYY-MM-DDTHH:MM:SS format, found '{}'", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_002".to_string(),
@@ -35,8 +35,8 @@ pub fn invalid_datetime_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnosti
 	}
 }
 
-pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_time_format(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("expected HH:MM:SS format, found '{}'", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_003".to_string(),
@@ -51,8 +51,8 @@ pub fn invalid_time_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_duration_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_duration_format(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("expected P[n]Y[n]M[n]W[n]D[T[n]H[n]M[n]S] format, found '{}'", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_004".to_string(),
@@ -72,8 +72,8 @@ pub fn invalid_duration_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnosti
 	}
 }
 
-pub fn invalid_year<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_year(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("year '{}' cannot be parsed as a number", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_005".to_string(),
@@ -88,8 +88,8 @@ pub fn invalid_year<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_month<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_month(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("month '{}' cannot be parsed as a number (expected 1-12)", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_006".to_string(),
@@ -104,8 +104,8 @@ pub fn invalid_month<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_day<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_day(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("day '{}' cannot be parsed as a number (expected 1-31)", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_007".to_string(),
@@ -120,8 +120,8 @@ pub fn invalid_day<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_hour<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_hour(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("hour '{}' cannot be parsed as a number (expected 0-23)", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_008".to_string(),
@@ -139,8 +139,8 @@ pub fn invalid_hour<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_minute<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_minute(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("minute '{}' cannot be parsed as a number (expected 0-59)", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_009".to_string(),
@@ -155,8 +155,8 @@ pub fn invalid_minute<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_second<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_second(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("second '{}' cannot be parsed as a number (expected 0-59)", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_010".to_string(),
@@ -171,8 +171,8 @@ pub fn invalid_second<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_fractional_seconds<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_fractional_seconds(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("fractional seconds '{}' cannot be parsed as a number", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_011".to_string(),
@@ -187,8 +187,8 @@ pub fn invalid_fractional_seconds<'a>(fragment: impl IntoFragment<'a>) -> Diagno
 	}
 }
 
-pub fn invalid_date_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_date_values(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("date '{}' represents an invalid calendar date", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_012".to_string(),
@@ -206,8 +206,8 @@ pub fn invalid_date_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_time_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_time_values(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("time '{}' contains out-of-range values", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_013".to_string(),
@@ -222,8 +222,8 @@ pub fn invalid_time_values<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_duration_character<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_duration_character(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("character '{}' is not valid in ISO 8601 duration", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_014".to_string(),
@@ -241,8 +241,8 @@ pub fn invalid_duration_character<'a>(fragment: impl IntoFragment<'a>) -> Diagno
 	}
 }
 
-pub fn incomplete_duration_specification<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn incomplete_duration_specification(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("number '{}' is missing a unit specifier", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_015".to_string(),
@@ -257,8 +257,8 @@ pub fn incomplete_duration_specification<'a>(fragment: impl IntoFragment<'a>) ->
 	}
 }
 
-pub fn invalid_unit_in_context<'a>(fragment: impl IntoFragment<'a>, unit: char, in_time_part: bool) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_unit_in_context(fragment: Fragment, unit: char, in_time_part: bool) -> Diagnostic {
+	let fragment = fragment;
 	let context = if in_time_part {
 		"time part (after T)"
 	} else {
@@ -283,8 +283,8 @@ pub fn invalid_unit_in_context<'a>(fragment: impl IntoFragment<'a>, unit: char, 
 	}
 }
 
-pub fn invalid_duration_component_value<'a>(fragment: impl IntoFragment<'a>, unit: char) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_duration_component_value(fragment: Fragment, unit: char) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("{} value '{}' cannot be parsed as a number", unit_name(unit), fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_017".to_string(),
@@ -299,8 +299,8 @@ pub fn invalid_duration_component_value<'a>(fragment: impl IntoFragment<'a>, uni
 	}
 }
 
-pub fn unrecognized_temporal_pattern<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unrecognized_temporal_pattern(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("value '{}' does not match any temporal format", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_018".to_string(),
@@ -319,8 +319,8 @@ pub fn unrecognized_temporal_pattern<'a>(fragment: impl IntoFragment<'a>) -> Dia
         cause: None}
 }
 
-pub fn empty_date_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn empty_date_component(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("date component '{}' is empty", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_019".to_string(),
@@ -335,8 +335,8 @@ pub fn empty_date_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn empty_time_component<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn empty_time_component(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some(format!("time component '{}' is empty", fragment.text()));
 	Diagnostic {
 		code: "TEMPORAL_020".to_string(),

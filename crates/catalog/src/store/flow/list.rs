@@ -50,11 +50,11 @@ mod tests {
 		test_utils::{create_flow, create_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flows_all() {
-		let mut txn = create_test_command_transaction();
-		let namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "flow_one");
 		create_flow(&mut txn, "namespace_one", "flow_two");
@@ -87,18 +87,18 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flows_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
 		assert_eq!(result.len(), 0);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_flows_all_with_different_statuses() {
-		let mut txn = create_test_command_transaction();
-		create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		create_namespace(&mut txn, "test_namespace").await;
 
 		// Create flows with different statuses
 		create_flow(&mut txn, "test_namespace", "active_flow");

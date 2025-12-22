@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
@@ -15,7 +16,7 @@ use reifydb_core::{
 		TablePreUpdateInterceptor,
 	},
 	interface::{
-		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
+		CdcTransaction, CommandTransaction, MultiVersionBatch, MultiVersionCommandTransaction,
 		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction, RowChange,
 		SingleVersionTransaction, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
@@ -26,7 +27,7 @@ use reifydb_core::{
 use reifydb_transaction::{
 	cdc::TransactionCdc,
 	multi::{TransactionMultiVersion, pending::PendingWrites},
-	single::TransactionSingleVersion,
+	single::TransactionSingle,
 };
 use tracing::instrument;
 
@@ -38,7 +39,7 @@ use crate::{transaction::query::StandardQueryTransaction, util::block_on};
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction {
 	pub multi: TransactionMultiVersion,
-	pub single: TransactionSingleVersion,
+	pub single: TransactionSingle,
 	pub(crate) cdc: TransactionCdc,
 	state: TransactionState,
 
@@ -65,7 +66,7 @@ impl StandardCommandTransaction {
 	#[instrument(name = "engine::transaction::command::new", level = "debug", skip_all)]
 	pub async fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
 		catalog: MaterializedCatalog,
@@ -115,14 +116,14 @@ impl StandardCommandTransaction {
 
 		block_on(TransactionInterceptor::pre_commit(self))?;
 
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
 			let row_changes = std::mem::take(&mut self.row_changes);
 
-			let version = multi.commit()?;
+			let version = block_on(multi.commit())?;
 			block_on(TransactionInterceptor::post_commit(self, id, version, changes, row_changes))?;
 
 			Ok(version)
@@ -136,7 +137,7 @@ impl StandardCommandTransaction {
 	#[instrument(name = "engine::transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			self.state = TransactionState::RolledBack;
 			multi.rollback()
 		} else {
@@ -164,22 +165,24 @@ impl StandardCommandTransaction {
 	#[instrument(name = "engine::transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_query(keys, f)
+		block_on(self.single.with_query(keys, f))
 	}
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Command<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_command(keys, f)
+		block_on(self.single.with_command(keys, f))
 	}
 
 	/// Execute a function with a query transaction view.
@@ -220,7 +223,7 @@ impl StandardCommandTransaction {
 			self.catalog.clone(),
 		);
 
-		query_txn.read_as_of_version_exclusive(version)?;
+		block_on(query_txn.read_as_of_version_exclusive(version))?;
 
 		f(&mut query_txn)
 	}
@@ -243,7 +246,7 @@ impl StandardCommandTransaction {
 			self.catalog.clone(),
 		);
 
-		query_txn.read_as_of_version_inclusive(version)?;
+		block_on(query_txn.read_as_of_version_inclusive(version))?;
 
 		f(&mut query_txn)
 	}
@@ -255,6 +258,7 @@ impl MaterializedCatalogTransaction for StandardCommandTransaction {
 	}
 }
 
+#[async_trait]
 impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
@@ -267,81 +271,76 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	}
 
 	#[inline]
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key)
+		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key)
+		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn range_batched(
+	async fn range_batch(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	) -> crate::Result<MultiVersionBatch> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::range_batched(self.cmd.as_mut().unwrap(), range, batch_size)
+		MultiVersionQueryTransaction::range_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
 	}
 
 	#[inline]
-	fn range_rev_batched(
+	async fn range_rev_batch(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	) -> crate::Result<MultiVersionBatch> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::range_rev_batched(self.cmd.as_mut().unwrap(), range, batch_size)
+		MultiVersionQueryTransaction::range_rev_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
 	}
 
 	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::prefix(self.cmd.as_mut().unwrap(), prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.check_active()?;
-		MultiVersionQueryTransaction::prefix_rev(self.cmd.as_mut().unwrap(), prefix)
-	}
-
-	#[inline]
-	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		self.check_active()?;
-		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version).await
 	}
 }
 
+#[async_trait]
 impl MultiVersionCommandTransaction for StandardCommandTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+	async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row)
+		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row).await
 	}
 
 	#[inline]
-	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key)
+		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<CommitVersion> {
+	async fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
-		self.state = TransactionState::Committed;
-		MultiVersionCommandTransaction::commit(self.cmd.take().unwrap())
+		let result = MultiVersionCommandTransaction::commit(self.cmd.as_mut().unwrap()).await;
+		if result.is_ok() {
+			self.state = TransactionState::Committed;
+		}
+		result
 	}
 
 	#[inline]
-	fn rollback(mut self) -> crate::Result<()> {
+	async fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
-		self.state = TransactionState::RolledBack;
-		MultiVersionCommandTransaction::rollback(self.cmd.take().unwrap())
+		let result = MultiVersionCommandTransaction::rollback(self.cmd.as_mut().unwrap()).await;
+		if result.is_ok() {
+			self.state = TransactionState::RolledBack;
+		}
+		result
 	}
 }
 
@@ -352,33 +351,33 @@ impl WithEventBus for StandardCommandTransaction {
 }
 
 impl QueryTransaction for StandardCommandTransaction {
-	type SingleVersionQuery<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Query<'a>;
+	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
 
 	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
 
-	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		self.single.begin_query(keys).await
+		block_on(self.single.begin_query(keys))
 	}
 
-	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
 		self.check_active()?;
-		self.cdc.begin_query().await
+		self.cdc.begin_query()
 	}
 }
 
 impl CommandTransaction for StandardCommandTransaction {
-	type SingleVersionCommand<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Command<'a>;
+	type SingleVersionCommand<'a> = <TransactionSingle as SingleVersionTransaction>::Command<'a>;
 
-	async fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		self.single.begin_command(keys).await
+		block_on(self.single.begin_command(keys))
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {
@@ -662,7 +661,7 @@ impl TransactionalChanges for StandardCommandTransaction {}
 
 impl Drop for StandardCommandTransaction {
 	fn drop(&mut self) {
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			// Auto-rollback if still active (not committed or
 			// rolled back)
 			if self.state == TransactionState::Active {

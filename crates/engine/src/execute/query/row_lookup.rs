@@ -8,6 +8,7 @@
 //! - `RowListLookupNode`: Multiple discrete rows O(k) lookup
 //! - `RowRangeScanNode`: Row number range scan
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -23,22 +24,18 @@ use tracing::instrument;
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 /// O(1) point lookup by row number
-pub(crate) struct RowPointLookupNode<'a> {
-	source: ResolvedSource<'a>,
+pub(crate) struct RowPointLookupNode {
+	source: ResolvedSource,
 	row_number: u64,
 	#[allow(dead_code)]
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	exhausted: bool,
 }
 
-impl<'a> RowPointLookupNode<'a> {
-	pub fn new(
-		source: ResolvedSource<'a>,
-		row_number: u64,
-		context: Arc<ExecutionContext<'a>>,
-	) -> crate::Result<Self> {
+impl<'a> RowPointLookupNode {
+	pub fn new(source: ResolvedSource, row_number: u64, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let (headers, row_layout) = build_headers_and_layout(&source)?;
 
 		Ok(Self {
@@ -52,22 +49,23 @@ impl<'a> RowPointLookupNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for RowPointLookupNode<'a> {
+#[async_trait]
+impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "query::lookup::point::initialize", level = "trace", skip_all)]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::lookup::point::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -81,7 +79,7 @@ impl<'a> QueryNode<'a> for RowPointLookupNode<'a> {
 		let encoded_key = row_key.encode();
 
 		// O(1) point lookup
-		if let Some(multi_values) = rx.get(&encoded_key)? {
+		if let Some(multi_values) = rx.get(&encoded_key).await? {
 			let mut columns = columns_from_source(&self.source);
 			columns.append_rows(
 				&self.row_layout,
@@ -98,26 +96,26 @@ impl<'a> QueryNode<'a> for RowPointLookupNode<'a> {
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
 /// O(k) list lookup by row numbers
-pub(crate) struct RowListLookupNode<'a> {
-	source: ResolvedSource<'a>,
+pub(crate) struct RowListLookupNode {
+	source: ResolvedSource,
 	row_numbers: Vec<u64>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	current_index: usize,
 }
 
-impl<'a> RowListLookupNode<'a> {
+impl<'a> RowListLookupNode {
 	pub fn new(
-		source: ResolvedSource<'a>,
+		source: ResolvedSource,
 		row_numbers: Vec<u64>,
-		context: Arc<ExecutionContext<'a>>,
+		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
 		let (headers, row_layout) = build_headers_and_layout(&source)?;
 
@@ -132,22 +130,23 @@ impl<'a> RowListLookupNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
+#[async_trait]
+impl QueryNode for RowListLookupNode {
 	#[instrument(name = "query::lookup::list::initialize", level = "trace", skip_all)]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::lookup::list::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -170,7 +169,7 @@ impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
 			let encoded_key = row_key.encode();
 
 			// O(1) point lookup for each row
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get(&encoded_key).await? {
 				batch_rows.push(multi_values.values);
 				found_row_numbers.push(RowNumber(row_num));
 			}
@@ -182,7 +181,7 @@ impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
 		if batch_rows.is_empty() {
 			// If no rows found in this batch but more to process, try next batch
 			if self.current_index < self.row_numbers.len() {
-				return self.next(rx, ctx);
+				return self.next(rx, ctx).await;
 			}
 			return Ok(None);
 		}
@@ -195,30 +194,30 @@ impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
 /// Range scan by row numbers (start..=end)
-pub(crate) struct RowRangeScanNode<'a> {
-	source: ResolvedSource<'a>,
+pub(crate) struct RowRangeScanNode {
+	source: ResolvedSource,
 	#[allow(dead_code)]
 	start: u64,
 	end: u64,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	current_row: u64,
 	exhausted: bool,
 }
 
-impl<'a> RowRangeScanNode<'a> {
+impl<'a> RowRangeScanNode {
 	pub fn new(
-		source: ResolvedSource<'a>,
+		source: ResolvedSource,
 		start: u64,
 		end: u64,
-		context: Arc<ExecutionContext<'a>>,
+		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
 		let (headers, row_layout) = build_headers_and_layout(&source)?;
 
@@ -235,22 +234,23 @@ impl<'a> RowRangeScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
+#[async_trait]
+impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "query::scan::range::initialize", level = "trace", skip_all)]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::range::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
@@ -272,7 +272,7 @@ impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
 			};
 			let encoded_key = row_key.encode();
 
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get(&encoded_key).await? {
 				batch_rows.push(multi_values.values);
 				found_row_numbers.push(RowNumber(row_num));
 			}
@@ -287,7 +287,7 @@ impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
 		if batch_rows.is_empty() {
 			// No rows found in this range segment
 			if !self.exhausted {
-				return self.next(rx, ctx);
+				return self.next(rx, ctx).await;
 			}
 			return Ok(None);
 		}
@@ -300,16 +300,14 @@ impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
 // Helper functions
 
-fn build_headers_and_layout<'a>(
-	source: &ResolvedSource<'a>,
-) -> crate::Result<(ColumnHeaders<'a>, EncodedValuesLayout)> {
+fn build_headers_and_layout<'a>(source: &ResolvedSource) -> crate::Result<(ColumnHeaders, EncodedValuesLayout)> {
 	let columns = match source {
 		ResolvedSource::Table(table) => table.columns(),
 		ResolvedSource::View(view) => view.columns(),
@@ -323,13 +321,13 @@ fn build_headers_and_layout<'a>(
 	let row_layout = EncodedValuesLayout::new(&data);
 
 	let headers = ColumnHeaders {
-		columns: columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+		columns: columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
 	};
 
 	Ok((headers, row_layout))
 }
 
-fn get_source_id(source: &ResolvedSource<'_>) -> crate::Result<SourceId> {
+fn get_source_id(source: &ResolvedSource) -> crate::Result<SourceId> {
 	match source {
 		ResolvedSource::Table(table) => Ok(table.def().id.into()),
 		ResolvedSource::View(view) => Ok(view.def().id.into()),
@@ -338,7 +336,7 @@ fn get_source_id(source: &ResolvedSource<'_>) -> crate::Result<SourceId> {
 	}
 }
 
-fn columns_from_source<'a>(source: &ResolvedSource<'a>) -> Columns<'a> {
+fn columns_from_source<'a>(source: &ResolvedSource) -> Columns {
 	match source {
 		ResolvedSource::Table(table) => Columns::from_table(table),
 		ResolvedSource::View(view) => Columns::from_view(view),

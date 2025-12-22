@@ -84,7 +84,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_table() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
@@ -107,7 +107,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_table_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
@@ -130,7 +130,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_table_rename() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
@@ -165,7 +165,7 @@ mod tests {
 		assert_eq!(catalog.find_table(table_id, CommitVersion(2)), Some(table_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_table_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
@@ -192,7 +192,7 @@ mod tests {
 		assert!(catalog.find_table_by_name(namespace2, "movable_table", CommitVersion(2)).is_some());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_table_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
@@ -217,7 +217,7 @@ mod tests {
 		assert_eq!(catalog.find_table(table_id, CommitVersion(1)), Some(table));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_multiple_tables_in_namespace() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -237,7 +237,7 @@ mod tests {
 		assert_eq!(catalog.find_table_by_name(namespace_id, "table3", CommitVersion(1)), Some(table3));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_table_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);

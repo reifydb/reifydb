@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::{
 	collections::{HashMap, HashSet},
 	sync::Arc,
@@ -8,7 +9,7 @@ use std::{
 
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
+use reifydb_type::{Fragment, Value, diagnostic};
 use tracing::instrument;
 
 use crate::{
@@ -19,29 +20,29 @@ use crate::{
 enum Projection {
 	Aggregate {
 		column: String,
-		alias: OwnedFragment,
+		alias: Fragment,
 		function: Box<dyn AggregateFunction>,
 	},
 	Group {
 		column: String,
-		alias: OwnedFragment,
+		alias: Fragment,
 	},
 }
 
-pub(crate) struct AggregateNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
-	by: Vec<Expression<'a>>,
-	map: Vec<Expression<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct AggregateNode {
+	input: Box<ExecutionPlan>,
+	by: Vec<Expression>,
+	map: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> AggregateNode<'a> {
+impl AggregateNode {
 	pub fn new(
-		input: Box<ExecutionPlan<'a>>,
-		by: Vec<Expression<'a>>,
-		map: Vec<Expression<'a>>,
-		context: Arc<ExecutionContext<'a>>,
+		input: Box<ExecutionPlan>,
+		by: Vec<Expression>,
+		map: Vec<Expression>,
+		context: Arc<ExecutionContext>,
 	) -> Self {
 		Self {
 			input,
@@ -53,24 +54,21 @@ impl<'a> AggregateNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for AggregateNode<'a> {
+#[async_trait]
+impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
-	fn initialize(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx)?;
+	async fn initialize<'a>(&mut self, rx: &mut crate::StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+		self.input.initialize(rx, ctx).await?;
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -86,7 +84,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			let groups = columns.group_by_view(&keys)?;
 
@@ -125,7 +123,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
 					let mut c = Column {
-						name: Fragment::owned_internal(alias.fragment()),
+						name: Fragment::internal(alias.fragment()),
 						data: ColumnData::undefined(0),
 					};
 					for key in &group_key_order {
@@ -141,7 +139,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 					let (keys_out, mut data) = function.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
 					result_columns.push(Column {
-						name: Fragment::owned_internal(alias.fragment()),
+						name: Fragment::internal(alias.fragment()),
 						data,
 					});
 				}
@@ -156,7 +154,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
 	}
 }

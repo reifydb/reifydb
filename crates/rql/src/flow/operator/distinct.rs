@@ -15,40 +15,40 @@ use crate::{
 };
 
 pub(crate) struct DistinctCompiler {
-	pub input: Box<PhysicalPlan<'static>>,
-	pub columns: Vec<ResolvedColumn<'static>>,
+	pub input: Box<PhysicalPlan>,
+	pub columns: Vec<ResolvedColumn>,
 }
 
-impl<'a> From<DistinctNode<'a>> for DistinctCompiler {
-	fn from(node: DistinctNode<'a>) -> Self {
+impl From<DistinctNode> for DistinctCompiler {
+	fn from(node: DistinctNode) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
-			columns: node.columns.into_iter().map(|c| c.to_static()).collect(),
+			columns: node.columns.into_iter().map(|c| c).collect(),
 		}
 	}
 }
 
 // Helper function to convert ResolvedColumn to ColumnIdentifier for expression system
-fn resolved_to_column_identifier(resolved: ResolvedColumn<'static>) -> ColumnIdentifier<'static> {
+fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 	let source = match resolved.source() {
 		ResolvedSource::Table(t) => ColumnSource::Source {
-			namespace: Fragment::owned_internal(t.namespace().name()),
-			source: Fragment::owned_internal(t.name()),
+			namespace: Fragment::internal(t.namespace().name()),
+			source: Fragment::internal(t.name()),
 		},
 		ResolvedSource::View(v) => ColumnSource::Source {
-			namespace: Fragment::owned_internal(v.namespace().name()),
-			source: Fragment::owned_internal(v.name()),
+			namespace: Fragment::internal(v.namespace().name()),
+			source: Fragment::internal(v.name()),
 		},
 		ResolvedSource::RingBuffer(r) => ColumnSource::Source {
-			namespace: Fragment::owned_internal(r.namespace().name()),
-			source: Fragment::owned_internal(r.name()),
+			namespace: Fragment::internal(r.namespace().name()),
+			source: Fragment::internal(r.name()),
 		},
-		_ => ColumnSource::Alias(Fragment::owned_internal("_unknown")),
+		_ => ColumnSource::Alias(Fragment::internal("_unknown")),
 	};
 
 	ColumnIdentifier {
 		source,
-		name: Fragment::owned_internal(resolved.name()),
+		name: Fragment::internal(resolved.name()),
 	}
 }
 
@@ -57,7 +57,7 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 		let input_node = compiler.compile_plan(*self.input).await?;
 
 		// Convert resolved columns to column expressions via ColumnIdentifier
-		let expressions: Vec<Expression<'static>> = self
+		let expressions: Vec<Expression> = self
 			.columns
 			.into_iter()
 			.map(|col| Expression::Column(ColumnExpression(resolved_to_column_identifier(col))))

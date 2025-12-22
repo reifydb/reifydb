@@ -2,9 +2,9 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::Diagnostic;
-use crate::OwnedFragment;
+use crate::Fragment;
 
-pub fn primary_key_violation(fragment: OwnedFragment, table_name: String, key_columns: Vec<String>) -> Diagnostic {
+pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns: Vec<String>) -> Diagnostic {
 	let columns_str = if key_columns.is_empty() {
 		"(unknown columns)".to_string()
 	} else {
@@ -31,7 +31,7 @@ pub fn primary_key_violation(fragment: OwnedFragment, table_name: String, key_co
 }
 
 pub fn unique_index_violation(
-	fragment: OwnedFragment,
+	fragment: Fragment,
 	table_name: String,
 	index_name: String,
 	key_columns: Vec<String>,

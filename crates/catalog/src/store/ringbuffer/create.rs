@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{CatalogStore, store::sequence::SystemSequence};
 
@@ -19,13 +19,13 @@ pub struct RingBufferColumnToCreate {
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RingBufferToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub ringbuffer: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
@@ -44,7 +44,11 @@ impl CatalogStore {
 			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, &to_create.ringbuffer).await?
 		{
 			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
-			return_error!(ringbuffer_already_exists(to_create.fragment, &namespace.name, &ringbuffer.name));
+			return_error!(ringbuffer_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&ringbuffer.name
+			));
 		}
 
 		// Allocate new ring buffer ID
@@ -179,7 +183,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_simple_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
@@ -221,7 +225,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_ringbuffer_empty_columns() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
@@ -243,7 +247,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_duplicate_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
@@ -267,7 +271,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_ringbuffer_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
@@ -312,7 +316,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_ringbuffer_with_metadata() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
@@ -340,7 +344,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_multiple_ringbuffers_with_different_capacities() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create small buffer
@@ -384,7 +388,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_ringbuffer_preserves_column_order() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let columns = vec![

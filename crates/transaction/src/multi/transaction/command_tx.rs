@@ -22,17 +22,17 @@ use reifydb_store_transaction::{
 use reifydb_type::{Error, util::hex};
 use tracing::instrument;
 
-use super::{Transaction, TransactionManagerCommand, version::StandardVersionProvider};
+use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;
 
 pub struct CommandTransaction {
-	engine: Transaction,
+	engine: TransactionMulti,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
 }
 
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
-	pub async fn new(engine: Transaction) -> crate::Result<Self> {
+	pub async fn new(engine: TransactionMulti) -> crate::Result<Self> {
 		let tm = engine.tm.write().await?;
 		Ok(Self {
 			engine,

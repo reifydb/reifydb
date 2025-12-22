@@ -30,7 +30,7 @@ separator! {
 }
 
 /// Scan for a separator token
-pub fn scan_separator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

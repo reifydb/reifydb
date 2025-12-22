@@ -34,3 +34,29 @@ where
 		}
 	}
 }
+
+/// Run an async future from a sync context without requiring Send.
+/// This is used for futures created by #[async_trait(?Send)] methods.
+///
+/// IMPORTANT: This should only be called from within spawn_blocking or similar contexts
+/// where we're already on a dedicated thread.
+pub fn block_on_local<F>(future: F) -> F::Output
+where
+	F: Future,
+{
+	match tokio::runtime::Handle::try_current() {
+		Ok(handle) => {
+			// We're inside a tokio runtime context.
+			// Use block_in_place to run the future on the current thread.
+			tokio::task::block_in_place(|| handle.block_on(future))
+		}
+		Err(_) => {
+			// No runtime exists, create a temporary one
+			tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.expect("Failed to create runtime")
+				.block_on(future)
+		}
+	}
+}

@@ -10,10 +10,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_filter<'a, T: CatalogQueryTransaction>(
-		ast: AstFilter<'a>,
+	pub(crate) fn compile_filter<T: CatalogQueryTransaction>(
+		ast: AstFilter,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Filter(FilterNode {
 			condition: ExpressionCompiler::compile(*ast.node)?,
 		}))

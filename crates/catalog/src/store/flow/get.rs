@@ -6,7 +6,7 @@ use reifydb_core::{
 	diagnostic::catalog::flow_not_found,
 	interface::{FlowDef, FlowId, NamespaceId, QueryTransaction},
 };
-use reifydb_type::{OwnedFragment, internal};
+use reifydb_type::{Fragment, internal};
 
 use crate::CatalogStore;
 
@@ -35,7 +35,7 @@ impl CatalogStore {
 
 		CatalogStore::find_flow_by_name(rx, namespace, name_ref)
 			.await?
-			.ok_or_else(|| Error(flow_not_found(OwnedFragment::None, &namespace_name, name_ref)))
+			.ok_or_else(|| Error(flow_not_found(Fragment::None, &namespace_name, name_ref)))
 	}
 }
 
@@ -49,11 +49,11 @@ mod tests {
 		test_utils::{create_flow, create_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_flow_ok() {
-		let mut txn = create_test_command_transaction();
-		let namespace_one = create_namespace(&mut txn, "namespace_one");
-		let _namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let _namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "flow_one");
 		create_flow(&mut txn, "namespace_two", "flow_two");
@@ -64,9 +64,9 @@ mod tests {
 		assert_eq!(result.namespace, namespace_one.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_flow_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let err = CatalogStore::get_flow(&mut txn, FlowId(42)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
@@ -74,11 +74,11 @@ mod tests {
 		assert!(err.message.contains("not found in catalog"));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_flow_by_name_ok() {
-		let mut txn = create_test_command_transaction();
-		let _namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "flow_one");
 		create_flow(&mut txn, "namespace_two", "flow_two");
@@ -88,10 +88,10 @@ mod tests {
 		assert_eq!(result.namespace, namespace_two.id);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_flow_by_name_not_found() {
-		let mut txn = create_test_command_transaction();
-		let namespace = create_namespace(&mut txn, "test_namespace");
+		let mut txn = create_test_command_transaction().await;
+		let namespace = create_namespace(&mut txn, "test_namespace").await;
 
 		create_flow(&mut txn, "test_namespace", "flow_one");
 
@@ -102,11 +102,11 @@ mod tests {
 		assert!(diagnostic.message.contains("not found"));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_flow_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		let _namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let mut txn = create_test_command_transaction().await;
+		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		create_flow(&mut txn, "namespace_one", "my_flow");
 

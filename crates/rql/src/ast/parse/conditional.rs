@@ -16,8 +16,8 @@ use crate::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_if(&mut self) -> crate::Result<AstIf<'a>> {
+impl Parser {
+	pub(crate) fn parse_if(&mut self) -> crate::Result<AstIf> {
 		let token = self.current()?.clone();
 
 		// Consume 'if' keyword
@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
 			// Empty block - return undefined literal
 			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 				kind: TokenKind::Literal(Undefined),
-				fragment: Fragment::owned_internal("undefined"),
+				fragment: Fragment::internal("undefined"),
 			})))
 		} else {
 			self.parse_node(Precedence::None)?
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	fn parse_else_if_chain(&mut self) -> crate::Result<Vec<AstElseIf<'a>>> {
+	fn parse_else_if_chain(&mut self) -> crate::Result<Vec<AstElseIf>> {
 		let mut else_ifs = Vec::new();
 
 		while !self.is_eof() {
@@ -123,7 +123,7 @@ impl<'a> Parser<'a> {
 			let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
 				Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 					kind: TokenKind::Literal(Undefined),
-					fragment: Fragment::owned_internal("undefined"),
+					fragment: Fragment::internal("undefined"),
 				})))
 			} else {
 				self.parse_node(Precedence::None)?
@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
 		Ok(else_ifs)
 	}
 
-	fn parse_else_block(&mut self) -> crate::Result<Option<Box<Ast<'a>>>> {
+	fn parse_else_block(&mut self) -> crate::Result<Option<Box<Ast>>> {
 		// Check if we have a final 'else' block
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Else) {
 			return Ok(None);
@@ -173,7 +173,7 @@ impl<'a> Parser<'a> {
 		let else_expr = if self.current()?.is_operator(Operator::CloseCurly) {
 			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 				kind: TokenKind::Literal(Undefined),
-				fragment: Fragment::owned_internal("undefined"),
+				fragment: Fragment::internal("undefined"),
 			})))
 		} else {
 			self.parse_node(Precedence::None)?

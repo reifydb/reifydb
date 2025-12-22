@@ -41,7 +41,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_flow_edge() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -60,7 +60,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_multiple_edges_same_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -83,7 +83,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_edges_different_flows() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one").await;
@@ -107,7 +107,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_edge_appears_in_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 

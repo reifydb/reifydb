@@ -4,7 +4,7 @@
 use crate::ast::tokenize::{Literal::Undefined, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
 
 /// Scan for undefined literal
-pub fn scan_undefined<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_undefined(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

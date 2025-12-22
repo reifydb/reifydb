@@ -122,7 +122,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_ok() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 					let iterations =
 						999u32.min(($max as u128).saturating_sub($start as u128) as u32);
 					let count = ($start as u128).saturating_add(iterations as u128) as $prim;
@@ -145,7 +145,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_exhaustion() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 
 					let mut row = LAYOUT.allocate();
 					LAYOUT.$setter(&mut row, 0, $max);
@@ -161,7 +161,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_default() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
 					let got = $generator::next(
@@ -190,7 +190,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_batched_ok() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 
 					// Determine appropriate batch size and iteration count based on type range
 					let type_range = ($max as u128).saturating_sub($start as u128);
@@ -255,7 +255,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_batched_exhaustion() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 
 					let mut row = LAYOUT.allocate();
 					// Choose batch size and initial value that will cause saturation to MAX
@@ -315,7 +315,7 @@ macro_rules! impl_generator {
 
 				#[tokio::test]
 				async fn test_batched_default() {
-					let mut txn = create_test_command_transaction();
+					let mut txn = create_test_command_transaction().await;
 
 					let type_range = ($max as u128).saturating_sub($start as u128);
 					let default_val =

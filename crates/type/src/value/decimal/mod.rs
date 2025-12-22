@@ -16,7 +16,7 @@ use serde::{
 };
 
 use super::{int::Int, uint::Uint};
-use crate::{Error, OwnedFragment, Type, error};
+use crate::{Error, Fragment, Type, error};
 
 mod parse;
 
@@ -113,7 +113,7 @@ impl FromStr for Decimal {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let big_decimal = BigDecimalInner::from_str(s)
-			.map_err(|_| error!(invalid_number_format(OwnedFragment::None, Type::Decimal)))?;
+			.map_err(|_| error!(invalid_number_format(Fragment::None, Type::Decimal)))?;
 
 		Ok(Self(big_decimal))
 	}

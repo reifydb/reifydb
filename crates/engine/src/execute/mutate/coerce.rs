@@ -27,8 +27,8 @@ use crate::{
 pub(crate) fn coerce_value_to_column_type<'a>(
 	value: Value,
 	target: Type,
-	column: ResolvedColumn<'a>,
-	ctx: &ExecutionContext<'a>,
+	column: ResolvedColumn,
+	ctx: &ExecutionContext,
 ) -> crate::Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
@@ -53,7 +53,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 		},
 		&temp_column_data,
 		target,
-		|| Fragment::owned_internal(&value_str),
+		|| Fragment::internal(&value_str),
 	)?;
 
 	Ok(coerced_column.get_value(0))

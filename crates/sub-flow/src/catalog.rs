@@ -222,23 +222,23 @@ mod tests {
 
 	// Basic construction tests
 
-	#[test]
-	fn test_new_creates_empty_cache() {
+	#[tokio::test]
+	async fn test_new_creates_empty_cache() {
 		let catalog = FlowCatalog::new();
 		assert!(catalog.sources.read().is_empty());
 	}
 
-	#[test]
-	fn test_default() {
+	#[tokio::test]
+	async fn test_default() {
 		let catalog = FlowCatalog::default();
 		assert!(catalog.sources.read().is_empty());
 	}
 
 	// Cache operations tests
 
-	#[test]
-	fn test_get_or_load_table() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_or_load_table() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -251,9 +251,9 @@ mod tests {
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[test]
-	fn test_get_or_load_cache_hit() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_or_load_cache_hit() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -266,9 +266,9 @@ mod tests {
 		assert!(Arc::ptr_eq(&first, &second));
 	}
 
-	#[test]
-	fn test_get_or_load_view() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_or_load_view() {
+		let mut txn = create_test_transaction().await;
 		ensure_test_namespace(&mut txn);
 		let view = create_view(&mut txn, "test_namespace", "test_view", &[]);
 
@@ -280,9 +280,9 @@ mod tests {
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[test]
-	fn test_get_or_load_ringbuffer() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_or_load_ringbuffer() {
+		let mut txn = create_test_transaction().await;
 		let rb = ensure_test_ringbuffer(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -295,9 +295,9 @@ mod tests {
 
 	// CDC invalidation tests
 
-	#[test]
-	fn test_invalidate_from_cdc_table_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_from_cdc_table_key() {
+		let mut txn = create_test_transaction().await;
 		ensure_test_namespace(&mut txn);
 
 		// Create a table with realistic columns
@@ -365,9 +365,9 @@ mod tests {
 		assert!(catalog.sources.read().get(&source).is_none());
 	}
 
-	#[test]
-	fn test_invalidate_from_cdc_view_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_from_cdc_view_key() {
+		let mut txn = create_test_transaction().await;
 		ensure_test_namespace(&mut txn);
 		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]);
 
@@ -388,9 +388,9 @@ mod tests {
 		assert!(catalog.sources.read().get(&source).is_none());
 	}
 
-	#[test]
-	fn test_invalidate_from_cdc_ringbuffer_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_from_cdc_ringbuffer_key() {
+		let mut txn = create_test_transaction().await;
 		let rb = ensure_test_ringbuffer(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -407,9 +407,9 @@ mod tests {
 		assert!(catalog.sources.read().get(&source).is_none());
 	}
 
-	#[test]
-	fn test_invalidate_from_cdc_column_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_from_cdc_column_key() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -430,9 +430,9 @@ mod tests {
 		assert!(catalog.sources.read().get(&source).is_none());
 	}
 
-	#[test]
-	fn test_invalidate_from_cdc_dictionary_key() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_from_cdc_dictionary_key() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 		let rb = ensure_test_ringbuffer(&mut txn);
 
@@ -455,9 +455,9 @@ mod tests {
 
 	// Direct invalidation tests
 
-	#[test]
-	fn test_invalidate_removes_entry() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_invalidate_removes_entry() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		let catalog = FlowCatalog::new();
@@ -473,17 +473,17 @@ mod tests {
 		assert!(catalog.sources.read().get(&source).is_none());
 	}
 
-	#[test]
-	fn test_invalidate_nonexistent() {
+	#[tokio::test]
+	async fn test_invalidate_nonexistent() {
 		let catalog = FlowCatalog::new();
 
 		// Should not panic when invalidating non-existent entry
 		catalog.invalidate(SourceId::Table(reifydb_core::interface::TableId(999)));
 	}
 
-	#[test]
-	fn test_clear() {
-		let mut txn = create_test_transaction();
+	#[tokio::test]
+	async fn test_clear() {
+		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn);
 		let rb = ensure_test_ringbuffer(&mut txn);
 

@@ -100,9 +100,9 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn);
 
 		// Create columns out of order
@@ -157,18 +157,18 @@ mod tests {
 		assert_eq!(columns[1].auto_increment, true);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn);
 
 		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_table_does_not_exist() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());

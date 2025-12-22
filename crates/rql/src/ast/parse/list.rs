@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Operator, Operator::CloseBracket, Separator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList<'a>> {
+impl Parser {
+	pub(crate) fn parse_list(&mut self) -> crate::Result<AstList> {
 		let token = self.consume_operator(Operator::OpenBracket)?;
 
 		let mut nodes = Vec::with_capacity(4);

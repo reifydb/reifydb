@@ -31,10 +31,10 @@ mod tests {
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_dictionary_exists() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -54,9 +54,9 @@ mod tests {
 		assert_eq!(result.id_type, Type::Uint2);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::get_dictionary(&mut txn, DictionaryId(999));
 

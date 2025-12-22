@@ -1,29 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Fragment, OwnedFragment};
+use reifydb_type::Fragment;
 
 pub use super::{keyword::Keyword, operator::Operator, separator::Separator};
 
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
+pub struct Token {
 	pub kind: TokenKind,
-	pub fragment: Fragment<'a>,
+	pub fragment: Fragment,
 }
 
-impl<'a> PartialEq for Token<'a> {
+impl PartialEq for Token {
 	fn eq(&self, other: &Self) -> bool {
 		self.kind == other.kind && self.value() == other.value()
 	}
 }
 
-impl<'a> From<Token<'a>> for OwnedFragment {
-	fn from(value: Token<'a>) -> Self {
-		value.fragment.into_owned()
-	}
-}
-
-impl<'a> Token<'a> {
+impl Token {
 	pub fn is_eof(&self) -> bool {
 		self.kind == TokenKind::EOF
 	}

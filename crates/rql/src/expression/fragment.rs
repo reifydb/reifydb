@@ -7,8 +7,8 @@ use crate::expression::{
 	ParameterExpression, RemExpression, SubExpression,
 };
 
-impl<'a> Expression<'a> {
-	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
+impl Expression {
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment {
 		move || match self {
 			Expression::AccessSource(expr) => expr.full_fragment_owned(),
 			Expression::Alias(expr) => expr.expression.full_fragment_owned(),
@@ -80,8 +80,8 @@ impl<'a> Expression<'a> {
 	}
 }
 
-impl<'a> AddExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl AddExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -90,8 +90,8 @@ impl<'a> AddExpression<'a> {
 	}
 }
 
-impl<'a> ConstantExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl ConstantExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		match self {
 			ConstantExpression::Undefined {
 				fragment,
@@ -112,8 +112,8 @@ impl<'a> ConstantExpression<'a> {
 	}
 }
 
-impl<'a> SubExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl SubExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -122,8 +122,8 @@ impl<'a> SubExpression<'a> {
 	}
 }
 
-impl<'a> MulExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl MulExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -132,8 +132,8 @@ impl<'a> MulExpression<'a> {
 	}
 }
 
-impl<'a> DivExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl DivExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -142,8 +142,8 @@ impl<'a> DivExpression<'a> {
 	}
 }
 
-impl<'a> RemExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl RemExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -152,8 +152,8 @@ impl<'a> RemExpression<'a> {
 	}
 }
 
-impl<'a> Expression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl Expression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		self.lazy_fragment()()
 	}
 }

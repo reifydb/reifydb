@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -33,18 +34,23 @@ impl OperatorRetentionPolicies {
 	}
 }
 
-impl<'a> TableVirtual<'a> for OperatorRetentionPolicies {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for OperatorRetentionPolicies {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_operator_retention_policies(txn)?;
+		let policies = CatalogStore::list_operator_retention_policies(txn).await?;
 
 		let mut operator_ids = ColumnData::uint8_with_capacity(policies.len());
 		let mut policy_types = ColumnData::utf8_with_capacity(policies.len());
@@ -77,19 +83,19 @@ impl<'a> TableVirtual<'a> for OperatorRetentionPolicies {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("operator_id"),
+				name: Fragment::internal("operator_id"),
 				data: operator_ids,
 			},
 			Column {
-				name: Fragment::owned_internal("policy_type"),
+				name: Fragment::internal("policy_type"),
 				data: policy_types,
 			},
 			Column {
-				name: Fragment::owned_internal("cleanup_mode"),
+				name: Fragment::internal("cleanup_mode"),
 				data: cleanup_modes,
 			},
 			Column {
-				name: Fragment::owned_internal("value"),
+				name: Fragment::internal("value"),
 				data: values,
 			},
 		];

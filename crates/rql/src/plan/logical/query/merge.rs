@@ -9,10 +9,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_merge<'a, T: CatalogQueryTransaction>(
-		ast: AstMerge<'a>,
+	pub(crate) async fn compile_merge<T: CatalogQueryTransaction>(
+		ast: AstMerge,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Compile the subquery into logical plans
 		let with = Self::compile(ast.with.statement, tx).await?;
 		Ok(LogicalPlan::Merge(MergeNode {

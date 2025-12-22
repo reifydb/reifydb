@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use bincode::{config::standard, serde::decode_from_slice};
 use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
-use reifydb_rql::{expression::json::JsonExpression, flow::FlowNodeType};
+use reifydb_rql::expression::json::JsonExpression;
+use reifydb_rql::flow::FlowNodeType;
 use reifydb_type::internal;
 use serde::Serialize;
 
@@ -294,56 +295,56 @@ mod tests {
 		flow::FlowNodeType,
 	};
 	use reifydb_type::{
-		Fragment, OwnedFragment,
+		Fragment,
 		value::{Blob, constraint::bytes::MaxBytes},
 	};
 
 	use super::*;
 
 	// Helper functions to create expressions for tests
-	fn column_expr(name: &str) -> Expression<'static> {
+	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
 			source: ColumnSource::Source {
-				namespace: Fragment::Owned(OwnedFragment::Internal {
+				namespace: Fragment::Internal {
 					text: String::from("_context"),
-				}),
-				source: Fragment::Owned(OwnedFragment::Internal {
+				},
+				source: Fragment::Internal {
 					text: String::from("_context"),
-				}),
+				},
 			},
-			name: Fragment::Owned(OwnedFragment::Internal {
+			name: Fragment::Internal {
 				text: name.to_string(),
-			}),
+			},
 		}))
 	}
 
-	fn constant_number(val: &str) -> Expression<'static> {
+	fn constant_number(val: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::Owned(OwnedFragment::Internal {
+			fragment: Fragment::Internal {
 				text: val.to_string(),
-			}),
+			},
 		})
 	}
 
-	fn greater_than_expr(left: Expression<'static>, right: Expression<'static>) -> Expression<'static> {
+	fn greater_than_expr(left: Expression, right: Expression) -> Expression {
 		Expression::GreaterThan(GreaterThanExpression {
 			left: Box::new(left),
 			right: Box::new(right),
-			fragment: Fragment::Owned(OwnedFragment::Internal {
+			fragment: Fragment::Internal {
 				text: ">".to_string(),
-			}),
+			},
 		})
 	}
 
-	fn alias_expr(name: &str, expr: Expression<'static>) -> Expression<'static> {
+	fn alias_expr(name: &str, expr: Expression) -> Expression {
 		Expression::Alias(AliasExpression {
-			alias: IdentExpression(Fragment::Owned(OwnedFragment::Internal {
+			alias: IdentExpression(Fragment::Internal {
 				text: name.to_string(),
-			})),
-			expression: Box::new(expr),
-			fragment: Fragment::Owned(OwnedFragment::Internal {
-				text: "as".to_string(),
 			}),
+			expression: Box::new(expr),
+			fragment: Fragment::Internal {
+				text: "as".to_string(),
+			},
 		})
 	}
 
@@ -357,7 +358,7 @@ mod tests {
 		let blob = create_blob_from_node_type(&node_type);
 
 		let input_column = Column {
-			name: Fragment::borrowed_internal("data"),
+			name: Fragment::internal("data"),
 			data: ColumnData::Blob {
 				container: BlobContainer::from_vec(vec![blob]),
 				max_bytes: MaxBytes::MAX,
@@ -385,13 +386,13 @@ mod tests {
 		assert_eq!(&container[0], expected_json);
 	}
 
-	#[test]
-	fn test_source_inline_data() {
+	#[tokio::test]
+	async fn test_source_inline_data() {
 		test_node_type(FlowNodeType::SourceInlineData {}, r#"{}"#);
 	}
 
-	#[test]
-	fn test_source_table() {
+	#[tokio::test]
+	async fn test_source_table() {
 		test_node_type(
 			FlowNodeType::SourceTable {
 				table: TableId(123),
@@ -400,8 +401,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_source_view() {
+	#[tokio::test]
+	async fn test_source_view() {
 		test_node_type(
 			FlowNodeType::SourceView {
 				view: ViewId(456),
@@ -410,8 +411,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_source_flow() {
+	#[tokio::test]
+	async fn test_source_flow() {
 		test_node_type(
 			FlowNodeType::SourceFlow {
 				flow: FlowId(789),
@@ -420,8 +421,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_filter() {
+	#[tokio::test]
+	async fn test_filter() {
 		// Filter with condition: age > 18
 		test_node_type(
 			FlowNodeType::Filter {
@@ -431,8 +432,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_map() {
+	#[tokio::test]
+	async fn test_map() {
 		// Map with expressions: column "name" aliased as "user_name", column "id"
 		test_node_type(
 			FlowNodeType::Map {
@@ -442,8 +443,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_extend() {
+	#[tokio::test]
+	async fn test_extend() {
 		test_node_type(
 			FlowNodeType::Extend {
 				expressions: vec![],
@@ -452,8 +453,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_join() {
+	#[tokio::test]
+	async fn test_join() {
 		test_node_type(
 			FlowNodeType::Join {
 				join_type: JoinType::Inner,
@@ -465,8 +466,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_join_with_alias() {
+	#[tokio::test]
+	async fn test_join_with_alias() {
 		test_node_type(
 			FlowNodeType::Join {
 				join_type: JoinType::Left,
@@ -478,8 +479,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_aggregate() {
+	#[tokio::test]
+	async fn test_aggregate() {
 		test_node_type(
 			FlowNodeType::Aggregate {
 				by: vec![],
@@ -489,17 +490,17 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_merge() {
+	#[tokio::test]
+	async fn test_merge() {
 		test_node_type(FlowNodeType::Merge, r#"null"#);
 	}
 
-	#[test]
-	fn test_sort() {
+	#[tokio::test]
+	async fn test_sort() {
 		test_node_type(
 			FlowNodeType::Sort {
 				by: vec![SortKey {
-					column: OwnedFragment::internal("col"),
+					column: Fragment::internal("col"),
 					direction: SortDirection::Asc,
 				}],
 			},
@@ -507,8 +508,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_take() {
+	#[tokio::test]
+	async fn test_take() {
 		test_node_type(
 			FlowNodeType::Take {
 				limit: 100,
@@ -517,8 +518,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_distinct() {
+	#[tokio::test]
+	async fn test_distinct() {
 		test_node_type(
 			FlowNodeType::Distinct {
 				expressions: vec![],
@@ -527,8 +528,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_apply() {
+	#[tokio::test]
+	async fn test_apply() {
 		test_node_type(
 			FlowNodeType::Apply {
 				operator: "my_operator".to_string(),
@@ -538,8 +539,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_sink_view() {
+	#[tokio::test]
+	async fn test_sink_view() {
 		test_node_type(
 			FlowNodeType::SinkView {
 				view: ViewId(999),
@@ -548,8 +549,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_window() {
+	#[tokio::test]
+	async fn test_window() {
 		test_node_type(
 			FlowNodeType::Window {
 				window_type: WindowType::Count,
@@ -565,8 +566,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_multiple_rows() {
+	#[tokio::test]
+	async fn test_multiple_rows() {
 		let function = FlowNodeTypeToJson::new();
 
 		let node_type1 = FlowNodeType::SourceTable {
@@ -584,7 +585,7 @@ mod tests {
 		];
 
 		let input_column = Column {
-			name: Fragment::borrowed_internal("data"),
+			name: Fragment::internal("data"),
 			data: ColumnData::Blob {
 				container: BlobContainer::from_vec(blobs),
 				max_bytes: MaxBytes::MAX,
@@ -617,15 +618,15 @@ mod tests {
 		assert_eq!(&container[2], r#"null"#);
 	}
 
-	#[test]
-	fn test_invalid_blob_should_error() {
+	#[tokio::test]
+	async fn test_invalid_blob_should_error() {
 		let function = FlowNodeTypeToJson::new();
 
 		// Create an invalid blob that can't be deserialized as FlowNodeType
 		let invalid_blob = Blob::new(vec![0xFF, 0xFF, 0xFF]);
 
 		let input_column = Column {
-			name: Fragment::borrowed_internal("data"),
+			name: Fragment::internal("data"),
 			data: ColumnData::Blob {
 				container: BlobContainer::from_vec(vec![invalid_blob]),
 				max_bytes: MaxBytes::MAX,
@@ -642,8 +643,8 @@ mod tests {
 		assert!(result.is_err(), "Expected error for invalid blob input");
 	}
 
-	#[test]
-	fn test_with_null_data() {
+	#[tokio::test]
+	async fn test_with_null_data() {
 		let function = FlowNodeTypeToJson::new();
 
 		let node_type = FlowNodeType::SourceTable {
@@ -655,7 +656,7 @@ mod tests {
 		let blobs = vec![blob.clone(), Blob::empty(), blob];
 
 		let input_column = Column {
-			name: Fragment::borrowed_internal("data"),
+			name: Fragment::internal("data"),
 			data: ColumnData::Blob {
 				container: BlobContainer::new(blobs, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

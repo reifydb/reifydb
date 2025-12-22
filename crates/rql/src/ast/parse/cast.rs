@@ -3,8 +3,8 @@
 
 use crate::ast::{AstCast, parse::Parser, tokenize::Keyword::Cast};
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast<'a>> {
+impl Parser {
+	pub(crate) fn parse_cast(&mut self) -> crate::Result<AstCast> {
 		let token = self.consume_keyword(Cast)?;
 		let tuple = self.parse_tuple()?;
 		Ok(AstCast {

@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{
 	CatalogStore,
@@ -25,12 +25,12 @@ use crate::{
 pub struct ViewColumnToCreate {
 	pub name: String,
 	pub constraint: TypeConstraint,
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub name: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -60,7 +60,11 @@ impl CatalogStore {
 
 		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name).await? {
 			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
-			return_error!(view_already_exists(to_create.fragment, &namespace.name, &table.name));
+			return_error!(view_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&table.name
+			));
 		}
 
 		let view_id = SystemSequence::next_view_id(txn).await?;
@@ -156,7 +160,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_deferred_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -179,7 +183,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_view_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = ViewToCreate {
@@ -216,7 +220,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_deferred_view_missing_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let to_create = ViewToCreate {
 			namespace: NamespaceId(999), // Non-existent namespace

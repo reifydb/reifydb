@@ -12,12 +12,12 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_dictionary<'a>(
+	pub(crate) async fn create_dictionary(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDictionaryNode,
-	) -> crate::Result<Columns<'a>> {
-		if let Some(_) = txn.find_dictionary_by_name(plan.namespace.id, plan.dictionary.text())? {
+	) -> crate::Result<Columns> {
+		if let Some(_) = txn.find_dictionary_by_name(plan.namespace.id, plan.dictionary.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.clone())),
@@ -35,7 +35,7 @@ impl Executor {
 			namespace: plan.namespace.id,
 			value_type: plan.value_type,
 			id_type: plan.id_type,
-		})?;
+		}).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.clone())),
@@ -58,16 +58,16 @@ mod tests {
 		test_utils::create_test_command_transaction,
 	};
 
-	#[test]
-	fn test_create_dictionary() {
+	#[tokio::test]
+	async fn test_create_dictionary() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let mut plan = CreateDictionaryNode {
 			namespace: namespace.clone(),
-			dictionary: Fragment::owned_internal("test_dictionary"),
+			dictionary: Fragment::internal("test_dictionary"),
 			if_not_exists: false,
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
@@ -82,6 +82,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -98,6 +99,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -118,17 +120,17 @@ mod tests {
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
 
-	#[test]
-	fn test_create_same_dictionary_in_different_schema() {
+	#[tokio::test]
+	async fn test_create_same_dictionary_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
-		let another_schema = create_namespace(&mut txn, "another_schema");
+		let namespace = ensure_test_namespace(&mut txn).await;
+		let another_schema = create_namespace(&mut txn, "another_schema").await;
 
 		let plan = CreateDictionaryNode {
 			namespace: namespace.clone(),
-			dictionary: Fragment::owned_internal("test_dictionary"),
+			dictionary: Fragment::internal("test_dictionary"),
 			if_not_exists: false,
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
@@ -142,6 +144,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -150,7 +153,7 @@ mod tests {
 
 		let plan = CreateDictionaryNode {
 			namespace: another_schema.clone(),
-			dictionary: Fragment::owned_internal("test_dictionary"),
+			dictionary: Fragment::internal("test_dictionary"),
 			if_not_exists: false,
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,
@@ -163,6 +166,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));

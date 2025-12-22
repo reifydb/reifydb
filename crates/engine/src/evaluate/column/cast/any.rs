@@ -7,11 +7,11 @@ use reifydb_type::{LazyFragment, Type, diagnostic::cast, err};
 use super::cast_column_data;
 use crate::evaluate::ColumnEvaluationContext;
 
-pub fn from_any<'a>(
+pub fn from_any(
 	ctx: &ColumnEvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a> + Clone,
+	lazy_fragment: impl LazyFragment + Clone,
 ) -> crate::Result<ColumnData> {
 	let any_container = match data {
 		ColumnData::Any(container) => container,

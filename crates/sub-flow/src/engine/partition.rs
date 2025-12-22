@@ -315,8 +315,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_empty_input() {
+	#[tokio::test]
+	async fn test_empty_input() {
 		let engine = setup_test_engine(HashMap::new());
 		let input = BTreeMap::new();
 
@@ -325,8 +325,8 @@ mod tests {
 		assert!(result.is_empty(), "Empty input should produce empty output");
 	}
 
-	#[test]
-	fn test_single_version_single_source_single_flow() {
+	#[tokio::test]
+	async fn test_single_version_single_source_single_flow() {
 		// S1 -> F1
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -349,8 +349,8 @@ mod tests {
 		assert_eq!(sources.get(&s(1)), Some(&2));
 	}
 
-	#[test]
-	fn test_single_version_multi_flow_fanout() {
+	#[tokio::test]
+	async fn test_single_version_multi_flow_fanout() {
 		// S1 -> [F1, F2, F3]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2), f(3)]);
@@ -375,8 +375,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_single_version_multi_source_partial_overlap() {
+	#[tokio::test]
+	async fn test_single_version_multi_source_partial_overlap() {
 		// S1 -> [F1, F2], S2 -> [F2, F3]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
@@ -418,8 +418,8 @@ mod tests {
 		assert_eq!(sources.get(&s(2)), Some(&2));
 	}
 
-	#[test]
-	fn test_unknown_source_filtered() {
+	#[tokio::test]
+	async fn test_unknown_source_filtered() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -434,8 +434,8 @@ mod tests {
 		assert!(result.is_empty(), "Unknown sources should produce no units");
 	}
 
-	#[test]
-	fn test_multi_version_ordering() {
+	#[tokio::test]
+	async fn test_multi_version_ordering() {
 		// S1 -> [F1], S2 -> [F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -463,8 +463,8 @@ mod tests {
 		assert_eq!(f2_units[0].version, v(30));
 	}
 
-	#[test]
-	fn test_version_gaps_preserved() {
+	#[tokio::test]
+	async fn test_version_gaps_preserved() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -485,8 +485,8 @@ mod tests {
 		assert_eq!(f1_units[1].version, v(100));
 	}
 
-	#[test]
-	fn test_duplicate_source_entries_merged() {
+	#[tokio::test]
+	async fn test_duplicate_source_entries_merged() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -507,8 +507,8 @@ mod tests {
 		assert_eq!(sources.get(&s(1)), Some(&3));
 	}
 
-	#[test]
-	fn test_flow_with_multiple_sources_same_version() {
+	#[tokio::test]
+	async fn test_flow_with_multiple_sources_same_version() {
 		// S1 -> [F1], S2 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -532,8 +532,8 @@ mod tests {
 		assert_eq!(sources.get(&s(2)), Some(&2));
 	}
 
-	#[test]
-	fn test_no_work_for_unaffected_flows() {
+	#[tokio::test]
+	async fn test_no_work_for_unaffected_flows() {
 		// S1 -> [F1], S2 -> [F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -553,8 +553,8 @@ mod tests {
 		assert!(!normalized.contains_key(&f(2)));
 	}
 
-	#[test]
-	fn test_complex_multi_flow_multi_version() {
+	#[tokio::test]
+	async fn test_complex_multi_flow_multi_version() {
 		// S1 -> [F1,F2], S2 -> [F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
@@ -596,8 +596,8 @@ mod tests {
 		assert_eq!(sources2.get(&s(1)), Some(&1));
 	}
 
-	#[test]
-	fn test_large_diffs_zero_subscribers() {
+	#[tokio::test]
+	async fn test_large_diffs_zero_subscribers() {
 		let engine = setup_test_engine(HashMap::new());
 
 		// Many diffs but no subscribers
@@ -610,8 +610,8 @@ mod tests {
 		assert!(result.is_empty(), "No subscribers means no units");
 	}
 
-	#[test]
-	fn test_many_versions_sparse_changes() {
+	#[tokio::test]
+	async fn test_many_versions_sparse_changes() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -639,8 +639,8 @@ mod tests {
 		assert_eq!(f1_units[2].version, v(90));
 	}
 
-	#[test]
-	fn test_many_sources_selective_subscription() {
+	#[tokio::test]
+	async fn test_many_sources_selective_subscription() {
 		// F1 subscribes to only S5, S15, S25, S35, S45 out of 50 sources
 		let mut subscriptions = HashMap::new();
 		for i in 1..=50 {
@@ -673,8 +673,8 @@ mod tests {
 		assert!(sources.contains_key(&s(45)));
 	}
 
-	#[test]
-	fn test_input_permutation_invariance() {
+	#[tokio::test]
+	async fn test_input_permutation_invariance() {
 		// S1 -> [F1, F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
@@ -707,8 +707,8 @@ mod tests {
 		assert_eq!(f1_units[2].version, v(30));
 	}
 
-	#[test]
-	fn test_empty_diff_vec_handling() {
+	#[tokio::test]
+	async fn test_empty_diff_vec_handling() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -730,8 +730,8 @@ mod tests {
 		assert_eq!(sources.get(&s(1)), Some(&0));
 	}
 
-	#[test]
-	fn test_all_sources_unknown() {
+	#[tokio::test]
+	async fn test_all_sources_unknown() {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
@@ -747,8 +747,8 @@ mod tests {
 		assert!(result.is_empty(), "All unknown sources should produce empty output");
 	}
 
-	#[test]
-	fn test_permutation_regression_fanout() {
+	#[tokio::test]
+	async fn test_permutation_regression_fanout() {
 		// S1 -> [F1, F2, F3]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2), f(3)]);
@@ -771,8 +771,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_permutation_regression_complex() {
+	#[tokio::test]
+	async fn test_permutation_regression_complex() {
 		use rand::prelude::*;
 
 		// S1 -> [F1,F2], S2 -> [F2]
@@ -799,8 +799,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_large_input_smoke() {
+	#[tokio::test]
+	async fn test_large_input_smoke() {
 		// 20 sources, 20 flows, sparse subscriptions
 		let mut subscriptions = HashMap::new();
 		for flow_i in 1..=20 {
@@ -837,8 +837,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_version_ordering_maintained_under_stress() {
+	#[tokio::test]
+	async fn test_version_ordering_maintained_under_stress() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
@@ -865,8 +865,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_version_filtering() {
+	#[tokio::test]
+	async fn test_version_filtering() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
@@ -891,8 +891,8 @@ mod tests {
 		assert_eq!(f1_units[3].version, v(70));
 	}
 
-	#[test]
-	fn test_backfill_version_per_flow_isolation() {
+	#[tokio::test]
+	async fn test_backfill_version_per_flow_isolation() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		let engine = setup_test_engine(subscriptions);
@@ -918,8 +918,8 @@ mod tests {
 		assert_eq!(f2_units[0].version, v(60));
 	}
 
-	#[test]
-	fn test_no_backfill_version_processes_all() {
+	#[tokio::test]
+	async fn test_no_backfill_version_processes_all() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
@@ -936,8 +936,8 @@ mod tests {
 		assert_eq!(f1_units.len(), 3);
 	}
 
-	#[test]
-	fn test_backfill_version_exact_boundary() {
+	#[tokio::test]
+	async fn test_backfill_version_exact_boundary() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);

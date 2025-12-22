@@ -12,25 +12,25 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 
-use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transaction};
+use crate::multi::transaction::{CommandTransaction, QueryTransaction, TransactionMulti};
 
-impl WithEventBus for Transaction {
+impl WithEventBus for TransactionMulti {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
 #[async_trait]
-impl MultiVersionTransaction for Transaction {
+impl MultiVersionTransaction for TransactionMulti {
 	type Query = QueryTransaction;
 	type Command = CommandTransaction;
 
 	async fn begin_query(&self) -> Result<Self::Query, Error> {
-		Transaction::begin_query(self).await
+		TransactionMulti::begin_query(self).await
 	}
 
 	async fn begin_command(&self) -> Result<Self::Command, Error> {
-		Transaction::begin_command(self).await
+		TransactionMulti::begin_command(self).await
 	}
 }
 

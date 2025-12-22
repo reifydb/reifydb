@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
@@ -35,13 +36,18 @@ impl FlowOperatorOutputs {
 	}
 }
 
-impl<'a> TableVirtual<'a> for FlowOperatorOutputs {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for FlowOperatorOutputs {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -67,23 +73,23 @@ impl<'a> TableVirtual<'a> for FlowOperatorOutputs {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("operator"),
+				name: Fragment::internal("operator"),
 				data: operators,
 			},
 			Column {
-				name: Fragment::owned_internal("position"),
+				name: Fragment::internal("position"),
 				data: positions,
 			},
 			Column {
-				name: Fragment::owned_internal("name"),
+				name: Fragment::internal("name"),
 				data: names,
 			},
 			Column {
-				name: Fragment::owned_internal("type"),
+				name: Fragment::internal("type"),
 				data: column_types,
 			},
 			Column {
-				name: Fragment::owned_internal("description"),
+				name: Fragment::internal("description"),
 				data: descriptions,
 			},
 		];

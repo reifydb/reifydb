@@ -152,9 +152,9 @@ mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	#[test]
-	fn test_get_from_pending() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_from_pending() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let key = make_key("key1");
@@ -167,8 +167,8 @@ mod tests {
 		assert_eq!(result, Some(value));
 	}
 
-	#[test]
-	fn test_get_from_committed() {
+	#[tokio::test]
+	async fn test_get_from_committed() {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 		let engine = create_test_engine();
 
@@ -194,9 +194,9 @@ mod tests {
 		assert_eq!(result, Some(value));
 	}
 
-	#[test]
-	fn test_get_pending_shadows_committed() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_pending_shadows_committed() {
+		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
 		parent.set(&key, make_value("old")).unwrap();
@@ -213,9 +213,9 @@ mod tests {
 		assert_eq!(result, Some(new_value));
 	}
 
-	#[test]
-	fn test_get_removed_returns_none() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_removed_returns_none() {
+		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
 		parent.set(&key, make_value("value1")).unwrap();
@@ -231,18 +231,18 @@ mod tests {
 		assert_eq!(result, None);
 	}
 
-	#[test]
-	fn test_get_nonexistent_key() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_nonexistent_key() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let result = txn.get(&make_key("missing")).unwrap();
 		assert_eq!(result, None);
 	}
 
-	#[test]
-	fn test_get_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_get_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -254,9 +254,9 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 2);
 	}
 
-	#[test]
-	fn test_contains_key_pending() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_contains_key_pending() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let key = make_key("key1");
@@ -265,8 +265,8 @@ mod tests {
 		assert!(txn.contains_key(&key).unwrap());
 	}
 
-	#[test]
-	fn test_contains_key_committed() {
+	#[tokio::test]
+	async fn test_contains_key_committed() {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 		let engine = create_test_engine();
 
@@ -287,9 +287,9 @@ mod tests {
 		assert!(txn.contains_key(&key).unwrap());
 	}
 
-	#[test]
-	fn test_contains_key_removed_returns_false() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_contains_key_removed_returns_false() {
+		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
 		parent.set(&key, make_value("value1")).unwrap();
@@ -301,17 +301,17 @@ mod tests {
 		assert!(!txn.contains_key(&key).unwrap());
 	}
 
-	#[test]
-	fn test_contains_key_nonexistent() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_contains_key_nonexistent() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert!(!txn.contains_key(&make_key("missing")).unwrap());
 	}
 
-	#[test]
-	fn test_contains_key_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_contains_key_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -323,18 +323,18 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 2);
 	}
 
-	#[test]
-	fn test_scan_empty() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_scan_empty() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let mut iter = txn.range(EncodedKeyRange::all()).unwrap();
 		assert!(iter.next().is_none());
 	}
 
-	#[test]
-	fn test_scan_only_pending() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_scan_only_pending() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("b"), make_value("2")).unwrap();
@@ -351,9 +351,9 @@ mod tests {
 		assert_eq!(items[2].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_scan_filters_removes() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_scan_filters_removes() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -369,9 +369,9 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_scan_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_scan_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -379,9 +379,9 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 1);
 	}
 
-	#[test]
-	fn test_range_empty() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_range_empty() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
@@ -389,9 +389,9 @@ mod tests {
 		assert!(iter.next().is_none());
 	}
 
-	#[test]
-	fn test_range_only_pending() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_range_only_pending() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -409,9 +409,9 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_range_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -422,9 +422,9 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 1);
 	}
 
-	#[test]
-	fn test_range_batched_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_range_batched_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -435,9 +435,9 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 1);
 	}
 
-	#[test]
-	fn test_prefix_empty() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_prefix_empty() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let prefix = make_key("test_");
@@ -445,9 +445,9 @@ mod tests {
 		assert!(iter.next().is_none());
 	}
 
-	#[test]
-	fn test_prefix_only_pending() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_prefix_only_pending() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("test_a"), make_value("1")).unwrap();
@@ -464,9 +464,9 @@ mod tests {
 		assert_eq!(items[1].key, make_key("test_b"));
 	}
 
-	#[test]
-	fn test_prefix_increments_reads_metric() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_prefix_increments_reads_metric() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
@@ -477,9 +477,9 @@ mod tests {
 		assert_eq!(txn.metrics().reads, 1);
 	}
 
-	#[test]
-	fn test_multiple_read_operations_accumulate_metrics() {
-		let parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_multiple_read_operations_accumulate_metrics() {
+		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.get(&make_key("k1")).unwrap();

@@ -36,6 +36,7 @@
 //! }
 //! ```
 
+use async_trait::async_trait;
 use reifydb_type::{Type, Value};
 
 /// Column definition for user virtual tables.
@@ -110,7 +111,8 @@ pub struct TableVirtualUserPushdownContext {
 ///
 /// Unlike [`TableVirtualUser`], implementations of this trait are instantiated
 /// fresh for each query. The factory creates a new instance per query execution.
-pub trait TableVirtualUserIterator: Send + 'static {
+#[async_trait]
+pub trait TableVirtualUserIterator: Send + Sync + 'static {
 	/// Return the column definitions for this table.
 	fn columns(&self) -> Vec<TableVirtualUserColumnDef>;
 
@@ -118,7 +120,7 @@ pub trait TableVirtualUserIterator: Send + 'static {
 	///
 	/// Called once before iteration begins. Use the pushdown context to
 	/// optimize data generation (e.g., limit the number of rows fetched).
-	fn initialize(&mut self, ctx: Option<&TableVirtualUserPushdownContext>) -> crate::Result<()>;
+	async fn initialize(&mut self, ctx: Option<&TableVirtualUserPushdownContext>) -> crate::Result<()>;
 
 	/// Get the next batch of rows.
 	///
@@ -126,5 +128,5 @@ pub trait TableVirtualUserIterator: Send + 'static {
 	/// Each inner `Vec<Value>` represents one row.
 	///
 	/// The `batch_size` parameter is a hint for how many rows to return.
-	fn next_batch(&mut self, batch_size: usize) -> crate::Result<Option<Vec<Vec<Value>>>>;
+	async fn next_batch(&mut self, batch_size: usize) -> crate::Result<Option<Vec<Vec<Value>>>>;
 }

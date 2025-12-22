@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::{Fragment, Value};
 
-pub fn create_env_columns() -> Columns<'static> {
+pub fn create_env_columns() -> Columns {
 	let mut keys = Vec::new();
 	let mut values = Vec::new();
 
@@ -15,12 +15,12 @@ pub fn create_env_columns() -> Columns<'static> {
 	values.push(Box::new(Value::uint1(42)));
 
 	let name_column = Column {
-		name: Fragment::owned_internal("key".to_string()),
+		name: Fragment::internal("key".to_string()),
 		data: ColumnData::utf8(keys),
 	};
 
 	let value_column = Column {
-		name: Fragment::owned_internal("value".to_string()),
+		name: Fragment::internal("value".to_string()),
 		data: ColumnData::any(values),
 	};
 

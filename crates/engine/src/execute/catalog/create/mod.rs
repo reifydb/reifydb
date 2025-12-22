@@ -21,7 +21,7 @@ impl Executor {
 	///
 	/// The flow entry is created first to obtain a FlowId, then the flow nodes
 	/// and edges are compiled and persisted with that same FlowId.
-	pub(crate) fn create_deferred_view_flow(
+	pub(crate) async fn create_deferred_view_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		view: &ViewDef,
@@ -38,10 +38,10 @@ impl Executor {
 				namespace: view.namespace,
 				status: FlowStatus::Active,
 			},
-		)?;
+		).await?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
-		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id)?;
+		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id).await?;
 		Ok(())
 	}
 }

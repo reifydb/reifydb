@@ -35,11 +35,11 @@ impl Default for StandardRowEvaluator {
 }
 
 impl StandardRowEvaluator {
-	pub fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value> {
+	pub fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression) -> crate::Result<Value> {
 		let mut columns = Vec::new();
 
 		let row_number_column = Column {
-			name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+			name: Fragment::internal(ROW_NUMBER_COLUMN_NAME),
 			data: ColumnData::Uint8(NumberContainer::from_vec(vec![ctx.row.number.0])),
 		};
 		columns.push(row_number_column);
@@ -74,7 +74,7 @@ impl StandardRowEvaluator {
 			})?;
 
 			columns.push(Column {
-				name: Fragment::owned_internal(name),
+				name: Fragment::internal(name),
 				data,
 			})
 		}
@@ -114,7 +114,7 @@ impl StandardRowEvaluator {
 			})?;
 
 			source_columns.push(Column {
-				name: Fragment::owned_internal(name),
+				name: Fragment::internal(name),
 				data,
 			});
 		}
@@ -137,7 +137,7 @@ impl StandardRowEvaluator {
 			let r#type = target_col.constraint.get_type();
 
 			let value = if let Some(source_column) = ctx.columns.column(&target_col.name) {
-				let lazy_frag = Fragment::owned_internal(&target_col.name);
+				let lazy_frag = Fragment::internal(&target_col.name);
 				let coerced = cast::cast_column_data(&ctx, source_column.data(), r#type, &lazy_frag)?;
 				coerced.get_value(0)
 			} else {

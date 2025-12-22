@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, SourceId},
 	return_error, return_internal_error,
 };
+use reifydb_type::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -30,7 +31,7 @@ impl CatalogStore {
 	) -> crate::Result<PrimaryKeyId> {
 		// Validate that primary key has at least one column
 		if to_create.column_ids.is_empty() {
-			return_error!(primary_key_empty(None));
+			return_error!(primary_key_empty(Fragment::None));
 		}
 
 		// Get the columns for the table/view and validate all primary
@@ -41,7 +42,7 @@ impl CatalogStore {
 		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {
 			if !source_column_ids.contains(column_id) {
-				return_error!(primary_key_column_not_found(None, column_id.0));
+				return_error!(primary_key_column_not_found(Fragment::None, column_id.0));
 			}
 		}
 
@@ -108,7 +109,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_for_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Create columns for the table
@@ -182,7 +183,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_for_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create a view
@@ -241,7 +242,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_composite_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Create multiple columns
@@ -296,7 +297,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_updates_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Initially, table does not have primary key
@@ -346,7 +347,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_on_nonexistent_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Try to create primary key on non-existent table
 		// list_table_columns will return empty list for non-existent
@@ -369,7 +370,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_on_nonexistent_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Try to create primary key on non-existent view
 		// list_table_columns will return empty list for non-existent
@@ -392,7 +393,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_empty_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Try to create primary key with no columns - should fail
@@ -412,7 +413,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_with_nonexistent_column() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
 		// Try to create primary key with non-existent column ID
@@ -432,7 +433,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_primary_key_with_column_from_different_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table1 = ensure_test_table(&mut txn).await;
 
 		// Create a column for table1

@@ -3,8 +3,8 @@
 
 use crate::ast::{AstMerge, parse::Parser, tokenize::Keyword::Merge};
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_merge(&mut self) -> crate::Result<AstMerge<'a>> {
+impl Parser {
+	pub(crate) fn parse_merge(&mut self) -> crate::Result<AstMerge> {
 		let token = self.consume_keyword(Merge)?;
 		let with = self.parse_sub_query()?;
 		Ok(AstMerge {

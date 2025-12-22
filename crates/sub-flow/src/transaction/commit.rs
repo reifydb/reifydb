@@ -75,9 +75,9 @@ mod tests {
 		transaction::utils::test::{from_store, make_key, make_value},
 	};
 
-	#[test]
-	fn test_commit_empty_pending() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_empty_pending() {
+		let mut parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let metrics = txn.commit(&mut parent).unwrap();
@@ -88,9 +88,9 @@ mod tests {
 		assert_eq!(metrics.removes, 0);
 	}
 
-	#[test]
-	fn test_commit_single_write() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_single_write() {
+		let mut parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let key = make_key("key1");
@@ -103,9 +103,9 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key), Some(value));
 	}
 
-	#[test]
-	fn test_commit_multiple_writes() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_multiple_writes() {
+		let mut parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
@@ -120,8 +120,8 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &make_key("key3")), Some(make_value("value3")));
 	}
 
-	#[test]
-	fn test_commit_removes() {
+	#[tokio::test]
+	async fn test_commit_removes() {
 		use reifydb_core::interface::Engine;
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
@@ -159,8 +159,8 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key2), None);
 	}
 
-	#[test]
-	fn test_commit_mixed_writes_and_removes() {
+	#[tokio::test]
+	async fn test_commit_mixed_writes_and_removes() {
 		use reifydb_core::interface::Engine;
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
@@ -198,9 +198,9 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &existing_key), None);
 	}
 
-	#[test]
-	fn test_commit_returns_metrics() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_returns_metrics() {
+		let mut parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
@@ -214,8 +214,8 @@ mod tests {
 		assert_eq!(metrics.removes, 1);
 	}
 
-	#[test]
-	fn test_commit_overwrites_storage_value() {
+	#[tokio::test]
+	async fn test_commit_overwrites_storage_value() {
 		use reifydb_core::interface::Engine;
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
@@ -243,9 +243,9 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key), Some(make_value("new")));
 	}
 
-	#[test]
-	fn test_sequential_commits_different_keys() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_sequential_commits_different_keys() {
+		let mut parent = create_test_transaction().await;
 
 		// First FlowTransaction writes to key1
 		// Note: FlowTransactions must operate on non-overlapping keyspaces
@@ -264,9 +264,9 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &make_key("key2")), Some(make_value("value2")));
 	}
 
-	#[test]
-	fn test_same_key_multiple_overwrites() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_same_key_multiple_overwrites() {
+		let mut parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let key = make_key("key1");
@@ -293,9 +293,9 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key), Some(make_value("final")));
 	}
 
-	#[test]
-	fn test_commit_detects_overlapping_writes() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_detects_overlapping_writes() {
+		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
 
@@ -320,9 +320,9 @@ mod tests {
 		assert_eq!(err.code, "FLOW_002");
 	}
 
-	#[test]
-	fn test_double_commit_prevention() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_double_commit_prevention() {
+		let mut parent = create_test_transaction().await;
 
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
@@ -338,9 +338,9 @@ mod tests {
 		// txn.commit(&mut parent);  // ERROR: use of moved value
 	}
 
-	#[test]
-	fn test_commit_allows_nonoverlapping_writes() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_commit_allows_nonoverlapping_writes() {
+		let mut parent = create_test_transaction().await;
 
 		// First FlowTransaction writes to key1
 		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1));

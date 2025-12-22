@@ -44,7 +44,7 @@ mod tests {
 
 	use super::*;
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_source_retention_policy() {
 		let catalog = MaterializedCatalog::new();
 		let source = SourceId::Table(TableId(1));
@@ -69,7 +69,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_source_retention_policy_update() {
 		let catalog = MaterializedCatalog::new();
 		let source = SourceId::Table(TableId(42));
@@ -96,7 +96,7 @@ mod tests {
 		assert_eq!(catalog.find_source_retention_policy(source, CommitVersion(10)), Some(policy_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_source_retention_policy_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let source = SourceId::Table(TableId(99));
@@ -121,7 +121,7 @@ mod tests {
 		assert_eq!(catalog.find_source_retention_policy(source, CommitVersion(1)), Some(policy));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_source_retention_policy_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let source = SourceId::Table(TableId(100));

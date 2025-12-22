@@ -13,16 +13,16 @@ use super::{
 
 /// Resolved namespace with both identifier and definition
 #[derive(Debug, Clone)]
-pub struct ResolvedNamespace<'a>(Arc<ResolvedNamespaceInner<'a>>);
+pub struct ResolvedNamespace(Arc<ResolvedNamespaceInner>);
 
 #[derive(Debug)]
-struct ResolvedNamespaceInner<'a> {
-	pub identifier: Fragment<'a>,
+struct ResolvedNamespaceInner {
+	pub identifier: Fragment,
 	pub def: NamespaceDef,
 }
 
-impl<'a> ResolvedNamespace<'a> {
-	pub fn new(identifier: Fragment<'a>, def: NamespaceDef) -> Self {
+impl ResolvedNamespace {
+	pub fn new(identifier: Fragment, def: NamespaceDef) -> Self {
 		Self(Arc::new(ResolvedNamespaceInner {
 			identifier,
 			def,
@@ -40,14 +40,14 @@ impl<'a> ResolvedNamespace<'a> {
 	}
 
 	/// Get the fragment for error reporting
-	pub fn fragment(&self) -> &Fragment<'a> {
+	pub fn fragment(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedNamespace<'static> {
+	pub fn to_static(&self) -> ResolvedNamespace {
 		ResolvedNamespace(Arc::new(ResolvedNamespaceInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
+			identifier: Fragment::internal(self.0.identifier.text()),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -55,17 +55,17 @@ impl<'a> ResolvedNamespace<'a> {
 
 /// Resolved physical table
 #[derive(Debug, Clone)]
-pub struct ResolvedTable<'a>(Arc<ResolvedTableInner<'a>>);
+pub struct ResolvedTable(Arc<ResolvedTableInner>);
 
 #[derive(Debug)]
-struct ResolvedTableInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedTableInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: TableDef,
 }
 
-impl<'a> ResolvedTable<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: TableDef) -> Self {
+impl ResolvedTable {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: TableDef) -> Self {
 		Self(Arc::new(ResolvedTableInner {
 			identifier,
 			namespace,
@@ -84,12 +84,12 @@ impl<'a> ResolvedTable<'a> {
 	}
 
 	/// Get the namespace
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
 	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -109,10 +109,10 @@ impl<'a> ResolvedTable<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedTable<'static> {
+	pub fn to_static(&self) -> ResolvedTable {
 		ResolvedTable(Arc::new(ResolvedTableInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -120,17 +120,17 @@ impl<'a> ResolvedTable<'a> {
 
 /// Resolved virtual table (system tables, information_schema)
 #[derive(Debug, Clone)]
-pub struct ResolvedTableVirtual<'a>(Arc<ResolvedTableVirtualInner<'a>>);
+pub struct ResolvedTableVirtual(Arc<ResolvedTableVirtualInner>);
 
 #[derive(Debug)]
-struct ResolvedTableVirtualInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedTableVirtualInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: TableVirtualDef,
 }
 
-impl<'a> ResolvedTableVirtual<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: TableVirtualDef) -> Self {
+impl ResolvedTableVirtual {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: TableVirtualDef) -> Self {
 		Self(Arc::new(ResolvedTableVirtualInner {
 			identifier,
 			namespace,
@@ -146,11 +146,11 @@ impl<'a> ResolvedTableVirtual<'a> {
 		&self.0.def
 	}
 
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -159,10 +159,10 @@ impl<'a> ResolvedTableVirtual<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedTableVirtual<'static> {
+	pub fn to_static(&self) -> ResolvedTableVirtual {
 		ResolvedTableVirtual(Arc::new(ResolvedTableVirtualInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -170,17 +170,17 @@ impl<'a> ResolvedTableVirtual<'a> {
 
 /// Resolved ring buffer
 #[derive(Debug, Clone)]
-pub struct ResolvedRingBuffer<'a>(Arc<ResolvedRingBufferInner<'a>>);
+pub struct ResolvedRingBuffer(Arc<ResolvedRingBufferInner>);
 
 #[derive(Debug)]
-struct ResolvedRingBufferInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedRingBufferInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: RingBufferDef,
 }
 
-impl<'a> ResolvedRingBuffer<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: RingBufferDef) -> Self {
+impl ResolvedRingBuffer {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: RingBufferDef) -> Self {
 		Self(Arc::new(ResolvedRingBufferInner {
 			identifier,
 			namespace,
@@ -199,12 +199,12 @@ impl<'a> ResolvedRingBuffer<'a> {
 	}
 
 	/// Get the namespace
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
 	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -224,10 +224,10 @@ impl<'a> ResolvedRingBuffer<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedRingBuffer<'static> {
+	pub fn to_static(&self) -> ResolvedRingBuffer {
 		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -235,17 +235,17 @@ impl<'a> ResolvedRingBuffer<'a> {
 
 /// Resolved flow
 #[derive(Debug, Clone)]
-pub struct ResolvedFlow<'a>(Arc<ResolvedFlowInner<'a>>);
+pub struct ResolvedFlow(Arc<ResolvedFlowInner>);
 
 #[derive(Debug)]
-struct ResolvedFlowInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedFlowInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: FlowDef,
 }
 
-impl<'a> ResolvedFlow<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: FlowDef) -> Self {
+impl ResolvedFlow {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: FlowDef) -> Self {
 		Self(Arc::new(ResolvedFlowInner {
 			identifier,
 			namespace,
@@ -264,12 +264,12 @@ impl<'a> ResolvedFlow<'a> {
 	}
 
 	/// Get the namespace
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
 	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -279,10 +279,10 @@ impl<'a> ResolvedFlow<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedFlow<'static> {
+	pub fn to_static(&self) -> ResolvedFlow {
 		ResolvedFlow(Arc::new(ResolvedFlowInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -290,17 +290,17 @@ impl<'a> ResolvedFlow<'a> {
 
 /// Resolved dictionary
 #[derive(Debug, Clone)]
-pub struct ResolvedDictionary<'a>(Arc<ResolvedDictionaryInner<'a>>);
+pub struct ResolvedDictionary(Arc<ResolvedDictionaryInner>);
 
 #[derive(Debug)]
-struct ResolvedDictionaryInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedDictionaryInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: DictionaryDef,
 }
 
-impl<'a> ResolvedDictionary<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: DictionaryDef) -> Self {
+impl ResolvedDictionary {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: DictionaryDef) -> Self {
 		Self(Arc::new(ResolvedDictionaryInner {
 			identifier,
 			namespace,
@@ -319,12 +319,12 @@ impl<'a> ResolvedDictionary<'a> {
 	}
 
 	/// Get the namespace
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
 	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -334,10 +334,10 @@ impl<'a> ResolvedDictionary<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedDictionary<'static> {
+	pub fn to_static(&self) -> ResolvedDictionary {
 		ResolvedDictionary(Arc::new(ResolvedDictionaryInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -345,17 +345,17 @@ impl<'a> ResolvedDictionary<'a> {
 
 /// Resolved standard view
 #[derive(Debug, Clone)]
-pub struct ResolvedView<'a>(Arc<ResolvedViewInner<'a>>);
+pub struct ResolvedView(Arc<ResolvedViewInner>);
 
 #[derive(Debug)]
-struct ResolvedViewInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedViewInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: ViewDef,
 }
 
-impl<'a> ResolvedView<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
+impl ResolvedView {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedViewInner {
 			identifier,
 			namespace,
@@ -371,11 +371,11 @@ impl<'a> ResolvedView<'a> {
 		&self.0.def
 	}
 
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -388,27 +388,27 @@ impl<'a> ResolvedView<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedView<'static> {
+	pub fn to_static(&self) -> ResolvedView {
 		ResolvedView(Arc::new(ResolvedViewInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedDeferredView<'a>(Arc<ResolvedDeferredViewInner<'a>>);
+pub struct ResolvedDeferredView(Arc<ResolvedDeferredViewInner>);
 
 #[derive(Debug)]
-struct ResolvedDeferredViewInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedDeferredViewInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: ViewDef,
 }
 
-impl<'a> ResolvedDeferredView<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
+impl ResolvedDeferredView {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedDeferredViewInner {
 			identifier,
 			namespace,
@@ -424,11 +424,11 @@ impl<'a> ResolvedDeferredView<'a> {
 		&self.0.def
 	}
 
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -437,27 +437,27 @@ impl<'a> ResolvedDeferredView<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedDeferredView<'static> {
+	pub fn to_static(&self) -> ResolvedDeferredView {
 		ResolvedDeferredView(Arc::new(ResolvedDeferredViewInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedTransactionalView<'a>(Arc<ResolvedTransactionalViewInner<'a>>);
+pub struct ResolvedTransactionalView(Arc<ResolvedTransactionalViewInner>);
 
 #[derive(Debug)]
-struct ResolvedTransactionalViewInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedTransactionalViewInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: ViewDef,
 }
 
-impl<'a> ResolvedTransactionalView<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
+impl ResolvedTransactionalView {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedTransactionalViewInner {
 			identifier,
 			namespace,
@@ -473,11 +473,11 @@ impl<'a> ResolvedTransactionalView<'a> {
 		&self.0.def
 	}
 
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
@@ -486,27 +486,27 @@ impl<'a> ResolvedTransactionalView<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedTransactionalView<'static> {
+	pub fn to_static(&self) -> ResolvedTransactionalView {
 		ResolvedTransactionalView(Arc::new(ResolvedTransactionalViewInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			namespace: self.0.namespace.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			namespace: self.0.namespace.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedSequence<'a>(Arc<ResolvedSequenceInner<'a>>);
+pub struct ResolvedSequence(Arc<ResolvedSequenceInner>);
 
 #[derive(Debug)]
-struct ResolvedSequenceInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: ResolvedNamespace<'a>,
+struct ResolvedSequenceInner {
+	pub identifier: Fragment,
+	pub namespace: ResolvedNamespace,
 	pub def: SequenceDef,
 }
 
-impl<'a> ResolvedSequence<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: ResolvedNamespace<'a>, def: SequenceDef) -> Self {
+impl ResolvedSequence {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SequenceDef) -> Self {
 		Self(Arc::new(ResolvedSequenceInner {
 			identifier,
 			namespace,
@@ -514,11 +514,11 @@ impl<'a> ResolvedSequence<'a> {
 		}))
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
@@ -528,17 +528,17 @@ impl<'a> ResolvedSequence<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedIndex<'a>(Arc<ResolvedIndexInner<'a>>);
+pub struct ResolvedIndex(Arc<ResolvedIndexInner>);
 
 #[derive(Debug)]
-struct ResolvedIndexInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub table: ResolvedTable<'a>,
+struct ResolvedIndexInner {
+	pub identifier: Fragment,
+	pub table: ResolvedTable,
 	pub def: IndexDef,
 }
 
-impl<'a> ResolvedIndex<'a> {
-	pub fn new(identifier: Fragment<'a>, table: ResolvedTable<'a>, def: IndexDef) -> Self {
+impl ResolvedIndex {
+	pub fn new(identifier: Fragment, table: ResolvedTable, def: IndexDef) -> Self {
 		Self(Arc::new(ResolvedIndexInner {
 			identifier,
 			table,
@@ -546,11 +546,11 @@ impl<'a> ResolvedIndex<'a> {
 		}))
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	pub fn table(&self) -> &ResolvedTable<'a> {
+	pub fn table(&self) -> &ResolvedTable {
 		&self.0.table
 	}
 
@@ -560,17 +560,17 @@ impl<'a> ResolvedIndex<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedFunction<'a>(Arc<ResolvedFunctionInner<'a>>);
+pub struct ResolvedFunction(Arc<ResolvedFunctionInner>);
 
 #[derive(Debug)]
-struct ResolvedFunctionInner<'a> {
-	pub identifier: Fragment<'a>,
-	pub namespace: Vec<ResolvedNamespace<'a>>,
+struct ResolvedFunctionInner {
+	pub identifier: Fragment,
+	pub namespace: Vec<ResolvedNamespace>,
 	pub def: FunctionDef,
 }
 
-impl<'a> ResolvedFunction<'a> {
-	pub fn new(identifier: Fragment<'a>, namespace: Vec<ResolvedNamespace<'a>>, def: FunctionDef) -> Self {
+impl ResolvedFunction {
+	pub fn new(identifier: Fragment, namespace: Vec<ResolvedNamespace>, def: FunctionDef) -> Self {
 		Self(Arc::new(ResolvedFunctionInner {
 			identifier,
 			namespace,
@@ -578,11 +578,11 @@ impl<'a> ResolvedFunction<'a> {
 		}))
 	}
 
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	pub fn namespace(&self) -> &[ResolvedNamespace<'a>] {
+	pub fn namespace(&self) -> &[ResolvedNamespace] {
 		&self.0.namespace
 	}
 
@@ -592,20 +592,20 @@ impl<'a> ResolvedFunction<'a> {
 }
 /// Unified enum for any resolved source type
 #[derive(Debug, Clone)]
-pub enum ResolvedSource<'a> {
-	Table(ResolvedTable<'a>),
-	TableVirtual(ResolvedTableVirtual<'a>),
-	View(ResolvedView<'a>),
-	DeferredView(ResolvedDeferredView<'a>),
-	TransactionalView(ResolvedTransactionalView<'a>),
-	RingBuffer(ResolvedRingBuffer<'a>),
-	Flow(ResolvedFlow<'a>),
-	Dictionary(ResolvedDictionary<'a>),
+pub enum ResolvedSource {
+	Table(ResolvedTable),
+	TableVirtual(ResolvedTableVirtual),
+	View(ResolvedView),
+	DeferredView(ResolvedDeferredView),
+	TransactionalView(ResolvedTransactionalView),
+	RingBuffer(ResolvedRingBuffer),
+	Flow(ResolvedFlow),
+	Dictionary(ResolvedDictionary),
 }
 
-impl<'a> ResolvedSource<'a> {
+impl ResolvedSource {
 	/// Get the identifier fragment
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		match self {
 			Self::Table(t) => t.identifier(),
 			Self::TableVirtual(t) => t.identifier(),
@@ -619,7 +619,7 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Get the namespace if this source has one
-	pub fn namespace(&self) -> Option<&ResolvedNamespace<'a>> {
+	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
 			Self::TableVirtual(t) => Some(t.namespace()),
@@ -690,7 +690,7 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Convert to a table if this is a table source
-	pub fn as_table(&self) -> Option<&ResolvedTable<'a>> {
+	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
 			_ => None,
@@ -698,7 +698,7 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Convert to a view if this is a view source
-	pub fn as_view(&self) -> Option<&ResolvedView<'a>> {
+	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
 			_ => None,
@@ -706,29 +706,15 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Convert to a ring buffer if this is a ring buffer source
-	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
+	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
 			_ => None,
 		}
 	}
 
-	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedSource<'static> {
-		match self {
-			Self::Table(t) => ResolvedSource::Table(t.to_static()),
-			Self::TableVirtual(t) => ResolvedSource::TableVirtual(t.to_static()),
-			Self::View(v) => ResolvedSource::View(v.to_static()),
-			Self::DeferredView(v) => ResolvedSource::DeferredView(v.to_static()),
-			Self::TransactionalView(v) => ResolvedSource::TransactionalView(v.to_static()),
-			Self::RingBuffer(r) => ResolvedSource::RingBuffer(r.to_static()),
-			Self::Flow(f) => ResolvedSource::Flow(f.to_static()),
-			Self::Dictionary(d) => ResolvedSource::Dictionary(d.to_static()),
-		}
-	}
-
 	/// Convert to a dictionary if this is a dictionary source
-	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary<'a>> {
+	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
 			_ => None,
@@ -738,20 +724,20 @@ impl<'a> ResolvedSource<'a> {
 
 /// Column with its resolved source
 #[derive(Debug, Clone)]
-pub struct ResolvedColumn<'a>(Arc<ResolvedColumnInner<'a>>);
+pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
 #[derive(Debug)]
-struct ResolvedColumnInner<'a> {
+struct ResolvedColumnInner {
 	/// Original identifier with fragments
-	pub identifier: Fragment<'a>,
+	pub identifier: Fragment,
 	/// The resolved source this column belongs to
-	pub source: ResolvedSource<'a>,
+	pub source: ResolvedSource,
 	/// The column definition
 	pub def: ColumnDef,
 }
 
-impl<'a> ResolvedColumn<'a> {
-	pub fn new(identifier: Fragment<'a>, source: ResolvedSource<'a>, def: ColumnDef) -> Self {
+impl ResolvedColumn {
+	pub fn new(identifier: Fragment, source: ResolvedSource, def: ColumnDef) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
 			source,
@@ -770,12 +756,12 @@ impl<'a> ResolvedColumn<'a> {
 	}
 
 	/// Get the identifier
-	pub fn identifier(&self) -> &Fragment<'a> {
+	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
 	/// Get the source
-	pub fn source(&self) -> &ResolvedSource<'a> {
+	pub fn source(&self) -> &ResolvedSource {
 		&self.0.source
 	}
 
@@ -800,7 +786,7 @@ impl<'a> ResolvedColumn<'a> {
 	}
 
 	/// Get the namespace this column belongs to
-	pub fn namespace(&self) -> Option<&ResolvedNamespace<'a>> {
+	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		self.0.source.namespace()
 	}
 
@@ -815,15 +801,15 @@ impl<'a> ResolvedColumn<'a> {
 	}
 
 	/// Get the fragment for error reporting
-	pub fn fragment(&self) -> &Fragment<'a> {
+	pub fn fragment(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_static(&self) -> ResolvedColumn<'static> {
+	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
-			identifier: Fragment::owned_internal(self.0.identifier.text()),
-			source: self.0.source.to_static(),
+			identifier: Fragment::internal(self.0.identifier.text()),
+			source: self.0.source.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -831,7 +817,7 @@ impl<'a> ResolvedColumn<'a> {
 
 // Helper function to convert ResolvedColumn to NumberOfRangeColumnDescriptor
 // This is used in evaluation context for error reporting
-pub fn resolved_column_to_number_descriptor<'a>(column: &'a ResolvedColumn<'a>) -> NumberOfRangeColumnDescriptor<'a> {
+pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOfRangeColumnDescriptor {
 	let (namespace, table) = match column.source() {
 		ResolvedSource::Table(table) => (Some(table.namespace().name().as_ref()), Some(table.name().as_ref())),
 		ResolvedSource::TableVirtual(table) => {
@@ -885,7 +871,7 @@ pub struct FunctionDef {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::{OwnedFragment, Type};
+	use reifydb_type::{Type, fragment::Fragment};
 
 	use super::*;
 	use crate::interface::{ColumnId, NamespaceId, TableId, catalog::ColumnIndex};
@@ -928,7 +914,7 @@ mod tests {
 
 	#[test]
 	fn test_resolved_namespace() {
-		let identifier = Fragment::Owned(OwnedFragment::testing("public"));
+		let identifier = Fragment::testing("public");
 		let def = test_namespace_def();
 		let resolved = ResolvedNamespace::new(identifier, def);
 
@@ -938,10 +924,10 @@ mod tests {
 
 	#[test]
 	fn test_resolved_table() {
-		let namespace_ident = Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace_ident = Fragment::testing("public");
 		let namespace = ResolvedNamespace::new(namespace_ident, test_namespace_def());
 
-		let table_ident = Fragment::Owned(OwnedFragment::testing("users"));
+		let table_ident = Fragment::testing("users");
 		let table = ResolvedTable::new(table_ident, namespace.clone(), test_table_def());
 
 		assert_eq!(table.name(), "users");
@@ -953,14 +939,9 @@ mod tests {
 
 	#[test]
 	fn test_resolved_source_enum() {
-		let namespace =
-			ResolvedNamespace::new(Fragment::Owned(OwnedFragment::testing("public")), test_namespace_def());
+		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
-		let table = ResolvedTable::new(
-			Fragment::Owned(OwnedFragment::testing("users")),
-			namespace,
-			test_table_def(),
-		);
+		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
 
 		let source = ResolvedSource::Table(table);
 
@@ -975,18 +956,13 @@ mod tests {
 
 	#[test]
 	fn test_resolved_column() {
-		let namespace =
-			ResolvedNamespace::new(Fragment::Owned(OwnedFragment::testing("public")), test_namespace_def());
+		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
-		let table = ResolvedTable::new(
-			Fragment::Owned(OwnedFragment::testing("users")),
-			namespace,
-			test_table_def(),
-		);
+		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
 
 		let source = ResolvedSource::Table(table);
 
-		let column_ident = Fragment::Owned(OwnedFragment::testing("id"));
+		let column_ident = Fragment::testing("id");
 
 		let column_def = ColumnDef {
 			id: ColumnId(1),

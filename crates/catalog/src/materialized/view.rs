@@ -80,7 +80,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_view() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
@@ -103,7 +103,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_view_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
@@ -126,7 +126,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_view_rename() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
@@ -161,7 +161,7 @@ mod tests {
 		assert_eq!(catalog.find_view(view_id, CommitVersion(2)), Some(view_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_view_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
@@ -188,7 +188,7 @@ mod tests {
 		assert!(catalog.find_view_by_name(namespace2, "movable_view", CommitVersion(2)).is_some());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_view_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
@@ -213,7 +213,7 @@ mod tests {
 		assert_eq!(catalog.find_view(view_id, CommitVersion(1)), Some(view));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_multiple_views_in_namespace() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -233,7 +233,7 @@ mod tests {
 		assert_eq!(catalog.find_view_by_name(namespace_id, "view3", CommitVersion(1)), Some(view3));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_view_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);

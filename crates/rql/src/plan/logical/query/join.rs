@@ -14,10 +14,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_join<'a, T: CatalogQueryTransaction>(
-		ast: AstJoin<'a>,
+	pub(crate) async fn compile_join<T: CatalogQueryTransaction>(
+		ast: AstJoin,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		match ast {
 			AstJoin::InnerJoin {
 				with,

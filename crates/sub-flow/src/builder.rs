@@ -12,8 +12,7 @@ use reifydb_sub_api::Priority;
 use crate::{operator::BoxedOperator, subsystem::FlowSubsystemConfig};
 
 /// Type alias for operator factory functions
-pub type OperatorFactory =
-	Arc<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync>;
+pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &[Expression]) -> crate::Result<BoxedOperator> + Send + Sync>;
 
 pub struct FlowBuilder {
 	consumer_id: CdcConsumerId,
@@ -76,7 +75,7 @@ impl FlowBuilder {
 	/// Register a custom operator factory
 	pub fn register_operator<F>(mut self, name: impl Into<String>, factory: F) -> Self
 	where
-		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync + 'static,
+		F: Fn(FlowNodeId, &[Expression]) -> crate::Result<BoxedOperator> + Send + Sync + 'static,
 	{
 		self.operators.push((name.into(), Arc::new(factory)));
 		self

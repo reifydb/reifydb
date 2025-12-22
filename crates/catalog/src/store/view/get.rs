@@ -30,17 +30,17 @@ mod tests {
 		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
 		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
 
@@ -49,17 +49,17 @@ mod tests {
 		assert_eq!(result.name, "view_two");
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
 		let err = CatalogStore::get_view(&mut txn, ViewId(42)).unwrap_err();
 

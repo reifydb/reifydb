@@ -11,9 +11,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_index<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateIndex<'a>,
+		ast: AstCreateIndex,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Note: Column qualification will be handled during physical plan compilation
 
 		let columns = ast

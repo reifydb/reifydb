@@ -31,24 +31,21 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete<'a>(
+	pub(crate) async fn delete<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: DeleteTableNode<'a>,
+		plan: DeleteTableNode,
 		params: Params,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace().name();
-			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-				return_error!(namespace_not_found(
-					Fragment::owned_internal(namespace_name),
-					namespace_name
-				));
+			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await? else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -59,10 +56,10 @@ impl Executor {
 		};
 
 		// Create resolved source for the table
-		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
+		let namespace_ident = Fragment::internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = Fragment::owned_internal(table.name.clone());
+		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
@@ -95,12 +92,12 @@ impl Executor {
 			};
 
 			// Initialize the operator before execution
-			input_node.initialize(&mut std_txn, &context)?;
+			input_node.initialize(&mut std_txn, &context).await?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut std_txn, &mut mutable_context)?
+			}) = input_node.next(&mut std_txn, &mut mutable_context).await?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
@@ -117,7 +114,7 @@ impl Executor {
 			}
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(std_txn.command_mut(), &table)?;
+			let pk_def = primary_key::get_primary_key(std_txn.command_mut(), &table).await?;
 
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
@@ -130,7 +127,7 @@ impl Executor {
 				// Remove primary key index entry if table has
 				// one
 				if let Some(ref pk_def) = pk_def {
-					if let Some(row_data) = cmd.get(&row_key)? {
+					if let Some(row_data) = cmd.get(&row_key).await? {
 						let row = row_data.values;
 						let layout = table.get_layout();
 						let index_key =
@@ -141,12 +138,12 @@ impl Executor {
 							IndexId::primary(pk_def.id),
 							index_key,
 						)
-						.encode())?;
+						.encode()).await?;
 					}
 				}
 
 				// Now remove the encoded
-				cmd.remove(&row_key)?;
+				cmd.remove(&row_key).await?;
 				deleted_count += 1;
 			}
 		} else {
@@ -156,14 +153,14 @@ impl Executor {
 			};
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(txn, &table)?;
+			let pk_def = primary_key::get_primary_key(txn, &table).await?;
 
-			let rows = txn
+			let batch = txn
 				.range(EncodedKeyRange::new(
 					Included(range.start().unwrap()),
 					Included(range.end().unwrap()),
-				))?
-				.collect::<Vec<_>>();
+				)).await?;
+			let rows = batch.items;
 
 			for multi in rows {
 				// Remove primary key index entry if table has
@@ -182,11 +179,11 @@ impl Executor {
 						IndexId::primary(pk_def.id),
 						index_key,
 					)
-					.encode())?;
+					.encode()).await?;
 				}
 
 				// Remove the encoded
-				txn.remove(&multi.key)?;
+				txn.remove(&multi.key).await?;
 				deleted_count += 1;
 			}
 		}

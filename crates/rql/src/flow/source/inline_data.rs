@@ -4,7 +4,6 @@
 //! Compilation of inline data operations
 
 use reifydb_core::interface::{CommandTransaction, FlowNodeId};
-use reifydb_type::Fragment;
 
 use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_expression};
 use crate::{
@@ -14,23 +13,21 @@ use crate::{
 };
 
 pub(crate) struct InlineDataCompiler {
-	pub inline_data: InlineDataNode<'static>,
+	pub inline_data: InlineDataNode,
 }
 
-impl<'a> From<InlineDataNode<'a>> for InlineDataCompiler {
-	fn from(inline_data: InlineDataNode<'a>) -> Self {
-		// Convert InlineDataNode<'a> to InlineDataNode<'static>
+impl From<InlineDataNode> for InlineDataCompiler {
+	fn from(inline_data: InlineDataNode) -> Self {
+		// Convert InlineDataNode to InlineDataNode
 		let converted_rows = inline_data
 			.rows
 			.into_iter()
 			.map(|row| {
 				row.into_iter()
 					.map(|alias_expr| AliasExpression {
-						alias: IdentExpression(Fragment::Owned(
-							alias_expr.alias.0.into_owned(),
-						)),
+						alias: IdentExpression(alias_expr.alias.0.into_owned()),
 						expression: Box::new(to_owned_expression(*alias_expr.expression)),
-						fragment: Fragment::Owned(alias_expr.fragment.into_owned()),
+						fragment: alias_expr.fragment,
 					})
 					.collect()
 			})

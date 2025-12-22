@@ -42,7 +42,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_ringbuffer_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		// Set primary key
@@ -56,7 +56,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_ringbuffer_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result =
 			CatalogStore::set_ringbuffer_primary_key(&mut txn, RingBufferId(999), PrimaryKeyId(1)).await;
@@ -69,7 +69,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_ringbuffer_primary_key_overwrites() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		// Set first primary key

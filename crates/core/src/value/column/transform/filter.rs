@@ -3,7 +3,7 @@
 
 use crate::{BitVec, util::CowVec, value::column::Columns};
 
-impl<'a> Columns<'a> {
+impl Columns {
 	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
 		// Filter encoded numbers if present
 		if !self.row_numbers.is_empty() {

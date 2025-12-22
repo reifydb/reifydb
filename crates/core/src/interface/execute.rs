@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
+
 use crate::{
 	Frame,
 	interface::{
@@ -27,10 +29,12 @@ pub trait Execute<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus, 
 {
 }
 
+#[async_trait(?Send)]
 pub trait ExecuteCommand<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus> {
-	fn execute_command(&self, txn: &mut CT, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
+	async fn execute_command(&self, txn: &mut CT, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
 }
 
+#[async_trait(?Send)]
 pub trait ExecuteQuery<QT: QueryTransaction> {
-	fn execute_query(&self, txn: &mut QT, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
+	async fn execute_query(&self, txn: &mut QT, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }

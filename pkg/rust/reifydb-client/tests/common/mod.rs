@@ -8,13 +8,13 @@ use reifydb::{
 	core::event::EventBus,
 	sub_server_http::HttpConfig,
 	sub_server_ws::WsConfig,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
 
 pub fn create_server_instance(
-	input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus),
+	input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
 ) -> Database {
 	let (multi, single, cdc, eventbus) = input;
 

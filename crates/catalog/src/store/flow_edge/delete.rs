@@ -37,7 +37,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_flow_edge() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -57,7 +57,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_edge_removes_from_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -79,7 +79,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_nonexistent_edge() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Deleting a non-existent edge should succeed silently
 		CatalogStore::delete_flow_edge(&mut txn, FlowEdgeId(999)).await.unwrap();
@@ -87,7 +87,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_delete_one_edge_keeps_others() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 

@@ -10,7 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_transaction::multi::{CommandTransaction, Transaction};
+use reifydb_transaction::multi::{CommandTransaction, TransactionMulti};
 
 use crate::{
 	as_key, as_values, from_key, from_values,
@@ -23,7 +23,7 @@ async fn test_write_skew() {
 	let a999: EncodedKey = as_key!(999);
 	let a888: EncodedKey = as_key!(888);
 
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Set balance to $100 in each account.
 	let mut txn = engine.begin_command().await.unwrap();
@@ -78,7 +78,7 @@ async fn test_write_skew() {
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[tokio::test]
 async fn test_black_white() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Setup
 	let mut txn = engine.begin_command().await.unwrap();
@@ -141,7 +141,7 @@ async fn test_black_white() {
 // https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[tokio::test]
 async fn test_overdraft_protection() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	let key = as_key!("karen");
 
@@ -172,7 +172,7 @@ async fn test_overdraft_protection() {
 // https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[tokio::test]
 async fn test_primary_colors() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Setup
 	let mut txn = engine.begin_command().await.unwrap();
@@ -268,7 +268,7 @@ async fn test_primary_colors() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[tokio::test]
 async fn test_intersecting_data() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Setup
 	let mut txn = engine.begin_command().await.unwrap();
@@ -340,7 +340,7 @@ async fn test_intersecting_data() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[tokio::test]
 async fn test_intersecting_data2() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// Setup
 	let mut txn = engine.begin_command().await.unwrap();
@@ -394,7 +394,7 @@ async fn test_intersecting_data2() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[tokio::test]
 async fn test_intersecting_data3() {
-	let engine = Transaction::testing().await;
+	let engine = TransactionMulti::testing().await;
 
 	// // Setup
 	let mut txn = engine.begin_command().await.unwrap();

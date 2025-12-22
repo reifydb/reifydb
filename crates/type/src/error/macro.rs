@@ -20,7 +20,7 @@ macro_rules! error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
+		diag.with_fragment($fragment.into());
 		$crate::Error(diag)
 	}};
 }
@@ -44,7 +44,7 @@ macro_rules! return_error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
+		diag.with_fragment($fragment.into());
 		return Err($crate::Error(diag));
 	}};
 }
@@ -68,16 +68,14 @@ macro_rules! err {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
+		diag.with_fragment($fragment.into());
 		Err($crate::Error(diag))
 	}};
 }
 
 #[cfg(test)]
 mod tests {
-	use crate::{
-		OwnedFragment, StatementColumn, StatementLine, Type, error::diagnostic::sequence::sequence_exhausted,
-	};
+	use crate::{Fragment, StatementColumn, StatementLine, Type, error::diagnostic::sequence::sequence_exhausted};
 
 	#[test]
 	fn test_error_macro() {
@@ -123,7 +121,7 @@ mod tests {
 	#[test]
 	fn test_error_macro_with_fragment() {
 		// Create a test fragment
-		let fragment = OwnedFragment::Statement {
+		let fragment = Fragment::Statement {
 			line: StatementLine(42),
 			column: StatementColumn(10),
 			text: "test fragment".to_string(),
@@ -140,7 +138,7 @@ mod tests {
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
 		assert!(fragment.is_some());
-		if let Some(OwnedFragment::Statement {
+		if let Some(Fragment::Statement {
 			line,
 			column,
 			..
@@ -154,7 +152,7 @@ mod tests {
 	#[test]
 	fn test_return_error_macro_with_fragment() {
 		fn test_fn() -> Result<(), crate::Error> {
-			let fragment = OwnedFragment::Statement {
+			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
 				text: "error location".to_string(),
@@ -169,7 +167,7 @@ mod tests {
 			let diagnostic = err.diagnostic();
 			let fragment = diagnostic.fragment();
 			assert!(fragment.is_some());
-			if let Some(OwnedFragment::Statement {
+			if let Some(Fragment::Statement {
 				line,
 				column,
 				..
@@ -183,7 +181,7 @@ mod tests {
 
 	#[test]
 	fn test_err_macro_with_fragment() {
-		let fragment = OwnedFragment::Statement {
+		let fragment = Fragment::Statement {
 			line: StatementLine(200),
 			column: StatementColumn(50),
 			text: "err fragment test".to_string(),
@@ -199,7 +197,7 @@ mod tests {
 			let diagnostic = err.diagnostic();
 			let fragment = diagnostic.fragment();
 			assert!(fragment.is_some());
-			if let Some(OwnedFragment::Statement {
+			if let Some(Fragment::Statement {
 				line,
 				column,
 				..
@@ -213,15 +211,15 @@ mod tests {
 
 	#[test]
 	fn test_macros_with_closure_fragment() {
-		// Test with closure that returns OwnedFragment (implements
-		// IntoOwnedFragment)
-		let get_fragment = || OwnedFragment::Statement {
+		// Test with closure that returns Fragment (implements
+		// Into<Fragment>)
+		let get_fragment = || Fragment::Statement {
 			line: StatementLine(300),
 			column: StatementColumn(75),
 			text: "closure fragment".to_string(),
 		};
 
-		let err = error!(sequence_exhausted(Type::Uint8), get_fragment);
+		let err = error!(sequence_exhausted(Type::Uint8), get_fragment());
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
 		assert!(fragment.is_some());

@@ -59,7 +59,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_update_flow_name() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let flow = ensure_test_flow(&mut txn).await;
 
 		// Update the name
@@ -74,7 +74,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_update_flow_status() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let flow = ensure_test_flow(&mut txn).await;
 
 		// Initial status should be Active

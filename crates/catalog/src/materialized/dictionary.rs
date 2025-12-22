@@ -64,7 +64,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_dictionary() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
@@ -87,7 +87,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_dictionary_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
@@ -110,7 +110,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_dictionary_rename() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
@@ -145,7 +145,7 @@ mod tests {
 		assert_eq!(catalog.find_dictionary(dict_id, CommitVersion(2)), Some(dict_v2));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_dictionary_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
@@ -172,7 +172,7 @@ mod tests {
 		assert!(catalog.find_dictionary_by_name(namespace2, "movable_dict", CommitVersion(2)).is_some());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_dictionary_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
@@ -197,7 +197,7 @@ mod tests {
 		assert_eq!(catalog.find_dictionary(dict_id, CommitVersion(1)), Some(dict));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_multiple_dictionaries_in_namespace() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -217,7 +217,7 @@ mod tests {
 		assert_eq!(catalog.find_dictionary_by_name(namespace_id, "dict3", CommitVersion(1)), Some(dict3));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_dictionary_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);

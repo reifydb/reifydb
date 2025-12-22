@@ -55,7 +55,7 @@ impl From<ColumnData> for FrameColumnData {
 	}
 }
 
-impl From<Column<'_>> for FrameColumn {
+impl From<Column> for FrameColumn {
 	fn from(value: Column) -> Self {
 		// Since Column is now just name + data, we extract any qualification from the name
 		let name_str = value.name.text();
@@ -75,7 +75,7 @@ impl From<Column<'_>> for FrameColumn {
 	}
 }
 
-impl From<Columns<'_>> for Frame {
+impl From<Columns> for Frame {
 	fn from(columns: Columns) -> Self {
 		let frame_columns: Vec<FrameColumn> = columns.columns.into_iter().map(|col| col.into()).collect();
 		if !columns.row_numbers.is_empty() {

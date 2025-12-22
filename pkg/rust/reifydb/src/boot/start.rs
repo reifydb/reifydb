@@ -13,16 +13,16 @@ use reifydb_core::{
 	},
 	value::encoded::EncodedValuesLayout,
 };
-use reifydb_transaction::single::TransactionSingleVersion;
+use reifydb_transaction::single::TransactionSingle;
 use reifydb_type::Type;
 use tracing::error;
 
 pub(crate) struct StartEventListener {
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 }
 
 impl StartEventListener {
-	pub(crate) fn new(single: TransactionSingleVersion) -> Self {
+	pub(crate) fn new(single: TransactionSingle) -> Self {
 		Self {
 			single,
 		}

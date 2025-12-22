@@ -95,8 +95,8 @@ mod tests {
 		EncodedValues(CowVec::new(data.to_vec()))
 	}
 
-	#[test]
-	fn test_create_and_free_iterator() {
+	#[tokio::test]
+	async fn test_create_and_free_iterator() {
 		let items = vec![MultiVersionValues {
 			key: make_state_key(1, b"key1"),
 			values: make_value(b"value1"),
@@ -117,8 +117,8 @@ mod tests {
 		assert!(!freed_again);
 	}
 
-	#[test]
-	fn test_iterator_next() {
+	#[tokio::test]
+	async fn test_iterator_next() {
 		let items = vec![
 			MultiVersionValues {
 				key: make_state_key(1, b"key1"),
@@ -153,8 +153,8 @@ mod tests {
 		free_iterator(handle);
 	}
 
-	#[test]
-	fn test_iterator_invalid_handle() {
+	#[tokio::test]
+	async fn test_iterator_invalid_handle() {
 		let result = next_iterator(999999);
 		assert!(result.is_none());
 
@@ -162,8 +162,8 @@ mod tests {
 		assert!(!freed);
 	}
 
-	#[test]
-	fn test_multiple_iterators() {
+	#[tokio::test]
+	async fn test_multiple_iterators() {
 		let items1 = vec![MultiVersionValues {
 			key: make_state_key(1, b"iter1"),
 			values: make_value(b"value1"),

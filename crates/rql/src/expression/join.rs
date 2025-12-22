@@ -16,13 +16,13 @@ use crate::{
 
 /// Compiles join conditions with proper alias scoping
 /// The alias (if present) is only valid within the ON clause
-pub struct JoinConditionCompiler<'a> {
+pub struct JoinConditionCompiler {
 	/// The alias for the other side of the join (if any)
-	alias: Option<Fragment<'a>>,
+	alias: Option<Fragment>,
 }
 
-impl<'a> JoinConditionCompiler<'a> {
-	pub fn new(alias: Option<Fragment<'a>>) -> Self {
+impl JoinConditionCompiler {
+	pub fn new(alias: Option<Fragment>) -> Self {
 		Self {
 			alias,
 		}
@@ -30,7 +30,7 @@ impl<'a> JoinConditionCompiler<'a> {
 
 	/// Compile a join condition expression
 	/// This handles the special case where alias.column references are valid
-	pub fn compile(&self, ast: Ast<'a>) -> crate::Result<Expression<'a>> {
+	pub fn compile(&self, ast: Ast) -> crate::Result<Expression> {
 		match ast {
 			// Handle alias.column references in join conditions
 			Ast::Infix(ast_infix) if matches!(ast_infix.operator, InfixOperator::AccessTable(_)) => {
@@ -85,7 +85,7 @@ impl<'a> JoinConditionCompiler<'a> {
 		}
 	}
 
-	fn compile_qualified_column(&self, ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
+	fn compile_qualified_column(&self, ast: AstInfix) -> crate::Result<Expression> {
 		assert!(matches!(ast.operator, InfixOperator::AccessTable(_)));
 
 		let Ast::Identifier(left) = *ast.left else {
@@ -116,7 +116,7 @@ impl<'a> JoinConditionCompiler<'a> {
 		return_error!(unsupported_source_qualification(left.token.fragment.clone(), left.token.fragment.text()))
 	}
 
-	fn compile_infix(&self, ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
+	fn compile_infix(&self, ast: AstInfix) -> crate::Result<Expression> {
 		match ast.operator {
 			InfixOperator::AccessTable(_) => self.compile_qualified_column(ast),
 			InfixOperator::Add(token) => {

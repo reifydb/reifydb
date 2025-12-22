@@ -16,8 +16,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_aggregate(&mut self) -> crate::Result<AstAggregate<'a>> {
+impl Parser {
+	pub(crate) fn parse_aggregate(&mut self) -> crate::Result<AstAggregate> {
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
 		let mut projections = Vec::new();

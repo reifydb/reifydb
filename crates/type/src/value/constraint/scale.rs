@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::precision::Precision;
-use crate::{Error, OwnedFragment, error::diagnostic::number::decimal_scale_exceeds_precision, return_error};
+use crate::{Error, Fragment, error::diagnostic::number::decimal_scale_exceeds_precision, return_error};
 
 /// Scale for a decimal type (decimal places)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ impl Scale {
 	/// Create a new Scale value with validation against precision
 	pub fn try_new_with_precision(scale: u8, precision: Precision) -> Result<Self, Error> {
 		if scale > precision.value() {
-			return_error!(decimal_scale_exceeds_precision(OwnedFragment::None, scale, precision.value()));
+			return_error!(decimal_scale_exceeds_precision(Fragment::None, scale, precision.value()));
 		}
 		Ok(Self(scale))
 	}

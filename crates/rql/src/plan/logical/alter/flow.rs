@@ -10,28 +10,28 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct AlterFlowNode<'a> {
-	pub flow: MaybeQualifiedFlowIdentifier<'a>,
-	pub action: AlterFlowAction<'a>,
+pub struct AlterFlowNode {
+	pub flow: MaybeQualifiedFlowIdentifier,
+	pub action: AlterFlowAction,
 }
 
 #[derive(Debug)]
-pub enum AlterFlowAction<'a> {
+pub enum AlterFlowAction {
 	Rename {
-		new_name: Fragment<'a>,
+		new_name: Fragment,
 	},
 	SetQuery {
-		query: Vec<LogicalPlan<'a>>,
+		query: Vec<LogicalPlan>,
 	},
 	Pause,
 	Resume,
 }
 
 impl Compiler {
-	pub(crate) async fn compile_alter_flow<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterFlow<'a>,
+	pub(crate) async fn compile_alter_flow<T: CatalogQueryTransaction>(
+		ast: AstAlterFlow,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let flow = ast.flow.clone();
 
 		let action = match ast.action {
@@ -44,7 +44,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile the query statement to logical plan
-				let compiled_query = Compiler::compile(query, tx).await?;
+				let compiled_query = Box::pin(Compiler::compile(query, tx)).await?;
 				AlterFlowAction::SetQuery {
 					query: compiled_query,
 				}

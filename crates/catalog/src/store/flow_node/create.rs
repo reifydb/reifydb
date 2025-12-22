@@ -44,7 +44,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_flow_node() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -68,7 +68,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_multiple_nodes_same_flow() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
@@ -102,7 +102,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_nodes_different_flows() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 
 		// Create two flows
@@ -139,7 +139,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_node_appears_in_index() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 

@@ -78,9 +78,9 @@ mod tests {
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		// Find source by TableId
@@ -107,10 +107,10 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_view() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -151,9 +151,9 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent table
 		let source = CatalogStore::find_source(&mut txn, TableId(999)).unwrap();
@@ -168,9 +168,9 @@ mod tests {
 		assert!(source.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_find_source_table_virtual() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Find the sequences virtual table
 		let sequences_id = crate::system::ids::table_virtual::SEQUENCES;

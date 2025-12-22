@@ -16,7 +16,7 @@ use crate::{
 			assign::AssignNode,
 			conditional::ConditionalNode,
 			declare::DeclareNode,
-			dictionary_scan::DictionaryScan,
+			dictionary_scan::DictionaryScanNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
 			generator::GeneratorNode,
@@ -48,19 +48,15 @@ use crate::{
 };
 
 // Extract the source name from a physical plan if it's a scan node
-fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reifydb_type::Fragment<'static>> {
+fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<reifydb_type::Fragment> {
 	match plan {
-		PhysicalPlan::TableScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
-		PhysicalPlan::ViewScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
+		PhysicalPlan::TableScan(node) => Some(reifydb_type::Fragment::internal(node.source.def().name.clone())),
+		PhysicalPlan::ViewScan(node) => Some(reifydb_type::Fragment::internal(node.source.def().name.clone())),
 		PhysicalPlan::RingBufferScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+			Some(reifydb_type::Fragment::internal(node.source.def().name.clone()))
 		}
 		PhysicalPlan::DictionaryScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+			Some(reifydb_type::Fragment::internal(node.source.def().name.clone()))
 		}
 		// For other node types, try to recursively find the source
 		PhysicalPlan::Filter(node) => extract_source_name_from_physical(&node.input),
@@ -72,10 +68,10 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reif
 
 #[instrument(name = "query::compile", level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(
-	plan: PhysicalPlan<'a>,
+	plan: PhysicalPlan,
 	rx: &mut StandardTransaction<'a>,
-	context: Arc<ExecutionContext<'a>>,
-) -> ExecutionPlan<'a> {
+	context: Arc<ExecutionContext>,
+) -> ExecutionPlan {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
@@ -145,7 +141,7 @@ pub(crate) fn compile<'a>(
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias = alias
 				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+				.or_else(|| Some(reifydb_type::Fragment::internal("other".to_string())));
 
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
@@ -163,7 +159,7 @@ pub(crate) fn compile<'a>(
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias = alias
 				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+				.or_else(|| Some(reifydb_type::Fragment::internal("other".to_string())));
 
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
@@ -181,7 +177,7 @@ pub(crate) fn compile<'a>(
 			// Use explicit alias, or fall back to extracted source name, or use "other"
 			let effective_alias = alias
 				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+				.or_else(|| Some(reifydb_type::Fragment::internal("other".to_string())));
 
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
@@ -229,7 +225,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::DictionaryScan(node) => {
-			ExecutionPlan::DictionaryScan(DictionaryScan::new(node.source.clone(), context).unwrap())
+			ExecutionPlan::DictionaryScan(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
 
 		PhysicalPlan::TableVirtualScan(node) => {
@@ -242,7 +238,7 @@ pub(crate) fn compile<'a>(
 				context.executor.virtual_table_registry.find_by_name(namespace.id, &table.name)
 			{
 				// User-defined virtual table
-				crate::table_virtual::extend_virtual_table_lifetime(factory.create_boxed())
+				factory.create_boxed()
 			} else if namespace.id == NamespaceId(1) {
 				// Built-in system virtual tables
 				match table.name.as_str() {

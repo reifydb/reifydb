@@ -18,15 +18,15 @@ use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
 use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem};
 use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
 use reifydb_type::{diagnostic::internal, error};
 
 fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
-	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
+	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = Transaction::new(store, single.clone(), eventbus.clone());
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,

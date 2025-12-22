@@ -12,14 +12,14 @@ use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct EmbeddedBuilder {
 	multi: TransactionMultiVersion,
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
@@ -35,7 +35,7 @@ pub struct EmbeddedBuilder {
 impl EmbeddedBuilder {
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {

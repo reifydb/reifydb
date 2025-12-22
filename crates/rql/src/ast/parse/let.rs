@@ -9,8 +9,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet<'a>> {
+impl Parser {
+	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet> {
 		let mut is_mut = false;
 		let token = self.current()?.clone();
 

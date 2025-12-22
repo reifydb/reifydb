@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl PrimaryKeys {
 	}
 }
 
-impl<'a> TableVirtual<'a> for PrimaryKeys {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for PrimaryKeys {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -47,7 +53,7 @@ impl<'a> TableVirtual<'a> for PrimaryKeys {
 		let mut source_ids = Vec::new();
 
 		// Read primary keys from storage instead of in-memory catalog
-		let primary_keys = CatalogStore::list_primary_keys(txn)?;
+		let primary_keys = CatalogStore::list_primary_keys(txn).await?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
 			source_ids.push(pk_info.source_id);
@@ -55,11 +61,11 @@ impl<'a> TableVirtual<'a> for PrimaryKeys {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ColumnData::uint8(pk_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("source_id"),
+				name: Fragment::internal("source_id"),
 				data: ColumnData::uint8(source_ids),
 			},
 		];

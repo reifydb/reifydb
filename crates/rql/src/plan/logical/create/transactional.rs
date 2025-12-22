@@ -14,9 +14,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_transactional_view<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateTransactionalView<'a>,
+		ast: AstCreateTransactionalView,
 		tx: &'a mut T,
-	) -> Pin<Box<dyn std::future::Future<Output = crate::Result<LogicalPlan<'a>>> + 'a>> {
+	) -> Pin<Box<dyn std::future::Future<Output = crate::Result<LogicalPlan>> + 'a>> {
 		Box::pin(async move {
 			let mut columns: Vec<ViewColumnToCreate> = vec![];
 			for col in ast.columns.into_iter() {

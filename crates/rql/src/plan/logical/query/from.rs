@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
+use reifydb_type::{Fragment, diagnostic::Diagnostic, err};
 
 use crate::{
 	ast::{Ast, AstFrom},
@@ -14,10 +14,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_from<'a, T: CatalogQueryTransaction>(
-		ast: AstFrom<'a>,
+	pub(crate) async fn compile_from<T: CatalogQueryTransaction>(
+		ast: AstFrom,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		match ast {
 			AstFrom::Source {
 				source,
@@ -63,7 +63,7 @@ impl Compiler {
 								statement: None,
 								message: "Expected encoded in static data".to_string(),
 								column: None,
-								fragment: OwnedFragment::None,
+								fragment: Fragment::None,
 								label: None,
 								help: None,
 								notes: vec![],

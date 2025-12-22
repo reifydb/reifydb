@@ -65,9 +65,9 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(

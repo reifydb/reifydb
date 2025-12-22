@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall<'a>> {
+impl Parser {
+	pub(crate) fn parse_call(&mut self) -> crate::Result<AstCall> {
 		let token = self.consume_keyword(Keyword::Call)?;
 
 		// Parse the operator name (e.g., counter, sequence,
@@ -25,7 +25,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction<'a>> {
+	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction> {
 		let first_ident_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
 

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
@@ -12,7 +13,7 @@ use crate::{
 };
 
 pub(crate) struct EnvironmentNode {
-	context: Option<Arc<ExecutionContext<'static>>>,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
@@ -25,18 +26,19 @@ impl EnvironmentNode {
 	}
 }
 
-impl<'a> QueryNode<'a> for EnvironmentNode {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
-		// Store context with 'static lifetime for environment access
-		self.context = Some(unsafe { std::mem::transmute(Arc::new(ctx.clone())) });
+#[async_trait]
+impl QueryNode for EnvironmentNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+		// Store context for environment access
+		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 
 		// Environment executes once and returns environment dataframe
@@ -47,16 +49,12 @@ impl<'a> QueryNode<'a> for EnvironmentNode {
 		let columns = create_env_columns();
 		self.executed = true;
 
-		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns are created here and genuinely have lifetime 'a
-		let columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(columns) };
-
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Environment headers are known: "name" and "value" columns
 		None
 	}

@@ -49,9 +49,9 @@ mod tests {
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_get_source_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table = ensure_test_table(&mut txn);
 
 		// Get store by TableId
@@ -76,10 +76,10 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_source_view() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -118,9 +118,9 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_source_not_found_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent table should error
 		let result = CatalogStore::get_source(&mut txn, TableId(999));
@@ -131,9 +131,9 @@ mod tests {
 		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_get_source_not_found_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent view should error
 		let result = CatalogStore::get_source(&mut txn, ViewId(999));

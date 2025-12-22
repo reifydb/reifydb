@@ -19,7 +19,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create<'a, T>(ast: AstCreate<'a>, tx: &'a mut T) -> crate::Result<LogicalPlan<'a>>
+	pub(crate) async fn compile_create<T>(ast: AstCreate, tx: &mut T) -> crate::Result<LogicalPlan>
 	where
 		T: CatalogQueryTransaction,
 	{

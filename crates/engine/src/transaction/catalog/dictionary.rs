@@ -7,7 +7,7 @@ use reifydb_core::interface::{
 	Change, DictionaryDef, DictionaryId, NamespaceId, OperationType, OperationType::Delete,
 	TransactionalDictionaryChanges,
 };
-use reifydb_type::IntoFragment;
+use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -65,12 +65,8 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&DictionaryDef> {
-		let name = name.into_fragment();
+	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&DictionaryDef> {
+		let name = name.into();
 		self.changes.dictionary_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name.text())
 		})
@@ -84,8 +80,8 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|d| d.id) == Some(id))
 	}
 
-	fn is_dictionary_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
+	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
+		let name = name.into();
 		self.changes.dictionary_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
@@ -102,10 +98,10 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name<'a>(
+	fn find_dictionary_by_name(
 		&self,
 		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
+		_name: impl Into<Fragment>,
 	) -> Option<&DictionaryDef> {
 		None
 	}
@@ -114,7 +110,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_dictionary_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
+	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
 		false
 	}
 }

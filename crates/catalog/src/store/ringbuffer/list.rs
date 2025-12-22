@@ -56,20 +56,20 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_list_ringbuffers_empty() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
 
 		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
 
 		assert_eq!(buffers.len(), 0);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_ringbuffers_multiple() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create first ring buffer
 		let buffer1 = RingBufferToCreate {
@@ -98,10 +98,10 @@ mod tests {
 		assert!(buffers.iter().any(|b| b.name == "buffer2"));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_list_ringbuffers_different_namespaces() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		// Create second namespace
 		let namespace2 = CatalogStore::create_namespace(

@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
@@ -13,15 +14,15 @@ use crate::{
 	stack::Variable,
 };
 
-pub(crate) struct AssignNode<'a> {
+pub(crate) struct AssignNode {
 	name: String,
-	value: AssignValue<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+	value: AssignValue,
+	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
 
-impl<'a> AssignNode<'a> {
-	pub fn new(physical_node: physical::AssignNode<'a>) -> Self {
+impl AssignNode {
+	pub fn new(physical_node: physical::AssignNode) -> Self {
 		let name_text = physical_node.name.text();
 		// Strip the '$' prefix if present
 		let clean_name = if name_text.starts_with('$') {
@@ -39,17 +40,18 @@ impl<'a> AssignNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for AssignNode<'a> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+#[async_trait]
+impl QueryNode for AssignNode {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "AssignNode::next() called before initialize()");
 
 		// Assignment statements execute once and return no data
@@ -78,7 +80,7 @@ impl<'a> QueryNode<'a> for AssignNode<'a> {
 			}
 			AssignValue::Statement(physical_plans) => {
 				// Execute the pipeline of physical plans
-				self.execute_statement_pipeline(rx, ctx, physical_plans)?
+				self.execute_statement_pipeline(rx, ctx, physical_plans).await?
 			}
 		};
 
@@ -91,22 +93,18 @@ impl<'a> QueryNode<'a> for AssignNode<'a> {
 				} else {
 					// Empty column -> store as frame
 					Variable::frame(unsafe {
-						std::mem::transmute::<Columns<'_>, Columns<'static>>(
-							result_columns.clone(),
-						)
+						std::mem::transmute::<Columns, Columns>(result_columns.clone())
 					})
 				}
 			} else {
 				// No columns -> store as frame
 				Variable::frame(unsafe {
-					std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
+					std::mem::transmute::<Columns, Columns>(result_columns.clone())
 				})
 			}
 		} else {
 			// Multiple columns or rows -> store as frame
-			Variable::frame(unsafe {
-				std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
-			})
+			Variable::frame(unsafe { std::mem::transmute::<Columns, Columns>(result_columns.clone()) })
 		};
 
 		// Reassign the variable using the new reassign method
@@ -115,9 +113,9 @@ impl<'a> QueryNode<'a> for AssignNode<'a> {
 		self.executed = true;
 
 		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column<'a>
+		// SAFETY: The columns come from evaluate() which returns Column
 		// so they genuinely have lifetime 'a through the query execution
-		let result_columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(result_columns) };
+		let result_columns = unsafe { std::mem::transmute::<Columns, Columns>(result_columns) };
 
 		// Return the result as a single batch for debugging/inspection
 		Ok(Some(Batch {
@@ -125,20 +123,20 @@ impl<'a> QueryNode<'a> for AssignNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Assignment statements don't produce meaningful column headers
 		None
 	}
 }
 
-impl<'a> AssignNode<'a> {
+impl<'a> AssignNode {
 	/// Execute a pipeline of physical plans and return the final result
-	fn execute_statement_pipeline(
+	async fn execute_statement_pipeline(
 		&self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-		physical_plans: &[physical::PhysicalPlan<'a>],
-	) -> crate::Result<Columns<'a>> {
+		ctx: &mut ExecutionContext,
+		physical_plans: &[physical::PhysicalPlan],
+	) -> crate::Result<Columns> {
 		if physical_plans.is_empty() {
 			return Ok(Columns::empty());
 		}
@@ -153,14 +151,14 @@ impl<'a> AssignNode<'a> {
 		let mut node = compile(last_plan.clone(), rx, execution_context.clone());
 
 		// Initialize the operator before execution
-		node.initialize(rx, &execution_context)?;
+		node.initialize(rx, &execution_context).await?;
 
 		let mut result: Option<Columns> = None;
 		let mut mutable_context = (*execution_context).clone();
 
 		while let Some(crate::execute::Batch {
 			columns,
-		}) = node.next(rx, &mut mutable_context)?
+		}) = node.next(rx, &mut mutable_context).await?
 		{
 			if let Some(mut result_columns) = result.take() {
 				result_columns.append_columns(columns)?;

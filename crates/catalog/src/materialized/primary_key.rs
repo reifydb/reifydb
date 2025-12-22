@@ -52,7 +52,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_set_and_find_primary_key() {
 		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
@@ -75,7 +75,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_primary_key_update() {
 		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
@@ -104,7 +104,7 @@ mod tests {
 		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(2)).unwrap().columns.len(), 2);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_primary_key_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
@@ -126,7 +126,7 @@ mod tests {
 		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(1)), Some(primary_key));
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_primary_key_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);

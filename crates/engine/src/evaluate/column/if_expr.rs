@@ -27,17 +27,13 @@ fn is_truthy(value: &Value) -> bool {
 }
 
 impl StandardColumnEvaluator {
-	pub(super) fn if_expr<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &IfExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(super) fn if_expr<'a>(&self, ctx: &ColumnEvaluationContext, expr: &IfExpression) -> crate::Result<Column> {
 		// Evaluate the condition
 		let condition_column = self.evaluate(ctx, &expr.condition)?;
 
 		// Create result column data that will be populated row by row
 		let mut result_data = None;
-		let mut result_name = Fragment::owned_internal("if_result");
+		let mut result_name = Fragment::internal("if_result");
 
 		// Process each row
 		for row_idx in 0..ctx.row_count {
@@ -72,7 +68,7 @@ impl StandardColumnEvaluator {
 						data.push_undefined();
 					}
 					Column {
-						name: Fragment::owned_internal("undefined"),
+						name: Fragment::internal("undefined"),
 						data,
 					}
 				}

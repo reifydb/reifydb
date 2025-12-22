@@ -9,15 +9,15 @@ use crate::plan::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode<'a> {
-	pub node: logical::alter::AlterViewNode<'a>,
+pub struct AlterViewNode {
+	pub node: logical::alter::AlterViewNode,
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_view<'a>(
+	pub(crate) fn compile_alter_view(
 		_rx: &mut impl QueryTransaction,
-		alter: logical::alter::AlterViewNode<'a>,
-	) -> crate::Result<PhysicalPlan<'a>> {
+		alter: logical::alter::AlterViewNode,
+	) -> crate::Result<PhysicalPlan> {
 		// Convert logical plan to physical plan
 		let plan = AlterViewNode {
 			node: alter,

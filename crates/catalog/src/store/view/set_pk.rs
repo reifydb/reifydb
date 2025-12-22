@@ -47,7 +47,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_view_primary_key() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let view = CatalogStore::create_deferred_view(
@@ -77,7 +77,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_set_view_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		// Try to set primary key on non-existent view
 		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1)).await;

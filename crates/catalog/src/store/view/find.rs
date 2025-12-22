@@ -70,17 +70,17 @@ mod tests {
 		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
 		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1027), "view_two").unwrap().unwrap();
 		assert_eq!(result.id, ViewId(1026));
@@ -88,41 +88,41 @@ mod tests {
 		assert_eq!(result.name, "view_two");
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "some_view").unwrap();
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_not_found_different_view() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
 		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "view_four_two").unwrap();
 		assert!(result.is_none());
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_not_found_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
 		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(2), "view_two").unwrap();
 		assert!(result.is_none());

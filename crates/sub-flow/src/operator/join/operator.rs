@@ -32,8 +32,8 @@ pub struct JoinOperator {
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
 	right_node: FlowNodeId,
-	left_exprs: Vec<Expression<'static>>,
-	pub(crate) right_exprs: Vec<Expression<'static>>,
+	left_exprs: Vec<Expression>,
+	pub(crate) right_exprs: Vec<Expression>,
 	alias: Option<String>,
 	layout: EncodedValuesLayout,
 	row_number_provider: RowNumberProvider,
@@ -48,8 +48,8 @@ impl JoinOperator {
 		join_type: JoinType,
 		left_node: FlowNodeId,
 		right_node: FlowNodeId,
-		left_exprs: Vec<Expression<'static>>,
-		right_exprs: Vec<Expression<'static>>,
+		left_exprs: Vec<Expression>,
+		right_exprs: Vec<Expression>,
 		alias: Option<String>,
 		executor: Executor,
 	) -> Self {
@@ -80,7 +80,7 @@ impl JoinOperator {
 	pub(crate) fn compute_join_key(
 		&self,
 		row: &Row,
-		exprs: &[Expression<'static>],
+		exprs: &[Expression],
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<Option<Hash128>> {
 		// Pre-allocate with reasonable capacity

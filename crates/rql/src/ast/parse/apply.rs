@@ -10,8 +10,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Separator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply<'a>> {
+impl Parser {
+	pub(crate) fn parse_apply(&mut self) -> crate::Result<AstApply> {
 		let token = self.consume_keyword(Keyword::Apply)?;
 
 		// Parse the operator name (identifier)

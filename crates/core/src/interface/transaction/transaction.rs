@@ -17,7 +17,7 @@ pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction 
 
 	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
 	/// Get reference to catalog changes for this transaction
 	fn get_changes(&self) -> &TransactionalDefChanges;
@@ -34,7 +34,7 @@ pub trait QueryTransaction: MultiVersionQueryTransaction {
 
 	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 }

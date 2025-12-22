@@ -46,7 +46,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_source_retention_policy_for_table() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table_id = TableId(42);
 		let source = SourceId::Table(table_id);
 
@@ -67,7 +67,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_source_retention_policy_for_view() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let view_id = ViewId(100);
 		let source = SourceId::View(view_id);
 
@@ -85,7 +85,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_source_retention_policy_for_ringbuffer() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let ringbuffer_id = RingBufferId(200);
 		let source = SourceId::RingBuffer(ringbuffer_id);
 
@@ -106,7 +106,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(999);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -126,7 +126,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_overwrite_source_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let table_id = TableId(42);
 		let source = SourceId::Table(table_id);
 
@@ -151,7 +151,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_overwrite_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(999);
 
 		// Create initial policy
@@ -175,7 +175,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_nonexistent_source_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(9999));
 
 		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source).unwrap();
@@ -185,7 +185,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_nonexistent_operator_retention_policy() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(9999);
 
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();

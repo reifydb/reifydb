@@ -8,7 +8,7 @@ use super::{
 };
 
 /// Scan for a variable token ($variable_name)
-pub fn scan_variable<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_variable(cursor: &mut Cursor) -> Option<Token> {
 	if cursor.peek() != Some('$') {
 		return None;
 	}

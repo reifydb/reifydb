@@ -17,11 +17,7 @@ use reifydb_type::{
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn not_equal<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		ne: &NotEqExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn not_equal(&self, ctx: &ColumnEvaluationContext, ne: &NotEqExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &ne.left)?;
 		let right = self.evaluate(ctx, &ne.right)?;
 
@@ -499,7 +495,7 @@ impl StandardColumnEvaluator {
 				let fragment = ne.full_fragment_owned();
 				// Comparing with undefined always returns false in this database
 				Ok(Column {
-					name: Fragment::owned_internal(fragment.text()),
+					name: Fragment::internal(fragment.text()),
 					data: ColumnData::bool(vec![false; container.len()]),
 				})
 			}
@@ -512,12 +508,7 @@ impl StandardColumnEvaluator {
 	}
 }
 
-fn compare_bool<'a>(
-	ctx: &ColumnEvaluationContext<'a>,
-	l: &BoolContainer,
-	r: &BoolContainer,
-	fragment: Fragment<'_>,
-) -> Column<'a> {
+fn compare_bool(ctx: &ColumnEvaluationContext, l: &BoolContainer, r: &BoolContainer, fragment: Fragment) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
 	if l.is_fully_defined() && r.is_fully_defined() {
@@ -526,7 +517,7 @@ fn compare_bool<'a>(
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val != r_val).collect();
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool(data),
 		}
 	} else {
@@ -542,18 +533,18 @@ fn compare_bool<'a>(
 		}
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data,
 		}
 	}
 }
 
 fn compare_number<'a, L, R>(
-	ctx: &ColumnEvaluationContext<'a>,
+	ctx: &ColumnEvaluationContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	fragment: Fragment<'_>,
-) -> Column<'a>
+	fragment: Fragment,
+) -> Column
 where
 	L: Promote<R> + IsNumber,
 	R: IsNumber,
@@ -570,7 +561,7 @@ where
 				.collect();
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool(data),
 		}
 	} else {
@@ -586,13 +577,13 @@ where
 		}
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data,
 		}
 	}
 }
 
-fn compare_temporal<'a, T>(l: &TemporalContainer<T>, r: &TemporalContainer<T>, fragment: Fragment<'_>) -> Column<'a>
+fn compare_temporal<'a, T>(l: &TemporalContainer<T>, r: &TemporalContainer<T>, fragment: Fragment) -> Column
 where
 	T: IsTemporal + Copy,
 {
@@ -607,7 +598,7 @@ where
 				.collect();
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool(data),
 		}
 	} else {
@@ -629,13 +620,13 @@ where
 		}
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		}
 	}
 }
 
-fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>) -> Column<'a> {
+fn compare_utf8(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
 	if l.is_fully_defined() && r.is_fully_defined() {
@@ -644,7 +635,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val != r_val).collect();
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool(data),
 		}
 	} else {
@@ -666,7 +657,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 		}
 
 		Column {
-			name: Fragment::owned_internal(fragment.text()),
+			name: Fragment::internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		}
 	}

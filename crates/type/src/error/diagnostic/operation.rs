@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
-pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "TAKE_001".to_string(),
@@ -24,8 +24,8 @@ pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 }
 
 /// Missing aggregate map block error
-pub fn missing_aggregate_map_block<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_001".to_string(),
 		statement: None,
@@ -43,8 +43,8 @@ pub fn missing_aggregate_map_block<'a>(fragment: impl IntoFragment<'a>) -> Diagn
 }
 
 /// Multiple aggregate map expressions without braces error
-pub fn aggregate_multiple_map_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_002".to_string(),
 		statement: None,
@@ -62,8 +62,8 @@ pub fn aggregate_multiple_map_without_braces<'a>(fragment: impl IntoFragment<'a>
 }
 
 /// Multiple aggregate by expressions without braces error
-pub fn aggregate_multiple_by_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_003".to_string(),
 		statement: None,
@@ -81,8 +81,8 @@ pub fn aggregate_multiple_by_without_braces<'a>(fragment: impl IntoFragment<'a>)
 }
 
 /// Multiple SELECT expressions without braces error
-pub fn select_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn select_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "SELECT_001".to_string(),
 		statement: None,
@@ -100,8 +100,8 @@ pub fn select_multiple_expressions_without_braces<'a>(fragment: impl IntoFragmen
 }
 
 /// Multiple DISTINCT columns without braces error
-pub fn distinct_multiple_columns_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "DISTINCT_001".to_string(),
 		statement: None,
@@ -120,8 +120,8 @@ pub fn distinct_multiple_columns_without_braces<'a>(fragment: impl IntoFragment<
 }
 
 /// Multiple MAP expressions without braces error
-pub fn map_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "MAP_001".to_string(),
 		statement: None,
@@ -144,8 +144,8 @@ pub fn map_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'
 }
 
 /// Multiple EXTEND expressions without braces error
-pub fn extend_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "EXTEND_001".to_string(),
 		statement: None,
@@ -163,8 +163,8 @@ pub fn extend_multiple_expressions_without_braces<'a>(fragment: impl IntoFragmen
 }
 
 /// Multiple APPLY arguments without braces error
-pub fn apply_multiple_arguments_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "APPLY_001".to_string(),
 		statement: None,
@@ -184,8 +184,8 @@ pub fn apply_multiple_arguments_without_braces<'a>(fragment: impl IntoFragment<'
 }
 
 /// Missing slide parameter for sliding window error
-pub fn window_missing_slide_parameter<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_002".to_string(),
 		statement: None,
@@ -204,12 +204,8 @@ pub fn window_missing_slide_parameter<'a>(fragment: impl IntoFragment<'a>) -> Di
 }
 
 /// Slide interval too large for window error
-pub fn window_slide_too_large<'a>(
-	fragment: impl IntoFragment<'a>,
-	slide_value: String,
-	window_value: String,
-) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_slide_too_large<'a>(fragment: Fragment, slide_value: String, window_value: String) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_003".to_string(),
 		statement: None,
@@ -233,12 +229,8 @@ pub fn window_slide_too_large<'a>(
 }
 
 /// Incompatible slide type with window type error
-pub fn window_incompatible_slide_type<'a>(
-	fragment: impl IntoFragment<'a>,
-	window_type: String,
-	slide_type: String,
-) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_incompatible_slide_type<'a>(fragment: Fragment, window_type: String, slide_type: String) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_004".to_string(),
 		statement: None,
@@ -261,8 +253,8 @@ pub fn window_incompatible_slide_type<'a>(
 }
 
 /// Tumbling window with slide parameter error
-pub fn window_tumbling_with_slide<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_005".to_string(),
 		statement: None,
@@ -284,12 +276,8 @@ pub fn window_tumbling_with_slide<'a>(fragment: impl IntoFragment<'a>) -> Diagno
 }
 
 /// Incompatible window type and size combination error
-pub fn window_incompatible_type_size<'a>(
-	fragment: impl IntoFragment<'a>,
-	window_type: String,
-	size_type: String,
-) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_incompatible_type_size<'a>(fragment: Fragment, window_type: String, size_type: String) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_006".to_string(),
 		statement: None,
@@ -310,8 +298,8 @@ pub fn window_incompatible_type_size<'a>(
 }
 
 /// Missing window type or size error
-pub fn window_missing_type_or_size<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_007".to_string(),
 		statement: None,

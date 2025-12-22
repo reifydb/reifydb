@@ -21,10 +21,10 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedSource
 /// This is used when processing From clauses and joins
-pub async fn resolve_unresolved_source<'a>(
+pub async fn resolve_unresolved_source(
 	tx: &mut impl CatalogQueryTransaction,
-	unresolved: &UnresolvedSourceIdentifier<'a>,
-) -> Result<ResolvedSource<'static>> {
+	unresolved: &UnresolvedSourceIdentifier,
+) -> Result<ResolvedSource> {
 	let namespace_str = if let Some(ref ns) = unresolved.namespace {
 		ns.text()
 	} else {
@@ -39,10 +39,10 @@ pub async fn resolve_unresolved_source<'a>(
 		tx.get_namespace_by_name(DEFAULT_NAMESPACE).await?
 	};
 
-	let namespace_fragment = Fragment::owned_internal(ns_def.name.clone());
+	let namespace_fragment = Fragment::internal(ns_def.name.clone());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
-	let name_fragment = Fragment::owned_internal(name_str.to_string());
-	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::owned_internal(a.text()));
+	let name_fragment = Fragment::internal(name_str.to_string());
+	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = tx.find_table_virtual_user_by_name(ns_def.id, name_str) {

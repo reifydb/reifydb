@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -17,19 +18,19 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub struct DictionaryScan<'a> {
-	dictionary: ResolvedDictionary<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+pub struct DictionaryScanNode {
+	dictionary: ResolvedDictionary,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
 
-impl<'a> DictionaryScan<'a> {
-	pub fn new(dictionary: ResolvedDictionary<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
+impl DictionaryScanNode {
+	pub fn new(dictionary: ResolvedDictionary, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		// Create column headers for dictionary scan: (id, value)
 		let headers = ColumnHeaders {
-			columns: vec![Fragment::owned_internal("id"), Fragment::owned_internal("value")],
+			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
 		};
 
 		Ok(Self {
@@ -42,19 +43,20 @@ impl<'a> DictionaryScan<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for DictionaryScan<'a> {
+#[async_trait]
+impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "query::scan::dictionary::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::dictionary::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -75,8 +77,8 @@ impl<'a> QueryNode<'a> for DictionaryScan<'a> {
 
 		// Get entries from storage
 		let entries: Vec<_> = rx
-			.range_batched(range, batch_size)?
-			.into_iter()
+			.range_batch(range, batch_size).await?
+			.items.into_iter()
 			// Skip entries we've already seen
 			.skip_while(|entry| {
 				if let Some(ref last) = self.last_key {
@@ -125,13 +127,13 @@ impl<'a> QueryNode<'a> for DictionaryScan<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
 /// Build the ID column based on the dictionary's id_type
-fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> crate::Result<Column<'static>> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> crate::Result<Column> {
 	let data = match id_type {
 		Type::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();
@@ -157,13 +159,13 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> crate::Result<Co
 	};
 
 	Ok(Column {
-		name: Fragment::owned_internal("id"),
+		name: Fragment::internal("id"),
 		data,
 	})
 }
 
 /// Build the value column based on the dictionary's value_type
-fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column<'static>> {
+fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Column> {
 	let data = match value_type {
 		Type::Utf8 => {
 			let vals: Vec<String> = values
@@ -263,7 +265,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> crate::Result<Colum
 	};
 
 	Ok(Column {
-		name: Fragment::owned_internal("value"),
+		name: Fragment::internal("value"),
 		data,
 	})
 }

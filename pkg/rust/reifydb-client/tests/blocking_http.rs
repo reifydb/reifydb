@@ -11,7 +11,7 @@ use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
 	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
@@ -28,7 +28,7 @@ pub struct BlockingRunner {
 }
 
 impl BlockingRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,

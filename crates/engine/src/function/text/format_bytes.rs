@@ -204,8 +204,8 @@ mod tests {
 
 	use super::*;
 
-	#[test]
-	fn test_format_bytes_binary_basic() {
+	#[tokio::test]
+	async fn test_format_bytes_binary_basic() {
 		let function = FormatBytes::new();
 
 		let data = vec![0i64, 512, 1024, 1536, 1048576, 1073741824];
@@ -234,8 +234,8 @@ mod tests {
 		assert_eq!(container[5], "1 GiB");
 	}
 
-	#[test]
-	fn test_format_bytes_si_basic() {
+	#[tokio::test]
+	async fn test_format_bytes_si_basic() {
 		let function = FormatBytesSi::new();
 
 		let data = vec![0i64, 500, 1000, 1500, 1000000, 1000000000];
@@ -264,8 +264,8 @@ mod tests {
 		assert_eq!(container[5], "1 GB");
 	}
 
-	#[test]
-	fn test_format_bytes_int4() {
+	#[tokio::test]
+	async fn test_format_bytes_int4() {
 		let function = FormatBytes::new();
 
 		let data = vec![1024i32, 2048, 1048576];
@@ -291,8 +291,8 @@ mod tests {
 		assert_eq!(container[2], "1 MiB");
 	}
 
-	#[test]
-	fn test_format_bytes_with_decimals() {
+	#[tokio::test]
+	async fn test_format_bytes_with_decimals() {
 		let function = FormatBytes::new();
 
 		let data = vec![1536i64, 2560, 1572864];
@@ -318,8 +318,8 @@ mod tests {
 		assert_eq!(container[2], "1.5 MiB");
 	}
 
-	#[test]
-	fn test_format_bytes_large_values() {
+	#[tokio::test]
+	async fn test_format_bytes_large_values() {
 		let function = FormatBytes::new();
 
 		let data = vec![
@@ -347,8 +347,8 @@ mod tests {
 		assert_eq!(container[1], "1 PiB");
 	}
 
-	#[test]
-	fn test_format_bytes_with_null() {
+	#[tokio::test]
+	async fn test_format_bytes_with_null() {
 		use reifydb_core::BitVec;
 
 		let function = FormatBytes::new();
@@ -382,8 +382,8 @@ mod tests {
 		assert_eq!(container[2], "2 KiB");
 	}
 
-	#[test]
-	fn test_format_bytes_uint8() {
+	#[tokio::test]
+	async fn test_format_bytes_uint8() {
 		let function = FormatBytes::new();
 
 		let data = vec![0u64, 1024, 1048576, 1073741824];
@@ -410,8 +410,8 @@ mod tests {
 		assert_eq!(container[3], "1 GiB");
 	}
 
-	#[test]
-	fn test_format_bytes_uint4() {
+	#[tokio::test]
+	async fn test_format_bytes_uint4() {
 		let function = FormatBytes::new();
 
 		let data = vec![512u32, 1024, 2048];
@@ -437,8 +437,8 @@ mod tests {
 		assert_eq!(container[2], "2 KiB");
 	}
 
-	#[test]
-	fn test_format_bytes_float8() {
+	#[tokio::test]
+	async fn test_format_bytes_float8() {
 		let function = FormatBytes::new();
 
 		let data = vec![1024.5f64, 1048576.0, 1572864.0];
@@ -465,8 +465,8 @@ mod tests {
 		assert_eq!(container[2], "1.5 MiB");
 	}
 
-	#[test]
-	fn test_format_bytes_float4() {
+	#[tokio::test]
+	async fn test_format_bytes_float4() {
 		let function = FormatBytes::new();
 
 		let data = vec![512.9f32, 1024.0, 2048.5];
@@ -494,8 +494,8 @@ mod tests {
 		assert_eq!(container[2], "2 KiB");
 	}
 
-	#[test]
-	fn test_format_bytes_decimal() {
+	#[tokio::test]
+	async fn test_format_bytes_decimal() {
 		use std::str::FromStr;
 
 		use reifydb_type::Decimal;

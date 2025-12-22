@@ -27,7 +27,7 @@ use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{
-	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
+	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle,
 };
 use tracing::debug;
 
@@ -54,7 +54,7 @@ impl DatabaseBuilder {
 	#[allow(unused_mut)]
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {
@@ -174,7 +174,7 @@ impl DatabaseBuilder {
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
-		let single = self.ioc.resolve::<TransactionSingleVersion>()?;
+		let single = self.ioc.resolve::<TransactionSingle>()?;
 		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
@@ -290,7 +290,7 @@ impl DatabaseBuilder {
 	/// Load the materialized catalog from storage
 	fn load_materialized_catalog(
 		multi: &TransactionMultiVersion,
-		single: &TransactionSingleVersion,
+		single: &TransactionSingle,
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {

@@ -15,7 +15,7 @@ pub use parse::parse;
 pub use tokenize::tokenize;
 
 #[instrument(name = "rql::parse", level = "trace", skip(str))]
-pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement<'_>>> {
+pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement>> {
 	let tokens = tokenize(str)?;
 	let statements = parse::parse(tokens)?;
 	Ok(statements)

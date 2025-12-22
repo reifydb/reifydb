@@ -6,13 +6,13 @@ use reifydb_core::{
 	interface::{CommandTransaction, DictionaryDef, DictionaryId, NamespaceId},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, Type};
+use reifydb_type::{Fragment, Type};
 
 use crate::{CatalogStore, store::sequence::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub dictionary: String,
 	pub namespace: NamespaceId,
 	pub value_type: Type,
@@ -31,7 +31,11 @@ impl CatalogStore {
 			CatalogStore::find_dictionary_by_name(txn, namespace_id, &to_create.dictionary).await?
 		{
 			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
-			return_error!(dictionary_already_exists(to_create.fragment, &namespace.name, &dictionary.name));
+			return_error!(dictionary_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&dictionary.name
+			));
 		}
 
 		// Allocate new dictionary ID
@@ -118,7 +122,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_simple_dictionary() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
@@ -140,7 +144,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_duplicate_dictionary() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
@@ -164,7 +168,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_dictionary_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create1 = DictionaryToCreate {
@@ -209,7 +213,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_create_dictionary_with_various_types() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		// Test with Uint1 ID type

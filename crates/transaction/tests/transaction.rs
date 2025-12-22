@@ -22,11 +22,11 @@ use reifydb_store_transaction::TransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
-		Transaction,
+		TransactionMulti,
 		transaction::{CommandTransaction, QueryTransaction},
 		types::TransactionValue,
 	},
-	single::{TransactionSingleVersion, TransactionSvl},
+	single::{TransactionSingle, TransactionSvl},
 };
 
 /// A handle to either a query or command transaction for test tracking
@@ -44,9 +44,9 @@ fn test_serializable(path: &Path) {
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(Transaction::new(
+		&mut MvccRunner::new(TransactionMulti::new(
 			store.clone(),
-			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
+			TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
 			bus,
 		)),
 		path,
@@ -55,12 +55,12 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: Transaction,
+	engine: TransactionMulti,
 	transactions: HashMap<String, TransactionHandle>,
 }
 
 impl MvccRunner {
-	fn new(engine: Transaction) -> Self {
+	fn new(engine: TransactionMulti) -> Self {
 		Self {
 			engine,
 			transactions: HashMap::new(),

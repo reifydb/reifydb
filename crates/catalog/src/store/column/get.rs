@@ -94,9 +94,9 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
-	#[test]
+	#[tokio::test]
 	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
@@ -109,9 +109,9 @@ mod tests {
 		assert_eq!(result.auto_increment, false);
 	}
 
-	#[test]
+	#[tokio::test]
 	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);

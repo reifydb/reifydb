@@ -14,8 +14,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom<'a>> {
+impl Parser {
+	pub(crate) fn parse_from(&mut self) -> crate::Result<AstFrom> {
 		let token = self.consume_keyword(Keyword::From)?;
 
 		// Check token type first
@@ -79,12 +79,12 @@ impl<'a> Parser<'a> {
 
 			if is_generatortion {
 				// Parse as generator function
-				let function_name = first_identifier.into_fragment();
+				let function_name = first_identifier;
 				let (nodes, _has_braces) = self.parse_expressions(true)?; // Parse { ... } content
 
 				return Ok(AstFrom::Generator(AstGenerator {
 					token,
-					name: function_name,
+					name: function_name.into_fragment(),
 					nodes,
 				}));
 			}
@@ -158,7 +158,7 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	pub(crate) fn parse_static(&mut self) -> crate::Result<AstList<'a>> {
+	pub(crate) fn parse_static(&mut self) -> crate::Result<AstList> {
 		let token = self.consume_operator(OpenBracket)?;
 
 		let mut nodes = Vec::new();

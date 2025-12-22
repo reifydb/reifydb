@@ -33,24 +33,21 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn update_table<'a>(
+	pub(crate) async fn update_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: UpdateTableNode<'a>,
+		plan: UpdateTableNode,
 		params: Params,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace().name();
-			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-				return_error!(namespace_not_found(
-					Fragment::owned_internal(namespace_name),
-					namespace_name
-				));
+			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await? else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -61,28 +58,25 @@ impl Executor {
 		};
 
 		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let table_types: Vec<Type> = table
-			.columns
-			.iter()
-			.map(|c| {
-				if let Some(dict_id) = c.dictionary_id {
-					CatalogStore::find_dictionary(txn, dict_id)
-						.ok()
-						.flatten()
-						.map(|d| d.id_type)
-						.unwrap_or_else(|| c.constraint.get_type())
-				} else {
-					c.constraint.get_type()
-				}
-			})
-			.collect();
+		let mut table_types: Vec<Type> = Vec::new();
+		for c in &table.columns {
+			if let Some(dict_id) = c.dictionary_id {
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+					Ok(Some(d)) => d.id_type,
+					_ => c.constraint.get_type(),
+				};
+				table_types.push(dict_type);
+			} else {
+				table_types.push(c.constraint.get_type());
+			}
+		}
 		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
-		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
+		let namespace_ident = Fragment::internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = Fragment::owned_internal(table.name.clone());
+		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
@@ -100,12 +94,12 @@ impl Executor {
 			let mut wrapped_txn = StandardTransaction::from(txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
-			input_node.initialize(&mut wrapped_txn, &context)?;
+			input_node.initialize(&mut wrapped_txn, &context).await?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context).await?
 			{
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
@@ -127,7 +121,7 @@ impl Executor {
 							Value::Undefined
 						};
 
-						let column_ident = Fragment::borrowed_internal(&table_column.name);
+						let column_ident = Fragment::internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							context.source.clone().unwrap(),
@@ -151,7 +145,7 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							)?
+							).await?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -161,7 +155,7 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value)?;
+								.insert_into_dictionary(&dictionary, &value).await?;
 							entry_id.to_value()
 						} else {
 							value
@@ -217,9 +211,9 @@ impl Executor {
 					.encode();
 
 					if let Some(pk_def) =
-						primary_key::get_primary_key(wrapped_txn.command_mut(), &table)?
+						primary_key::get_primary_key(wrapped_txn.command_mut(), &table).await?
 					{
-						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key)? {
+						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key).await? {
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &layout,
@@ -230,7 +224,7 @@ impl Executor {
 								IndexId::primary(pk_def.id),
 								old_key,
 							)
-							.encode())?;
+							.encode()).await?;
 						}
 
 						let new_key = primary_key::encode_primary_key(
@@ -253,10 +247,10 @@ impl Executor {
 							)
 							.encode(),
 							row_number_encoded,
-						)?;
+						).await?;
 					}
 
-					wrapped_txn.command_mut().set(&row_key, row)?;
+					wrapped_txn.command_mut().set(&row_key, row).await?;
 
 					updated_count += 1;
 				}

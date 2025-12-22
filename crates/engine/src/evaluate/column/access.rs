@@ -3,16 +3,16 @@
 
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::AccessSourceExpression;
-use reifydb_type::{Fragment, OwnedFragment, diagnostic::query::column_not_found, error};
+use reifydb_type::{Fragment, diagnostic::query::column_not_found, error};
 
 use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn access<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &AccessSourceExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		expr: &AccessSourceExpression,
+	) -> crate::Result<Column> {
 		use reifydb_core::interface::identifier::ColumnSource;
 
 		// Extract source name based on the ColumnSource type
@@ -53,11 +53,11 @@ impl StandardColumnEvaluator {
 			Ok(col.with_new_data(col.data().clone()))
 		} else {
 			// If not found, return an error with proper diagnostic
-			Err(error!(column_not_found(Fragment::Owned(OwnedFragment::Statement {
+			Err(error!(column_not_found(Fragment::Statement {
 				column: expr.column.name.column(),
 				line: expr.column.name.line(),
 				text: format!("{}.{}", source.text(), &column),
-			}))))
+			})))
 		}
 	}
 }

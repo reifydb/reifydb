@@ -1,19 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
-pub(crate) struct TakeNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct TakeNode {
+	input: Box<ExecutionPlan>,
 	remaining: usize,
 	initialized: Option<()>,
 }
 
-impl<'a> TakeNode<'a> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, take: usize) -> Self {
+impl TakeNode {
+	pub(crate) fn new(input: Box<ExecutionPlan>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -22,24 +23,21 @@ impl<'a> TakeNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for TakeNode<'a> {
+#[async_trait]
+impl QueryNode for TakeNode {
 	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
-	fn initialize(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx)?;
+	async fn initialize<'a>(&mut self, rx: &mut crate::StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(name = "query::take::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
 		if self.remaining == 0 {
@@ -48,7 +46,7 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			let row_count = columns.row_count();
 			if row_count == 0 {
@@ -70,7 +68,7 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 		Ok(None)
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
 	}
 }

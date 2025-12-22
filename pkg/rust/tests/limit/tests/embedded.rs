@@ -7,7 +7,7 @@ use reifydb::{
 	Database, EmbeddedBuilder,
 	core::{event::EventBus, interface::Params},
 	memory, serializable,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -19,7 +19,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
 			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),

@@ -17,11 +17,11 @@ static EMPTY_PARAMS: Params = Params::None;
 pub struct MapOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression<'static>>,
+	expressions: Vec<Expression>,
 }
 
 impl MapOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,

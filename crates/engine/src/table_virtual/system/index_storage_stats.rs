@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
@@ -40,13 +41,18 @@ impl IndexStorageStats {
 	}
 }
 
-impl<'a> TableVirtual<'a> for IndexStorageStats {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for IndexStorageStats {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, _txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -60,67 +66,67 @@ impl<'a> TableVirtual<'a> for IndexStorageStats {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("table_id"),
+				name: Fragment::internal("table_id"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("tier"),
+				name: Fragment::internal("tier"),
 				data: ColumnData::utf8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("current_key_bytes"),
+				name: Fragment::internal("current_key_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("current_value_bytes"),
+				name: Fragment::internal("current_value_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("current_total_bytes"),
+				name: Fragment::internal("current_total_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("current_count"),
+				name: Fragment::internal("current_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("historical_key_bytes"),
+				name: Fragment::internal("historical_key_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("historical_value_bytes"),
+				name: Fragment::internal("historical_value_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("historical_total_bytes"),
+				name: Fragment::internal("historical_total_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("historical_count"),
+				name: Fragment::internal("historical_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("total_bytes"),
+				name: Fragment::internal("total_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_key_bytes"),
+				name: Fragment::internal("cdc_key_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_value_bytes"),
+				name: Fragment::internal("cdc_value_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_total_bytes"),
+				name: Fragment::internal("cdc_total_bytes"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_count"),
+				name: Fragment::internal("cdc_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 		];

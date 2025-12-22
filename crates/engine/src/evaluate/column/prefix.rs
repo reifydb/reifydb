@@ -17,9 +17,9 @@ use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator, 
 impl StandardColumnEvaluator {
 	pub(crate) fn prefix<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		prefix: &PrefixExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		prefix: &PrefixExpression,
+	) -> crate::Result<Column> {
 		let column = evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {

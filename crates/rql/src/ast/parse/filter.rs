@@ -7,8 +7,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter<'a>> {
+impl Parser {
+	pub(crate) fn parse_filter(&mut self) -> crate::Result<AstFilter> {
 		let token = self.consume_keyword(Keyword::Filter)?;
 
 		// Check if we have an opening brace
