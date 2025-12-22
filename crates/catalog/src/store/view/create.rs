@@ -204,7 +204,13 @@ mod tests {
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap();
 
-		let links = txn.range(NamespaceViewKey::full_scan(namespace.id)).await.unwrap().collect::<Vec<_>>();
+		let links = txn
+			.range(NamespaceViewKey::full_scan(namespace.id))
+			.await
+			.unwrap()
+			.items
+			.into_iter()
+			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];

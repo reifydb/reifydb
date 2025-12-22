@@ -7,6 +7,7 @@ use std::{
 	slice::from_raw_parts,
 };
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
@@ -71,12 +72,13 @@ impl Drop for FFIOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,

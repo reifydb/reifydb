@@ -25,7 +25,7 @@ use crate::{
 	engine::FlowEngine,
 	operator::TransformOperatorRegistry,
 	subsystem::intercept::Change,
-	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},
+	worker::{SameThreadedWorker, WorkerPool},
 };
 
 /// Consumer that processes CDC events for Flow subsystem

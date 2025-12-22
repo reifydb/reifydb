@@ -76,17 +76,17 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_list_dictionaries_empty() {
+	async fn test_list_dictionaries_empty() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
+		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).await.unwrap();
 
 		assert!(result.is_empty());
 	}
 
 	#[tokio::test]
-	fn test_list_dictionaries_multiple() {
+	async fn test_list_dictionaries_multiple() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -99,16 +99,16 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 		}
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
+		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).await.unwrap();
 
 		assert_eq!(result.len(), 3);
 	}
 
 	#[tokio::test]
-	fn test_list_dictionaries_different_namespaces() {
+	async fn test_list_dictionaries_different_namespaces() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace1 = ensure_test_namespace(&mut txn).await;
 
@@ -119,6 +119,7 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create 2 dictionaries in namespace1
@@ -130,7 +131,7 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 		}
 
 		// Create 3 dictionaries in namespace2
@@ -142,20 +143,20 @@ mod tests {
 				id_type: Type::Uint4,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 		}
 
 		// Verify namespace1 has 2 dictionaries
-		let ns1_dicts = CatalogStore::list_dictionaries(&mut txn, namespace1.id).unwrap();
+		let ns1_dicts = CatalogStore::list_dictionaries(&mut txn, namespace1.id).await.unwrap();
 		assert_eq!(ns1_dicts.len(), 2);
 
 		// Verify namespace2 has 3 dictionaries
-		let ns2_dicts = CatalogStore::list_dictionaries(&mut txn, namespace2.id).unwrap();
+		let ns2_dicts = CatalogStore::list_dictionaries(&mut txn, namespace2.id).await.unwrap();
 		assert_eq!(ns2_dicts.len(), 3);
 	}
 
 	#[tokio::test]
-	fn test_list_all_dictionaries() {
+	async fn test_list_all_dictionaries() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace1 = ensure_test_namespace(&mut txn).await;
 
@@ -166,6 +167,7 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create dictionaries in both namespaces
@@ -177,7 +179,7 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 		}
 
 		for i in 0..3 {
@@ -188,11 +190,11 @@ mod tests {
 				id_type: Type::Uint4,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 		}
 
 		// List all dictionaries
-		let all_dicts = CatalogStore::list_all_dictionaries(&mut txn).unwrap();
+		let all_dicts = CatalogStore::list_all_dictionaries(&mut txn).await.unwrap();
 		assert_eq!(all_dicts.len(), 5);
 	}
 }

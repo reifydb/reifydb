@@ -20,10 +20,10 @@ async fn test_read_after_write() {
 
 				let mut txn = db.begin_command().await.unwrap();
 				txn.set(&k, v.clone()).unwrap();
-				txn.commit().unwrap();
+				txn.commit().await.unwrap();
 
 				let txn = db.begin_query().await.unwrap();
-				let sv = txn.get(&k).unwrap().unwrap();
+				let sv = txn.get(&k).await.unwrap().unwrap();
 				assert_eq!(*sv.values(), v);
 			})
 		})

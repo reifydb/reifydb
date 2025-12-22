@@ -103,7 +103,7 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// Parent should now have the value
-		assert_eq!(from_store(&mut parent, &key), Some(value));
+		assert_eq!(from_store(&mut parent, &key).await, Some(value));
 	}
 
 	#[tokio::test]
@@ -118,9 +118,9 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// All values should be in parent
-		assert_eq!(from_store(&mut parent, &make_key("key1")), Some(make_value("value1")));
-		assert_eq!(from_store(&mut parent, &make_key("key2")), Some(make_value("value2")));
-		assert_eq!(from_store(&mut parent, &make_key("key3")), Some(make_value("value3")));
+		assert_eq!(from_store(&mut parent, &make_key("key1")).await, Some(make_value("value1")));
+		assert_eq!(from_store(&mut parent, &make_key("key2")).await, Some(make_value("value2")));
+		assert_eq!(from_store(&mut parent, &make_key("key3")).await, Some(make_value("value3")));
 	}
 
 	#[tokio::test]
@@ -129,22 +129,22 @@ mod tests {
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 		let mut parent = engine.begin_command().unwrap();
 
 		// First commit some data to the underlying storage
 		let key1 = make_key("key1");
 		let key2 = make_key("key2");
-		parent.set(&key1, make_value("value1")).unwrap();
-		parent.set(&key2, make_value("value2")).unwrap();
+		parent.set(&key1, make_value("value1")).await.unwrap();
+		parent.set(&key2, make_value("value2")).await.unwrap();
 		let commit_version = parent.commit().unwrap();
 
 		// Create new parent transaction after commit
 		let mut parent = engine.begin_command().unwrap();
 
 		// Verify values exist in storage
-		assert_eq!(from_store(&mut parent, &key1), Some(make_value("value1")));
-		assert_eq!(from_store(&mut parent, &key2), Some(make_value("value2")));
+		assert_eq!(from_store(&mut parent, &key1).await, Some(make_value("value1")));
+		assert_eq!(from_store(&mut parent, &key2).await, Some(make_value("value2")));
 
 		// Create FlowTransaction and remove the keys
 		let mut txn = FlowTransaction::new(&parent, commit_version).await;
@@ -158,8 +158,8 @@ mod tests {
 
 		// Create new transaction to verify removes were persisted
 		let mut parent = engine.begin_command().unwrap();
-		assert_eq!(from_store(&mut parent, &key1), None);
-		assert_eq!(from_store(&mut parent, &key2), None);
+		assert_eq!(from_store(&mut parent, &key1).await, None);
+		assert_eq!(from_store(&mut parent, &key2).await, None);
 	}
 
 	#[tokio::test]
@@ -168,19 +168,19 @@ mod tests {
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 		let mut parent = engine.begin_command().unwrap();
 
 		// First commit some data to the underlying storage
 		let existing_key = make_key("existing");
-		parent.set(&existing_key, make_value("old")).unwrap();
+		parent.set(&existing_key, make_value("old")).await.unwrap();
 		let commit_version = parent.commit().unwrap();
 
 		// Create new parent transaction after commit
 		let mut parent = engine.begin_command().unwrap();
 
 		// Verify value exists in storage
-		assert_eq!(from_store(&mut parent, &existing_key), Some(make_value("old")));
+		assert_eq!(from_store(&mut parent, &existing_key).await, Some(make_value("old")));
 
 		// Create FlowTransaction
 		let mut txn = FlowTransaction::new(&parent, commit_version).await;
@@ -197,8 +197,8 @@ mod tests {
 
 		// Create new transaction to verify changes were persisted
 		let mut parent = engine.begin_command().unwrap();
-		assert_eq!(from_store(&mut parent, &new_key), Some(make_value("value")));
-		assert_eq!(from_store(&mut parent, &existing_key), None);
+		assert_eq!(from_store(&mut parent, &new_key).await, Some(make_value("value")));
+		assert_eq!(from_store(&mut parent, &existing_key).await, None);
 	}
 
 	#[tokio::test]
@@ -207,7 +207,7 @@ mod tests {
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
-		txn.get(&make_key("key2")).unwrap();
+		txn.get(&make_key("key2")).await.unwrap();
 		txn.remove(&make_key("key3")).unwrap();
 
 		let metrics = txn.commit(&mut parent).await.unwrap();
@@ -223,19 +223,19 @@ mod tests {
 
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 		let mut parent = engine.begin_command().unwrap();
 
 		// First commit some data to the underlying storage
 		let key = make_key("key1");
-		parent.set(&key, make_value("old")).unwrap();
+		parent.set(&key, make_value("old")).await.unwrap();
 		let commit_version = parent.commit().unwrap();
 
 		// Create new parent transaction after commit
 		let mut parent = engine.begin_command().unwrap();
 
 		// Verify old value exists in storage
-		assert_eq!(from_store(&mut parent, &key), Some(make_value("old")));
+		assert_eq!(from_store(&mut parent, &key).await, Some(make_value("old")));
 
 		// Create FlowTransaction and overwrite the value
 		let mut txn = FlowTransaction::new(&parent, commit_version).await;
@@ -243,7 +243,7 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// Parent should have new value
-		assert_eq!(from_store(&mut parent, &key), Some(make_value("new")));
+		assert_eq!(from_store(&mut parent, &key).await, Some(make_value("new")));
 	}
 
 	#[tokio::test]
@@ -263,8 +263,8 @@ mod tests {
 		txn2.commit(&mut parent).await.unwrap();
 
 		// Both values should be in parent
-		assert_eq!(from_store(&mut parent, &make_key("key1")), Some(make_value("value1")));
-		assert_eq!(from_store(&mut parent, &make_key("key2")), Some(make_value("value2")));
+		assert_eq!(from_store(&mut parent, &make_key("key1")).await, Some(make_value("value1")));
+		assert_eq!(from_store(&mut parent, &make_key("key2")).await, Some(make_value("value2")));
 	}
 
 	#[tokio::test]
@@ -293,7 +293,7 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// Only the final value should be in parent
-		assert_eq!(from_store(&mut parent, &key), Some(make_value("final")));
+		assert_eq!(from_store(&mut parent, &key).await, Some(make_value("final")));
 	}
 
 	#[tokio::test]
@@ -360,7 +360,7 @@ mod tests {
 		assert!(result.is_ok());
 
 		// Both values should be in parent
-		assert_eq!(from_store(&mut parent, &make_key("key1")), Some(make_value("value1")));
-		assert_eq!(from_store(&mut parent, &make_key("key2")), Some(make_value("value2")));
+		assert_eq!(from_store(&mut parent, &make_key("key1")).await, Some(make_value("value1")));
+		assert_eq!(from_store(&mut parent, &make_key("key2")).await, Some(make_value("value2")));
 	}
 }

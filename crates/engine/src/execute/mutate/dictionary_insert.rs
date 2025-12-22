@@ -86,9 +86,10 @@ impl Executor {
 				let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type)?;
 
 				// Insert into dictionary
-				let entry_id = crate::util::block_on(
-					std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value),
-				)?;
+				let entry_id = std_txn
+					.command_mut()
+					.insert_into_dictionary(&dictionary, &coerced_value)
+					.await?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),

@@ -64,7 +64,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_get_set() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
@@ -82,7 +82,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_remove() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
@@ -98,7 +98,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_scan() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Add multiple entries
@@ -110,14 +110,14 @@ mod tests {
 		}
 
 		// Scan and verify count
-		let scanned: Vec<_> = operator.state_scan(&mut txn).unwrap().collect();
+		let scanned: Vec<_> = operator.state_scan(&mut txn).await.unwrap().collect();
 		assert_eq!(scanned.len(), 3);
 	}
 
 	#[tokio::test]
 	async fn test_simple_state_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(2));
 
 		// Add ordered entries
@@ -128,7 +128,7 @@ mod tests {
 		}
 
 		let range = EncodedKeyRange::new(Included(test_key("02")), Excluded(test_key("05")));
-		let range_result: Vec<_> = operator.state_range(&mut txn, range).unwrap().collect();
+		let range_result: Vec<_> = operator.state_range(&mut txn, range).await.unwrap().collect();
 
 		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
 		assert_eq!(range_result.len(), 3);
@@ -140,7 +140,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_clear() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(3));
 
 		// Add multiple entries
@@ -153,17 +153,17 @@ mod tests {
 		// Verify entries exist
 		let count = {
 			let range = FlowNodeStateKey::node_range(operator.id());
-			txn.range(range).unwrap().count()
+			txn.range(range).await.unwrap().items.into_iter().count()
 		};
 		assert_eq!(count, 5);
 
 		// Clear all
-		operator.state_clear(&mut txn).unwrap();
+		operator.state_clear(&mut txn).await.unwrap();
 
 		// Verify all cleared
 		let count = {
 			let range = FlowNodeStateKey::node_range(operator.id());
-			txn.range(range).unwrap().count()
+			txn.range(range).await.unwrap().items.into_iter().count()
 		};
 		assert_eq!(count, 0);
 	}
@@ -171,7 +171,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_operator_isolation() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator1 = TestOperator::simple(FlowNodeId(10));
 		let operator2 = TestOperator::simple(FlowNodeId(20));
 		let shared_key = test_key("shared");
@@ -194,7 +194,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_empty_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(4));
 
 		// Add some entries
@@ -206,7 +206,7 @@ mod tests {
 
 		// Query range that doesn't exist (after all "item_*" entries)
 		let range = EncodedKeyRange::new(Included(test_key("z_aaa")), Excluded(test_key("z_zzz")));
-		let range_result: Vec<_> = operator.state_range(&mut txn, range).unwrap().collect();
+		let range_result: Vec<_> = operator.state_range(&mut txn, range).await.unwrap().collect();
 
 		assert_eq!(range_result.len(), 0);
 	}
@@ -214,7 +214,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_overwrite_existing_key() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
 
@@ -235,7 +235,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_non_existent_key() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
 
@@ -249,7 +249,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_after_partial_removal() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(7));
 
 		// Add 5 entries
@@ -264,34 +264,34 @@ mod tests {
 		operator.state_remove(&mut txn, &test_key("partial_3")).unwrap();
 
 		// Should have 3 entries left (0, 2, 4)
-		let remaining: Vec<_> = operator.state_scan(&mut txn).unwrap().collect();
+		let remaining: Vec<_> = operator.state_scan(&mut txn).await.unwrap().collect();
 		assert_eq!(remaining.len(), 3);
 	}
 
 	#[tokio::test]
 	async fn test_transaction_isolation() {
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 		let operator = TestOperator::simple(FlowNodeId(8));
 		let key = test_key("isolation");
 
 		// Transaction 1: Write a value
 		let mut parent_txn1 = engine.begin_command().unwrap();
-		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1));
+		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1)).await;
 		let value1 = EncodedValues(CowVec::new(vec![1]));
 		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
 
 		// Transaction 2: Should not see uncommitted value
 		let parent_txn2 = engine.begin_command().unwrap();
-		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2));
+		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2)).await;
 		assert!(operator.state_get(&mut flow_txn2, &key).unwrap().is_none());
 
 		// Commit transaction 1
-		flow_txn1.commit(&mut parent_txn1).unwrap();
+		flow_txn1.commit(&mut parent_txn1).await.unwrap();
 		parent_txn1.commit().unwrap();
 
 		// Transaction 3: Should now see the value
 		let parent_txn3 = engine.begin_command().unwrap();
-		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3));
+		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3)).await;
 		let result = operator.state_get(&mut flow_txn3, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value1);

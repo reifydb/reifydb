@@ -19,7 +19,7 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogTableCommandOperations: Send {
 	async fn create_table(&mut self, table: TableToCreate) -> crate::Result<TableDef>;
 
@@ -37,7 +37,7 @@ pub trait CatalogTrackTableChangeOperations {
 	fn track_table_def_deleted(&mut self, table: TableDef) -> crate::Result<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogTableQueryOperations: CatalogNamespaceQueryOperations {
 	async fn find_table(&mut self, id: TableId) -> crate::Result<Option<TableDef>>;
 
@@ -56,7 +56,7 @@ pub trait CatalogTableQueryOperations: CatalogNamespaceQueryOperations {
 	) -> crate::Result<TableDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -83,7 +83,7 @@ impl<
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogTableQueryOperations
 	for QT
 {

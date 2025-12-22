@@ -90,7 +90,7 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
-	fn test_encode_decode_keep_forever() {
+	async fn test_encode_decode_keep_forever() {
 		let policy = RetentionPolicy::KeepForever;
 		let encoded = encode_retention_policy(&policy);
 		let decoded = decode_retention_policy(&encoded).unwrap();
@@ -98,7 +98,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_encode_decode_keep_versions() {
+	async fn test_encode_decode_keep_versions() {
 		let policy = RetentionPolicy::KeepVersions {
 			count: 100,
 			cleanup_mode: CleanupMode::Delete,

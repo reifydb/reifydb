@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 use crate::{
 	interface::{CommandTransaction, Identity, Params, QueryTransaction, WithEventBus},
 	stream::SendableFrameStream,
@@ -8,18 +10,17 @@ use crate::{
 /// This trait defines the core interface for database engines. The `command_as`
 /// and `query_as` methods return async streams for non-blocking execution.
 ///
-/// Note: The associated transaction types don't require `Send` because they
-/// are used entirely within blocking tasks. The engine itself must be `Send + Sync`
-/// to be cloned into async tasks.
+/// All methods create `Send` futures to work with tokio's multi-threaded runtime.
+#[async_trait]
 pub trait Engine: WithEventBus + Send + Sync + Clone + 'static {
 	type Command: CommandTransaction;
 	type Query: QueryTransaction;
 
 	/// Begin a new command (write) transaction.
-	fn begin_command(&self) -> crate::Result<Self::Command>;
+	async fn begin_command(&self) -> crate::Result<Self::Command>;
 
 	/// Begin a new query (read) transaction.
-	fn begin_query(&self) -> crate::Result<Self::Query>;
+	async fn begin_query(&self) -> crate::Result<Self::Query>;
 
 	/// Execute a command and return a stream of result frames.
 	///

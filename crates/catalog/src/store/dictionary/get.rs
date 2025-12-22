@@ -32,7 +32,7 @@ mod tests {
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 
 	#[tokio::test]
-	fn test_get_dictionary_exists() {
+	async fn test_get_dictionary_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let test_namespace = ensure_test_namespace(&mut txn).await;
 
@@ -44,9 +44,9 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+		let created = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 
-		let result = CatalogStore::get_dictionary(&mut txn, created.id).unwrap();
+		let result = CatalogStore::get_dictionary(&mut txn, created.id).await.unwrap();
 
 		assert_eq!(result.id, created.id);
 		assert_eq!(result.name, "test_dict");
@@ -55,11 +55,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_dictionary_not_exists() {
+	async fn test_get_dictionary_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 
 		let result = CatalogStore::get_dictionary(&mut txn, DictionaryId(999));
 
-		assert!(result.is_err());
+		assert!(result.await.is_err());
 	}
 }

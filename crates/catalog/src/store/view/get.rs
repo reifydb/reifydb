@@ -31,7 +31,7 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_ok() {
+	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
 		ensure_test_namespace(&mut txn).await;
 		create_namespace(&mut txn, "namespace_one").await;
@@ -42,7 +42,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
 		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
-		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
+		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).await.unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
@@ -50,7 +50,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_not_found() {
+	async fn test_not_found() {
 		let mut txn = create_test_command_transaction().await;
 		ensure_test_namespace(&mut txn).await;
 		create_namespace(&mut txn, "namespace_one").await;
@@ -61,7 +61,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
 		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
-		let err = CatalogStore::get_view(&mut txn, ViewId(42)).unwrap_err();
+		let err = CatalogStore::get_view(&mut txn, ViewId(42)).await.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

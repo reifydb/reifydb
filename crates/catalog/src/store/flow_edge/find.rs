@@ -44,16 +44,16 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_find_flow_edge_ok() {
+	async fn test_find_flow_edge_ok() {
 		let mut txn = create_test_command_transaction().await;
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn);
+		let flow = ensure_test_flow(&mut txn).await;
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
-		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
+		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
+		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]).await;
+		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id).await;
 
-		let result = CatalogStore::find_flow_edge(&mut txn, edge.id).unwrap();
+		let result = CatalogStore::find_flow_edge(&mut txn, edge.id).await.unwrap();
 		assert!(result.is_some());
 		let found = result.unwrap();
 		assert_eq!(found.id, edge.id);
@@ -63,10 +63,10 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_flow_edge_not_found() {
+	async fn test_find_flow_edge_not_found() {
 		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
+		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).await.unwrap();
 		assert!(result.is_none());
 	}
 }

@@ -88,9 +88,9 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "namespace",
+				namespace_name: "namespace".to_string(),
 				table: TableId(1),
-				table_name: "table",
+				table_name: "table".to_string(),
 				column: "col1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,

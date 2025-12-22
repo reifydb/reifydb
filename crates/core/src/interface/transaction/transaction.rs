@@ -15,7 +15,7 @@ pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction 
 	where
 		Self: 'a;
 
-	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	async fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
@@ -32,9 +32,9 @@ pub trait QueryTransaction: MultiVersionQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 }

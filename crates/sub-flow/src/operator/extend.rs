@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::FlowChange;
@@ -27,6 +28,7 @@ impl ExtendOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for ExtendOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node

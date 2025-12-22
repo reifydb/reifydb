@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -216,12 +217,13 @@ impl SingleStateful for DistinctOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,

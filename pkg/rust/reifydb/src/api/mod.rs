@@ -50,16 +50,16 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, Tra
 }
 
 /// Convenience function to create a transaction layer
-pub fn transaction(
+pub async fn transaction(
 	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
-) -> (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus) {
-	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone());
-	(multi, input.1, input.2, input.3)
+) -> crate::Result<(TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)> {
+	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone()).await?;
+	Ok((multi, input.1, input.2, input.3))
 }
 
 /// Backwards-compat alias for transaction()
-pub fn serializable(
+pub async fn serializable(
 	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
-) -> (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus) {
-	transaction(input)
+) -> crate::Result<(TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)> {
+	transaction(input).await
 }

@@ -32,8 +32,8 @@ use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::
 use reifydb_type::{Fragment, RowNumber};
 
 #[tokio::test]
-async fn test_consumer_lifecycle() {
-	let engine = create_test_engine();
+async fn test_consumer_lifecycle() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
@@ -54,11 +54,12 @@ async fn test_consumer_lifecycle() {
 	test_instance.stop().expect("Should be able to stop already stopped consumer");
 
 	assert!(!test_instance.is_running());
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_event_processing() {
-	let engine = create_test_engine();
+async fn test_event_processing() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -98,11 +99,12 @@ async fn test_event_processing() {
 	assert!(consumer_clone.get_process_count() >= 1, "Should have processed at least once");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_checkpoint_persistence() {
-	let engine = create_test_engine();
+async fn test_checkpoint_persistence() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -139,18 +141,20 @@ async fn test_checkpoint_persistence() {
 	}
 	.encode();
 
-	let checkpoint = txn.get(&consumer_key).expect("Failed to get checkpoint").expect("Checkpoint should exist");
+	let checkpoint =
+		txn.get(&consumer_key).await.expect("Failed to get checkpoint").expect("Checkpoint should exist");
 
 	let mut buffer = [0u8; 8];
 	buffer.copy_from_slice(&checkpoint.values[0..8]);
 	let stored_version = u64::from_be_bytes(buffer);
 
 	assert!(stored_version >= 3, "Checkpoint should be after initial events");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_error_handling() {
-	let engine = create_test_engine();
+async fn test_error_handling() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -181,11 +185,12 @@ async fn test_error_handling() {
 	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_empty_events_handling() {
-	let engine = create_test_engine();
+async fn test_empty_events_handling() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -209,11 +214,12 @@ async fn test_empty_events_handling() {
 	assert!(consumer_clone.get_process_count() >= 1, "Should have called consume");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_multiple_consumers() {
-	let engine = create_test_engine();
+async fn test_multiple_consumers() -> Result<()> {
+	let engine = create_test_engine().await?;
 
 	let consumer1 = TestConsumer::new();
 	let consumer1_clone = consumer1.clone();
@@ -264,10 +270,10 @@ async fn test_multiple_consumers() {
 	.encode();
 
 	let checkpoint1 =
-		txn.get(&consumer1_key).expect("Failed to get checkpoint 1").expect("Checkpoint 1 should exist");
+		txn.get(&consumer1_key).await.expect("Failed to get checkpoint 1").expect("Checkpoint 1 should exist");
 
 	let checkpoint2 =
-		txn.get(&consumer2_key).expect("Failed to get checkpoint 2").expect("Checkpoint 2 should exist");
+		txn.get(&consumer2_key).await.expect("Failed to get checkpoint 2").expect("Checkpoint 2 should exist");
 
 	let mut buffer = [0u8; 8];
 	buffer.copy_from_slice(&checkpoint1.values[0..8]);
@@ -284,11 +290,12 @@ async fn test_multiple_consumers() {
 
 	test_instance1.stop().expect("Failed to stop consumer 1");
 	test_instance2.stop().expect("Failed to stop consumer 2");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_non_table_events_filtered() {
-	let engine = create_test_engine();
+async fn test_non_table_events_filtered() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -300,10 +307,12 @@ async fn test_non_table_events_filtered() {
 		row: RowNumber(1),
 	};
 	txn.set(&table_key.encode(), EncodedValues(CowVec::new(b"table_value".to_vec())))
+		.await
 		.expect("Failed to set table encoded");
 
 	let non_table_key = EncodedKey(CowVec::new(b"non_table_key".to_vec()));
 	txn.set(&non_table_key, EncodedValues(CowVec::new(b"non_table_value".to_vec())))
+		.await
 		.expect("Failed to set non-table encoded");
 
 	txn.commit().expect("Failed to commit transaction");
@@ -342,11 +351,12 @@ async fn test_non_table_events_filtered() {
 			panic!("Expected Row key");
 		}
 	}
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_rapid_start_stop() {
-	let engine = create_test_engine();
+async fn test_rapid_start_stop() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
@@ -362,11 +372,12 @@ async fn test_rapid_start_stop() {
 		test_instance.stop().expect("Failed to stop consumer");
 		assert!(!test_instance.is_running());
 	}
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_limits_processing() {
-	let engine = create_test_engine();
+async fn test_batch_size_limits_processing() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -390,11 +401,12 @@ async fn test_batch_size_limits_processing() {
 	assert!(process_count >= 3, "Should have been called at least 3 times (for batches of 10, 10, 5)");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_one_processes_sequentially() {
-	let engine = create_test_engine();
+async fn test_batch_size_one_processes_sequentially() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -418,11 +430,12 @@ async fn test_batch_size_one_processes_sequentially() {
 	assert!(process_count >= 5, "Should have been called at least 5 times (one per event)");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_none_processes_all_at_once() {
-	let engine = create_test_engine();
+async fn test_batch_size_none_processes_all_at_once() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -446,11 +459,12 @@ async fn test_batch_size_none_processes_all_at_once() {
 	assert!(process_count <= 2, "Should have been called at most 2 times with unbounded batch");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_larger_than_events() {
-	let engine = create_test_engine();
+async fn test_batch_size_larger_than_events() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -474,11 +488,12 @@ async fn test_batch_size_larger_than_events() {
 	assert!(process_count <= 2, "Should have processed efficiently in 1-2 calls");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_with_checkpoint_resume() {
-	let engine = create_test_engine();
+async fn test_batch_size_with_checkpoint_resume() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -517,11 +532,12 @@ async fn test_batch_size_with_checkpoint_resume() {
 	assert_eq!(changes_second_run, total_expected, "Should have processed remaining events plus new ones");
 
 	test_instance2.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_batch_size_exact_match() {
-	let engine = create_test_engine();
+async fn test_batch_size_exact_match() -> Result<()> {
+	let engine = create_test_engine().await?;
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
@@ -545,11 +561,12 @@ async fn test_batch_size_exact_match() {
 	assert!(process_count <= 2, "Should have processed in 1-2 calls with exact batch size match");
 
 	test_instance.stop().expect("Failed to stop consumer");
+	Ok(())
 }
 
 #[tokio::test]
-async fn test_multiple_consumers_different_batch_sizes() {
-	let engine = create_test_engine();
+async fn test_multiple_consumers_different_batch_sizes() -> Result<()> {
+	let engine = create_test_engine().await?;
 
 	let consumer1 = TestConsumer::new();
 	let consumer1_clone = consumer1.clone();
@@ -592,25 +609,26 @@ async fn test_multiple_consumers_different_batch_sizes() {
 
 	test_instance1.stop().expect("Failed to stop consumer 1");
 	test_instance2.stop().expect("Failed to stop consumer 2");
+	Ok(())
 }
 
-fn create_test_engine() -> StandardEngine {
+async fn create_test_engine() -> Result<StandardEngine> {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone());
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await?;
 
-	StandardEngine::new(
+	Ok(StandardEngine::new(
 		multi,
 		single,
 		cdc,
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
-	)
+	))
 }
 
 struct TestConsumer {
@@ -680,13 +698,13 @@ impl CdcConsume for TestConsumer {
 
 async fn insert_test_events(engine: &StandardEngine, count: usize) -> Result<()> {
 	for i in 0..count {
-		let mut txn = engine.begin_command().await?;
+		let mut txn = engine.begin_command()?;
 		let key = RowKey {
 			source: SourceId::table(1),
 			row: RowNumber((i + 1) as u64),
 		};
 		let value = format!("value_{}", i);
-		txn.set(&key.encode(), EncodedValues(CowVec::new(value.into_bytes())))?;
+		txn.set(&key.encode(), EncodedValues(CowVec::new(value.into_bytes()))).await?;
 		txn.commit()?;
 	}
 

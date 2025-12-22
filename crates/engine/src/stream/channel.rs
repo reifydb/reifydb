@@ -86,12 +86,6 @@ impl FrameSender {
 		self.sender.send(frame).await.map_err(|_| StreamError::Disconnected)
 	}
 
-	/// Send a frame synchronously (for use in spawn_blocking contexts).
-	/// Blocks the current thread if the buffer is full.
-	pub fn blocking_send(&self, frame: StreamResult<Frame>) -> Result<(), StreamError> {
-		self.sender.blocking_send(frame).map_err(|_| StreamError::Disconnected)
-	}
-
 	/// Try to send without waiting (returns error if buffer is full or closed).
 	pub fn try_send(&self, frame: StreamResult<Frame>) -> Result<(), StreamError> {
 		self.sender.try_send(frame).map_err(|_| StreamError::Disconnected)

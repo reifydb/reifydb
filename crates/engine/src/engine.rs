@@ -21,6 +21,7 @@ use reifydb_transaction::{
 	single::TransactionSingle,
 };
 use reifydb_type::{Fragment, TypeConstraint};
+use tokio::spawn;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -45,12 +46,13 @@ impl WithEventBus for StandardEngine {
 	}
 }
 
+#[async_trait]
 impl EngineInterface for StandardEngine {
 	type Command = StandardCommandTransaction;
 	type Query = StandardQueryTransaction;
 
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	fn begin_command(&self) -> crate::Result<Self::Command> {
+	async fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
@@ -58,20 +60,21 @@ impl EngineInterface for StandardEngine {
 			.post_commit
 			.add(Arc::new(CatalogEventInterceptor::new(self.event_bus.clone(), self.catalog.clone())));
 
-		crate::util::block_on(StandardCommandTransaction::new(
+		StandardCommandTransaction::new(
 			self.multi.clone(),
 			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
 			self.catalog.clone(),
 			interceptors,
-		))
+		)
+		.await
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	fn begin_query(&self) -> crate::Result<Self::Query> {
+	async fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
-			crate::util::block_on(self.multi.begin_query())?,
+			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
@@ -86,18 +89,8 @@ impl EngineInterface for StandardEngine {
 		let cancel_token = CancellationToken::new();
 
 		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-		let _error_sender = sender.clone();
 
-		tokio::task::spawn_blocking(move || {
-			crate::util::block_on_local(execute_command_sync(
-				&engine,
-				&identity,
-				&rql,
-				params,
-				&sender,
-				&cancel_token,
-			))
-		});
+		spawn(execute_command(engine, identity, rql, params, sender, cancel_token));
 
 		Box::pin(stream)
 	}
@@ -110,31 +103,21 @@ impl EngineInterface for StandardEngine {
 		let cancel_token = CancellationToken::new();
 
 		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-		let _error_sender = sender.clone();
 
-		tokio::task::spawn_blocking(move || {
-			crate::util::block_on_local(execute_query_sync(
-				&engine,
-				&identity,
-				&rql,
-				params,
-				&sender,
-				&cancel_token,
-			))
-		});
+		spawn(execute_query(engine, identity, rql, params, sender, cancel_token));
 
 		Box::pin(stream)
 	}
 }
 
-/// Execute a command synchronously and send results to the stream.
-async fn execute_command_sync(
-	engine: &StandardEngine,
-	identity: &Identity,
-	rql: &str,
+/// Execute a command and send results to the stream.
+async fn execute_command(
+	engine: StandardEngine,
+	identity: Identity,
+	rql: String,
 	params: Params,
-	sender: &FrameSender,
-	cancel_token: &CancellationToken,
+	sender: FrameSender,
+	cancel_token: CancellationToken,
 ) {
 	// Check for cancellation before starting
 	if cancel_token.is_cancelled() {
@@ -142,11 +125,11 @@ async fn execute_command_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_command();
+	let txn_result = engine.begin_command().await;
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.clone())));
 			return;
 		}
 	};
@@ -157,9 +140,9 @@ async fn execute_command_sync(
 		.execute_command(
 			&mut txn,
 			Command {
-				rql,
+				rql: &rql,
 				params,
-				identity,
+				identity: &identity,
 			},
 		)
 		.await;
@@ -167,8 +150,8 @@ async fn execute_command_sync(
 	match result {
 		Ok(frames) => {
 			// Commit transaction
-			if let Err(e) = txn.commit() {
-				let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			if let Err(e) = txn.commit().await {
+				let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
 				return;
 			}
 
@@ -177,26 +160,26 @@ async fn execute_command_sync(
 				if cancel_token.is_cancelled() {
 					return;
 				}
-				if sender.blocking_send(Ok(frame)).is_err() {
+				if sender.send(Ok(frame)).await.is_err() {
 					return; // Receiver dropped
 				}
 			}
 		}
 		Err(e) => {
 			// Rollback on error (drop will handle it)
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
 		}
 	}
 }
 
-/// Execute a query synchronously and send results to the stream.
-async fn execute_query_sync(
-	engine: &StandardEngine,
-	identity: &Identity,
-	rql: &str,
+/// Execute a query and send results to the stream.
+async fn execute_query(
+	engine: StandardEngine,
+	identity: Identity,
+	rql: String,
 	params: Params,
-	sender: &FrameSender,
-	cancel_token: &CancellationToken,
+	sender: FrameSender,
+	cancel_token: CancellationToken,
 ) {
 	// Check for cancellation before starting
 	if cancel_token.is_cancelled() {
@@ -204,11 +187,11 @@ async fn execute_query_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_query();
+	let txn_result = engine.begin_query().await;
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.clone())));
 			return;
 		}
 	};
@@ -219,9 +202,9 @@ async fn execute_query_sync(
 		.execute_query(
 			&mut txn,
 			Query {
-				rql,
+				rql: &rql,
 				params,
-				identity,
+				identity: &identity,
 			},
 		)
 		.await;
@@ -233,18 +216,18 @@ async fn execute_query_sync(
 				if cancel_token.is_cancelled() {
 					return;
 				}
-				if sender.blocking_send(Ok(frame)).is_err() {
+				if sender.send(Ok(frame)).await.is_err() {
 					return; // Receiver dropped
 				}
 			}
 		}
 		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
 		}
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 	#[inline]
 	async fn execute_command(
@@ -256,7 +239,7 @@ impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl ExecuteQuery<StandardQueryTransaction> for StandardEngine {
 	#[inline]
 	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {

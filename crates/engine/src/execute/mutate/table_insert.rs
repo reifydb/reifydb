@@ -29,13 +29,13 @@ use tracing::{debug_span, instrument};
 use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
+	encoding::encode_value,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,
 	transaction::operation::{DictionaryOperations, TableOperations},
-	util::encode_value,
 };
 
 impl Executor {

@@ -15,6 +15,7 @@ use reifydb_store_transaction::{
 	BackendConfig, MultiVersionCommit, MultiVersionGet, StandardTransactionStore, TransactionStoreConfig,
 	backend::BackendStorage,
 };
+use tokio::runtime::Runtime;
 
 /// Create a new TransactionStore with the given backend.
 fn create_store(backend: BackendStorage) -> StandardTransactionStore {
@@ -95,14 +96,17 @@ fn benchmark_memory_insert_sequential(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::memory());
 					let data = generate_test_data(size, 16, 64);
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Measurement - this is timed
 					let deltas = to_set_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(1)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(1)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -123,16 +127,19 @@ fn benchmark_memory_insert_random(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::memory());
 					let mut data = generate_test_data(size, 16, 64);
 					// Shuffle in setup
 					data.shuffle(&mut rand::rng());
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Measurement - this is timed
 					let deltas = to_set_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(1)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(1)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -153,19 +160,24 @@ fn benchmark_memory_delete_sequential(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::memory());
 					let data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure deletes
 					let deltas = to_remove_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(2)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(2)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -186,22 +198,27 @@ fn benchmark_memory_delete_random(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::memory());
 					let mut data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
 					// Shuffle for random deletion order
 					data.shuffle(&mut rand::rng());
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure deletes
 					let deltas = to_remove_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(2)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(2)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -222,20 +239,28 @@ fn benchmark_memory_get_operations(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::memory());
 					let data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure gets
-					for (key, _) in data {
-						let _result = store.get(black_box(&key), CommitVersion(1)).unwrap();
-					}
+					runtime.block_on(async move {
+						for (key, _) in data {
+							let _result = store
+								.get(black_box(&key), CommitVersion(1))
+								.await
+								.unwrap();
+						}
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -260,14 +285,17 @@ fn benchmark_sqlite_insert_sequential(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::sqlite_in_memory());
 					let data = generate_test_data(size, 16, 64);
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Measurement - this is timed
 					let deltas = to_set_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(1)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(1)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -288,16 +316,19 @@ fn benchmark_sqlite_insert_random(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::sqlite_in_memory());
 					let mut data = generate_test_data(size, 16, 64);
 					// Shuffle in setup
 					data.shuffle(&mut rand::rng());
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Measurement - this is timed
 					let deltas = to_set_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(1)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(1)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -318,19 +349,24 @@ fn benchmark_sqlite_delete_sequential(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::sqlite_in_memory());
 					let data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure deletes
 					let deltas = to_remove_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(2)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(2)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -351,22 +387,27 @@ fn benchmark_sqlite_delete_random(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::sqlite_in_memory());
 					let mut data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
 					// Shuffle for random deletion order
 					data.shuffle(&mut rand::rng());
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure deletes
 					let deltas = to_remove_deltas(&data);
-					store.commit(black_box(deltas), CommitVersion(2)).unwrap();
+					runtime.block_on(async move {
+						store.commit(black_box(deltas), CommitVersion(2)).await.unwrap();
+					});
 				},
 				BatchSize::SmallInput,
 			);
@@ -387,20 +428,28 @@ fn benchmark_sqlite_get_operations(c: &mut Criterion) {
 			b.iter_batched(
 				|| {
 					// Setup - not timed
+					let runtime = Runtime::new().unwrap();
 					let store = create_store(BackendStorage::sqlite_in_memory());
 					let data = generate_test_data(size, 16, 64);
 
 					// Insert data in setup
 					let deltas = to_set_deltas(&data);
-					store.commit(deltas, CommitVersion(1)).unwrap();
+					runtime.block_on(async {
+						store.commit(deltas, CommitVersion(1)).await.unwrap();
+					});
 
-					(store, data)
+					(runtime, store, data)
 				},
-				|(store, data)| {
+				|(runtime, store, data)| {
 					// Only measure gets
-					for (key, _) in data {
-						let _result = store.get(black_box(&key), CommitVersion(1)).unwrap();
-					}
+					runtime.block_on(async move {
+						for (key, _) in data {
+							let _result = store
+								.get(black_box(&key), CommitVersion(1))
+								.await
+								.unwrap();
+						}
+					});
 				},
 				BatchSize::SmallInput,
 			);

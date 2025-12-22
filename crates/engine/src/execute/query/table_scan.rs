@@ -39,7 +39,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
+	pub async fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
 		table: ResolvedTable,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -50,7 +50,7 @@ impl TableScanNode {
 
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = crate::util::block_on(CatalogStore::find_dictionary(rx, dict_id))? {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id).await? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -187,7 +187,7 @@ impl QueryNode for TableScanNode {
 
 impl<'a> TableScanNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
+	async fn decode_dictionary_columns(
 		&self,
 		columns: &mut Columns,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -205,9 +205,9 @@ impl<'a> TableScanNode {
 				for row_idx in 0..row_count {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded_value) = crate::util::block_on(
-							rx.get_from_dictionary(dictionary, entry_id),
-						)? {
+						if let Some(decoded_value) =
+							rx.get_from_dictionary(dictionary, entry_id).await?
+						{
 							new_data.push_value(decoded_value);
 						} else {
 							// ID not found in dictionary, use undefined

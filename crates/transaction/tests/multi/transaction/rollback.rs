@@ -19,7 +19,7 @@ async fn test_rollback_same_tx() {
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
-	assert!(txn.get(&as_key!(1)).unwrap().is_none());
+	assert!(txn.get(&as_key!(1)).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -30,5 +30,5 @@ async fn test_rollback_different_tx() {
 	txn.rollback().unwrap();
 
 	let rx = engine.begin_query().await.unwrap();
-	assert!(rx.get(&as_key!(1)).unwrap().is_none());
+	assert!(rx.get(&as_key!(1)).await.unwrap().is_none());
 }

@@ -372,11 +372,13 @@ mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
+	use async_trait::async_trait;
+
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
 	// Mock version provider for testing
-	#[derive(Debug)]
+	#[derive(Debug, Clone)]
 	struct MockVersionProvider {
 		current: Arc<AtomicU64>,
 	}

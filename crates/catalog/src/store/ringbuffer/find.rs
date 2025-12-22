@@ -98,11 +98,12 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_find_ringbuffer_exists() {
+	async fn test_find_ringbuffer_exists() {
 		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		let found = CatalogStore::find_ringbuffer(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Ring buffer should exist");
 
@@ -113,20 +114,21 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_not_exists() {
+	async fn test_find_ringbuffer_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_ringbuffer(&mut txn, RingBufferId(999)).unwrap();
+		let result = CatalogStore::find_ringbuffer(&mut txn, RingBufferId(999)).await.unwrap();
 
 		assert!(result.is_none());
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_metadata() {
+	async fn test_find_ringbuffer_metadata() {
 		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		let metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -138,16 +140,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_metadata_not_exists() {
+	async fn test_find_ringbuffer_metadata_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_ringbuffer_metadata(&mut txn, RingBufferId(999)).unwrap();
+		let result = CatalogStore::find_ringbuffer_metadata(&mut txn, RingBufferId(999)).await.unwrap();
 
 		assert!(result.is_none());
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_by_name_exists() {
+	async fn test_find_ringbuffer_by_name_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -167,10 +169,11 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		// Find by name
 		let found = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace.id, "trades_buffer")
+			.await
 			.unwrap()
 			.expect("Should find ring buffer by name");
 
@@ -181,18 +184,19 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_by_name_not_exists() {
+	async fn test_find_ringbuffer_by_name_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
-		let result =
-			CatalogStore::find_ringbuffer_by_name(&mut txn, namespace.id, "nonexistent_buffer").unwrap();
+		let result = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace.id, "nonexistent_buffer")
+			.await
+			.unwrap();
 
 		assert!(result.is_none());
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_by_name_different_namespace() {
+	async fn test_find_ringbuffer_by_name_different_namespace() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace1 = ensure_test_namespace(&mut txn).await;
 
@@ -204,6 +208,7 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create ring buffer in namespace1
@@ -215,21 +220,23 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		// Try to find in namespace2 - should not exist
-		let result = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace2.id, "shared_name").unwrap();
+		let result =
+			CatalogStore::find_ringbuffer_by_name(&mut txn, namespace2.id, "shared_name").await.unwrap();
 
 		assert!(result.is_none());
 
 		// Find in namespace1 - should exist
-		let found = CatalogStore::find_ringbuffer_by_name(&mut txn, namespace1.id, "shared_name").unwrap();
+		let found =
+			CatalogStore::find_ringbuffer_by_name(&mut txn, namespace1.id, "shared_name").await.unwrap();
 
 		assert!(found.is_some());
 	}
 
 	#[tokio::test]
-	fn test_find_ringbuffer_with_columns_and_primary_key() {
+	async fn test_find_ringbuffer_with_columns_and_primary_key() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -259,10 +266,10 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		// Add primary key
-		let columns = CatalogStore::list_columns(&mut txn, created.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, created.id).await.unwrap();
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -270,11 +277,14 @@ mod tests {
 				column_ids: vec![columns[0].id],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Find and verify
-		let found =
-			CatalogStore::find_ringbuffer(&mut txn, created.id).unwrap().expect("Ring buffer should exist");
+		let found = CatalogStore::find_ringbuffer(&mut txn, created.id)
+			.await
+			.unwrap()
+			.expect("Ring buffer should exist");
 
 		assert_eq!(found.columns.len(), 2);
 		assert_eq!(found.columns[0].name, "id");

@@ -59,6 +59,7 @@ mod tests {
 
 		// Verify the policy was stored
 		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -77,6 +78,7 @@ mod tests {
 
 		// Verify the policy was stored
 		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -98,6 +100,7 @@ mod tests {
 
 		// Verify the policy was stored
 		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -118,6 +121,7 @@ mod tests {
 
 		// Verify the policy was stored
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -143,6 +147,7 @@ mod tests {
 
 		// Verify the latest policy is stored
 		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -167,6 +172,7 @@ mod tests {
 
 		// Verify the latest policy is stored
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)
+			.await
 			.unwrap()
 			.expect("Policy should be stored");
 
@@ -178,7 +184,7 @@ mod tests {
 		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(9999));
 
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source).unwrap();
+		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}
@@ -188,7 +194,7 @@ mod tests {
 		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(9999);
 
-		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator).await.unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
@@ -30,6 +31,7 @@ impl FilterOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for FilterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node

@@ -7,7 +7,6 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use reifydb_core::interface::{CdcConsumerId, FlowNodeId};
 use reifydb_rql::expression::Expression;
-use reifydb_sub_api::Priority;
 
 use crate::{operator::BoxedOperator, subsystem::FlowSubsystemConfig};
 
@@ -17,7 +16,6 @@ pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &[Expression]) -> crate::Resul
 pub struct FlowBuilder {
 	consumer_id: CdcConsumerId,
 	poll_interval: Duration,
-	priority: Priority,
 	operators: Vec<(String, OperatorFactory)>,
 	max_batch_size: Option<u64>,
 	operators_dir: Option<PathBuf>,
@@ -35,7 +33,6 @@ impl FlowBuilder {
 		Self {
 			consumer_id: CdcConsumerId::flow_consumer(),
 			poll_interval: Duration::from_millis(1),
-			priority: Priority::Normal,
 			operators: Vec::new(),
 			max_batch_size: Some(10),
 			operators_dir: None,
@@ -51,12 +48,6 @@ impl FlowBuilder {
 	/// Set the poll interval for checking new CDC events
 	pub fn poll_interval(mut self, interval: Duration) -> Self {
 		self.poll_interval = interval;
-		self
-	}
-
-	/// Set the priority for the polling task in the worker pool
-	pub fn priority(mut self, priority: Priority) -> Self {
-		self.priority = priority;
 		self
 	}
 
@@ -86,7 +77,6 @@ impl FlowBuilder {
 		FlowSubsystemConfig {
 			consumer_id: self.consumer_id,
 			poll_interval: self.poll_interval,
-			priority: self.priority,
 			operators: self.operators,
 			max_batch_size: self.max_batch_size,
 			operators_dir: self.operators_dir,

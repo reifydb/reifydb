@@ -18,7 +18,7 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogDictionaryCommandOperations: Send {
 	async fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> crate::Result<DictionaryDef>;
 }
@@ -31,7 +31,7 @@ pub trait CatalogTrackDictionaryChangeOperations {
 	fn track_dictionary_def_deleted(&mut self, dictionary: DictionaryDef) -> crate::Result<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations + Send {
 	async fn find_dictionary(&mut self, id: DictionaryId) -> crate::Result<Option<DictionaryDef>>;
 
@@ -50,7 +50,7 @@ pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations + Se
 	) -> crate::Result<DictionaryDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -78,7 +78,7 @@ impl<
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send>
 	CatalogDictionaryQueryOperations for QT
 {

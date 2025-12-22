@@ -17,7 +17,7 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) ->
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
-	match txn.get(&encoded_key)? {
+	match tokio::runtime::Handle::current().block_on(txn.get(&encoded_key))? {
 		Some(multi) => Ok(Some(multi)),
 		None => Ok(None),
 	}
@@ -53,7 +53,7 @@ pub fn internal_state_get(
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
-	match txn.get(&encoded_key)? {
+	match tokio::runtime::Handle::current().block_on(txn.get(&encoded_key))? {
 		Some(multi) => Ok(Some(multi)),
 		None => Ok(None),
 	}
@@ -145,7 +145,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("get");
 		let value = test_row();
@@ -162,7 +162,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_non_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
 
@@ -173,7 +173,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_set_and_update() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
 		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
@@ -193,7 +193,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_remove() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("remove");
 		let value = test_row();
@@ -210,7 +210,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_scan() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -221,7 +221,7 @@ mod tests {
 		}
 
 		// Scan all entries
-		let entries: Vec<_> = state_scan(node_id, &mut txn).unwrap().collect();
+		let entries: Vec<_> = state_scan(node_id, &mut txn).await.unwrap().collect();
 		assert_eq!(entries.len(), 5);
 
 		// Verify we got all the expected values
@@ -233,7 +233,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 
 		// Add entries with different keys
@@ -246,7 +246,7 @@ mod tests {
 
 		// Test range query from b to d (exclusive end)
 		let range = EncodedKeyRange::new(Included(test_key("b")), Excluded(test_key("d")));
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).unwrap().collect();
+		let entries: Vec<_> = state_range(node_id, &mut txn, range).await.unwrap().collect();
 
 		// Should include b and c, but not d (exclusive end)
 		assert_eq!(entries.len(), 2);
@@ -255,7 +255,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_range_open_ended() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 
 		// Add some entries
@@ -267,20 +267,20 @@ mod tests {
 
 		let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
-		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
+		let entries: Vec<_> = txn.range(prefixed_range).await.unwrap().items.into_iter().collect();
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
 		// Test with no end (to end)
 		let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
-		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
+		let entries: Vec<_> = txn.range(prefixed_range).await.unwrap().items.into_iter().collect();
 		assert_eq!(entries.len(), 2); // range_3, range_4
 	}
 
 	#[tokio::test]
 	async fn test_state_clear() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -293,17 +293,17 @@ mod tests {
 		// Verify entries exist
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
-			txn.range(range).unwrap().count()
+			txn.range(range).await.unwrap().items.into_iter().count()
 		};
 		assert_eq!(count, 3);
 
 		// Clear all state
-		state_clear(node_id, &mut txn).unwrap();
+		state_clear(node_id, &mut txn).await.unwrap();
 
 		// Verify all entries are removed
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
-			txn.range(range).unwrap().count()
+			txn.range(range).await.unwrap().items.into_iter().count()
 		};
 		assert_eq!(count, 0);
 	}
@@ -311,7 +311,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_row_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
@@ -328,7 +328,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_row_new() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
@@ -342,7 +342,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_save_row() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("save");
 		let value = test_row();
@@ -366,7 +366,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_multiple_nodes_isolation() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
@@ -385,7 +385,7 @@ mod tests {
 		assert_row_eq(&result2, &value2);
 
 		// Clearing one operator shouldn't affect the other
-		state_clear(node1, &mut txn).unwrap();
+		state_clear(node1, &mut txn).await.unwrap();
 		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
 		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());
 	}
@@ -393,7 +393,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_large_values() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");
 

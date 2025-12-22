@@ -192,8 +192,13 @@ mod tests {
 		CatalogStore::create_dictionary(&mut txn, to_create2).await.unwrap();
 
 		// Check namespace links
-		let links =
-			txn.range(NamespaceDictionaryKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
+		let links = txn
+			.range(NamespaceDictionaryKey::full_scan(test_namespace.id))
+			.await
+			.unwrap()
+			.items
+			.into_iter()
+			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		// Check first link (descending order, so dict2 comes first)

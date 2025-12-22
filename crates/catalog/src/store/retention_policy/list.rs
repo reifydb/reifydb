@@ -87,16 +87,16 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_list_source_retention_policies_empty() {
+	async fn test_list_source_retention_policies_empty() {
 		let mut txn = create_test_command_transaction().await;
 
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
 	#[tokio::test]
-	fn test_list_source_retention_policies_multiple() {
+	async fn test_list_source_retention_policies_multiple() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Create policies for different sources
@@ -105,21 +105,21 @@ mod tests {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_source_retention_policy(&mut txn, table_source, &table_policy).unwrap();
+		create_source_retention_policy(&mut txn, table_source, &table_policy).await.unwrap();
 
 		let view_source = SourceId::View(ViewId(2));
 		let view_policy = RetentionPolicy::KeepForever;
-		create_source_retention_policy(&mut txn, view_source, &view_policy).unwrap();
+		create_source_retention_policy(&mut txn, view_source, &view_policy).await.unwrap();
 
 		let ringbuffer_source = SourceId::RingBuffer(RingBufferId(3));
 		let ringbuffer_policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).unwrap();
+		create_source_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).await.unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 3);
 
@@ -130,16 +130,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_list_operator_retention_policies_empty() {
+	async fn test_list_operator_retention_policies_empty() {
 		let mut txn = create_test_command_transaction().await;
 
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_operator_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
 	#[tokio::test]
-	fn test_list_operator_retention_policies_multiple() {
+	async fn test_list_operator_retention_policies_multiple() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Create policies for different operators
@@ -148,21 +148,21 @@ mod tests {
 			count: 5,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		_create_operator_retention_policy(&mut txn, operator1, &policy1).unwrap();
+		_create_operator_retention_policy(&mut txn, operator1, &policy1).await.unwrap();
 
 		let operator2 = FlowNodeId(200);
 		let policy2 = RetentionPolicy::KeepForever;
-		_create_operator_retention_policy(&mut txn, operator2, &policy2).unwrap();
+		_create_operator_retention_policy(&mut txn, operator2, &policy2).await.unwrap();
 
 		let operator3 = FlowNodeId(300);
 		let policy3 = RetentionPolicy::KeepVersions {
 			count: 3,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		_create_operator_retention_policy(&mut txn, operator3, &policy3).unwrap();
+		_create_operator_retention_policy(&mut txn, operator3, &policy3).await.unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_operator_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 3);
 
@@ -173,16 +173,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_list_source_retention_policies_after_updates() {
+	async fn test_list_source_retention_policies_after_updates() {
 		let mut txn = create_test_command_transaction().await;
 
 		let source = SourceId::Table(TableId(42));
 
 		// Create initial policy
 		let policy1 = RetentionPolicy::KeepForever;
-		create_source_retention_policy(&mut txn, source, &policy1).unwrap();
+		create_source_retention_policy(&mut txn, source, &policy1).await.unwrap();
 
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
@@ -191,16 +191,16 @@ mod tests {
 			count: 20,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, source, &policy2).unwrap();
+		create_source_retention_policy(&mut txn, source, &policy2).await.unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}
 
 	#[tokio::test]
-	fn test_list_operator_retention_policies_after_updates() {
+	async fn test_list_operator_retention_policies_after_updates() {
 		let mut txn = create_test_command_transaction().await;
 
 		let operator = FlowNodeId(999);
@@ -210,18 +210,18 @@ mod tests {
 			count: 3,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		_create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy1).await.unwrap();
 
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_operator_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
 		// Update policy
 		let policy2 = RetentionPolicy::KeepForever;
-		_create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy2).await.unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
+		let policies = CatalogStore::list_operator_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}

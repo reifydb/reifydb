@@ -79,12 +79,12 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_find_source_table() {
+	async fn test_find_source_table() {
 		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		// Find source by TableId
-		let source = CatalogStore::find_source(&mut txn, table.id).unwrap().expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, table.id).await.unwrap().expect("Source should exist");
 
 		match source {
 			SourceDef::Table(t) => {
@@ -96,6 +96,7 @@ mod tests {
 
 		// Find source by SourceId::Table
 		let source = CatalogStore::find_source(&mut txn, SourceId::Table(table.id))
+			.await
 			.unwrap()
 			.expect("Source should exist");
 
@@ -108,7 +109,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_source_view() {
+	async fn test_find_source_view() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -125,10 +126,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Find source by ViewId
-		let source = CatalogStore::find_source(&mut txn, view.id).unwrap().expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, view.id).await.unwrap().expect("Source should exist");
 
 		match source {
 			SourceDef::View(v) => {
@@ -140,6 +142,7 @@ mod tests {
 
 		// Find source by SourceId::View
 		let source = CatalogStore::find_source(&mut txn, SourceId::View(view.id))
+			.await
 			.unwrap()
 			.expect("Source should exist");
 
@@ -152,29 +155,30 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_find_source_not_found() {
+	async fn test_find_source_not_found() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent table
-		let source = CatalogStore::find_source(&mut txn, TableId(999)).unwrap();
+		let source = CatalogStore::find_source(&mut txn, TableId(999)).await.unwrap();
 		assert!(source.is_none());
 
 		// Non-existent view
-		let source = CatalogStore::find_source(&mut txn, ViewId(999)).unwrap();
+		let source = CatalogStore::find_source(&mut txn, ViewId(999)).await.unwrap();
 		assert!(source.is_none());
 
 		// Non-existent virtual table
-		let source = CatalogStore::find_source(&mut txn, TableVirtualId(999)).unwrap();
+		let source = CatalogStore::find_source(&mut txn, TableVirtualId(999)).await.unwrap();
 		assert!(source.is_none());
 	}
 
 	#[tokio::test]
-	fn test_find_source_table_virtual() {
+	async fn test_find_source_table_virtual() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Find the sequences virtual table
 		let sequences_id = crate::system::ids::table_virtual::SEQUENCES;
 		let source = CatalogStore::find_source(&mut txn, sequences_id)
+			.await
 			.unwrap()
 			.expect("Sequences virtual table should exist");
 
@@ -188,6 +192,7 @@ mod tests {
 
 		// Find source by SourceId::TableVirtual
 		let source = CatalogStore::find_source(&mut txn, SourceId::TableVirtual(sequences_id))
+			.await
 			.unwrap()
 			.expect("Source should exist");
 

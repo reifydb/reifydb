@@ -31,7 +31,7 @@ use reifydb_transaction::{
 };
 use tracing::instrument;
 
-use crate::{transaction::query::StandardQueryTransaction, util::block_on};
+use crate::transaction::query::StandardQueryTransaction;
 
 /// An active command transaction that holds a multi command transaction
 /// and provides query/command access to single storage.
@@ -111,10 +111,10 @@ impl StandardCommandTransaction {
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
 	#[instrument(name = "engine::transaction::command::commit", level = "debug", skip(self))]
-	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
+	pub async fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
-		block_on(TransactionInterceptor::pre_commit(self))?;
+		TransactionInterceptor::pre_commit(self).await?;
 
 		if let Some(mut multi) = self.cmd.take() {
 			let id = multi.id();
@@ -123,8 +123,8 @@ impl StandardCommandTransaction {
 			let changes = std::mem::take(&mut self.changes);
 			let row_changes = std::mem::take(&mut self.row_changes);
 
-			let version = block_on(multi.commit())?;
-			block_on(TransactionInterceptor::post_commit(self, id, version, changes, row_changes))?;
+			let version = multi.commit().await?;
+			TransactionInterceptor::post_commit(self, id, version, changes, row_changes).await?;
 
 			Ok(version)
 		} else {
@@ -163,26 +163,26 @@ impl StandardCommandTransaction {
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
-	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> crate::Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
-		block_on(self.single.with_query(keys, f))
+		self.single.with_query(keys, f).await
 	}
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
-	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub async fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Command<'_>) -> crate::Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
-		block_on(self.single.with_command(keys, f))
+		self.single.with_command(keys, f).await
 	}
 
 	/// Execute a function with a query transaction view.
@@ -223,7 +223,7 @@ impl StandardCommandTransaction {
 			self.catalog.clone(),
 		);
 
-		block_on(query_txn.read_as_of_version_exclusive(version))?;
+		query_txn.read_as_of_version_exclusive(version).await?;
 
 		f(&mut query_txn)
 	}
@@ -246,7 +246,7 @@ impl StandardCommandTransaction {
 			self.catalog.clone(),
 		);
 
-		block_on(query_txn.read_as_of_version_inclusive(version))?;
+		query_txn.read_as_of_version_inclusive(version).await?;
 
 		f(&mut query_txn)
 	}
@@ -351,29 +351,29 @@ impl QueryTransaction for StandardCommandTransaction {
 
 	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		block_on(self.single.begin_query(keys))
+		self.single.begin_query(keys).await
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
 		self.check_active()?;
-		self.cdc.begin_query()
+		Ok(self.cdc.begin_query()?)
 	}
 }
 
 impl CommandTransaction for StandardCommandTransaction {
 	type SingleVersionCommand<'a> = <TransactionSingle as SingleVersionTransaction>::Command<'a>;
 
-	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	async fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		block_on(self.single.begin_command(keys))
+		self.single.begin_command(keys).await
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {

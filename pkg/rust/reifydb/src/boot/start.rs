@@ -48,19 +48,24 @@ impl StartEventListener {
 		}
 		.encode();
 
-		let created = self.single.with_command([&key], |tx| match tx.get(&key)? {
+		// Manually manage transaction since we need async operations
+		let mut tx = self.single.begin_command([&key]).await?;
+
+		let created = match tx.get(&key).await? {
 			None => {
 				let mut row = layout.allocate();
 				layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 				tx.set(&key, row)?;
-				Ok(true)
+				true
 			}
 			Some(single) => {
 				let version = layout.get_u8(&single.values, 0);
 				assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
-				Ok(false)
+				false
 			}
-		})?;
+		};
+
+		tx.commit().await?;
 
 		// the database was never started before
 		if created {

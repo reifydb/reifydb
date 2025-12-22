@@ -170,7 +170,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_from_committed() {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -178,7 +178,7 @@ mod tests {
 		// Set value in first transaction and commit
 		{
 			let mut cmd_txn = engine.begin_command().unwrap();
-			cmd_txn.set(&key, value.clone()).unwrap();
+			cmd_txn.set(&key, value.clone()).await.unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
@@ -199,7 +199,7 @@ mod tests {
 		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
-		parent.set(&key, make_value("old")).unwrap();
+		parent.set(&key, make_value("old")).await.unwrap();
 		let version = parent.version();
 
 		let mut txn = FlowTransaction::new(&parent, version).await;
@@ -218,7 +218,7 @@ mod tests {
 		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
-		parent.set(&key, make_value("value1")).unwrap();
+		parent.set(&key, make_value("value1")).await.unwrap();
 		let version = parent.version();
 
 		let mut txn = FlowTransaction::new(&parent, version).await;
@@ -268,14 +268,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_contains_key_committed() {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
-		let engine = create_test_engine();
+		let engine = create_test_engine().await;
 
 		let key = make_key("key1");
 
 		// Set value in first transaction and commit
 		{
 			let mut cmd_txn = engine.begin_command().unwrap();
-			cmd_txn.set(&key, make_value("value1")).unwrap();
+			cmd_txn.set(&key, make_value("value1")).await.unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
@@ -292,7 +292,7 @@ mod tests {
 		let mut parent = create_test_transaction().await;
 
 		let key = make_key("key1");
-		parent.set(&key, make_value("value1")).unwrap();
+		parent.set(&key, make_value("value1")).await.unwrap();
 		let version = parent.version();
 
 		let mut txn = FlowTransaction::new(&parent, version).await;
@@ -328,8 +328,8 @@ mod tests {
 		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
-		let mut iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		assert!(iter.next().is_none());
+		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
+		assert!(iter.items.into_iter().next().is_none());
 	}
 
 	#[tokio::test]
@@ -341,8 +341,8 @@ mod tests {
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let mut iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		let items: Vec<_> = iter.by_ref().collect();
+		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
+		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should be in sorted order
 		assert_eq!(items.len(), 3);
@@ -360,8 +360,8 @@ mod tests {
 		txn.remove(&make_key("b")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let mut iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		let items: Vec<_> = iter.by_ref().collect();
+		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
+		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only have 2 items (remove filtered out)
 		assert_eq!(items.len(), 2);
@@ -385,8 +385,8 @@ mod tests {
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
-		let mut iter = txn.range(range).await.unwrap();
-		assert!(iter.next().is_none());
+		let iter = txn.range(range).await.unwrap();
+		assert!(iter.items.into_iter().next().is_none());
 	}
 
 	#[tokio::test]
@@ -400,8 +400,8 @@ mod tests {
 		txn.set(&make_key("d"), make_value("4")).unwrap();
 
 		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
-		let mut iter = txn.range(range).await.unwrap();
-		let items: Vec<_> = iter.by_ref().collect();
+		let iter = txn.range(range).await.unwrap();
+		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only include b and c (not d, exclusive end)
 		assert_eq!(items.len(), 2);
@@ -442,7 +442,7 @@ mod tests {
 
 		let prefix = make_key("test_");
 		let mut iter = txn.prefix(&prefix).await.unwrap();
-		assert!(iter.next().is_none());
+		assert!(iter.items.into_iter().next().is_none());
 	}
 
 	#[tokio::test]
@@ -456,7 +456,7 @@ mod tests {
 
 		let prefix = make_key("test_");
 		let mut iter = txn.prefix(&prefix).await.unwrap();
-		let items: Vec<_> = iter.by_ref().collect();
+		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only include keys with prefix "test_"
 		assert_eq!(items.len(), 2);

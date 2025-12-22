@@ -11,7 +11,7 @@ use tracing::instrument;
 
 use crate::{CatalogStore, transaction::MaterializedCatalogTransaction};
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogFlowQueryOperations: Send {
 	async fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>>;
 
@@ -30,7 +30,7 @@ pub trait CatalogFlowQueryOperations: Send {
 	) -> crate::Result<FlowDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogFlowQueryOperations for QT {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self))]
 	async fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>> {

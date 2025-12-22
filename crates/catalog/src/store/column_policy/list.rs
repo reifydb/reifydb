@@ -66,18 +66,18 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_ok() {
+	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn);
+		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "test_namespace",
+				namespace_name: "test_namespace".to_string(),
 				table: TableId(1),
-				table_name: "test_table",
+				table_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,
@@ -87,11 +87,12 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).await.unwrap();
 
-		let policies = CatalogStore::list_column_policies(&mut txn, column.id).unwrap();
+		let policies = CatalogStore::list_column_policies(&mut txn, column.id).await.unwrap();
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);

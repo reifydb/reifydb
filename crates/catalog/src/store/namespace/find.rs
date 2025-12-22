@@ -55,33 +55,34 @@ mod tests {
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};
 
 	#[tokio::test]
-	fn test_ok() {
+	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
 
 		create_namespace(&mut txn, "test_namespace").await;
 
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap().unwrap();
 
 		assert_eq!(namespace.id, NamespaceId(1025));
 		assert_eq!(namespace.name, "test_namespace");
 	}
 
 	#[tokio::test]
-	fn test_empty() {
+	async fn test_empty() {
 		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
 
 		assert_eq!(result, None);
 	}
 
 	#[tokio::test]
-	fn test_not_found() {
+	async fn test_not_found() {
 		let mut txn = create_test_command_transaction().await;
 
 		create_namespace(&mut txn, "another_namespace").await;
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
 		assert_eq!(result, None);
 	}
 }

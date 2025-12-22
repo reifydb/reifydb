@@ -5,11 +5,12 @@
 
 use std::time::Duration;
 
-use reifydb::{Params, WithSubsystem, embedded};
+use reifydb::{Params, embedded};
+use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() {
-	let mut db = embedded::memory().with_worker(|wp| wp).build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 
 	db.start().await.unwrap();
 
@@ -28,5 +29,5 @@ FROM $env | FILTER key == 'answer' | MAP {answer: cast(value,int1) / 2 }
 		println!("{}", frame);
 	}
 
-	tokio::time::sleep(Duration::from_millis(100)).await;
+	sleep(Duration::from_millis(100)).await;
 }

@@ -43,15 +43,13 @@ fn test_serializable(path: &Path) {
 	let store = TransactionStore::testing_memory();
 	let bus = EventBus::default();
 
-	testscript::run_path(
-		&mut MvccRunner::new(TransactionMulti::new(
-			store.clone(),
-			TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
-			bus,
-		)),
-		path,
-	)
-	.expect("testfailed")
+	let engine = reifydb_core::util::block_on_local(TransactionMulti::new(
+		store.clone(),
+		TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
+		bus,
+	));
+
+	testscript::run_path(&mut MvccRunner::new(engine), path).expect("testfailed")
 }
 
 pub struct MvccRunner {
@@ -112,10 +110,17 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 				let t = match readonly {
 					true => TransactionHandle::Query(
-						QueryTransaction::new(self.engine.clone(), version).unwrap(),
+						reifydb_core::util::block_on_local(QueryTransaction::new(
+							self.engine.clone(),
+							version,
+						))
+						.unwrap(),
 					),
 					false => TransactionHandle::Command(
-						CommandTransaction::new(self.engine.clone()).unwrap(),
+						reifydb_core::util::block_on_local(CommandTransaction::new(
+							self.engine.clone(),
+						))
+						.unwrap(),
 					),
 				};
 
@@ -133,7 +138,7 @@ impl<'a> testscript::Runner for MvccRunner {
 						unreachable!("can not call commit on rx")
 					}
 					TransactionHandle::Command(tx) => {
-						tx.commit()?;
+						reifydb_core::util::block_on_local(tx.commit())?;
 					}
 				}
 			}
@@ -176,11 +181,13 @@ impl<'a> testscript::Runner for MvccRunner {
 
 					let value = match t {
 						TransactionHandle::Query(rx) => {
-							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.values.to_vec())))
+							reifydb_core::util::block_on_local(rx.get(&key))
+								.map(|r| r.and_then(|tv| Some(tv.values.to_vec())))
 						}
-						TransactionHandle::Command(tx) => tx
-							.get(&key)
-							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
+						TransactionHandle::Command(tx) => {
+							reifydb_core::util::block_on_local(tx.get(&key))
+								.map(|r| r.and_then(|tv| Some(tv.values().to_vec())))
+						}
 					}
 					.unwrap();
 
@@ -195,7 +202,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				Self::no_tx(command)?;
 				let mut args = command.consume_args();
 
-				let mut tx = CommandTransaction::new(self.engine.clone()).unwrap();
+				let mut tx = reifydb_core::util::block_on_local(CommandTransaction::new(
+					self.engine.clone(),
+				))
+				.unwrap();
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
@@ -207,7 +217,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					}
 				}
 				args.reject_rest()?;
-				tx.commit()?;
+				reifydb_core::util::block_on_local(tx.commit())?;
 			}
 
 			// tx: rollback
@@ -235,13 +245,20 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut kvs = Vec::new();
 				match t {
 					TransactionHandle::Query(rx) => {
-						let iter = rx.range(EncodedKeyRange::all()).unwrap();
-						for multi in iter {
+						let batch = reifydb_core::util::block_on_local(
+							rx.range(EncodedKeyRange::all()),
+						)
+						.unwrap();
+						for multi in batch.items {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
 					TransactionHandle::Command(tx) => {
-						for item in tx.range(EncodedKeyRange::all()).unwrap().into_iter() {
+						let batch = reifydb_core::util::block_on_local(
+							tx.range(EncodedKeyRange::all()),
+						)
+						.unwrap();
+						for item in batch.items {
 							kvs.push((item.key().clone(), item.values().to_vec()));
 						}
 					}
@@ -266,16 +283,26 @@ impl<'a> testscript::Runner for MvccRunner {
 				match t {
 					TransactionHandle::Query(rx) => {
 						if !reverse {
-							print_rx(&mut output, rx.range(range).unwrap())
+							let batch = reifydb_core::util::block_on_local(rx.range(range))
+								.unwrap();
+							print_rx(&mut output, batch.items.into_iter())
 						} else {
-							print_rx(&mut output, rx.range_rev(range).unwrap())
+							let batch =
+								reifydb_core::util::block_on_local(rx.range_rev(range))
+									.unwrap();
+							print_rx(&mut output, batch.items.into_iter())
 						}
 					}
 					TransactionHandle::Command(tx) => {
 						if !reverse {
-							print_tx(&mut output, tx.range(range).unwrap())
+							let batch = reifydb_core::util::block_on_local(tx.range(range))
+								.unwrap();
+							print_tx(&mut output, batch.items.into_iter())
 						} else {
-							print_tx(&mut output, tx.range_rev(range).unwrap())
+							let batch =
+								reifydb_core::util::block_on_local(tx.range_rev(range))
+									.unwrap();
+							print_tx(&mut output, batch.items.into_iter())
 						}
 					}
 				}
@@ -294,16 +321,30 @@ impl<'a> testscript::Runner for MvccRunner {
 				match t {
 					TransactionHandle::Query(rx) => {
 						if !reverse {
-							print_rx(&mut output, rx.prefix(&prefix).unwrap())
+							let batch =
+								reifydb_core::util::block_on_local(rx.prefix(&prefix))
+									.unwrap();
+							print_rx(&mut output, batch.items.into_iter())
 						} else {
-							print_rx(&mut output, rx.prefix_rev(&prefix).unwrap())
+							let batch = reifydb_core::util::block_on_local(
+								rx.prefix_rev(&prefix),
+							)
+							.unwrap();
+							print_rx(&mut output, batch.items.into_iter())
 						}
 					}
 					TransactionHandle::Command(tx) => {
 						if !reverse {
-							print_tx(&mut output, tx.prefix(&prefix).unwrap())
+							let batch =
+								reifydb_core::util::block_on_local(tx.prefix(&prefix))
+									.unwrap();
+							print_tx(&mut output, batch.items.into_iter())
 						} else {
-							print_tx(&mut output, tx.prefix_rev(&prefix).unwrap())
+							let batch = reifydb_core::util::block_on_local(
+								tx.prefix_rev(&prefix),
+							)
+							.unwrap();
+							print_tx(&mut output, batch.items.into_iter())
 						}
 					}
 				}

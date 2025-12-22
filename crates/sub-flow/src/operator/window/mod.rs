@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -501,12 +502,13 @@ impl WindowStateful for WindowOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for WindowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -517,10 +519,10 @@ impl Operator for WindowOperator {
 		// For now, return an error indicating async is needed.
 		match &self.slide {
 			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
-			Some(_) => Err(reifydb_core::Error(reifydb_core::internal!(
+			Some(_) => Err(Error(internal!(
 				"Sliding window requires async runtime - not yet supported in sync context"
 			))),
-			None => Err(reifydb_core::Error(reifydb_core::internal!(
+			None => Err(Error(internal!(
 				"Tumbling window requires async runtime - not yet supported in sync context"
 			))),
 		}

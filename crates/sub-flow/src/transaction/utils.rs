@@ -16,11 +16,11 @@ pub mod test {
 	}
 
 	/// Helper to extract values from query results for comparison
-	pub fn from_store(
+	pub async fn from_store(
 		parent: &mut reifydb_engine::StandardCommandTransaction,
 		key: &EncodedKey,
 	) -> Option<EncodedValues> {
 		use reifydb_core::interface::MultiVersionQueryTransaction;
-		parent.get(key).unwrap().map(|m| m.values)
+		parent.get(key).await.unwrap().map(|m| m.values)
 	}
 }

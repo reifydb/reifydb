@@ -324,7 +324,7 @@ impl Executor {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	async fn execute_command(
@@ -373,7 +373,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl ExecuteQuery<StandardQueryTransaction> for Executor {
 	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {

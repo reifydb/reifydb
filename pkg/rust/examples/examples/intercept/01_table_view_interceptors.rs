@@ -45,7 +45,6 @@ async fn main() {
 		.done()
 		// Enable required subsystems
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
-		.with_worker(|w| w)
 		.with_flow(|f| f) // Required for deferred views
 		.build()
 		.unwrap();

@@ -50,52 +50,52 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_get_flow_ok() {
+	async fn test_get_flow_ok() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
 		let _namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
-		create_flow(&mut txn, "namespace_one", "flow_one");
-		create_flow(&mut txn, "namespace_two", "flow_two");
+		create_flow(&mut txn, "namespace_one", "flow_one").await;
+		create_flow(&mut txn, "namespace_two", "flow_two").await;
 
-		let result = CatalogStore::get_flow(&mut txn, FlowId(1)).unwrap();
+		let result = CatalogStore::get_flow(&mut txn, FlowId(1)).await.unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.name, "flow_one");
 		assert_eq!(result.namespace, namespace_one.id);
 	}
 
 	#[tokio::test]
-	fn test_get_flow_not_found() {
+	async fn test_get_flow_not_found() {
 		let mut txn = create_test_command_transaction().await;
 
-		let err = CatalogStore::get_flow(&mut txn, FlowId(42)).unwrap_err();
+		let err = CatalogStore::get_flow(&mut txn, FlowId(42)).await.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("FlowId(42)"));
 		assert!(err.message.contains("not found in catalog"));
 	}
 
 	#[tokio::test]
-	fn test_get_flow_by_name_ok() {
+	async fn test_get_flow_by_name_ok() {
 		let mut txn = create_test_command_transaction().await;
 		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
 		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
-		create_flow(&mut txn, "namespace_one", "flow_one");
-		create_flow(&mut txn, "namespace_two", "flow_two");
+		create_flow(&mut txn, "namespace_one", "flow_one").await;
+		create_flow(&mut txn, "namespace_two", "flow_two").await;
 
-		let result = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "flow_two").unwrap();
+		let result = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "flow_two").await.unwrap();
 		assert_eq!(result.name, "flow_two");
 		assert_eq!(result.namespace, namespace_two.id);
 	}
 
 	#[tokio::test]
-	fn test_get_flow_by_name_not_found() {
+	async fn test_get_flow_by_name_not_found() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = create_namespace(&mut txn, "test_namespace").await;
 
-		create_flow(&mut txn, "test_namespace", "flow_one");
+		create_flow(&mut txn, "test_namespace", "flow_one").await;
 
-		let err = CatalogStore::get_flow_by_name(&mut txn, namespace.id, "flow_two").unwrap_err();
+		let err = CatalogStore::get_flow_by_name(&mut txn, namespace.id, "flow_two").await.unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_031");
 		assert!(diagnostic.message.contains("flow_two"));
@@ -103,15 +103,15 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_flow_by_name_different_namespace() {
+	async fn test_get_flow_by_name_different_namespace() {
 		let mut txn = create_test_command_transaction().await;
 		let _namespace_one = create_namespace(&mut txn, "namespace_one").await;
 		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
-		create_flow(&mut txn, "namespace_one", "my_flow");
+		create_flow(&mut txn, "namespace_one", "my_flow").await;
 
 		// Flow exists in namespace_one but we're looking in namespace_two
-		let err = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "my_flow").unwrap_err();
+		let err = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "my_flow").await.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_031");
 	}
 }

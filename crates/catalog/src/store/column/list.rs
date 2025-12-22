@@ -101,9 +101,9 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_ok() {
+	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn);
+		ensure_test_table(&mut txn).await;
 
 		// Create columns out of order
 		CatalogStore::create_column(
@@ -111,9 +111,9 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "test_namespace",
+				namespace_name: "test_namespace".to_string(),
 				table: TableId(1),
-				table_name: "test_table",
+				table_name: "test_table".to_string(),
 				column: "b_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int4),
 				if_not_exists: false,
@@ -123,6 +123,7 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
 		CatalogStore::create_column(
@@ -130,9 +131,9 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "test_namespace",
+				namespace_name: "test_namespace".to_string(),
 				table: TableId(1),
-				table_name: "test_table",
+				table_name: "test_table".to_string(),
 				column: "a_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
@@ -142,9 +143,10 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -158,19 +160,19 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_empty() {
+	async fn test_empty() {
 		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn);
+		ensure_test_table(&mut txn).await;
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
 		assert!(columns.is_empty());
 	}
 
 	#[tokio::test]
-	fn test_table_does_not_exist() {
+	async fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction().await;
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
 		assert!(columns.is_empty());
 	}
 }

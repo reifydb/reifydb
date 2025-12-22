@@ -45,7 +45,8 @@ pub trait WindowStateful: RawStatefulOperator {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
 		// Collect keys to remove (similar pattern to state_clear in utils.rs)
-		let keys_to_remove: Vec<_> = txn.range(prefixed_range).await?.map(|multi| multi.key).collect();
+		let batch = txn.range(prefixed_range).await?;
+		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
 			txn.remove(&key)?;
@@ -67,7 +68,7 @@ mod tests {
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
-	async fn test_window_key(window_id: u64) -> EncodedKey {
+	fn test_window_key(window_id: u64) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
@@ -111,7 +112,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_save_window_state() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
@@ -131,7 +132,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_multiple_windows() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -152,7 +153,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_expire_before() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -187,7 +188,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_expire_empty_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -214,7 +215,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_expire_all() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -241,7 +242,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_sliding_window_simulation() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

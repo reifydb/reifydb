@@ -16,7 +16,7 @@ use tracing::{instrument, warn};
 
 use crate::{CatalogStore, store::namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogNamespaceCommandOperations: Send {
 	async fn create_namespace(&mut self, to_create: NamespaceToCreate) -> crate::Result<NamespaceDef>;
 
@@ -35,7 +35,7 @@ pub trait CatalogTrackNamespaceChangeOperations {
 	fn track_namespace_def_deleted(&mut self, namespace: NamespaceDef) -> crate::Result<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogNamespaceQueryOperations: Send {
 	async fn find_namespace(&mut self, id: NamespaceId) -> crate::Result<Option<NamespaceDef>>;
 
@@ -46,7 +46,7 @@ pub trait CatalogNamespaceQueryOperations: Send {
 	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment>) -> crate::Result<NamespaceDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -71,7 +71,7 @@ impl<
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send>
 	CatalogNamespaceQueryOperations for QT
 {

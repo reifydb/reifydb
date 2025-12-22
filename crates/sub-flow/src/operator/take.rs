@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use async_trait::async_trait;
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -143,12 +144,13 @@ impl SingleStateful for TakeOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for TakeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,

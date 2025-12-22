@@ -17,7 +17,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Priority, SchedulerService, Subsystem};
+use reifydb_sub_api::{HealthStatus, Subsystem};
 use tracing::instrument;
 
 use crate::{builder::OperatorFactory, consumer::FlowConsumer};
@@ -27,8 +27,6 @@ pub struct FlowSubsystemConfig {
 	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
-	/// Priority for the polling task in the worker pool
-	pub priority: Priority,
 	/// Custom operator factories
 	pub operators: Vec<(String, OperatorFactory)>,
 	/// Maximum batch size for CDC polling (None = unbounded)
@@ -46,9 +44,8 @@ impl FlowSubsystem {
 	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let scheduler = ioc.resolve::<SchedulerService>().ok();
 
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir, scheduler);
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir);
 
 		Ok(Self {
 			consumer: PollConsumer::new(

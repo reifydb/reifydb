@@ -64,7 +64,36 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_ok() {
+	async fn test_ok() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
+
+		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
+		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
+		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1027), "table_two")
+			.await
+			.unwrap()
+			.unwrap();
+		assert_eq!(result.id, TableId(1026));
+		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.name, "table_two");
+	}
+
+	#[tokio::test]
+	async fn test_empty() {
+		let mut txn = create_test_command_transaction().await;
+
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").await.unwrap();
+		assert!(result.is_none());
+	}
+
+	#[tokio::test]
+	async fn test_not_found_different_table() {
 		let mut txn = create_test_command_transaction().await;
 		ensure_test_namespace(&mut txn).await;
 		create_namespace(&mut txn, "namespace_one").await;
@@ -76,22 +105,12 @@ mod tests {
 		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
 
 		let result =
-			CatalogStore::find_table_by_name(&mut txn, NamespaceId(1027), "table_two").unwrap().unwrap();
-		assert_eq!(result.id, TableId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
-		assert_eq!(result.name, "table_two");
-	}
-
-	#[tokio::test]
-	fn test_empty() {
-		let mut txn = create_test_command_transaction().await;
-
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").unwrap();
+			CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "table_four_two").await.unwrap();
 		assert!(result.is_none());
 	}
 
 	#[tokio::test]
-	fn test_not_found_different_table() {
+	async fn test_not_found_different_namespace() {
 		let mut txn = create_test_command_transaction().await;
 		ensure_test_namespace(&mut txn).await;
 		create_namespace(&mut txn, "namespace_one").await;
@@ -102,23 +121,7 @@ mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
 		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "table_four_two").unwrap();
-		assert!(result.is_none());
-	}
-
-	#[tokio::test]
-	fn test_not_found_different_namespace() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
-
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
-
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(2), "table_two").unwrap();
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(2), "table_two").await.unwrap();
 		assert!(result.is_none());
 	}
 }

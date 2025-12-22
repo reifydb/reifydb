@@ -29,12 +29,12 @@ pub trait Execute<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus, 
 {
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait ExecuteCommand<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus> {
 	async fn execute_command(&self, txn: &mut CT, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait ExecuteQuery<QT: QueryTransaction> {
 	async fn execute_query(&self, txn: &mut QT, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }

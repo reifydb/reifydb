@@ -204,7 +204,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_first_row_number() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("first");
@@ -217,7 +217,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_duplicate_key_same_row_number() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("duplicate");
@@ -239,7 +239,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_sequential_row_numbers() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create multiple unique keys
@@ -255,7 +255,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_mixed_new_and_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some keys
@@ -292,7 +292,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_multiple_providers_isolated() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
@@ -318,7 +318,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_counter_persistence() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -341,7 +341,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_large_row_numbers() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -369,7 +369,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_batch_mixed_existing_and_new_keys() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 

@@ -41,7 +41,7 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_get_view_pk_id_with_primary_key() {
+	async fn test_get_view_pk_id_with_primary_key() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -59,10 +59,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut txn, view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, view.id).await.unwrap();
 
 		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
@@ -72,17 +73,20 @@ mod tests {
 				column_ids: vec![columns[0].id],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id =
-			CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap().expect("Primary key ID should exist");
+		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id)
+			.await
+			.unwrap()
+			.expect("Primary key ID should exist");
 
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
 
 	#[tokio::test]
-	fn test_get_view_pk_id_without_primary_key() {
+	async fn test_get_view_pk_id_without_primary_key() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -100,20 +104,21 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}
 
 	#[tokio::test]
-	fn test_get_view_pk_id_nonexistent_view() {
+	async fn test_get_view_pk_id_nonexistent_view() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Get the primary key ID for non-existent view - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}

@@ -18,7 +18,7 @@ use reifydb_core::{
 		encoded::EncodedValuesLayout,
 	},
 };
-use reifydb_type::{Fragment, RowNumber};
+use reifydb_type::{Fragment, RowNumber, return_internal_error};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
@@ -313,7 +313,7 @@ fn build_headers_and_layout<'a>(source: &ResolvedSource) -> crate::Result<(Colum
 		ResolvedSource::View(view) => view.columns(),
 		ResolvedSource::RingBuffer(rb) => rb.columns(),
 		_ => {
-			reifydb_type::return_internal_error!("Row lookup not supported for this source type");
+			unreachable!("Row lookup not supported for this source type");
 		}
 	};
 

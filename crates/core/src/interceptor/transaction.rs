@@ -11,8 +11,7 @@ use crate::{
 define_interceptor!(
 	context: PreCommitContext<T>,
 	trait: PreCommitInterceptor,
-	fields: {
-		txn: &'a mut T}
+	fields: {txn: &'a mut T}
 );
 
 define_closure_interceptor!(ClosurePreCommitInterceptor, PreCommitInterceptor, PreCommitContext, with_transaction);

@@ -16,7 +16,8 @@ use super::{
 	},
 };
 use crate::{
-	StandardCommandTransaction, StandardEngine, transaction::operation::RingBufferOperations, util::encode_value,
+	StandardCommandTransaction, StandardEngine, encoding::encode_value,
+	transaction::operation::RingBufferOperations,
 };
 
 /// Marker trait for validation mode (sealed)
@@ -109,7 +110,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	pub async fn execute(self) -> crate::Result<BulkInsertResult> {
 		use reifydb_core::interface::Engine;
 
-		let mut txn = self.engine.begin_command()?;
+		let mut txn = self.engine.begin_command().await?;
 		let mut result = BulkInsertResult::default();
 
 		// Process all pending table inserts
@@ -127,7 +128,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		}
 
 		// Commit the transaction
-		txn.commit()?;
+		txn.commit().await?;
 
 		Ok(result)
 	}

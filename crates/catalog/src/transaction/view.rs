@@ -19,7 +19,7 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogViewCommandOperations: Send {
 	async fn create_view(&mut self, view: ViewToCreate) -> crate::Result<ViewDef>;
 
@@ -37,7 +37,7 @@ pub trait CatalogTrackViewChangeOperations {
 	fn track_view_def_deleted(&mut self, view: ViewDef) -> crate::Result<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
 	async fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
 
@@ -56,7 +56,7 @@ pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
 	) -> crate::Result<ViewDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -83,7 +83,7 @@ impl<
 	}
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogViewQueryOperations
 	for QT
 {

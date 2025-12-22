@@ -16,8 +16,6 @@ mod query;
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
 
-use crate::util::block_on;
-
 /// An enum that can hold either a command or query transaction for flexible
 /// execution
 pub enum StandardTransaction<'a> {
@@ -105,70 +103,6 @@ impl<'a> StandardTransaction<'a> {
 			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
 		}
 	}
-
-	/// Get a value by key (synchronous wrapper around async method)
-	pub fn get_sync(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
-		match self {
-			Self::Command(txn) => block_on(txn.get(key)),
-			Self::Query(txn) => block_on(txn.get(key)),
-		}
-	}
-
-	/// Check if a key exists (synchronous wrapper around async method)
-	pub fn contains_key_sync(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		match self {
-			Self::Command(txn) => block_on(txn.contains_key(key)),
-			Self::Query(txn) => block_on(txn.contains_key(key)),
-		}
-	}
-
-	/// Get a range batch (synchronous wrapper around async method)
-	pub fn range_batch_sync(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => block_on(txn.range_batch(range, batch_size)),
-			Self::Query(txn) => block_on(txn.range_batch(range, batch_size)),
-		}
-	}
-
-	/// Get a reverse range batch (synchronous wrapper around async method)
-	pub fn range_rev_batch_sync(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => block_on(txn.range_rev_batch(range, batch_size)),
-			Self::Query(txn) => block_on(txn.range_rev_batch(range, batch_size)),
-		}
-	}
-
-	/// Get a prefix batch (synchronous wrapper around async method)
-	pub fn prefix_sync(&mut self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => block_on(txn.prefix(prefix)),
-			Self::Query(txn) => block_on(txn.prefix(prefix)),
-		}
-	}
-
-	/// Get a reverse prefix batch (synchronous wrapper around async method)
-	pub fn prefix_rev_sync(&mut self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => block_on(txn.prefix_rev(prefix)),
-			Self::Query(txn) => block_on(txn.prefix_rev(prefix)),
-		}
-	}
-
-	/// Read as of version exclusive (synchronous wrapper around async method)
-	pub fn read_as_of_version_exclusive_sync(&mut self, version: CommitVersion) -> reifydb_core::Result<()> {
-		match self {
-			StandardTransaction::Command(txn) => block_on(txn.read_as_of_version_exclusive(version)),
-			StandardTransaction::Query(txn) => block_on(txn.read_as_of_version_exclusive(version)),
-		}
-	}
 }
 
 impl<'a> From<&'a mut StandardCommandTransaction> for StandardTransaction<'a> {
@@ -229,7 +163,7 @@ impl<'a> StandardTransaction<'a> {
 }
 
 use async_trait::async_trait;
-use reifydb_core::interface::{CdcQueryTransaction, QueryTransaction, SingleVersionQueryTransaction};
+use reifydb_core::interface::QueryTransaction;
 
 // StandardTransaction already has MultiVersionQueryTransaction methods defined above,
 // but we need the trait implementation for trait bounds

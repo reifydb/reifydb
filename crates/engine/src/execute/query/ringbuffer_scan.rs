@@ -40,7 +40,7 @@ pub struct RingBufferScan {
 }
 
 impl RingBufferScan {
-	pub fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
+	pub async fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -51,7 +51,7 @@ impl RingBufferScan {
 
 		for col in ringbuffer.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = crate::util::block_on(CatalogStore::find_dictionary(rx, dict_id))? {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id).await? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -212,7 +212,7 @@ impl QueryNode for RingBufferScan {
 
 impl<'a> RingBufferScan {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
+	async fn decode_dictionary_columns(
 		&self,
 		columns: &mut Columns,
 		txn: &mut StandardTransaction<'a>,
@@ -229,9 +229,9 @@ impl<'a> RingBufferScan {
 				for row_idx in 0..row_count {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded_value) = crate::util::block_on(
-							txn.get_from_dictionary(dictionary, entry_id),
-						)? {
+						if let Some(decoded_value) =
+							txn.get_from_dictionary(dictionary, entry_id).await?
+						{
 							new_data.push_value(decoded_value);
 						} else {
 							new_data.push_value(reifydb_type::Value::Undefined);

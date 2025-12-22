@@ -7,7 +7,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{self, JoinHandle},
 	time::Duration,
 };
 
@@ -19,8 +18,8 @@ use reifydb_core::{
 	},
 	key::{CdcConsumerKey, EncodableKey},
 };
-use reifydb_engine::{StandardEngine, util::block_on};
-use reifydb_sub_api::Priority;
+use reifydb_engine::StandardEngine;
+use tokio::task::JoinHandle;
 use tracing::{debug, error};
 
 use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
@@ -32,8 +31,6 @@ pub struct PollConsumerConfig {
 	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
-	/// Priority for the polling task in the worker pool
-	pub priority: Priority,
 	/// Maximum batch size for fetching CDC events (None = unbounded)
 	pub max_batch_size: Option<u64>,
 }
@@ -43,14 +40,8 @@ impl PollConsumerConfig {
 		Self {
 			consumer_id,
 			poll_interval,
-			priority: Priority::Normal,
 			max_batch_size,
 		}
-	}
-
-	pub fn with_priority(mut self, priority: Priority) -> Self {
-		self.priority = priority;
-		self
 	}
 }
 
@@ -161,15 +152,15 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version).await?;
-		let current_version = transaction.commit()?;
+		let current_version = transaction.commit().await?;
 
 		let lag = current_version.0.saturating_sub(latest_version.0);
 
 		Ok(Some((latest_version, lag)))
 	}
 
-	fn polling_loop(
-		config: &PollConsumerConfig,
+	async fn polling_loop(
+		config: PollConsumerConfig,
 		engine: StandardEngine,
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
@@ -177,18 +168,18 @@ impl<C: CdcConsume> PollConsumer<C> {
 		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
-			match block_on(Self::consume_batch(&state, &engine, &consumer, config.max_batch_size)) {
+			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size).await {
 				Ok(Some((_processed_version, _lag))) => {
-					thread::sleep(config.poll_interval);
+					tokio::time::sleep(config.poll_interval).await;
 				}
 				Ok(None) => {
 					// No events to process - sleep before retrying
-					thread::sleep(config.poll_interval);
+					tokio::time::sleep(config.poll_interval).await;
 				}
 				Err(error) => {
 					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 					// Sleep before retrying on error
-					thread::sleep(config.poll_interval);
+					tokio::time::sleep(config.poll_interval).await;
 				}
 			}
 		}
@@ -212,9 +203,7 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
-		self.worker = Some(thread::spawn(move || {
-			Self::polling_loop(&config, engine, consumer, state);
-		}));
+		self.worker = Some(tokio::spawn(Self::polling_loop(config, engine, consumer, state)));
 
 		Ok(())
 	}
@@ -225,7 +214,8 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 		}
 
 		if let Some(worker) = self.worker.take() {
-			worker.join().expect("Failed to join consumer thread");
+			// Abort the task - we don't need to wait for it to finish
+			worker.abort();
 		}
 
 		Ok(())

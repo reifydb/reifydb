@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	Row,
 	interface::{EncodableKey, FlowNodeId, ResolvedView, RowKey, SourceId},
@@ -29,12 +30,13 @@ impl SinkViewOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SinkViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,

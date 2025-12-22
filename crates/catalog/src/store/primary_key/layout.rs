@@ -61,7 +61,7 @@ mod tests {
 	use super::primary_key::{deserialize_column_ids, serialize_column_ids};
 
 	#[tokio::test]
-	fn test_serialize_deserialize_column_ids() {
+	async fn test_serialize_deserialize_column_ids() {
 		let test_cases = vec![
 			// Empty list
 			vec![],
@@ -119,7 +119,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_serialize_format() {
+	async fn test_serialize_format() {
 		// Test specific format details
 		let column_ids = vec![ColumnId(0x0123456789ABCDEF), ColumnId(0xFEDCBA9876543210)];
 		let blob = serialize_column_ids(&column_ids);

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
@@ -30,6 +31,7 @@ impl MapOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for MapOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node

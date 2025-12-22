@@ -135,7 +135,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent), fields(version = version.0))]
 	pub async fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
 		let mut source_query = parent.multi.begin_query().await.unwrap();
-		source_query.read_as_of_version_inclusive(version).await;
+		source_query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().await.unwrap();
 		Self {
@@ -156,7 +156,7 @@ impl FlowTransaction {
 	/// Update the transaction to read at a new version
 	pub async fn update_version(&mut self, new_version: CommitVersion) {
 		self.version = new_version;
-		self.source_query.read_as_of_version_inclusive(new_version).await;
+		self.source_query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get immutable reference to the metrics

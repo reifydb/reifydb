@@ -40,9 +40,9 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_get_table_pk_id_with_primary_key() {
+	async fn test_get_table_pk_id_with_primary_key() {
 		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		// Create a column
 		let col = CatalogStore::create_column(
@@ -50,9 +50,9 @@ mod tests {
 			table.id,
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "test_namespace",
+				namespace_name: "test_namespace".to_string(),
 				table: table.id,
-				table_name: "test_table",
+				table_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: reifydb_type::TypeConstraint::unconstrained(reifydb_type::Type::Uint8),
 				if_not_exists: false,
@@ -62,6 +62,7 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create primary key
@@ -72,10 +73,12 @@ mod tests {
 				column_ids: vec![col.id],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get the primary key ID
 		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id)
+			.await
 			.unwrap()
 			.expect("Primary key ID should exist");
 
@@ -83,23 +86,23 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_table_pk_id_without_primary_key() {
+	async fn test_get_table_pk_id_without_primary_key() {
 		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}
 
 	#[tokio::test]
-	fn test_get_table_pk_id_nonexistent_table() {
+	async fn test_get_table_pk_id_nonexistent_table() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Get the primary key ID for non-existent table - should be
 		// None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}

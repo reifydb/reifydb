@@ -51,16 +51,16 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_list_flows_all() {
+	async fn test_list_flows_all() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
 		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
-		create_flow(&mut txn, "namespace_one", "flow_one");
-		create_flow(&mut txn, "namespace_one", "flow_two");
-		create_flow(&mut txn, "namespace_two", "flow_three");
+		create_flow(&mut txn, "namespace_one", "flow_one").await;
+		create_flow(&mut txn, "namespace_one", "flow_two").await;
+		create_flow(&mut txn, "namespace_two", "flow_three").await;
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 3);
 
 		// Verify all flows are present (order may vary)
@@ -88,24 +88,25 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_list_flows_empty() {
+	async fn test_list_flows_empty() {
 		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 0);
 	}
 
 	#[tokio::test]
-	fn test_list_flows_all_with_different_statuses() {
+	async fn test_list_flows_all_with_different_statuses() {
 		let mut txn = create_test_command_transaction().await;
 		create_namespace(&mut txn, "test_namespace").await;
 
 		// Create flows with different statuses
-		create_flow(&mut txn, "test_namespace", "active_flow");
+		create_flow(&mut txn, "test_namespace", "active_flow").await;
 
 		// Create a paused flow by directly using CatalogStore
 		use crate::store::flow::create::FlowToCreate;
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap().unwrap();
 		CatalogStore::create_flow(
 			&mut txn,
 			FlowToCreate {
@@ -115,9 +116,10 @@ mod tests {
 				status: FlowStatus::Paused,
 			},
 		)
+		.await
 		.unwrap();
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 2);
 
 		// Verify both flows are present with correct statuses (order may vary)

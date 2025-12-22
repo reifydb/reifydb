@@ -50,12 +50,12 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_get_source_table() {
+	async fn test_get_source_table() {
 		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		// Get store by TableId
-		let source = CatalogStore::get_source(&mut txn, table.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, table.id).await.unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -66,7 +66,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::Table
-		let source = CatalogStore::get_source(&mut txn, SourceId::Table(table.id)).unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::Table(table.id)).await.unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -77,7 +77,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_source_view() {
+	async fn test_get_source_view() {
 		let mut txn = create_test_command_transaction().await;
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -94,10 +94,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get store by ViewId
-		let source = CatalogStore::get_source(&mut txn, view.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, view.id).await.unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -108,7 +109,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::View
-		let source = CatalogStore::get_source(&mut txn, SourceId::View(view.id)).unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::View(view.id)).await.unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -119,11 +120,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_source_not_found_table() {
+	async fn test_get_source_not_found_table() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent table should error
-		let result = CatalogStore::get_source(&mut txn, TableId(999));
+		let result = CatalogStore::get_source(&mut txn, TableId(999)).await;
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -132,11 +133,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	fn test_get_source_not_found_view() {
+	async fn test_get_source_not_found_view() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent view should error
-		let result = CatalogStore::get_source(&mut txn, ViewId(999));
+		let result = CatalogStore::get_source(&mut txn, ViewId(999)).await;
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

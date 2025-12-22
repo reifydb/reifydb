@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use bincode::{config::standard, serde::encode_to_vec};
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -343,6 +344,7 @@ impl SingleStateful for JoinOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
@@ -456,7 +458,10 @@ impl Operator for JoinOperator {
 		drop(_phase2_span);
 
 		// Phase 3: Process batched removes
-		let _phase3_span = trace_span!("join::phase3_removes", batch_count = removes_by_key.len()).entered();
+		{
+			let _phase3_span =
+				trace_span!("join::phase3_removes", batch_count = removes_by_key.len()).entered();
+		}
 		for (key_hash, rows) in removes_by_key {
 			let diffs = self
 				.strategy
@@ -474,10 +479,10 @@ impl Operator for JoinOperator {
 			result.extend(diffs);
 		}
 
-		drop(_phase3_span);
-
 		// Phase 4: Process updates individually (key change complexity requires this)
-		let _phase4_span = trace_span!("join::phase4_updates", update_count = updates.len()).entered();
+		{
+			let _phase4_span = trace_span!("join::phase4_updates", update_count = updates.len()).entered();
+		}
 		for (pre, post, old_key, new_key) in updates {
 			let diffs = self
 				.strategy
@@ -495,8 +500,6 @@ impl Operator for JoinOperator {
 				.await?;
 			result.extend(diffs);
 		}
-
-		drop(_phase4_span);
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}

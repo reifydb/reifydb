@@ -29,50 +29,50 @@ async fn test_write_skew() {
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&a999, as_values!(100u64)).unwrap();
 	txn.set(&a888, as_values!(100u64)).unwrap();
-	txn.commit().unwrap();
-	assert_eq!(2, engine.version().unwrap());
+	txn.commit().await.unwrap();
+	assert_eq!(2, engine.version().await.unwrap());
 
-	let get_bal = |txn: &mut CommandTransaction, k: &EncodedKey| -> u64 {
-		let sv = txn.get(k).unwrap().unwrap();
+	async fn get_bal(txn: &mut CommandTransaction, k: &EncodedKey) -> u64 {
+		let sv = txn.get(k).await.unwrap().unwrap();
 		let val = sv.values();
 		from_values!(u64, val)
-	};
+	}
 
 	// Start two transactions, each would read both accounts and deduct from
 	// one account.
 	let mut txn1 = engine.begin_command().await.unwrap();
 
-	let mut sum = get_bal(&mut txn1, &a999);
-	sum += get_bal(&mut txn1, &a888);
+	let mut sum = get_bal(&mut txn1, &a999).await;
+	sum += get_bal(&mut txn1, &a888).await;
 	assert_eq!(200, sum);
 	txn1.set(&a999, as_values!(0u64)).unwrap(); // Deduct 100 from a999
 
 	// Let's read this back.
-	let mut sum = get_bal(&mut txn1, &a999);
+	let mut sum = get_bal(&mut txn1, &a999).await;
 	assert_eq!(0, sum);
-	sum += get_bal(&mut txn1, &a888);
+	sum += get_bal(&mut txn1, &a888).await;
 	assert_eq!(100, sum);
 	// Don't commit yet.
 
 	let mut txn2 = engine.begin_command().await.unwrap();
 
-	let mut sum = get_bal(&mut txn2, &a999);
-	sum += get_bal(&mut txn2, &a888);
+	let mut sum = get_bal(&mut txn2, &a999).await;
+	sum += get_bal(&mut txn2, &a888).await;
 	assert_eq!(200, sum);
 	txn2.set(&a888, as_values!(0u64)).unwrap(); // Deduct 100 from a888
 
 	// Let's read this back.
-	let mut sum = get_bal(&mut txn2, &a999);
+	let mut sum = get_bal(&mut txn2, &a999).await;
 	assert_eq!(100, sum);
-	sum += get_bal(&mut txn2, &a888);
+	sum += get_bal(&mut txn2, &a888).await;
 	assert_eq!(100, sum);
 
 	// Commit both now.
-	txn1.commit().unwrap();
-	let err = txn2.commit().unwrap_err();
+	txn1.commit().await.unwrap();
+	let err = txn2.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	assert_eq!(3, engine.version().unwrap());
+	assert_eq!(3, engine.version().await.unwrap());
 }
 
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
@@ -89,7 +89,7 @@ async fn test_black_white() {
 			txn.set(&as_key!(i), as_values!("white".to_string())).unwrap();
 		}
 	}
-	txn.commit().unwrap();
+	txn.commit().await.unwrap();
 
 	let mut white = engine.begin_command().await.unwrap();
 	let indices = white
@@ -125,8 +125,8 @@ async fn test_black_white() {
 		black.set(&i, as_values!("black".to_string())).unwrap();
 	}
 
-	black.commit().unwrap();
-	let err = white.commit().unwrap_err();
+	black.commit().await.unwrap();
+	let err = white.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
@@ -148,24 +148,24 @@ async fn test_overdraft_protection() {
 	// Setup
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&key, as_values!(1000)).unwrap();
-	txn.commit().unwrap();
+	txn.commit().await.unwrap();
 
 	// txn1
 	let mut txn1 = engine.begin_command().await.unwrap();
-	let money = from_values!(i32, *txn1.get(&key).unwrap().unwrap().values());
+	let money = from_values!(i32, *txn1.get(&key).await.unwrap().unwrap().values());
 	txn1.set(&key, as_values!(money - 500)).unwrap();
 
 	// txn2
 	let mut txn2 = engine.begin_command().await.unwrap();
-	let money = from_values!(i32, *txn2.get(&key).unwrap().unwrap().values());
+	let money = from_values!(i32, *txn2.get(&key).await.unwrap().unwrap().values());
 	txn2.set(&key, as_values!(money - 500)).unwrap();
 
-	txn1.commit().unwrap();
-	let err = txn2.commit().unwrap_err();
+	txn1.commit().await.unwrap();
+	let err = txn2.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
-	let money = from_values!(i32, *rx.get(&key).unwrap().unwrap().values());
+	let money = from_values!(i32, *rx.get(&key).await.unwrap().unwrap().values());
 	assert_eq!(money, 500);
 }
 
@@ -185,7 +185,7 @@ async fn test_primary_colors() {
 			txn.set(&as_key!(i), as_values!("blue".to_string())).unwrap();
 		}
 	}
-	txn.commit().unwrap();
+	txn.commit().await.unwrap();
 
 	let mut red = engine.begin_command().await.unwrap();
 	let indices = red
@@ -235,11 +235,11 @@ async fn test_primary_colors() {
 		red_two.set(&i, as_values!("red".to_string())).unwrap();
 	}
 
-	red.commit().unwrap();
-	let err = red_two.commit().unwrap_err();
+	red.commit().await.unwrap();
+	let err = red_two.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let err = yellow.commit().unwrap_err();
+	let err = yellow.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
@@ -276,8 +276,8 @@ async fn test_intersecting_data() {
 	txn.set(&as_key!("a2"), as_values!(20u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
-	assert_eq!(2, engine.version().unwrap());
+	txn.commit().await.unwrap();
+	assert_eq!(2, engine.version().await.unwrap());
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
@@ -347,8 +347,8 @@ async fn test_intersecting_data2() {
 	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
-	assert_eq!(2, engine.version().unwrap());
+	txn.commit().await.unwrap();
+	assert_eq!(2, engine.version().await.unwrap());
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
@@ -400,8 +400,8 @@ async fn test_intersecting_data3() {
 	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
-	assert_eq!(2, engine.version().unwrap());
+	txn.commit().await.unwrap();
+	assert_eq!(2, engine.version().await.unwrap());
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1

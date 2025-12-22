@@ -6,7 +6,7 @@ use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) async fn create_deferred_view<'a>(

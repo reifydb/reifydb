@@ -136,8 +136,13 @@ mod tests {
 		CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 
 		// Verify both are linked to namespace
-		let links =
-			txn.range(NamespaceFlowKey::full_scan(test_namespace.id)).await.unwrap().collect::<Vec<_>>();
+		let links = txn
+			.range(NamespaceFlowKey::full_scan(test_namespace.id))
+			.await
+			.unwrap()
+			.items
+			.into_iter()
+			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		// Verify link metadata (order may vary)

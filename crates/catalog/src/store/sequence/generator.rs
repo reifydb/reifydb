@@ -5,7 +5,9 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	diagnostic::sequence::sequence_exhausted,
-	interface::{CommandTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction},
+	interface::{
+		CommandTransaction, QueryTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction,
+	},
 	return_error,
 	value::encoded::EncodedValuesLayout,
 };
@@ -45,7 +47,7 @@ macro_rules! impl_generator {
 					default: Option<$prim>,
 					incr: $prim,
 				) -> crate::Result<$prim> {
-					let mut tx = txn.begin_single_command([key])?;
+					let mut tx = txn.begin_single_command([key]).await?;
 					let result = match tx.get(key).await? {
 						Some(row) => {
 							let mut row = row.values;
@@ -113,7 +115,10 @@ macro_rules! impl_generator {
 				use reifydb_core::{
 					EncodedKey,
 					diagnostic::sequence::sequence_exhausted,
-					interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction},
+					interface::{
+						QueryTransaction, SingleVersionCommandTransaction,
+						SingleVersionQueryTransaction,
+					},
 				};
 				use reifydb_engine::test_utils::create_test_command_transaction;
 				use reifydb_type::Type;
@@ -135,7 +140,7 @@ macro_rules! impl_generator {
 					}
 
 					let key = EncodedKey::new("sequence");
-					let tx = txn.begin_single_query([&key]).unwrap();
+					let mut tx = txn.begin_single_query([&key]).unwrap();
 					let single = tx.get(&key).await.unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
@@ -229,7 +234,7 @@ macro_rules! impl_generator {
 					}
 
 					let key = EncodedKey::new("sequence_by_5000");
-					let tx = txn.begin_single_query([&key]).unwrap();
+					let mut tx = txn.begin_single_query([&key]).unwrap();
 					let single = tx.get(&key).await.unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))

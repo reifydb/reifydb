@@ -10,6 +10,7 @@ use reifydb_flow_operator_abi::{
 	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
 	FFI_OK, FFIContext, StoreIteratorFFI,
 };
+use tokio::{runtime::Handle, task::block_in_place};
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -44,7 +45,7 @@ pub(super) extern "C" fn host_store_get(
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
 		// Get value from transaction
-		match flow_txn.get(&key) {
+		match Handle::current().block_on(flow_txn.get(&key)) {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
 				let value_bytes = value.as_ref();
@@ -88,7 +89,7 @@ pub(super) extern "C" fn host_store_contains_key(
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
 		// Check if key exists in transaction
-		match flow_txn.contains_key(&key) {
+		match Handle::current().block_on(flow_txn.contains_key(&key)) {
 			Ok(exists) => {
 				*result = if exists {
 					1
@@ -127,9 +128,7 @@ pub(super) extern "C" fn host_store_prefix(
 		let prefix = EncodedKey(CowVec::new(prefix_bytes));
 
 		// Use block_in_place to call async methods from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current().block_on(flow_txn.prefix(&prefix))
-		});
+		let result = block_in_place(|| Handle::current().block_on(flow_txn.prefix(&prefix)));
 
 		match result {
 			Ok(batch) => {
@@ -230,9 +229,7 @@ pub(super) extern "C" fn host_store_range(
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 
 		// Use block_in_place to call async methods from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current().block_on(flow_txn.range(range))
-		});
+		let result = block_in_place(|| Handle::current().block_on(flow_txn.range(range)));
 
 		match result {
 			Ok(batch) => {

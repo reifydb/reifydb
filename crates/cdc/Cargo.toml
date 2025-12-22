@@ -18,3 +18,4 @@ tracing = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
+tokio = { workspace = true }

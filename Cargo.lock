@@ -1511,6 +1511,7 @@ dependencies = [
  "reifydb-store-transaction",
  "reifydb-testing",
  "reifydb-transaction",
+ "tokio",
 ]
 
 [[package]]
@@ -1541,6 +1542,7 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
+ "tokio",
  "tracing",
 ]
 

@@ -239,10 +239,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_or_load_table() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -254,13 +254,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_or_load_cache_hit() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
-		let first = catalog.get_or_load(&mut txn, source).unwrap();
-		let second = catalog.get_or_load(&mut txn, source).unwrap();
+		let first = catalog.get_or_load(&mut txn, source).await.unwrap();
+		let second = catalog.get_or_load(&mut txn, source).await.unwrap();
 
 		// Should return the same Arc (cache hit)
 		assert!(Arc::ptr_eq(&first, &second));
@@ -269,11 +269,11 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_or_load_view() {
 		let mut txn = create_test_transaction().await;
-		ensure_test_namespace(&mut txn);
-		let view = create_view(&mut txn, "test_namespace", "test_view", &[]);
+		ensure_test_namespace(&mut txn).await;
+		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -283,10 +283,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_or_load_ringbuffer() {
 		let mut txn = create_test_transaction().await;
-		let rb = ensure_test_ringbuffer(&mut txn);
+		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -331,13 +331,14 @@ mod tests {
 					dictionary_id: None,
 				},
 			],
-		);
+		)
+		.await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
 		// Load into cache
-		let metadata = catalog.get_or_load(&mut txn, source).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, source).await.unwrap();
 
 		// Verify cached metadata matches expected column types
 		assert_eq!(metadata.storage_types.len(), 3);
@@ -369,13 +370,13 @@ mod tests {
 	async fn test_invalidate_from_cdc_view_key() {
 		let mut txn = create_test_transaction().await;
 		ensure_test_namespace(&mut txn);
-		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]);
+		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::View(view.id);
 
 		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
+		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
 		assert!(catalog.sources.read().get(&source).is_some());
 
 		// Invalidate via CDC key
@@ -391,13 +392,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_from_cdc_ringbuffer_key() {
 		let mut txn = create_test_transaction().await;
-		let rb = ensure_test_ringbuffer(&mut txn);
+		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::RingBuffer(rb.id);
 
 		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
+		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
 		assert!(catalog.sources.read().get(&source).is_some());
 
 		// Invalidate via CDC key
@@ -410,13 +411,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_from_cdc_column_key() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
 		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
+		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
 		assert!(catalog.sources.read().get(&source).is_some());
 
 		// Invalidate via column key (should invalidate the source the column belongs to)
@@ -433,14 +434,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_from_cdc_dictionary_key() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
-		let rb = ensure_test_ringbuffer(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
+		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 
 		// Load multiple sources into cache
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
+		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
 		assert_eq!(catalog.sources.read().len(), 2);
 
 		// Invalidate via dictionary key (should clear entire cache)
@@ -458,13 +459,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_removes_entry() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
 		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
+		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
 		assert!(catalog.sources.read().get(&source).is_some());
 
 		// Direct invalidation
@@ -484,14 +485,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_clear() {
 		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn);
-		let rb = ensure_test_ringbuffer(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
+		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 
 		// Load multiple sources
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
+		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
 		assert_eq!(catalog.sources.read().len(), 2);
 
 		// Clear all

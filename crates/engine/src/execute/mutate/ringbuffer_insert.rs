@@ -16,10 +16,10 @@ use tracing::{debug_span, instrument};
 use super::coerce::coerce_value_to_column_type;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
+	encoding::encode_value,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
 	transaction::operation::DictionaryOperations,
-	util::encode_value,
 };
 
 impl Executor {

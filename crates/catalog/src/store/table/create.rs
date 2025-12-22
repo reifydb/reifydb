@@ -197,7 +197,13 @@ mod tests {
 
 		CatalogStore::create_table(&mut txn, to_create).await.unwrap();
 
-		let links = txn.range(NamespaceTableKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
+		let links = txn
+			.range(NamespaceTableKey::full_scan(test_namespace.id))
+			.await
+			.unwrap()
+			.items
+			.into_iter()
+			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];

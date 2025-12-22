@@ -17,7 +17,7 @@ use tracing::instrument;
 
 use crate::{CatalogStore, store::ringbuffer::create::RingBufferToCreate, transaction::MaterializedCatalogTransaction};
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogRingBufferQueryOperations: Send {
 	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>>;
 
@@ -36,7 +36,7 @@ pub trait CatalogRingBufferQueryOperations: Send {
 	) -> crate::Result<RingBufferDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBufferQueryOperations for QT {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self))]
 	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
@@ -86,12 +86,12 @@ pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> crate::Result<()>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait CatalogRingBufferCommandOperations: CatalogRingBufferQueryOperations {
 	async fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction

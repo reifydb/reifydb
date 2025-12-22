@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{
 	Row,
 	interface::{FlowDef, FlowNodeId, SourceId, TableDef, ViewDef},
@@ -26,12 +27,13 @@ impl SourceTableOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SourceTableOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -43,17 +45,16 @@ impl Operator for SourceTableOperator {
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
-			result.push(txn
-				.get(&RowKey {
-					source: SourceId::table(self.table.id),
-					row: *row,
-				}
-				.encode())?
-				.map(|values| Row {
-					number: *row,
-					encoded: values,
-					layout: (&self.table).into(),
-				}));
+			let key = RowKey {
+				source: SourceId::table(self.table.id),
+				row: *row,
+			}
+			.encode();
+			result.push(tokio::runtime::Handle::current().block_on(txn.get(&key))?.map(|values| Row {
+				number: *row,
+				encoded: values,
+				layout: (&self.table).into(),
+			}));
 		}
 		Ok(result)
 	}
@@ -73,12 +74,13 @@ impl SourceViewOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SourceViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -90,17 +92,16 @@ impl Operator for SourceViewOperator {
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
-			result.push(txn
-				.get(&RowKey {
-					source: SourceId::view(self.view.id),
-					row: *row,
-				}
-				.encode())?
-				.map(|encoded| Row {
-					number: *row,
-					encoded,
-					layout: (&self.view).into(),
-				}));
+			let key = RowKey {
+				source: SourceId::view(self.view.id),
+				row: *row,
+			}
+			.encode();
+			result.push(tokio::runtime::Handle::current().block_on(txn.get(&key))?.map(|encoded| Row {
+				number: *row,
+				encoded,
+				layout: (&self.view).into(),
+			}));
 		}
 		Ok(result)
 	}
@@ -120,12 +121,13 @@ impl SourceFlowOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SourceFlowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,

@@ -9,7 +9,7 @@ use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 
-use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
+use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
 	pub(crate) async fn create_table<'a>(

@@ -24,12 +24,12 @@ pub mod test {
 	};
 
 	/// Create a test engine with memory storage
-	pub fn create_test_engine() -> StandardEngine {
+	pub async fn create_test_engine() -> StandardEngine {
 		let store = TransactionStore::testing_memory();
 		let eventbus = EventBus::new();
 		let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 		let cdc = TransactionCdc::new(store.clone());
-		let multi = TransactionMulti::new(store, single.clone(), eventbus.clone());
+		let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
 
 		StandardEngine::new(
 			multi,
@@ -77,12 +77,13 @@ pub mod test {
 		}
 	}
 
+	#[async_trait::async_trait]
 	impl Operator for TestOperator {
 		fn id(&self) -> FlowNodeId {
 			self.id
 		}
 
-		fn apply(
+		async fn apply(
 			&self,
 			txn: &mut FlowTransaction,
 			change: FlowChange,
@@ -120,7 +121,7 @@ pub mod test {
 
 	/// Helper to create a test transaction
 	pub async fn create_test_transaction() -> StandardCommandTransaction {
-		let engine = create_test_engine();
-		engine.begin_command().await.unwrap()
+		let engine = create_test_engine().await;
+		engine.begin_command().unwrap()
 	}
 }

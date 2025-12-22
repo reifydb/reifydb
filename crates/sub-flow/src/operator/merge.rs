@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{EncodedKey, Error, Row, interface::FlowNodeId, util::encoding::keycode::KeySerializer};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
@@ -77,12 +78,13 @@ impl MergeOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for MergeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,

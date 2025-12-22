@@ -98,14 +98,6 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_worker<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
-	{
-		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
-		self
-	}
-
 	#[cfg(feature = "sub_tracing")]
 	pub fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
@@ -153,7 +145,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub fn build(mut self) -> crate::Result<Database> {
+	pub async fn build(mut self) -> crate::Result<Database> {
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -177,7 +169,7 @@ impl DatabaseBuilder {
 		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
+		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog).await?;
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
@@ -240,18 +232,6 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// 2. Add worker subsystem second (always ensure it exists, use default if not configured)
-		let worker_factory = self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::default()));
-		let subsystem = worker_factory.create(&self.ioc)?;
-		all_versions.push(subsystem.version());
-		subsystems.add_subsystem(subsystem);
-
-		// Register SchedulerService in IoC for other subsystems to use
-		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
-		if let Some(ref sched) = scheduler {
-			self.ioc = self.ioc.register(sched.clone());
-		}
-
 		// 3. Add flow subsystem third
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
@@ -283,25 +263,25 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(engine, subsystems, self.config, health_monitor, scheduler))
+		Ok(Database::new(engine, subsystems, self.config, health_monitor))
 	}
 
 	/// Load the materialized catalog from storage
-	fn load_materialized_catalog(
+	async fn load_materialized_catalog(
 		multi: &TransactionMultiVersion,
 		single: &TransactionSingle,
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
 		let mut qt = StandardQueryTransaction::new(
-			multi.begin_query()?,
+			multi.begin_query().await?,
 			single.clone(),
 			cdc.clone(),
 			catalog.clone(),
 		);
 
 		debug!("Loading materialized catalog");
-		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+		MaterializedCatalogLoader::load_all(&mut qt, catalog).await?;
 
 		Ok(())
 	}

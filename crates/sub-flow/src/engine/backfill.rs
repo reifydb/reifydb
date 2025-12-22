@@ -94,7 +94,7 @@ impl FlowEngine {
 				.clone();
 			drop(operators);
 
-			let result_change = source_operator.apply(&mut flow_txn, change, &self.inner.evaluator)?;
+			let result_change = source_operator.apply(&mut flow_txn, change, &self.inner.evaluator).await?;
 			if !result_change.diffs.is_empty() {
 				source_changes.push((source_node.id, result_change));
 			}
@@ -103,10 +103,10 @@ impl FlowEngine {
 		// Phase 2: Propagate all source changes through downstream operators
 		// Now all JOIN sides have their data in state
 		for (source_node_id, change) in source_changes {
-			self.propagate_initial_change(&mut flow_txn, flow, source_node_id, change)?;
+			self.propagate_initial_change(&mut flow_txn, flow, source_node_id, change).await?;
 		}
 
-		flow_txn.commit(txn)?;
+		flow_txn.commit(txn).await?;
 
 		Ok(())
 	}
@@ -252,33 +252,43 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::backfill::propagate", level = "debug", skip(self, flow_txn, flow), fields(from_node = ?from_node_id, diff_count = change.diffs.len()))]
-	fn propagate_initial_change(
-		&self,
-		flow_txn: &mut FlowTransaction,
-		flow: &Flow,
+	fn propagate_initial_change<'a>(
+		&'a self,
+		flow_txn: &'a mut FlowTransaction,
+		flow: &'a Flow,
 		from_node_id: FlowNodeId,
 		change: FlowChange,
-	) -> crate::Result<()> {
-		let downstream_nodes = flow
-			.graph
-			.nodes()
-			.filter(|(_, node)| node.inputs.contains(&from_node_id))
-			.map(|(id, _)| *id)
-			.collect::<Vec<_>>();
+	) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::Result<()>> + Send + 'a>> {
+		Box::pin(async move {
+			let downstream_nodes = flow
+				.graph
+				.nodes()
+				.filter(|(_, node)| node.inputs.contains(&from_node_id))
+				.map(|(id, _)| *id)
+				.collect::<Vec<_>>();
 
-		for downstream_node_id in downstream_nodes {
-			let operators = self.inner.operators.read();
-			if let Some(operator) = operators.get(&downstream_node_id) {
-				let operator = operator.clone();
-				drop(operators);
+			for downstream_node_id in downstream_nodes {
+				let operator = {
+					let operators = self.inner.operators.read();
+					operators.get(&downstream_node_id).cloned()
+				};
 
-				let result = operator.apply(flow_txn, change.clone(), &self.inner.evaluator)?;
-				if !result.diffs.is_empty() {
-					self.propagate_initial_change(flow_txn, flow, downstream_node_id, result)?;
+				if let Some(operator) = operator {
+					let result =
+						operator.apply(flow_txn, change.clone(), &self.inner.evaluator).await?;
+					if !result.diffs.is_empty() {
+						self.propagate_initial_change(
+							flow_txn,
+							flow,
+							downstream_node_id,
+							result,
+						)
+						.await?;
+					}
 				}
 			}
-		}
 
-		Ok(())
+			Ok(())
+		})
 	}
 }

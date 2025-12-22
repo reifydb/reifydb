@@ -46,7 +46,7 @@ mod tests {
 	};
 
 	#[tokio::test]
-	fn test_find_source_retention_policy_exists() {
+	async fn test_find_source_retention_policy_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(42));
 
@@ -55,23 +55,23 @@ mod tests {
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_source_retention_policy(&mut txn, source, &policy).unwrap();
+		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
 
-		let found = CatalogStore::find_source_retention_policy(&mut txn, source).unwrap();
+		let found = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
 	#[tokio::test]
-	fn test_find_source_retention_policy_not_exists() {
+	async fn test_find_source_retention_policy_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let source = SourceId::Table(TableId(9999));
 
-		let found = CatalogStore::find_source_retention_policy(&mut txn, source).unwrap();
+		let found = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
 		assert_eq!(found, None);
 	}
 
 	#[tokio::test]
-	fn test_find_operator_retention_policy_exists() {
+	async fn test_find_operator_retention_policy_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(999);
 
@@ -80,18 +80,18 @@ mod tests {
 			cleanup_mode: CleanupMode::Drop,
 		};
 
-		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy).await.unwrap();
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).await.unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
 	#[tokio::test]
-	fn test_find_operator_retention_policy_not_exists() {
+	async fn test_find_operator_retention_policy_not_exists() {
 		let mut txn = create_test_command_transaction().await;
 		let operator = FlowNodeId(9999);
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).await.unwrap();
 		assert_eq!(found, None);
 	}
 }
