@@ -20,7 +20,7 @@ use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
 	#[instrument(name = "flow::backfill::load", level = "info", skip(self, txn), fields(flow_id = ?flow.id, flow_creation_version = flow_creation_version.0))]
-	pub(crate) fn load_initial_data(
+	pub(crate) async fn load_initial_data(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: &Flow,
@@ -45,7 +45,7 @@ impl FlowEngine {
 		}
 
 		let backfill_version = CommitVersion(flow_creation_version.0.saturating_sub(1));
-		let mut flow_txn = FlowTransaction::new(txn, backfill_version);
+		let mut flow_txn = FlowTransaction::new(txn, backfill_version).await;
 		let mut source_changes: Vec<(FlowNodeId, FlowChange)> = Vec::new();
 
 		for source_node in &source_nodes {
@@ -59,8 +59,8 @@ impl FlowEngine {
 				_ => continue,
 			};
 
-			let source_def = txn.get_source(source_id)?;
-			let rows = self.scan_all_rows(txn, &mut flow_txn, &source_def)?;
+			let source_def = txn.get_source(source_id).await?;
+			let rows = self.scan_all_rows(txn, &mut flow_txn, &source_def).await?;
 			if rows.is_empty() {
 				continue;
 			}
@@ -113,7 +113,7 @@ impl FlowEngine {
 
 	// FIXME this can be streamed without loading everything into memory first
 	#[instrument(name = "flow::backfill::scan", level = "debug", skip(self, txn, flow_txn), fields(source_id = ?source.id()))]
-	fn scan_all_rows(
+	async fn scan_all_rows(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow_txn: &mut FlowTransaction,
@@ -135,7 +135,7 @@ impl FlowEngine {
 
 		for col in columns {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
+				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id).await? {
 					storage_types.push(dict.id_type);
 					value_types.push((col.name.clone(), dict.value_type));
 					dictionaries.push(Some(dict));
@@ -160,18 +160,21 @@ impl FlowEngine {
 		let range = RowKeyRange::scan_range(source.id(), None);
 
 		const BATCH_SIZE: u64 = 10000;
-		let multi_rows: Vec<_> = flow_txn.range_batched(range.into(), BATCH_SIZE)?.into_iter().collect();
+		let multi_rows: Vec<_> =
+			flow_txn.range_batched(range.into(), BATCH_SIZE).await?.items.into_iter().collect();
 
 		for multi in multi_rows {
 			if let Some(key) = RowKey::decode(&multi.key) {
 				// Decode dictionary columns and re-encode with value types
-				let decoded_encoded = self.decode_dictionary_row(
-					txn,
-					&multi.values,
-					&storage_layout,
-					&value_layout,
-					&dictionaries,
-				)?;
+				let decoded_encoded = self
+					.decode_dictionary_row(
+						txn,
+						&multi.values,
+						&storage_layout,
+						&value_layout,
+						&dictionaries,
+					)
+					.await?;
 
 				rows.push(Row {
 					number: key.row,
@@ -188,7 +191,7 @@ impl FlowEngine {
 	}
 
 	/// Decode dictionary columns in a row by looking up dictionary values
-	fn decode_dictionary_row(
+	async fn decode_dictionary_row(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		raw_encoded: &reifydb_core::value::encoded::EncodedValues,
@@ -211,7 +214,7 @@ impl FlowEngine {
 						entry_id.to_u128() as u64,
 					)
 					.encode();
-					match txn.get(&index_key)? {
+					match txn.get(&index_key).await? {
 						Some(v) => {
 							let (decoded_value, _): (Value, _) =
 								bincode::serde::decode_from_slice(

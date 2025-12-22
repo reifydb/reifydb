@@ -105,7 +105,7 @@ impl LeftHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_remove(
+	pub(crate) async fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Row,
@@ -122,7 +122,7 @@ impl LeftHashJoin {
 				if let Some(key_hash) = key_hash {
 					// Check if left entry exists
 					if state.left.contains_key(txn, &key_hash)? {
-						operator.cleanup_left_row_joins(txn, pre.number.0)?;
+						operator.cleanup_left_row_joins(txn, pre.number.0).await?;
 
 						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_left(
@@ -154,7 +154,7 @@ impl LeftHashJoin {
 						pre: unmatched_row,
 					});
 
-					operator.cleanup_left_row_joins(txn, pre.number.0)?;
+					operator.cleanup_left_row_joins(txn, pre.number.0).await?;
 				}
 			}
 			JoinSide::Right => {
@@ -201,7 +201,7 @@ impl LeftHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_update(
+	pub(crate) async fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Row,
@@ -281,7 +281,8 @@ impl LeftHashJoin {
 			}
 		} else {
 			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator, version)?;
+			let remove_diffs =
+				self.handle_remove(txn, pre, side, old_key, state, operator, version).await?;
 			result.extend(remove_diffs);
 
 			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
@@ -396,7 +397,7 @@ impl LeftHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_remove_batch(
+	pub(crate) async fn handle_remove_batch(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -416,7 +417,7 @@ impl LeftHashJoin {
 			JoinSide::Left => {
 				// Clean up row number mappings for all left rows
 				for row in rows {
-					operator.cleanup_left_row_joins(txn, row.number.0)?;
+					operator.cleanup_left_row_joins(txn, row.number.0).await?;
 				}
 
 				// First emit all remove diffs in one batch

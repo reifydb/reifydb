@@ -24,12 +24,14 @@ impl Executor {
 			}
 		}
 
-		let result = txn.create_view(ViewToCreate {
-			fragment: Some(plan.view.clone().into_owned()),
-			name: plan.view.text().to_string(),
-			namespace: plan.namespace.id,
-			columns: plan.columns,
-		}).await?;
+		let result = txn
+			.create_view(ViewToCreate {
+				fragment: Some(plan.view.clone().into_owned()),
+				name: plan.view.text().to_string(),
+				namespace: plan.namespace.id,
+				columns: plan.columns,
+			})
+			.await?;
 
 		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 
@@ -56,7 +58,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_create_view() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema();
+		let mut txn = create_test_command_transaction_with_internal_schema().await;
 
 		let namespace = ensure_test_namespace(&mut txn).await;
 
@@ -127,10 +129,10 @@ mod tests {
 	#[tokio::test]
 	async fn test_create_same_view_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema();
+		let mut txn = create_test_command_transaction_with_internal_schema().await;
 
 		let namespace = ensure_test_namespace(&mut txn).await;
-		let another_schema = create_namespace(&mut txn, "another_schema");
+		let another_schema = create_namespace(&mut txn, "another_schema").await;
 
 		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
@@ -193,7 +195,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_create_view_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema();
+		let mut txn = create_test_command_transaction_with_internal_schema().await;
 
 		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {

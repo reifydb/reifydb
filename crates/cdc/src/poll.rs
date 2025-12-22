@@ -15,11 +15,11 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		KeyKind, MultiVersionCommandTransaction,
+		KeyKind,
 	},
 	key::{CdcConsumerKey, EncodableKey},
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardEngine, util::block_on};
 use reifydb_sub_api::Priority;
 use tracing::{debug, error};
 
@@ -86,7 +86,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 	}
 
-	fn consume_batch(
+	async fn consume_batch(
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
@@ -94,7 +94,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 	) -> Result<Option<(CommitVersion, u64)>> {
 		// Get current version and wait briefly for in-flight commits to complete.
 		// This ensures done_until catches up to avoid missing CDC events.
-		let current_version = engine.current_version()?;
+		let current_version = engine.current_version().await?;
 		let target_version = CommitVersion(current_version.0.saturating_sub(1));
 
 		// Wait up to 50ms for done_until to catch up (best effort, not required)
@@ -105,7 +105,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		let mut transaction = engine.begin_command()?;
 
-		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
+		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key).await?;
 
 		// If safe_version <= checkpoint, there's nothing safe to fetch yet
 		if safe_version <= checkpoint {
@@ -114,7 +114,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		// Only fetch CDC events up to safe_version to avoid race conditions
-		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size)?;
+		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size).await?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(None);
@@ -160,7 +160,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 			consumer.consume(&mut transaction, relevant_transactions)?;
 		}
 
-		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
+		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version).await?;
 		let current_version = transaction.commit()?;
 
 		let lag = current_version.0.saturating_sub(latest_version.0);
@@ -177,7 +177,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
+			match block_on(Self::consume_batch(&state, &engine, &consumer, config.max_batch_size)) {
 				Ok(Some((_processed_version, _lag))) => {
 					thread::sleep(config.poll_interval);
 				}
@@ -236,7 +236,7 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 	}
 }
 
-fn fetch_cdcs_until(
+async fn fetch_cdcs_until(
 	txn: &mut impl CommandTransaction,
 	since_version: CommitVersion,
 	until_version: CommitVersion,
@@ -249,5 +249,7 @@ fn fetch_cdcs_until(
 		}
 		None => Bound::Included(until_version),
 	};
-	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), upper_bound)?.collect::<Vec<_>>()))
+	let mut cdc = txn.begin_cdc_query()?;
+	let batch = cdc.range(Bound::Excluded(since_version), upper_bound).await?;
+	Ok(batch.items)
 }

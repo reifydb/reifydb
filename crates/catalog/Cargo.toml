@@ -21,3 +21,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb-engine = { workspace = true}
+tokio = {workspace = true}

@@ -172,7 +172,7 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
+	pub async fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
 		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
@@ -183,7 +183,8 @@ impl RowNumberProvider {
 		let state_prefix = FlowNodeInternalStateKey::new(self.node, prefix.clone());
 		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
-		let keys_to_remove: Vec<_> = txn.range(full_range)?.map(|multi| multi.key).collect();
+		let batch = txn.range(full_range).await?;
+		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
 			txn.remove(&key)?;

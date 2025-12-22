@@ -118,7 +118,7 @@ mod tests {
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper functions to create test definitions
-	async fn test_table_def(id: u64, namespace_id: u64, name: &str).await -> TableDef {
+	async fn test_table_def(id: u64, namespace_id: u64, name: &str) -> TableDef {
 		TableDef {
 			id: TableId(id),
 			namespace: NamespaceId(namespace_id),

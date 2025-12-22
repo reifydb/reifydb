@@ -268,7 +268,7 @@ impl WindowOperator {
 	}
 
 	/// Convert window events to columnar format for aggregation
-	pub fn events_to_columns(&self, events: &[WindowEvent]) -> crate::Result<Columns<'static>> {
+	pub fn events_to_columns(&self, events: &[WindowEvent]) -> crate::Result<Columns> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
 		}
@@ -378,7 +378,7 @@ impl WindowOperator {
 	}
 
 	/// Process expired windows and clean up state
-	pub fn process_expired_windows(
+	pub async fn process_expired_windows(
 		&self,
 		txn: &mut FlowTransaction,
 		current_timestamp: u64,
@@ -396,7 +396,7 @@ impl WindowOperator {
 			let range =
 				EncodedKeyRange::new(std::ops::Bound::Excluded(before_key), std::ops::Bound::Unbounded);
 
-			let _expired_count = self.expire_range(txn, range)?;
+			let _expired_count = self.expire_range(txn, range).await?;
 		}
 
 		Ok(result)
@@ -512,10 +512,17 @@ impl Operator for WindowOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
+		// For window operators, we need async operation but trait requires sync.
+		// We'll need to refactor the architecture to support this properly.
+		// For now, return an error indicating async is needed.
 		match &self.slide {
 			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
-			Some(_) => apply_sliding_window(self, txn, change, evaluator),
-			None => apply_tumbling_window(self, txn, change, evaluator),
+			Some(_) => Err(reifydb_core::Error(reifydb_core::internal!(
+				"Sliding window requires async runtime - not yet supported in sync context"
+			))),
+			None => Err(reifydb_core::Error(reifydb_core::internal!(
+				"Tumbling window requires async runtime - not yet supported in sync context"
+			))),
 		}
 	}
 

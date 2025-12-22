@@ -32,22 +32,26 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register::without_backfill", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register_without_backfill(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
-		self.register(txn, flow, None)
+	pub async fn register_without_backfill(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: Flow,
+	) -> crate::Result<()> {
+		self.register(txn, flow, None).await
 	}
 
 	#[instrument(name = "flow::register::with_backfill", level = "info", skip(self, txn), fields(flow_id = ?flow.id, backfill_version = flow_creation_version.0))]
-	pub fn register_with_backfill(
+	pub async fn register_with_backfill(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: Flow,
 		flow_creation_version: CommitVersion,
 	) -> crate::Result<()> {
-		self.register(txn, flow, Some(flow_creation_version))
+		self.register(txn, flow, Some(flow_creation_version)).await
 	}
 
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id, has_backfill = flow_creation_version.is_some()))]
-	fn register(
+	async fn register(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: Flow,
@@ -57,13 +61,13 @@ impl FlowEngine {
 
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			self.add(txn, &flow, node)?;
+			self.add(txn, &flow, node).await?;
 		}
 
 		if let Some(flow_creation_version) = flow_creation_version {
 			self.inner.flow_creation_versions.write().insert(flow.id, flow_creation_version);
 
-			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version) {
+			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version).await {
 				self.inner.flow_creation_versions.write().remove(&flow.id);
 				return Err(e);
 			}
@@ -77,7 +81,7 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
+	async fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
 		debug_assert!(!self.inner.operators.read().contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -90,7 +94,7 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = txn.get_table(table)?;
+				let table = txn.get_table(table).await?;
 
 				self.add_source(flow.id, node.id, SourceId::table(table.id));
 				self.inner.operators.write().insert(
@@ -101,7 +105,7 @@ impl FlowEngine {
 			SourceView {
 				view,
 			} => {
-				let view = txn.get_view(view)?;
+				let view = txn.get_view(view).await?;
 				self.add_source(flow.id, node.id, SourceId::view(view.id));
 				self.inner.operators.write().insert(
 					node.id,
@@ -111,7 +115,7 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = txn.get_flow(source_flow)?;
+				let source_flow_def = txn.get_flow(source_flow).await?;
 				self.add_source(flow.id, node.id, SourceId::flow(source_flow_def.id));
 				self.inner.operators.write().insert(
 					node.id,
@@ -138,7 +142,7 @@ impl FlowEngine {
 					Arc::new(Operators::SinkView(SinkViewOperator::new(
 						parent,
 						node.id,
-						resolve_view(txn, view)?,
+						resolve_view(txn, view).await?,
 					))),
 				);
 			}

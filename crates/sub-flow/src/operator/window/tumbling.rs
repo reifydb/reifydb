@@ -67,7 +67,7 @@ impl WindowOperator {
 }
 
 /// Apply changes for tumbling windows
-pub fn apply_tumbling_window(
+pub async fn apply_tumbling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -77,7 +77,7 @@ pub fn apply_tumbling_window(
 	let current_timestamp = operator.current_timestamp();
 
 	// First, process any expired windows
-	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
+	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
 	result.extend(expired_diffs);
 
 	// Process each incoming change

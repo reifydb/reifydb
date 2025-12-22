@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::RowNumber;
@@ -36,10 +37,11 @@ pub use take::TakeOperator;
 pub use transform::registry::TransformOperatorRegistry;
 pub use window::WindowOperator;
 
+#[async_trait]
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId; // FIXME replace by operator id
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -69,27 +71,27 @@ pub enum Operators {
 }
 
 impl Operators {
-	pub fn apply(
+	pub async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		match self {
-			Operators::Filter(op) => op.apply(txn, change, evaluator),
-			Operators::Map(op) => op.apply(txn, change, evaluator),
-			Operators::Extend(op) => op.apply(txn, change, evaluator),
-			Operators::Join(op) => op.apply(txn, change, evaluator),
-			Operators::Sort(op) => op.apply(txn, change, evaluator),
-			Operators::Take(op) => op.apply(txn, change, evaluator),
-			Operators::Distinct(op) => op.apply(txn, change, evaluator),
-			Operators::Merge(op) => op.apply(txn, change, evaluator),
-			Operators::Apply(op) => op.apply(txn, change, evaluator),
-			Operators::SinkView(op) => op.apply(txn, change, evaluator),
-			Operators::Window(op) => op.apply(txn, change, evaluator),
-			Operators::SourceTable(op) => op.apply(txn, change, evaluator),
-			Operators::SourceView(op) => op.apply(txn, change, evaluator),
-			Operators::SourceFlow(op) => op.apply(txn, change, evaluator),
+			Operators::Filter(op) => op.apply(txn, change, evaluator).await,
+			Operators::Map(op) => op.apply(txn, change, evaluator).await,
+			Operators::Extend(op) => op.apply(txn, change, evaluator).await,
+			Operators::Join(op) => op.apply(txn, change, evaluator).await,
+			Operators::Sort(op) => op.apply(txn, change, evaluator).await,
+			Operators::Take(op) => op.apply(txn, change, evaluator).await,
+			Operators::Distinct(op) => op.apply(txn, change, evaluator).await,
+			Operators::Merge(op) => op.apply(txn, change, evaluator).await,
+			Operators::Apply(op) => op.apply(txn, change, evaluator).await,
+			Operators::SinkView(op) => op.apply(txn, change, evaluator).await,
+			Operators::Window(op) => op.apply(txn, change, evaluator).await,
+			Operators::SourceTable(op) => op.apply(txn, change, evaluator).await,
+			Operators::SourceView(op) => op.apply(txn, change, evaluator).await,
+			Operators::SourceFlow(op) => op.apply(txn, change, evaluator).await,
 		}
 	}
 

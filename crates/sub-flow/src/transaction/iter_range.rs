@@ -3,7 +3,10 @@
 
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};
+use reifydb_core::{
+	CommitVersion, EncodedKey,
+	interface::{MultiVersionBatch, MultiVersionValues},
+};
 
 use super::Pending;
 
@@ -139,6 +142,28 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 				(None, None) => return None,
 			}
 		}
+	}
+}
+
+/// Collect a merged batch of pending and committed values
+///
+/// This function uses the FlowRangeIter to merge pending writes with committed batch results,
+/// materializing all items into a single batch. The `has_more` field is always false because
+/// pending writes are finite and fully materialized.
+pub fn collect_batch(
+	pending: BTreeMapRange<'_, EncodedKey, Pending>,
+	committed_batch: MultiVersionBatch,
+	version: CommitVersion,
+) -> MultiVersionBatch {
+	// Create iterator with same merge logic
+	let iter = FlowRangeIter::new(pending, Box::new(committed_batch.items.into_iter()), version);
+
+	// Materialize all items
+	let items: Vec<_> = iter.collect();
+
+	MultiVersionBatch {
+		items,
+		has_more: false,
 	}
 }
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{NamespaceId, QueryTransaction, SequenceId, SingleVersionQueryTransaction, SystemSequenceKey},
+	interface::{NamespaceId, QueryTransaction, SequenceId, SystemSequenceKey},
 	return_internal_error,
 };
 
@@ -37,8 +37,7 @@ impl CatalogStore {
 		// Read current value from single storage
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
-		let mut tx = rx.begin_single_query([&sequence_key])?;
-		let value = match tx.get(&sequence_key).await? {
+		let value = match rx.get(&sequence_key).await? {
 			Some(row) => LAYOUT.get_u64(&row.values, VALUE),
 			None => 0,
 		};

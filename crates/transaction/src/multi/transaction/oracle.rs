@@ -305,10 +305,10 @@ where
 		self.command.done_until()
 	}
 
-	pub fn stop(&mut self) {
+	pub async fn stop(&mut self) {
 		// Signal shutdown - use blocking_write since this is called from Drop
 		{
-			let mut shutdown = self.shutdown_signal.blocking_write();
+			let mut shutdown = self.shutdown_signal.write().await;
 			*shutdown = true;
 		}
 
@@ -361,7 +361,7 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		self.stop();
+		let _ = self.stop();
 	}
 }
 

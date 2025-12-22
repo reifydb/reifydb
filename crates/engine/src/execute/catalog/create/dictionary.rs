@@ -35,7 +35,8 @@ impl Executor {
 			namespace: plan.namespace.id,
 			value_type: plan.value_type,
 			id_type: plan.id_type,
-		}).await?;
+		})
+		.await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.clone())),
@@ -116,6 +117,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}

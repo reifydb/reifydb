@@ -37,7 +37,8 @@ impl Executor {
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			capacity: plan.capacity,
-		}).await?;
+		})
+		.await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -122,6 +123,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}

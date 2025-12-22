@@ -55,7 +55,7 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_set_and_find_namespace() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -78,7 +78,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_find_namespace_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -96,7 +96,7 @@ mod tests {
 		assert_eq!(found, None);
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_namespace_rename() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -127,7 +127,7 @@ mod tests {
 		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(2)), Some(namespace_v2));
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_namespace_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(1);
@@ -151,7 +151,7 @@ mod tests {
 		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(1)), Some(namespace));
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_multiple_namespaces() {
 		let catalog = MaterializedCatalog::new();
 
@@ -170,7 +170,7 @@ mod tests {
 		assert_eq!(catalog.find_namespace_by_name("namespace3", CommitVersion(1)), Some(namespace3));
 	}
 
-	#[tokio::test]
+	#[test]
 	fn test_namespace_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId(2);

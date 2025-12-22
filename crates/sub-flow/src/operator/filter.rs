@@ -35,7 +35,7 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,

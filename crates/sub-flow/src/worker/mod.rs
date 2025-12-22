@@ -4,6 +4,7 @@
 pub mod parallel;
 pub mod same;
 
+use async_trait::async_trait;
 pub use parallel::ParallelWorkerPool;
 use reifydb_core::{CommitVersion, interface::FlowId};
 use reifydb_engine::StandardCommandTransaction;
@@ -13,6 +14,7 @@ pub use same::SameThreadedWorker;
 use crate::FlowEngine;
 
 /// Trait for different worker pool implementations
+#[async_trait]
 pub trait WorkerPool {
 	/// Process a batch of units of work grouped by flow
 	///
@@ -26,7 +28,7 @@ pub trait WorkerPool {
 	///
 	/// # Returns
 	/// Ok(()) if all units processed successfully, Err if any failed
-	fn process(
+	async fn process(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		units: UnitsOfWork,

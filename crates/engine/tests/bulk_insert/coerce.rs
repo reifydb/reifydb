@@ -11,7 +11,7 @@ use crate::{create_namespace, create_table, create_test_engine, query_table, row
 
 #[tokio::test]
 async fn test_type_coercion_int_to_larger_int() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -20,7 +20,7 @@ async fn test_type_coercion_int_to_larger_int() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 
@@ -35,7 +35,7 @@ async fn test_type_coercion_int_to_larger_int() {
 
 #[tokio::test]
 async fn test_type_coercion_int_to_float() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -44,7 +44,7 @@ async fn test_type_coercion_int_to_float() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 
@@ -59,7 +59,7 @@ async fn test_type_coercion_int_to_float() {
 
 #[tokio::test]
 async fn test_missing_column_uses_undefined() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -72,7 +72,7 @@ async fn test_missing_column_uses_undefined() {
 		.row(params! { a: 1 }) // missing b
 		.row(params! { a: 2 }) // missing b
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 
@@ -90,7 +90,7 @@ async fn test_missing_column_uses_undefined() {
 
 #[tokio::test]
 async fn test_mixed_defined_undefined_values() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -103,7 +103,7 @@ async fn test_mixed_defined_undefined_values() {
 		.row(params! { a: 2 }) // only a defined
 		.row(params! { b: 30 }) // only b defined
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 3);
 
@@ -113,7 +113,7 @@ async fn test_mixed_defined_undefined_values() {
 
 #[tokio::test]
 async fn test_coercion_batch_multiple_rows() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -125,7 +125,7 @@ async fn test_coercion_batch_multiple_rows() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.batch").rows(rows).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 100);
 
@@ -141,7 +141,7 @@ async fn test_coercion_batch_multiple_rows() {
 
 #[tokio::test]
 async fn test_coercion_float4_to_float8() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -150,7 +150,7 @@ async fn test_coercion_float4_to_float8() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.floats").row(params! { val: 3.14f32 }).row(params! { val: 2.71f32 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 

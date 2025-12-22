@@ -11,7 +11,7 @@ use crate::{create_namespace, create_table, create_test_engine, query_table, row
 
 #[tokio::test]
 async fn test_commit_on_success() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -20,7 +20,7 @@ async fn test_commit_on_success() {
 	// Insert some rows
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.commits").row(params! { id: 1, val: "first" }).row(params! { id: 2, val: "second" }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 
@@ -39,7 +39,7 @@ async fn test_commit_on_success() {
 
 #[tokio::test]
 async fn test_rollback_on_error_namespace_not_found() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -49,7 +49,7 @@ async fn test_rollback_on_error_namespace_not_found() {
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.data").row(params! { id: 1 }).done();
 	builder.table("nonexistent.table").row(params! { id: 2 }).done(); // This should fail
-	let result = builder.execute();
+	let result = builder.execute().await;
 
 	assert!(result.is_err());
 
@@ -59,7 +59,7 @@ async fn test_rollback_on_error_namespace_not_found() {
 
 #[tokio::test]
 async fn test_rollback_on_error_table_not_found() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -69,7 +69,7 @@ async fn test_rollback_on_error_table_not_found() {
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.real").row(params! { x: 100 }).done();
 	builder.table("test.fake").row(params! { x: 200 }).done(); // This should fail
-	let result = builder.execute();
+	let result = builder.execute().await;
 
 	assert!(result.is_err());
 
@@ -80,7 +80,7 @@ async fn test_rollback_on_error_table_not_found() {
 
 #[tokio::test]
 async fn test_multiple_tables_all_succeed() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -93,7 +93,7 @@ async fn test_multiple_tables_all_succeed() {
 	builder.table("test.t1").row(params! { a: 1 }).done();
 	builder.table("test.t2").row(params! { b: 2 }).row(params! { b: 3 }).done();
 	builder.table("test.t3").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 3);
 	assert_eq!(result.tables[0].inserted, 1);
@@ -111,7 +111,7 @@ async fn test_multiple_tables_all_succeed() {
 
 #[tokio::test]
 async fn test_mixed_tables_and_ringbuffers_atomic() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -122,7 +122,7 @@ async fn test_mixed_tables_and_ringbuffers_atomic() {
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.atomic_table").row(params! { id: 10 }).row(params! { id: 20 }).done();
 	builder.ringbuffer("test.atomic_rb").row(params! { seq: 100 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 	assert_eq!(result.ringbuffers[0].inserted, 1);
@@ -136,7 +136,7 @@ async fn test_mixed_tables_and_ringbuffers_atomic() {
 
 #[tokio::test]
 async fn test_rollback_mixed_batch_on_error() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -148,7 +148,7 @@ async fn test_rollback_mixed_batch_on_error() {
 	builder.table("test.rollback_tbl").row(params! { val: 1 }).done();
 	builder.ringbuffer("test.rollback_rb").row(params! { data: 2 }).done();
 	builder.table("invalid.namespace").row(params! { x: 3 }).done(); // This should fail
-	let result = builder.execute();
+	let result = builder.execute().await;
 
 	assert!(result.is_err());
 

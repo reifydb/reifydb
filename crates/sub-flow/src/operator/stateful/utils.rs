@@ -81,28 +81,27 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 }
 
 /// Scan all keys for this operator
-pub fn state_scan<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction) -> crate::Result<super::StateIterator<'a>> {
+pub async fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
-	Ok(super::StateIterator {
-		inner: txn.range(range)?,
-	})
+	let batch = txn.range(range).await?;
+	Ok(super::StateIterator::new(batch))
 }
 
 /// Range query between keys
-pub fn state_range<'a>(
+pub async fn state_range(
 	id: FlowNodeId,
-	txn: &'a mut FlowTransaction,
+	txn: &mut FlowTransaction,
 	range: EncodedKeyRange,
-) -> crate::Result<super::StateIterator<'a>> {
-	Ok(super::StateIterator {
-		inner: txn.range(range.with_prefix(FlowNodeStateKey::encoded(id, vec![])))?,
-	})
+) -> crate::Result<super::StateIterator> {
+	let batch = txn.range(range.with_prefix(FlowNodeStateKey::encoded(id, vec![]))).await?;
+	Ok(super::StateIterator::new(batch))
 }
 
 /// Clear all state for this operator
-pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
+pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
-	let keys_to_remove: Vec<_> = txn.range(range)?.map(|multi| multi.key).collect();
+	let batch = txn.range(range).await?;
+	let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 	for key in keys_to_remove {
 		txn.remove(&key)?;

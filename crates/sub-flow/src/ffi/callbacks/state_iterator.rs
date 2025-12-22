@@ -6,7 +6,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::{
-	interface::BoxedMultiVersionIter,
+	interface::MultiVersionBatch,
 	key::{EncodableKey, FlowNodeStateKey},
 };
 
@@ -18,10 +18,50 @@ thread_local! {
 	static ITERATOR_REGISTRY: RefCell<IteratorRegistry> = RefCell::new(IteratorRegistry::new());
 }
 
+/// Batch-based iterator for FFI boundary
+///
+/// Pre-decodes all items from a MultiVersionBatch for efficient iteration.
+/// This eliminates the need for unsafe lifetime transmutation.
+struct BatchIterator {
+	items: Vec<(Vec<u8>, Vec<u8>)>, // Pre-decoded (user_key, value) pairs
+	position: usize,
+}
+
+impl BatchIterator {
+	/// Create a new batch iterator from a MultiVersionBatch
+	fn new(batch: MultiVersionBatch) -> Self {
+		let items = batch
+			.items
+			.into_iter()
+			.filter_map(|multi| {
+				// Decode the FlowNodeStateKey to extract the user key
+				let state_key = FlowNodeStateKey::decode(&multi.key)?;
+				Some((state_key.key, multi.values.as_ref().to_vec()))
+			})
+			.collect();
+
+		Self {
+			items,
+			position: 0,
+		}
+	}
+
+	/// Get the next key-value pair
+	fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
+		if self.position < self.items.len() {
+			let item = self.items[self.position].clone();
+			self.position += 1;
+			Some(item)
+		} else {
+			None
+		}
+	}
+}
+
 /// Registry for managing state iterators
 struct IteratorRegistry {
 	next_handle: StateIteratorHandle,
-	iterators: HashMap<StateIteratorHandle, BoxedMultiVersionIter<'static>>,
+	iterators: HashMap<StateIteratorHandle, BatchIterator>,
 }
 
 impl IteratorRegistry {
@@ -32,24 +72,25 @@ impl IteratorRegistry {
 		}
 	}
 
-	fn insert(&mut self, iter: BoxedMultiVersionIter<'static>) -> StateIteratorHandle {
+	fn insert(&mut self, iter: BatchIterator) -> StateIteratorHandle {
 		let handle = self.next_handle;
 		self.next_handle = self.next_handle.wrapping_add(1);
 		self.iterators.insert(handle, iter);
 		handle
 	}
 
-	fn get_mut(&mut self, handle: StateIteratorHandle) -> Option<&mut BoxedMultiVersionIter<'static>> {
+	fn get_mut(&mut self, handle: StateIteratorHandle) -> Option<&mut BatchIterator> {
 		self.iterators.get_mut(&handle)
 	}
 
-	fn remove(&mut self, handle: StateIteratorHandle) -> Option<BoxedMultiVersionIter<'static>> {
+	fn remove(&mut self, handle: StateIteratorHandle) -> Option<BatchIterator> {
 		self.iterators.remove(&handle)
 	}
 }
 
-/// Create a new iterator and return its handle
-pub(crate) fn create_iterator(iter: BoxedMultiVersionIter<'static>) -> StateIteratorHandle {
+/// Create a new iterator from a batch and return its handle
+pub(crate) fn create_iterator(batch: MultiVersionBatch) -> StateIteratorHandle {
+	let iter = BatchIterator::new(batch);
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
@@ -61,14 +102,7 @@ pub(crate) fn create_iterator(iter: BoxedMultiVersionIter<'static>) -> StateIter
 pub(crate) fn next_iterator(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
 	ITERATOR_REGISTRY.with(|r| {
 		let mut registry = r.borrow_mut();
-		let iter = registry.get_mut(handle)?;
-
-		// Get next item from iterator
-		iter.next().and_then(|multi| {
-			// Decode the FlowNodeStateKey to extract the user key
-			let state_key = FlowNodeStateKey::decode(&multi.key)?;
-			Some((state_key.key, multi.values.as_ref().to_vec()))
-		})
+		registry.get_mut(handle)?.next()
 	})
 }
 
@@ -103,10 +137,12 @@ mod tests {
 			version: CommitVersion(1),
 		}];
 
-		let iter: BoxedMultiVersionIter<'static> =
-			Box::new(items.into_iter()) as BoxedMultiVersionIter<'static>;
+		let batch = MultiVersionBatch {
+			items,
+			has_more: false,
+		};
 
-		let handle = create_iterator(iter);
+		let handle = create_iterator(batch);
 		assert!(handle > 0);
 
 		let freed = free_iterator(handle);
@@ -132,10 +168,12 @@ mod tests {
 			},
 		];
 
-		let iter: BoxedMultiVersionIter<'static> =
-			Box::new(items.into_iter()) as BoxedMultiVersionIter<'static>;
+		let batch = MultiVersionBatch {
+			items,
+			has_more: false,
+		};
 
-		let handle = create_iterator(iter);
+		let handle = create_iterator(batch);
 
 		// Read first item
 		let (key1, val1) = next_iterator(handle).unwrap();
@@ -176,8 +214,17 @@ mod tests {
 			version: CommitVersion(1),
 		}];
 
-		let handle1 = create_iterator(Box::new(items1.into_iter()) as BoxedMultiVersionIter<'static>);
-		let handle2 = create_iterator(Box::new(items2.into_iter()) as BoxedMultiVersionIter<'static>);
+		let batch1 = MultiVersionBatch {
+			items: items1,
+			has_more: false,
+		};
+		let batch2 = MultiVersionBatch {
+			items: items2,
+			has_more: false,
+		};
+
+		let handle1 = create_iterator(batch1);
+		let handle2 = create_iterator(batch2);
 
 		assert_ne!(handle1, handle2);
 

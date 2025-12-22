@@ -12,7 +12,7 @@ use crate::{create_namespace, create_ringbuffer, create_test_engine, query_ringb
 
 #[tokio::test]
 async fn test_ringbuffer_below_capacity() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -21,7 +21,7 @@ async fn test_ringbuffer_below_capacity() {
 	// Insert fewer rows than capacity
 	let mut builder = engine.bulk_insert(&identity);
 	builder.ringbuffer("test.events").row(params! { id: 1 }).row(params! { id: 2 }).row(params! { id: 3 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers[0].inserted, 3);
 
@@ -35,7 +35,7 @@ async fn test_ringbuffer_below_capacity() {
 
 #[tokio::test]
 async fn test_ringbuffer_at_capacity() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -45,7 +45,7 @@ async fn test_ringbuffer_at_capacity() {
 	let rows: Vec<_> = (1..=5).map(|n| params! { id: n }).collect();
 	let mut builder = engine.bulk_insert(&identity);
 	builder.ringbuffer("test.events").rows(rows).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers[0].inserted, 5);
 
@@ -60,7 +60,7 @@ async fn test_ringbuffer_at_capacity() {
 
 #[tokio::test]
 async fn test_ringbuffer_overflow_single() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -70,12 +70,12 @@ async fn test_ringbuffer_overflow_single() {
 	let rows: Vec<_> = (1..=3).map(|n| params! { id: n }).collect();
 	let mut builder = engine.bulk_insert(&identity);
 	builder.ringbuffer("test.events").rows(rows).done();
-	builder.execute().unwrap();
+	builder.execute().await.unwrap();
 
 	// Second: add one more (should overflow, removing oldest)
 	let mut builder = engine.bulk_insert(&identity);
 	builder.ringbuffer("test.events").row(params! { id: 4 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers[0].inserted, 1);
 
@@ -91,7 +91,7 @@ async fn test_ringbuffer_overflow_single() {
 
 #[tokio::test]
 async fn test_ringbuffer_overflow_batch() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -101,7 +101,7 @@ async fn test_ringbuffer_overflow_batch() {
 	let rows: Vec<_> = (1..=8).map(|n| params! { id: n }).collect();
 	let mut builder = engine.bulk_insert(&identity);
 	builder.ringbuffer("test.events").rows(rows).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers[0].inserted, 8);
 
@@ -117,7 +117,7 @@ async fn test_ringbuffer_overflow_batch() {
 
 #[tokio::test]
 async fn test_ringbuffer_circular_overwrite() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -129,7 +129,7 @@ async fn test_ringbuffer_circular_overwrite() {
 		let rows: Vec<_> = (start..start + 3).map(|n| params! { val: n }).collect();
 		let mut builder = engine.bulk_insert(&identity);
 		builder.ringbuffer("test.circular").rows(rows).done();
-		builder.execute().unwrap();
+		builder.execute().await.unwrap();
 	}
 
 	// After 3 batches of 3 each (9 total), only last 3 should remain
@@ -144,7 +144,7 @@ async fn test_ringbuffer_circular_overwrite() {
 
 #[tokio::test]
 async fn test_ringbuffer_incremental_fill_and_overflow() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -154,7 +154,7 @@ async fn test_ringbuffer_incremental_fill_and_overflow() {
 	for n in 1..=6 {
 		let mut builder = engine.bulk_insert(&identity);
 		builder.ringbuffer("test.incr").row(params! { n: n }).done();
-		builder.execute().unwrap();
+		builder.execute().await.unwrap();
 	}
 
 	// After inserting 6 into capacity 4, should have 3, 4, 5, 6

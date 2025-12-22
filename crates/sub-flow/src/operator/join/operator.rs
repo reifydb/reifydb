@@ -149,14 +149,18 @@ impl JoinOperator {
 
 	/// Clean up all join results for a given left row
 	/// This removes both matched and unmatched join results
-	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> crate::Result<()> {
+	pub(crate) async fn cleanup_left_row_joins(
+		&self,
+		txn: &mut FlowTransaction,
+		left_number: u64,
+	) -> crate::Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
 		// Remove all mappings with this prefix
-		self.row_number_provider.remove_by_prefix(txn, &prefix)
+		self.row_number_provider.remove_by_prefix(txn, &prefix).await
 	}
 
 	pub(crate) fn join_rows(&self, txn: &mut FlowTransaction, left: &Row, right: &Row) -> crate::Result<Row> {
@@ -344,7 +348,7 @@ impl Operator for JoinOperator {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -454,22 +458,19 @@ impl Operator for JoinOperator {
 		// Phase 3: Process batched removes
 		let _phase3_span = trace_span!("join::phase3_removes", batch_count = removes_by_key.len()).entered();
 		for (key_hash, rows) in removes_by_key {
-			let diffs = self.strategy.handle_remove_batch(
-				txn,
-				&rows,
-				side,
-				&key_hash,
-				&mut state,
-				self,
-				change.version,
-			)?;
+			let diffs = self
+				.strategy
+				.handle_remove_batch(txn, &rows, side, &key_hash, &mut state, self, change.version)
+				.await?;
 			result.extend(diffs);
 		}
 
 		// Process removes with undefined keys individually
 		for pre in removes_undefined {
-			let diffs =
-				self.strategy.handle_remove(txn, &pre, side, None, &mut state, self, change.version)?;
+			let diffs = self
+				.strategy
+				.handle_remove(txn, &pre, side, None, &mut state, self, change.version)
+				.await?;
 			result.extend(diffs);
 		}
 
@@ -478,17 +479,20 @@ impl Operator for JoinOperator {
 		// Phase 4: Process updates individually (key change complexity requires this)
 		let _phase4_span = trace_span!("join::phase4_updates", update_count = updates.len()).entered();
 		for (pre, post, old_key, new_key) in updates {
-			let diffs = self.strategy.handle_update(
-				txn,
-				&pre,
-				&post,
-				side,
-				old_key,
-				new_key,
-				&mut state,
-				self,
-				change.version,
-			)?;
+			let diffs = self
+				.strategy
+				.handle_update(
+					txn,
+					&pre,
+					&post,
+					side,
+					old_key,
+					new_key,
+					&mut state,
+					self,
+					change.version,
+				)
+				.await?;
 			result.extend(diffs);
 		}
 

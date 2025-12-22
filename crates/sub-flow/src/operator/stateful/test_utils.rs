@@ -119,7 +119,7 @@ pub mod test {
 	}
 
 	/// Helper to create a test transaction
-	pub async fn create_test_transaction().await -> StandardCommandTransaction {
+	pub async fn create_test_transaction() -> StandardCommandTransaction {
 		let engine = create_test_engine();
 		engine.begin_command().await.unwrap()
 	}

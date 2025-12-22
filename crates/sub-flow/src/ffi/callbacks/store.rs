@@ -126,14 +126,16 @@ pub(super) extern "C" fn host_store_prefix(
 		};
 		let prefix = EncodedKey(CowVec::new(prefix_bytes));
 
-		match flow_txn.prefix(&prefix) {
-			Ok(iter) => {
-				// Need to convert the iterator to 'static lifetime for store
-				// This is safe because the iterator is owned by the registry
-				let static_iter = std::mem::transmute(iter);
+		// Use block_in_place to call async methods from sync FFI context
+		let result = tokio::task::block_in_place(|| {
+			tokio::runtime::Handle::current().block_on(flow_txn.prefix(&prefix))
+		});
 
-				// Create iterator handle
-				let handle = store_iterator::create_iterator(static_iter);
+		match result {
+			Ok(batch) => {
+				// Create iterator handle from batch
+				// No unsafe transmute needed - batches own their data
+				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
@@ -227,14 +229,16 @@ pub(super) extern "C" fn host_store_range(
 		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 
-		match flow_txn.range(range) {
-			Ok(iter) => {
-				// Need to convert the iterator to 'static lifetime for store
-				// This is safe because the iterator is owned by the registry
-				let static_iter = std::mem::transmute(iter);
+		// Use block_in_place to call async methods from sync FFI context
+		let result = tokio::task::block_in_place(|| {
+			tokio::runtime::Handle::current().block_on(flow_txn.range(range))
+		});
 
-				// Create iterator handle
-				let handle = store_iterator::create_iterator(static_iter);
+		match result {
+			Ok(batch) => {
+				// Create iterator handle from batch
+				// No unsafe transmute needed - batches own their data
+				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())

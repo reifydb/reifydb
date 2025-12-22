@@ -114,7 +114,7 @@ mod tests {
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper function to create test namespace definition
-	async fn test_namespace_def(id: u64, name: &str).await -> NamespaceDef {
+	async fn test_namespace_def(id: u64, name: &str) -> NamespaceDef {
 		NamespaceDef {
 			id: NamespaceId(id),
 			name: name.to_string(),

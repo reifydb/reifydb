@@ -16,11 +16,11 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 pub struct SinkViewOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	view: ResolvedView<'static>,
+	view: ResolvedView,
 }
 
 impl SinkViewOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView<'static>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView) -> Self {
 		Self {
 			parent,
 			node,

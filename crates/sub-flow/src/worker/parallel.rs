@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use crossbeam_channel::bounded;
 use reifydb_core::interface::FlowId;
 use reifydb_engine::StandardCommandTransaction;
@@ -28,8 +29,9 @@ impl ParallelWorkerPool {
 	}
 }
 
+#[async_trait]
 impl WorkerPool for ParallelWorkerPool {
-	fn process(
+	async fn process(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		units: UnitsOfWork,
@@ -56,7 +58,7 @@ impl WorkerPool for ParallelWorkerPool {
 				}
 
 				let first_version = flow_units[0].version;
-				let flow_txn = FlowTransaction::new(txn, first_version);
+				let flow_txn = FlowTransaction::new(txn, first_version).await;
 				txns.push((flow_units, flow_txn));
 			}
 		}

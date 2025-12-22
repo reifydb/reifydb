@@ -119,7 +119,7 @@ mod tests {
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper function to create test view definition
-	async fn test_view_def(id: u64, namespace_id: u64, name: &str).await -> ViewDef {
+	async fn test_view_def(id: u64, namespace_id: u64, name: &str) -> ViewDef {
 		ViewDef {
 			id: ViewId(id),
 			namespace: NamespaceId(namespace_id),

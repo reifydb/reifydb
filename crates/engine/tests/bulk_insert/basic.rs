@@ -15,7 +15,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_table_insert_named_params() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -24,7 +24,7 @@ async fn test_table_insert_named_params() {
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.users").row(params! { id: 1, name: "Alice" }).row(params! { id: 2, name: "Bob" }).done();
 
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 1);
 	assert_eq!(result.tables[0].namespace, "test");
@@ -44,7 +44,7 @@ async fn test_table_insert_named_params() {
 
 #[tokio::test]
 async fn test_table_insert_positional_params() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -52,7 +52,7 @@ async fn test_table_insert_positional_params() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.items").row(params![1, 10.5]).row(params![2, 20.5]).row(params![3, 30.5]).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 3);
 
@@ -73,7 +73,7 @@ async fn test_table_insert_positional_params() {
 
 #[tokio::test]
 async fn test_table_insert_multiple_rows_chained() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -87,14 +87,14 @@ async fn test_table_insert_multiple_rows_chained() {
 		.row(params! { x: 4 })
 		.row(params! { x: 5 })
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 5);
 }
 
 #[tokio::test]
 async fn test_table_insert_rows_iterator() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -104,14 +104,14 @@ async fn test_table_insert_rows_iterator() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.batch").rows(rows).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 10);
 }
 
 #[tokio::test]
 async fn test_ringbuffer_insert_basic() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -122,7 +122,7 @@ async fn test_ringbuffer_insert_basic() {
 		.row(params! { id: 1, msg: "event1" })
 		.row(params! { id: 2, msg: "event2" })
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers.len(), 1);
 	assert_eq!(result.ringbuffers[0].namespace, "test");
@@ -142,7 +142,7 @@ async fn test_ringbuffer_insert_basic() {
 
 #[tokio::test]
 async fn test_mixed_table_and_ringbuffer() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -156,7 +156,7 @@ async fn test_mixed_table_and_ringbuffer() {
 		.row(params! { seq: 101 })
 		.row(params! { seq: 102 })
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 1);
 	assert_eq!(result.tables[0].inserted, 2);
@@ -178,7 +178,7 @@ async fn test_mixed_table_and_ringbuffer() {
 
 #[tokio::test]
 async fn test_multiple_tables() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -188,7 +188,7 @@ async fn test_multiple_tables() {
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.table_a").row(params! { a: 1 }).done();
 	builder.table("test.table_b").row(params! { b: 2 }).row(params! { b: 3 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 2);
 	assert_eq!(result.tables[0].table, "table_a");
@@ -210,7 +210,7 @@ async fn test_multiple_tables() {
 
 #[tokio::test]
 async fn test_qualified_name_with_namespace() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "myns").await;
@@ -218,7 +218,7 @@ async fn test_qualified_name_with_namespace() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("myns.mytable").row(params! { val: 42 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].namespace, "myns");
 	assert_eq!(result.tables[0].table, "mytable");
@@ -227,7 +227,7 @@ async fn test_qualified_name_with_namespace() {
 
 #[tokio::test]
 async fn test_qualified_name_default_namespace() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	// Create "default" namespace first - it doesn't exist automatically
@@ -236,7 +236,7 @@ async fn test_qualified_name_default_namespace() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("simple").row(params! { x: 1 }).done(); // No namespace prefix, should use "default"
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].namespace, "default");
 	assert_eq!(result.tables[0].table, "simple");
@@ -245,7 +245,7 @@ async fn test_qualified_name_default_namespace() {
 
 #[tokio::test]
 async fn test_empty_insert() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -253,7 +253,7 @@ async fn test_empty_insert() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.empty").done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 1);
 	assert_eq!(result.tables[0].inserted, 0);
@@ -264,7 +264,7 @@ async fn test_empty_insert() {
 
 #[tokio::test]
 async fn test_single_row_insert() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -272,7 +272,7 @@ async fn test_single_row_insert() {
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.single").row(params! { id: 1, data: "only one" }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 1);
 
@@ -285,7 +285,7 @@ async fn test_single_row_insert() {
 
 #[tokio::test]
 async fn test_result_structure() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "ns1").await;
@@ -298,7 +298,7 @@ async fn test_result_structure() {
 	builder.table("ns1.t1").row(params! { a: 1 }).row(params! { a: 2 }).done();
 	builder.table("ns2.t2").row(params! { b: 3 }).done();
 	builder.ringbuffer("ns1.rb1").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	// Verify tables result
 	assert_eq!(result.tables.len(), 2);

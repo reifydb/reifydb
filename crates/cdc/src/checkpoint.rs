@@ -10,13 +10,14 @@ use reifydb_core::{
 pub struct CdcCheckpoint {}
 
 impl CdcCheckpoint {
-	pub fn fetch<K: ToConsumerKey>(
+	pub async fn fetch<K: ToConsumerKey>(
 		txn: &mut impl QueryTransaction,
 		consumer: &K,
 	) -> reifydb_core::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 
-		txn.get(&key)?
+		txn.get(&key)
+			.await?
 			.and_then(|multi| {
 				if multi.values.len() >= 8 {
 					let mut buffer = [0u8; 8];
@@ -30,13 +31,13 @@ impl CdcCheckpoint {
 			.unwrap_or(Ok(CommitVersion(1)))
 	}
 
-	pub fn persist<K: ToConsumerKey>(
+	pub async fn persist<K: ToConsumerKey>(
 		txn: &mut impl CommandTransaction,
 		consumer: &K,
 		version: CommitVersion,
 	) -> reifydb_core::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.0.to_be_bytes().to_vec();
-		txn.set(&key, EncodedValues(CowVec::new(version_bytes)))
+		txn.set(&key, EncodedValues(CowVec::new(version_bytes))).await
 	}
 }

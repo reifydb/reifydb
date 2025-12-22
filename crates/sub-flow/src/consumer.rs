@@ -68,9 +68,12 @@ impl FlowConsumer {
 		};
 
 		if let Ok(mut txn) = engine.begin_command() {
-			if let Ok(flows) = result.load_flows() {
+			// Use blocking to handle async operations in sync context
+			let runtime = tokio::runtime::Runtime::new().unwrap();
+			if let Ok(flows) = runtime.block_on(result.load_flows()) {
 				for flow in flows {
-					result.flow_engine.register_without_backfill(&mut txn, flow).unwrap();
+					runtime.block_on(result.flow_engine.register_without_backfill(&mut txn, flow))
+						.unwrap();
 				}
 				txn.commit().unwrap();
 			}
@@ -94,7 +97,7 @@ impl FlowConsumer {
 			row_bytes_len = row_bytes.len(),
 		)
 	)]
-	fn create_row(
+	async fn create_row(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		source: SourceId,
@@ -102,7 +105,7 @@ impl FlowConsumer {
 		row_bytes: Vec<u8>,
 	) -> Result<Row> {
 		// Get cached source metadata (loads from catalog on cache miss)
-		let metadata = self.catalog_cache.get_or_load(txn, source)?;
+		let metadata = self.catalog_cache.get_or_load(txn, source).await?;
 
 		let raw_encoded = EncodedValues(CowVec::new(row_bytes));
 
@@ -130,7 +133,7 @@ impl FlowConsumer {
 					let index_key =
 						DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64)
 							.encode();
-					match txn.get(&index_key)? {
+					match txn.get(&index_key).await? {
 						Some(v) => {
 							let (decoded_value, _): (Value, _) =
 								bincode::serde::decode_from_slice(
@@ -169,16 +172,16 @@ impl FlowConsumer {
 	}
 
 	/// Load flows from the catalog
-	fn load_flows(&self) -> Result<Vec<Flow>> {
+	async fn load_flows(&self) -> Result<Vec<Flow>> {
 		let mut flows = Vec::new();
 		let mut txn = self.engine.begin_query()?;
 
 		// Get all flows from the catalog
-		let flow_defs = reifydb_catalog::CatalogStore::list_flows_all(&mut txn)?;
+		let flow_defs = reifydb_catalog::CatalogStore::list_flows_all(&mut txn).await?;
 
 		// Load each flow by reconstructing from nodes and edges
 		for flow_def in flow_defs {
-			match load_flow(&mut txn, flow_def.id) {
+			match load_flow(&mut txn, flow_def.id).await {
 				Ok(flow) => flows.push(flow),
 				Err(e) => {
 					// Log error but continue loading other flows
@@ -201,6 +204,14 @@ impl CdcConsume for FlowConsumer {
 		)
 	)]
 	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		// Use blocking to handle async operations in sync trait context
+		let runtime = tokio::runtime::Runtime::new().unwrap();
+		runtime.block_on(self.consume_async(txn, cdcs))
+	}
+}
+
+impl FlowConsumer {
+	async fn consume_async(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		if cdcs.is_empty() {
 			return Ok(());
 		}
@@ -287,15 +298,17 @@ impl CdcConsume for FlowConsumer {
 		if let Some(flow_creation_version) = flows_changed_at_version {
 			let existing_flow_ids = self.flow_engine.flow_ids();
 			self.flow_engine.clear();
-			let flows = self.load_flows()?;
+			let flows = self.load_flows().await?;
 			for flow in flows {
 				// For new flows: do backfill at this version
 				// For existing flows: skip backfill (data already present)
 				let is_existing = existing_flow_ids.contains(&flow.id);
 				if is_existing {
-					self.flow_engine.register_without_backfill(txn, flow)?;
+					self.flow_engine.register_without_backfill(txn, flow).await?;
 				} else {
-					self.flow_engine.register_with_backfill(txn, flow, flow_creation_version)?;
+					self.flow_engine
+						.register_with_backfill(txn, flow, flow_creation_version)
+						.await?;
 				};
 			}
 		}
@@ -319,7 +332,7 @@ impl CdcConsume for FlowConsumer {
 						post,
 						..
 					} => {
-						let row = self.create_row(txn, source_id, row_number, post)?;
+						let row = self.create_row(txn, source_id, row_number, post).await?;
 						FlowDiff::Insert {
 							post: row,
 						}
@@ -330,8 +343,9 @@ impl CdcConsume for FlowConsumer {
 						post,
 						..
 					} => {
-						let pre_row = self.create_row(txn, source_id, row_number, pre)?;
-						let post_row = self.create_row(txn, source_id, row_number, post)?;
+						let pre_row = self.create_row(txn, source_id, row_number, pre).await?;
+						let post_row =
+							self.create_row(txn, source_id, row_number, post).await?;
 						FlowDiff::Update {
 							pre: pre_row,
 							post: post_row,
@@ -342,7 +356,7 @@ impl CdcConsume for FlowConsumer {
 						pre,
 						..
 					} => {
-						let row = self.create_row(txn, source_id, row_number, pre)?;
+						let row = self.create_row(txn, source_id, row_number, pre).await?;
 						FlowDiff::Remove {
 							pre: row,
 						}
@@ -371,12 +385,13 @@ impl CdcConsume for FlowConsumer {
 			Box::new(SameThreadedWorker::new())
 		};
 		// let worker = Box::new(SameThreadedWorker::new());
-		trace_span!(
+		let _worker_span = trace_span!(
 			"flow::worker_process",
 			worker = worker.name(),
 			flow_count = units.flow_count(),
 			total_units = units.total_units()
 		)
-		.in_scope(|| worker.process(txn, units, &self.flow_engine))
+		.entered();
+		worker.process(txn, units, &self.flow_engine).await
 	}
 }

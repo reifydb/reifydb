@@ -25,22 +25,22 @@ pub trait RawStatefulOperator: TransformOperator {
 	}
 
 	/// Scan all keys for this operator
-	fn state_scan<'a>(&self, txn: &'a mut FlowTransaction) -> crate::Result<super::StateIterator<'a>> {
-		utils::state_scan(self.id(), txn)
+	async fn state_scan(&self, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
+		utils::state_scan(self.id(), txn).await
 	}
 
 	/// Range query between keys
-	fn state_range<'a>(
+	async fn state_range(
 		&self,
-		txn: &'a mut FlowTransaction,
+		txn: &mut FlowTransaction,
 		range: EncodedKeyRange,
-	) -> crate::Result<super::StateIterator<'a>> {
-		utils::state_range(self.id(), txn, range)
+	) -> crate::Result<super::StateIterator> {
+		utils::state_range(self.id(), txn, range).await
 	}
 
 	/// Clear all state for this operator
-	fn state_clear(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
-		utils::state_clear(self.id(), txn)
+	async fn state_clear(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
+		utils::state_clear(self.id(), txn).await
 	}
 }
 

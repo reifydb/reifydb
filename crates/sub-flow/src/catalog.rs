@@ -67,7 +67,7 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
+	pub async fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -84,7 +84,7 @@ impl FlowCatalog {
 		}
 
 		// Slow path: load and cache
-		let metadata = Arc::new(self.load_source_metadata(txn, source)?);
+		let metadata = Arc::new(self.load_source_metadata(txn, source).await?);
 		let mut cache = self.sources.write();
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
@@ -142,7 +142,7 @@ impl FlowCatalog {
 		self.sources.write().clear();
 	}
 
-	fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
+	async fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -152,9 +152,9 @@ impl FlowCatalog {
 	{
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
-			SourceId::Table(table_id) => resolve_table(txn, table_id)?.def().columns.clone(),
-			SourceId::View(view_id) => resolve_view(txn, view_id)?.def().columns.clone(),
-			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id)?.def().columns.clone(),
+			SourceId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
+			SourceId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
+			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
 			SourceId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
 			SourceId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
 			SourceId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
@@ -168,7 +168,7 @@ impl FlowCatalog {
 
 		for col in &columns {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
+				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id).await? {
 					storage_types.push(dict.id_type);
 					value_types.push((col.name.clone(), dict.value_type));
 					dictionaries.push(Some(dict));

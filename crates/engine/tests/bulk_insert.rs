@@ -37,7 +37,7 @@ pub async fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await;
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
 
 	StandardEngine::new(
 		multi,

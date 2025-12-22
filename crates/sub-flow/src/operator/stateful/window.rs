@@ -38,14 +38,14 @@ pub trait WindowStateful: RawStatefulOperator {
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
+	async fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
 		let mut count = 0;
 
 		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
 		// Collect keys to remove (similar pattern to state_clear in utils.rs)
-		let keys_to_remove: Vec<_> = txn.range(prefixed_range)?.map(|multi| multi.key).collect();
+		let keys_to_remove: Vec<_> = txn.range(prefixed_range).await?.map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
 			txn.remove(&key)?;
@@ -168,7 +168,7 @@ mod tests {
 		// So to expire windows < 5, we need range from key(5) to end
 		let before_key = test_window_key(5);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).unwrap();
+		let expired = operator.expire_range(&mut txn, range).await.unwrap();
 		assert_eq!(expired, 5);
 
 		// Verify windows 0-4 are gone
@@ -201,7 +201,7 @@ mod tests {
 		// Expire before 3 (should remove nothing since all windows are >= 5)
 		let before_key = test_window_key(3);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).unwrap();
+		let expired = operator.expire_range(&mut txn, range).await.unwrap();
 		assert_eq!(expired, 0);
 
 		// All windows should still exist
@@ -228,7 +228,7 @@ mod tests {
 		// Expire before 100 (should remove all)
 		let before_key = test_window_key(100);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).unwrap();
+		let expired = operator.expire_range(&mut txn, range).await.unwrap();
 		assert_eq!(expired, 5);
 
 		// All windows should be gone
@@ -261,7 +261,7 @@ mod tests {
 				let expire_before = current_window - window_size + 1;
 				let before_key = test_window_key(expire_before);
 				let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-				operator.expire_range(&mut txn, range).unwrap();
+				operator.expire_range(&mut txn, range).await.unwrap();
 			}
 		}
 

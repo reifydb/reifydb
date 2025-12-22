@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{BoxedMultiVersionIter, FlowNodeId},
+	interface::{FlowNodeId, MultiVersionBatch},
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
@@ -56,24 +56,24 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0
 	))]
-	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	pub async fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<MultiVersionBatch> {
 		self.metrics.increment_state_operations();
 		let range = FlowNodeStateKey::node_range(id);
-		self.range(range)
+		self.range(range).await
 	}
 
 	/// Range query on state for a specific flow node
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn state_range(
+	pub async fn state_range(
 		&mut self,
 		id: FlowNodeId,
 		range: EncodedKeyRange,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	) -> crate::Result<MultiVersionBatch> {
 		self.metrics.increment_state_operations();
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-		self.range(prefixed_range)
+		self.range(prefixed_range).await
 	}
 
 	/// Clear all state for a specific flow node
@@ -81,10 +81,11 @@ impl FlowTransaction {
 		node_id = id.0,
 		removed_count
 	))]
-	pub fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
+	pub async fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
 		self.metrics.increment_state_operations();
 		let range = FlowNodeStateKey::node_range(id);
-		let keys_to_remove: Vec<_> = self.range(range)?.map(|multi| multi.key).collect();
+		let batch = self.range(range).await?;
+		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 		let count = keys_to_remove.len();
 		for key in keys_to_remove {

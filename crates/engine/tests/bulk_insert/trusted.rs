@@ -11,7 +11,7 @@ use crate::{create_namespace, create_table, create_test_engine, query_table, row
 
 #[tokio::test]
 async fn test_trusted_mode_basic_insert() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -23,7 +23,7 @@ async fn test_trusted_mode_basic_insert() {
 		.row(params! { id: 1i32, name: "Alice" })
 		.row(params! { id: 2i32, name: "Bob" })
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
 
@@ -40,7 +40,7 @@ async fn test_trusted_mode_basic_insert() {
 
 #[tokio::test]
 async fn test_trusted_mode_ringbuffer() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -51,7 +51,7 @@ async fn test_trusted_mode_ringbuffer() {
 		.row(params! { seq: 1i32, data: "first" })
 		.row(params! { seq: 2i32, data: "second" })
 		.done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.ringbuffers[0].inserted, 2);
 
@@ -69,7 +69,7 @@ async fn test_trusted_mode_ringbuffer() {
 
 #[tokio::test]
 async fn test_trusted_mode_mixed_batch() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -81,7 +81,7 @@ async fn test_trusted_mode_mixed_batch() {
 	builder.table("test.t1").row(params! { a: 10i32 }).done();
 	builder.table("test.t2").row(params! { b: 20i32 }).row(params! { b: 30i32 }).done();
 	builder.ringbuffer("test.rb1").row(params! { c: 100i32 }).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables.len(), 2);
 	assert_eq!(result.tables[0].inserted, 1);
@@ -92,7 +92,7 @@ async fn test_trusted_mode_mixed_batch() {
 
 #[tokio::test]
 async fn test_trusted_mode_large_batch() {
-	let engine = create_test_engine();
+	let engine = create_test_engine().await;
 	let identity = test_identity();
 
 	create_namespace(&engine, "test").await;
@@ -103,7 +103,7 @@ async fn test_trusted_mode_large_batch() {
 
 	let mut builder = engine.bulk_insert_trusted(&identity);
 	builder.table("test.large").rows(rows).done();
-	let result = builder.execute().unwrap();
+	let result = builder.execute().await.unwrap();
 
 	assert_eq!(result.tables[0].inserted, 1000);
 

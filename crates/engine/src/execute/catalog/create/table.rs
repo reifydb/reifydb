@@ -37,13 +37,15 @@ impl Executor {
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			retention_policy: None,
-		}).await?;
+		})
+		.await?;
 
 		// If primary key is specified, create it immediately
 		if let Some(pk_def) = plan.primary_key {
 			// Get the created table to resolve column IDs
 			let table = txn
-				.find_table_by_name(plan.namespace.def().id, plan.table.text()).await?
+				.find_table_by_name(plan.namespace.def().id, plan.table.text())
+				.await?
 				.expect("Table should exist after creation");
 
 			let table_columns = CatalogStore::list_columns(txn, table.id).await?;
@@ -65,7 +67,8 @@ impl Executor {
 					source: SourceId::Table(table.id),
 					column_ids,
 				},
-			).await?;
+			)
+			.await?;
 		}
 
 		Ok(Columns::single_row([
@@ -144,6 +147,7 @@ mod tests {
 		plan.if_not_exists = false;
 		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -230,6 +234,7 @@ mod tests {
 		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

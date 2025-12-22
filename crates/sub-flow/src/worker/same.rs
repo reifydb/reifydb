@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 
+use async_trait::async_trait;
 use reifydb_engine::StandardCommandTransaction;
 use tracing::trace_span;
 
@@ -21,8 +22,9 @@ impl SameThreadedWorker {
 	}
 }
 
+#[async_trait]
 impl WorkerPool for SameThreadedWorker {
-	fn process(
+	async fn process(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		units: UnitsOfWork,
@@ -36,7 +38,7 @@ impl WorkerPool for SameThreadedWorker {
 		}
 
 		let first_unit = queue.front().unwrap();
-		let mut flow_txn = FlowTransaction::new(txn, first_unit.version);
+		let mut flow_txn = FlowTransaction::new(txn, first_unit.version).await;
 
 		let _loop_span = trace_span!("flow::process_all_units", unit_count = queue.len()).entered();
 

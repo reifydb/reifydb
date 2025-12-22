@@ -35,10 +35,11 @@ use reifydb_core::{
 /// let watermark = compute_watermark(&mut txn)?;
 /// // Now retention can safely cleanup versions < watermark
 /// ```
-pub fn compute_watermark(txn: &mut impl QueryTransaction) -> reifydb_core::Result<CommitVersion> {
+pub async fn compute_watermark(txn: &mut impl QueryTransaction) -> reifydb_core::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
-	for multi in txn.range(CdcConsumerKeyRange::full_scan())? {
+	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
+	for multi in batch.items {
 		// Checkpoint values are stored as 8-byte big-endian u64
 		if multi.values.len() >= 8 {
 			let mut buffer = [0u8; 8];

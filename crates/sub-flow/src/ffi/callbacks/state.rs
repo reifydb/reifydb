@@ -7,7 +7,7 @@ use std::slice::from_raw_parts;
 
 use reifydb_core::{
 	EncodedKeyRange,
-	interface::{BoxedMultiVersionIter, FlowNodeId},
+	interface::FlowNodeId,
 	util::CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
@@ -143,9 +143,14 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut FFIContext
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
+		let node_id = FlowNodeId(operator_id);
 
-		// Clear all state for this operator
-		match flow_txn.state_clear(FlowNodeId(operator_id)) {
+		// Use block_in_place to call async method from sync FFI context
+		let result = tokio::task::block_in_place(|| {
+			tokio::runtime::Handle::current().block_on(async { flow_txn.state_clear(node_id).await })
+		});
+
+		match result {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -178,23 +183,25 @@ pub(super) extern "C" fn host_state_prefix(
 		};
 
 		// Create range query based on prefix
-		let result = if prefix_bytes.is_empty() {
-			// Empty prefix = full scan of all state for this operator
-			flow_txn.state_scan(node_id)
-		} else {
-			// Prefix scan = range query using prefix
-			let range = EncodedKeyRange::prefix(&prefix_bytes);
-			flow_txn.state_range(node_id, range)
-		};
+		// Use block_in_place to call async methods from sync FFI context
+		let result = tokio::task::block_in_place(|| {
+			tokio::runtime::Handle::current().block_on(async {
+				if prefix_bytes.is_empty() {
+					// Empty prefix = full scan of all state for this operator
+					flow_txn.state_scan(node_id).await
+				} else {
+					// Prefix scan = range query using prefix
+					let range = EncodedKeyRange::prefix(&prefix_bytes);
+					flow_txn.state_range(node_id, range).await
+				}
+			})
+		});
 
 		match result {
-			Ok(iter) => {
-				// Need to convert the iterator to 'static lifetime for storage
-				// This is safe because the iterator is owned by the registry
-				let static_iter: BoxedMultiVersionIter<'static> = std::mem::transmute(iter);
-
-				// Create iterator handle
-				let handle = state_iterator::create_iterator(static_iter);
+			Ok(batch) => {
+				// Create iterator handle from batch
+				// No unsafe transmute needed - batches own their data
+				let handle = state_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
 				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())

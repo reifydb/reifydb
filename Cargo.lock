@@ -1527,6 +1527,7 @@ dependencies = [
  "reifydb-transaction",
  "reifydb-type",
  "serde",
+ "tokio",
  "tracing",
 ]
 
