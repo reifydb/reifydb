@@ -25,7 +25,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 			.map(|row| {
 				row.into_iter()
 					.map(|alias_expr| AliasExpression {
-						alias: IdentExpression(alias_expr.alias.0.into_owned()),
+						alias: IdentExpression(alias_expr.alias.0),
 						expression: Box::new(to_owned_expression(*alias_expr.expression)),
 						fragment: alias_expr.fragment,
 					})

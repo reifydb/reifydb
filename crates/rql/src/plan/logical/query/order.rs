@@ -27,7 +27,7 @@ impl Compiler {
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column.name.into_owned(),
+						column: column.name,
 						direction,
 					}
 				})

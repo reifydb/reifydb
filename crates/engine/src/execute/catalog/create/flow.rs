@@ -28,7 +28,7 @@ impl Executor {
 		let flow_def = CatalogStore::create_flow(
 			txn,
 			FlowToCreate {
-				fragment: Some(plan.flow.clone().into_owned()),
+				fragment: Some(plan.flow.clone()),
 				name: plan.flow.text().to_string(),
 				namespace: plan.namespace.id,
 				status: FlowStatus::Active,

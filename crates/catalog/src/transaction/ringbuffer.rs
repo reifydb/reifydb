@@ -24,7 +24,7 @@ pub trait CatalogRingBufferQueryOperations: Send {
 	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> crate::Result<Option<RingBufferDef>>;
 
 	async fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef>;
@@ -32,7 +32,7 @@ pub trait CatalogRingBufferQueryOperations: Send {
 	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<RingBufferDef>;
 }
 
@@ -47,10 +47,9 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBu
 	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let name = name.into();
-		CatalogStore::find_ringbuffer_by_name(self, namespace, name.text()).await
+		CatalogStore::find_ringbuffer_by_name(self, namespace, name).await
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self))]
@@ -62,11 +61,11 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogRingBu
 	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<RingBufferDef> {
 		let name = name.into();
 		let name_text = name.text().to_string();
-		let ringbuffer = self.find_ringbuffer_by_name(namespace, name.clone()).await?;
+		let ringbuffer = self.find_ringbuffer_by_name(namespace, name.text()).await?;
 		match ringbuffer {
 			Some(rb) => Ok(rb),
 			None => {

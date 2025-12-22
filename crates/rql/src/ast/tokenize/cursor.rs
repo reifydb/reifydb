@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_type::{Fragment, StatementColumn, StatementLine};
 
 /// A cursor over the input string that tracks position for tokenization
@@ -175,7 +177,7 @@ impl<'a> Cursor<'a> {
 	/// position
 	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment {
 		Fragment::Statement {
-			text: self.input[start_pos..self.pos].to_string(),
+			text: Arc::from(&self.input[start_pos..self.pos]),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}
@@ -191,7 +193,7 @@ impl<'a> Cursor<'a> {
 		start_column: u32,
 	) -> Fragment {
 		Fragment::Statement {
-			text: self.input[text_start..text_end].to_string(),
+			text: Arc::from(&self.input[text_start..text_end]),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
 		}

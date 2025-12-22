@@ -38,11 +38,7 @@ impl Executor {
 
 		// Find the table
 		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name).await? else {
-			return_error!(table_not_found(
-				plan.node.table.name.clone().into_owned(),
-				&namespace.name,
-				table_name,
-			));
+			return_error!(table_not_found(plan.node.table.name.clone(), &namespace.name, table_name,));
 		};
 
 		let mut results = Vec::new();
@@ -67,7 +63,7 @@ impl Executor {
 							table_columns.iter().find(|col| col.name == column_name)
 						else {
 							return_error!(column_not_found(
-								alter_column.column.name.clone().into_owned()
+								alter_column.column.name.clone()
 							));
 						};
 

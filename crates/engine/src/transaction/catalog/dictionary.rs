@@ -65,11 +65,12 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&DictionaryDef> {
-		let name = name.into();
-		self.changes.dictionary_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name.text())
-		})
+	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&DictionaryDef> {
+		self.changes
+			.dictionary_def
+			.iter()
+			.rev()
+			.find_map(|change| change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name))
 	}
 
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool {
@@ -80,14 +81,13 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|d| d.id) == Some(id))
 	}
 
-	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
-		let name = name.into();
+	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.dictionary_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|d| d.namespace == namespace && d.name == name.text())
+					.map(|d| d.namespace == namespace && d.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -98,11 +98,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl Into<Fragment>,
-	) -> Option<&DictionaryDef> {
+	fn find_dictionary_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&DictionaryDef> {
 		None
 	}
 
@@ -110,7 +106,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
+	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

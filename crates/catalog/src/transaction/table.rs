@@ -41,18 +41,14 @@ pub trait CatalogTrackTableChangeOperations {
 pub trait CatalogTableQueryOperations: CatalogNamespaceQueryOperations {
 	async fn find_table(&mut self, id: TableId) -> crate::Result<Option<TableDef>>;
 
-	async fn find_table_by_name(
-		&mut self,
-		namespace: NamespaceId,
-		name: impl Into<Fragment>,
-	) -> crate::Result<Option<TableDef>>;
+	async fn find_table_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<Option<TableDef>>;
 
 	async fn get_table(&mut self, id: TableId) -> crate::Result<TableDef>;
 
 	async fn get_table_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<TableDef>;
 }
 
@@ -119,33 +115,30 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn find_table_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> reifydb_core::Result<Option<TableDef>> {
-		let name = name.into();
-
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(table) = TransactionalTableChanges::find_table_by_name(self, namespace, name.clone()) {
+		if let Some(table) = TransactionalTableChanges::find_table_by_name(self, namespace, name) {
 			return Ok(Some(table.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalTableChanges::is_table_deleted_by_name(self, namespace, name.clone()) {
+		if TransactionalTableChanges::is_table_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}
 
 		// 3. Check MaterializedCatalog
-		if let Some(table) = self.catalog().find_table_by_name(namespace, name.text(), self.version()) {
+		if let Some(table) = self.catalog().find_table_by_name(namespace, name, self.version()) {
 			return Ok(Some(table));
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(table) = CatalogStore::find_table_by_name(self, namespace, name.text()).await? {
+		if let Some(table) = CatalogStore::find_table_by_name(self, namespace, name).await? {
 			warn!(
 				"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-				name.text(),
-				namespace
+				name, namespace
 			);
 			return Ok(Some(table));
 		}
@@ -167,7 +160,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn get_table_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> reifydb_core::Result<TableDef> {
 		let name = name.into();
 
@@ -178,7 +171,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_table_by_name(namespace, name.clone())
+		self.find_table_by_name(namespace, name.text())
 			.await?
 			.ok_or_else(|| error!(table_not_found(name.clone(), &namespace_name, name.text())))
 	}

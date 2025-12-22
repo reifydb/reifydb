@@ -30,7 +30,7 @@ impl Executor {
 		}
 
 		txn.create_dictionary(DictionaryToCreate {
-			fragment: Some(plan.dictionary.clone().into_owned()),
+			fragment: Some(plan.dictionary.clone()),
 			dictionary: plan.dictionary.text().to_string(),
 			namespace: plan.namespace.id,
 			value_type: plan.value_type,

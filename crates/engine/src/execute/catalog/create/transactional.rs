@@ -23,17 +23,13 @@ impl Executor {
 				]));
 			}
 
-			return_error!(view_already_exists(
-				plan.view.clone().into_owned(),
-				&plan.namespace.name,
-				&view.name,
-			));
+			return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name, &view.name,));
 		}
 
 		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
-				fragment: Some(plan.view.clone().into_owned()),
+				fragment: Some(plan.view.clone()),
 				name: plan.view.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,

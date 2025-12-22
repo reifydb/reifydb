@@ -11,7 +11,7 @@ use crate::{
 
 pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
 	// Fragment is already owned, no conversion needed
-	let fragment_owned = fragment.clone().into_owned();
+	let fragment_owned = fragment.clone();
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing

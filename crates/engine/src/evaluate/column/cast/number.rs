@@ -229,7 +229,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			container,
 			..
 		} => {
-			let base_fragment = lazy_fragment.fragment().into_owned();
+			let base_fragment = lazy_fragment.fragment();
 			let mut out = ColumnData::with_capacity(target, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
@@ -409,7 +409,7 @@ fn text_to_float<'a>(
 	} = column_data
 	{
 		// Create base fragment once for efficiency
-		let base_fragment = lazy_fragment.fragment().into_owned();
+		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
@@ -480,7 +480,7 @@ fn text_to_decimal<'a>(
 		..
 	} = column_data
 	{
-		let base_fragment = lazy_fragment.fragment().into_owned();
+		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
@@ -1199,7 +1199,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			let fragment = lazy_fragment.fragment().into_owned();
+			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
@@ -1226,7 +1226,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx].clone();
-			let fragment = lazy_fragment.fragment().into_owned();
+			let fragment = lazy_fragment.fragment();
 			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),

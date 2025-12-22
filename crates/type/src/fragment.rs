@@ -5,6 +5,7 @@ use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},
 	ops::Deref,
+	sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -54,14 +55,14 @@ pub enum Fragment {
 
 	/// Fragment from a RQL statement with position information
 	Statement {
-		text: String,
+		text: Arc<String>,
 		line: StatementLine,
 		column: StatementColumn,
 	},
 
 	/// Fragment from internal/runtime code
 	Internal {
-		text: String,
+		text: Arc<String>,
 	},
 }
 
@@ -103,11 +104,6 @@ impl Fragment {
 		}
 	}
 
-	/// Convert to owned variant (identity function now)
-	pub fn into_owned(self) -> Fragment {
-		self
-	}
-
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
 	pub fn sub_fragment(&self, offset: usize, length: usize) -> Fragment {
@@ -126,14 +122,14 @@ impl Fragment {
 				column,
 				..
 			} => Fragment::Statement {
-				text: sub_text.to_string(),
+				text: Arc::from(sub_text.to_string()),
 				line: *line,
 				column: StatementColumn(column.0 + offset as u32),
 			},
 			Fragment::Internal {
 				..
 			} => Fragment::Internal {
-				text: sub_text.to_string(),
+				text: Arc::from(sub_text.to_string()),
 			},
 		}
 	}
@@ -144,7 +140,7 @@ impl Fragment {
 	/// substrings
 	pub fn internal(text: impl Into<String>) -> Self {
 		Fragment::Internal {
-			text: text.into(),
+			text: Arc::from(text.into()),
 		}
 	}
 
@@ -152,7 +148,7 @@ impl Fragment {
 	/// purposes
 	pub fn testing(text: impl Into<String>) -> Self {
 		Fragment::Statement {
-			text: text.into(),
+			text: Arc::from(text.into()),
 			line: StatementLine(1),
 			column: StatementColumn(0),
 		}
@@ -185,14 +181,14 @@ impl Fragment {
 				column,
 				..
 			} => Fragment::Statement {
-				text,
+				text: Arc::from(text),
 				line: *line,
 				column: *column,
 			},
 			Fragment::Internal {
 				..
 			} => Fragment::Internal {
-				text,
+				text: Arc::from(text),
 			},
 		}
 	}
@@ -239,7 +235,7 @@ impl Eq for Fragment {}
 impl From<String> for Fragment {
 	fn from(s: String) -> Self {
 		Fragment::Internal {
-			text: s,
+			text: Arc::from(s),
 		}
 	}
 }
@@ -247,7 +243,7 @@ impl From<String> for Fragment {
 impl From<&str> for Fragment {
 	fn from(s: &str) -> Self {
 		Fragment::Internal {
-			text: s.to_string(),
+			text: Arc::from(s.to_string()),
 		}
 	}
 }
@@ -256,7 +252,7 @@ impl Fragment {
 	/// Create a statement fragment with position info
 	pub fn statement(text: impl Into<String>, line: u32, column: u32) -> Self {
 		Fragment::Statement {
-			text: text.into(),
+			text: Arc::from(text.into()),
 			line: StatementLine(line),
 			column: StatementColumn(column),
 		}

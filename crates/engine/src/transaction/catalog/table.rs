@@ -60,11 +60,12 @@ impl TransactionalTableChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_table_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&TableDef> {
-		let name = name.into();
-		self.changes.table_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name.text())
-		})
+	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TableDef> {
+		self.changes
+			.table_def
+			.iter()
+			.rev()
+			.find_map(|change| change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name))
 	}
 
 	fn is_table_deleted(&self, id: TableId) -> bool {
@@ -75,14 +76,13 @@ impl TransactionalTableChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|t| t.id) == Some(id))
 	}
 
-	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
-		let name = name.into();
+	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.table_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|t| t.namespace == namespace && t.name == name.text())
+					.map(|t| t.namespace == namespace && t.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -93,7 +93,7 @@ impl TransactionalTableChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_table_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> Option<&TableDef> {
+	fn find_table_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&TableDef> {
 		None
 	}
 
@@ -101,7 +101,7 @@ impl TransactionalTableChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_table_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
+	fn is_table_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

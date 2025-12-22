@@ -29,11 +29,7 @@ impl Compiler {
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
 		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name).await? else {
-			return_error!(table_not_found(
-				alter.sequence.name.clone().into_owned(),
-				&namespace_def.name,
-				table_name
-			));
+			return_error!(table_not_found(alter.sequence.name.clone(), &namespace_def.name, table_name));
 		};
 
 		// Find the column in the table

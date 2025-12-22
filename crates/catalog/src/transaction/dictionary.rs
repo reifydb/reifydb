@@ -38,7 +38,7 @@ pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations + Se
 	async fn find_dictionary_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> crate::Result<Option<DictionaryDef>>;
 
 	async fn get_dictionary(&mut self, id: DictionaryId) -> crate::Result<DictionaryDef>;
@@ -46,7 +46,7 @@ pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations + Se
 	async fn get_dictionary_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<DictionaryDef>;
 }
 
@@ -114,36 +114,31 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn find_dictionary_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> reifydb_core::Result<Option<DictionaryDef>> {
-		let name = name.into();
-
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(dictionary) =
-			TransactionalDictionaryChanges::find_dictionary_by_name(self, namespace, name.clone())
+		if let Some(dictionary) = TransactionalDictionaryChanges::find_dictionary_by_name(self, namespace, name)
 		{
 			return Ok(Some(dictionary.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(self, namespace, name.clone()) {
+		if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}
 
 		// 3. Check MaterializedCatalog
-		if let Some(dictionary) = self.catalog().find_dictionary_by_name(namespace, name.text(), self.version())
-		{
+		if let Some(dictionary) = self.catalog().find_dictionary_by_name(namespace, name, self.version()) {
 			return Ok(Some(dictionary));
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(self, namespace, name.text()).await? {
+		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(self, namespace, name).await? {
 			warn!(
 				"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-				name.text(),
-				namespace
+				name, namespace
 			);
 			return Ok(Some(dictionary));
 		}
@@ -165,7 +160,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn get_dictionary_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> reifydb_core::Result<DictionaryDef> {
 		let name = name.into();
 
@@ -176,7 +171,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_dictionary_by_name(namespace, name.clone())
+		self.find_dictionary_by_name(namespace, name.text())
 			.await?
 			.ok_or_else(|| error!(dictionary_not_found(name.clone(), &namespace_name, name.text())))
 	}

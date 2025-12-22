@@ -32,7 +32,7 @@ impl Executor {
 		}
 
 		txn.create_ringbuffer(RingBufferToCreate {
-			fragment: Some(plan.ringbuffer.clone().into_owned()),
+			fragment: Some(plan.ringbuffer.clone()),
 			ringbuffer: plan.ringbuffer.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,

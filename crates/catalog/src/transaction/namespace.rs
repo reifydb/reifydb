@@ -39,11 +39,11 @@ pub trait CatalogTrackNamespaceChangeOperations {
 pub trait CatalogNamespaceQueryOperations: Send {
 	async fn find_namespace(&mut self, id: NamespaceId) -> crate::Result<Option<NamespaceDef>>;
 
-	async fn find_namespace_by_name(&mut self, name: impl Into<Fragment>) -> crate::Result<Option<NamespaceDef>>;
+	async fn find_namespace_by_name(&mut self, name: &str) -> crate::Result<Option<NamespaceDef>>;
 
 	async fn get_namespace(&mut self, id: NamespaceId) -> crate::Result<NamespaceDef>;
 
-	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment>) -> crate::Result<NamespaceDef>;
+	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment> + Send) -> crate::Result<NamespaceDef>;
 }
 
 #[async_trait]
@@ -103,32 +103,27 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, name))]
-	async fn find_namespace_by_name(
-		&mut self,
-		name: impl Into<Fragment>,
-	) -> reifydb_core::Result<Option<NamespaceDef>> {
-		let name = name.into();
-
+	async fn find_namespace_by_name(&mut self, name: &str) -> reifydb_core::Result<Option<NamespaceDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace_by_name(self, name.clone()) {
+		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace_by_name(self, name) {
 			return Ok(Some(namespace.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalNamespaceChanges::is_namespace_deleted_by_name(self, name.clone()) {
+		if TransactionalNamespaceChanges::is_namespace_deleted_by_name(self, name) {
 			return Ok(None);
 		}
 
 		// 3. Check MaterializedCatalog
-		if let Some(namespace) = self.catalog().find_namespace_by_name(name.text(), self.version()) {
+		if let Some(namespace) = self.catalog().find_namespace_by_name(name, self.version()) {
 			return Ok(Some(namespace));
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(namespace) = CatalogStore::find_namespace_by_name(self, name.text()).await? {
-			warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name.text());
+		if let Some(namespace) = CatalogStore::find_namespace_by_name(self, name).await? {
+			warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 			return Ok(Some(namespace));
 		}
 
@@ -146,9 +141,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, name))]
-	async fn get_namespace_by_name(&mut self, name: impl Into<Fragment>) -> reifydb_core::Result<NamespaceDef> {
+	async fn get_namespace_by_name(
+		&mut self,
+		name: impl Into<Fragment> + Send,
+	) -> reifydb_core::Result<NamespaceDef> {
 		let name = name.into();
-		self.find_namespace_by_name(name.clone())
+		self.find_namespace_by_name(name.text())
 			.await?
 			.ok_or_else(|| error!(namespace_not_found(name.clone(), name.text())))
 	}

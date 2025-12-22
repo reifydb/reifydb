@@ -34,8 +34,8 @@ impl ColumnIdentifier {
 
 	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			source: self.source.into_owned(),
-			name: self.name.into_owned(),
+			source: self.source,
+			name: self.name,
 		}
 	}
 
@@ -66,10 +66,10 @@ impl ColumnSource {
 				namespace,
 				source,
 			} => ColumnSource::Source {
-				namespace: namespace.into_owned(),
-				source: source.into_owned(),
+				namespace,
+				source,
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(alias.into_owned()),
+			ColumnSource::Alias(alias) => ColumnSource::Alias(alias),
 		}
 	}
 

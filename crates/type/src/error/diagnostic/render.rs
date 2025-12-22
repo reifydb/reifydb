@@ -56,7 +56,7 @@ impl DefaultRenderer {
 
 			let _ = writeln!(output, "CODE");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
-			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
+			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
 			let _ = writeln!(output, "    │");
 
@@ -138,7 +138,7 @@ impl DefaultRenderer {
 			let line_content = get_line(statement, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
-			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
+			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(
 				output,
 				"{}    │ {}{}",

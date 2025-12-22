@@ -61,17 +61,16 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_flow_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&FlowDef> {
-		let name = name.into();
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowDef> {
 		// Find the last change for this flow name
 		for change in self.changes.flow_def.iter().rev() {
 			if let Some(flow) = &change.post {
-				if flow.namespace == namespace && flow.name == name.text() {
+				if flow.namespace == namespace && flow.name == name {
 					return Some(flow);
 				}
 			}
 			if let Some(flow) = &change.pre {
-				if flow.namespace == namespace && flow.name == name.text() && change.op == Delete {
+				if flow.namespace == namespace && flow.name == name && change.op == Delete {
 					// Flow was deleted
 					return None;
 				}
@@ -88,15 +87,14 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|f| f.id == id).unwrap_or(false))
 	}
 
-	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
-		let name = name.into();
+	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		// Check if this flow was deleted in this transaction
 		self.changes.flow_def.iter().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|f| f.namespace == namespace && f.name == name.text())
+					.map(|f| f.namespace == namespace && f.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -107,7 +105,7 @@ impl TransactionalFlowChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> Option<&FlowDef> {
+	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&FlowDef> {
 		None
 	}
 
@@ -115,7 +113,7 @@ impl TransactionalFlowChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_flow_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
+	fn is_flow_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

@@ -221,7 +221,7 @@ impl Executor {
 				if std_txn.command_mut().contains_key(&index_entry_key.encode()).await? {
 					let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 					return_error!(primary_key_violation(
-						plan.target.identifier().clone().into_owned(),
+						plan.target.identifier().clone(),
 						table.name.clone(),
 						key_columns,
 					));

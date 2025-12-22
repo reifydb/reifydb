@@ -44,7 +44,7 @@ impl Compiler {
 				} => name.clone(),
 			};
 
-			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]).into_owned());
+			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
 
 			// Resolve dictionary if specified
 			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {

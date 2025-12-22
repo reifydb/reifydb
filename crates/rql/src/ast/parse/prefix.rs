@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_type::{Fragment, diagnostic::ast, return_error};
 
 use crate::ast::{
@@ -28,7 +30,7 @@ impl Parser {
 					fragment: Fragment::Statement {
 						column: operator.token().fragment.column(),
 						line: operator.token().fragment.line(),
-						text: format!("-{}", literal.0.fragment.text()),
+						text: Arc::from(format!("-{}", literal.0.fragment.text())),
 					},
 				}))));
 			}

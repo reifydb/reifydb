@@ -34,6 +34,7 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	sync::Arc,
 };
 
 use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
@@ -655,7 +656,7 @@ impl CallExpression {
 		Fragment::Statement {
 			column: self.func.0.column(),
 			line: self.func.0.line(),
-			text: format!(
+			text: Arc::from(format!(
 				"{}({})",
 				self.func.0.text(),
 				self.args
@@ -663,7 +664,7 @@ impl CallExpression {
 					.map(|arg| arg.full_fragment_owned().text().to_string())
 					.collect::<Vec<_>>()
 					.join(",")
-			),
+			)),
 		}
 	}
 }

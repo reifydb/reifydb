@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::AccessSourceExpression;
 use reifydb_type::{Fragment, diagnostic::query::column_not_found, error};
@@ -56,7 +58,7 @@ impl StandardColumnEvaluator {
 			Err(error!(column_not_found(Fragment::Statement {
 				column: expr.column.name.column(),
 				line: expr.column.name.line(),
-				text: format!("{}.{}", source.text(), &column),
+				text: Arc::from(format!("{}.{}", source.text(), &column)),
 			})))
 		}
 	}

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 use reifydb_core::{
 	return_error,
@@ -55,9 +55,9 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					let base_fragment = lazy_fragment.fragment().into_owned();
+					let base_fragment = lazy_fragment.fragment();
 					let error_fragment = Fragment::Statement {
-						text: container[idx].to_string(),
+						text: Arc::from(container[idx].to_string()),
 						line: base_fragment.line(),
 						column: base_fragment.column(),
 					};
@@ -133,7 +133,7 @@ fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> cra
 				Err(mut e) => {
 					// Replace the error's fragment with the
 					// proper source fragment
-					e.0.with_fragment(lazy_fragment.fragment().into_owned());
+					e.0.with_fragment(lazy_fragment.fragment());
 					return Err(e);
 				}
 			}

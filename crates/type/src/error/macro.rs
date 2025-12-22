@@ -75,6 +75,8 @@ macro_rules! err {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use crate::{Fragment, StatementColumn, StatementLine, Type, error::diagnostic::sequence::sequence_exhausted};
 
 	#[test]
@@ -124,7 +126,7 @@ mod tests {
 		let fragment = Fragment::Statement {
 			line: StatementLine(42),
 			column: StatementColumn(10),
-			text: "test fragment".to_string(),
+			text: Arc::new("test fragment".to_string()),
 		};
 
 		// Test that error! macro with fragment creates correct Error
@@ -155,7 +157,7 @@ mod tests {
 			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
-				text: "error location".to_string(),
+				text: Arc::new("error location".to_string()),
 			};
 			return_error!(sequence_exhausted(Type::Uint8), fragment);
 		}
@@ -184,7 +186,7 @@ mod tests {
 		let fragment = Fragment::Statement {
 			line: StatementLine(200),
 			column: StatementColumn(50),
-			text: "err fragment test".to_string(),
+			text: Arc::new("err fragment test".to_string()),
 		};
 
 		// Test that err! macro with fragment creates correct Result
@@ -216,7 +218,7 @@ mod tests {
 		let get_fragment = || Fragment::Statement {
 			line: StatementLine(300),
 			column: StatementColumn(75),
-			text: "closure fragment".to_string(),
+			text: Arc::new("closure fragment".to_string()),
 		};
 
 		let err = error!(sequence_exhausted(Type::Uint8), get_fragment());

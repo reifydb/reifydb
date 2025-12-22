@@ -25,7 +25,7 @@ impl Executor {
 		// let namespace_name = plan.sequence.namespace().name();
 		// let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 		// 	return_error!(namespace_not_found(
-		// 		plan.sequence.identifier().clone().into_owned(),
+		// 		plan.sequence.identifier().clone(),
 		// 		namespace_name,
 		// 	));
 		// };
@@ -40,7 +40,7 @@ impl Executor {
 		let column = plan.column.def().clone();
 
 		if !column.auto_increment {
-			return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone().into_owned()));
+			return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone()));
 		}
 
 		// For catalog operations, use empty params since no

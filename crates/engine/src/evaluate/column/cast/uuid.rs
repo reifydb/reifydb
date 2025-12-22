@@ -48,7 +48,7 @@ macro_rules! impl_to_uuid {
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting
-						let proper_fragment = lazy_fragment.fragment().into_owned();
+						let proper_fragment = lazy_fragment.fragment();
 
 						// Replace the error's origin with the proper RQL fragment
 						// This ensures the error shows "at col" not the actual value

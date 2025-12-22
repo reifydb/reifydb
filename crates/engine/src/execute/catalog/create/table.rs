@@ -32,7 +32,7 @@ impl Executor {
 		}
 
 		txn.create_table(TableToCreate {
-			fragment: Some(plan.table.clone().into_owned()),
+			fragment: Some(plan.table.clone()),
 			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
@@ -55,7 +55,7 @@ impl Executor {
 			for pk_column in pk_def.columns {
 				let column_name = pk_column.column.text();
 				let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
-					return_error!(column_not_found(pk_column.column.into_owned()));
+					return_error!(column_not_found(pk_column.column));
 				};
 				column_ids.push(column.id);
 			}

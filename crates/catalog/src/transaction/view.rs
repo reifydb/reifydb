@@ -41,18 +41,14 @@ pub trait CatalogTrackViewChangeOperations {
 pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
 	async fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
 
-	async fn find_view_by_name(
-		&mut self,
-		namespace: NamespaceId,
-		name: impl Into<Fragment>,
-	) -> crate::Result<Option<ViewDef>>;
+	async fn find_view_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<Option<ViewDef>>;
 
 	async fn get_view(&mut self, id: ViewId) -> crate::Result<ViewDef>;
 
 	async fn get_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<ViewDef>;
 }
 
@@ -119,33 +115,30 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn find_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: &str,
 	) -> reifydb_core::Result<Option<ViewDef>> {
-		let name = name.into();
-
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
-		if let Some(view) = TransactionalViewChanges::find_view_by_name(self, namespace, name.clone()) {
+		if let Some(view) = TransactionalViewChanges::find_view_by_name(self, namespace, name) {
 			return Ok(Some(view.clone()));
 		}
 
 		// 2. Check if deleted
 		// nop for QueryTransaction
-		if TransactionalViewChanges::is_view_deleted_by_name(self, namespace, name.clone()) {
+		if TransactionalViewChanges::is_view_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}
 
 		// 3. Check MaterializedCatalog
-		if let Some(view) = self.catalog().find_view_by_name(namespace, name.text(), self.version()) {
+		if let Some(view) = self.catalog().find_view_by_name(namespace, name, self.version()) {
 			return Ok(Some(view));
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(view) = CatalogStore::find_view_by_name(self, namespace, name.text()).await? {
+		if let Some(view) = CatalogStore::find_view_by_name(self, namespace, name).await? {
 			warn!(
 				"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-				name.text(),
-				namespace
+				name, namespace
 			);
 			return Ok(Some(view));
 		}
@@ -167,13 +160,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	async fn get_view_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl Into<Fragment>,
+		name: impl Into<Fragment> + Send,
 	) -> reifydb_core::Result<ViewDef> {
 		let name = name.into();
 
 		let namespace_name = self.get_namespace(namespace).await?.name;
 
-		self.find_view_by_name(namespace, name.clone())
+		self.find_view_by_name(namespace, name.text())
 			.await?
 			.ok_or_else(|| error!(view_not_found(name.clone(), &namespace_name, name.text())))
 	}

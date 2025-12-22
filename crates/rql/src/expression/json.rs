@@ -9,6 +9,8 @@
 //! - Supports round-trip serialization/deserialization
 //! - Is suitable for frontend query builders
 
+use std::sync::Arc;
+
 use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
 use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
@@ -199,7 +201,7 @@ fn extract_source(source: &ColumnSource) -> (String, String) {
 // Helper to create an internal fragment
 fn internal_fragment(text: &str) -> Fragment {
 	Fragment::Internal {
-		text: text.to_string(),
+		text: Arc::from(text),
 	}
 }
 

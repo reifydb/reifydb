@@ -31,7 +31,7 @@ impl Executor {
 
 		let result = txn
 			.create_namespace(NamespaceToCreate {
-				namespace_fragment: Some(plan.namespace.clone().into_owned()),
+				namespace_fragment: Some(plan.namespace.clone()),
 				name: plan.namespace.text().to_string(),
 			})
 			.await?;

@@ -26,7 +26,7 @@ impl Executor {
 
 		let result = txn
 			.create_view(ViewToCreate {
-				fragment: Some(plan.view.clone().into_owned()),
+				fragment: Some(plan.view.clone()),
 				name: plan.view.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,

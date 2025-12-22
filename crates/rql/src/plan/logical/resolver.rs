@@ -115,7 +115,7 @@ pub async fn resolve_unresolved_source(
 	Err(crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
-		fragment: unresolved.name.clone().into_owned(),
+		fragment: unresolved.name.clone(),
 	})
 	.into())
 }

@@ -230,7 +230,7 @@ impl Compiler {
 						.await?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone().into_owned(),
+								table_id.name.clone(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
@@ -289,7 +289,7 @@ impl Compiler {
 					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
@@ -318,36 +318,33 @@ impl Compiler {
 					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
-					let table_id = insert.target.clone();
+					let table = insert.target.clone();
 					let namespace_name =
-						table_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+						table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
 						.await?
 						.unwrap();
 					let Some(table_def) = CatalogStore::find_table_by_name(
 						rx,
 						namespace_def.id,
-						table_id.name.text(),
+						table.name.text(),
 					)
 					.await?
 					else {
 						return_error!(table_not_found(
-							table_id.name.clone().into_owned(),
+							table.name.clone(),
 							&namespace_def.name,
-							table_id.name.text()
+							table.name.text()
 						));
 					};
 
-					let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = table.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
-					let target = ResolvedTable::new(
-						table_id.name.clone(),
-						resolved_namespace,
-						table_def,
-					);
+					let target =
+						ResolvedTable::new(table.name.clone(), resolved_namespace, table_def);
 
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: Box::new(input),
@@ -377,7 +374,7 @@ impl Compiler {
 					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
@@ -418,7 +415,7 @@ impl Compiler {
 					.await?
 					else {
 						return_error!(dictionary_not_found(
-							dictionary_id.name.clone().into_owned(),
+							dictionary_id.name.clone(),
 							&namespace_def.name,
 							dictionary_id.name.text()
 						));
@@ -479,7 +476,7 @@ impl Compiler {
 						.await?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone().into_owned(),
+								table_id.name.clone(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
@@ -540,7 +537,7 @@ impl Compiler {
 					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));

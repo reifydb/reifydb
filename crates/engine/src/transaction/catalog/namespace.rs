@@ -60,13 +60,12 @@ impl TransactionalNamespaceChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_namespace_by_name(&self, name: impl Into<Fragment>) -> Option<&NamespaceDef> {
-		let name = name.into();
+	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef> {
 		self.changes
 			.namespace_def
 			.iter()
 			.rev()
-			.find_map(|change| change.post.as_ref().filter(|s| s.name == name.text()))
+			.find_map(|change| change.post.as_ref().filter(|s| s.name == name))
 	}
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool {
@@ -77,11 +76,12 @@ impl TransactionalNamespaceChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id) == Some(id))
 	}
 
-	fn is_namespace_deleted_by_name(&self, name: impl Into<Fragment>) -> bool {
-		let name = name.into();
-		self.changes.namespace_def.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|s| s.name.as_str()) == Some(name.text())
-		})
+	fn is_namespace_deleted_by_name(&self, name: &str) -> bool {
+		self.changes
+			.namespace_def
+			.iter()
+			.rev()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.name.as_str()) == Some(name))
 	}
 }
 
@@ -90,7 +90,7 @@ impl TransactionalNamespaceChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_namespace_by_name(&self, _name: impl Into<Fragment>) -> Option<&NamespaceDef> {
+	fn find_namespace_by_name(&self, _name: &str) -> Option<&NamespaceDef> {
 		None
 	}
 
@@ -98,7 +98,7 @@ impl TransactionalNamespaceChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_namespace_deleted_by_name(&self, _name: impl Into<Fragment>) -> bool {
+	fn is_namespace_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }

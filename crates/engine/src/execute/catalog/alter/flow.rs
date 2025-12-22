@@ -34,7 +34,7 @@ impl Executor {
 		// Find the flow
 		let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace.id, flow_name).await? else {
 			return_error!(reifydb_core::diagnostic::catalog::flow_not_found(
-				plan.flow.name.clone().into_owned(),
+				plan.flow.name.clone(),
 				&namespace.name,
 				flow_name,
 			));

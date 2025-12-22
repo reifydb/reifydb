@@ -35,7 +35,7 @@ impl StandardColumnEvaluator {
 				let casted =
 					cast_column_data(ctx, &column.data(), cast.to.ty, &lazy_frag).map_err(|e| {
 						error!(cast::invalid_number(
-							cast_fragment().into_owned(),
+							cast_fragment(),
 							cast.to.ty,
 							e.diagnostic()
 						))

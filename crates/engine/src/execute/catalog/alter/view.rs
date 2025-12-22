@@ -25,7 +25,7 @@ impl Executor {
 				Fragment::internal("default".to_string())
 			});
 			return_error!(reifydb_core::diagnostic::catalog::namespace_not_found(
-				ns_fragment.into_owned(),
+				ns_fragment,
 				namespace_name,
 			));
 		};
@@ -33,7 +33,7 @@ impl Executor {
 		// Find the view
 		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name).await? else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.name.clone().into_owned(),
+				plan.node.view.name.clone(),
 				&namespace.name,
 				view_name,
 			));
@@ -63,7 +63,7 @@ impl Executor {
 						else {
 							return_error!(
 								reifydb_core::diagnostic::query::column_not_found(
-									ast_column.column.name.clone().into_owned()
+									ast_column.column.name.clone()
 								)
 							);
 						};

@@ -5,9 +5,7 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	diagnostic::sequence::sequence_exhausted,
-	interface::{
-		CommandTransaction, QueryTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction,
-	},
+	interface::{CommandTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction},
 	return_error,
 	value::encoded::EncodedValuesLayout,
 };
@@ -98,7 +96,7 @@ macro_rules! impl_generator {
 					key: &EncodedKey,
 					value: $prim,
 				) -> crate::Result<()> {
-					let mut tx = txn.begin_single_command([key])?;
+					let mut tx = txn.begin_single_command([key]).await?;
 					let mut row = match tx.get(key).await? {
 						Some(row) => row.values,
 						None => LAYOUT.allocate(),

@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_type::{Error, Fragment, diagnostic::ast::unexpected_token_error};
 
 use crate::ast::{
@@ -68,7 +70,7 @@ impl Parser {
 		{
 			let combined_text = parts.join("");
 			let fragment = Fragment::Statement {
-				text: combined_text,
+				text: Arc::from(combined_text),
 				line: start_line,
 				column: start_column,
 			};
@@ -112,7 +114,7 @@ impl Parser {
 
 		// Create Fragment with combined text
 		let fragment = Fragment::Statement {
-			text: combined_text,
+			text: Arc::from(combined_text),
 			line: start_line,
 			column: start_column,
 		};

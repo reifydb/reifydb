@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use bincode::{config::standard, serde::decode_from_slice};
 use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
@@ -305,14 +305,14 @@ mod tests {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: String::from("_context"),
+					text: Arc::from("_context"),
 				},
 				source: Fragment::Internal {
-					text: String::from("_context"),
+					text: Arc::from("_context"),
 				},
 			},
 			name: Fragment::Internal {
-				text: name.to_string(),
+				text: Arc::from(name.to_string()),
 			},
 		}))
 	}
@@ -320,7 +320,7 @@ mod tests {
 	fn constant_number(val: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
 			fragment: Fragment::Internal {
-				text: val.to_string(),
+				text: Arc::from(val.to_string()),
 			},
 		})
 	}
@@ -330,7 +330,7 @@ mod tests {
 			left: Box::new(left),
 			right: Box::new(right),
 			fragment: Fragment::Internal {
-				text: ">".to_string(),
+				text: Arc::from(">"),
 			},
 		})
 	}
@@ -338,11 +338,11 @@ mod tests {
 	fn alias_expr(name: &str, expr: Expression) -> Expression {
 		Expression::Alias(AliasExpression {
 			alias: IdentExpression(Fragment::Internal {
-				text: name.to_string(),
+				text: Arc::from(name.to_string()),
 			}),
 			expression: Box::new(expr),
 			fragment: Fragment::Internal {
-				text: "as".to_string(),
+				text: Arc::from("as"),
 			},
 		})
 	}

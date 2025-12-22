@@ -31,7 +31,7 @@ impl Compiler {
 					} => name.clone(),
 				};
 
-				let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]).into_owned());
+				let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
 
 				columns.push(ViewColumnToCreate {
 					name: column_name,

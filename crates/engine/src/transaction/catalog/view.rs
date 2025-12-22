@@ -61,11 +61,12 @@ impl TransactionalViewChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_view_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> Option<&ViewDef> {
-		let name = name.into();
-		self.changes.view_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|v| v.namespace == namespace && v.name == name.text())
-		})
+	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ViewDef> {
+		self.changes
+			.view_def
+			.iter()
+			.rev()
+			.find_map(|change| change.post.as_ref().filter(|v| v.namespace == namespace && v.name == name))
 	}
 
 	fn is_view_deleted(&self, id: ViewId) -> bool {
@@ -76,14 +77,13 @@ impl TransactionalViewChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|v| v.id) == Some(id))
 	}
 
-	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: impl Into<Fragment>) -> bool {
-		let name = name.into();
+	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.view_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|v| v.namespace == namespace && v.name == name.text())
+					.map(|v| v.namespace == namespace && v.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -94,7 +94,7 @@ impl TransactionalViewChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_view_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> Option<&ViewDef> {
+	fn find_view_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&ViewDef> {
 		None
 	}
 
@@ -102,7 +102,7 @@ impl TransactionalViewChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_view_deleted_by_name(&self, _namespace: NamespaceId, _name: impl Into<Fragment>) -> bool {
+	fn is_view_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

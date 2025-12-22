@@ -177,7 +177,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.name.text());
 				projections.push(Projection::Group {
 					column: c.0.name.text().to_string(),
-					alias: c.0.name.clone().into_owned(),
+					alias: c.0.name.clone(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -186,7 +186,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(access.column.name.text());
 				projections.push(Projection::Group {
 					column: access.column.name.text().to_string(),
-					alias: access.column.name.clone().into_owned(),
+					alias: access.column.name.clone(),
 				})
 			}
 			// _ => return
@@ -219,7 +219,7 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
 							column: c.0.name.text().to_string(),
-							alias: alias.into_owned(),
+							alias,
 							function,
 						});
 					}
@@ -230,7 +230,7 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
 							column: access.column.name.text().to_string(),
-							alias: alias.into_owned(),
+							alias,
 							function,
 						});
 					}

@@ -9,6 +9,8 @@
 //! - `rownum in [a, b, c]` → List lookup
 //! - `rownum between X and Y` → Range scan
 
+use std::sync::Arc;
+
 use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 
 use crate::expression::{
@@ -154,14 +156,14 @@ mod tests {
 		let column = ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: String::from("_context"),
+					text: Arc::from("_context"),
 				},
 				source: Fragment::Internal {
-					text: String::from("_context"),
+					text: Arc::from("_context"),
 				},
 			},
 			name: Fragment::Internal {
-				text: String::from(ROW_NUMBER_COLUMN_NAME),
+				text: Arc::from(ROW_NUMBER_COLUMN_NAME),
 			},
 		};
 		Expression::Column(ColumnExpression(column))
@@ -170,7 +172,7 @@ mod tests {
 	fn make_constant(n: u64) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
 			fragment: Fragment::Internal {
-				text: n.to_string(),
+				text: Arc::from(n.to_string()),
 			},
 		})
 	}
@@ -244,14 +246,14 @@ mod tests {
 		let other_column = ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: String::from("default"),
+					text: Arc::from("default"),
 				},
 				source: Fragment::Internal {
-					text: String::from("users"),
+					text: Arc::from("users"),
 				},
 			},
 			name: Fragment::Internal {
-				text: String::from("id"),
+				text: Arc::from("id"),
 			},
 		};
 		let eq = EqExpression {

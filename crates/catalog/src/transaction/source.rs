@@ -14,18 +14,14 @@ pub trait CatalogSourceQueryOperations {
 	async fn find_source_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		source: impl Into<Fragment>,
+		source: &str,
 	) -> crate::Result<Option<SourceDef>>;
 
 	async fn find_source(&mut self, id: SourceId) -> crate::Result<Option<SourceDef>>;
 
 	async fn get_source(&mut self, id: SourceId) -> crate::Result<SourceDef>;
 
-	async fn get_source_by_name(
-		&mut self,
-		namespace: NamespaceId,
-		name: impl Into<Fragment>,
-	) -> crate::Result<SourceDef>;
+	async fn get_source_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<SourceDef>;
 }
 
 impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperations> CatalogSourceQueryOperations
@@ -35,7 +31,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 	async fn find_source_by_name(
 		&mut self,
 		_namespace: NamespaceId,
-		_source: impl Into<Fragment>,
+		_source: &str,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
 	}
@@ -70,7 +66,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 	async fn get_source_by_name(
 		&mut self,
 		_namespace: NamespaceId,
-		_name: impl Into<Fragment>,
+		_name: &str,
 	) -> reifydb_core::Result<SourceDef> {
 		todo!()
 	}

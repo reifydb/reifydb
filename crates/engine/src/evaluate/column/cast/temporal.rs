@@ -50,7 +50,7 @@ macro_rules! impl_to_temporal {
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting
-						let proper_fragment = lazy_fragment.fragment().into_owned();
+						let proper_fragment = lazy_fragment.fragment();
 
 						// Handle fragment replacement based on the context
 						// For Internal fragments (from parsing), we need to adjust position
