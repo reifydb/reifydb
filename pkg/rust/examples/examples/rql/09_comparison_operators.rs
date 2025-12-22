@@ -16,7 +16,7 @@ use tracing::info;
 #[tokio::main]
 async fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 	db.start().await.unwrap();
 
 	// Example 1: Basic comparisons with numbers

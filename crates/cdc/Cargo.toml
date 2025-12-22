@@ -13,9 +13,10 @@ reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+
 
 [dev-dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
-tokio = { workspace = true }

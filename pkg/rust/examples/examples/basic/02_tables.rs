@@ -15,7 +15,7 @@ use tracing::info;
 #[tokio::main]
 async fn main() {
 	// Create and start an in-memory database with logging
-	let mut db = embedded::memory().build().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 	db.start().await.unwrap();
 
 	// Create a namespace to organize our tables

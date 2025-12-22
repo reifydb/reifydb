@@ -42,10 +42,10 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
-	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
+	pub async fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir);
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir).await;
 
 		Ok(Self {
 			consumer: PollConsumer::new(

@@ -5,6 +5,7 @@ use ast::{
 	Ast, AstLiteral, AstLiteralUndefined,
 	tokenize::{Literal, Token, TokenKind},
 };
+use async_recursion::async_recursion;
 use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_type::Fragment;
 
@@ -35,7 +36,8 @@ impl Compiler {
 		}))
 	}
 
-	pub(crate) async fn compile_if<T: CatalogQueryTransaction>(
+	#[async_recursion]
+	pub(crate) async fn compile_if<T: CatalogQueryTransaction + Send>(
 		ast: AstIf,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {

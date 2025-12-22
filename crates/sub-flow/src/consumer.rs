@@ -36,7 +36,7 @@ pub struct FlowConsumer {
 }
 
 impl FlowConsumer {
-	pub fn new(
+	pub async fn new(
 		engine: StandardEngine,
 		operators: Vec<(String, OperatorFactory)>,
 		operators_dir: Option<PathBuf>,
@@ -63,15 +63,12 @@ impl FlowConsumer {
 			catalog_cache: FlowCatalog::new(),
 		};
 
-		if let Ok(mut txn) = engine.begin_command() {
-			// Use blocking to handle async operations in sync context
-			let runtime = tokio::runtime::Runtime::new().unwrap();
-			if let Ok(flows) = runtime.block_on(result.load_flows()) {
+		if let Ok(mut txn) = engine.begin_command().await {
+			if let Ok(flows) = result.load_flows().await {
 				for flow in flows {
-					runtime.block_on(result.flow_engine.register_without_backfill(&mut txn, flow))
-						.unwrap();
+					result.flow_engine.register_without_backfill(&mut txn, flow).await.unwrap();
 				}
-				txn.commit().unwrap();
+				txn.commit().await.unwrap();
 			}
 		}
 
@@ -170,7 +167,7 @@ impl FlowConsumer {
 	/// Load flows from the catalog
 	async fn load_flows(&self) -> Result<Vec<Flow>> {
 		let mut flows = Vec::new();
-		let mut txn = self.engine.begin_query()?;
+		let mut txn = self.engine.begin_query().await?;
 
 		// Get all flows from the catalog
 		let flow_defs = reifydb_catalog::CatalogStore::list_flows_all(&mut txn).await?;
@@ -292,8 +289,8 @@ impl FlowConsumer {
 		// Only skip backfill for flows that already existed (they already have data)
 		// New flows need backfill to get initial data from source tables
 		if let Some(flow_creation_version) = flows_changed_at_version {
-			let existing_flow_ids = self.flow_engine.flow_ids();
-			self.flow_engine.clear();
+			let existing_flow_ids = self.flow_engine.flow_ids().await;
+			self.flow_engine.clear().await;
 			let flows = self.load_flows().await?;
 			for flow in flows {
 				// For new flows: do backfill at this version
@@ -367,8 +364,7 @@ impl FlowConsumer {
 		}
 
 		// Partition all changes across all versions into units of work
-		let units = trace_span!("flow::partition", version_count = diffs_by_version.len())
-			.in_scope(|| self.flow_engine.create_partition(diffs_by_version));
+		let units = self.flow_engine.create_partition(diffs_by_version).await;
 		if units.is_empty() {
 			return Ok(());
 		}

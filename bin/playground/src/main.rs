@@ -10,7 +10,7 @@ use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() {
-	let mut db = embedded::memory().build().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 
 	db.start().await.unwrap();
 

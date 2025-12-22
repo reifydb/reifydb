@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use bincode::serde::{decode_from_slice, encode_to_vec};
 use reifydb_core::{
 	interface::{DictionaryDef, EncodableKey, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
 	key::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
@@ -48,7 +49,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 		value: &Value,
 	) -> crate::Result<DictionaryEntryId> {
 		// 1. Serialize value and compute hash
-		let value_bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+		let value_bytes = encode_to_vec(value, bincode::config::standard())
 			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
@@ -97,9 +98,8 @@ impl DictionaryOperations for StandardCommandTransaction {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key).await? {
 			Some(v) => {
-				let (value, _): (Value, _) =
-					bincode::serde::decode_from_slice(&v.values, bincode::config::standard())
-						.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
+				let (value, _): (Value, _) = decode_from_slice(&v.values, bincode::config::standard())
+					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
 			None => Ok(None),
@@ -111,7 +111,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 		dictionary: &DictionaryDef,
 		value: &Value,
 	) -> crate::Result<Option<DictionaryEntryId>> {
-		let value_bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+		let value_bytes = encode_to_vec(value, bincode::config::standard())
 			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
@@ -153,9 +153,8 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key).await? {
 			Some(v) => {
-				let (value, _): (Value, _) =
-					bincode::serde::decode_from_slice(&v.values, bincode::config::standard())
-						.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
+				let (value, _): (Value, _) = decode_from_slice(&v.values, bincode::config::standard())
+					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
 			None => Ok(None),
@@ -168,7 +167,7 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 		value: &Value,
 	) -> crate::Result<Option<DictionaryEntryId>> {
 		// Both command and query transactions can read
-		let value_bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+		let value_bytes = encode_to_vec(value, bincode::config::standard())
 			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 

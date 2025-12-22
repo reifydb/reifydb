@@ -28,7 +28,7 @@ async fn test_oracle_committed_txns_cleanup() {
 		tx.set(&key, value).unwrap();
 
 		// Commit the transaction - this adds to Oracle's committed list
-		tx.commit().unwrap();
+		tx.commit().await.unwrap();
 
 		// Every 1000 transactions, verify memory is being managed
 		if i > 0 && i % 1000 == 0 {

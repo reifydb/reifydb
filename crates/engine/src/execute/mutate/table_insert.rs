@@ -100,7 +100,6 @@ impl Executor {
 		let mut validated_rows: Vec<EncodedValues> = Vec::new();
 		let mut mutable_context = (*execution_context).clone();
 
-		let validate_span = debug_span!("validate_and_encode_rows").entered();
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
@@ -157,7 +156,6 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = table_column.dictionary_id {
-						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
 							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
 								.await?
@@ -185,8 +183,6 @@ impl Executor {
 			}
 		}
 
-		validate_span.exit();
-
 		// BATCH ALLOCATION: Now that all rows are validated, allocate row numbers in one batch
 		let total_rows = validated_rows.len();
 		if total_rows == 0 {
@@ -198,15 +194,12 @@ impl Executor {
 			]));
 		}
 
-		let row_numbers = {
-			let _alloc_span = debug_span!("allocate_row_numbers", count = total_rows).entered();
-			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64).await?
-		};
+		let row_numbers =
+			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64).await?;
 
 		assert_eq!(row_numbers.len(), validated_rows.len());
 
 		// PASS 2: Insert all validated rows using the pre-allocated row numbers
-		let _insert_span = debug_span!("insert_rows", count = total_rows).entered();
 		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 			// Insert the row directly into storage
 			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number).await?;

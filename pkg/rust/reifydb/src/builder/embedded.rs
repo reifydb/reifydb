@@ -70,7 +70,7 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	pub async fn build(self) -> crate::Result<Database> {
 		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
 
@@ -95,7 +95,7 @@ impl EmbeddedBuilder {
 			builder = builder.add_subsystem_factory(factory);
 		}
 
-		builder.build()
+		builder.build().await
 	}
 }
 

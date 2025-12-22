@@ -44,7 +44,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile the query statement to logical plan
-				let compiled_query = Box::pin(Compiler::compile(query, tx)).await?;
+				let compiled_query = Compiler::compile(query, tx).await?;
 				AlterFlowAction::SetQuery {
 					query: compiled_query,
 				}

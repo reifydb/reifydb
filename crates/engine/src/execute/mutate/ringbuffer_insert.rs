@@ -88,13 +88,11 @@ impl Executor {
 
 		// Process all input batches
 		let mut mutable_context = (*execution_context).clone();
-		let _batch_loop_span = debug_span!("insert_batch_loop").entered();
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
 		{
 			let row_count = columns.row_count();
-			let _rows_span = debug_span!("process_rows", row_count).entered();
 
 			for row_idx in 0..row_count {
 				let mut row = layout.allocate();
@@ -134,7 +132,6 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
-						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
 							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
 								.await?
@@ -173,22 +170,14 @@ impl Executor {
 				}
 
 				// Get next row number from sequence (monotonically increasing)
-				let row_number = {
-					let _seq_span = debug_span!("allocate_row_number").entered();
-					RowSequence::next_row_number_for_ringbuffer(
-						std_txn.command_mut(),
-						ringbuffer.id,
-					)
-					.await?
-				};
+				let row_number = RowSequence::next_row_number_for_ringbuffer(
+					std_txn.command_mut(),
+					ringbuffer.id,
+				)
+				.await?;
 
 				// Store the row
-				{
-					let _store_span = debug_span!("store_row").entered();
-					std_txn.command_mut()
-						.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)
-						.await?;
-				}
+				std_txn.command_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row).await?;
 
 				// Update metadata
 				if metadata.is_empty() {

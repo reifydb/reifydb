@@ -163,7 +163,7 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	pub async fn build(self) -> crate::Result<Database> {
 		let mut database_builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
 
@@ -188,7 +188,7 @@ impl ServerBuilder {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
 
-		database_builder.build()
+		database_builder.build().await
 	}
 }
 

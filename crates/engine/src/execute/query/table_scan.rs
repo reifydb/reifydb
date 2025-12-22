@@ -124,7 +124,6 @@ impl QueryNode for TableScanNode {
 		};
 
 		{
-			let _span = debug_span!("decode_row_keys").entered();
 			for multi in multi_rows.into_iter() {
 				if let Some(key) = RowKey::decode(&multi.key) {
 					batch_rows.push(multi.values);
@@ -136,7 +135,6 @@ impl QueryNode for TableScanNode {
 
 		// Instrumentation: identify the 60ms gap between decode_row_keys and create_storage_columns
 		{
-			let _span = debug_span!("post_decode_checks", row_count = batch_rows.len()).entered();
 			if batch_rows.is_empty() {
 				self.exhausted = true;
 				return Ok(None);
@@ -147,7 +145,6 @@ impl QueryNode for TableScanNode {
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
 		let storage_columns: Vec<Column> = {
-			let _span = debug_span!("create_storage_columns").entered();
 			self.table
 				.columns()
 				.iter()
@@ -161,16 +158,9 @@ impl QueryNode for TableScanNode {
 
 		let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
 		{
-			let _span = debug_span!("append_rows", row_count = row_numbers.len()).entered();
 			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
 		}
-
-		// Decode dictionary columns
-		{
-			let dict_count = self.dictionaries.iter().filter(|d| d.is_some()).count();
-			let _span = debug_span!("decode_dictionary_columns", dict_count).entered();
-			self.decode_dictionary_columns(&mut columns, rx).await?;
-		}
+		self.decode_dictionary_columns(&mut columns, rx).await?;
 
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
@@ -196,7 +186,6 @@ impl<'a> TableScanNode {
 			if let Some(dictionary) = dict_opt {
 				let col = &columns[col_idx];
 				let row_count = col.data().len();
-				let _span = debug_span!("decode_single_dict_column", col_idx, row_count).entered();
 
 				// Create new column data with the original value type
 				let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);

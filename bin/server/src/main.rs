@@ -15,11 +15,14 @@ fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 #[tokio::main]
 async fn main() {
 	let mut db = server::memory()
+		.await
+		.unwrap()
 		.with_http(HttpConfig::default().bind_addr("0.0.0.0:8090"))
 		.with_ws(WsConfig::default().bind_addr("0.0.0.0:8091"))
 		.with_admin(AdminConfig::default().bind_addr("127.0.0.1:9092"))
 		.with_tracing(tracing_configuration)
 		.build()
+		.await
 		.unwrap();
 
 	// Start the database

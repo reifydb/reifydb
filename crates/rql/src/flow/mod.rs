@@ -17,6 +17,8 @@ pub mod node;
 mod operator;
 mod source;
 
+use std::marker::PhantomData;
+
 use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_catalog::{
 	CatalogStore,
@@ -47,9 +49,10 @@ pub async fn compile_flow(
 	flow_id: FlowId,
 ) -> crate::Result<Flow> {
 	// Convert PhysicalPlan to PhysicalPlan at the boundary
-	let owned_plan = to_owned_physical_plan(plan);
-	let compiler = FlowCompiler::new(txn, flow_id);
-	compiler.compile(owned_plan, sink).await
+	// let owned_plan = to_owned_physical_plan(plan);
+	// let compiler = FlowCompiler::new(txn, flow_id);
+	// compiler.compile(owned_plan, sink).await
+	todo!()
 }
 
 /// Compiler for converting RQL plans into executable Flows
@@ -57,9 +60,11 @@ pub(crate) struct FlowCompiler<T: CommandTransaction> {
 	/// The flow builder being used for construction
 	builder: FlowBuilder,
 	/// Reference to transaction for ID generation
-	pub(crate) txn: *mut T,
+	// pub(crate) txn: *mut T,
 	/// The sink view schema (for terminal nodes)
 	pub(crate) sink: Option<ViewDef>,
+
+	phantom_data: PhantomData<T>,
 }
 
 impl<T: CommandTransaction> FlowCompiler<T> {
@@ -67,19 +72,22 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	pub fn new(txn: &mut T, flow_id: FlowId) -> Self {
 		Self {
 			builder: Flow::builder(flow_id),
-			txn: txn as *mut T,
+			// txn: txn as *mut T,
 			sink: None,
+			phantom_data: PhantomData::default(),
 		}
 	}
 
 	/// Gets the next available operator ID
 	async fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
-		unsafe { next_flow_node_id(&mut *self.txn).await }
+		// unsafe { next_flow_node_id(&mut *self.txn).await }
+		todo!()
 	}
 
 	/// Gets the next available edge ID
 	async fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
-		unsafe { next_flow_edge_id(&mut *self.txn).await }
+		// unsafe { next_flow_edge_id(&mut *self.txn).await }
+		todo!()
 	}
 
 	/// Adds an edge between two nodes
@@ -96,10 +104,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		};
 
 		// Persist to catalog
-		unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def).await? };
+		// unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def).await? };
+		todo!()
 
 		// Add to in-memory builder
-		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
+		// self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
@@ -121,11 +130,12 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		};
 
 		// Persist to catalog
-		unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def).await? };
+		// unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def).await? };
+		todo!()
 
 		// Add to in-memory builder
-		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
-		Ok(flow_node_id)
+		// let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
+		// Ok(flow_node_id)
 	}
 
 	/// Compiles a physical plan into a FlowGraph

@@ -3,6 +3,7 @@
 
 //! Factory for creating OpenTelemetry subsystem instances.
 
+use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -35,8 +36,9 @@ impl OtelSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for OtelSubsystemFactory {
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		if let Some(subsystem) = self.subsystem {
 			// Subsystem already created and started
 			Ok(Box::new(subsystem))

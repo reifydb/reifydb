@@ -18,7 +18,7 @@ async fn main() {
 	// The embedded::memory() builder creates a database that:
 	// - Stores all data in memory (no persistence)
 	// - Operates asynchronously
-	let mut db = embedded::memory().build().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries

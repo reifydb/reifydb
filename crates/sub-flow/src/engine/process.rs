@@ -21,14 +21,14 @@ impl FlowEngine {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
 				let node_registrations = {
-					let sources = self.inner.sources.read();
+					let sources = self.inner.sources.read().await;
 					sources.get(&source).cloned()
 				};
 
 				if let Some(node_registrations) = node_registrations {
 					for (flow_id, node_id) in node_registrations {
 						let flow_and_node = {
-							let flows = self.inner.flows.read();
+							let flows = self.inner.flows.read().await;
 							flows.get(&flow_id).and_then(|flow| {
 								flow.get_node(&node_id)
 									.map(|node| (flow.clone(), node.clone()))
@@ -56,7 +56,7 @@ impl FlowEngine {
 				// This path is used by the partition logic to directly process a node's changes
 				// Use the flow_id parameter for direct lookup instead of iterating all flows
 				let flow_and_node = {
-					let flows = self.inner.flows.read();
+					let flows = self.inner.flows.read().await;
 					flows.get(&flow_id).and_then(|flow| {
 						flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
 					})
@@ -77,7 +77,7 @@ impl FlowEngine {
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
-		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
+		let operator = self.inner.operators.read().await.get(&node.id).unwrap().clone();
 		{
 			let _span = trace_span!("flow::operator_apply", node_id = ?node.id, operator_type = ?node.ty)
 				.entered();

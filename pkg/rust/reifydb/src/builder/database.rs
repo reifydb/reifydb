@@ -42,7 +42,6 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
@@ -72,7 +71,6 @@ impl DatabaseBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
-			worker_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 		}
@@ -227,7 +225,7 @@ impl DatabaseBuilder {
 		// 1. Add tracing subsystem first (stopped last during shutdown)
 		#[cfg(feature = "sub_tracing")]
 		if let Some(factory) = self.tracing_factory {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
@@ -235,14 +233,14 @@ impl DatabaseBuilder {
 		// 3. Add flow subsystem third
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
 		// 4. Add other custom subsystems last (stopped first during shutdown)
 		for factory in self.factories {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}

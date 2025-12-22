@@ -156,14 +156,14 @@ mod tests {
 		let column = ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: Arc::from("_context"),
+					text: Arc::new("_context".to_string()),
 				},
 				source: Fragment::Internal {
-					text: Arc::from("_context"),
+					text: Arc::new("_context".to_string()),
 				},
 			},
 			name: Fragment::Internal {
-				text: Arc::from(ROW_NUMBER_COLUMN_NAME),
+				text: Arc::new(ROW_NUMBER_COLUMN_NAME.to_string()),
 			},
 		};
 		Expression::Column(ColumnExpression(column))
@@ -246,14 +246,14 @@ mod tests {
 		let other_column = ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: Fragment::Internal {
-					text: Arc::from("default"),
+					text: Arc::new("default".to_string()),
 				},
 				source: Fragment::Internal {
-					text: Arc::from("users"),
+					text: Arc::new("users".to_string()),
 				},
 			},
 			name: Fragment::Internal {
-				text: Arc::from("id"),
+				text: Arc::new("id".to_string()),
 			},
 		};
 		let eq = EqExpression {

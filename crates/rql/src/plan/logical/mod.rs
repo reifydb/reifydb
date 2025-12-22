@@ -9,6 +9,7 @@ pub mod resolver;
 pub mod row_predicate;
 mod variable;
 
+use async_recursion::async_recursion;
 use query::window::WindowNode;
 use reifydb_catalog::{
 	CatalogQueryTransaction,
@@ -53,7 +54,11 @@ pub async fn compile_logical<T: CatalogQueryTransaction>(
 }
 
 impl Compiler {
-	async fn compile<T: CatalogQueryTransaction>(ast: AstStatement, tx: &mut T) -> crate::Result<Vec<LogicalPlan>> {
+	#[async_recursion]
+	async fn compile<T: CatalogQueryTransaction + Send>(
+		ast: AstStatement,
+		tx: &mut T,
+	) -> crate::Result<Vec<LogicalPlan>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
 		}
@@ -235,7 +240,7 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(Box::pin(Compiler::compile_single(node, tx)).await?);
+					pipeline_nodes.push(Compiler::compile_single(node, tx).await?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -247,7 +252,7 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes.push(Box::pin(Self::compile_single(node, tx)).await?);
+				pipeline_nodes.push(Self::compile_single(node, tx).await?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -257,20 +262,24 @@ impl Compiler {
 		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
-			result.push(Box::pin(Self::compile_single(node, tx)).await?);
+			result.push(Self::compile_single(node, tx).await?);
 		}
 		Ok(result)
 	}
 
 	// Helper to compile a single AST operator
-	async fn compile_single<T: CatalogQueryTransaction>(node: Ast, tx: &mut T) -> crate::Result<LogicalPlan> {
+	#[async_recursion]
+	async fn compile_single<T: CatalogQueryTransaction + Send>(
+		node: Ast,
+		tx: &mut T,
+	) -> crate::Result<LogicalPlan> {
 		match node {
 			Ast::Create(node) => Self::compile_create(node, tx).await,
 			Ast::Alter(node) => Self::compile_alter(node, tx).await,
 			Ast::Delete(node) => Self::compile_delete(node, tx).await,
 			Ast::Insert(node) => Self::compile_insert(node, tx).await,
 			Ast::Update(node) => Self::compile_update(node, tx).await,
-			Ast::If(node) => Box::pin(Self::compile_if(node, tx)).await,
+			Ast::If(node) => Self::compile_if(node, tx).await,
 			Ast::Let(node) => Self::compile_let(node, tx).await,
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP

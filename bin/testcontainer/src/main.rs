@@ -13,6 +13,8 @@ use tracing::{info, info_span};
 async fn main() {
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
+		.await
+		.unwrap()
 		.with_http(HttpConfig::default())
 		.with_ws(WsConfig::default())
 		.with_tracing_otel(
@@ -26,6 +28,7 @@ async fn main() {
 		.with_flow(|flow| flow)
 		.with_admin(AdminConfig::default())
 		.build()
+		.await
 		.unwrap();
 
 	// Test spans to verify OpenTelemetry is working

@@ -8,6 +8,7 @@
 
 use std::any::Any;
 
+use async_trait::async_trait;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -272,8 +273,9 @@ impl ServerSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for ServerSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let subsystem = ServerSubsystem::new(self.config, engine);
 		Ok(Box::new(subsystem))

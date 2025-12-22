@@ -94,7 +94,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		// Get the safe version (might be higher after waiting)
 		let safe_version = engine.done_until();
 
-		let mut transaction = engine.begin_command()?;
+		let mut transaction = engine.begin_command().await?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key).await?;
 
@@ -239,7 +239,7 @@ async fn fetch_cdcs_until(
 		}
 		None => Bound::Included(until_version),
 	};
-	let mut cdc = txn.begin_cdc_query()?;
+	let mut cdc = txn.begin_cdc_query().await?;
 	let batch = cdc.range(Bound::Excluded(since_version), upper_bound).await?;
 	Ok(batch.items)
 }

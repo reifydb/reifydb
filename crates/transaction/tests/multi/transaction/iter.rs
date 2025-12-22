@@ -48,16 +48,16 @@ async fn test_iter2() {
 
 	let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=3).rev().zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 1);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 1);
 	}
 
 	let batch = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=3).zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 1);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 1);
 	}
 	txn.commit().await.unwrap();
 
@@ -68,16 +68,16 @@ async fn test_iter2() {
 
 	let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=6).rev().zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 2);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 2);
 	}
 
 	let batch = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=6).zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 2);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 2);
 	}
 }
 
@@ -91,16 +91,16 @@ async fn test_iter3() {
 
 	let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (4..=6).rev().zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 1);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 1);
 	}
 
 	let batch = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (4..=6).zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 1);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 1);
 	}
 
 	txn.commit().await.unwrap();
@@ -112,16 +112,16 @@ async fn test_iter3() {
 
 	let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=6).rev().zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 2);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 2);
 	}
 
 	let batch = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
 	for (expected, tv) in (1..=6).zip(batch.items) {
-		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.values(), &as_values!(expected));
-		assert_eq!(tv.version(), 2);
+		assert_eq!(tv.key, as_key!(expected));
+		assert_eq!(tv.values, as_values!(expected));
+		assert_eq!(tv.version, 2);
 	}
 }
 
@@ -178,7 +178,7 @@ async fn test_iter_edge_case() {
 	let check_iter = |items: Vec<_>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
+			assert_eq!(expected[i], from_values!(u64, r.values), "read_vs={}", r.version);
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);

@@ -39,6 +39,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
+name = "async-recursion"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1614,6 +1625,7 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.1.6"
 dependencies = [
+ "async-recursion",
  "async-trait",
  "bincode",
  "futures-util",
@@ -1688,6 +1700,7 @@ dependencies = [
 name = "reifydb-rql"
 version = "0.1.6"
 dependencies = [
+ "async-recursion",
  "bincode",
  "reifydb-catalog",
  "reifydb-core",
@@ -1732,6 +1745,7 @@ dependencies = [
 name = "reifydb-sub-api"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-store-transaction",
@@ -1788,6 +1802,7 @@ dependencies = [
 name = "reifydb-sub-server-admin"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "axum",
  "reifydb-core",
  "reifydb-engine",
@@ -1806,6 +1821,7 @@ dependencies = [
 name = "reifydb-sub-server-http"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "axum",
  "reifydb-core",
  "reifydb-engine",
@@ -1824,6 +1840,7 @@ dependencies = [
 name = "reifydb-sub-server-otel"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -1843,6 +1860,7 @@ dependencies = [
 name = "reifydb-sub-server-ws"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "futures-util",
  "reifydb-core",
  "reifydb-engine",
@@ -1860,6 +1878,7 @@ dependencies = [
 name = "reifydb-sub-tracing"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "crossbeam-channel",
  "parking_lot",
  "reifydb-core",

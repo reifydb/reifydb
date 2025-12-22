@@ -56,7 +56,7 @@ impl WorkerPool for SameThreadedWorker {
 			}
 
 			if flow_txn.version() != unit_of_work.version {
-				flow_txn.update_version(unit_of_work.version);
+				flow_txn.update_version(unit_of_work.version).await;
 			}
 
 			let flow_id = unit_of_work.flow_id;

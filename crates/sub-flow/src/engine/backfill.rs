@@ -87,7 +87,7 @@ impl FlowEngine {
 			};
 
 			// Apply through source operator to get transformed change
-			let operators = self.inner.operators.read();
+			let operators = self.inner.operators.read().await;
 			let source_operator = operators
 				.get(&source_node.id)
 				.ok_or_else(|| Error(internal!("Source operator not found")))?
@@ -269,7 +269,7 @@ impl FlowEngine {
 
 			for downstream_node_id in downstream_nodes {
 				let operator = {
-					let operators = self.inner.operators.read();
+					let operators = self.inner.operators.read().await;
 					operators.get(&downstream_node_id).cloned()
 				};
 

@@ -17,7 +17,7 @@ async fn main() {
 
 	// Create an in-memory database
 	info!("Creating in-memory database...");
-	let mut db = embedded::memory().build().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 	db.start().await.unwrap();
 	info!("✓ Database created and started\n");
 

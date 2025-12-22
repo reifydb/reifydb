@@ -30,7 +30,7 @@ async fn main() {
 	// The fluent API allows chaining interceptor registrations
 	info!("Creating database with interceptors...");
 
-	let mut db = embedded::memory()
+	let mut db = embedded::memory().await.unwrap()
 		// Register interceptors for the users table
 		// These will fire ONLY for operations on test.users
 		.intercept_table("test.users")
@@ -46,7 +46,7 @@ async fn main() {
 		// Enable required subsystems
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
 		.with_flow(|f| f) // Required for deferred views
-		.build()
+		.build().await
 		.unwrap();
 
 	db.start().await.unwrap();

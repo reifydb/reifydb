@@ -8,7 +8,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use parking_lot::RwLock;
 use reifydb_catalog::{
 	CatalogStore, CatalogViewQueryOperations,
 	resolve::{resolve_ringbuffer, resolve_table, resolve_view},
@@ -20,6 +19,7 @@ use reifydb_core::{
 	key::Key,
 };
 use reifydb_type::Type;
+use tokio::sync::RwLock;
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -39,8 +39,8 @@ pub struct SourceMetadata {
 ///
 /// # Thread Safety
 ///
-/// Uses `parking_lot::RwLock` for efficient concurrent access:
-/// - Read path: Multiple threads can read cached metadata concurrently
+/// Uses `tokio::sync::RwLock` for async-safe concurrent access:
+/// - Read path: Multiple tasks can read cached metadata concurrently
 /// - Write path: Single writer for cache updates and invalidation
 ///
 /// # Cache Invalidation
@@ -77,7 +77,7 @@ impl FlowCatalog {
 	{
 		// Fast path: read lock check
 		{
-			let cache = self.sources.read();
+			let cache = self.sources.read().await;
 			if let Some(metadata) = cache.get(&source) {
 				return Ok(Arc::clone(metadata));
 			}
@@ -85,7 +85,7 @@ impl FlowCatalog {
 
 		// Slow path: load and cache
 		let metadata = Arc::new(self.load_source_metadata(txn, source).await?);
-		let mut cache = self.sources.write();
+		let mut cache = self.sources.write().await;
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
@@ -93,7 +93,7 @@ impl FlowCatalog {
 	///
 	/// Call this before processing CDC changes to ensure cache consistency.
 	/// This method checks the key kind and invalidates the appropriate cache entry.
-	pub fn invalidate_from_cdc(&self, key: &EncodedKey) {
+	pub async fn invalidate_from_cdc(&self, key: &EncodedKey) {
 		let Some(kind) = Key::kind(key) else {
 			return;
 		};
@@ -102,44 +102,44 @@ impl FlowCatalog {
 			// Table definition changed - invalidate that table
 			KeyKind::Table => {
 				if let Some(Key::Table(table_key)) = Key::decode(key) {
-					self.invalidate(SourceId::Table(table_key.table));
+					self.invalidate(SourceId::Table(table_key.table)).await;
 				}
 			}
 			// View definition changed - invalidate that view
 			KeyKind::View => {
 				if let Some(Key::View(view_key)) = Key::decode(key) {
-					self.invalidate(SourceId::View(view_key.view));
+					self.invalidate(SourceId::View(view_key.view)).await;
 				}
 			}
 			// RingBuffer definition changed - invalidate that ringbuffer
 			KeyKind::RingBuffer => {
 				if let Some(Key::RingBuffer(rb_key)) = Key::decode(key) {
-					self.invalidate(SourceId::RingBuffer(rb_key.ringbuffer));
+					self.invalidate(SourceId::RingBuffer(rb_key.ringbuffer)).await;
 				}
 			}
 			// Column changed - invalidate the source it belongs to
 			KeyKind::Column => {
 				if let Some(Key::Column(col_key)) = Key::decode(key) {
-					self.invalidate(col_key.source);
+					self.invalidate(col_key.source).await;
 				}
 			}
 			// Dictionary changed - clear entire cache since we can't easily
 			// determine which sources use this dictionary without a reverse lookup
 			KeyKind::Dictionary => {
-				self.clear();
+				self.clear().await;
 			}
 			_ => {}
 		}
 	}
 
 	/// Invalidate a specific source from the cache.
-	pub fn invalidate(&self, source: SourceId) {
-		self.sources.write().remove(&source);
+	pub async fn invalidate(&self, source: SourceId) {
+		self.sources.write().await.remove(&source);
 	}
 
 	/// Clear all cached entries.
-	pub fn clear(&self) {
-		self.sources.write().clear();
+	pub async fn clear(&self) {
+		self.sources.write().await.clear();
 	}
 
 	async fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
@@ -225,13 +225,13 @@ mod tests {
 	#[tokio::test]
 	async fn test_new_creates_empty_cache() {
 		let catalog = FlowCatalog::new();
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 
 	#[tokio::test]
 	async fn test_default() {
 		let catalog = FlowCatalog::default();
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 
 	// Cache operations tests
@@ -356,14 +356,14 @@ mod tests {
 		assert!(!metadata.has_dictionary_columns);
 
 		// Verify source is in cache
-		assert!(catalog.sources.read().get(&source).is_some());
+		assert!(catalog.sources.read().await.get(&source).is_some());
 
 		// Invalidate via CDC key
 		let key = TableKey::encoded(table.id);
-		catalog.invalidate_from_cdc(&key);
+		catalog.invalidate_from_cdc(&key).await;
 
 		// Cache should be empty for this source
-		assert!(catalog.sources.read().get(&source).is_none());
+		assert!(catalog.sources.read().await.get(&source).is_none());
 	}
 
 	#[tokio::test]
@@ -377,16 +377,16 @@ mod tests {
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
+		assert!(catalog.sources.read().await.get(&source).is_some());
 
 		// Invalidate via CDC key
 		let key = ViewKey {
 			view: view.id,
 		}
 		.encode();
-		catalog.invalidate_from_cdc(&key);
+		catalog.invalidate_from_cdc(&key).await;
 
-		assert!(catalog.sources.read().get(&source).is_none());
+		assert!(catalog.sources.read().await.get(&source).is_none());
 	}
 
 	#[tokio::test]
@@ -399,13 +399,13 @@ mod tests {
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
+		assert!(catalog.sources.read().await.get(&source).is_some());
 
 		// Invalidate via CDC key
 		let key = RingBufferKey::encoded(rb.id);
-		catalog.invalidate_from_cdc(&key);
+		catalog.invalidate_from_cdc(&key).await;
 
-		assert!(catalog.sources.read().get(&source).is_none());
+		assert!(catalog.sources.read().await.get(&source).is_none());
 	}
 
 	#[tokio::test]
@@ -418,7 +418,7 @@ mod tests {
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
+		assert!(catalog.sources.read().await.get(&source).is_some());
 
 		// Invalidate via column key (should invalidate the source the column belongs to)
 		let key = ColumnKey {
@@ -426,9 +426,9 @@ mod tests {
 			column: ColumnId(1),
 		}
 		.encode();
-		catalog.invalidate_from_cdc(&key);
+		catalog.invalidate_from_cdc(&key).await;
 
-		assert!(catalog.sources.read().get(&source).is_none());
+		assert!(catalog.sources.read().await.get(&source).is_none());
 	}
 
 	#[tokio::test]
@@ -442,16 +442,16 @@ mod tests {
 		// Load multiple sources into cache
 		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
 		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
-		assert_eq!(catalog.sources.read().len(), 2);
+		assert_eq!(catalog.sources.read().await.len(), 2);
 
 		// Invalidate via dictionary key (should clear entire cache)
 		let key = DictionaryKey {
 			dictionary: reifydb_core::interface::DictionaryId(1),
 		}
 		.encode();
-		catalog.invalidate_from_cdc(&key);
+		catalog.invalidate_from_cdc(&key).await;
 
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 
 	// Direct invalidation tests
@@ -466,12 +466,12 @@ mod tests {
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
+		assert!(catalog.sources.read().await.get(&source).is_some());
 
 		// Direct invalidation
-		catalog.invalidate(source);
+		catalog.invalidate(source).await;
 
-		assert!(catalog.sources.read().get(&source).is_none());
+		assert!(catalog.sources.read().await.get(&source).is_none());
 	}
 
 	#[tokio::test]
@@ -479,7 +479,7 @@ mod tests {
 		let catalog = FlowCatalog::new();
 
 		// Should not panic when invalidating non-existent entry
-		catalog.invalidate(SourceId::Table(reifydb_core::interface::TableId(999)));
+		catalog.invalidate(SourceId::Table(reifydb_core::interface::TableId(999))).await;
 	}
 
 	#[tokio::test]
@@ -493,11 +493,11 @@ mod tests {
 		// Load multiple sources
 		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
 		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
-		assert_eq!(catalog.sources.read().len(), 2);
+		assert_eq!(catalog.sources.read().await.len(), 2);
 
 		// Clear all
-		catalog.clear();
+		catalog.clear().await;
 
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 }

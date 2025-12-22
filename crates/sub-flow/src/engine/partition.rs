@@ -25,7 +25,7 @@ impl crate::engine::FlowEngine {
 	///
 	/// # Returns
 	/// UnitsOfWork where each flow has its units ordered by version
-	pub fn create_partition(
+	pub async fn create_partition(
 		&self,
 		changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>>,
 	) -> UnitsOfWork {
@@ -43,7 +43,7 @@ impl crate::engine::FlowEngine {
 			}
 
 			// Partition this version's changes into units of work
-			let version_units = self.partition_into_units_of_work(changes_by_source, version);
+			let version_units = self.partition_into_units_of_work(changes_by_source, version).await;
 
 			// Merge units from this version into the overall collection
 			// Each flow's units are stored in a Vec to maintain version ordering
@@ -92,7 +92,7 @@ impl crate::engine::FlowEngine {
 		UnitsOfWork::new(units_vec)
 	}
 
-	fn partition_into_units_of_work(
+	async fn partition_into_units_of_work(
 		&self,
 		changes_by_source: IndexMap<SourceId, Vec<FlowDiff>>,
 		version: CommitVersion,
@@ -101,8 +101,8 @@ impl crate::engine::FlowEngine {
 		let mut flow_changes: BTreeMap<FlowId, Vec<FlowChange>> = BTreeMap::new();
 
 		// Read source subscriptions and backfill versions
-		let sources = self.inner.sources.read();
-		let flow_creation_version = self.inner.flow_creation_versions.read();
+		let sources = self.inner.sources.read().await;
+		let flow_creation_version = self.inner.flow_creation_versions.read().await;
 
 		// For each source that changed
 		for (source_id, diffs) in changes_by_source {
@@ -143,7 +143,6 @@ mod tests {
 		sync::Arc,
 	};
 
-	use parking_lot::RwLock;
 	use rand::{rng, seq::SliceRandom};
 	use reifydb_core::{
 		CommitVersion, Row,
@@ -156,6 +155,7 @@ mod tests {
 	use reifydb_flow_operator_sdk::{FlowChangeOrigin, FlowDiff};
 	use reifydb_rql::flow::FlowGraphAnalyzer;
 	use reifydb_type::{RowNumber, Type};
+	use tokio::sync::RwLock;
 
 	use crate::{
 		engine::{FlowEngine, FlowEngineInner},
@@ -320,7 +320,7 @@ mod tests {
 		let engine = setup_test_engine(HashMap::new());
 		let input = BTreeMap::new();
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 
 		assert!(result.is_empty(), "Empty input should produce empty output");
 	}
@@ -336,7 +336,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(10), vec![(s(1), vec![mk_diff("d1"), mk_diff("d2")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// Expect F1 has 1 unit at V10 with S1:2 diffs
@@ -360,7 +360,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// Expect F1, F2, F3 each have 1 unit at V1 with S1:1
@@ -387,7 +387,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(7), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		assert_eq!(normalized.len(), 3);
@@ -429,7 +429,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(3), vec![(s(999), vec![mk_diff("x")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 
 		assert!(result.is_empty(), "Unknown sources should produce no units");
 	}
@@ -448,7 +448,7 @@ mod tests {
 		input.insert(v(10), vec![(s(1), vec![mk_diff("b")])]);
 		input.insert(v(30), vec![(s(2), vec![mk_diff("c")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1: units at V10 then V20 (ascending)
@@ -475,7 +475,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a")])]);
 		input.insert(v(100), vec![(s(1), vec![mk_diff("b")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1 has exactly 2 units at V1 and V100
@@ -496,7 +496,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(5), vec![(s(1), vec![mk_diff("x"), mk_diff("y")]), (s(1), vec![mk_diff("z")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1 @V5 should have S1:3 diffs (merged)
@@ -519,7 +519,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(8), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1 @V8 has two sources: S1:1, S2:2
@@ -544,7 +544,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// Only F1 should have work
@@ -567,7 +567,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1: V1 {S1:1}, V2 {S1:1}
@@ -605,7 +605,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), diffs)]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 
 		assert!(result.is_empty(), "No subscribers means no units");
 	}
@@ -628,7 +628,7 @@ mod tests {
 			}
 		}
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1 should only have 3 units
@@ -658,7 +658,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(1), changes);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// F1 should have 1 unit with exactly 5 sources
@@ -690,7 +690,7 @@ mod tests {
 			for ver in versions {
 				input.insert(ver, vec![(s(1), vec![mk_diff(&format!("d{}", ver.0))])]);
 			}
-			let result = engine.create_partition(input);
+			let result = engine.create_partition(input).await;
 			results.push(normalize(result));
 		}
 
@@ -718,7 +718,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// Current behavior: empty diffs still create a unit with 0 count
@@ -742,7 +742,7 @@ mod tests {
 		input.insert(v(1), vec![(s(999), vec![mk_diff("x")])]);
 		input.insert(v(2), vec![(s(888), vec![mk_diff("y")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 
 		assert!(result.is_empty(), "All unknown sources should produce empty output");
 	}
@@ -758,7 +758,7 @@ mod tests {
 		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
-		let expected = normalize(engine.create_partition(input.clone()));
+		let expected = normalize(engine.create_partition(input.clone()).await);
 
 		// Test 5 random permutations
 		for _ in 0..5 {
@@ -766,7 +766,7 @@ mod tests {
 			entries.shuffle(&mut rand::rng());
 			let shuffled: BTreeMap<_, _> = entries.into_iter().collect();
 
-			let result = normalize(engine.create_partition(shuffled));
+			let result = normalize(engine.create_partition(shuffled).await);
 			assert_normalized_eq(&result, &expected);
 		}
 	}
@@ -786,7 +786,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
-		let expected = normalize(engine.create_partition(input.clone()));
+		let expected = normalize(engine.create_partition(input.clone()).await);
 
 		// Test 5 random permutations
 		for _ in 0..5 {
@@ -794,7 +794,7 @@ mod tests {
 			entries.shuffle(&mut rand::rng());
 			let shuffled: BTreeMap<_, _> = entries.into_iter().collect();
 
-			let result = normalize(engine.create_partition(shuffled));
+			let result = normalize(engine.create_partition(shuffled).await);
 			assert_normalized_eq(&result, &expected);
 		}
 	}
@@ -823,7 +823,7 @@ mod tests {
 		}
 
 		// Should complete without panic
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		// Basic sanity checks
@@ -854,7 +854,7 @@ mod tests {
 			input.insert(v(ver), vec![(s(1), vec![mk_diff(&format!("d{}", ver))])]);
 		}
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		let f1_units = &normalized[&f(1)];
@@ -880,7 +880,7 @@ mod tests {
 		input.insert(v(60), vec![(s(1), vec![mk_diff("d60")])]);
 		input.insert(v(70), vec![(s(1), vec![mk_diff("d70")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		let f1_units = &normalized[&f(1)];
@@ -905,7 +905,7 @@ mod tests {
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
 		input.insert(v(60), vec![(s(1), vec![mk_diff("d60")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		let f1_units = &normalized[&f(1)];
@@ -929,7 +929,7 @@ mod tests {
 		input.insert(v(20), vec![(s(1), vec![mk_diff("d20")])]);
 		input.insert(v(30), vec![(s(1), vec![mk_diff("d30")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		let f1_units = &normalized[&f(1)];
@@ -949,7 +949,7 @@ mod tests {
 		input.insert(v(100), vec![(s(1), vec![mk_diff("d100")])]);
 		input.insert(v(101), vec![(s(1), vec![mk_diff("d101")])]);
 
-		let result = engine.create_partition(input);
+		let result = engine.create_partition(input).await;
 		let normalized = normalize(result);
 
 		let f1_units = &normalized[&f(1)];
