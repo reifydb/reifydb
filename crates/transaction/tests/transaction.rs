@@ -14,7 +14,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionValues},
+	interface::{MultiVersionQueryTransaction, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -24,7 +24,6 @@ use reifydb_transaction::{
 	multi::{
 		TransactionMulti,
 		transaction::{CommandTransaction, QueryTransaction},
-		types::TransactionValue,
 	},
 	single::{TransactionSingle, TransactionSvl},
 };
@@ -467,16 +466,6 @@ where
 {
 	while let Some(sv) = iter.next() {
 		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
-		writeln!(output, "{fmtkv}").unwrap();
-	}
-}
-
-fn print_tx<I>(output: &mut String, mut iter: I)
-where
-	I: Iterator<Item = TransactionValue>,
-{
-	while let Some(tv) = iter.next() {
-		let fmtkv = format::Raw::key_value(tv.key(), tv.values().as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

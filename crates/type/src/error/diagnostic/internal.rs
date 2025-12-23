@@ -174,6 +174,10 @@ macro_rules! return_internal_error {
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
+	use tokio::time::sleep;
+
 	use super::*;
 
 	#[derive(Debug)]
@@ -295,12 +299,12 @@ mod tests {
 		assert!(error.0.message.contains("Invalid value: 0xff"));
 	}
 
-	#[test]
-	fn test_error_id_generation() {
+	#[tokio::test]
+	async fn test_error_id_generation() {
 		let diagnostic1 = internal_with_context("error 1", "file1.rs", 10, 5, "func1", "mod1");
 
 		// Small delay to ensure different timestamps
-		std::thread::sleep(std::time::Duration::from_millis(2));
+		sleep(Duration::from_millis(2)).await;
 
 		let diagnostic2 = internal_with_context("error 2", "file2.rs", 20, 10, "func2", "mod2");
 

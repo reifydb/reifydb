@@ -8,7 +8,7 @@
 //!
 //! # Example
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 //! ```ignore
 //! use reifydb_type::FromFrame;
 //!

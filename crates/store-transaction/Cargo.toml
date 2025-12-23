@@ -13,10 +13,10 @@ reifydb-testing = { workspace = true }
 reifydb-type = { workspace = true }
 
 indexmap = { workspace = true }
-parking_lot = { workspace = true }
 tracing = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"] }
+tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 futures-util = { workspace = true }

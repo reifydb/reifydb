@@ -249,22 +249,15 @@ impl MultiVersionCommit for StandardTransactionStore {
 			}
 		}
 
-		// Write each batch to storage
-		for (table, entries) in batches {
-			storage.put(table, entries).await?;
-		}
-
-		// Store CDC if there are any changes
-		if !cdc_changes.is_empty() {
+		// Add CDC to batches (fire-and-forget via spawn)
+		let cdc_data = if !cdc_changes.is_empty() {
 			let internal_cdc = InternalCdc {
 				version,
 				timestamp: now_millis(),
 				changes: cdc_changes,
 			};
-
 			let encoded = encode_internal_cdc(&internal_cdc)?;
 			let cdc_key = version.0.to_be_bytes();
-			storage.put(TableId::Cdc, vec![(cdc_key.to_vec(), Some(encoded.to_vec()))]).await?;
 
 			// Track CDC bytes per source object
 			let num_changes = internal_cdc.changes.len() as u64;
@@ -277,6 +270,20 @@ impl MultiVersionCommit for StandardTransactionStore {
 				let change_key = change.change.key();
 				self.stats_tracker.record_cdc_for_change(Tier::Hot, change_key, per_change_overhead, 1);
 			}
+
+			Some((cdc_key.to_vec(), encoded.to_vec()))
+		} else {
+			None
+		};
+
+		// Write each batch to storage
+		for (table, entries) in batches {
+			storage.put(table, entries).await?;
+		}
+
+		// Write CDC to storage
+		if let Some((cdc_key, encoded)) = cdc_data {
+			storage.put(TableId::Cdc, vec![(cdc_key, Some(encoded))]).await?;
 		}
 
 		// Checkpoint stats if needed

@@ -29,7 +29,9 @@ async fn create_test_engine() -> Result<StandardEngine> {
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
-	))
+		None,
+	)
+	.await)
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 //! Layout marshalling between Rust and FFI types
 
-use std::{borrow::Cow::Borrowed, ops::Deref, slice::from_raw_parts};
+use std::{ops::Deref, slice::from_raw_parts};
 
 use reifydb_core::value::encoded::EncodedValuesNamedLayout;
 use reifydb_flow_operator_abi::*;

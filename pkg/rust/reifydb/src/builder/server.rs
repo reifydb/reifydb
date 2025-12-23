@@ -135,9 +135,12 @@ impl ServerBuilder {
 		use reifydb_sub_api::Subsystem;
 
 		// Step 1: Create and start the OtelSubsystem early
+		// Note: We need to start synchronously here to get the tracer for the tracing layer.
+		// This is one of the few places where blocking is unavoidable due to the sync builder pattern.
 		let runtime = otel_config.runtime.clone().unwrap_or_else(SharedRuntime::default);
+		let handle = runtime.handle();
 		let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime);
-		otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
+		handle.block_on(otel_subsystem.start()).expect("Failed to start OpenTelemetry subsystem");
 
 		// Step 2: Get the concrete tracer from the initialized provider
 		let tracer = otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");

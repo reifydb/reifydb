@@ -136,7 +136,7 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(clock: L) -> Self {
+	pub async fn new(clock: L) -> Self {
 		let closer = Closer::new(2);
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -149,8 +149,8 @@ where
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
 			version_lock: Mutex::new(()),
-			query: WaterMark::new("txn-mark-query".into(), closer.clone()),
-			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()),
+			query: WaterMark::new("txn-mark-query".into(), closer.clone()).await,
+			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()).await,
 			shutdown_signal,
 			closer,
 		}
@@ -266,16 +266,19 @@ where
 		// Get commit version with minimal locking
 		let commit_version = {
 			let _version_guard = self.version_lock.lock().await;
+
 			let clock = {
 				let inner = self.inner.read().await;
 				inner.clock.clone()
 			};
+
 			clock.next().await?
 		};
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
 			let mut inner = self.inner.write().await;
+
 			inner.add_committed_transaction(commit_version, conflicts);
 
 			// Check if cleanup is needed
@@ -312,7 +315,7 @@ where
 			*shutdown = true;
 		}
 
-		self.closer.signal_and_wait();
+		self.closer.signal_and_wait().await;
 	}
 
 	/// Mark a query as done (for compatibility with existing API)
@@ -409,7 +412,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_oracle_basic_creation() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Oracle should be created successfully
 		assert_eq!(oracle.version().await.unwrap(), 0);
@@ -418,7 +421,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_window_creation_and_indexing() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -450,7 +453,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_conflict_detection_between_transactions() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -487,7 +490,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_no_conflict_different_keys() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -517,7 +520,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_key_indexing_multiple_windows() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -553,7 +556,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_version_filtering_in_conflict_detection() {
 		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -595,7 +598,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_range_operations_fallback() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 
@@ -627,7 +630,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_window_cleanup_mechanism() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -663,7 +666,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_empty_conflict_manager() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
@@ -686,7 +689,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_write_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -714,7 +717,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_read_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -742,7 +745,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_sequential_transactions_no_conflict() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -774,7 +777,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");

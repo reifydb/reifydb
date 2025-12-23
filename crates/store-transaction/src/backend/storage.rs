@@ -38,12 +38,12 @@ impl BackendStorage {
 
 	/// Create a new SQLite backend with in-memory database
 	pub async fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
+		Self::Sqlite(SqlitePrimitiveStorage::in_memory().await)
 	}
 
 	/// Create a new SQLite backend with the given configuration
 	pub async fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::new(config))
+		Self::Sqlite(SqlitePrimitiveStorage::new(config).await)
 	}
 }
 

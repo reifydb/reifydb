@@ -9,11 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{
+	Arc,
+	atomic::{AtomicUsize, Ordering},
+};
+
+use tokio::sync::Notify;
 
 struct Inner {
-	cvar: Condvar,
-	count: Mutex<usize>,
+	count: AtomicUsize,
+	notify: Notify,
 }
 
 pub struct WaitGroup {
@@ -30,8 +35,8 @@ impl From<usize> for WaitGroup {
 	fn from(count: usize) -> Self {
 		Self {
 			inner: Arc::new(Inner {
-				cvar: Condvar::new(),
-				count: Mutex::new(count),
+				count: AtomicUsize::new(count),
+				notify: Notify::new(),
 			}),
 		}
 	}
@@ -47,8 +52,8 @@ impl Clone for WaitGroup {
 
 impl std::fmt::Debug for WaitGroup {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let count = self.inner.count.lock().unwrap();
-		f.debug_struct("WaitGroup").field("count", &*count).finish()
+		let count = self.inner.count.load(Ordering::Acquire);
+		f.debug_struct("WaitGroup").field("count", &count).finish()
 	}
 }
 
@@ -56,103 +61,96 @@ impl WaitGroup {
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(Inner {
-				cvar: Condvar::new(),
-				count: Mutex::new(0),
+				count: AtomicUsize::new(0),
+				notify: Notify::new(),
 			}),
 		}
 	}
 
 	pub fn add(&self, num: usize) -> Self {
-		let mut ctr = self.inner.count.lock().unwrap();
-		*ctr += num;
+		self.inner.count.fetch_add(num, Ordering::AcqRel);
 		Self {
 			inner: self.inner.clone(),
 		}
 	}
 
 	pub fn done(&self) -> usize {
-		let mut val = self.inner.count.lock().unwrap();
-
-		*val = if val.eq(&1) {
-			self.inner.cvar.notify_all();
-			0
-		} else if val.eq(&0) {
-			0
-		} else {
-			*val - 1
-		};
-		*val
+		let prev = self.inner.count.fetch_sub(1, Ordering::AcqRel);
+		if prev == 1 {
+			self.inner.notify.notify_waiters();
+		}
+		if prev == 0 {
+			// Already at zero, restore it (shouldn't happen in correct usage)
+			self.inner.count.fetch_add(1, Ordering::AcqRel);
+			return 0;
+		}
+		prev - 1
 	}
 
 	pub fn waitings(&self) -> usize {
-		*self.inner.count.lock().unwrap()
+		self.inner.count.load(Ordering::Acquire)
 	}
 
-	pub fn wait(&self) {
-		let mut ctr = self.inner.count.lock().unwrap();
-
-		if ctr.eq(&0) {
-			return;
-		}
-
-		while *ctr > 0 {
-			ctr = self.inner.cvar.wait(ctr).unwrap();
+	pub async fn wait(&self) {
+		loop {
+			if self.inner.count.load(Ordering::Acquire) == 0 {
+				return;
+			}
+			self.inner.notify.notified().await;
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		sync::{
-			Arc,
-			atomic::{AtomicUsize, Ordering},
-		},
-		thread::{sleep, spawn},
-		time::Duration,
+	use std::sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
 	};
+
+	use tokio::time::{Duration, sleep};
 
 	use crate::util::WaitGroup;
 
-	#[test]
-	fn test_sync_wait_group_reuse() {
+	#[tokio::test]
+	async fn test_wait_group_reuse() {
 		let wg = WaitGroup::new();
 		let ctr = Arc::new(AtomicUsize::new(0));
 		for _ in 0..6 {
 			let wg = wg.add(1);
 			let ctrx = ctr.clone();
-			spawn(move || {
-				sleep(Duration::from_millis(5));
+			tokio::spawn(async move {
+				sleep(Duration::from_millis(5)).await;
 				ctrx.fetch_add(1, Ordering::Relaxed);
 				wg.done();
 			});
 		}
 
-		wg.wait();
+		wg.wait().await;
 		assert_eq!(ctr.load(Ordering::Relaxed), 6);
 
 		let worker = wg.add(1);
 		let ctrx = ctr.clone();
-		spawn(move || {
-			sleep(Duration::from_millis(5));
+		tokio::spawn(async move {
+			sleep(Duration::from_millis(5)).await;
 			ctrx.fetch_add(1, Ordering::Relaxed);
 			worker.done();
 		});
-		wg.wait();
+		wg.wait().await;
 		assert_eq!(ctr.load(Ordering::Relaxed), 7);
 	}
 
-	#[test]
-	fn test_sync_wait_group_nested() {
+	#[tokio::test]
+	async fn test_wait_group_nested() {
 		let wg = WaitGroup::new();
 		let ctr = Arc::new(AtomicUsize::new(0));
 		for _ in 0..5 {
 			let worker = wg.add(1);
 			let ctrx = ctr.clone();
-			spawn(move || {
+			tokio::spawn(async move {
 				let nested_worker = worker.add(1);
 				let ctrxx = ctrx.clone();
-				spawn(move || {
+				tokio::spawn(async move {
 					ctrxx.fetch_add(1, Ordering::Relaxed);
 					nested_worker.done();
 				});
@@ -161,22 +159,20 @@ mod tests {
 			});
 		}
 
-		wg.wait();
+		wg.wait().await;
 		assert_eq!(ctr.load(Ordering::Relaxed), 10);
 	}
 
-	#[test]
-	fn test_sync_wait_group_from() {
-		std::thread::scope(|s| {
-			let wg = WaitGroup::from(5);
-			for _ in 0..5 {
-				let t = wg.clone();
-				s.spawn(move || {
-					t.done();
-				});
-			}
-			wg.wait();
-		});
+	#[tokio::test]
+	async fn test_wait_group_from() {
+		let wg = WaitGroup::from(5);
+		for _ in 0..5 {
+			let t = wg.clone();
+			tokio::spawn(async move {
+				t.done();
+			});
+		}
+		wg.wait().await;
 	}
 
 	#[test]

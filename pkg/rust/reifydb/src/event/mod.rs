@@ -9,10 +9,11 @@ pub use lifecycle::*;
 use reifydb_core::{event::lifecycle::OnCreateEvent, interface::WithEventBus as _};
 use reifydb_engine::StandardEngine;
 
+#[allow(async_fn_in_trait)]
 pub trait WithEventBus {
 	fn engine(&self) -> &StandardEngine;
 
-	fn on_create<F, Fut>(self, f: F) -> Self
+	async fn on_create<F, Fut>(self, f: F) -> Self
 	where
 		Self: Sized,
 		F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
@@ -20,7 +21,7 @@ pub trait WithEventBus {
 	{
 		let callback = OnCreateEventListener::new(self.engine().clone(), f);
 
-		self.engine().event_bus().register::<OnCreateEvent, _>(callback);
+		self.engine().event_bus().register::<OnCreateEvent, _>(callback).await;
 		self
 	}
 }

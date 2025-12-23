@@ -273,18 +273,7 @@ pub struct EngineInner {
 }
 
 impl StandardEngine {
-	pub fn new(
-		multi: TransactionMultiVersion,
-		single: TransactionSingle,
-		cdc: TransactionCdc,
-		event_bus: EventBus,
-		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
-		catalog: MaterializedCatalog,
-	) -> Self {
-		Self::with_functions(multi, single, cdc, event_bus, interceptors, catalog, None)
-	}
-
-	pub fn with_functions(
+	pub async fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
 		cdc: TransactionCdc,
@@ -309,7 +298,7 @@ impl StandardEngine {
 		// Create the flow operator store and register the event listener
 		let flow_operator_store = FlowOperatorStore::new();
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
-		event_bus.register(listener);
+		event_bus.register(listener).await;
 
 		let stats_tracker = multi.store().stats_tracker().clone();
 
@@ -383,12 +372,12 @@ impl StandardEngine {
 	/// This is useful for CDC polling to ensure all in-flight commits have
 	/// completed their storage writes before querying for CDC events.
 	#[inline]
-	pub fn try_wait_for_watermark(
+	pub async fn try_wait_for_watermark(
 		&self,
 		version: CommitVersion,
 		timeout: Duration,
 	) -> Result<(), AwaitWatermarkError> {
-		self.multi.try_wait_for_watermark(version, timeout)
+		self.multi.try_wait_for_watermark(version, timeout).await
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.

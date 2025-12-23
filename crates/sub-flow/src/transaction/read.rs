@@ -441,7 +441,7 @@ mod tests {
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let prefix = make_key("test_");
-		let mut iter = txn.prefix(&prefix).await.unwrap();
+		let iter = txn.prefix(&prefix).await.unwrap();
 		assert!(iter.items.into_iter().next().is_none());
 	}
 
@@ -455,7 +455,7 @@ mod tests {
 		txn.set(&make_key("other_c"), make_value("3")).unwrap();
 
 		let prefix = make_key("test_");
-		let mut iter = txn.prefix(&prefix).await.unwrap();
+		let iter = txn.prefix(&prefix).await.unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only include keys with prefix "test_"

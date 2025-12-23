@@ -6,6 +6,7 @@ pub mod intercept;
 
 use std::{any::Any, path::PathBuf, time::Duration};
 
+use async_trait::async_trait;
 pub use factory::FlowSubsystemFactory;
 use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
@@ -58,19 +59,14 @@ impl FlowSubsystem {
 	}
 }
 
-impl Drop for FlowSubsystem {
-	fn drop(&mut self) {
-		let _ = self.shutdown();
-	}
-}
-
+#[async_trait]
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-flow"
 	}
 
 	#[instrument(name = "flow::subsystem::start", level = "info", skip(self))]
-	fn start(&mut self) -> Result<()> {
+	async fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
 		}
@@ -82,7 +78,7 @@ impl Subsystem for FlowSubsystem {
 	}
 
 	#[instrument(name = "flow::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&mut self) -> Result<()> {
+	async fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
 		}

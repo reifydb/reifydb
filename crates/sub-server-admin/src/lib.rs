@@ -48,7 +48,7 @@
 //! admin.start()?;
 //! ```
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod assets;
 mod config;

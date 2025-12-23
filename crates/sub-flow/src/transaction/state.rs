@@ -223,7 +223,7 @@ mod tests {
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		let mut iter = txn.state_scan(node_id).await.unwrap();
+		let iter = txn.state_scan(node_id).await.unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		assert_eq!(items.len(), 3);
@@ -257,7 +257,7 @@ mod tests {
 
 		let node_id = FlowNodeId(1);
 
-		let mut iter = txn.state_scan(node_id).await.unwrap();
+		let iter = txn.state_scan(node_id).await.unwrap();
 		assert!(iter.items.into_iter().next().is_none());
 	}
 

@@ -35,6 +35,6 @@ async fn main() {
 
 	// Stop the database
 	println!("Shutting down database...");
-	db.stop().unwrap();
+	db.stop().await.unwrap();
 	println!("Database stopped successfully!");
 }

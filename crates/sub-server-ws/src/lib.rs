@@ -48,7 +48,7 @@
 //! ws.start()?;
 //! ```
 
-// #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod factory;
 pub mod handler;

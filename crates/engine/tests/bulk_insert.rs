@@ -46,7 +46,9 @@ pub async fn create_test_engine() -> StandardEngine {
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
+		None,
 	)
+	.await
 }
 
 /// Create a namespace via RQL command.

@@ -6,14 +6,14 @@
 use std::{
 	any::Any,
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
+use async_trait::async_trait;
 use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
-use parking_lot::Mutex;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::SharedRuntime;
@@ -92,7 +92,7 @@ impl OtelSubsystem {
 	///
 	/// Returns None if the subsystem hasn't been started yet.
 	pub fn tracer(&self) -> Option<SdkTracer> {
-		self.tracer_provider.lock().as_ref().map(|provider| provider.tracer("reifydb"))
+		self.tracer_provider.lock().unwrap().as_ref().map(|provider| provider.tracer("reifydb"))
 	}
 
 	/// Build the OTLP tracer provider
@@ -150,12 +150,13 @@ impl HasVersion for OtelSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for OtelSubsystem {
 	fn name(&self) -> &'static str {
 		"OpenTelemetry"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -185,7 +186,7 @@ impl Subsystem for OtelSubsystem {
 		global::set_tracer_provider(provider.clone());
 
 		// Store the provider to prevent premature drop
-		*self.tracer_provider.lock() = Some(provider);
+		*self.tracer_provider.lock().unwrap() = Some(provider);
 
 		self.running.store(true, Ordering::SeqCst);
 		tracing::info!(
@@ -198,7 +199,7 @@ impl Subsystem for OtelSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if !self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
 			return Ok(()); // Already shutdown
 		}
@@ -206,7 +207,7 @@ impl Subsystem for OtelSubsystem {
 		tracing::info!("OpenTelemetry subsystem shutting down");
 
 		// Flush and shutdown the tracer provider
-		if let Some(provider) = self.tracer_provider.lock().take() {
+		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
 			// This ensures all pending traces are exported
 			if let Err(e) = provider.shutdown() {
 				tracing::error!("Error shutting down tracer provider: {:?}", e);

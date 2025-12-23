@@ -3,7 +3,6 @@ use std::sync::Arc;
 use reifydb_core::{CommitVersion, Row};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
-use tracing::{Instrument, trace_span};
 
 use crate::{
 	operator::{

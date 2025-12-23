@@ -185,7 +185,7 @@ impl DatabaseBuilder {
 			None
 		};
 
-		let engine = StandardEngine::with_functions(
+		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
 			cdc.clone(),
@@ -193,7 +193,8 @@ impl DatabaseBuilder {
 			Box::new(self.interceptors.build()),
 			catalog.clone(),
 			functions,
-		);
+		)
+		.await;
 
 		self.ioc = self.ioc.register(engine.clone());
 

@@ -12,6 +12,7 @@ use std::{
 	},
 };
 
+use async_trait::async_trait;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::SharedRuntime;
@@ -95,12 +96,13 @@ impl HasVersion for AdminSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for AdminSubsystem {
 	fn name(&self) -> &'static str {
 		"Admin"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -172,7 +174,7 @@ impl Subsystem for AdminSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		// Send shutdown signal
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
@@ -180,17 +182,14 @@ impl Subsystem for AdminSubsystem {
 
 		// Wait for graceful shutdown with timeout
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			let handle = self.handle.clone();
-			handle.block_on(async {
-				match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
-					Ok(_) => {
-						tracing::debug!("Admin server shutdown completed");
-					}
-					Err(_) => {
-						tracing::warn!("Admin server shutdown timed out");
-					}
+			match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+				Ok(_) => {
+					tracing::debug!("Admin server shutdown completed");
 				}
-			});
+				Err(_) => {
+					tracing::warn!("Admin server shutdown timed out");
+				}
+			}
 		}
 
 		Ok(())

@@ -19,3 +19,4 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 bincode = {workspace = true}
+tokio = { workspace = true}

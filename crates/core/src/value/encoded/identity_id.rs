@@ -47,7 +47,10 @@ impl EncodedValuesLayout {
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
 	use reifydb_type::{IdentityId, Type};
+	use tokio::time::sleep;
 
 	use crate::value::encoded::EncodedValuesLayout;
 
@@ -110,8 +113,8 @@ mod tests {
 		assert_eq!(id.get_version_num(), 7);
 	}
 
-	#[test]
-	fn test_timestamp_ordering() {
+	#[tokio::test]
+	async fn test_timestamp_ordering() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
@@ -126,7 +129,7 @@ mod tests {
 			ids.push(id);
 
 			// Small delay to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(1));
+			sleep(Duration::from_millis(1)).await;
 		}
 
 		// Verify that Identity IDs are ordered (timestamp-based)
@@ -263,13 +266,13 @@ mod tests {
 		assert_eq!(retrieved_bytes.len(), 16);
 	}
 
-	#[test]
-	fn test_time_based_properties() {
+	#[tokio::test]
+	async fn test_time_based_properties() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate();
-		std::thread::sleep(std::time::Duration::from_millis(2));
+		sleep(Duration::from_millis(2)).await;
 		let id2 = IdentityId::generate();
 
 		let mut row1 = layout.allocate();

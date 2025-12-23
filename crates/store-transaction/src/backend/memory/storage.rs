@@ -8,18 +8,17 @@
 use std::{ops::Bound, sync::Arc};
 
 use async_trait::async_trait;
-use parking_lot::RwLock;
-use reifydb_type::{Result, diagnostic::internal::internal, error};
-use tokio::sync::{mpsc, oneshot};
+use reifydb_type::Result;
+use tokio::sync::RwLock;
 use tracing::instrument;
 
-use super::{tables::Tables, writer::WriteCommand};
+use super::tables::Tables;
 use crate::backend::primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
 
 /// Memory-based primitive storage implementation.
 ///
 /// Stores data in BTreeMaps with RwLock for concurrent access.
-/// Uses a background tokio task for batched writes.
+/// Uses direct writes for maximum performance.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -27,36 +26,15 @@ pub struct MemoryPrimitiveStorage {
 
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each table type
-	tables: Arc<RwLock<Tables>>,
-	/// Writer channel for async writes
-	writer: mpsc::Sender<WriteCommand>,
-}
-
-impl Drop for MemoryPrimitiveStorageInner {
-	fn drop(&mut self) {
-		// Try to send shutdown - if it fails, the receiver is already gone
-		let _ = self.writer.try_send(WriteCommand::Shutdown);
-	}
+	tables: RwLock<Tables>,
 }
 
 impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::new", level = "debug")]
 	pub async fn new() -> Self {
-		let tables = Arc::new(RwLock::new(Tables::default()));
-
-		let (sender, receiver) = mpsc::channel(1024);
-
-		// Clone for the writer task
-		let writer_tables = tables.clone();
-
-		tokio::spawn(async move {
-			super::writer::run_writer(receiver, writer_tables).await;
-		});
-
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
-				tables,
-				writer: sender,
+				tables: RwLock::new(Tables::default()),
 			}),
 		}
 	}
@@ -66,7 +44,7 @@ impl MemoryPrimitiveStorage {
 impl PrimitiveStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
-		let tables = self.inner.tables.read();
+		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			Ok(table_data.get(key).cloned().flatten())
 		} else {
@@ -76,7 +54,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
 	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
-		let tables = self.inner.tables.read();
+		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			// Key exists and is not a tombstone
 			Ok(table_data.get(key).map_or(false, |v| v.is_some()))
@@ -87,19 +65,12 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::memory::put", level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
 	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()> {
-		let (respond_to, receiver) = oneshot::channel();
-
-		self.inner
-			.writer
-			.send(WriteCommand::PutBatch {
-				table,
-				entries,
-				respond_to,
-			})
-			.await
-			.map_err(|_| error!(internal("Writer task died")))?;
-
-		receiver.await.map_err(|_| error!(internal("Writer task died")))?
+		let mut guard = self.inner.tables.write().await;
+		let table_data = guard.get_table_mut(table);
+		for (key, value) in entries {
+			table_data.insert(key, value);
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "store::memory::range_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
@@ -110,7 +81,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		let tables = self.inner.tables.read();
+		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			let range_bounds = make_range_bounds(&start, &end);
 
@@ -148,7 +119,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		let tables = self.inner.tables.read();
+		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			let range_bounds = make_range_bounds(&start, &end);
 
@@ -182,25 +153,17 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
 	async fn ensure_table(&self, table: TableId) -> Result<()> {
 		// For memory backend, tables are created on-demand, so this is a no-op
-		let mut tables = self.inner.tables.write();
+		let mut tables = self.inner.tables.write().await;
 		let _ = tables.get_table_mut(table);
 		Ok(())
 	}
 
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	async fn clear_table(&self, table: TableId) -> Result<()> {
-		let (respond_to, receiver) = oneshot::channel();
-
-		self.inner
-			.writer
-			.send(WriteCommand::ClearTable {
-				table,
-				respond_to,
-			})
-			.await
-			.map_err(|_| error!(internal("Writer task died")))?;
-
-		receiver.await.map_err(|_| error!(internal("Writer task died")))?
+		let mut guard = self.inner.tables.write().await;
+		let table_data = guard.get_table_mut(table);
+		table_data.clear();
+		Ok(())
 	}
 }
 

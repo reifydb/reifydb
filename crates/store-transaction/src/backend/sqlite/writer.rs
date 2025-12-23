@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Background writer for SQLite backend using tokio channels.
+//! Async background writer for SQLite backend using tokio-rusqlite.
 //!
-//! The actual rusqlite work runs in a dedicated thread since rusqlite
-//! is not async, but we use tokio channels for async communication.
-
-use std::{sync::mpsc as std_mpsc, thread};
+//! Uses tokio-rusqlite for async SQLite operations, allowing the writer
+//! to be a regular tokio task without spawn_blocking.
 
 use reifydb_type::{Result, diagnostic::internal::internal, error};
-use rusqlite::{Connection, params};
-use tokio::sync::oneshot;
+use rusqlite::params;
+use tokio::sync::{mpsc, oneshot};
+use tokio_rusqlite::Connection;
 use tracing::{debug, info, instrument};
 
 /// Commands for the background writer.
@@ -32,35 +31,36 @@ pub(super) enum WriteCommand {
 }
 
 /// Sender type for write commands.
-pub(super) type WriterSender = std_mpsc::Sender<WriteCommand>;
+pub(super) type WriterSender = mpsc::UnboundedSender<WriteCommand>;
 
-/// Spawn the background writer thread.
+/// Spawn the background writer task.
 ///
 /// Returns a sender that can be used to send commands to the writer.
-/// The thread owns the rusqlite Connection since it's not Send.
+/// The task owns the tokio-rusqlite Connection which provides async SQLite access.
 pub(super) fn spawn_writer(conn: Connection) -> WriterSender {
-	let (sender, receiver) = std_mpsc::channel();
+	let (sender, receiver) = mpsc::unbounded_channel();
 
-	thread::spawn(move || {
-		run_writer(receiver, conn);
+	tokio::spawn(async move {
+		run_writer(receiver, conn).await;
 	});
 
 	sender
 }
 
-/// Run the background writer (blocking, runs in dedicated thread).
-fn run_writer(receiver: std_mpsc::Receiver<WriteCommand>, conn: Connection) {
-	debug!(name: "sqlite_writer", "background writer thread started");
-	while let Ok(cmd) = receiver.recv() {
+/// Run the background writer (async).
+async fn run_writer(mut rx: mpsc::UnboundedReceiver<WriteCommand>, conn: Connection) {
+	debug!(name: "sqlite_writer", "background writer task started");
+
+	while let Some(cmd) = rx.recv().await {
 		match cmd {
 			WriteCommand::PutBatch {
 				table_name,
 				entries,
 				respond_to,
 			} => {
-				let result = execute_put_batch(&conn, &table_name, &entries);
+				let result = execute_put_batch(&conn, table_name, entries).await;
 				if let Err(ref e) = result {
-					tracing::error!(table = %table_name, err = %e, "PutBatch failed");
+					tracing::error!(err = %e, "PutBatch failed");
 				}
 				let _ = respond_to.send(result);
 			}
@@ -70,22 +70,22 @@ fn run_writer(receiver: std_mpsc::Receiver<WriteCommand>, conn: Connection) {
 			} => {
 				debug!(table = %table_name, "received ClearTable command");
 				let result = conn
-					.execute(&format!("DELETE FROM \"{}\"", table_name), [])
-					.map(|_| ())
-					.map_err(|e| {
-						reifydb_type::error!(internal(format!("Failed to clear table: {}", e)))
-					});
+					.call(move |conn| -> rusqlite::Result<()> {
+						conn.execute(&format!("DELETE FROM \"{}\"", table_name), []).map(|_| ())
+					})
+					.await
+					.map_err(|e| error!(internal(format!("Failed to clear table: {}", e))));
 				let _ = respond_to.send(result);
 			}
 			WriteCommand::EnsureTable {
 				table_name,
 				respond_to,
 			} => {
-				let result = create_table_if_not_exists(&conn, &table_name);
+				let result = create_table_if_not_exists(&conn, table_name).await;
 				let _ = respond_to.send(result);
 			}
 			WriteCommand::Shutdown => {
-				info!(name: "sqlite_writer", "background writer thread shutting down");
+				info!(name: "sqlite_writer", "background writer task shutting down");
 				break;
 			}
 		}
@@ -94,39 +94,57 @@ fn run_writer(receiver: std_mpsc::Receiver<WriteCommand>, conn: Connection) {
 
 /// Create a table if it doesn't exist.
 #[instrument(name = "store::sqlite::ensure_table", level = "trace", skip(conn), fields(table = %table_name))]
-pub(super) fn create_table_if_not_exists(conn: &Connection, table_name: &str) -> Result<()> {
-	conn.execute(
-		&format!(
-			"CREATE TABLE IF NOT EXISTS \"{}\" (
+pub(super) async fn create_table_if_not_exists(conn: &Connection, table_name: String) -> Result<()> {
+	conn.call(move |conn| -> rusqlite::Result<()> {
+		conn.execute(
+			&format!(
+				"CREATE TABLE IF NOT EXISTS \"{}\" (
                 key   BLOB NOT NULL PRIMARY KEY,
                 value BLOB
             ) WITHOUT ROWID",
-			table_name
-		),
-		[],
-	)
-	.map(|_| ())
-	.map_err(|e| error!(internal(format!("Failed to create table {}: {}", table_name, e))))
+				table_name
+			),
+			[],
+		)
+		.map(|_| ())
+	})
+	.await
+	.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))
 }
 
 /// Execute a batch of put operations in a transaction.
 #[instrument(name = "store::sqlite::put_batch", level = "debug", skip(conn, entries), fields(table = %table_name, entry_count = entries.len()))]
-fn execute_put_batch(conn: &Connection, table_name: &str, entries: &[(Vec<u8>, Option<Vec<u8>>)]) -> Result<()> {
-	// Ensure table exists before writing
-	create_table_if_not_exists(conn, table_name)?;
+async fn execute_put_batch(
+	conn: &Connection,
+	table_name: String,
+	entries: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+) -> Result<()> {
+	conn.call(move |conn| -> rusqlite::Result<()> {
+		// Ensure table exists before writing
+		conn.execute(
+			&format!(
+				"CREATE TABLE IF NOT EXISTS \"{}\" (
+                key   BLOB NOT NULL PRIMARY KEY,
+                value BLOB
+            ) WITHOUT ROWID",
+				table_name
+			),
+			[],
+		)?;
 
-	// Use a transaction for atomicity
-	let tx = conn
-		.unchecked_transaction()
-		.map_err(|e| error!(internal(format!("Failed to start transaction: {}", e))))?;
+		// Use a transaction for atomicity
+		let tx = conn.unchecked_transaction()?;
 
-	for (key, value) in entries {
-		tx.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
-			params![key, value.as_deref()],
-		)
-		.map_err(|e| error!(internal(format!("Failed to insert: {}", e))))?;
-	}
+		for (key, value) in entries {
+			tx.execute(
+				&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
+				params![key, value.as_deref()],
+			)?;
+		}
 
-	tx.commit().map_err(|e| error!(internal(format!("Failed to commit: {}", e))))
+		tx.commit()?;
+		Ok(())
+	})
+	.await
+	.map_err(|e| error!(internal(format!("Failed to execute put batch: {}", e))))
 }

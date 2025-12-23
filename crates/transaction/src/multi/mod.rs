@@ -43,12 +43,12 @@ impl TransactionMulti {
 	/// Wait for the watermark to reach the specified version.
 	/// Returns Ok(()) if the watermark reaches the version within the timeout,
 	/// or Err(AwaitWatermarkError) if the timeout expires.
-	pub fn try_wait_for_watermark(
+	pub async fn try_wait_for_watermark(
 		&self,
 		version: CommitVersion,
 		timeout: Duration,
 	) -> Result<(), AwaitWatermarkError> {
-		self.tm.try_wait_for_watermark(version, timeout)
+		self.tm.try_wait_for_watermark(version, timeout).await
 	}
 
 	/// Get the current version from the transaction manager

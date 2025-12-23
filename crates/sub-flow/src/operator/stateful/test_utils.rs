@@ -38,7 +38,9 @@ pub mod test {
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),
 			MaterializedCatalog::new(),
+			None,
 		)
+		.await
 	}
 
 	/// Test operator implementation for stateful traits

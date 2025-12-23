@@ -1,8 +1,9 @@
-[source.crates-io]
-replace-with = "vendored-sources"
+# Temporarily disabled for re-vendoring
+# [source.crates-io]
+# replace-with = "vendored-sources"
 
-[source.vendored-sources]
-directory = "vendor"
+# [source.vendored-sources]
+# directory = "vendor"
 
 [net]
-offline = true
+offline = false

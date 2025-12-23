@@ -10,6 +10,7 @@ use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with a single state value (like counters, running sums, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
+#[allow(async_fn_in_trait)]
 pub trait SingleStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;

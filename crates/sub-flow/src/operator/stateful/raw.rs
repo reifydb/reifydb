@@ -8,6 +8,7 @@ use crate::{operator::transform::TransformOperator, transaction::FlowTransaction
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
+#[allow(async_fn_in_trait)]
 pub trait RawStatefulOperator: TransformOperator {
 	/// Get raw bytes for a key
 	async fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {

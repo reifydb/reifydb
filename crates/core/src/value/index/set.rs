@@ -1035,19 +1035,22 @@ mod tests {
 	}
 
 	mod uuid7 {
+		use std::time::Duration;
+
 		use reifydb_type::{Type, Uuid7};
+		use tokio::time::sleep;
 
 		use crate::{SortDirection, value::index::EncodedIndexLayout};
 
-		#[test]
-		fn test_asc() {
+		#[tokio::test]
+		async fn test_asc() {
 			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			sleep(Duration::from_millis(10)).await;
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1070,15 +1073,15 @@ mod tests {
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
-		#[test]
-		fn test_desc() {
+		#[tokio::test]
+		async fn test_desc() {
 			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			sleep(Duration::from_millis(10)).await;
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1104,12 +1107,15 @@ mod tests {
 	}
 
 	mod identity_id {
+		use std::time::Duration;
+
 		use reifydb_type::{IdentityId, Type, Uuid7};
+		use tokio::time::sleep;
 
 		use crate::{SortDirection, value::index::EncodedIndexLayout};
 
-		#[test]
-		fn test_asc() {
+		#[tokio::test]
+		async fn test_asc() {
 			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
@@ -1117,7 +1123,7 @@ mod tests {
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
 			// (IdentityId wraps Uuid7)
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			sleep(Duration::from_millis(10)).await;
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1142,15 +1148,15 @@ mod tests {
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
-		#[test]
-		fn test_desc() {
+		#[tokio::test]
+		async fn test_desc() {
 			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(10));
+			sleep(Duration::from_millis(10)).await;
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());

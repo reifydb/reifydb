@@ -11,6 +11,7 @@ use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
+#[allow(async_fn_in_trait)]
 pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;

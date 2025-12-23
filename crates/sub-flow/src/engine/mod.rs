@@ -112,7 +112,7 @@ impl FlowEngine {
 			}
 
 			// Register the operator without instantiating it
-			let mut guard = loader.write();
+			let mut guard = loader.write().unwrap();
 			let info = match guard.register_operator(&path)? {
 				Some(info) => info,
 				None => {
@@ -166,7 +166,7 @@ impl FlowEngine {
 		config: &HashMap<String, Value>,
 	) -> crate::Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
-		let mut loader_write = loader.write();
+		let mut loader_write = loader.write().unwrap();
 
 		// Serialize config to bincode
 		let config_bytes = bincode::serde::encode_to_vec(config, bincode::config::standard())
@@ -182,7 +182,7 @@ impl FlowEngine {
 	/// Check if an operator name corresponds to an FFI operator
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
-		let loader_read = loader.read();
+		let loader_read = loader.read().unwrap();
 		loader_read.has_operator(operator)
 	}
 

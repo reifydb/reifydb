@@ -12,10 +12,11 @@
 //!
 //! Run with: `make intercept-table-view` or `cargo run --bin intercept-table-view`
 
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
+use tokio::time::sleep;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -94,7 +95,7 @@ async fn main() {
 
 	// Wait for deferred view to process the data
 	info!("\n--- Waiting for deferred view to process ---");
-	sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(100)).await;
 
 	// Step 5: Query the results
 	info!("\n--- All users (from table) ---");

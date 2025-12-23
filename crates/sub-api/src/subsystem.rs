@@ -14,6 +14,7 @@ use reifydb_core::{
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
+#[async_trait]
 pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// Get the unique name of this subsystem
 	fn name(&self) -> &'static str;
@@ -22,7 +23,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// This method should initialize the subsystem and start any background
 	/// threads or processes. It should be idempotent - calling start() on
 	/// an already running subsystem should succeed without side effects.
-	fn start(&mut self) -> reifydb_core::Result<()>;
+	async fn start(&mut self) -> reifydb_core::Result<()>;
 	/// Shutdown the subsystem
 	///
 	/// This method should gracefully shut down the subsystem and clean up
@@ -30,7 +31,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// subsystem cannot be restarted. It should be idempotent - calling
 	/// shutdown() on an already shutdown subsystem should succeed without
 	/// side effects.
-	fn shutdown(&mut self) -> reifydb_core::Result<()>;
+	async fn shutdown(&mut self) -> reifydb_core::Result<()>;
 
 	/// Check if the subsystem is currently running
 	fn is_running(&self) -> bool;

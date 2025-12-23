@@ -3,6 +3,5 @@
 
 mod storage;
 mod tables;
-mod writer;
 
 pub use storage::MemoryPrimitiveStorage;

@@ -28,7 +28,7 @@ fn test_memory(path: &Path) {
 	mock_time_set(1000);
 
 	let runtime = Runtime::new().unwrap();
-	let (config, store) = runtime.block_on(async {
+	let (_config, store) = runtime.block_on(async {
 		let config = TransactionStoreConfig {
 			hot: Some(BackendConfig {
 				storage: BackendStorage::memory().await,
@@ -51,7 +51,7 @@ fn test_sqlite(path: &Path) {
 		mock_time_set(1000);
 
 		let runtime = Runtime::new().unwrap();
-		let (config, store) = runtime.block_on(async {
+		let (_config, store) = runtime.block_on(async {
 			let config = TransactionStoreConfig {
 				hot: Some(BackendConfig {
 					storage: BackendStorage::sqlite_in_memory().await,

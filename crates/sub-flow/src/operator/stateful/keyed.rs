@@ -13,6 +13,7 @@ use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
+#[allow(async_fn_in_trait)]
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;

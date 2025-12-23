@@ -73,7 +73,7 @@ impl testscript::Runner for Runner {
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.instance.stop()?;
+		self.runtime.block_on(self.instance.stop())?;
 		Ok(())
 	}
 }

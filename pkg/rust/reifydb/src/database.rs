@@ -25,6 +25,7 @@ use reifydb_sub_flow::FlowSubsystem;
 use reifydb_sub_server_http::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::WsSubsystem;
+use tokio::{runtime::Handle, task::block_in_place};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
@@ -138,14 +139,14 @@ impl Database {
 			return Ok(()); // Already running
 		}
 
-		self.bootloader.load()?;
+		self.bootloader.load().await?;
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
 		self.engine.event_bus().emit(OnStartEvent {}).await;
 
 		// Start all subsystems
-		match self.subsystems.start_all(self.config.max_startup_time) {
+		match self.subsystems.start_all(self.config.max_startup_time).await {
 			Ok(()) => {
 				self.running = true;
 				debug!("System started successfully");
@@ -168,7 +169,7 @@ impl Database {
 	}
 
 	#[instrument(name = "api::database::stop", level = "info", skip(self))]
-	pub fn stop(&mut self) -> Result<()> {
+	pub async fn stop(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped
 		}
@@ -176,7 +177,7 @@ impl Database {
 		debug!("Stopping system gracefully");
 
 		// Stop all subsystems
-		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
+		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout).await;
 
 		self.running = false;
 
@@ -316,7 +317,7 @@ impl Database {
 		on_shutdown()?;
 
 		debug!("Shutdown handler completed, shutting down database...");
-		self.stop()?;
+		self.stop().await?;
 
 		Ok(())
 	}
@@ -326,7 +327,10 @@ impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
 			warn!("System being dropped while running, attempting graceful shutdown");
-			let _ = self.stop();
+			// Use block_on to call async stop() from sync Drop context
+			if let Ok(handle) = Handle::try_current() {
+				let _ = block_in_place(|| handle.block_on(self.stop()));
+			}
 		}
 	}
 }

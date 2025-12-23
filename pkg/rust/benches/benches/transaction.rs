@@ -46,7 +46,9 @@ async fn create_engine() -> StandardEngine {
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
+		None,
 	)
+	.await
 }
 
 /// Generate test data with deterministic keys and random values.

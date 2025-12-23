@@ -105,6 +105,7 @@ impl VersionProvider for StandardVersionProvider {
 	async fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block
 		let mut block = self.current_block.lock().await;
+
 		if let Some(version) = block.next() {
 			return Ok(version);
 		}
@@ -116,6 +117,7 @@ impl VersionProvider for StandardVersionProvider {
 
 		// Persist new block end to storage (expensive operation)
 		Self::persist_version(&self.single, new_block.last).await?;
+
 		*block = new_block;
 
 		if let Some(version) = block.next() {

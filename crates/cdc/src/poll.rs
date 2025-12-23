@@ -89,7 +89,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		let target_version = CommitVersion(current_version.0.saturating_sub(1));
 
 		// Wait up to 50ms for done_until to catch up (best effort, not required)
-		let _ = engine.try_wait_for_watermark(target_version, Duration::from_millis(50));
+		let _ = engine.try_wait_for_watermark(target_version, Duration::from_millis(50)).await;
 
 		// Get the safe version (might be higher after waiting)
 		let safe_version = engine.done_until();
@@ -239,7 +239,7 @@ async fn fetch_cdcs_until(
 		}
 		None => Bound::Included(until_version),
 	};
-	let mut cdc = txn.begin_cdc_query().await?;
+	let cdc = txn.begin_cdc_query().await?;
 	let batch = cdc.range(Bound::Excluded(since_version), upper_bound).await?;
 	Ok(batch.items)
 }

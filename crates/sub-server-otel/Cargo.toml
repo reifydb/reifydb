@@ -31,9 +31,6 @@ opentelemetry-otlp = { workspace = true, optional = true }
 # Async runtime
 tokio = { workspace = true }
 
-# Performance
-parking_lot = { workspace = true }
-
 [features]
 default = ["otlp"]
 otlp = ["dep:opentelemetry-otlp"]

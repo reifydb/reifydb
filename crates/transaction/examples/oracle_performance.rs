@@ -6,6 +6,7 @@ use std::{sync::Arc, time::Instant};
 use encoding::keycode;
 use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
 use reifydb_transaction::multi::TransactionMulti;
+use tokio::spawn;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
@@ -59,6 +60,7 @@ pub async fn concurrent_oracle_benchmark() {
 		(10, 1000), // 10 threads, 1000 txns each
 		(50, 500),  // 50 threads, 500 txns each
 		(100, 250), // 100 threads, 250 txns each
+		(1000, 50), // 100 threads, 250 txns each
 	];
 
 	for &(num_threads, txns_per_thread) in &test_configs {
@@ -75,7 +77,7 @@ pub async fn concurrent_oracle_benchmark() {
 
 		for thread_id in 0..num_threads {
 			let engine_clone = engine.clone();
-			let handle = tokio::spawn(async move {
+			let handle = spawn(async move {
 				let base_key = thread_id * txns_per_thread;
 				for i in 0..txns_per_thread {
 					let mut tx = engine_clone.begin_command().await.unwrap();

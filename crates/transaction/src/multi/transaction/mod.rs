@@ -90,13 +90,11 @@ where
 	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
 	pub async fn new(clock: L) -> crate::Result<Self> {
 		let version = clock.next().await?;
+		let oracle = Oracle::new(clock).await;
+		oracle.query.done(version);
+		oracle.command.done(version);
 		Ok(Self {
-			inner: Arc::new({
-				let oracle = Oracle::new(clock);
-				oracle.query.done(version);
-				oracle.command.done(version);
-				oracle
-			}),
+			inner: Arc::new(oracle),
 		})
 	}
 
@@ -135,12 +133,12 @@ where
 	/// This is useful for CDC polling to ensure all in-flight commits have
 	/// completed their storage writes before querying for CDC events.
 	#[instrument(name = "transaction::manager::wait_for_watermark", level = "debug", skip(self))]
-	pub fn try_wait_for_watermark(
+	pub async fn try_wait_for_watermark(
 		&self,
 		version: CommitVersion,
 		timeout: Duration,
 	) -> Result<(), AwaitWatermarkError> {
-		if self.inner.command.wait_for_mark_timeout(version, timeout) {
+		if self.inner.command.wait_for_mark_timeout(version, timeout).await {
 			Ok(())
 		} else {
 			Err(AwaitWatermarkError {

@@ -485,6 +485,7 @@ impl StorageTracker {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::SourceId;
+	use tokio::time::sleep;
 
 	use super::*;
 
@@ -663,8 +664,8 @@ mod tests {
 	// Persistence tests
 	// ============================================
 
-	#[test]
-	fn test_should_checkpoint_time_based() {
+	#[tokio::test]
+	async fn test_should_checkpoint_time_based() {
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
@@ -674,7 +675,7 @@ mod tests {
 		assert!(!tracker.should_checkpoint());
 
 		// Wait for checkpoint interval to elapse
-		std::thread::sleep(Duration::from_millis(60));
+		sleep(Duration::from_millis(60)).await;
 
 		// Now should need checkpoint
 		assert!(tracker.should_checkpoint());

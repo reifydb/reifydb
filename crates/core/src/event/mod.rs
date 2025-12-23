@@ -4,10 +4,11 @@
 use std::{
 	any::{Any, TypeId},
 	collections::HashMap,
-	sync::{Arc, RwLock},
+	sync::Arc,
 };
 
 use async_trait::async_trait;
+use tokio::sync::RwLock;
 
 pub mod catalog;
 pub mod flow;
@@ -47,8 +48,8 @@ where
 		}
 	}
 
-	fn add(&mut self, listener: Arc<dyn EventListener<E>>) {
-		self.listeners.write().unwrap().push(listener);
+	async fn add(&self, listener: Arc<dyn EventListener<E>>) {
+		self.listeners.write().await.push(listener);
 	}
 }
 
@@ -61,7 +62,7 @@ where
 		if let Ok(event) = event.downcast::<E>() {
 			// Get a snapshot of listeners (hold lock briefly)
 			let listeners: Vec<_> = {
-				let guard = self.listeners.read().unwrap();
+				let guard = self.listeners.read().await;
 				guard.iter().cloned().collect()
 			};
 
@@ -79,7 +80,7 @@ where
 
 #[derive(Clone)]
 pub struct EventBus {
-	listeners: Arc<std::sync::RwLock<HashMap<TypeId, Box<dyn EventListenerList>>>>,
+	listeners: Arc<RwLock<HashMap<TypeId, Box<dyn EventListenerList>>>>,
 }
 
 impl Default for EventBus {
@@ -91,26 +92,21 @@ impl Default for EventBus {
 impl EventBus {
 	pub fn new() -> Self {
 		Self {
-			listeners: Arc::new(std::sync::RwLock::new(HashMap::new())),
+			listeners: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
-	pub fn register<E, L>(&self, listener: L)
+	pub async fn register<E, L>(&self, listener: L)
 	where
 		E: Event,
 		L: EventListener<E>,
 	{
 		let type_id = TypeId::of::<E>();
 
-		self.listeners
-			.write()
-			.unwrap()
-			.entry(type_id)
-			.or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()))
-			.as_any_mut()
-			.downcast_mut::<EventListenerListImpl<E>>()
-			.unwrap()
-			.add(Arc::new(listener));
+		let mut listeners = self.listeners.write().await;
+		let list = listeners.entry(type_id).or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
+
+		list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(Arc::new(listener)).await;
 	}
 
 	pub async fn emit<E>(&self, event: E)
@@ -119,9 +115,9 @@ impl EventBus {
 	{
 		let type_id = TypeId::of::<E>();
 
-		// Get the listener list while holding the sync lock briefly
+		// Get a clone of the listener list pointer
 		let listener_list = {
-			let listeners = self.listeners.read().unwrap();
+			let listeners = self.listeners.read().await;
 			listeners.get(&type_id).map(|l| l.as_ref() as *const dyn EventListenerList)
 		};
 
@@ -209,7 +205,7 @@ mod tests {
 		let event_bus = EventBus::new();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
 		event_bus.emit(TestEvent {}).await;
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
@@ -226,8 +222,8 @@ mod tests {
 		let listener1 = TestEventListener::default();
 		let listener2 = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener1.clone());
-		event_bus.register::<TestEvent, TestEventListener>(listener2.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener1.clone()).await;
+		event_bus.register::<TestEvent, TestEventListener>(listener2.clone()).await;
 
 		event_bus.emit(TestEvent {}).await;
 		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
@@ -238,7 +234,7 @@ mod tests {
 	async fn test_event_bus_clone() {
 		let event_bus1 = EventBus::new();
 		let listener = TestEventListener::default();
-		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus1.register::<TestEvent, TestEventListener>(listener.clone()).await;
 
 		let event_bus2 = event_bus1.clone();
 		event_bus2.emit(TestEvent {}).await;
@@ -254,7 +250,7 @@ mod tests {
 			let event_bus = event_bus.clone();
 			handles.push(tokio::spawn(async move {
 				let listener = TestEventListener::default();
-				event_bus.register::<TestEvent, TestEventListener>(listener);
+				event_bus.register::<TestEvent, TestEventListener>(listener).await;
 			}));
 		}
 
@@ -269,7 +265,7 @@ mod tests {
 	async fn test_concurrent_emitting() {
 		let event_bus = Arc::new(EventBus::new());
 		let listener = TestEventListener::default();
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
 
 		let mut handles = Vec::new();
 
@@ -309,8 +305,8 @@ mod tests {
 		let event_bus = EventBus::default();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
-		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
+		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone()).await;
 
 		// Each event type triggers only its own listeners
 		event_bus.emit(TestEvent {}).await;
