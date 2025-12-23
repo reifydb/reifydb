@@ -233,6 +233,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 						key.as_ref(),
 						*up_to_version,
 						*keep_last_versions,
+						None,
 					)
 					.await?;
 					for entry in entries_to_drop {

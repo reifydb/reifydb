@@ -11,7 +11,7 @@ use std::ops::Bound;
 
 use reifydb_core::CommitVersion;
 
-use super::version_manager::{extract_version, key_version_range};
+use super::version_manager::{encode_versioned_key, extract_version, key_version_range};
 use crate::backend::{PrimitiveStorage, TableId};
 
 /// Information about an entry to be dropped.
@@ -37,6 +37,7 @@ pub(crate) async fn find_keys_to_drop<S: PrimitiveStorage>(
 	key: &[u8],
 	up_to_version: Option<CommitVersion>,
 	keep_last_versions: Option<usize>,
+	pending_version: Option<CommitVersion>,
 ) -> crate::Result<Vec<DropEntry>> {
 	let (start, end) = key_version_range(key);
 
@@ -50,6 +51,15 @@ pub(crate) async fn find_keys_to_drop<S: PrimitiveStorage>(
 			let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
 			versioned_entries.push((entry.key, entry_version, value_bytes));
 		}
+	}
+
+	// Include pending version if provided (version being written in current batch)
+	// This prevents a race where Drop scans storage before Set is written
+	if let Some(pending_ver) = pending_version {
+		// Add a placeholder entry for the pending version
+		// value_bytes=0 is fine since this entry will never be dropped (it's the newest)
+		let pending_key = encode_versioned_key(key, pending_ver);
+		versioned_entries.push((pending_key, pending_ver, 0));
 	}
 
 	// Sort by version descending (most recent first) for keep_last_versions logic
@@ -75,6 +85,11 @@ pub(crate) async fn find_keys_to_drop<S: PrimitiveStorage>(
 		};
 
 		if should_drop {
+			// Never drop the pending version (it's being written in this batch)
+			if Some(entry_version) == pending_version {
+				continue;
+			}
+
 			entries_to_drop.push(DropEntry {
 				versioned_key,
 				value_bytes,
@@ -119,7 +134,7 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
 
-		let to_drop = find_keys_to_drop(&storage, table, key, None, None).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, None, None).await.unwrap();
 
 		assert_eq!(to_drop.len(), 5);
 		let versions = extract_dropped_versions(&to_drop);
@@ -140,7 +155,8 @@ mod tests {
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
 
 		// Drop versions < 10 (should drop 1, 5)
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(10)), None).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(10)), None, None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 2);
@@ -160,7 +176,8 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[9, 10, 11]).await;
 
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(10)), None).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(10)), None, None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 1);
@@ -177,7 +194,7 @@ mod tests {
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
 
 		// Keep 2 most recent (100, 20), drop others (10, 5, 1)
-		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(2)).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(2), None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 3);
@@ -197,7 +214,7 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
 
-		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(10)).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(10), None).await.unwrap();
 
 		assert!(to_drop.is_empty());
 	}
@@ -211,7 +228,7 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
 
-		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(0)).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(0), None).await.unwrap();
 
 		assert_eq!(to_drop.len(), 3);
 	}
@@ -225,7 +242,7 @@ mod tests {
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
 
 		// Keep only most recent (100)
-		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(1)).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(1), None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 4);
@@ -249,7 +266,8 @@ mod tests {
 		// - 10: idx=2, 10 < 15 BUT idx < 3 → KEEP (protected!)
 		// - 5: idx=3, 5 < 15 AND idx >= 3 → DROP
 		// - 1: idx=4, 1 < 15 AND idx >= 3 → DROP
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(15)), Some(3)).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(15)), Some(3), None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 2); // Only 1 and 5 dropped
@@ -278,7 +296,8 @@ mod tests {
 		// - 10: idx=2, 10 >= 3 → KEEP (version constraint not met)
 		// - 5: idx=3, 5 >= 3 → KEEP (version constraint not met)
 		// - 1: idx=4, 1 < 3 AND idx >= 2 → DROP
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(3)), Some(2)).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(3)), Some(2), None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 1); // Only 1 dropped
@@ -303,7 +322,8 @@ mod tests {
 		// - 10: idx=2, 10 < 50 AND idx >= 1 → DROP
 		// - 5: idx=3, 5 < 50 AND idx >= 1 → DROP
 		// - 1: idx=4, 1 < 50 AND idx >= 1 → DROP
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(50)), Some(1)).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(50)), Some(1), None).await.unwrap();
 
 		let versions = extract_dropped_versions(&to_drop);
 		assert_eq!(versions.len(), 4); // All except 100
@@ -322,7 +342,7 @@ mod tests {
 		let table = TableId::Multi;
 		let key = b"nonexistent";
 
-		let to_drop = find_keys_to_drop(&storage, table, key, None, None).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, None, None).await.unwrap();
 		assert!(to_drop.is_empty());
 	}
 
@@ -335,7 +355,7 @@ mod tests {
 		setup_versioned_entries(&storage, table, key, &[42]).await;
 
 		// Drop all
-		let to_drop = find_keys_to_drop(&storage, table, key, None, None).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, None, None).await.unwrap();
 		assert_eq!(to_drop.len(), 1);
 	}
 
@@ -348,7 +368,7 @@ mod tests {
 		setup_versioned_entries(&storage, table, key, &[42]).await;
 
 		// Keep 1 - should drop nothing
-		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(1)).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, None, Some(1), None).await.unwrap();
 		assert!(to_drop.is_empty());
 	}
 
@@ -361,7 +381,7 @@ mod tests {
 		setup_versioned_entries(&storage, table, b"key_b", &[10, 20, 30]).await;
 
 		// Drop all versions of key_a
-		let to_drop = find_keys_to_drop(&storage, table, b"key_a", None, None).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, b"key_a", None, None, None).await.unwrap();
 
 		assert_eq!(to_drop.len(), 3);
 		// Verify all dropped keys are for key_a, not key_b
@@ -380,7 +400,8 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
 
-		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(0)), None).await.unwrap();
+		let to_drop =
+			find_keys_to_drop(&storage, table, key, Some(CommitVersion(0)), None, None).await.unwrap();
 
 		assert!(to_drop.is_empty());
 	}
@@ -394,8 +415,9 @@ mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, u64::MAX - 1]).await;
 
-		let to_drop =
-			find_keys_to_drop(&storage, table, key, Some(CommitVersion(u64::MAX)), None).await.unwrap();
+		let to_drop = find_keys_to_drop(&storage, table, key, Some(CommitVersion(u64::MAX)), None, None)
+			.await
+			.unwrap();
 
 		assert_eq!(to_drop.len(), 3);
 	}

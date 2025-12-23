@@ -1,21 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::Value;
 
 use crate::function::{AggregateFunction, AggregateFunctionContext};
 
 pub struct Sum {
-	pub sums: HashMap<Vec<Value>, Value>,
+	pub sums: IndexMap<Vec<Value>, Value>,
 }
 
 impl Sum {
 	pub fn new() -> Self {
 		Self {
-			sums: HashMap::new(),
+			sums: IndexMap::new(),
 		}
 	}
 }

@@ -19,6 +19,10 @@ path = "examples/callback_ws.rs"
 name = "channel_session"
 path = "examples/channel_ws.rs"
 
+[[example]]
+name = "test_remote_sort"
+path = "examples/test_remote_sort.rs"
+
 [features]
 default = []
 

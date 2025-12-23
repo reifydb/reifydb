@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::time::Duration;
-
 use reifydb::{
-	WithSubsystem, server, sub_server_admin::AdminConfig, sub_server_http::HttpConfig, sub_server_otel::OtelConfig,
-	sub_server_ws::WsConfig,
+	WithSubsystem, server, sub_server_admin::AdminConfig, sub_server_http::HttpConfig, sub_server_ws::WsConfig,
 };
 use tracing::{info, info_span};
 
@@ -17,14 +14,14 @@ async fn main() {
 		.unwrap()
 		.with_http(HttpConfig::default())
 		.with_ws(WsConfig::default())
-		.with_tracing_otel(
-			OtelConfig::new()
-				.service_name("testcontainer")
-				.endpoint("http://localhost:4317")
-				.sample_ratio(1.0)
-				.scheduled_delay(Duration::from_millis(500)),
-			|t| t.with_filter("trace"),
-		)
+		// .with_tracing_otel(
+		// 	OtelConfig::new()
+		// 		.service_name("testcontainer")
+		// 		.endpoint("http://localhost:4317")
+		// 		.sample_ratio(1.0)
+		// 		.scheduled_delay(Duration::from_millis(500)),
+		// 	|t| t.with_filter("trace"),
+		// )
 		.with_flow(|flow| flow)
 		.with_admin(AdminConfig::default())
 		.build()

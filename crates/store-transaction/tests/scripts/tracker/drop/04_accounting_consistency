@@ -1,0 +1,85 @@
+# Regression test for https://github.com/reifydb/reifydb/issues/275
+# Verify that record_update adds the same key_bytes that record_drop subtracts
+#
+# This test demonstrates that historical stats are properly maintained when:
+# 1. Multiple updates create historical entries
+# 2. Drop operations clean up old versions
+# 3. All three fields (count, key_bytes, value_bytes) reach zero together
+
+# Create initial version
+set a=val1 version=1
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 4
+
+stats_historical
+---
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+
+# Update creates historical entry
+set a=val2 version=2
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 4
+
+stats_historical
+---
+historical_count: 1
+historical_key_bytes: 9
+historical_value_bytes: 4
+
+# Another update creates second historical entry
+set a=val3 version=3
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 4
+
+stats_historical
+---
+historical_count: 2
+historical_key_bytes: 18
+historical_value_bytes: 8
+
+# Drop all but latest version
+# This should reduce historical stats to exactly zero
+drop a keep_last_versions=1 version=4
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 4
+
+# CRITICAL: All three historical fields must be zero together
+stats_historical
+---
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+
+# Verify totals are consistent
+stats_totals
+---
+total_count: 1
+current_bytes: 13
+historical_bytes: 0
+total_bytes: 13

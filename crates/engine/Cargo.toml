@@ -29,3 +29,4 @@ futures-util = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
+indexmap = { workspace = true }

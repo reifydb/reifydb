@@ -34,6 +34,7 @@ use crate::{
 			table_scan::TableScanNode,
 			table_virtual_scan::VirtualScanNode,
 			take::TakeNode,
+			top_k::TopKNode,
 			variable::VariableNode,
 			view_scan::ViewScanNode,
 		},
@@ -95,6 +96,16 @@ pub(crate) async fn compile<'a>(
 			take,
 			input,
 		}) => {
+			// Top-K optimization: if input is a Sort, fuse into TopKNode
+			if let PhysicalPlan::Sort(physical::SortNode {
+				by,
+				input: sort_input,
+			}) = *input
+			{
+				let input_node = Box::new(compile(*sort_input, rx, context).await);
+				return ExecutionPlan::TopK(TopKNode::new(input_node, by, take));
+			}
+			// Fallback: regular Take
 			let input_node = Box::new(compile(*input, rx, context).await);
 			ExecutionPlan::Take(TakeNode::new(input_node, take))
 		}
