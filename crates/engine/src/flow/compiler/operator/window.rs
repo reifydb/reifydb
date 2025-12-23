@@ -1,21 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use FlowNodeType::Window;
-use reifydb_core::{
-	WindowSize, WindowSlide, WindowType,
-	interface::{CommandTransaction, FlowNodeId},
-};
-
-use super::super::{
-	CompileOperator, FlowCompiler, FlowNodeType,
-	conversion::{to_owned_expressions, to_owned_physical_plan},
-};
-use crate::{
-	Result,
+use reifydb_core::{Result, WindowSize, WindowSlide, WindowType, interface::FlowNodeId};
+use reifydb_rql::{
 	expression::Expression,
+	flow::{
+		FlowNodeType::Window,
+		conversion::{to_owned_expressions, to_owned_physical_plan},
+	},
 	plan::physical::{PhysicalPlan, WindowNode},
 };
+
+use super::super::{CompileOperator, FlowCompiler};
+use crate::StandardCommandTransaction;
 
 pub(crate) struct WindowCompiler {
 	pub input: Option<Box<PhysicalPlan>>,
@@ -45,32 +42,40 @@ impl From<WindowNode> for WindowCompiler {
 	}
 }
 
-impl<T: CommandTransaction> CompileOperator<T> for WindowCompiler {
-	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+impl CompileOperator for WindowCompiler {
+	async fn compile(
+		self,
+		compiler: &mut FlowCompiler,
+		txn: &mut StandardCommandTransaction,
+	) -> Result<FlowNodeId> {
 		// Compile input first if present
 		let input_node = if let Some(input) = self.input {
-			Some(compiler.compile_plan(*input).await?)
+			Some(compiler.compile_plan(txn, *input).await?)
 		} else {
 			None
 		};
 
-		// Now create the builder
-		let mut builder = compiler.build_node(Window {
-			window_type: self.window_type,
-			size: self.size,
-			slide: self.slide,
-			group_by: self.group_by,
-			aggregations: self.aggregations,
-			min_events: self.min_events,
-			max_window_count: self.max_window_count,
-			max_window_age: self.max_window_age,
-		});
+		let node_id = compiler
+			.add_node(
+				txn,
+				Window {
+					window_type: self.window_type,
+					size: self.size,
+					slide: self.slide,
+					group_by: self.group_by,
+					aggregations: self.aggregations,
+					min_events: self.min_events,
+					max_window_count: self.max_window_count,
+					max_window_age: self.max_window_age,
+				},
+			)
+			.await?;
 
-		// Add input if we have one
+		// Add input edge if we have one
 		if let Some(input_node) = input_node {
-			builder = builder.with_input(input_node);
+			compiler.add_edge(txn, &input_node, &node_id).await?;
 		}
 
-		builder.build().await
+		Ok(node_id)
 	}
 }

@@ -3,17 +3,18 @@
 
 //! Compilation of inline data operations
 
-use reifydb_core::interface::{CommandTransaction, FlowNodeId};
-
-use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_expression};
-use crate::{
-	Result,
+use reifydb_core::{Result, interface::FlowNodeId};
+use reifydb_rql::{
 	expression::{AliasExpression, IdentExpression},
+	flow::{FlowNodeType, conversion::to_owned_expression},
 	plan::physical::InlineDataNode,
 };
 
+use super::super::{CompileOperator, FlowCompiler};
+use crate::StandardCommandTransaction;
+
 pub(crate) struct InlineDataCompiler {
-	pub inline_data: InlineDataNode,
+	pub _inline_data: InlineDataNode,
 }
 
 impl From<InlineDataNode> for InlineDataCompiler {
@@ -34,15 +35,19 @@ impl From<InlineDataNode> for InlineDataCompiler {
 			.collect();
 
 		Self {
-			inline_data: InlineDataNode {
+			_inline_data: InlineDataNode {
 				rows: converted_rows,
 			},
 		}
 	}
 }
 
-impl<T: CommandTransaction> CompileOperator<T> for InlineDataCompiler {
-	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		compiler.build_node(FlowNodeType::SourceInlineData {}).build().await
+impl CompileOperator for InlineDataCompiler {
+	async fn compile(
+		self,
+		compiler: &mut FlowCompiler,
+		txn: &mut StandardCommandTransaction,
+	) -> Result<FlowNodeId> {
+		compiler.add_node(txn, FlowNodeType::SourceInlineData {}).await
 	}
 }

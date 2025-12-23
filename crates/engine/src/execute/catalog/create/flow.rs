@@ -3,10 +3,10 @@
 
 use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate, transaction::CatalogFlowQueryOperations};
 use reifydb_core::{interface::FlowStatus, value::column::Columns};
-use reifydb_rql::{flow::compile_flow, plan::physical::CreateFlowNode};
+use reifydb_rql::plan::physical::CreateFlowNode;
 use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor, flow::compile_flow};
 
 impl Executor {
 	pub(crate) async fn create_flow<'a>(

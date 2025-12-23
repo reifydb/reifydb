@@ -141,7 +141,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_new_version_provider() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		// Should start at version 0
@@ -150,7 +150,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_next_version_sequential() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		assert_eq!(provider.next().await.unwrap(), 1);
@@ -165,7 +165,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_version_persistence() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 
 		// Create first provider and get some versions
 		{
@@ -184,7 +184,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 		let provider = StandardVersionProvider::new(single).await.unwrap();
 
 		// Exhaust the first block
@@ -204,7 +204,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_version_allocation() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 		let provider = Arc::new(StandardVersionProvider::new(single).await.unwrap());
 
 		let mut handles = vec![];
@@ -283,7 +283,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_load_existing_version() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing().await;
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

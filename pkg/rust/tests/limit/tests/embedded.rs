@@ -83,6 +83,6 @@ test_each_path! { in "pkg/rust/tests/limit/tests/scripts" as embedded => test_em
 fn test_embedded(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	let input = runtime.block_on(serializable(memory())).unwrap();
+	let input = runtime.block_on(async { serializable(memory().await).await }).unwrap();
 	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
 }

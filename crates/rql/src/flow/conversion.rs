@@ -18,8 +18,7 @@ use crate::{
 	plan::physical::PhysicalPlan,
 };
 
-/// Converts an Expression to Expression by converting all
-/// fragments to owned
+/// Converts an Expression to owned form
 pub fn to_owned_expression(expr: Expression) -> Expression {
 	match expr {
 		Expression::AccessSource(access) => Expression::AccessSource(AccessSourceExpression {

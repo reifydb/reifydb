@@ -298,7 +298,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_from_cdc_table_key() {
 		let mut txn = create_test_transaction().await;
-		ensure_test_namespace(&mut txn);
+		ensure_test_namespace(&mut txn).await;
 
 		// Create a table with realistic columns
 		let table = create_table(
@@ -369,7 +369,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_invalidate_from_cdc_view_key() {
 		let mut txn = create_test_transaction().await;
-		ensure_test_namespace(&mut txn);
+		ensure_test_namespace(&mut txn).await;
 		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]).await;
 
 		let catalog = FlowCatalog::new();

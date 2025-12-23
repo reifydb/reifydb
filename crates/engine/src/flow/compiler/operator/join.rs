@@ -1,21 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use JoinType::{Inner, Left};
 use reifydb_core::{
-	JoinType,
-	interface::{CommandTransaction, FlowNodeId},
-};
-
-use super::super::{
-	CompileOperator, FlowCompiler, FlowNodeType,
-	conversion::{to_owned_expressions, to_owned_physical_plan},
-};
-use crate::{
+	JoinType::{self, Inner, Left},
 	Result,
+	interface::FlowNodeId,
+};
+use reifydb_rql::{
 	expression::Expression,
+	flow::{
+		FlowNodeType,
+		conversion::{to_owned_expressions, to_owned_physical_plan},
+	},
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
 };
+
+use super::super::{CompileOperator, FlowCompiler};
+use crate::StandardCommandTransaction;
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
@@ -64,36 +65,8 @@ fn extract_source_name(plan: &PhysicalPlan) -> Option<String> {
 	}
 }
 
-impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
-	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Extract source name from right plan for fallback alias
-		let source_name = extract_source_name(&self.right);
-
-		let left_node = compiler.compile_plan(*self.left).await?;
-		let right_node = compiler.compile_plan(*self.right).await?;
-
-		let (left_keys, right_keys) = extract_join_keys(&self.on);
-
-		// Use explicit alias, or fall back to extracted source name, or use "other"
-		let effective_alias = self.alias.or(source_name).or_else(|| Some("other".to_string()));
-
-		let node = compiler
-			.build_node(FlowNodeType::Join {
-				join_type: self.join_type,
-				left: left_keys,
-				right: right_keys,
-				alias: effective_alias,
-			})
-			.with_inputs([left_node, right_node])
-			.build()
-			.await?;
-
-		Ok(node)
-	}
-}
-
 // Extract the left and right column references from join conditions
-pub(crate) fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
+fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Expression>) {
 	let mut left_keys = Vec::new();
 	let mut right_keys = Vec::new();
 
@@ -119,4 +92,40 @@ pub(crate) fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, 
 	}
 
 	(left_keys, right_keys)
+}
+
+impl CompileOperator for JoinCompiler {
+	async fn compile(
+		self,
+		compiler: &mut FlowCompiler,
+		txn: &mut StandardCommandTransaction,
+	) -> Result<FlowNodeId> {
+		// Extract source name from right plan for fallback alias
+		let source_name = extract_source_name(&self.right);
+
+		let left_node = compiler.compile_plan(txn, *self.left).await?;
+		let right_node = compiler.compile_plan(txn, *self.right).await?;
+
+		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
+		// Use explicit alias, or fall back to extracted source name, or use "other"
+		let effective_alias = self.alias.or(source_name).or_else(|| Some("other".to_string()));
+
+		let node_id = compiler
+			.add_node(
+				txn,
+				FlowNodeType::Join {
+					join_type: self.join_type,
+					left: left_keys,
+					right: right_keys,
+					alias: effective_alias,
+				},
+			)
+			.await?;
+
+		compiler.add_edge(txn, &left_node, &node_id).await?;
+		compiler.add_edge(txn, &right_node, &node_id).await?;
+
+		Ok(node_id)
+	}
 }
