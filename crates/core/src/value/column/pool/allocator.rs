@@ -23,7 +23,13 @@ pub trait PoolAllocator<C> {
 	fn stats(&self) -> PoolStats;
 }
 
-/// Generic pool implementation for any container type
+/// Generic pool implementation for any container type.
+///
+/// Uses std::sync::Mutex intentionally because:
+/// 1. The PoolAllocator trait methods (acquire/release) are synchronous
+/// 2. Lock hold times are very brief (just push/pop operations)
+/// 3. Thread-local pools are the primary access pattern, reducing contention
+/// 4. Async mutex would require trait changes and add unnecessary overhead
 pub struct StdPoolAllocator<C> {
 	pools: Arc<Mutex<HashMap<usize, Vec<C>>>>,
 	stats: Arc<Mutex<PoolStats>>,

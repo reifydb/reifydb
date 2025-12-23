@@ -20,6 +20,11 @@ pub struct StandardColumnStore {
 	pub(crate) warm: Option<Backend>,
 	pub(crate) cold: Option<Backend>,
 	_config: ColumnStoreConfig,
+	/// Tier eviction state protected by std::sync::Mutex.
+	/// Using std::sync::Mutex is intentional here because:
+	/// 1. The ColumnStore trait methods are synchronous
+	/// 2. Lock hold times are very brief (just reading timestamps)
+	/// 3. This avoids async overhead for simple state checks
 	tier_state: Arc<Mutex<TierState>>,
 }
 

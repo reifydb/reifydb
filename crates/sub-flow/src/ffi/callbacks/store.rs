@@ -2,6 +2,15 @@
 //!
 //! Provides read-only access to the underlying store for operators,
 //! including get, contains_key, prefix, and range operations.
+//!
+//! # Async/Blocking Pattern
+//!
+//! These callbacks use `block_in_place(|| Handle::current().block_on(...))` because:
+//!
+//! 1. **FFI Constraint**: C FFI callbacks must be synchronous (`extern "C"` functions cannot be async)
+//! 2. **Async Transaction**: The underlying transaction methods are async
+//! 3. **block_in_place**: Prevents worker thread starvation by temporarily converting the current worker to a blocking
+//!    thread, allowing other async tasks to continue
 
 use std::{ops::Bound, slice::from_raw_parts};
 

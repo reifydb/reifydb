@@ -18,7 +18,7 @@ use std::{
 
 use async_trait::async_trait;
 use reifydb_core::{
-	diagnostic::internal::internal,
+	diagnostic::subsystem::{address_unavailable, bind_failed},
 	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
@@ -152,13 +152,9 @@ impl Subsystem for WsSubsystem {
 		}
 
 		let addr = self.bind_addr.clone();
-		let listener = TcpListener::bind(&addr).await.map_err(|e| {
-			error!(internal(format!("Failed to bind WebSocket server to {}: {}", &addr, e)))
-		})?;
+		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
 
-		let actual_addr = listener
-			.local_addr()
-			.map_err(|e| error!(internal(format!("Failed to get local address: {}", e))))?;
+		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("WebSocket server bound to {}", actual_addr);
 

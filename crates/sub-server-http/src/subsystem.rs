@@ -13,13 +13,20 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
 use async_trait::async_trait;
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	diagnostic::subsystem::{address_unavailable, bind_failed},
+	error,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{AppState, SharedRuntime};
-use tokio::{runtime::Handle, sync::oneshot};
+use tokio::{net::TcpListener, runtime::Handle, sync::oneshot, time::timeout};
+
+use crate::routes::router;
 
 /// HTTP server subsystem.
 ///
@@ -129,19 +136,9 @@ impl Subsystem for HttpSubsystem {
 		}
 
 		let addr = self.bind_addr.clone();
-		let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to bind HTTP server to {}: {}",
-				&addr, e
-			)))
-		})?;
+		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
 
-		let actual_addr = listener.local_addr().map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to get local address: {}",
-				e
-			)))
-		})?;
+		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("HTTP server bound to {}", actual_addr);
 
@@ -156,7 +153,7 @@ impl Subsystem for HttpSubsystem {
 			running.store(true, Ordering::SeqCst);
 
 			// Create router and serve
-			let app = crate::routes::router(state);
+			let app = router(state);
 			let server = axum::serve(listener, app).with_graceful_shutdown(async {
 				shutdown_rx.await.ok();
 				tracing::info!("HTTP server received shutdown signal");
@@ -186,7 +183,7 @@ impl Subsystem for HttpSubsystem {
 
 		// Wait for graceful shutdown with timeout
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+			match timeout(Duration::from_secs(30), rx).await {
 				Ok(_) => {
 					tracing::debug!("HTTP server shutdown completed");
 				}

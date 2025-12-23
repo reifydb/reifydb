@@ -6,7 +6,7 @@
 use std::{
 	any::Any,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -14,10 +14,14 @@ use std::{
 use async_trait::async_trait;
 use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	diagnostic::subsystem::init_failed,
+	error,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::SharedRuntime;
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::Mutex};
 
 use crate::config::OtelConfig;
 
@@ -90,9 +94,13 @@ impl OtelSubsystem {
 
 	/// Get a tracer from the initialized provider.
 	///
-	/// Returns None if the subsystem hasn't been started yet.
+	/// Returns None if the subsystem hasn't been started yet or if the lock is contended.
+	/// Uses try_lock() to avoid blocking in sync context with async mutex.
 	pub fn tracer(&self) -> Option<SdkTracer> {
-		self.tracer_provider.lock().unwrap().as_ref().map(|provider| provider.tracer("reifydb"))
+		self.tracer_provider
+			.try_lock()
+			.ok()
+			.and_then(|guard| guard.as_ref().map(|provider| provider.tracer("reifydb")))
 	}
 
 	/// Build the OTLP tracer provider
@@ -162,31 +170,25 @@ impl Subsystem for OtelSubsystem {
 			return Ok(());
 		}
 
-		// Enter runtime context for tonic/hyper
-		let _guard = self.handle.enter();
-
-		// Build the tracer provider
+		// Build the tracer provider (needs runtime context for tonic/hyper)
 		#[cfg(not(feature = "otlp"))]
 		{
-			return Err(reifydb_core::error!(reifydb_core::diagnostic::internal::internal(
-				"OpenTelemetry OTLP feature not enabled"
-			)));
+			return Err(error!(reifydb_core::diagnostic::subsystem::feature_disabled("otlp")));
 		}
 
 		#[cfg(feature = "otlp")]
-		let provider = self.build_otlp_tracer_provider().map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to initialize OTLP tracer: {}",
-				e
-			)))
-		})?;
+		let provider = {
+			// Enter runtime context for tonic/hyper - scope limited to provider building
+			let _guard = self.handle.enter();
+			self.build_otlp_tracer_provider().map_err(|e| error!(init_failed("OpenTelemetry", e)))?
+		};
 
 		// Set the global tracer provider
 		// This allows tracing-opentelemetry layer to find and use it
 		global::set_tracer_provider(provider.clone());
 
 		// Store the provider to prevent premature drop
-		*self.tracer_provider.lock().unwrap() = Some(provider);
+		*self.tracer_provider.lock().await = Some(provider);
 
 		self.running.store(true, Ordering::SeqCst);
 		tracing::info!(
@@ -207,7 +209,7 @@ impl Subsystem for OtelSubsystem {
 		tracing::info!("OpenTelemetry subsystem shutting down");
 
 		// Flush and shutdown the tracer provider
-		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
+		if let Some(provider) = self.tracer_provider.lock().await.take() {
 			// This ensures all pending traces are exported
 			if let Err(e) = provider.shutdown() {
 				tracing::error!("Error shutting down tracer provider: {:?}", e);

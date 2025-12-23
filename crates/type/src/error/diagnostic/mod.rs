@@ -32,6 +32,7 @@ pub mod render;
 pub mod runtime;
 pub mod sequence;
 pub mod serde;
+pub mod subsystem;
 pub mod temporal;
 pub mod transaction;
 mod util;

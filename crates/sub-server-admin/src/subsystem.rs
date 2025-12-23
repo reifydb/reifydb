@@ -10,13 +10,18 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
 use async_trait::async_trait;
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::{
+	diagnostic::subsystem::{address_unavailable, bind_failed, socket_config_failed},
+	error,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::SharedRuntime;
-use tokio::{runtime::Handle, sync::oneshot};
+use tokio::{net::TcpListener, runtime::Handle, sync::oneshot, time::timeout};
 
 use crate::state::AdminState;
 
@@ -110,34 +115,14 @@ impl Subsystem for AdminSubsystem {
 
 		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to bind admin server to {}: {}",
-				&addr, e
-			)))
-		})?;
-		std_listener.set_nonblocking(true).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to set non-blocking on {}: {}",
-				&addr, e
-			)))
-		})?;
+		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| error!(bind_failed(&addr, e)))?;
+		std_listener.set_nonblocking(true).map_err(|e| error!(socket_config_failed(e)))?;
 
-		let actual_addr = std_listener.local_addr().map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to get local address: {}",
-				e
-			)))
-		})?;
+		let actual_addr = std_listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 
 		// Enter the runtime context to convert std listener to tokio
 		let _guard = self.handle.enter();
-		let listener = tokio::net::TcpListener::from_std(std_listener).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to convert listener: {}",
-				e
-			)))
-		})?;
+		let listener = TcpListener::from_std(std_listener).map_err(|e| error!(socket_config_failed(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("Admin server bound to {}", actual_addr);
 
@@ -182,7 +167,7 @@ impl Subsystem for AdminSubsystem {
 
 		// Wait for graceful shutdown with timeout
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+			match timeout(Duration::from_secs(30), rx).await {
 				Ok(_) => {
 					tracing::debug!("Admin server shutdown completed");
 				}

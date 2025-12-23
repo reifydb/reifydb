@@ -47,7 +47,16 @@ impl Drop for SqlitePrimitiveStorageInner {
 	fn drop(&mut self) {
 		let _ = self.writer.send(WriteCommand::Shutdown);
 
-		// Cleanup tmpfs files for in-memory databases
+		// NOTE: These are blocking file operations in Drop.
+		// This is acceptable because:
+		// 1. Drop only runs when the last Arc reference is released
+		// 2. This typically happens during graceful shutdown, not in hot async paths
+		// 3. The files being removed are small WAL/SHM files for temporary databases
+		// 4. Drop cannot be async, so we cannot use tokio::fs here
+		//
+		// If this becomes a bottleneck, consider:
+		// - Using an explicit async cleanup() method before dropping
+		// - Spawning cleanup to a background thread via std::thread::spawn
 		if let DbPath::Tmpfs(path) = &self.db_path {
 			let _ = std::fs::remove_file(path);
 			let _ = std::fs::remove_file(format!("{}-wal", path.display()));
