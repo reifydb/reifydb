@@ -10,6 +10,7 @@ use std::{
 };
 
 use Key::Row;
+use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
@@ -673,8 +674,9 @@ impl Clone for TestConsumer {
 	}
 }
 
+#[async_trait]
 impl CdcConsume for TestConsumer {
-	fn consume(&self, _txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()> {
+	async fn consume(&self, _txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {
 			return Err(reifydb_type::Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),

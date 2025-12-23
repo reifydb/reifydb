@@ -13,7 +13,7 @@ use reifydb_core::{
 		TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
 	},
-	interface::{CommandTransaction, SourceId},
+	interface::CommandTransaction,
 	ioc::{IocContainer, LazyResolveArc},
 };
 use reifydb_engine::StandardEngine;
@@ -23,18 +23,15 @@ use reifydb_type::RowNumber;
 #[derive(Debug, Clone)]
 pub(crate) enum Change {
 	Insert {
-		_source_id: SourceId,
 		row_number: RowNumber,
 		post: Vec<u8>,
 	},
 	Update {
-		_source_id: SourceId,
 		row_number: RowNumber,
 		pre: Vec<u8>,
 		post: Vec<u8>,
 	},
 	Delete {
-		_source_id: SourceId,
 		row_number: RowNumber,
 		pre: Vec<u8>,
 	},
@@ -71,7 +68,6 @@ impl Clone for TransactionalFlowInterceptor {
 impl<CT: CommandTransaction + Send> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut TablePostInsertContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Insert {
-			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
 		});
@@ -84,7 +80,6 @@ impl<CT: CommandTransaction + Send> TablePostInsertInterceptor<CT> for Transacti
 impl<CT: CommandTransaction + Send> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut TablePostUpdateContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Update {
-			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
 			post: ctx.row.to_vec(),
@@ -97,7 +92,6 @@ impl<CT: CommandTransaction + Send> TablePostUpdateInterceptor<CT> for Transacti
 impl<CT: CommandTransaction + Send> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut TablePostDeleteContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Delete {
-			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
 		});
@@ -109,7 +103,6 @@ impl<CT: CommandTransaction + Send> TablePostDeleteInterceptor<CT> for Transacti
 impl<CT: CommandTransaction + Send> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Insert {
-			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
 		});
@@ -122,7 +115,6 @@ impl<CT: CommandTransaction + Send> RingBufferPostInsertInterceptor<CT> for Tran
 impl<CT: CommandTransaction + Send> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Update {
-			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
 			post: ctx.row.to_vec(),
@@ -135,7 +127,6 @@ impl<CT: CommandTransaction + Send> RingBufferPostUpdateInterceptor<CT> for Tran
 impl<CT: CommandTransaction + Send> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
 	async fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a, CT>) -> Result<()> {
 		self.changes.lock().unwrap().push(Change::Delete {
-			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
 		});

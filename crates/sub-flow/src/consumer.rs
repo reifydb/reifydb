@@ -17,7 +17,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEval
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
-use tracing::{instrument, trace_span};
+use tracing::instrument;
 
 use crate::{
 	builder::OperatorFactory,
@@ -187,6 +187,7 @@ impl FlowConsumer {
 	}
 }
 
+#[async_trait::async_trait]
 impl CdcConsume for FlowConsumer {
 	#[instrument(
 		name = "flow::consume",
@@ -196,10 +197,8 @@ impl CdcConsume for FlowConsumer {
 			cdc_count = cdcs.len(),
 		)
 	)]
-	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
-		// Use blocking to handle async operations in sync trait context
-		let runtime = tokio::runtime::Runtime::new().unwrap();
-		runtime.block_on(self.consume_async(txn, cdcs))
+	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		self.consume_async(txn, cdcs).await
 	}
 }
 
@@ -251,7 +250,6 @@ impl FlowConsumer {
 								key: _,
 								post,
 							} => Change::Insert {
-								_source_id: source_id,
 								row_number: table_row.row,
 								post: post.to_vec(),
 							},
@@ -260,7 +258,6 @@ impl FlowConsumer {
 								pre,
 								post,
 							} => Change::Update {
-								_source_id: source_id,
 								row_number: table_row.row,
 								pre: pre.to_vec(),
 								post: post.to_vec(),
@@ -269,7 +266,6 @@ impl FlowConsumer {
 								key: _,
 								pre,
 							} => Change::Delete {
-								_source_id: source_id,
 								row_number: table_row.row,
 								pre: pre.as_ref()
 									.map(|v| v.to_vec())
@@ -369,16 +365,7 @@ impl FlowConsumer {
 			return Ok(());
 		}
 
-		let worker: Box<dyn WorkerPool> = Box::new(SameThreadedWorker::new());
-
-		// let worker = Box::new(SameThreadedWorker::new());
-		let _worker_span = trace_span!(
-			"flow::worker_process",
-			worker = worker.name(),
-			flow_count = units.flow_count(),
-			total_units = units.total_units()
-		)
-		.entered();
+		let worker = SameThreadedWorker::new();
 		worker.process(txn, units, &self.flow_engine).await
 	}
 }

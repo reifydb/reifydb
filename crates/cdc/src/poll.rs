@@ -148,7 +148,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 			.collect::<Vec<_>>();
 
 		if !relevant_transactions.is_empty() {
-			consumer.consume(&mut transaction, relevant_transactions)?;
+			consumer.consume(&mut transaction, relevant_transactions).await?;
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version).await?;

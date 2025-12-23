@@ -44,8 +44,8 @@ pub(super) extern "C" fn host_store_get(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get value from transaction
-		match Handle::current().block_on(flow_txn.get(&key)) {
+		// Get value from transaction - use block_in_place to avoid nested runtime panic
+		match block_in_place(|| Handle::current().block_on(flow_txn.get(&key))) {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
 				let value_bytes = value.as_ref();
@@ -88,8 +88,8 @@ pub(super) extern "C" fn host_store_contains_key(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Check if key exists in transaction
-		match Handle::current().block_on(flow_txn.contains_key(&key)) {
+		// Check if key exists in transaction - use block_in_place to avoid nested runtime panic
+		match block_in_place(|| Handle::current().block_on(flow_txn.contains_key(&key))) {
 			Ok(exists) => {
 				*result = if exists {
 					1

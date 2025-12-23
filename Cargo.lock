@@ -1546,6 +1546,7 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
