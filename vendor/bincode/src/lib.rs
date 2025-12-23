@@ -1,1 +1,0 @@
-compile_error!("https://xkcd.com/2347/");
