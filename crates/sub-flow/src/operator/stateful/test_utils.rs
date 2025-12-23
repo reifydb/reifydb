@@ -15,7 +15,7 @@ pub mod test {
 	use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 	use reifydb_flow_operator_sdk::FlowChange;
 	use reifydb_store_transaction::TransactionStore;
-	use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
+	use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
 	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{
@@ -24,12 +24,12 @@ pub mod test {
 	};
 
 	/// Create a test engine with memory storage
-	pub fn create_test_engine() -> StandardEngine {
-		let store = TransactionStore::testing_memory();
+	pub async fn create_test_engine() -> StandardEngine {
+		let store = TransactionStore::testing_memory().await;
 		let eventbus = EventBus::new();
-		let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
+		let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 		let cdc = TransactionCdc::new(store.clone());
-		let multi = Transaction::new(store, single.clone(), eventbus.clone());
+		let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
 
 		StandardEngine::new(
 			multi,
@@ -38,7 +38,9 @@ pub mod test {
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),
 			MaterializedCatalog::new(),
+			None,
 		)
+		.await
 	}
 
 	/// Test operator implementation for stateful traits
@@ -77,12 +79,13 @@ pub mod test {
 		}
 	}
 
+	#[async_trait::async_trait]
 	impl Operator for TestOperator {
 		fn id(&self) -> FlowNodeId {
 			self.id
 		}
 
-		fn apply(
+		async fn apply(
 			&self,
 			txn: &mut FlowTransaction,
 			change: FlowChange,
@@ -91,7 +94,11 @@ pub mod test {
 			todo!()
 		}
 
-		fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		async fn get_rows(
+			&self,
+			txn: &mut FlowTransaction,
+			rows: &[RowNumber],
+		) -> crate::Result<Vec<Option<Row>>> {
 			unimplemented!()
 		}
 	}
@@ -119,8 +126,8 @@ pub mod test {
 	}
 
 	/// Helper to create a test transaction
-	pub fn create_test_transaction() -> StandardCommandTransaction {
-		let engine = create_test_engine();
-		engine.begin_command().unwrap()
+	pub async fn create_test_transaction() -> StandardCommandTransaction {
+		let engine = create_test_engine().await;
+		engine.begin_command().await.unwrap()
 	}
 }

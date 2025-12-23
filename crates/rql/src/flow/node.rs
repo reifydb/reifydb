@@ -19,23 +19,23 @@ pub enum FlowNodeType {
 		flow: FlowId,
 	},
 	Filter {
-		conditions: Vec<Expression<'static>>,
+		conditions: Vec<Expression>,
 	},
 	Map {
-		expressions: Vec<Expression<'static>>,
+		expressions: Vec<Expression>,
 	},
 	Extend {
-		expressions: Vec<Expression<'static>>,
+		expressions: Vec<Expression>,
 	},
 	Join {
 		join_type: JoinType,
-		left: Vec<Expression<'static>>,
-		right: Vec<Expression<'static>>,
+		left: Vec<Expression>,
+		right: Vec<Expression>,
 		alias: Option<String>,
 	},
 	Aggregate {
-		by: Vec<Expression<'static>>,
-		map: Vec<Expression<'static>>,
+		by: Vec<Expression>,
+		map: Vec<Expression>,
 	},
 	Merge,
 	Sort {
@@ -45,11 +45,11 @@ pub enum FlowNodeType {
 		limit: usize,
 	},
 	Distinct {
-		expressions: Vec<Expression<'static>>,
+		expressions: Vec<Expression>,
 	},
 	Apply {
 		operator: String,
-		expressions: Vec<Expression<'static>>,
+		expressions: Vec<Expression>,
 	},
 	SinkView {
 		view: ViewId,
@@ -58,8 +58,8 @@ pub enum FlowNodeType {
 		window_type: WindowType,
 		size: WindowSize,
 		slide: Option<WindowSlide>,
-		group_by: Vec<Expression<'static>>,
-		aggregations: Vec<Expression<'static>>,
+		group_by: Vec<Expression>,
+		aggregations: Vec<Expression>,
 		min_events: usize,
 		max_window_count: Option<usize>,
 		max_window_age: Option<std::time::Duration>,

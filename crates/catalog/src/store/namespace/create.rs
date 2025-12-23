@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, NamespaceDef, NamespaceKey};
-use reifydb_type::{OwnedFragment, diagnostic::catalog::namespace_already_exists, return_error};
+use reifydb_type::{Fragment, diagnostic::catalog::namespace_already_exists, return_error};
 
 use crate::{
 	CatalogStore,
@@ -14,28 +14,31 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct NamespaceToCreate {
-	pub namespace_fragment: Option<OwnedFragment>,
+	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
 }
 
 impl CatalogStore {
-	pub fn create_namespace(
+	pub async fn create_namespace(
 		txn: &mut impl CommandTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
-		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name)? {
-			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
+		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name).await? {
+			return_error!(namespace_already_exists(
+				to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name
+			));
 		}
 
-		let namespace_id = SystemSequence::next_namespace_id(txn)?;
+		let namespace_id = SystemSequence::next_namespace_id(txn).await?;
 
 		let mut row = LAYOUT.allocate();
 		LAYOUT.set_u64(&mut row, ID, namespace_id);
 		LAYOUT.set_utf8(&mut row, NAME, &to_create.name);
 
-		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
+		txn.set(&NamespaceKey::encoded(namespace_id), row).await?;
 
-		Ok(Self::get_namespace(txn, namespace_id)?)
+		Ok(Self::get_namespace(txn, namespace_id).await?)
 	}
 }
 
@@ -46,9 +49,9 @@ mod tests {
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
 
-	#[test]
-	fn test_create_namespace() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_create_namespace() {
+		let mut txn = create_test_command_transaction().await;
 
 		let to_create = NamespaceToCreate {
 			namespace_fragment: None,
@@ -56,13 +59,13 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_namespace(&mut txn, to_create.clone()).unwrap();
+		let result = CatalogStore::create_namespace(&mut txn, to_create.clone()).await.unwrap();
 		assert_eq!(result.id, NamespaceId(1025));
 		assert_eq!(result.name, "test_namespace");
 
 		// Creating the same namespace again with `if_not_exists =
 		// false` should return error
-		let err = CatalogStore::create_namespace(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_namespace(&mut txn, to_create).await.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}
 }

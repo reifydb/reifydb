@@ -15,20 +15,21 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_alter_sequence<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterSequence<'a>,
+		ast: AstAlterSequence,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
-		let (namespace, sequence_name) =
-			{
-				// Use the resolve's resolve_maybe_sequence method if
-				// we add one For now, just use default namespace
-				// through resolve
-				let namespace =
-					ast.sequence.namespace.as_ref().cloned().unwrap_or_else(|| {
-						Fragment::borrowed_internal(resolver::DEFAULT_NAMESPACE)
-					});
-				(namespace, ast.sequence.name.clone())
-			};
+	) -> crate::Result<LogicalPlan> {
+		let (namespace, sequence_name) = {
+			// Use the resolve's resolve_maybe_sequence method if
+			// we add one For now, just use default namespace
+			// through resolve
+			let namespace = ast
+				.sequence
+				.namespace
+				.as_ref()
+				.cloned()
+				.unwrap_or_else(|| Fragment::internal(resolver::DEFAULT_NAMESPACE));
+			(namespace, ast.sequence.name.clone())
+		};
 
 		// Create a maybe qualified column identifier
 		// The column belongs to the same table as the sequence

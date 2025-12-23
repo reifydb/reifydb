@@ -7,21 +7,22 @@
 //!
 //! Run with: `make rql-extend` or `cargo run --bin rql-extend`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
+	db.start().await.unwrap();
 
 	// Example 1: Standalone EXTEND with constants (creates a single-encoded
 	// frame)
 	info!("Example 1: Standalone EXTEND with constants");
 	log_query(r#"extend { total: 42, tax: 3.14 }"#);
 
-	for frame in db.query_as_root(r#"extend { total: 42, tax: 3.14 }"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"extend { total: 42, tax: 3.14 }"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 
@@ -29,7 +30,7 @@ fn main() {
 	info!("\nExample 2: Standalone EXTEND with computed value");
 	log_query(r#"extend result: 100 + 23"#);
 
-	for frame in db.query_as_root(r#"extend result: 100 + 23"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"extend result: 100 + 23"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 
@@ -48,6 +49,7 @@ extend { total: price * 1.1, tax: price * 0.1 }"#,
 		"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -68,6 +70,7 @@ extend result: value * 2"#,
 		"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -88,6 +91,7 @@ extend category: age > 30"#,
 		"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("EXTEND result (preserves all original columns):");
@@ -107,6 +111,7 @@ map { name, category: age > 30 }"#,
 		"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("MAP result (only selected columns):");
@@ -142,6 +147,7 @@ extend {
 		"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);

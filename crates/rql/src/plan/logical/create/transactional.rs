@@ -11,10 +11,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_transactional_view<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateTransactionalView<'a>,
+	pub(crate) async fn compile_transactional_view<T: CatalogQueryTransaction + Send>(
+		ast: AstCreateTransactionalView,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
@@ -28,7 +28,7 @@ impl Compiler {
 				} => name.clone(),
 			};
 
-			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]).into_owned());
+			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
 
 			columns.push(ViewColumnToCreate {
 				name: column_name,
@@ -41,7 +41,7 @@ impl Compiler {
 		let view = ast.view;
 
 		let with = if let Some(as_statement) = ast.as_clause {
-			Compiler::compile(as_statement, tx)?
+			Compiler::compile(as_statement, tx).await?
 		} else {
 			vec![]
 		};

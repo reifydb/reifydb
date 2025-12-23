@@ -1,9 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+	collections::HashMap,
+	path::PathBuf,
+	sync::{Arc, RwLock},
+};
 
-use parking_lot::RwLock;
+use async_trait::async_trait;
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
 use reifydb_type::TypeConstraint;
 
@@ -41,11 +45,11 @@ impl FlowOperatorStore {
 	}
 
 	pub fn add(&self, info: FlowOperatorInfo) {
-		self.operators.write().insert(info.operator.clone(), info);
+		self.operators.write().unwrap().insert(info.operator.clone(), info);
 	}
 
 	pub fn list(&self) -> Vec<FlowOperatorInfo> {
-		self.operators.read().values().cloned().collect()
+		self.operators.read().unwrap().values().cloned().collect()
 	}
 }
 
@@ -62,8 +66,9 @@ impl FlowOperatorEventListener {
 	}
 }
 
+#[async_trait]
 impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
-	fn on(&self, event: &FlowOperatorLoadedEvent) {
+	async fn on(&self, event: &FlowOperatorLoadedEvent) {
 		self.store.add(FlowOperatorInfo {
 			operator: event.operator.clone(),
 			library_path: event.library_path.clone(),

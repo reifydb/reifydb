@@ -2,22 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{WindowSize, WindowType};
-use reifydb_type::{Error, OwnedFragment, diagnostic::operation, return_error};
+use reifydb_type::{Error, Fragment, diagnostic::operation, return_error};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, expression::Expression};
 
-pub fn create_tumbling_window<'a>(
+pub fn create_tumbling_window(
 	config: WindowConfig,
-	group_by: Vec<Expression<'a>>,
-	aggregations: Vec<Expression<'a>>,
-) -> Result<WindowNode<'a>> {
+	group_by: Vec<Expression>,
+	aggregations: Vec<Expression>,
+) -> Result<WindowNode> {
 	validate_tumbling_config(&config)?;
 
 	let window_type =
-		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(OwnedFragment::None)))?;
+		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
 
-	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(OwnedFragment::None)))?;
+	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
 
 	// For tumbling windows, slide should always be None
 	let slide = None;
@@ -36,7 +36,7 @@ pub fn create_tumbling_window<'a>(
 
 fn validate_tumbling_config(config: &WindowConfig) -> Result<()> {
 	if config.slide.is_some() {
-		return_error!(operation::window_tumbling_with_slide(OwnedFragment::None));
+		return_error!(operation::window_tumbling_with_slide(Fragment::None));
 	}
 
 	// Validate that window type and size are compatible
@@ -45,13 +45,13 @@ fn validate_tumbling_config(config: &WindowConfig) -> Result<()> {
 		(Some(WindowType::Count), Some(WindowSize::Count(_))) => {}
 		(Some(window_type), Some(size)) => {
 			return_error!(operation::window_incompatible_type_size(
-				OwnedFragment::None,
+				Fragment::None,
 				format!("{:?}", window_type),
 				format!("{:?}", size)
 			));
 		}
 		_ => {
-			return_error!(operation::window_missing_type_or_size(OwnedFragment::None));
+			return_error!(operation::window_missing_type_or_size(Fragment::None));
 		}
 	}
 

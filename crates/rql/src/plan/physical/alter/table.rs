@@ -9,15 +9,15 @@ use crate::plan::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterTableNode<'a> {
-	pub node: logical::alter::AlterTableNode<'a>,
+pub struct AlterTableNode {
+	pub node: logical::alter::AlterTableNode,
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_table<'a>(
+	pub(crate) fn compile_alter_table(
 		_rx: &mut impl QueryTransaction,
-		alter: logical::alter::AlterTableNode<'a>,
-	) -> crate::Result<PhysicalPlan<'a>> {
+		alter: logical::alter::AlterTableNode,
+	) -> crate::Result<PhysicalPlan> {
 		// Convert logical plan to physical plan
 		let plan = AlterTableNode {
 			node: alter,

@@ -19,9 +19,9 @@ use crate::{
 
 /// Represents target column information for evaluation
 #[derive(Debug, Clone)]
-pub enum TargetColumn<'a> {
+pub enum TargetColumn {
 	/// Fully resolved column with complete source information
-	Resolved(ResolvedColumn<'a>),
+	Resolved(ResolvedColumn),
 	/// Partial column information with type, policies, and optional names for error reporting
 	Partial {
 		source_name: Option<String>,
@@ -31,7 +31,7 @@ pub enum TargetColumn<'a> {
 	},
 }
 
-impl<'a> TargetColumn<'a> {
+impl TargetColumn {
 	/// Get the column type
 	pub fn column_type(&self) -> Type {
 		match self {
@@ -87,8 +87,8 @@ impl<'a> TargetColumn<'a> {
 
 #[derive(Debug)]
 pub struct ColumnEvaluationContext<'a> {
-	pub target: Option<TargetColumn<'a>>,
-	pub columns: Columns<'a>,
+	pub target: Option<TargetColumn>,
+	pub columns: Columns,
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
@@ -129,15 +129,15 @@ impl<'a> ColumnEvaluationContext<'a> {
 }
 
 pub trait ColumnEvaluator: Send + Sync + 'static {
-	fn evaluate<'a>(&self, ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>>;
+	fn evaluate<'a>(&self, ctx: &ColumnEvaluationContext<'a>, expr: &Expression) -> crate::Result<Column>;
 }
 
 pub struct RowEvaluationContext<'a> {
 	pub row: Row,
-	pub target: Option<TargetColumn<'a>>,
+	pub target: Option<TargetColumn>,
 	pub params: &'a Params,
 }
 
 pub trait RowEvaluator: Send + Sync {
-	fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value>;
+	fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression) -> crate::Result<Value>;
 }

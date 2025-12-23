@@ -9,12 +9,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_column_by_name(
+	pub async fn find_column_by_name(
 		rx: &mut impl QueryTransaction,
 		source: impl Into<SourceId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|multi| {
+		let batch = rx.range(ColumnKey::full_scan(source)).await?;
+		let maybe_id = batch.items.into_iter().find_map(|multi| {
 			let row = multi.values;
 			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
 			let name = source_column::LAYOUT.get_utf8(&row, source_column::NAME);
@@ -27,7 +28,7 @@ impl CatalogStore {
 		});
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Self::get_column(rx, id)?))
+			Ok(Some(Self::get_column(rx, id).await?))
 		} else {
 			Ok(None)
 		}
@@ -42,14 +43,14 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
-	#[test]
-	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+	#[tokio::test]
+	async fn test_ok() {
+		let mut txn = create_test_command_transaction().await;
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
 
-		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").unwrap().unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").await.unwrap().unwrap();
 
 		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
@@ -57,12 +58,12 @@ mod tests {
 		assert_eq!(result.auto_increment, false);
 	}
 
-	#[test]
-	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+	#[tokio::test]
+	async fn test_not_found() {
+		let mut txn = create_test_command_transaction().await;
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
 
-		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").await.unwrap();
 
 		assert!(result.is_none());
 	}

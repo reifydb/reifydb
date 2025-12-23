@@ -15,9 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::expression::ConstantExpression;
-use reifydb_type::{
-	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint,
-};
+use reifydb_type::{Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint};
 use temporal::TemporalParser;
 use text::TextParser;
 
@@ -26,9 +24,9 @@ use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 impl StandardColumnEvaluator {
 	pub(crate) fn constant<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &ConstantExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		expr: &ConstantExpression,
+	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column {
 			name: expr.full_fragment_owned(),
@@ -39,9 +37,9 @@ impl StandardColumnEvaluator {
 	pub(crate) fn constant_of<'a>(
 		&self,
 		ctx: &ColumnEvaluationContext,
-		expr: &ConstantExpression<'a>,
+		expr: &ConstantExpression,
 		target: Type,
-	) -> crate::Result<Column<'a>> {
+	) -> crate::Result<Column> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		let data = Self::constant_value(&expr, row_count)?;
 		let casted = {
@@ -78,25 +76,25 @@ impl StandardColumnEvaluator {
 					};
 				}
 
-				if let Ok(v) = parse_primitive_int::<i8>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
 					return Ok(ColumnData::int1(vec![v; row_count]));
 				}
 
-				if let Ok(v) = parse_primitive_int::<i16>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
 					return Ok(ColumnData::int2(vec![v; row_count]));
 				}
 
-				if let Ok(v) = parse_primitive_int::<i32>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
 					return Ok(ColumnData::int4(vec![v; row_count]));
 				}
 
-				if let Ok(v) = parse_primitive_int::<i64>(fragment.clone().into_fragment()) {
+				if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
 					return Ok(ColumnData::int8(vec![v; row_count]));
 				}
 
 				// if parsing as i128 fails and its a negative
 				// number, we are maxed out and can stop
-				match parse_primitive_int::<i128>(fragment.clone().into_fragment()) {
+				match parse_primitive_int::<i128>(fragment.clone()) {
 					Ok(v) => {
 						return Ok(ColumnData::int16(vec![v; row_count]));
 					}
@@ -119,7 +117,7 @@ impl StandardColumnEvaluator {
 			} => ColumnData::utf8(std::iter::repeat(fragment.text()).take(row_count)),
 			ConstantExpression::Temporal {
 				fragment,
-			} => TemporalParser::parse_temporal(fragment.clone().into_fragment(), row_count)?,
+			} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
 			ConstantExpression::Undefined {
 				..
 			} => ColumnData::Undefined(UndefinedContainer::new(row_count)),
@@ -133,21 +131,21 @@ impl StandardColumnEvaluator {
 					fragment,
 				},
 				target,
-			) => NumberParser::from_number(fragment.clone().into_fragment(), target, row_count)?,
+			) => NumberParser::from_number(fragment.clone(), target, row_count)?,
 			(
 				ConstantExpression::Text {
 					fragment,
 				},
 				target,
 			) if target.is_bool() || target.is_number() || target.is_temporal() || target.is_uuid() => {
-				TextParser::from_text(fragment.clone().into_fragment(), target, row_count)?
+				TextParser::from_text(fragment.clone(), target, row_count)?
 			}
 			(
 				ConstantExpression::Temporal {
 					fragment,
 				},
 				target,
-			) if target.is_temporal() => TemporalParser::from_temporal(fragment.clone().into_fragment(), target, row_count)?,
+			) if target.is_temporal() => TemporalParser::from_temporal(fragment.clone(), target, row_count)?,
 
 			(_, target) => {
 				let source_type = match expr {

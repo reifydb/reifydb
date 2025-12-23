@@ -21,4 +21,4 @@ ast 'from [
 >     └── Row (1 fields: other) @ line 5, column 7 — "{"
 >         ├── Identifier @ line 5, column 8 — "other"
 >         └── Literal @ line 5, column 15 — "true"
-> 
+>

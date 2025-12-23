@@ -8,4 +8,4 @@ command_named 'MAP $int2_val as result' 'int2_val=1234'
 > +----------+
 > |   1234   |
 > +----------+
-> 
+>

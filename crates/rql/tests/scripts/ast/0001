@@ -8,4 +8,4 @@ ast 'from users map {id, name}'
 > └── Map @ line 1, column 12 — "map"
 >     ├── Identifier @ line 1, column 17 — "id"
 >     └── Identifier @ line 1, column 21 — "name"
-> 
+>

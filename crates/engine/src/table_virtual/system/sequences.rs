@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl Sequences {
 	}
 }
 
-impl<'a> TableVirtual<'a> for Sequences {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for Sequences {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -49,7 +55,7 @@ impl<'a> TableVirtual<'a> for Sequences {
 		let mut sequence_names = Vec::new();
 		let mut current_values = Vec::new();
 
-		let sequences = CatalogStore::list_sequences(txn)?;
+		let sequences = CatalogStore::list_sequences(txn).await?;
 		for sequence in sequences {
 			sequence_ids.push(sequence.id.0);
 
@@ -63,23 +69,23 @@ impl<'a> TableVirtual<'a> for Sequences {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ColumnData::uint8(sequence_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("namespace_id"),
+				name: Fragment::internal("namespace_id"),
 				data: ColumnData::uint8(namespace_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("namespace_name"),
+				name: Fragment::internal("namespace_name"),
 				data: ColumnData::utf8(namespace_names),
 			},
 			Column {
-				name: Fragment::owned_internal("name"),
+				name: Fragment::internal("name"),
 				data: ColumnData::utf8(sequence_names),
 			},
 			Column {
-				name: Fragment::owned_internal("value"),
+				name: Fragment::internal("value"),
 				data: ColumnData::uint8(current_values),
 			},
 		];

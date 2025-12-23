@@ -12,14 +12,14 @@ use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_table<'a>(
+	pub(crate) async fn create_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateTableNode,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Check if table already exists using the transaction's catalog
 		// operations
-		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.text())? {
+		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -32,28 +32,30 @@ impl Executor {
 		}
 
 		txn.create_table(TableToCreate {
-			fragment: Some(plan.table.clone().into_owned()),
+			fragment: Some(plan.table.clone()),
 			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			retention_policy: None,
-		})?;
+		})
+		.await?;
 
 		// If primary key is specified, create it immediately
 		if let Some(pk_def) = plan.primary_key {
 			// Get the created table to resolve column IDs
 			let table = txn
-				.find_table_by_name(plan.namespace.def().id, plan.table.text())?
+				.find_table_by_name(plan.namespace.def().id, plan.table.text())
+				.await?
 				.expect("Table should exist after creation");
 
-			let table_columns = CatalogStore::list_columns(txn, table.id)?;
+			let table_columns = CatalogStore::list_columns(txn, table.id).await?;
 
 			// Resolve column names to IDs
 			let mut column_ids = Vec::new();
 			for pk_column in pk_def.columns {
 				let column_name = pk_column.column.text();
 				let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
-					return_error!(column_not_found(pk_column.column.into_owned()));
+					return_error!(column_not_found(pk_column.column));
 				};
 				column_ids.push(column.id);
 			}
@@ -65,7 +67,8 @@ impl Executor {
 					source: SourceId::Table(table.id),
 					column_ids,
 				},
-			)?;
+			)
+			.await?;
 		}
 
 		Ok(Columns::single_row([
@@ -89,18 +92,18 @@ mod tests {
 		test_utils::create_test_command_transaction,
 	};
 
-	#[test]
-	fn test_create_table() {
+	#[tokio::test]
+	async fn test_create_table() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 
-		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let namespace_ident = Fragment::internal("test_namespace");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let mut plan = CreateTableNode {
 			namespace: resolved_namespace.clone(),
-			table: Fragment::owned_internal("test_table"),
+			table: Fragment::internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 			primary_key: None,
@@ -115,6 +118,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -131,6 +135,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -142,23 +147,24 @@ mod tests {
 		plan.if_not_exists = false;
 		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[test]
-	fn test_create_same_table_in_different_schema() {
+	#[tokio::test]
+	async fn test_create_same_table_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace = ensure_test_namespace(&mut txn);
-		let another_schema = create_namespace(&mut txn, "another_schema");
+		let namespace = ensure_test_namespace(&mut txn).await;
+		let another_schema = create_namespace(&mut txn, "another_schema").await;
 
-		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let namespace_ident = Fragment::internal("test_namespace");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: Fragment::owned_internal("test_table"),
+			table: Fragment::internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 			primary_key: None,
@@ -172,16 +178,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
-		let namespace_ident = Fragment::owned_internal("another_schema");
+		let namespace_ident = Fragment::internal("another_schema");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: Fragment::owned_internal("test_table"),
+			table: Fragment::internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 			primary_key: None,
@@ -194,6 +201,7 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -201,12 +209,12 @@ mod tests {
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
-	#[test]
-	fn test_create_table_missing_schema() {
+	#[tokio::test]
+	async fn test_create_table_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction();
+		let mut txn = create_test_command_transaction().await;
 
-		let namespace_ident = Fragment::owned_internal("missing_schema");
+		let namespace_ident = Fragment::internal("missing_schema");
 		let namespace_def = NamespaceDef {
 			id: NamespaceId(999),
 			name: "missing_schema".to_string(),
@@ -214,7 +222,7 @@ mod tests {
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: Fragment::owned_internal("my_table"),
+			table: Fragment::internal("my_table"),
 			if_not_exists: false,
 			columns: vec![],
 			primary_key: None,
@@ -226,6 +234,7 @@ mod tests {
 		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

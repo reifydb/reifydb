@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn frame_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Frame processing error: {}", message),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check frame data and operations".to_string()),
 		notes: vec![],
@@ -47,7 +47,7 @@ pub fn missing_row_number_column() -> Diagnostic {
 		statement: None,
 		message: "Frame must have a __ROW__ID__ column for UPDATE operations".to_string(),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("missing required column".to_string()),
 		help: Some("Ensure the query includes the encoded ID in the result set".to_string()),
 		notes: vec!["UPDATE operations require encoded identifiers to locate existing rows".to_string()],
@@ -62,7 +62,7 @@ pub fn invalid_row_number_values() -> Diagnostic {
 		statement: None,
 		message: "All RowNumber values must be defined for UPDATE operations".to_string(),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("invalid encoded identifiers".to_string()),
 		help: Some("Check that the input data contains valid encoded IDs".to_string()),
 		notes: vec!["RowNumber column must contain valid identifiers, not undefined values".to_string()],
@@ -71,8 +71,8 @@ pub fn invalid_row_number_values() -> Diagnostic {
 }
 
 /// Invalid parameter reference error
-pub fn invalid_parameter_reference<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_005".to_string(),
@@ -88,8 +88,8 @@ pub fn invalid_parameter_reference<'a>(fragment: impl IntoFragment<'a>) -> Diagn
 }
 
 /// Parameter not found error
-pub fn parameter_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_006".to_string(),

@@ -2,11 +2,11 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::Blob;
-use crate::{Error, IntoFragment, error::diagnostic::blob};
+use crate::{Error, Fragment, error::diagnostic::blob};
 
 impl Blob {
-	pub fn from_utf8<'a>(fragment: impl IntoFragment<'a>) -> Self {
-		let fragment = fragment.into_fragment();
+	pub fn from_utf8(fragment: Fragment) -> Self {
+		let fragment = fragment;
 		let utf8_str = fragment.text();
 		Blob::new(utf8_str.as_bytes().to_vec())
 	}
@@ -22,7 +22,7 @@ impl Blob {
 		String::from_utf8_lossy(self.as_bytes()).to_string()
 	}
 
-	pub fn from_str<'a>(fragment: impl IntoFragment<'a>) -> Self {
+	pub fn from_str(fragment: Fragment) -> Self {
 		Self::from_utf8(fragment)
 	}
 }
@@ -30,23 +30,23 @@ impl Blob {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_from_utf8() {
-		let blob = Blob::from_utf8(OwnedFragment::testing("Hello, World!"));
+		let blob = Blob::from_utf8(Fragment::testing("Hello, World!"));
 		assert_eq!(blob.as_bytes(), b"Hello, World!");
 	}
 
 	#[test]
 	fn test_from_utf8_unicode() {
-		let blob = Blob::from_utf8(OwnedFragment::testing("Hello, 世界! 🦀"));
+		let blob = Blob::from_utf8(Fragment::testing("Hello, 世界! 🦀"));
 		assert_eq!(blob.as_bytes(), "Hello, 世界! 🦀".as_bytes());
 	}
 
 	#[test]
 	fn test_from_utf8_empty() {
-		let blob = Blob::from_utf8(OwnedFragment::testing(""));
+		let blob = Blob::from_utf8(Fragment::testing(""));
 		assert_eq!(blob.as_bytes(), b"");
 	}
 
@@ -74,14 +74,14 @@ mod tests {
 
 	#[test]
 	fn test_from_str() {
-		let blob = Blob::from_str(OwnedFragment::testing("Hello!"));
+		let blob = Blob::from_str(Fragment::testing("Hello!"));
 		assert_eq!(blob.as_bytes(), b"Hello!");
 	}
 
 	#[test]
 	fn test_utf8_roundtrip() {
 		let original = "Hello, 世界! 🦀 Test with emojis and unicode";
-		let blob = Blob::from_utf8(OwnedFragment::testing(original));
+		let blob = Blob::from_utf8(Fragment::testing(original));
 		let decoded = blob.to_utf8().unwrap();
 		assert_eq!(decoded, original);
 	}

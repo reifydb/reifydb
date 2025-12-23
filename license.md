@@ -29,7 +29,6 @@ The following table shows the license for each component in the ReifyDB reposito
 | sub-flow | `crates/sub-flow` | AGPL-3.0 | Flow control subsystem |
 | sub-logging | `crates/sub-logging` | AGPL-3.0 | Logging subsystem |
 | sub-server | `crates/sub-server` | AGPL-3.0 | Server subsystem |
-| sub-worker | `crates/sub-worker` | AGPL-3.0 | Worker subsystem |
 | testing | `crates/testing` | AGPL-3.0 | Testing utilities |
 | transaction | `crates/transaction` | AGPL-3.0 | Transaction management |
 | **Binaries** | | | |

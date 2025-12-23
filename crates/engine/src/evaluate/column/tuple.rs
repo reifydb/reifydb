@@ -6,9 +6,9 @@ use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 impl StandardColumnEvaluator {
 	pub(crate) fn tuple<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		tuple: &TupleExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		tuple: &TupleExpression,
+	) -> crate::Result<Column> {
 		// Handle the common case where parentheses are used for
 		// grouping a single expression e.g., "not (price == 75 and
 		// price == 300)" creates a tuple with one logical expression

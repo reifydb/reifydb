@@ -6,8 +6,8 @@ use reifydb_type::diagnostic::operation::map_multiple_expressions_without_braces
 
 use crate::ast::{AstMap, parse::Parser, tokenize::Keyword};
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap<'a>> {
+impl Parser {
+	pub(crate) fn parse_map(&mut self) -> crate::Result<AstMap> {
 		let token = self.consume_keyword(Keyword::Map)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true)?;

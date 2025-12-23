@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
+
 use super::change::TransactionalDefChanges;
 use crate::{
 	EncodedKey,
@@ -10,30 +12,21 @@ use crate::{
 	},
 };
 
+#[async_trait]
 pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction {
 	type SingleVersionCommand<'a>: SingleVersionCommandTransaction
 	where
 		Self: 'a;
 
-	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	async fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
-
-	fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::SingleVersionCommand<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_single_command(keys)?;
-		let result = f(&mut tx)?;
-		tx.commit()?;
-		Ok(result)
-	}
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
 	/// Get reference to catalog changes for this transaction
 	fn get_changes(&self) -> &TransactionalDefChanges;
 }
 
+#[async_trait]
 pub trait QueryTransaction: MultiVersionQueryTransaction {
 	type SingleVersionQuery<'a>: SingleVersionQueryTransaction
 	where
@@ -43,28 +36,9 @@ pub trait QueryTransaction: MultiVersionQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
-
-	fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::SingleVersionQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_single_query(keys)?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
-
-	fn with_cdc_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(&mut Self::CdcQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_cdc_query()?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 }

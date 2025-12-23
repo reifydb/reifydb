@@ -4,4 +4,4 @@
 ast 'window { sum(amount) } with { count: 100, slide: 20 }'
 ---
 > └── Window @ line 1, column 1 — "window"
-> 
+>

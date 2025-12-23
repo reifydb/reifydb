@@ -34,51 +34,52 @@ pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cd
 	let catalog_cache = FlowCatalog::new();
 
 	// Create a single transaction for all row decoding (much faster than per-change txns)
-	// This block ensures the transaction is dropped before any await points
-	{
-		let mut txn = engine.begin_query()?;
+	let mut txn = engine.begin_query().await?;
 
-		for cdc_change in &cdc.changes {
-			// Only process row changes (data events)
-			let Some(decoded_key) = Key::decode(cdc_change.key()) else {
+	for cdc_change in &cdc.changes {
+		// Only process row changes (data events)
+		let Some(decoded_key) = Key::decode(cdc_change.key()) else {
+			continue;
+		};
+
+		let Key::Row(row_key) = decoded_key else {
+			continue;
+		};
+
+		let source_id = row_key.source;
+		let row_number = row_key.row;
+
+		// Find flows that subscribe to this source
+		let Some(flow_ids) = source_map.get(&source_id) else {
+			continue;
+		};
+
+		// Convert CDC change to FlowChange
+		let flow_change = match convert_cdc_to_flow_change(
+			&mut txn,
+			&catalog_cache,
+			source_id,
+			row_number,
+			&cdc_change.change,
+			version,
+		)
+		.await
+		{
+			Ok(change) => change,
+			Err(e) => {
+				warn!(source = ?source_id, row = row_number.0, error = %e, "failed to decode row");
 				continue;
-			};
-
-			let Key::Row(row_key) = decoded_key else {
-				continue;
-			};
-
-			let source_id = row_key.source;
-			let row_number = row_key.row;
-
-			// Find flows that subscribe to this source
-			let Some(flow_ids) = source_map.get(&source_id) else {
-				continue;
-			};
-
-			// Convert CDC change to FlowChange
-			let flow_change = match convert_cdc_to_flow_change(
-				&mut txn,
-				&catalog_cache,
-				source_id,
-				row_number,
-				&cdc_change.change,
-				version,
-			) {
-				Ok(change) => change,
-				Err(e) => {
-					warn!(source = ?source_id, row = row_number.0, error = %e, "failed to decode row");
-					continue;
-				}
-			};
-
-			// Add to each interested flow's batch
-			for &flow_id in flow_ids {
-				flow_batches.entry(flow_id).or_default().push(flow_change.clone());
 			}
+		};
+
+		// Add to each interested flow's batch
+		for &flow_id in flow_ids {
+			flow_batches.entry(flow_id).or_default().push(flow_change.clone());
 		}
-		// Transaction is dropped here, before any awaits
 	}
+
+	// Drop transaction before sending to channels
+	drop(txn);
 
 	// Send batches to flow channels
 	for (flow_id, changes) in flow_batches {
@@ -106,7 +107,7 @@ pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cd
 }
 
 /// Convert CDC change format to FlowChange format.
-fn convert_cdc_to_flow_change(
+async fn convert_cdc_to_flow_change(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: SourceId,
@@ -119,7 +120,7 @@ fn convert_cdc_to_flow_change(
 			post,
 			..
 		} => {
-			let row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec())?;
+			let row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
 			let diff = FlowDiff::Insert {
 				post: row,
 			};
@@ -130,8 +131,8 @@ fn convert_cdc_to_flow_change(
 			post,
 			..
 		} => {
-			let pre_row = create_row(txn, catalog_cache, source_id, row_number, pre.to_vec())?;
-			let post_row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec())?;
+			let pre_row = create_row(txn, catalog_cache, source_id, row_number, pre.to_vec()).await?;
+			let post_row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
 			let diff = FlowDiff::Update {
 				pre: pre_row,
 				post: post_row,
@@ -143,7 +144,7 @@ fn convert_cdc_to_flow_change(
 			..
 		} => {
 			let pre_bytes = pre.as_ref().map(|v| v.to_vec()).unwrap_or_default();
-			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes)?;
+			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes).await?;
 			let diff = FlowDiff::Remove {
 				pre: row,
 			};
@@ -153,7 +154,7 @@ fn convert_cdc_to_flow_change(
 }
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
-fn create_row(
+async fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: SourceId,
@@ -169,7 +170,7 @@ fn create_row(
 	use reifydb_type::{DictionaryEntryId, Value, internal};
 
 	// Get cached source metadata (loads from catalog on cache miss)
-	let metadata = catalog_cache.get_or_load(txn, source_id)?;
+	let metadata = catalog_cache.get_or_load(txn, source_id).await?;
 
 	let raw_encoded = EncodedValues(CowVec::new(row_bytes));
 
@@ -196,18 +197,15 @@ fn create_row(
 			if let Some(entry_id) = DictionaryEntryId::from_value(&raw_value) {
 				let index_key =
 					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();
-				match txn.get(&index_key)? {
+				match txn.get(&index_key).await? {
 					Some(v) => {
-						let (decoded_value, _): (Value, _) = bincode::serde::decode_from_slice(
-							&v.values,
-							bincode::config::standard(),
-						)
-						.map_err(|e| {
-							Error(internal!(
-								"Failed to deserialize dictionary value: {}",
-								e
-							))
-						})?;
+						let decoded_value: Value =
+							postcard::from_bytes(&v.values).map_err(|e| {
+								Error(internal!(
+									"Failed to deserialize dictionary value: {}",
+									e
+								))
+							})?;
 						values.push(decoded_value);
 					}
 					None => {

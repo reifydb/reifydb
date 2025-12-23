@@ -17,15 +17,15 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn alter_table_sequence<'a>(
+	pub(crate) async fn alter_table_sequence<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterSequenceNode,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// let namespace_name = plan.sequence.namespace().name();
 		// let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 		// 	return_error!(namespace_not_found(
-		// 		plan.sequence.identifier().clone().into_owned(),
+		// 		plan.sequence.identifier().clone(),
 		// 		namespace_name,
 		// 	));
 		// };
@@ -40,7 +40,7 @@ impl Executor {
 		let column = plan.column.def().clone();
 
 		if !column.auto_increment {
-			return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone().into_owned()));
+			return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone()));
 		}
 
 		// For catalog operations, use empty params since no
@@ -71,7 +71,7 @@ impl Executor {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		ColumnSequence::set_value(txn, table.id, column.id, value.clone())?;
+		ColumnSequence::set_value(txn, table.id, column.id, value.clone()).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.sequence.namespace().name().to_string())),

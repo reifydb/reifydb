@@ -19,6 +19,7 @@ mod transaction;
 #[path = "bulk_insert/trusted.rs"]
 mod trusted;
 
+use futures_util::TryStreamExt;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	Frame,
@@ -28,15 +29,15 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
 
 /// Create a test engine with in-memory storage.
-pub fn create_test_engine() -> StandardEngine {
-	let store = TransactionStore::testing_memory();
+pub async fn create_test_engine() -> StandardEngine {
+	let store = TransactionStore::testing_memory().await;
 	let eventbus = EventBus::new();
-	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
+	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = Transaction::new(store, single.clone(), eventbus.clone());
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
 
 	StandardEngine::new(
 		multi,
@@ -45,45 +46,54 @@ pub fn create_test_engine() -> StandardEngine {
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
+		None,
 	)
+	.await
 }
 
 /// Create a namespace via RQL command.
-pub fn create_namespace(engine: &StandardEngine, name: &str) {
+pub async fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
+	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
+		.try_collect::<Vec<_>>()
+		.await
+		.unwrap();
 }
 
 /// Create a table via RQL command.
 /// Syntax: CREATE TABLE ns.name { col: type, ... }
-pub fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
+pub async fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 	let identity = test_identity();
 	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
+		.try_collect::<Vec<_>>()
+		.await
 		.unwrap();
 }
 
 /// Create a ringbuffer via RQL command.
 /// Syntax: CREATE RINGBUFFER ns.name { col: type, ... } WITH { capacity: n }
-pub fn create_ringbuffer(engine: &StandardEngine, namespace: &str, name: &str, capacity: u64, columns: &str) {
+pub async fn create_ringbuffer(engine: &StandardEngine, namespace: &str, name: &str, capacity: u64, columns: &str) {
 	let identity = test_identity();
 	engine.command_as(
 		&identity,
 		&format!("CREATE RINGBUFFER {namespace}.{name} {{ {columns} }} WITH {{ capacity: {capacity} }}"),
 		Default::default(),
 	)
+	.try_collect::<Vec<_>>()
+	.await
 	.unwrap();
 }
 
 /// Query table contents for verification.
-pub fn query_table(engine: &StandardEngine, table: &str) -> Vec<Frame> {
+pub async fn query_table(engine: &StandardEngine, table: &str) -> Vec<Frame> {
 	let identity = test_identity();
-	engine.query_as(&identity, &format!("FROM {table}"), Default::default()).unwrap()
+	engine.query_as(&identity, &format!("FROM {table}"), Default::default()).try_collect().await.unwrap()
 }
 
 /// Query ringbuffer contents for verification.
-pub fn query_ringbuffer(engine: &StandardEngine, ringbuffer: &str) -> Vec<Frame> {
+pub async fn query_ringbuffer(engine: &StandardEngine, ringbuffer: &str) -> Vec<Frame> {
 	let identity = test_identity();
-	engine.query_as(&identity, &format!("FROM {ringbuffer}"), Default::default()).unwrap()
+	engine.query_as(&identity, &format!("FROM {ringbuffer}"), Default::default()).try_collect().await.unwrap()
 }
 
 /// Default test identity.

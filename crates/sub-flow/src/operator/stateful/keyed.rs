@@ -13,6 +13,7 @@ use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
+#[allow(async_fn_in_trait)]
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;
@@ -39,9 +40,9 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
+	async fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
-		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
+		utils::load_or_create_row(self.id(), txn, &key, &self.layout()).await
 	}
 
 	/// Save state for a specific key
@@ -51,12 +52,17 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> crate::Result<EncodedValues>
+	async fn update_state<F>(
+		&self,
+		txn: &mut FlowTransaction,
+		key_values: &[Value],
+		f: F,
+	) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
-		let mut row = self.load_state(txn, key_values)?;
+		let mut row = self.load_state(txn, key_values).await?;
 		f(&layout, &mut row)?;
 		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
@@ -89,8 +95,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_encode_key() {
+	#[tokio::test]
+	async fn test_encode_key() {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Test encoding with different key values
@@ -108,8 +114,8 @@ mod tests {
 		assert_eq!(encoded1.as_ref(), encoded1_again.as_ref());
 	}
 
-	#[test]
-	fn test_create_state() {
+	#[tokio::test]
+	async fn test_create_state() {
 		let operator = TestOperator::new(FlowNodeId(1));
 		let state = operator.create_state();
 
@@ -117,15 +123,15 @@ mod tests {
 		assert!(state.len() > 0);
 	}
 
-	#[test]
-	fn test_load_save_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+	#[tokio::test]
+	async fn test_load_save_state() {
+		let mut txn = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
 		// Initially should create new state
-		let state1 = operator.load_state(&mut txn, &key).unwrap();
+		let state1 = operator.load_state(&mut txn, &key).await.unwrap();
 
 		// Modify and save
 		let mut modified = state1.clone();
@@ -133,14 +139,14 @@ mod tests {
 		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
 		// Load should return modified state
-		let state2 = operator.load_state(&mut txn, &key).unwrap();
+		let state2 = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(state2.as_ref()[0], 0x42);
 	}
 
-	#[test]
-	fn test_update_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+	#[tokio::test]
+	async fn test_update_state() {
+		let mut txn = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
@@ -151,19 +157,20 @@ mod tests {
 				row.make_mut()[0] = 0x55;
 				Ok(())
 			})
+			.await
 			.unwrap();
 
 		assert_eq!(result.as_ref()[0], 0x55);
 
 		// Verify it was persisted
-		let loaded = operator.load_state(&mut txn, &key).unwrap();
+		let loaded = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(loaded.as_ref()[0], 0x55);
 	}
 
-	#[test]
-	fn test_remove_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+	#[tokio::test]
+	async fn test_remove_state() {
+		let mut txn = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
@@ -175,14 +182,14 @@ mod tests {
 		operator.remove_state(&mut txn, &key).unwrap();
 
 		// Loading should create new state (not find existing)
-		let new_state = operator.load_state(&mut txn, &key).unwrap();
+		let new_state = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
 	}
 
-	#[test]
-	fn test_multiple_keys() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+	#[tokio::test]
+	async fn test_multiple_keys() {
+		let mut txn = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Create multiple keys with different states
@@ -192,19 +199,20 @@ mod tests {
 				row.make_mut()[0] = i as u8;
 				Ok(())
 			})
+			.await
 			.unwrap();
 		}
 
 		// Verify each key has its own state
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
-			let state = operator.load_state(&mut txn, &key).unwrap();
+			let state = operator.load_state(&mut txn, &key).await.unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}
 
-	#[test]
-	fn test_key_ordering() {
+	#[tokio::test]
+	async fn test_key_ordering() {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Test that keys maintain order

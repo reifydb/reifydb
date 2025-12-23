@@ -58,20 +58,21 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::CommandTransaction> {
-			fn intercept(
+		#[async_trait::async_trait]
+		pub trait $trait_name<T: $crate::interface::CommandTransaction>: Send + Sync {
+			async fn intercept<'a>(
 				&self,
-				ctx: &mut $context_name<T>,
+				ctx: &mut $context_name<'a, T>,
 			) -> $crate::Result<()>;
 		}
 
-		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
-			pub fn execute(
+		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T> + Send + Sync> {
+			pub async fn execute<'a>(
 				&self,
-				mut ctx: $context_name<T>,
+				mut ctx: $context_name<'a, T>,
 			) -> $crate::Result<()> {
 				for interceptor in &self.interceptors {
-					interceptor.intercept(&mut ctx)?;
+					interceptor.intercept(&mut ctx).await?;
 				}
 				Ok(())
 			}
@@ -101,20 +102,21 @@ macro_rules! define_interceptor {
 			}
 		}
 
-		pub trait $trait_name<T: $crate::interface::CommandTransaction> {
-			fn intercept(
+		#[async_trait::async_trait]
+		pub trait $trait_name<T: $crate::interface::CommandTransaction>: Send + Sync {
+			async fn intercept(
 				&self,
 				ctx: &mut $context_name,
 			) -> $crate::Result<()>;
 		}
 
-		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T>> {
-			pub fn execute(
+		impl<T: $crate::interface::CommandTransaction> $crate::interceptor::InterceptorChain<T, dyn $trait_name<T> + Send + Sync> {
+			pub async fn execute(
 				&self,
 				mut ctx: $context_name,
 			) -> $crate::Result<()> {
 				for interceptor in &self.interceptors {
-					interceptor.intercept(&mut ctx)?;
+					interceptor.intercept(&mut ctx).await?;
 				}
 				Ok(())
 			}
@@ -134,15 +136,15 @@ macro_rules! define_closure_interceptor {
 	) => {
 		pub struct $wrapper_name<T: crate::interface::CommandTransaction, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
 			closure: F,
-			_phantom: PhantomData<T>,
+			_phantom: PhantomData<fn() -> T>,
 		}
 
 		impl<T: crate::interface::CommandTransaction, F> $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
 			pub fn new(closure: F) -> Self {
 				Self {
@@ -154,7 +156,7 @@ macro_rules! define_closure_interceptor {
 
 		impl<T: crate::interface::CommandTransaction, F> Clone for $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()> + Clone,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -164,11 +166,12 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<T, F>
+		#[async_trait::async_trait]
+		impl<T: crate::interface::CommandTransaction + Send, F> $trait_name<T> for $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
-			fn intercept(&self, ctx: &mut $context_type<T>) -> crate::Result<()> {
+			async fn intercept<'a>(&self, ctx: &mut $context_type<'a, T>) -> crate::Result<()> {
 				(self.closure)(ctx)
 			}
 		}
@@ -184,14 +187,14 @@ macro_rules! define_closure_interceptor {
 	) => {
 		pub struct $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>,
+			F: Fn(&mut $context_type) -> crate::Result<()> + Send + Sync,
 		{
 			closure: F,
 		}
 
 		impl<F> $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>,
+			F: Fn(&mut $context_type) -> crate::Result<()> + Send + Sync,
 		{
 			pub fn new(closure: F) -> Self {
 				Self {
@@ -202,7 +205,7 @@ macro_rules! define_closure_interceptor {
 
 		impl<F> Clone for $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()> + Clone,
+			F: Fn(&mut $context_type) -> crate::Result<()> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -211,11 +214,12 @@ macro_rules! define_closure_interceptor {
 			}
 		}
 
-		impl<T: crate::interface::CommandTransaction, F> $trait_name<T> for $wrapper_name<F>
+		#[async_trait::async_trait]
+		impl<T: crate::interface::CommandTransaction + Send, F> $trait_name<T> for $wrapper_name<F>
 		where
-			F: Fn(&mut $context_type) -> crate::Result<()>,
+			F: Fn(&mut $context_type) -> crate::Result<()> + Send + Sync,
 		{
-			fn intercept(&self, ctx: &mut $context_type) -> crate::Result<()> {
+			async fn intercept(&self, ctx: &mut $context_type) -> crate::Result<()> {
 				(self.closure)(ctx)
 			}
 		}
@@ -233,7 +237,7 @@ macro_rules! define_api_function {
 	) => {
 		pub fn $fn_name<T: crate::interface::CommandTransaction, F>(f: F) -> $closure_type<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()> + Send + Sync + Clone + 'static,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync + Clone + 'static,
 		{
 			$closure_type::new(f)
 		}
@@ -256,9 +260,9 @@ macro_rules! define_api_function {
 
 /// Trait for self-registering interceptors
 /// This allows interceptors that implement multiple interceptor traits
-/// to register themselves in all appropriate chains with a single Rc instance
-pub trait RegisterInterceptor<T: crate::interface::CommandTransaction> {
-	fn register(self: std::rc::Rc<Self>, interceptors: &mut Interceptors<T>);
+/// to register themselves in all appropriate chains with a single Arc instance
+pub trait RegisterInterceptor<T: crate::interface::CommandTransaction>: Send + Sync {
+	fn register(self: std::sync::Arc<Self>, interceptors: &mut Interceptors<T>);
 }
 
 #[macro_export]
@@ -271,11 +275,14 @@ macro_rules! impl_register_interceptor {
 	) => {
 		impl<T, F> $crate::interceptor::RegisterInterceptor<T> for $closure_type<T, F>
 		where
-			T: $crate::interface::CommandTransaction + 'static,
-			F: Fn(&mut $context_type<T>) -> $crate::Result<()> + 'static,
+			T: $crate::interface::CommandTransaction + Send + 'static,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> $crate::Result<()> + Send + Sync + 'static,
 		{
-			fn register(self: std::rc::Rc<Self>, interceptors: &mut $crate::interceptor::Interceptors<T>) {
-				interceptors.$field.add(self as std::rc::Rc<dyn $trait_type<T>>);
+			fn register(
+				self: std::sync::Arc<Self>,
+				interceptors: &mut $crate::interceptor::Interceptors<T>,
+			) {
+				interceptors.$field.add(self as std::sync::Arc<dyn $trait_type<T> + Send + Sync>);
 			}
 		}
 	};
@@ -287,11 +294,14 @@ macro_rules! impl_register_interceptor {
 	) => {
 		impl<T, F> $crate::interceptor::RegisterInterceptor<T> for $closure_type<F>
 		where
-			T: $crate::interface::CommandTransaction,
-			F: Fn(&mut $context_type) -> $crate::Result<()> + 'static,
+			T: $crate::interface::CommandTransaction + Send,
+			F: Fn(&mut $context_type) -> $crate::Result<()> + Send + Sync + 'static,
 		{
-			fn register(self: std::rc::Rc<Self>, interceptors: &mut $crate::interceptor::Interceptors<T>) {
-				interceptors.$field.add(self as std::rc::Rc<dyn $trait_type<T>>);
+			fn register(
+				self: std::sync::Arc<Self>,
+				interceptors: &mut $crate::interceptor::Interceptors<T>,
+			) {
+				interceptors.$field.add(self as std::sync::Arc<dyn $trait_type<T> + Send + Sync>);
 			}
 		}
 	};

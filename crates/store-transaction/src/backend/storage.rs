@@ -8,11 +8,12 @@
 
 use std::ops::Bound;
 
+use async_trait::async_trait;
 use reifydb_type::Result;
 
 use super::{
 	memory::MemoryPrimitiveStorage,
-	primitive::{PrimitiveBackend, PrimitiveStorage, RawEntry, TableId},
+	primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, TableId},
 	sqlite::SqlitePrimitiveStorage,
 };
 
@@ -31,124 +32,88 @@ pub enum BackendStorage {
 
 impl BackendStorage {
 	/// Create a new in-memory backend for testing
-	pub fn memory() -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new())
+	pub async fn memory() -> Self {
+		Self::Memory(MemoryPrimitiveStorage::new().await)
 	}
 
 	/// Create a new SQLite backend with in-memory database
-	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
+	pub async fn sqlite_in_memory() -> Self {
+		Self::Sqlite(SqlitePrimitiveStorage::in_memory().await)
 	}
 
 	/// Create a new SQLite backend with the given configuration
-	pub fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::new(config))
+	pub async fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
+		Self::Sqlite(SqlitePrimitiveStorage::new(config).await)
 	}
 }
 
-/// Forward iterator for BackendStorage
-pub enum BackendRangeIter<'a> {
-	Memory(<MemoryPrimitiveStorage as PrimitiveStorage>::RangeIter<'a>),
-	Sqlite(<SqlitePrimitiveStorage as PrimitiveStorage>::RangeIter<'a>),
-}
-
-impl<'a> Iterator for BackendRangeIter<'a> {
-	type Item = Result<RawEntry>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			Self::Memory(iter) => iter.next(),
-			Self::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
-/// Reverse iterator for BackendStorage
-pub enum BackendRangeRevIter<'a> {
-	Memory(<MemoryPrimitiveStorage as PrimitiveStorage>::RangeRevIter<'a>),
-	Sqlite(<SqlitePrimitiveStorage as PrimitiveStorage>::RangeRevIter<'a>),
-}
-
-impl<'a> Iterator for BackendRangeRevIter<'a> {
-	type Item = Result<RawEntry>;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			Self::Memory(iter) => iter.next(),
-			Self::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
+#[async_trait]
 impl PrimitiveStorage for BackendStorage {
-	type RangeIter<'a> = BackendRangeIter<'a>;
-	type RangeRevIter<'a> = BackendRangeRevIter<'a>;
-
 	#[inline]
-	fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		match self {
-			Self::Memory(s) => s.get(table, key),
-			Self::Sqlite(s) => s.get(table, key),
+			Self::Memory(s) => s.get(table, key).await,
+			Self::Sqlite(s) => s.get(table, key).await,
 		}
 	}
 
 	#[inline]
-	fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
 		match self {
-			Self::Memory(s) => s.contains(table, key),
-			Self::Sqlite(s) => s.contains(table, key),
+			Self::Memory(s) => s.contains(table, key).await,
+			Self::Sqlite(s) => s.contains(table, key).await,
 		}
 	}
 
 	#[inline]
-	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
+	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.put(table, entries),
-			Self::Sqlite(s) => s.put(table, entries),
+			Self::Memory(s) => s.put(table, entries).await,
+			Self::Sqlite(s) => s.put(table, entries).await,
 		}
 	}
 
 	#[inline]
-	fn range(
+	async fn range_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeIter<'_>> {
+	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => Ok(BackendRangeIter::Memory(s.range(table, start, end, batch_size)?)),
-			Self::Sqlite(s) => Ok(BackendRangeIter::Sqlite(s.range(table, start, end, batch_size)?)),
+			Self::Memory(s) => s.range_batch(table, start, end, batch_size).await,
+			Self::Sqlite(s) => s.range_batch(table, start, end, batch_size).await,
 		}
 	}
 
 	#[inline]
-	fn range_rev(
+	async fn range_rev_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeRevIter<'_>> {
+	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => Ok(BackendRangeRevIter::Memory(s.range_rev(table, start, end, batch_size)?)),
-			Self::Sqlite(s) => Ok(BackendRangeRevIter::Sqlite(s.range_rev(table, start, end, batch_size)?)),
+			Self::Memory(s) => s.range_rev_batch(table, start, end, batch_size).await,
+			Self::Sqlite(s) => s.range_rev_batch(table, start, end, batch_size).await,
 		}
 	}
 
 	#[inline]
-	fn ensure_table(&self, table: TableId) -> Result<()> {
+	async fn ensure_table(&self, table: TableId) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.ensure_table(table),
-			Self::Sqlite(s) => s.ensure_table(table),
+			Self::Memory(s) => s.ensure_table(table).await,
+			Self::Sqlite(s) => s.ensure_table(table).await,
 		}
 	}
 
 	#[inline]
-	fn clear_table(&self, table: TableId) -> Result<()> {
+	async fn clear_table(&self, table: TableId) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.clear_table(table),
-			Self::Sqlite(s) => s.clear_table(table),
+			Self::Memory(s) => s.clear_table(table).await,
+			Self::Sqlite(s) => s.clear_table(table).await,
 		}
 	}
 }
@@ -159,53 +124,47 @@ impl PrimitiveBackend for BackendStorage {}
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_memory_backend() {
-		let storage = BackendStorage::memory();
+	#[tokio::test]
+	async fn test_memory_backend() {
+		let storage = BackendStorage::memory().await;
 
-		storage.put(TableId::Multi, &[(b"key".as_slice(), Some(b"value".as_slice()))]).unwrap();
-		assert_eq!(storage.get(TableId::Multi, b"key").unwrap(), Some(b"value".to_vec()));
+		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
+		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
-	#[test]
-	fn test_sqlite_backend() {
-		let storage = BackendStorage::sqlite_in_memory();
+	#[tokio::test]
+	async fn test_sqlite_backend() {
+		let storage = BackendStorage::sqlite_in_memory().await;
 
-		storage.put(TableId::Multi, &[(b"key".as_slice(), Some(b"value".as_slice()))]).unwrap();
-		assert_eq!(storage.get(TableId::Multi, b"key").unwrap(), Some(b"value".to_vec()));
+		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
+		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
-	#[test]
-	fn test_range_iteration_memory() {
-		let storage = BackendStorage::memory();
+	#[tokio::test]
+	async fn test_range_batch_memory() {
+		let storage = BackendStorage::memory().await;
 
-		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
 
-		let entries: Vec<_> = storage
-			.range(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
-			.unwrap();
+		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
-		assert_eq!(entries.len(), 3);
+		assert_eq!(batch.entries.len(), 3);
+		assert!(!batch.has_more);
 	}
 
-	#[test]
-	fn test_range_iteration_sqlite() {
-		let storage = BackendStorage::sqlite_in_memory();
+	#[tokio::test]
+	async fn test_range_batch_sqlite() {
+		let storage = BackendStorage::sqlite_in_memory().await;
 
-		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
 
-		let entries: Vec<_> = storage
-			.range(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
-			.unwrap();
+		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
-		assert_eq!(entries.len(), 3);
+		assert_eq!(batch.entries.len(), 3);
+		assert!(!batch.has_more);
 	}
 }

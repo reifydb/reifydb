@@ -18,15 +18,15 @@ pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, Alter
 pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
 impl Compiler {
-	pub(crate) fn compile_alter<'a, T: CatalogQueryTransaction>(
-		ast: AstAlter<'a>,
+	pub(crate) async fn compile_alter<T: CatalogQueryTransaction>(
+		ast: AstAlter,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		match ast {
 			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, tx),
 			AstAlter::Table(node) => Self::compile_alter_table(node, tx),
 			AstAlter::View(node) => Self::compile_alter_view(node, tx),
-			AstAlter::Flow(node) => Self::compile_alter_flow(node, tx),
+			AstAlter::Flow(node) => Self::compile_alter_flow(node, tx).await,
 		}
 	}
 }

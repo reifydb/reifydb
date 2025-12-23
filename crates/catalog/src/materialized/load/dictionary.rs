@@ -11,14 +11,14 @@ use crate::{
 	store::dictionary::layout::dictionary::{ID, ID_TYPE, LAYOUT, NAME, NAMESPACE, VALUE_TYPE},
 };
 
-pub(crate) fn load_dictionaries(
+pub(crate) async fn load_dictionaries(
 	qt: &mut impl MultiVersionQueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = DictionaryKey::full_scan();
-	let dictionaries = qt.range(range)?;
+	let batch = qt.range(range).await?;
 
-	for multi in dictionaries {
+	for multi in batch.items {
 		let version = multi.version;
 		let dict_def = convert_dictionary(multi);
 		catalog.set_dictionary(dict_def.id, version, Some(dict_def));

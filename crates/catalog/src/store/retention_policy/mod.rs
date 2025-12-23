@@ -89,16 +89,16 @@ fn decode_cleanup_mode(mode: u8) -> Option<CleanupMode> {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_encode_decode_keep_forever() {
+	#[tokio::test]
+	async fn test_encode_decode_keep_forever() {
 		let policy = RetentionPolicy::KeepForever;
 		let encoded = encode_retention_policy(&policy);
 		let decoded = decode_retention_policy(&encoded).unwrap();
 		assert_eq!(policy, decoded);
 	}
 
-	#[test]
-	fn test_encode_decode_keep_versions() {
+	#[tokio::test]
+	async fn test_encode_decode_keep_versions() {
 		let policy = RetentionPolicy::KeepVersions {
 			count: 100,
 			cleanup_mode: CleanupMode::Delete,

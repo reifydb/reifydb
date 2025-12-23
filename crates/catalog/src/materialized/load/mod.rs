@@ -27,22 +27,22 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub fn load_all(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-		load_namespaces(qt, catalog)?;
+	pub async fn load_all(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+		load_namespaces(qt, catalog).await?;
 		// Load primary keys first so they're available when loading
 		// tables/views
-		load_primary_keys(qt, catalog)?;
+		load_primary_keys(qt, catalog).await?;
 
-		load_tables(qt, catalog)?;
-		load_views(qt, catalog)?;
-		load_flows(qt, catalog)?;
+		load_tables(qt, catalog).await?;
+		load_views(qt, catalog).await?;
+		load_flows(qt, catalog).await?;
 
 		// Load retention policies
-		load_source_retention_policies(qt, catalog)?;
-		load_operator_retention_policies(qt, catalog)?;
+		load_source_retention_policies(qt, catalog).await?;
+		load_operator_retention_policies(qt, catalog).await?;
 
 		// Load dictionaries
-		load_dictionaries(qt, catalog)?;
+		load_dictionaries(qt, catalog).await?;
 
 		Ok(())
 	}

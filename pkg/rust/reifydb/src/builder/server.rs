@@ -21,15 +21,14 @@ use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
 use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_sub_worker::WorkerBuilder;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct ServerBuilder {
 	multi: TransactionMultiVersion,
-	single: TransactionSingleVersion,
+	single: TransactionSingle,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
@@ -37,7 +36,6 @@ pub struct ServerBuilder {
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
-	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 }
@@ -45,7 +43,7 @@ pub struct ServerBuilder {
 impl ServerBuilder {
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {
@@ -59,7 +57,6 @@ impl ServerBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
-			worker_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 		}
@@ -138,9 +135,12 @@ impl ServerBuilder {
 		use reifydb_sub_api::Subsystem;
 
 		// Step 1: Create and start the OtelSubsystem early
+		// Note: We need to start synchronously here to get the tracer for the tracing layer.
+		// This is one of the few places where blocking is unavoidable due to the sync builder pattern.
 		let runtime = otel_config.runtime.clone().unwrap_or_else(SharedRuntime::default);
+		let handle = runtime.handle();
 		let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime);
-		otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
+		handle.block_on(otel_subsystem.start()).expect("Failed to start OpenTelemetry subsystem");
 
 		// Step 2: Get the concrete tracer from the initialized provider
 		let tracer = otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
@@ -166,7 +166,7 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	pub async fn build(self) -> crate::Result<Database> {
 		let mut database_builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
 
@@ -181,10 +181,6 @@ impl ServerBuilder {
 			database_builder = database_builder.with_tracing(configurator);
 		}
 
-		if let Some(configurator) = self.worker_configurator {
-			database_builder = database_builder.with_worker(configurator);
-		}
-
 		#[cfg(feature = "sub_flow")]
 		if let Some(configurator) = self.flow_configurator {
 			database_builder = database_builder.with_flow(configurator);
@@ -195,7 +191,7 @@ impl ServerBuilder {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
 
-		database_builder.build()
+		database_builder.build().await
 	}
 }
 
@@ -215,14 +211,6 @@ impl WithSubsystem for ServerBuilder {
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	fn with_worker<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
-	{
-		self.worker_configurator = Some(Box::new(configurator));
 		self
 	}
 

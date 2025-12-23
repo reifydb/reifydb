@@ -8,4 +8,4 @@ command_positional 'MAP $1 as result' '42'
 > +----------+
 > |    42    |
 > +----------+
-> 
+>

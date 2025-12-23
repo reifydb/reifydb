@@ -9,12 +9,12 @@ use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_transactional_view<'a>(
+	pub(crate) async fn create_transactional_view(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateTransactionalViewNode,
-	) -> crate::Result<Columns<'a>> {
-		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.text())? {
+	) -> crate::Result<Columns> {
+		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -23,24 +23,21 @@ impl Executor {
 				]));
 			}
 
-			return_error!(view_already_exists(
-				Some(plan.view.clone().into_owned()),
-				&plan.namespace.name,
-				&view.name,
-			));
+			return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name, &view.name,));
 		}
 
 		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
-				fragment: Some(plan.view.clone().into_owned()),
+				fragment: Some(plan.view.clone()),
 				name: plan.view.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
-		)?;
+		)
+		.await?;
 
-		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
+		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

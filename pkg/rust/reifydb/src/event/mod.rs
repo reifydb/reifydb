@@ -3,24 +3,25 @@
 
 mod lifecycle;
 
+use std::future::Future;
+
 pub use lifecycle::*;
 use reifydb_core::{event::lifecycle::OnCreateEvent, interface::WithEventBus as _};
 use reifydb_engine::StandardEngine;
 
+#[allow(async_fn_in_trait)]
 pub trait WithEventBus {
 	fn engine(&self) -> &StandardEngine;
 
-	fn on_create<F>(self, f: F) -> Self
+	async fn on_create<F, Fut>(self, f: F) -> Self
 	where
 		Self: Sized,
-		F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
+		F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
+		Fut: Future<Output = crate::Result<()>> + Send + 'static,
 	{
-		let callback = OnCreateEventListener {
-			callback: f,
-			engine: self.engine().clone(),
-		};
+		let callback = OnCreateEventListener::new(self.engine().clone(), f);
 
-		self.engine().event_bus().register::<OnCreateEvent, _>(callback);
+		self.engine().event_bus().register::<OnCreateEvent, _>(callback).await;
 		self
 	}
 }

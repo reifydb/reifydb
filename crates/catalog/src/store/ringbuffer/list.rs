@@ -6,12 +6,12 @@ use reifydb_core::interface::{Key, NamespaceId, QueryTransaction, RingBufferDef,
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
 impl CatalogStore {
-	pub fn list_ringbuffers_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<RingBufferDef>> {
+	pub async fn list_ringbuffers_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<RingBufferDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(RingBufferKey::full_scan())?.into_iter().collect();
+		let batch = rx.range(RingBufferKey::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::RingBuffer(ringbuffer_key) = key {
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
@@ -26,8 +26,8 @@ impl CatalogStore {
 
 					let capacity = ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
 
-					let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
-					let columns = Self::list_columns(rx, ringbuffer_id)?;
+					let primary_key = Self::find_primary_key(rx, ringbuffer_id).await?;
+					let columns = Self::list_columns(rx, ringbuffer_id).await?;
 
 					let ringbuffer_def = RingBufferDef {
 						id: ringbuffer_id,
@@ -56,20 +56,20 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
-	fn test_list_ringbuffers_empty() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_list_ringbuffers_empty() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).await.unwrap();
 
 		assert_eq!(buffers.len(), 0);
 	}
 
-	#[test]
-	fn test_list_ringbuffers_multiple() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_list_ringbuffers_multiple() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create first ring buffer
 		let buffer1 = RingBufferToCreate {
@@ -79,7 +79,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, buffer1).await.unwrap();
 
 		// Create second ring buffer
 		let buffer2 = RingBufferToCreate {
@@ -89,19 +89,19 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, buffer2).await.unwrap();
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let buffers = CatalogStore::list_ringbuffers_all(&mut txn).await.unwrap();
 
 		assert_eq!(buffers.len(), 2);
 		assert!(buffers.iter().any(|b| b.name == "buffer1"));
 		assert!(buffers.iter().any(|b| b.name == "buffer2"));
 	}
 
-	#[test]
-	fn test_list_ringbuffers_different_namespaces() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_list_ringbuffers_different_namespaces() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		// Create second namespace
 		let namespace2 = CatalogStore::create_namespace(
@@ -111,6 +111,7 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create buffer in namespace1
@@ -121,7 +122,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, buffer1).await.unwrap();
 
 		// Create buffer in namespace2
 		let buffer2 = RingBufferToCreate {
@@ -131,10 +132,10 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, buffer2).await.unwrap();
 
 		// List all buffers
-		let all_buffers = CatalogStore::list_ringbuffers_all(&mut txn).unwrap();
+		let all_buffers = CatalogStore::list_ringbuffers_all(&mut txn).await.unwrap();
 		assert_eq!(all_buffers.len(), 2);
 
 		// Check that buffer1 is in namespace1

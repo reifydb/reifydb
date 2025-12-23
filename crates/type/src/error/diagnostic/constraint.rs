@@ -2,9 +2,9 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::Diagnostic;
-use crate::OwnedFragment;
+use crate::Fragment;
 
-pub fn utf8_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
+pub fn utf8_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_001".to_string(),
 		statement: None,
@@ -21,7 +21,7 @@ pub fn utf8_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize
 	}
 }
 
-pub fn blob_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
+pub fn blob_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_002".to_string(),
 		statement: None,
@@ -38,7 +38,7 @@ pub fn blob_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize
 	}
 }
 
-pub fn int_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
+pub fn int_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_003".to_string(),
 		statement: None,
@@ -55,7 +55,7 @@ pub fn int_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize)
 	}
 }
 
-pub fn uint_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
+pub fn uint_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_004".to_string(),
 		statement: None,
@@ -72,7 +72,7 @@ pub fn uint_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize
 	}
 }
 
-pub fn decimal_exceeds_precision(fragment: OwnedFragment, actual: u8, max: u8) -> Diagnostic {
+pub fn decimal_exceeds_precision(fragment: Fragment, actual: u8, max: u8) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_005".to_string(),
 		statement: None,
@@ -89,7 +89,7 @@ pub fn decimal_exceeds_precision(fragment: OwnedFragment, actual: u8, max: u8) -
 	}
 }
 
-pub fn decimal_exceeds_scale(fragment: OwnedFragment, actual: u8, max: u8) -> Diagnostic {
+pub fn decimal_exceeds_scale(fragment: Fragment, actual: u8, max: u8) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_006".to_string(),
 		statement: None,

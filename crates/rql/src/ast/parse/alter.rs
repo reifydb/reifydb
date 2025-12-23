@@ -11,8 +11,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Separator, Token, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter<'a>> {
+impl Parser {
+	pub(crate) fn parse_alter(&mut self) -> crate::Result<AstAlter> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
 		if self.current()?.is_keyword(Keyword::Sequence) {
@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
 		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, ALTER VIEW, and ALTER FLOW are supported");
 	}
 
-	fn parse_alter_sequence(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_sequence(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table.column or table.column
 		let first_identifier_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn parse_alter_table(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_table(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table
 		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_alter_view(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_view(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.view
 		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
@@ -252,7 +252,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'a>>> {
+	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -308,7 +308,7 @@ impl<'a> Parser<'a> {
 		Ok(columns)
 	}
 
-	fn parse_alter_flow(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_flow(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse the flow identifier (namespace.name or just name)
 		let first_token = self.consume(TokenKind::Identifier)?;
 

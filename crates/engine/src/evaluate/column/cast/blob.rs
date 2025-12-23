@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{interface::LazyFragment, value::column::ColumnData};
-use reifydb_type::{Blob, BorrowedFragment, Type, diagnostic::cast, err};
+use reifydb_core::value::column::ColumnData;
+use reifydb_type::{Blob, Fragment, LazyFragment, Type, diagnostic::cast, err};
 
-pub fn to_blob<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
+pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
@@ -13,7 +13,7 @@ pub fn to_blob<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> c
 			let mut out = ColumnData::with_capacity(Type::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_fragment = BorrowedFragment::new_internal(container[idx].as_str());
+					let temp_fragment = Fragment::internal(container[idx].as_str());
 					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_undefined()
@@ -35,8 +35,8 @@ mod tests {
 
 	use super::*;
 
-	#[test]
-	fn test_from_utf8() {
+	#[tokio::test]
+	async fn test_from_utf8() {
 		let strings = vec!["Hello".to_string(), "World".to_string()];
 		let bitvec = BitVec::repeat(2, true);
 		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
@@ -55,8 +55,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_unsupported() {
+	#[tokio::test]
+	async fn test_unsupported() {
 		let ints = vec![42i32];
 		let bitvec = BitVec::repeat(1, true);
 		let container = ColumnData::int4_with_bitvec(ints, bitvec);

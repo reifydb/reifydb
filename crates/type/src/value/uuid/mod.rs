@@ -132,6 +132,10 @@ impl Display for Uuid7 {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
+	use std::time::Duration;
+
+	use tokio::time::sleep;
+
 	use super::*;
 
 	#[test]
@@ -212,12 +216,12 @@ mod tests {
 		assert_eq!(format!("{}", uuid7), format!("{}", std_uuid));
 	}
 
-	#[test]
-	fn test_uuid7_timestamp_ordering() {
+	#[tokio::test]
+	async fn test_uuid7_timestamp_ordering() {
 		// UUID v7 should have timestamp-based ordering for UUIDs
 		// generated close in time
 		let uuid7_first = Uuid7::generate();
-		std::thread::sleep(std::time::Duration::from_millis(1));
+		sleep(Duration::from_millis(1)).await;
 		let uuid7_second = Uuid7::generate();
 
 		// The first UUID should be less than the second (in most cases

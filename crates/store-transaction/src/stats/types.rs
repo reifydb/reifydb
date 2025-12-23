@@ -131,6 +131,16 @@ impl StorageStats {
 		self.historical_key_bytes += tombstone_key_bytes;
 		self.historical_count += 1;
 	}
+
+	/// Record a drop (physical removal of a historical version entry).
+	///
+	/// Unlike delete, drop doesn't create tombstones - it physically removes
+	/// entries from storage. Used for MVCC cleanup of old versions.
+	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
+		self.historical_key_bytes = self.historical_key_bytes.saturating_sub(key_bytes);
+		self.historical_value_bytes = self.historical_value_bytes.saturating_sub(value_bytes);
+		self.historical_count = self.historical_count.saturating_sub(1);
+	}
 }
 
 impl AddAssign for StorageStats {

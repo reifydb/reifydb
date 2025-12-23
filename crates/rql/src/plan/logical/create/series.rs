@@ -10,9 +10,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_series<'a, T: CatalogQueryTransaction>(
-		_ast: AstCreateSeries<'a>,
+		_ast: AstCreateSeries,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		unimplemented!()
 	}
 }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::ColumnData;
-use reifydb_type::{OwnedFragment, value::Blob};
+use reifydb_type::{Fragment, value::Blob};
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
 
@@ -30,7 +30,7 @@ impl ScalarFunction for BlobHex {
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let hex_str = &container[i];
-						let blob = Blob::from_hex(OwnedFragment::internal(hex_str))?;
+						let blob = Blob::from_hex(Fragment::internal(hex_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
@@ -55,14 +55,14 @@ mod tests {
 	use super::*;
 	use crate::function::ScalarFunctionContext;
 
-	#[test]
-	fn test_blob_hex_valid_input() {
+	#[tokio::test]
+	async fn test_blob_hex_valid_input() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["deadbeef".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -88,14 +88,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_hex_empty_string() {
+	#[tokio::test]
+	async fn test_blob_hex_empty_string() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -121,14 +121,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[] as &[u8]);
 	}
 
-	#[test]
-	fn test_blob_hex_uppercase() {
+	#[tokio::test]
+	async fn test_blob_hex_uppercase() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["DEADBEEF".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -154,14 +154,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_hex_mixed_case() {
+	#[tokio::test]
+	async fn test_blob_hex_mixed_case() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["DeAdBeEf".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -187,14 +187,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_hex_multiple_rows() {
+	#[tokio::test]
+	async fn test_blob_hex_multiple_rows() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -225,14 +225,14 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_hex_with_null_data() {
+	#[tokio::test]
+	async fn test_blob_hex_with_null_data() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -263,14 +263,14 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_hex_invalid_input_should_error() {
+	#[tokio::test]
+	async fn test_blob_hex_invalid_input_should_error() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["invalid_hex".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -286,14 +286,14 @@ mod tests {
 		assert!(result.is_err(), "Expected error for invalid hex input");
 	}
 
-	#[test]
-	fn test_blob_hex_odd_length_should_error() {
+	#[tokio::test]
+	async fn test_blob_hex_odd_length_should_error() {
 		let function = BlobHex::new();
 
 		let hex_data = vec!["abc".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

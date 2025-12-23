@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl PrimaryKeyColumns {
 	}
 }
 
-impl<'a> TableVirtual<'a> for PrimaryKeyColumns {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for PrimaryKeyColumns {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -47,7 +53,7 @@ impl<'a> TableVirtual<'a> for PrimaryKeyColumns {
 		let mut column_ids = Vec::new();
 		let mut positions = Vec::new();
 
-		let pk_columns = CatalogStore::list_primary_key_columns(txn)?;
+		let pk_columns = CatalogStore::list_primary_key_columns(txn).await?;
 		for (pk_id, column_id, position) in pk_columns {
 			pk_ids.push(pk_id);
 			column_ids.push(column_id);
@@ -56,15 +62,15 @@ impl<'a> TableVirtual<'a> for PrimaryKeyColumns {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("primary_key_id"),
+				name: Fragment::internal("primary_key_id"),
 				data: ColumnData::uint8(pk_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("column_id"),
+				name: Fragment::internal("column_id"),
 				data: ColumnData::uint8(column_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("position"),
+				name: Fragment::internal("position"),
 				data: ColumnData::uint2(positions),
 			},
 		];

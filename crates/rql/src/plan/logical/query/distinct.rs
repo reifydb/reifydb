@@ -10,9 +10,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_distinct<'a, T: CatalogQueryTransaction>(
-		ast: AstDistinct<'a>,
+		ast: AstDistinct,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// DISTINCT operates on the output columns of the query
 		// In a proper implementation, we would need to resolve these
 		// columns based on the SELECT clause and FROM sources in the

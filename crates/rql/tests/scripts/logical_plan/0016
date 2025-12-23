@@ -7,4 +7,4 @@ logical 'window { count(items) } with { interval: "5s" }'
 >     ├── Window Type: Time(Processing)
 >     ├── Size: Duration(5s)
 >     └── Aggregations: 1 expressions
-> 
+>

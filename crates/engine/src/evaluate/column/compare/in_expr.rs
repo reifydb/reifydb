@@ -17,11 +17,7 @@ impl StandardColumnEvaluator {
 	/// - If no match and all list elements are defined: result is FALSE
 	///
 	/// For NOT IN, the boolean result is negated (undefined stays undefined).
-	pub(crate) fn in_expr<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &InExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn in_expr(&self, ctx: &ColumnEvaluationContext, expr: &InExpression) -> crate::Result<Column> {
 		// Get the list of expressions to check against
 		let list_expressions = match expr.list.as_ref() {
 			Expression::Tuple(tuple) => &tuple.expressions,
@@ -72,13 +68,13 @@ impl StandardColumnEvaluator {
 
 	/// OR two boolean columns together with proper undefined handling.
 	/// SQL semantics: TRUE OR undefined = TRUE, FALSE OR undefined = undefined
-	fn or_columns<'a>(
+	fn or_columns(
 		&self,
-		_ctx: &ColumnEvaluationContext<'a>,
-		left: Column<'a>,
-		right: Column<'a>,
-		fragment: Fragment<'a>,
-	) -> crate::Result<Column<'a>> {
+		_ctx: &ColumnEvaluationContext,
+		left: Column,
+		right: Column,
+		fragment: Fragment,
+	) -> crate::Result<Column> {
 		match (left.data(), right.data()) {
 			(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 				let len = l.len();
@@ -125,7 +121,7 @@ impl StandardColumnEvaluator {
 	}
 
 	/// Negate a boolean column. Undefined stays undefined.
-	fn negate_column<'a>(&self, col: Column<'a>, fragment: Fragment<'a>) -> Column<'a> {
+	fn negate_column(&self, col: Column, fragment: Fragment) -> Column {
 		match col.data() {
 			ColumnData::Bool(container) => {
 				let len = container.len();

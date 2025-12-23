@@ -37,7 +37,7 @@ pub enum RowPredicate {
 /// - The expression doesn't involve row numbers
 /// - The row number comparison involves runtime variables
 /// - The expression is too complex to optimize
-pub fn extract_row_predicate<'a>(expr: &Expression<'a>) -> Option<RowPredicate> {
+pub fn extract_row_predicate(expr: &Expression) -> Option<RowPredicate> {
 	match expr {
 		// rownum == N
 		Expression::Equal(eq) => extract_from_equal(eq),
@@ -50,7 +50,7 @@ pub fn extract_row_predicate<'a>(expr: &Expression<'a>) -> Option<RowPredicate> 
 }
 
 /// Extracts a point lookup from an equality expression.
-fn extract_from_equal<'a>(eq: &EqExpression<'a>) -> Option<RowPredicate> {
+fn extract_from_equal(eq: &EqExpression) -> Option<RowPredicate> {
 	// Check both orderings: rownum == N and N == rownum
 	if let Some(value) = try_extract_rownum_eq(&eq.left, &eq.right) {
 		return Some(RowPredicate::Point(value));
@@ -62,7 +62,7 @@ fn extract_from_equal<'a>(eq: &EqExpression<'a>) -> Option<RowPredicate> {
 }
 
 /// Tries to extract a row number value from `column == constant` pattern.
-fn try_extract_rownum_eq<'a>(maybe_rownum: &Expression<'a>, maybe_value: &Expression<'a>) -> Option<u64> {
+fn try_extract_rownum_eq(maybe_rownum: &Expression, maybe_value: &Expression) -> Option<u64> {
 	if !is_rownum_column(maybe_rownum) {
 		return None;
 	}
@@ -70,7 +70,7 @@ fn try_extract_rownum_eq<'a>(maybe_rownum: &Expression<'a>, maybe_value: &Expres
 }
 
 /// Extracts a list lookup from an IN expression.
-fn extract_from_in<'a>(in_expr: &InExpression<'a>) -> Option<RowPredicate> {
+fn extract_from_in(in_expr: &InExpression) -> Option<RowPredicate> {
 	// Check if the value side is rownum
 	if !is_rownum_column(&in_expr.value) {
 		return None;
@@ -84,7 +84,7 @@ fn extract_from_in<'a>(in_expr: &InExpression<'a>) -> Option<RowPredicate> {
 }
 
 /// Extracts row numbers from a tuple expression.
-fn extract_list_from_tuple<'a>(tuple: &TupleExpression<'a>) -> Option<RowPredicate> {
+fn extract_list_from_tuple(tuple: &TupleExpression) -> Option<RowPredicate> {
 	let mut values = Vec::with_capacity(tuple.expressions.len());
 	for expr in &tuple.expressions {
 		match extract_constant_u64(expr) {
@@ -99,7 +99,7 @@ fn extract_list_from_tuple<'a>(tuple: &TupleExpression<'a>) -> Option<RowPredica
 }
 
 /// Extracts a range scan from a BETWEEN expression.
-fn extract_from_between<'a>(between: &BetweenExpression<'a>) -> Option<RowPredicate> {
+fn extract_from_between(between: &BetweenExpression) -> Option<RowPredicate> {
 	// Check if the value is rownum
 	if !is_rownum_column(&between.value) {
 		return None;
@@ -121,7 +121,7 @@ fn extract_from_between<'a>(between: &BetweenExpression<'a>) -> Option<RowPredic
 }
 
 /// Checks if an expression is a column reference to the row number column.
-fn is_rownum_column<'a>(expr: &Expression<'a>) -> bool {
+fn is_rownum_column(expr: &Expression) -> bool {
 	match expr {
 		Expression::Column(ColumnExpression(col_id)) => col_id.name.text() == ROW_NUMBER_COLUMN_NAME,
 		Expression::AccessSource(access) => access.column.name.text() == ROW_NUMBER_COLUMN_NAME,
@@ -130,7 +130,7 @@ fn is_rownum_column<'a>(expr: &Expression<'a>) -> bool {
 }
 
 /// Extracts a u64 value from a constant expression.
-fn extract_constant_u64<'a>(expr: &Expression<'a>) -> Option<u64> {
+fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 	match expr {
 		Expression::Constant(ConstantExpression::Number {
 			fragment,
@@ -145,33 +145,35 @@ fn extract_constant_u64<'a>(expr: &Expression<'a>) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
-	use reifydb_type::{Fragment, OwnedFragment};
+	use reifydb_type::Fragment;
 
 	use super::*;
 
-	fn make_rownum_column<'a>() -> Expression<'a> {
+	fn make_rownum_column() -> Expression {
 		let column = ColumnIdentifier {
 			source: ColumnSource::Source {
-				namespace: Fragment::Owned(OwnedFragment::Internal {
-					text: String::from("_context"),
-				}),
-				source: Fragment::Owned(OwnedFragment::Internal {
-					text: String::from("_context"),
-				}),
+				namespace: Fragment::Internal {
+					text: Arc::new("_context".to_string()),
+				},
+				source: Fragment::Internal {
+					text: Arc::new("_context".to_string()),
+				},
 			},
-			name: Fragment::Owned(OwnedFragment::Internal {
-				text: String::from(ROW_NUMBER_COLUMN_NAME),
-			}),
+			name: Fragment::Internal {
+				text: Arc::new(ROW_NUMBER_COLUMN_NAME.to_string()),
+			},
 		};
 		Expression::Column(ColumnExpression(column))
 	}
 
-	fn make_constant<'a>(n: u64) -> Expression<'a> {
+	fn make_constant(n: u64) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::Owned(OwnedFragment::Internal {
-				text: n.to_string(),
-			}),
+			fragment: Fragment::Internal {
+				text: Arc::from(n.to_string()),
+			},
 		})
 	}
 
@@ -180,7 +182,7 @@ mod tests {
 		let eq = EqExpression {
 			left: Box::new(make_rownum_column()),
 			right: Box::new(make_constant(42)),
-			fragment: Fragment::owned_internal("=="),
+			fragment: Fragment::internal("=="),
 		};
 		let expr = Expression::Equal(eq);
 
@@ -193,7 +195,7 @@ mod tests {
 		let eq = EqExpression {
 			left: Box::new(make_constant(42)),
 			right: Box::new(make_rownum_column()),
-			fragment: Fragment::owned_internal("=="),
+			fragment: Fragment::internal("=="),
 		};
 		let expr = Expression::Equal(eq);
 
@@ -205,13 +207,13 @@ mod tests {
 	fn test_list_lookup() {
 		let tuple = TupleExpression {
 			expressions: vec![make_constant(1), make_constant(5), make_constant(10)],
-			fragment: Fragment::owned_internal("[]"),
+			fragment: Fragment::internal("[]"),
 		};
 		let in_expr = InExpression {
 			value: Box::new(make_rownum_column()),
 			list: Box::new(Expression::Tuple(tuple)),
 			negated: false,
-			fragment: Fragment::owned_internal("in"),
+			fragment: Fragment::internal("in"),
 		};
 		let expr = Expression::In(in_expr);
 
@@ -225,7 +227,7 @@ mod tests {
 			value: Box::new(make_rownum_column()),
 			lower: Box::new(make_constant(10)),
 			upper: Box::new(make_constant(100)),
-			fragment: Fragment::owned_internal("between"),
+			fragment: Fragment::internal("between"),
 		};
 		let expr = Expression::Between(between);
 
@@ -243,21 +245,21 @@ mod tests {
 	fn test_no_rownum_returns_none() {
 		let other_column = ColumnIdentifier {
 			source: ColumnSource::Source {
-				namespace: Fragment::Owned(OwnedFragment::Internal {
-					text: String::from("default"),
-				}),
-				source: Fragment::Owned(OwnedFragment::Internal {
-					text: String::from("users"),
-				}),
+				namespace: Fragment::Internal {
+					text: Arc::new("default".to_string()),
+				},
+				source: Fragment::Internal {
+					text: Arc::new("users".to_string()),
+				},
 			},
-			name: Fragment::Owned(OwnedFragment::Internal {
-				text: String::from("id"),
-			}),
+			name: Fragment::Internal {
+				text: Arc::new("id".to_string()),
+			},
 		};
 		let eq = EqExpression {
 			left: Box::new(Expression::Column(ColumnExpression(other_column))),
 			right: Box::new(make_constant(42)),
-			fragment: Fragment::owned_internal("=="),
+			fragment: Fragment::internal("=="),
 		};
 		let expr = Expression::Equal(eq);
 
@@ -272,7 +274,7 @@ mod tests {
 			value: Box::new(make_rownum_column()),
 			lower: Box::new(make_constant(100)),
 			upper: Box::new(make_constant(10)),
-			fragment: Fragment::owned_internal("between"),
+			fragment: Fragment::internal("between"),
 		};
 		let expr = Expression::Between(between);
 

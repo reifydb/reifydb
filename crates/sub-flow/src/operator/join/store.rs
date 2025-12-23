@@ -1,7 +1,3 @@
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use reifydb_core::{Error, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_hash::Hash128;
 use reifydb_type::{Blob, Type, internal};
@@ -38,9 +34,13 @@ impl Store {
 		reifydb_core::EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn get(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<Option<JoinSideEntry>> {
+	pub(crate) async fn get(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+	) -> crate::Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
-		match state_get(self.node_id, txn, &key)? {
+		match state_get(self.node_id, txn, &key).await? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
 				let layout = EncodedValuesLayout::new(&[Type::Blob]);
@@ -48,8 +48,7 @@ impl Store {
 				if blob.is_empty() {
 					return Ok(None);
 				}
-				let config = standard();
-				let (entry, _): (JoinSideEntry, usize) = decode_from_slice(blob.as_ref(), config)
+				let entry: JoinSideEntry = postcard::from_bytes(blob.as_ref())
 					.map_err(|e| Error(internal!("Failed to deserialize JoinSideEntry: {}", e)))?;
 				Ok(Some(entry))
 			}
@@ -66,8 +65,7 @@ impl Store {
 		let key = self.make_key(hash);
 
 		// Serialize JoinSideEntry
-		let config = standard();
-		let serialized = encode_to_vec(entry, config)
+		let serialized = postcard::to_stdvec(entry)
 			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
@@ -80,9 +78,9 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
+	pub(crate) async fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
 		let key = self.make_key(hash);
-		Ok(state_get(self.node_id, txn, &key)?.is_some())
+		Ok(state_get(self.node_id, txn, &key).await?.is_some())
 	}
 
 	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<()> {
@@ -91,7 +89,7 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn get_or_insert_with<F>(
+	pub(crate) async fn get_or_insert_with<F>(
 		&self,
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
@@ -100,7 +98,7 @@ impl Store {
 	where
 		F: FnOnce() -> JoinSideEntry,
 	{
-		if let Some(entry) = self.get(txn, hash)? {
+		if let Some(entry) = self.get(txn, hash).await? {
 			Ok(entry)
 		} else {
 			let entry = f();
@@ -109,11 +107,11 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
+	pub(crate) async fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
 	where
 		F: FnOnce(&mut JoinSideEntry),
 	{
-		if let Some(mut entry) = self.get(txn, hash)? {
+		if let Some(mut entry) = self.get(txn, hash).await? {
 			f(&mut entry);
 			self.set(txn, hash, &entry)?;
 		}

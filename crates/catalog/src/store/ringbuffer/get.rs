@@ -7,11 +7,11 @@ use reifydb_type::{Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_ringbuffer(
+	pub async fn get_ringbuffer(
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
-		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
+		Self::find_ringbuffer(rx, ringbuffer).await?.ok_or_else(|| {
 			Error(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				ringbuffer
@@ -19,11 +19,11 @@ impl CatalogStore {
 		})
 	}
 
-	pub fn get_ringbuffer_metadata(
+	pub async fn get_ringbuffer_metadata(
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
-		Self::find_ringbuffer_metadata(rx, ringbuffer)?.ok_or_else(|| {
+		Self::find_ringbuffer_metadata(rx, ringbuffer).await?.ok_or_else(|| {
 			Error(internal!(
 				"Ring buffer metadata for ID {:?} not found. This indicates a critical catalog inconsistency.",
 				ringbuffer
@@ -39,22 +39,22 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
-	#[test]
-	fn test_get_ringbuffer_exists() {
-		let mut txn = create_test_command_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+	#[tokio::test]
+	async fn test_get_ringbuffer_exists() {
+		let mut txn = create_test_command_transaction().await;
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
-		let result = CatalogStore::get_ringbuffer(&mut txn, ringbuffer.id).unwrap();
+		let result = CatalogStore::get_ringbuffer(&mut txn, ringbuffer.id).await.unwrap();
 
 		assert_eq!(result.id, ringbuffer.id);
 		assert_eq!(result.name, ringbuffer.name);
 	}
 
-	#[test]
-	fn test_get_ringbuffer_not_exists() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_get_ringbuffer_not_exists() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::get_ringbuffer(&mut txn, RingBufferId(999));
+		let result = CatalogStore::get_ringbuffer(&mut txn, RingBufferId(999)).await;
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -63,22 +63,22 @@ mod tests {
 		assert!(err.message.contains("not found in catalog"));
 	}
 
-	#[test]
-	fn test_get_ringbuffer_metadata_exists() {
-		let mut txn = create_test_command_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+	#[tokio::test]
+	async fn test_get_ringbuffer_metadata_exists() {
+		let mut txn = create_test_command_transaction().await;
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
-		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, ringbuffer.id).unwrap();
+		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, ringbuffer.id).await.unwrap();
 
 		assert_eq!(result.id, ringbuffer.id);
 		assert_eq!(result.capacity, ringbuffer.capacity);
 	}
 
-	#[test]
-	fn test_get_ringbuffer_metadata_not_exists() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_get_ringbuffer_metadata_not_exists() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, RingBufferId(999));
+		let result = CatalogStore::get_ringbuffer_metadata(&mut txn, RingBufferId(999)).await;
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();

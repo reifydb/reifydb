@@ -8,4 +8,4 @@ logical 'window { sum(amount) } with { count: 100, slide: 20 }'
 >     ├── Size: Count(100)
 >     ├── Slide: Count(20)
 >     └── Aggregations: 1 expressions
-> 
+>

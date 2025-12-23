@@ -8,7 +8,7 @@ command 'map cast(cast(0, uint4), float8)'
 > +-----+
 > |  0  |
 > +-----+
-> 
+>
 
 command 'map cast(cast(4294967295, uint4), float8)'
 ---
@@ -17,4 +17,4 @@ command 'map cast(cast(4294967295, uint4), float8)'
 > +--------------+
 > |  4294967295  |
 > +--------------+
-> 
+>

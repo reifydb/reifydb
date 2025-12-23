@@ -13,8 +13,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_window(&mut self) -> crate::Result<AstWindow<'a>> {
+impl Parser {
+	pub(crate) fn parse_window(&mut self) -> crate::Result<AstWindow> {
 		let token = self.consume_keyword(Window)?;
 
 		// Parse computation block
@@ -80,7 +80,7 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse WITH { interval: "5m", slide: "1m" } clause
-	fn parse_with_clause(&mut self) -> crate::Result<Vec<AstWindowConfig<'a>>> {
+	fn parse_with_clause(&mut self) -> crate::Result<Vec<AstWindowConfig>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut config = Vec::new();
@@ -126,7 +126,7 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse BY { field1, field2 } clause
-	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::Ast<'a>>> {
+	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::Ast>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut group_by = Vec::new();

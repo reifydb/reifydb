@@ -14,5 +14,5 @@ tokenize 'create index idx_email on test.users {email}'
 >   [  7] Operator(OpenCurly)
 >   [  8] Identifier("email")
 >   [  9] Operator(CloseCurly)
-> 
-> 
+>
+>

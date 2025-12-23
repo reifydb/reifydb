@@ -14,11 +14,7 @@ use crate::{
 };
 
 impl StandardColumnEvaluator {
-	pub(crate) fn call<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		call: &CallExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn call<'a>(&self, ctx: &ColumnEvaluationContext, call: &CallExpression) -> crate::Result<Column> {
 		let function_name = call.func.0.text();
 
 		// Check if we're in aggregation context and if function exists as aggregate
@@ -48,10 +44,10 @@ impl StandardColumnEvaluator {
 
 	fn handle_aggregate_function<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		call: &CallExpression<'a>,
+		ctx: &ColumnEvaluationContext,
+		call: &CallExpression,
 		mut aggregate_fn: Box<dyn crate::function::AggregateFunction>,
-	) -> crate::Result<Column<'a>> {
+	) -> crate::Result<Column> {
 		// Create a single group containing all row indices for aggregation
 		let mut group_view = GroupByView::new();
 		let all_indices: Vec<usize> = (0..ctx.row_count).collect();
@@ -61,7 +57,7 @@ impl StandardColumnEvaluator {
 		let column = if call.args.is_empty() {
 			// For count() with no arguments, create a dummy column
 			Column {
-				name: Fragment::owned_internal("dummy"),
+				name: Fragment::internal("dummy"),
 				data: ColumnData::int4_with_capacity(ctx.row_count),
 			}
 		} else {
@@ -87,10 +83,10 @@ impl StandardColumnEvaluator {
 
 	fn evaluate_arguments<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expressions: &Vec<Expression<'a>>,
-	) -> crate::Result<Columns<'a>> {
-		let mut result: Vec<Column<'a>> = Vec::with_capacity(expressions.len());
+		ctx: &ColumnEvaluationContext,
+		expressions: &Vec<Expression>,
+	) -> crate::Result<Columns> {
+		let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
 			result.push(self.evaluate(ctx, expression)?)

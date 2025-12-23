@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::TableVirtualDef,
 	value::column::{Column, ColumnData, Columns},
@@ -38,17 +39,18 @@ impl<T: TableVirtualUser> TableVirtualUserAdapter<T> {
 	}
 }
 
-impl<'a, T: TableVirtualUser> TableVirtual<'a> for TableVirtualUserAdapter<T> {
-	fn initialize(
+#[async_trait]
+impl<T: TableVirtualUser> TableVirtual for TableVirtualUserAdapter<T> {
+	async fn initialize<'a>(
 		&mut self,
 		_txn: &mut StandardTransaction<'a>,
-		_ctx: TableVirtualContext<'a>,
+		_ctx: TableVirtualContext,
 	) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, _txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -95,11 +97,12 @@ impl<T: TableVirtualUserIterator> TableVirtualUserIteratorAdapter<T> {
 	}
 }
 
-impl<'a, T: TableVirtualUserIterator + Sync> TableVirtual<'a> for TableVirtualUserIteratorAdapter<T> {
-	fn initialize(
+#[async_trait]
+impl<T: TableVirtualUserIterator> TableVirtual for TableVirtualUserIteratorAdapter<T> {
+	async fn initialize<'a>(
 		&mut self,
 		_txn: &mut StandardTransaction<'a>,
-		ctx: TableVirtualContext<'a>,
+		ctx: TableVirtualContext,
 	) -> crate::Result<()> {
 		// Convert internal context to user pushdown context
 		let user_ctx = match ctx {
@@ -114,18 +117,18 @@ impl<'a, T: TableVirtualUserIterator + Sync> TableVirtual<'a> for TableVirtualUs
 			}),
 		};
 
-		self.user_iter.initialize(user_ctx.as_ref())?;
+		self.user_iter.initialize(user_ctx.as_ref()).await?;
 		self.initialized = true;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, _txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch>> {
 		if !self.initialized {
 			return Ok(None);
 		}
 
 		let user_columns = self.user_iter.columns();
-		let user_rows = self.user_iter.next_batch(self.batch_size)?;
+		let user_rows = self.user_iter.next_batch(self.batch_size).await?;
 
 		match user_rows {
 			None => Ok(None),
@@ -148,7 +151,7 @@ impl<'a, T: TableVirtualUserIterator + Sync> TableVirtual<'a> for TableVirtualUs
 pub(super) fn convert_rows_to_columns(
 	user_columns: &[TableVirtualUserColumnDef],
 	rows: Vec<Vec<Value>>,
-) -> Vec<Column<'static>> {
+) -> Vec<Column> {
 	let num_rows = rows.len();
 	let num_cols = user_columns.len();
 
@@ -170,7 +173,7 @@ pub(super) fn convert_rows_to_columns(
 		.iter()
 		.zip(column_data)
 		.map(|(def, data)| Column {
-			name: Fragment::owned_internal(def.name.clone()),
+			name: Fragment::internal(def.name.clone()),
 			data,
 		})
 		.collect()

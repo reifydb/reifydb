@@ -18,8 +18,9 @@ impl StorageTracker {
 		let inner = self.inner.read().unwrap();
 		let mut result = TierStats::new();
 
-		for ((tier, _kind), stats) in &inner.by_type {
-			*result.get_mut(*tier) += stats.clone();
+		// Use by_tier which tracks all keys, including those without recognized KeyKind
+		for (tier, stats) in &inner.by_tier {
+			*result.get_mut(*tier) = stats.clone();
 		}
 
 		result

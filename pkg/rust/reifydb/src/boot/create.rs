@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as EngineInterface, Identity, Params},
@@ -20,9 +22,10 @@ impl CreateEventListener {
 	}
 }
 
+#[async_trait]
 impl EventListener<OnCreateEvent> for CreateEventListener {
-	fn on(&self, _event: &OnCreateEvent) {
-		if let Err(e) = self.engine.command_as(
+	async fn on(&self, _event: &OnCreateEvent) {
+		let stream = self.engine.command_as(
 			&Identity::root(),
 			r#"
 
@@ -35,8 +38,10 @@ create table reifydb.flows{
 
 "#,
 			Params::None,
-		) {
-			error!("Failed to create initial database namespace: {}", e);
+		);
+
+		if let Err(e) = stream.try_collect::<Vec<_>>().await {
+			error!("Failed to create initial database namespace: {:?}", e);
 		}
 	}
 }

@@ -2,6 +2,15 @@
 //!
 //! Provides read-only access to the underlying store for operators,
 //! including get, contains_key, prefix, and range operations.
+//!
+//! # Async/Blocking Pattern
+//!
+//! These callbacks use `block_in_place(|| Handle::current().block_on(...))` because:
+//!
+//! 1. **FFI Constraint**: C FFI callbacks must be synchronous (`extern "C"` functions cannot be async)
+//! 2. **Async Transaction**: The underlying transaction methods are async
+//! 3. **block_in_place**: Prevents worker thread starvation by temporarily converting the current worker to a blocking
+//!    thread, allowing other async tasks to continue
 
 use std::{ops::Bound, slice::from_raw_parts};
 
@@ -10,6 +19,7 @@ use reifydb_flow_operator_abi::{
 	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
 	FFI_OK, FFIContext, StoreIteratorFFI,
 };
+use tokio::{runtime::Handle, task::block_in_place};
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -43,8 +53,8 @@ pub(super) extern "C" fn host_store_get(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get value from transaction
-		match flow_txn.get(&key) {
+		// Get value from transaction - use block_in_place to avoid nested runtime panic
+		match block_in_place(|| Handle::current().block_on(flow_txn.get(&key))) {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
 				let value_bytes = value.as_ref();
@@ -87,8 +97,8 @@ pub(super) extern "C" fn host_store_contains_key(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Check if key exists in transaction
-		match flow_txn.contains_key(&key) {
+		// Check if key exists in transaction - use block_in_place to avoid nested runtime panic
+		match block_in_place(|| Handle::current().block_on(flow_txn.contains_key(&key))) {
 			Ok(exists) => {
 				*result = if exists {
 					1
@@ -126,14 +136,14 @@ pub(super) extern "C" fn host_store_prefix(
 		};
 		let prefix = EncodedKey(CowVec::new(prefix_bytes));
 
-		match flow_txn.prefix(&prefix) {
-			Ok(iter) => {
-				// Need to convert the iterator to 'static lifetime for store
-				// This is safe because the iterator is owned by the registry
-				let static_iter = std::mem::transmute(iter);
+		// Use block_in_place to call async methods from sync FFI context
+		let result = block_in_place(|| Handle::current().block_on(flow_txn.prefix(&prefix)));
 
-				// Create iterator handle
-				let handle = store_iterator::create_iterator(static_iter);
+		match result {
+			Ok(batch) => {
+				// Create iterator handle from batch
+				// No unsafe transmute needed - batches own their data
+				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
@@ -227,14 +237,14 @@ pub(super) extern "C" fn host_store_range(
 		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 
-		match flow_txn.range(range) {
-			Ok(iter) => {
-				// Need to convert the iterator to 'static lifetime for store
-				// This is safe because the iterator is owned by the registry
-				let static_iter = std::mem::transmute(iter);
+		// Use block_in_place to call async methods from sync FFI context
+		let result = block_in_place(|| Handle::current().block_on(flow_txn.range(range)));
 
-				// Create iterator handle
-				let handle = store_iterator::create_iterator(static_iter);
+		match result {
+			Ok(batch) => {
+				// Create iterator handle from batch
+				// No unsafe transmute needed - batches own their data
+				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())

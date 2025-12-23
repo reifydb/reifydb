@@ -12,7 +12,7 @@ command 'from test.conversion map col'
 > +----------+-------+
 > |    1     |   0   |
 > +----------+-------+
-> 
+>
 
 (command 'from [{ col: cast(cast(16777216, int8), float4) }] insert test.conversion')
 command 'from test.conversion map col'
@@ -23,7 +23,7 @@ command 'from test.conversion map col'
 > |    2     |  16777216  |
 > |    1     |     0      |
 > +----------+------------+
-> 
+>
 
 (command 'from [{ col: cast(cast(-16777216, int8), float4) }] insert test.conversion')
 command 'from test.conversion map col'
@@ -35,25 +35,25 @@ command 'from test.conversion map col'
 > |    2     |  16777216   |
 > |    1     |      0      |
 > +----------+-------------+
-> 
+>
 
 (command 'create table test.float4_test10{col: float4}')
 !command 'from [{ col: cast(cast(16777217, int8), float4) }] insert test.float4_test10'
 ---
 >  Error CAST_002: failed to cast to Float4
 >   at "(16777217float4" (line 1, column 18)
-> 
+>
 >   1 │ from [{ col: cast(cast(16777217, int8), float4) }] insert test.float4_test10
 >     │                   ~~~~~~~~~~~~~~~
 >     │              failed to cast to Float4
-> 
+>
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "16777217" (line 1, column 24)
-> 
+>
 >     1 │ from [{ col: cast(cast(16777217, int8), float4) }] insert test.float4_test10
 >       │                        ~~~~~~~~
 >       │ converting '16777217' from Int8 to Float4 would lose precision
-> 
+>
 >     note: Float4 can only represent from -16_777_216 (-2^24) to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required
-> 
+>

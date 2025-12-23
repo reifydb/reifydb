@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+pub mod any;
 pub mod blob;
 pub mod boolean;
 pub mod number;
@@ -17,11 +18,7 @@ use reifydb_type::{LazyFragment, Type, diagnostic::cast, err, error};
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn cast<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		cast: &CastExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn cast(&self, ctx: &ColumnEvaluationContext, cast: &CastExpression) -> crate::Result<Column> {
 		let cast_fragment = cast.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
@@ -38,7 +35,7 @@ impl StandardColumnEvaluator {
 				let casted =
 					cast_column_data(ctx, &column.data(), cast.to.ty, &lazy_frag).map_err(|e| {
 						error!(cast::invalid_number(
-							cast_fragment().into_owned(),
+							cast_fragment(),
 							cast.to.ty,
 							e.diagnostic()
 						))
@@ -53,11 +50,11 @@ impl StandardColumnEvaluator {
 	}
 }
 
-pub(crate) fn cast_column_data<'a>(
+pub(crate) fn cast_column_data(
 	ctx: &ColumnEvaluationContext,
 	data: &ColumnData,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment + Clone,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
 		let mut result = ColumnData::with_capacity(target, container.len());
@@ -69,6 +66,7 @@ pub(crate) fn cast_column_data<'a>(
 	let source_type = data.get_type();
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
+		(Type::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
 		(_, target) if target.is_number() => number::to_number(ctx, data, target, lazy_fragment),
 		(_, target) if target.is_blob() => blob::to_blob(data, lazy_fragment),
 		(_, target) if target.is_bool() => boolean::to_boolean(data, lazy_fragment),
@@ -95,18 +93,18 @@ mod tests {
 
 	use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
 
-	#[test]
-	fn test_cast_integer() {
+	#[tokio::test]
+	async fn test_cast_integer() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal("42"),
+					fragment: Fragment::internal("42"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Int4,
 				},
 			}),
@@ -116,22 +114,22 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int4([42]));
 	}
 
-	#[test]
-	fn test_cast_negative_integer() {
+	#[tokio::test]
+	async fn test_cast_negative_integer() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Prefix(PrefixExpression {
-					operator: PrefixOperator::Minus(Fragment::owned_empty()),
+					operator: PrefixOperator::Minus(Fragment::testing_empty()),
 					expression: Box::new(Constant(Number {
-						fragment: Fragment::owned_internal("42"),
+						fragment: Fragment::internal("42"),
 					})),
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Int4,
 				},
 			}),
@@ -141,22 +139,22 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int4([-42]));
 	}
 
-	#[test]
-	fn test_cast_negative_min() {
+	#[tokio::test]
+	async fn test_cast_negative_min() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Prefix(PrefixExpression {
-					operator: PrefixOperator::Minus(Fragment::owned_empty()),
+					operator: PrefixOperator::Minus(Fragment::testing_empty()),
 					expression: Box::new(Constant(Number {
-						fragment: Fragment::owned_internal("128"),
+						fragment: Fragment::internal("128"),
 					})),
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Int1,
 				},
 			}),
@@ -166,18 +164,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int1([-128]));
 	}
 
-	#[test]
-	fn test_cast_float_8() {
+	#[tokio::test]
+	async fn test_cast_float_8() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal("4.2"),
+					fragment: Fragment::internal("4.2"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Float8,
 				},
 			}),
@@ -187,18 +185,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float8([4.2]));
 	}
 
-	#[test]
-	fn test_cast_float_4() {
+	#[tokio::test]
+	async fn test_cast_float_4() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal("4.2"),
+					fragment: Fragment::internal("4.2"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Float4,
 				},
 			}),
@@ -208,18 +206,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float4([4.2]));
 	}
 
-	#[test]
-	fn test_cast_negative_float_4() {
+	#[tokio::test]
+	async fn test_cast_negative_float_4() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal("-1.1"),
+					fragment: Fragment::internal("-1.1"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Float4,
 				},
 			}),
@@ -229,18 +227,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float4([-1.1]));
 	}
 
-	#[test]
-	fn test_cast_negative_float_8() {
+	#[tokio::test]
+	async fn test_cast_negative_float_8() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal("-1.1"),
+					fragment: Fragment::internal("-1.1"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Float8,
 				},
 			}),
@@ -250,18 +248,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float8([-1.1]));
 	}
 
-	#[test]
-	fn test_cast_string_to_bool() {
+	#[tokio::test]
+	async fn test_cast_string_to_bool() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {
-					fragment: Fragment::owned_internal("0"),
+					fragment: Fragment::internal("0"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Boolean,
 				},
 			}),
@@ -271,18 +269,18 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::bool([false]));
 	}
 
-	#[test]
-	fn test_cast_string_neg_one_to_bool_should_fail() {
+	#[tokio::test]
+	async fn test_cast_string_neg_one_to_bool_should_fail() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {
-					fragment: Fragment::owned_internal("-1"),
+					fragment: Fragment::internal("-1"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Boolean,
 				},
 			}),
@@ -300,18 +298,18 @@ mod tests {
 		assert_eq!(cause.code, "BOOLEAN_003"); // invalid_number_boolean
 	}
 
-	#[test]
-	fn test_cast_boolean_to_date_should_fail() {
+	#[tokio::test]
+	async fn test_cast_boolean_to_date_should_fail() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Bool {
-					fragment: Fragment::owned_internal("true"),
+					fragment: Fragment::internal("true"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Date,
 				},
 			}),
@@ -326,18 +324,18 @@ mod tests {
 		assert_eq!(diagnostic.code, "CAST_001");
 	}
 
-	#[test]
-	fn test_cast_text_to_decimal() {
+	#[tokio::test]
+	async fn test_cast_text_to_decimal() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
 			&Cast(CastExpression {
-				fragment: Fragment::owned_empty(),
+				fragment: Fragment::testing_empty(),
 				expression: Box::new(Constant(ConstantExpression::Text {
-					fragment: Fragment::owned_internal("123.456789"),
+					fragment: Fragment::internal("123.456789"),
 				})),
 				to: TypeExpression {
-					fragment: Fragment::owned_empty(),
+					fragment: Fragment::testing_empty(),
 					ty: Type::Decimal,
 				},
 			}),

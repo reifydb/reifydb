@@ -19,8 +19,14 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
 tracing = { workspace = true }
-bincode = { workspace = true }
+postcard = { workspace = true }
 once_cell = { workspace = true }
-parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+async-trait = { workspace = true }
+async-recursion = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tokio-stream = { workspace = true }
+indexmap = { workspace = true }

@@ -12,12 +12,12 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub async fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = PrimaryKeyKey::full_scan();
 
-	let primary_keys: Vec<_> = qt.range(range)?.collect();
+	let batch = qt.range(range).await?;
 
-	for multi in primary_keys {
+	for multi in batch.items {
 		let version = multi.version;
 		let row = multi.values;
 
@@ -28,7 +28,7 @@ pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedC
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = CatalogStore::get_column(qt, column_id)?;
+			let column_def = CatalogStore::get_column(qt, column_id).await?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,

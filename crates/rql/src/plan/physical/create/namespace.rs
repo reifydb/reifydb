@@ -9,10 +9,10 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_namespace<'a>(
+	pub(crate) fn compile_create_namespace(
 		_rx: &mut impl QueryTransaction,
-		create: logical::CreateNamespaceNode<'a>,
-	) -> crate::Result<PhysicalPlan<'a>> {
+		create: logical::CreateNamespaceNode,
+	) -> crate::Result<PhysicalPlan> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			namespace: create.namespace,

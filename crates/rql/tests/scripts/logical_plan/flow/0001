@@ -5,4 +5,4 @@ logical 'CREATE FLOW my_flow AS from users'
 ---
 > └── CreateFlow: my_flow
 >     └── TableScan default.users
-> 
+>

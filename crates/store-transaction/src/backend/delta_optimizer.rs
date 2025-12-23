@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use indexmap::IndexMap;
+use indexmap::{
+	IndexMap,
+	map::Entry::{Occupied, Vacant},
+};
 use reifydb_core::{EncodedKey, delta::Delta, value::encoded::EncodedValues};
 
 /// Represents the optimized state of a key after all operations in a transaction
@@ -37,8 +40,18 @@ where
 	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
 	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
 
+	// Drop operations are collected separately - they pass through without optimization
+	// because they are cleanup operations that work on versioned storage directly
+	let mut drop_operations: Vec<(usize, Delta)> = Vec::new();
+
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
+			Delta::Drop {
+				..
+			} => {
+				// Drop operations pass through without optimization
+				drop_operations.push((idx, delta));
+			}
 			Delta::Set {
 				key,
 				values,
@@ -46,7 +59,7 @@ where
 				// Check if this key has been seen before in this transaction
 				let entry = key_states.entry(key.clone());
 				match entry {
-					indexmap::map::Entry::Occupied(mut occ) => {
+					Occupied(mut occ) => {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
@@ -87,7 +100,7 @@ where
 						}
 						// Keep the first index - don't update it
 					}
-					indexmap::map::Entry::Vacant(vac) => {
+					Vacant(vac) => {
 						// First time seeing this key in transaction
 						vac.insert((
 							OptimizedDeltaState::Set {
@@ -104,7 +117,7 @@ where
 				// Check if this key has been seen before in this transaction
 				let entry = key_states.entry(key.clone());
 				match entry {
-					indexmap::map::Entry::Occupied(mut occ) => {
+					Occupied(mut occ) => {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
@@ -140,7 +153,7 @@ where
 						}
 						// Keep the first index - don't update it
 					}
-					indexmap::map::Entry::Vacant(vac) => {
+					Vacant(vac) => {
 						// First time seeing this key in transaction - it's a delete
 						vac.insert((OptimizedDeltaState::Remove, idx));
 					}
@@ -151,6 +164,9 @@ where
 
 	// Convert optimized states back to deltas, preserving order
 	let mut result: Vec<(usize, Delta)> = Vec::new();
+
+	// Add drop operations (they passed through without optimization)
+	result.extend(drop_operations);
 
 	for (key, (state, idx)) in key_states {
 		match state {

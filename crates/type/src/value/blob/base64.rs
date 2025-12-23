@@ -2,11 +2,11 @@
 // This file is licensed under the MIT, see license.md file
 
 use super::Blob;
-use crate::{Error, IntoFragment, error::diagnostic::blob, util::base64::engine::general_purpose};
+use crate::{Error, Fragment, error::diagnostic::blob, util::base64::engine::general_purpose};
 
 impl Blob {
-	pub fn from_b64<'a>(fragment: impl IntoFragment<'a>) -> Result<Self, Error> {
-		let fragment = fragment.into_fragment();
+	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
+		let fragment = fragment;
 		let b64_str = fragment.text();
 		// Try standard base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
@@ -21,8 +21,8 @@ impl Blob {
 		}
 	}
 
-	pub fn from_b64url<'a>(fragment: impl IntoFragment<'a>) -> Result<Self, Error> {
-		let fragment = fragment.into_fragment();
+	pub fn from_b64url(fragment: Fragment) -> Result<Self, Error> {
+		let fragment = fragment;
 		let b64url_str = fragment.text();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
@@ -42,41 +42,41 @@ impl Blob {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_from_b64() {
-		let blob = Blob::from_b64(OwnedFragment::testing("SGVsbG8=")).unwrap();
+		let blob = Blob::from_b64(Fragment::testing("SGVsbG8=")).unwrap();
 		assert_eq!(blob.as_bytes(), b"Hello");
 	}
 
 	#[test]
 	fn test_from_b64_no_padding() {
-		let blob = Blob::from_b64(OwnedFragment::testing("SGVsbG8")).unwrap();
+		let blob = Blob::from_b64(Fragment::testing("SGVsbG8")).unwrap();
 		assert_eq!(blob.as_bytes(), b"Hello");
 	}
 
 	#[test]
 	fn test_from_b64_empty() {
-		let blob = Blob::from_b64(OwnedFragment::testing("")).unwrap();
+		let blob = Blob::from_b64(Fragment::testing("")).unwrap();
 		assert_eq!(blob.as_bytes(), b"");
 	}
 
 	#[test]
 	fn test_from_b64_invalid() {
-		let result = Blob::from_b64(OwnedFragment::testing("!!!invalid!!!"));
+		let result = Blob::from_b64(Fragment::testing("!!!invalid!!!"));
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_from_b64url() {
-		let blob = Blob::from_b64url(OwnedFragment::testing("SGVsbG8")).unwrap();
+		let blob = Blob::from_b64url(Fragment::testing("SGVsbG8")).unwrap();
 		assert_eq!(blob.as_bytes(), b"Hello");
 	}
 
 	#[test]
 	fn test_from_b64url_invalid() {
-		let result = Blob::from_b64url(OwnedFragment::testing("SGVsbG8=")); // padding not allowed in URL-safe
+		let result = Blob::from_b64url(Fragment::testing("SGVsbG8=")); // padding not allowed in URL-safe
 		assert!(result.is_err());
 	}
 
@@ -97,7 +97,7 @@ mod tests {
 		let original = b"Hello, World! \x00\x01\x02\xFF";
 		let blob = Blob::new(original.to_vec());
 		let b64_str = blob.to_b64();
-		let decoded = Blob::from_b64(OwnedFragment::testing(&b64_str)).unwrap();
+		let decoded = Blob::from_b64(Fragment::testing(&b64_str)).unwrap();
 		assert_eq!(decoded.as_bytes(), original);
 	}
 
@@ -106,7 +106,7 @@ mod tests {
 		let original = b"Hello, World! \x00\x01\x02\xFF";
 		let blob = Blob::new(original.to_vec());
 		let b64url_str = blob.to_b64url();
-		let decoded = Blob::from_b64url(OwnedFragment::testing(&b64url_str)).unwrap();
+		let decoded = Blob::from_b64url(Fragment::testing(&b64url_str)).unwrap();
 		assert_eq!(decoded.as_bytes(), original);
 	}
 }

@@ -9,13 +9,13 @@ use crate::ast::{
 	tokenize::{Operator, Operator::CloseParen, Separator, Token, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple<'a>> {
+impl Parser {
+	pub(crate) fn parse_tuple(&mut self) -> crate::Result<AstTuple> {
 		let token = self.consume_operator(Operator::OpenParen)?;
 		self.parse_tuple_call(token)
 	}
 
-	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'a>) -> crate::Result<AstTuple<'a>> {
+	pub(crate) fn parse_tuple_call(&mut self, operator: Token) -> crate::Result<AstTuple> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;

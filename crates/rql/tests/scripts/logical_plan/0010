@@ -9,4 +9,4 @@ logical 'create unique index idx_email on test.users {email}'
 >     ├── Namespace: test
 >     ├── Table: users
 >     └── Columns: email
-> 
+>

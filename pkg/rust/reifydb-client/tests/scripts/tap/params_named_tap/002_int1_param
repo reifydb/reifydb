@@ -8,4 +8,4 @@ command_named 'MAP $int1_val as result' 'int1_val=42'
 > +----------+
 > |    42    |
 > +----------+
-> 
+>

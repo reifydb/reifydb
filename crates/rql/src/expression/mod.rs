@@ -15,7 +15,7 @@ use crate::{
 	convert_data_type,
 };
 
-pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression<'_>>> {
+pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 	let statements = parse_str(rql)?;
 	if statements.is_empty() {
 		return Ok(vec![]);
@@ -34,92 +34,93 @@ pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression<'_>>> {
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	sync::Arc,
 };
 
 use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
-use reifydb_type::{Fragment, OwnedFragment, Type};
+use reifydb_type::{Fragment, Type};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AliasExpression<'a> {
-	pub alias: IdentExpression<'a>,
-	pub expression: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct AliasExpression {
+	pub alias: IdentExpression,
+	pub expression: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> Display for AliasExpression<'a> {
+impl Display for AliasExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		Display::fmt(&self.alias, f)
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Expression<'a> {
-	AccessSource(AccessSourceExpression<'a>),
+pub enum Expression {
+	AccessSource(AccessSourceExpression),
 
-	Alias(AliasExpression<'a>),
+	Alias(AliasExpression),
 
-	Cast(CastExpression<'a>),
+	Cast(CastExpression),
 
-	Constant(ConstantExpression<'a>),
+	Constant(ConstantExpression),
 
-	Column(ColumnExpression<'a>),
+	Column(ColumnExpression),
 
-	Add(AddExpression<'a>),
+	Add(AddExpression),
 
-	Div(DivExpression<'a>),
+	Div(DivExpression),
 
-	Call(CallExpression<'a>),
+	Call(CallExpression),
 
-	Rem(RemExpression<'a>),
+	Rem(RemExpression),
 
-	Mul(MulExpression<'a>),
+	Mul(MulExpression),
 
-	Sub(SubExpression<'a>),
+	Sub(SubExpression),
 
-	Tuple(TupleExpression<'a>),
+	Tuple(TupleExpression),
 
-	Prefix(PrefixExpression<'a>),
+	Prefix(PrefixExpression),
 
-	GreaterThan(GreaterThanExpression<'a>),
+	GreaterThan(GreaterThanExpression),
 
-	GreaterThanEqual(GreaterThanEqExpression<'a>),
+	GreaterThanEqual(GreaterThanEqExpression),
 
-	LessThan(LessThanExpression<'a>),
+	LessThan(LessThanExpression),
 
-	LessThanEqual(LessThanEqExpression<'a>),
+	LessThanEqual(LessThanEqExpression),
 
-	Equal(EqExpression<'a>),
+	Equal(EqExpression),
 
-	NotEqual(NotEqExpression<'a>),
+	NotEqual(NotEqExpression),
 
-	Between(BetweenExpression<'a>),
+	Between(BetweenExpression),
 
-	And(AndExpression<'a>),
+	And(AndExpression),
 
-	Or(OrExpression<'a>),
+	Or(OrExpression),
 
-	Xor(XorExpression<'a>),
+	Xor(XorExpression),
 
-	In(InExpression<'a>),
+	In(InExpression),
 
-	Type(TypeExpression<'a>),
+	Type(TypeExpression),
 
-	Parameter(ParameterExpression<'a>),
-	Variable(VariableExpression<'a>),
+	Parameter(ParameterExpression),
+	Variable(VariableExpression),
 
-	If(IfExpression<'a>),
-	Map(MapExpression<'a>),
-	Extend(ExtendExpression<'a>),
+	If(IfExpression),
+	Map(MapExpression),
+	Extend(ExtendExpression),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessSourceExpression<'a> {
-	pub column: ColumnIdentifier<'a>,
+pub struct AccessSourceExpression {
+	pub column: ColumnIdentifier,
 }
 
-impl<'a> AccessSourceExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl AccessSourceExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		// For backward compatibility, merge source and column fragments
 		match &self.column.source {
 			ColumnSource::Source {
@@ -132,28 +133,28 @@ impl<'a> AccessSourceExpression<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ConstantExpression<'a> {
+pub enum ConstantExpression {
 	Undefined {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 	Bool {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 	// any number
 	Number {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 	// any textual representation can be String, Text, ...
 	Text {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 	// any temporal representation can be Date, Time, DateTime, ...
 	Temporal {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 }
 
-impl<'a> Display for ConstantExpression<'a> {
+impl Display for ConstantExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			ConstantExpression::Undefined {
@@ -176,14 +177,14 @@ impl<'a> Display for ConstantExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CastExpression<'a> {
-	pub fragment: Fragment<'a>,
-	pub expression: Box<Expression<'a>>,
-	pub to: TypeExpression<'a>,
+pub struct CastExpression {
+	pub fragment: Fragment,
+	pub expression: Box<Expression>,
+	pub to: TypeExpression,
 }
 
-impl<'a> CastExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl CastExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.fragment.clone(),
 			self.expression.full_fragment_owned(),
@@ -191,71 +192,71 @@ impl<'a> CastExpression<'a> {
 		])
 	}
 
-	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment {
 		move || self.full_fragment_owned()
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypeExpression<'a> {
-	pub fragment: Fragment<'a>,
+pub struct TypeExpression {
+	pub fragment: Fragment,
 	pub ty: Type,
 }
 
-impl<'a> TypeExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl TypeExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		self.fragment.clone()
 	}
 
-	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment {
 		move || self.full_fragment_owned()
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AddExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct AddExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DivExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct DivExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SubExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct SubExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct RemExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MulExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct MulExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GreaterThanExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct GreaterThanExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> GreaterThanExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl GreaterThanExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -265,14 +266,14 @@ impl<'a> GreaterThanExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GreaterThanEqExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct GreaterThanEqExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> GreaterThanEqExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl GreaterThanEqExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -282,14 +283,14 @@ impl<'a> GreaterThanEqExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LessThanExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct LessThanExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> LessThanExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl LessThanExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -299,14 +300,14 @@ impl<'a> LessThanExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LessThanEqExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct LessThanEqExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> LessThanEqExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl LessThanEqExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -316,14 +317,14 @@ impl<'a> LessThanEqExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EqExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct EqExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> EqExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl EqExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -333,14 +334,14 @@ impl<'a> EqExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotEqExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct NotEqExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> NotEqExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl NotEqExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -350,15 +351,15 @@ impl<'a> NotEqExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BetweenExpression<'a> {
-	pub value: Box<Expression<'a>>,
-	pub lower: Box<Expression<'a>>,
-	pub upper: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct BetweenExpression {
+	pub value: Box<Expression>,
+	pub lower: Box<Expression>,
+	pub upper: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> BetweenExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl BetweenExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.value.full_fragment_owned(),
 			self.fragment.clone(),
@@ -369,14 +370,14 @@ impl<'a> BetweenExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AndExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct AndExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> AndExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl AndExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -386,14 +387,14 @@ impl<'a> AndExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OrExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct OrExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> OrExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl OrExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -403,14 +404,14 @@ impl<'a> OrExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct XorExpression<'a> {
-	pub left: Box<Expression<'a>>,
-	pub right: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct XorExpression {
+	pub left: Box<Expression>,
+	pub right: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> XorExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl XorExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.left.full_fragment_owned(),
 			self.fragment.clone(),
@@ -420,15 +421,15 @@ impl<'a> XorExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InExpression<'a> {
-	pub value: Box<Expression<'a>>,
-	pub list: Box<Expression<'a>>,
+pub struct InExpression {
+	pub value: Box<Expression>,
+	pub list: Box<Expression>,
 	pub negated: bool,
-	pub fragment: Fragment<'a>,
+	pub fragment: Fragment,
 }
 
-impl<'a> InExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl InExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([
 			self.value.full_fragment_owned(),
 			self.fragment.clone(),
@@ -438,20 +439,20 @@ impl<'a> InExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColumnExpression<'a>(pub ColumnIdentifier<'a>);
+pub struct ColumnExpression(pub ColumnIdentifier);
 
-impl<'a> ColumnExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl ColumnExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		// Return just the column name for unqualified column references
 		self.0.name.clone()
 	}
 
-	pub fn column(&self) -> &ColumnIdentifier<'a> {
+	pub fn column(&self) -> &ColumnIdentifier {
 		&self.0
 	}
 }
 
-impl<'a> Display for Expression<'a> {
+impl Display for Expression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Expression::AccessSource(AccessSourceExpression {
@@ -644,18 +645,18 @@ impl<'a> Display for Expression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CallExpression<'a> {
-	pub func: IdentExpression<'a>,
-	pub args: Vec<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct CallExpression {
+	pub func: IdentExpression,
+	pub args: Vec<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> CallExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
-		Fragment::Owned(OwnedFragment::Statement {
+impl CallExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
+		Fragment::Statement {
 			column: self.func.0.column(),
 			line: self.func.0.line(),
-			text: format!(
+			text: Arc::from(format!(
 				"{}({})",
 				self.func.0.text(),
 				self.args
@@ -663,12 +664,12 @@ impl<'a> CallExpression<'a> {
 					.map(|arg| arg.full_fragment_owned().text().to_string())
 					.collect::<Vec<_>>()
 					.join(",")
-			),
-		})
+			)),
+		}
 	}
 }
 
-impl<'a> Display for CallExpression<'a> {
+impl Display for CallExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let args = self.args.iter().map(|arg| format!("{}", arg)).collect::<Vec<_>>().join(", ");
 		write!(f, "{}({})", self.func, args)
@@ -676,19 +677,19 @@ impl<'a> Display for CallExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IdentExpression<'a>(pub Fragment<'a>);
+pub struct IdentExpression(pub Fragment);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ParameterExpression<'a> {
+pub enum ParameterExpression {
 	Positional {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 	Named {
-		fragment: Fragment<'a>,
+		fragment: Fragment,
 	},
 }
 
-impl<'a> ParameterExpression<'a> {
+impl ParameterExpression {
 	pub fn position(&self) -> Option<u32> {
 		match self {
 			ParameterExpression::Positional {
@@ -713,11 +714,11 @@ impl<'a> ParameterExpression<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VariableExpression<'a> {
-	pub fragment: Fragment<'a>,
+pub struct VariableExpression {
+	pub fragment: Fragment,
 }
 
-impl<'a> VariableExpression<'a> {
+impl VariableExpression {
 	pub fn name(&self) -> &str {
 		// Extract variable name from token value (skip the '$')
 		let text = self.fragment.text();
@@ -730,32 +731,32 @@ impl<'a> VariableExpression<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IfExpression<'a> {
-	pub condition: Box<Expression<'a>>,
-	pub then_expr: Box<Expression<'a>>,
-	pub else_ifs: Vec<ElseIfExpression<'a>>,
-	pub else_expr: Option<Box<Expression<'a>>>,
-	pub fragment: Fragment<'a>,
+pub struct IfExpression {
+	pub condition: Box<Expression>,
+	pub then_expr: Box<Expression>,
+	pub else_ifs: Vec<ElseIfExpression>,
+	pub else_expr: Option<Box<Expression>>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ElseIfExpression<'a> {
-	pub condition: Box<Expression<'a>>,
-	pub then_expr: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct ElseIfExpression {
+	pub condition: Box<Expression>,
+	pub then_expr: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> IfExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl IfExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		self.fragment.clone()
 	}
 
-	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment {
 		move || self.full_fragment_owned()
 	}
 }
 
-impl<'a> Display for IfExpression<'a> {
+impl Display for IfExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "if {} {{ {} }}", self.condition, self.then_expr)?;
 
@@ -771,27 +772,27 @@ impl<'a> Display for IfExpression<'a> {
 	}
 }
 
-impl<'a> IdentExpression<'a> {
+impl IdentExpression {
 	pub fn name(&self) -> &str {
 		self.0.text()
 	}
 }
 
-impl<'a> Display for IdentExpression<'a> {
+impl Display for IdentExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}", self.0.text())
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PrefixOperator<'a> {
-	Minus(Fragment<'a>),
-	Plus(Fragment<'a>),
-	Not(Fragment<'a>),
+pub enum PrefixOperator {
+	Minus(Fragment),
+	Plus(Fragment),
+	Not(Fragment),
 }
 
-impl<'a> PrefixOperator<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl PrefixOperator {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		match self {
 			PrefixOperator::Minus(fragment) => fragment.clone(),
 			PrefixOperator::Plus(fragment) => fragment.clone(),
@@ -800,7 +801,7 @@ impl<'a> PrefixOperator<'a> {
 	}
 }
 
-impl<'a> Display for PrefixOperator<'a> {
+impl Display for PrefixOperator {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
 			PrefixOperator::Minus(_) => write!(f, "-"),
@@ -811,31 +812,31 @@ impl<'a> Display for PrefixOperator<'a> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrefixExpression<'a> {
-	pub operator: PrefixOperator<'a>,
-	pub expression: Box<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct PrefixExpression {
+	pub operator: PrefixOperator,
+	pub expression: Box<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> PrefixExpression<'a> {
-	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+impl PrefixExpression {
+	pub fn full_fragment_owned(&self) -> Fragment {
 		Fragment::merge_all([self.operator.full_fragment_owned(), self.expression.full_fragment_owned()])
 	}
 }
 
-impl<'a> Display for PrefixExpression<'a> {
+impl Display for PrefixExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "({}{})", self.operator, self.expression)
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TupleExpression<'a> {
-	pub expressions: Vec<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct TupleExpression {
+	pub expressions: Vec<Expression>,
+	pub fragment: Fragment,
 }
 
-impl<'a> Display for TupleExpression<'a> {
+impl Display for TupleExpression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let items = self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
 		write!(f, "({})", items)
@@ -845,7 +846,7 @@ impl<'a> Display for TupleExpression<'a> {
 pub struct ExpressionCompiler {}
 
 impl ExpressionCompiler {
-	pub fn compile<'a>(ast: Ast<'a>) -> crate::Result<Expression<'a>> {
+	pub fn compile(ast: Ast) -> crate::Result<Expression> {
 		match ast {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Boolean(_) => Ok(Expression::Constant(ConstantExpression::Bool {
@@ -867,16 +868,16 @@ impl ExpressionCompiler {
 			Ast::Identifier(identifier) => {
 				// Create an unqualified column identifier
 				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
-				use reifydb_type::OwnedFragment;
+				use reifydb_type::Fragment;
 
 				let column = ColumnIdentifier {
 					source: ColumnSource::Source {
-						namespace: Fragment::Owned(OwnedFragment::Internal {
-							text: String::from("_context"),
-						}),
-						source: Fragment::Owned(OwnedFragment::Internal {
-							text: String::from("_context"),
-						}),
+						namespace: Fragment::Internal {
+							text: Arc::new("_context".to_string()),
+						},
+						source: Fragment::Internal {
+							text: Arc::new("_context".to_string()),
+						},
 					},
 					name: identifier.token.fragment.clone(),
 				};
@@ -904,7 +905,7 @@ impl ExpressionCompiler {
 				}
 
 				Ok(Expression::Call(CallExpression {
-					func: IdentExpression(Fragment::Owned(OwnedFragment::testing(&full_name))),
+					func: IdentExpression(Fragment::testing(&full_name)),
 					args: arg_expressions,
 					fragment: call.token.fragment,
 				}))
@@ -976,20 +977,20 @@ impl ExpressionCompiler {
 			Ast::Rownum(_rownum) => {
 				// Compile rownum to a column reference for rownum
 				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
-				use reifydb_type::{OwnedFragment, ROW_NUMBER_COLUMN_NAME};
+				use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
 
 				let column = ColumnIdentifier {
 					source: ColumnSource::Source {
-						namespace: Fragment::Owned(OwnedFragment::Internal {
-							text: String::from("_context"),
-						}),
-						source: Fragment::Owned(OwnedFragment::Internal {
-							text: String::from("_context"),
-						}),
+						namespace: Fragment::Internal {
+							text: Arc::new("_context".to_string()),
+						},
+						source: Fragment::Internal {
+							text: Arc::new("_context".to_string()),
+						},
 					},
-					name: Fragment::Owned(OwnedFragment::Internal {
-						text: String::from(ROW_NUMBER_COLUMN_NAME),
-					}),
+					name: Fragment::Internal {
+						text: Arc::new(String::from(ROW_NUMBER_COLUMN_NAME)),
+					},
 				};
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
@@ -1066,7 +1067,7 @@ impl ExpressionCompiler {
 		}
 	}
 
-	fn infix<'a>(ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
+	fn infix(ast: AstInfix) -> crate::Result<Expression> {
 		match ast.operator {
 			InfixOperator::Add(token) => {
 				let left = Self::compile(*ast.left)?;
@@ -1295,13 +1296,13 @@ impl ExpressionCompiler {
 						}))
 					}
 					_ => {
-						use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
+						use reifydb_type::{Fragment, diagnostic::Diagnostic, err};
 						return err!(Diagnostic {
 							code: "EXPR_001".to_string(),
 							statement: None,
 							message: "Invalid alias expression".to_string(),
 							column: None,
-							fragment: OwnedFragment::None,
+							fragment: Fragment::None,
 							label: Some("Only identifiers and string literals can be used as alias names".to_string()),
 							help: Some("Use an identifier or string literal for the alias name".to_string()),
 							notes: vec![],
@@ -1324,13 +1325,13 @@ impl ExpressionCompiler {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MapExpression<'a> {
-	pub expressions: Vec<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct MapExpression {
+	pub expressions: Vec<Expression>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtendExpression<'a> {
-	pub expressions: Vec<Expression<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct ExtendExpression {
+	pub expressions: Vec<Expression>,
+	pub fragment: Fragment,
 }

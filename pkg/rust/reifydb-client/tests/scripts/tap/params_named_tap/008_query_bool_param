@@ -8,4 +8,4 @@ query_named 'MAP $bool_val as result' 'bool_val=false'
 > +----------+
 > |  false   |
 > +----------+
-> 
+>

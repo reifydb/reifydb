@@ -10,9 +10,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_take<'a, T: CatalogQueryTransaction>(
-		ast: AstTake<'a>,
+		ast: AstTake,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Take(TakeNode {
 			take: ast.take,
 		}))

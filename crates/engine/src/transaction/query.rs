@@ -1,30 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
+use async_trait::async_trait;
 use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedMultiVersionIter, CdcTransaction, MultiVersionQueryTransaction, MultiVersionTransaction,
+		CdcTransaction, MultiVersionBatch, MultiVersionQueryTransaction, MultiVersionTransaction,
 		MultiVersionValues, QueryTransaction, SingleVersionTransaction, TransactionId, TransactionalChanges,
 	},
 };
-use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 use tracing::instrument;
-
-use crate::transaction::TransactionCdc;
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
 pub struct StandardQueryTransaction {
 	pub(crate) multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
-	pub(crate) single: TransactionSingleVersion,
+	pub(crate) single: TransactionSingle,
 	pub(crate) cdc: TransactionCdc,
 	pub(crate) catalog: MaterializedCatalog,
-	// Marker to prevent Send and Sync
-	_not_send_sync: PhantomData<*const ()>,
 }
 
 impl StandardQueryTransaction {
@@ -32,7 +27,7 @@ impl StandardQueryTransaction {
 	#[instrument(name = "engine::transaction::query::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		catalog: MaterializedCatalog,
 	) -> Self {
@@ -41,18 +36,18 @@ impl StandardQueryTransaction {
 			single,
 			cdc,
 			catalog,
-			_not_send_sync: PhantomData,
 		}
 	}
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
-	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
-		self.single.with_query(keys, f)
+		self.single.with_query(keys, f).await
 	}
 
 	/// Execute a function with access to the multi query transaction.
@@ -72,6 +67,7 @@ impl StandardQueryTransaction {
 	}
 }
 
+#[async_trait]
 impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
@@ -84,65 +80,52 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	}
 
 	#[inline]
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
-		MultiVersionQueryTransaction::get(&mut self.multi, key)
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
+		MultiVersionQueryTransaction::get(&mut self.multi, key).await
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		MultiVersionQueryTransaction::contains_key(&mut self.multi, key)
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+		MultiVersionQueryTransaction::contains_key(&mut self.multi, key).await
 	}
 
 	#[inline]
-	fn range_batched(
+	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
+		MultiVersionQueryTransaction::range_batch(&mut self.multi, range, batch_size).await
+	}
+
+	#[inline]
+	async fn range_rev_batch(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		MultiVersionQueryTransaction::range_batched(&mut self.multi, range, batch_size)
+	) -> crate::Result<MultiVersionBatch> {
+		MultiVersionQueryTransaction::range_rev_batch(&mut self.multi, range, batch_size).await
 	}
 
 	#[inline]
-	fn range_rev_batched(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		MultiVersionQueryTransaction::range_rev_batched(&mut self.multi, range, batch_size)
-	}
-
-	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		MultiVersionQueryTransaction::prefix(&mut self.multi, prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		MultiVersionQueryTransaction::prefix_rev(&mut self.multi, prefix)
-	}
-
-	#[inline]
-	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		MultiVersionQueryTransaction::read_as_of_version_exclusive(&mut self.multi, version)
+	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(&mut self.multi, version).await
 	}
 }
 
+#[async_trait]
 impl QueryTransaction for StandardQueryTransaction {
-	type SingleVersionQuery<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Query<'a>;
+	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
 	type CdcQuery<'a>
 		= <TransactionCdc as CdcTransaction>::Query<'a>
 	where
 		Self: 'a;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
-		self.single.begin_query(keys)
+		self.single.begin_query(keys).await
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
-		self.cdc.begin_query()
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+		Ok(self.cdc.begin_query()?)
 	}
 }
 

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
 	value::column::{Column, Columns, headers::ColumnHeaders},
@@ -20,15 +21,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct MapNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
-	expressions: Vec<Expression<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct MapNode {
+	input: Box<ExecutionPlan>,
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> MapNode<'a> {
-	pub fn new(input: Box<ExecutionPlan<'a>>, expressions: Vec<Expression<'a>>) -> Self {
+impl MapNode {
+	pub fn new(input: Box<ExecutionPlan>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -38,26 +39,31 @@ impl<'a> MapNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for MapNode<'a> {
+#[async_trait]
+impl QueryNode for MapNode {
 	#[instrument(name = "query::map::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx)?;
+		self.input.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			let mut new_columns = Vec::with_capacity(self.expressions.len());
 
@@ -86,7 +92,7 @@ impl<'a> QueryNode<'a> for MapNode<'a> {
 						source.columns().iter().find(|col| col.name == alias_name)
 					{
 						// Create a resolved column with source information
-						let column_ident = Fragment::borrowed_internal(&table_column.name);
+						let column_ident = Fragment::internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							source.clone(),
@@ -101,13 +107,6 @@ impl<'a> QueryNode<'a> for MapNode<'a> {
 
 				new_columns.push(column);
 			}
-
-			// Transmute the vector to extend its lifetime
-			// SAFETY: The columns either come from the input (already transmuted to 'a)
-			// or from column() which returns Column<'a>, so they all genuinely have
-			// lifetime 'a through the query execution
-			let new_columns =
-				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
 
 			let column_names = expressions.iter().map(column_name_from_expression).collect();
 			self.headers = Some(ColumnHeaders {
@@ -128,19 +127,19 @@ impl<'a> QueryNode<'a> for MapNode<'a> {
 		Ok(None)
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
 	}
 }
 
-pub(crate) struct MapWithoutInputNode<'a> {
-	expressions: Vec<Expression<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct MapWithoutInputNode {
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> MapWithoutInputNode<'a> {
-	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
+impl MapWithoutInputNode {
+	pub fn new(expressions: Vec<Expression>) -> Self {
 		Self {
 			expressions,
 			headers: None,
@@ -149,19 +148,24 @@ impl<'a> MapWithoutInputNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
+#[async_trait]
+impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "query::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::noinput::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -191,9 +195,9 @@ impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
 		}
 
 		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column<'a>
+		// SAFETY: The columns come from evaluate() which returns Column
 		// so they genuinely have lifetime 'a through the query execution
-		let columns = unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(columns) };
+		let columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(columns) };
 
 		let columns = Columns::new(columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
@@ -202,7 +206,7 @@ impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
 }

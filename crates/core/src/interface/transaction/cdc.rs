@@ -3,9 +3,34 @@
 
 use std::ops::Bound;
 
+use async_trait::async_trait;
 use reifydb_type::Result;
 
 use crate::{CommitVersion, interface::Cdc};
+
+/// A batch of CDC entries with continuation info.
+#[derive(Debug, Clone)]
+pub struct CdcBatch {
+	/// The CDC entries in this batch.
+	pub items: Vec<Cdc>,
+	/// Whether there are more items after this batch.
+	pub has_more: bool,
+}
+
+impl CdcBatch {
+	/// Creates an empty batch with no more results.
+	pub fn empty() -> Self {
+		Self {
+			items: Vec::new(),
+			has_more: false,
+		}
+	}
+
+	/// Returns true if this batch contains no items.
+	pub fn is_empty(&self) -> bool {
+		self.items.is_empty()
+	}
+}
 
 pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	type Query<'a>: CdcQueryTransaction;
@@ -21,16 +46,24 @@ pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	}
 }
 
+#[async_trait]
 pub trait CdcQueryTransaction: Send + Sync + Clone + 'static {
-	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>>;
+	async fn get(&self, version: CommitVersion) -> Result<Option<Cdc>>;
 
-	fn range(
+	async fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
-	) -> Result<Box<dyn Iterator<Item = Cdc> + '_>>;
+		batch_size: u64,
+	) -> Result<CdcBatch>;
 
-	fn scan(&self) -> Result<Box<dyn Iterator<Item = Cdc> + '_>>;
+	async fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<CdcBatch> {
+		self.range_batch(start, end, 1024).await
+	}
 
-	fn count(&self, version: CommitVersion) -> Result<usize>;
+	async fn scan(&self, batch_size: u64) -> Result<CdcBatch> {
+		self.range_batch(Bound::Unbounded, Bound::Unbounded, batch_size).await
+	}
+
+	async fn count(&self, version: CommitVersion) -> Result<usize>;
 }

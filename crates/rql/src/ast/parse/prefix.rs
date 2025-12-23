@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Fragment, OwnedFragment, diagnostic::ast, return_error};
+use std::sync::Arc;
+
+use reifydb_type::{Fragment, diagnostic::ast, return_error};
 
 use crate::ast::{
 	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind,
@@ -9,8 +11,8 @@ use crate::ast::{
 	tokenize::{Literal::Number, Operator},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast<'a>> {
+impl Parser {
+	pub(crate) fn parse_prefix(&mut self) -> crate::Result<Ast> {
 		let operator = self.parse_prefix_operator()?;
 
 		// Determine precedence based on operator type
@@ -25,11 +27,11 @@ impl<'a> Parser<'a> {
 			if let Ast::Literal(AstLiteral::Number(literal)) = &expr {
 				return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
 					kind: TokenKind::Literal(Number),
-					fragment: Fragment::Owned(OwnedFragment::Statement {
+					fragment: Fragment::Statement {
 						column: operator.token().fragment.column(),
 						line: operator.token().fragment.line(),
-						text: format!("-{}", literal.0.fragment.text()),
-					}),
+						text: Arc::from(format!("-{}", literal.0.fragment.text())),
+					},
 				}))));
 			}
 		}
@@ -40,7 +42,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator<'a>> {
+	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {

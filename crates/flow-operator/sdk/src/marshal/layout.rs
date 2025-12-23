@@ -1,6 +1,6 @@
 //! Layout marshalling between Rust and FFI types
 
-use std::ops::Deref;
+use std::{ops::Deref, slice::from_raw_parts};
 
 use reifydb_core::value::encoded::EncodedValuesNamedLayout;
 use reifydb_flow_operator_abi::*;
@@ -90,12 +90,12 @@ impl Marshaller {
 		unsafe {
 			let layout = &*layout_ffi;
 
-			let fields_slice = std::slice::from_raw_parts(layout.fields, layout.field_count);
-			let names_slice = std::slice::from_raw_parts(layout.field_names, layout.field_count);
+			let fields_slice = from_raw_parts(layout.fields, layout.field_count);
+			let names_slice = from_raw_parts(layout.field_names, layout.field_count);
 
 			let fields_with_names = fields_slice.iter().zip(names_slice.iter()).map(|(field, name_buf)| {
 				let name = if !name_buf.ptr.is_null() && name_buf.len > 0 {
-					let bytes = std::slice::from_raw_parts(name_buf.ptr, name_buf.len);
+					let bytes = from_raw_parts(name_buf.ptr, name_buf.len);
 					String::from_utf8_lossy(bytes).into_owned()
 				} else {
 					String::new()

@@ -9,6 +9,7 @@ pub mod resolver;
 pub mod row_predicate;
 mod variable;
 
+use async_recursion::async_recursion;
 use query::window::WindowNode;
 use reifydb_catalog::{
 	CatalogQueryTransaction,
@@ -45,18 +46,19 @@ use crate::{
 struct Compiler {}
 
 #[instrument(name = "rql::compile::logical", level = "trace", skip(tx, ast))]
-pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
-	tx: &'t mut T,
-	ast: AstStatement<'a>,
-) -> crate::Result<Vec<LogicalPlan<'a>>> {
-	Compiler::compile(ast, tx)
+pub async fn compile_logical<T: CatalogQueryTransaction>(
+	tx: &mut T,
+	ast: AstStatement,
+) -> crate::Result<Vec<LogicalPlan>> {
+	Compiler::compile(ast, tx).await
 }
 
 impl Compiler {
-	fn compile<'a, 't, T: CatalogQueryTransaction>(
-		ast: AstStatement<'a>,
+	#[async_recursion]
+	async fn compile<T: CatalogQueryTransaction + Send>(
+		ast: AstStatement,
 		tx: &mut T,
-	) -> crate::Result<Vec<LogicalPlan<'a>>> {
+	) -> crate::Result<Vec<LogicalPlan>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
 		}
@@ -113,15 +115,15 @@ impl Compiler {
 							let target_name = unresolved.name.text();
 
 							// Try to find namespace
-							if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+							if let Some(ns) =
+								tx.find_namespace_by_name(namespace_name).await?
+							{
 								let namespace_id = ns.id;
 
 								// Check if it's a ring buffer first
-								if tx.find_ringbuffer_by_name(
-									namespace_id,
-									target_name,
-								)?
-								.is_some()
+								if tx.find_ringbuffer_by_name(namespace_id, target_name)
+									.await?
+									.is_some()
 								{
 									let mut target =
 										MaybeQualifiedRingBufferIdentifier::new(
@@ -179,8 +181,9 @@ impl Compiler {
 								let target_name = unresolved.name.text();
 
 								// Try to find namespace
-								if let Some(ns) =
-									tx.find_namespace_by_name(namespace_name)?
+								if let Some(ns) = tx
+									.find_namespace_by_name(namespace_name)
+									.await?
 								{
 									let namespace_id = ns.id;
 
@@ -188,7 +191,8 @@ impl Compiler {
 									if tx.find_ringbuffer_by_name(
 										namespace_id,
 										target_name,
-									)?
+									)
+									.await?
 									.is_some()
 									{
 										let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
@@ -236,7 +240,7 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(Compiler::compile_single(node, tx)?);
+					pipeline_nodes.push(Compiler::compile_single(node, tx).await?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -248,7 +252,7 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes.push(Self::compile_single(node, tx)?);
+				pipeline_nodes.push(Self::compile_single(node, tx).await?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -258,24 +262,25 @@ impl Compiler {
 		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
-			result.push(Self::compile_single(node, tx)?);
+			result.push(Self::compile_single(node, tx).await?);
 		}
 		Ok(result)
 	}
 
 	// Helper to compile a single AST operator
-	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
-		node: Ast<'a>,
+	#[async_recursion]
+	async fn compile_single<T: CatalogQueryTransaction + Send>(
+		node: Ast,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		match node {
-			Ast::Create(node) => Self::compile_create(node, tx),
-			Ast::Alter(node) => Self::compile_alter(node, tx),
-			Ast::Delete(node) => Self::compile_delete(node, tx),
-			Ast::Insert(node) => Self::compile_insert(node, tx),
-			Ast::Update(node) => Self::compile_update(node, tx),
-			Ast::If(node) => Self::compile_if(node, tx),
-			Ast::Let(node) => Self::compile_let(node, tx),
+			Ast::Create(node) => Self::compile_create(node, tx).await,
+			Ast::Alter(node) => Self::compile_alter(node, tx).await,
+			Ast::Delete(node) => Self::compile_delete(node, tx).await,
+			Ast::Insert(node) => Self::compile_insert(node, tx).await,
+			Ast::Update(node) => Self::compile_update(node, tx).await,
+			Ast::If(node) => Self::compile_if(node, tx).await,
+			Ast::Let(node) => Self::compile_let(node, tx).await,
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP
 				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
@@ -332,9 +337,9 @@ impl Compiler {
 			}
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
-			Ast::From(node) => Self::compile_from(node, tx),
-			Ast::Join(node) => Self::compile_join(node, tx),
-			Ast::Merge(node) => Self::compile_merge(node, tx),
+			Ast::From(node) => Self::compile_from(node, tx).await,
+			Ast::Join(node) => Self::compile_join(node, tx).await,
+			Ast::Merge(node) => Self::compile_merge(node, tx).await,
 			Ast::Take(node) => Self::compile_take(node, tx),
 			Ast::Sort(node) => Self::compile_sort(node, tx),
 			Ast::Distinct(node) => Self::compile_distinct(node, tx),
@@ -343,7 +348,7 @@ impl Compiler {
 			Ast::Apply(node) => Self::compile_apply(node),
 			Ast::Window(node) => Self::compile_window(node, tx),
 			Ast::Identifier(ref id) => {
-				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))
+				return_error!(unsupported_ast_node(id.token.fragment.clone(), "standalone identifier"))
 			}
 			// Auto-wrap scalar expressions into MAP constructs
 			Ast::Literal(_) | Ast::Variable(_) | Ast::CallFunction(_) => {
@@ -370,7 +375,7 @@ impl Compiler {
 
 		let key_token = Token {
 			kind: TokenKind::Literal(Literal::Text),
-			fragment: Fragment::owned_internal("value"),
+			fragment: Fragment::internal("value"),
 		};
 
 		let colon_token = Token {
@@ -393,10 +398,7 @@ impl Compiler {
 		}
 	}
 
-	fn compile_infix<'a, 't, T: CatalogQueryTransaction>(
-		node: AstInfix<'a>,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	fn compile_infix<T: CatalogQueryTransaction>(node: AstInfix, _tx: &mut T) -> crate::Result<LogicalPlan> {
 		match node.operator {
 			InfixOperator::Assign(token) => {
 				// Only allow variable assignments with := operator, not = operator
@@ -432,9 +434,7 @@ impl Compiler {
 				};
 
 				Ok(LogicalPlan::Assign(AssignNode {
-					name: Fragment::Owned(reifydb_type::OwnedFragment::Internal {
-						text: clean_name.to_string(),
-					}),
+					name: Fragment::internal(clean_name),
 					value,
 				}))
 			}
@@ -461,77 +461,77 @@ impl Compiler {
 }
 
 #[derive(Debug)]
-pub enum LogicalPlan<'a> {
-	CreateDeferredView(CreateDeferredViewNode<'a>),
-	CreateTransactionalView(CreateTransactionalViewNode<'a>),
-	CreateNamespace(CreateNamespaceNode<'a>),
-	CreateSequence(CreateSequenceNode<'a>),
-	CreateTable(CreateTableNode<'a>),
-	CreateRingBuffer(CreateRingBufferNode<'a>),
-	CreateDictionary(CreateDictionaryNode<'a>),
-	CreateFlow(CreateFlowNode<'a>),
-	CreateIndex(CreateIndexNode<'a>),
+pub enum LogicalPlan {
+	CreateDeferredView(CreateDeferredViewNode),
+	CreateTransactionalView(CreateTransactionalViewNode),
+	CreateNamespace(CreateNamespaceNode),
+	CreateSequence(CreateSequenceNode),
+	CreateTable(CreateTableNode),
+	CreateRingBuffer(CreateRingBufferNode),
+	CreateDictionary(CreateDictionaryNode),
+	CreateFlow(CreateFlowNode),
+	CreateIndex(CreateIndexNode),
 	// Alter
-	AlterSequence(AlterSequenceNode<'a>),
-	AlterTable(AlterTableNode<'a>),
-	AlterView(AlterViewNode<'a>),
-	AlterFlow(AlterFlowNode<'a>),
+	AlterSequence(AlterSequenceNode),
+	AlterTable(AlterTableNode),
+	AlterView(AlterViewNode),
+	AlterFlow(AlterFlowNode),
 	// Mutate
-	DeleteTable(DeleteTableNode<'a>),
-	DeleteRingBuffer(DeleteRingBufferNode<'a>),
-	InsertTable(InsertTableNode<'a>),
-	InsertRingBuffer(InsertRingBufferNode<'a>),
-	InsertDictionary(InsertDictionaryNode<'a>),
-	Update(UpdateTableNode<'a>),
-	UpdateRingBuffer(UpdateRingBufferNode<'a>),
+	DeleteTable(DeleteTableNode),
+	DeleteRingBuffer(DeleteRingBufferNode),
+	InsertTable(InsertTableNode),
+	InsertRingBuffer(InsertRingBufferNode),
+	InsertDictionary(InsertDictionaryNode),
+	Update(UpdateTableNode),
+	UpdateRingBuffer(UpdateRingBufferNode),
 	// Variable assignment
-	Declare(DeclareNode<'a>),
-	Assign(AssignNode<'a>),
+	Declare(DeclareNode),
+	Assign(AssignNode),
 	// Control flow
-	Conditional(ConditionalNode<'a>),
+	Conditional(ConditionalNode),
 	// Query
-	Aggregate(AggregateNode<'a>),
-	Distinct(DistinctNode<'a>),
-	Filter(FilterNode<'a>),
-	JoinInner(JoinInnerNode<'a>),
-	JoinLeft(JoinLeftNode<'a>),
-	JoinNatural(JoinNaturalNode<'a>),
-	Merge(MergeNode<'a>),
+	Aggregate(AggregateNode),
+	Distinct(DistinctNode),
+	Filter(FilterNode),
+	JoinInner(JoinInnerNode),
+	JoinLeft(JoinLeftNode),
+	JoinNatural(JoinNaturalNode),
+	Merge(MergeNode),
 	Take(TakeNode),
 	Order(OrderNode),
-	Map(MapNode<'a>),
-	Extend(ExtendNode<'a>),
-	Apply(ApplyNode<'a>),
-	InlineData(InlineDataNode<'a>),
-	SourceScan(SourceScanNode<'a>),
-	Window(WindowNode<'a>),
-	Generator(GeneratorNode<'a>),
-	VariableSource(VariableSourceNode<'a>),
+	Map(MapNode),
+	Extend(ExtendNode),
+	Apply(ApplyNode),
+	InlineData(InlineDataNode),
+	SourceScan(SourceScanNode),
+	Window(WindowNode),
+	Generator(GeneratorNode),
+	VariableSource(VariableSourceNode),
 	Environment(EnvironmentNode),
 	// Auto-scalarization for 1x1 frames in scalar contexts
-	Scalarize(ScalarizeNode<'a>),
+	Scalarize(ScalarizeNode),
 	// Pipeline wrapper for piped operations
-	Pipeline(PipelineNode<'a>),
+	Pipeline(PipelineNode),
 }
 
 #[derive(Debug)]
-pub struct PipelineNode<'a> {
-	pub steps: Vec<LogicalPlan<'a>>,
+pub struct PipelineNode {
+	pub steps: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]
-pub struct ScalarizeNode<'a> {
-	pub input: Box<LogicalPlan<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct ScalarizeNode {
+	pub input: Box<LogicalPlan>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug)]
-pub enum LetValue<'a> {
-	Expression(Expression<'a>),      // scalar/column expression
-	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+pub enum LetValue {
+	Expression(Expression),      // scalar/column expression
+	Statement(Vec<LogicalPlan>), // query pipeline as logical plans
 }
 
-impl<'a> std::fmt::Display for LetValue<'a> {
+impl std::fmt::Display for LetValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
@@ -541,12 +541,12 @@ impl<'a> std::fmt::Display for LetValue<'a> {
 }
 
 #[derive(Debug)]
-pub enum AssignValue<'a> {
-	Expression(Expression<'a>),      // scalar/column expression
-	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+pub enum AssignValue {
+	Expression(Expression),      // scalar/column expression
+	Statement(Vec<LogicalPlan>), // query pipeline as logical plans
 }
 
-impl<'a> std::fmt::Display for AssignValue<'a> {
+impl std::fmt::Display for AssignValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
@@ -556,206 +556,206 @@ impl<'a> std::fmt::Display for AssignValue<'a> {
 }
 
 #[derive(Debug)]
-pub struct DeclareNode<'a> {
-	pub name: Fragment<'a>,
-	pub value: LetValue<'a>,
+pub struct DeclareNode {
+	pub name: Fragment,
+	pub value: LetValue,
 	pub mutable: bool,
 }
 
 #[derive(Debug)]
-pub struct AssignNode<'a> {
-	pub name: Fragment<'a>,
-	pub value: AssignValue<'a>,
+pub struct AssignNode {
+	pub name: Fragment,
+	pub value: AssignValue,
 }
 
 #[derive(Debug)]
-pub struct ConditionalNode<'a> {
-	pub condition: Expression<'a>,
-	pub then_branch: Box<LogicalPlan<'a>>,
-	pub else_ifs: Vec<ElseIfBranch<'a>>,
-	pub else_branch: Option<Box<LogicalPlan<'a>>>,
+pub struct ConditionalNode {
+	pub condition: Expression,
+	pub then_branch: Box<LogicalPlan>,
+	pub else_ifs: Vec<ElseIfBranch>,
+	pub else_branch: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
-pub struct ElseIfBranch<'a> {
-	pub condition: Expression<'a>,
-	pub then_branch: Box<LogicalPlan<'a>>,
+pub struct ElseIfBranch {
+	pub condition: Expression,
+	pub then_branch: Box<LogicalPlan>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef<'a> {
-	pub columns: Vec<PrimaryKeyColumn<'a>>,
+pub struct PrimaryKeyDef {
+	pub columns: Vec<PrimaryKeyColumn>,
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyColumn<'a> {
-	pub column: Fragment<'a>,
+pub struct PrimaryKeyColumn {
+	pub column: Fragment,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
-pub struct CreateDeferredViewNode<'a> {
-	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
+pub struct CreateDeferredViewNode {
+	pub view: MaybeQualifiedDeferredViewIdentifier,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Vec<LogicalPlan<'a>>,
-	pub primary_key: Option<PrimaryKeyDef<'a>>,
+	pub as_clause: Vec<LogicalPlan>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
-pub struct CreateTransactionalViewNode<'a> {
-	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
+pub struct CreateTransactionalViewNode {
+	pub view: MaybeQualifiedTransactionalViewIdentifier,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Vec<LogicalPlan<'a>>,
-	pub primary_key: Option<PrimaryKeyDef<'a>>,
+	pub as_clause: Vec<LogicalPlan>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
-pub struct CreateNamespaceNode<'a> {
-	pub namespace: Fragment<'a>,
+pub struct CreateNamespaceNode {
+	pub namespace: Fragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateSequenceNode<'a> {
-	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
+pub struct CreateSequenceNode {
+	pub sequence: MaybeQualifiedSequenceIdentifier,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
-pub struct CreateTableNode<'a> {
-	pub table: MaybeQualifiedTableIdentifier<'a>,
+pub struct CreateTableNode {
+	pub table: MaybeQualifiedTableIdentifier,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<PrimaryKeyDef<'a>>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
-pub struct CreateRingBufferNode<'a> {
-	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'a>,
+pub struct CreateRingBufferNode {
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef<'a>>,
+	pub primary_key: Option<PrimaryKeyDef>,
 }
 
 #[derive(Debug)]
-pub struct CreateDictionaryNode<'a> {
-	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+pub struct CreateDictionaryNode {
+	pub dictionary: MaybeQualifiedDictionaryIdentifier,
 	pub if_not_exists: bool,
-	pub value_type: AstDataType<'a>,
-	pub id_type: AstDataType<'a>,
+	pub value_type: AstDataType,
+	pub id_type: AstDataType,
 }
 
 #[derive(Debug)]
-pub struct CreateFlowNode<'a> {
-	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+pub struct CreateFlowNode {
+	pub flow: MaybeQualifiedFlowIdentifier,
 	pub if_not_exists: bool,
-	pub as_clause: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]
-pub struct AlterSequenceNode<'a> {
-	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
-	pub column: MaybeQualifiedColumnIdentifier<'a>,
-	pub value: Expression<'a>,
+pub struct AlterSequenceNode {
+	pub sequence: MaybeQualifiedSequenceIdentifier,
+	pub column: MaybeQualifiedColumnIdentifier,
+	pub value: Expression,
 }
 
 #[derive(Debug)]
-pub struct CreateIndexNode<'a> {
+pub struct CreateIndexNode {
 	pub index_type: IndexType,
-	pub index: MaybeQualifiedIndexIdentifier<'a>,
-	pub columns: Vec<IndexColumn<'a>>,
-	pub filter: Vec<Expression<'a>>,
-	pub map: Option<Expression<'a>>,
+	pub index: MaybeQualifiedIndexIdentifier,
+	pub columns: Vec<IndexColumn>,
+	pub filter: Vec<Expression>,
+	pub map: Option<Expression>,
 }
 
 #[derive(Debug)]
-pub struct IndexColumn<'a> {
-	pub column: Fragment<'a>,
+pub struct IndexColumn {
+	pub column: Fragment,
 	pub order: Option<SortDirection>,
 }
 
 #[derive(Debug)]
-pub struct DeleteTableNode<'a> {
-	pub target: Option<MaybeQualifiedTableIdentifier<'a>>,
-	pub input: Option<Box<LogicalPlan<'a>>>,
+pub struct DeleteTableNode {
+	pub target: Option<MaybeQualifiedTableIdentifier>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
-pub struct DeleteRingBufferNode<'a> {
-	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
-	pub input: Option<Box<LogicalPlan<'a>>>,
+pub struct DeleteRingBufferNode {
+	pub target: MaybeQualifiedRingBufferIdentifier,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
-pub struct InsertTableNode<'a> {
-	pub target: MaybeQualifiedTableIdentifier<'a>,
+pub struct InsertTableNode {
+	pub target: MaybeQualifiedTableIdentifier,
 }
 
 #[derive(Debug)]
-pub struct InsertRingBufferNode<'a> {
-	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
+pub struct InsertRingBufferNode {
+	pub target: MaybeQualifiedRingBufferIdentifier,
 }
 
 #[derive(Debug)]
-pub struct InsertDictionaryNode<'a> {
-	pub target: MaybeQualifiedDictionaryIdentifier<'a>,
+pub struct InsertDictionaryNode {
+	pub target: MaybeQualifiedDictionaryIdentifier,
 }
 
 #[derive(Debug)]
-pub struct UpdateTableNode<'a> {
-	pub target: Option<MaybeQualifiedTableIdentifier<'a>>,
-	pub input: Option<Box<LogicalPlan<'a>>>,
+pub struct UpdateTableNode {
+	pub target: Option<MaybeQualifiedTableIdentifier>,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
-pub struct UpdateRingBufferNode<'a> {
-	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
-	pub input: Option<Box<LogicalPlan<'a>>>,
+pub struct UpdateRingBufferNode {
+	pub target: MaybeQualifiedRingBufferIdentifier,
+	pub input: Option<Box<LogicalPlan>>,
 }
 
 #[derive(Debug)]
-pub struct AggregateNode<'a> {
-	pub by: Vec<Expression<'a>>,
-	pub map: Vec<Expression<'a>>,
+pub struct AggregateNode {
+	pub by: Vec<Expression>,
+	pub map: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct DistinctNode<'a> {
-	pub columns: Vec<MaybeQualifiedColumnIdentifier<'a>>,
+pub struct DistinctNode {
+	pub columns: Vec<MaybeQualifiedColumnIdentifier>,
 }
 
 #[derive(Debug)]
-pub struct FilterNode<'a> {
-	pub condition: Expression<'a>,
+pub struct FilterNode {
+	pub condition: Expression,
 }
 
 #[derive(Debug)]
-pub struct JoinInnerNode<'a> {
-	pub with: Vec<LogicalPlan<'a>>,
-	pub on: Vec<Expression<'a>>,
-	pub alias: Option<Fragment<'a>>,
+pub struct JoinInnerNode {
+	pub with: Vec<LogicalPlan>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug)]
-pub struct JoinLeftNode<'a> {
-	pub with: Vec<LogicalPlan<'a>>,
-	pub on: Vec<Expression<'a>>,
-	pub alias: Option<Fragment<'a>>,
+pub struct JoinLeftNode {
+	pub with: Vec<LogicalPlan>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug)]
-pub struct JoinNaturalNode<'a> {
-	pub with: Vec<LogicalPlan<'a>>,
+pub struct JoinNaturalNode {
+	pub with: Vec<LogicalPlan>,
 	pub join_type: JoinType,
-	pub alias: Option<Fragment<'a>>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug)]
-pub struct MergeNode<'a> {
-	pub with: Vec<LogicalPlan<'a>>,
+pub struct MergeNode {
+	pub with: Vec<LogicalPlan>,
 }
 
 #[derive(Debug)]
@@ -769,42 +769,42 @@ pub struct OrderNode {
 }
 
 #[derive(Debug)]
-pub struct MapNode<'a> {
-	pub map: Vec<Expression<'a>>,
+pub struct MapNode {
+	pub map: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct ExtendNode<'a> {
-	pub extend: Vec<Expression<'a>>,
+pub struct ExtendNode {
+	pub extend: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct ApplyNode<'a> {
-	pub operator: Fragment<'a>,
-	pub arguments: Vec<Expression<'a>>,
+pub struct ApplyNode {
+	pub operator: Fragment,
+	pub arguments: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct InlineDataNode<'a> {
-	pub rows: Vec<Vec<AliasExpression<'a>>>,
+pub struct InlineDataNode {
+	pub rows: Vec<Vec<AliasExpression>>,
 }
 
 #[derive(Debug)]
-pub struct SourceScanNode<'a> {
-	pub source: ResolvedSource<'a>,
-	pub columns: Option<Vec<ResolvedColumn<'a>>>,
-	pub index: Option<ResolvedIndex<'a>>,
+pub struct SourceScanNode {
+	pub source: ResolvedSource,
+	pub columns: Option<Vec<ResolvedColumn>>,
+	pub index: Option<ResolvedIndex>,
 }
 
 #[derive(Debug)]
-pub struct GeneratorNode<'a> {
-	pub name: Fragment<'a>,
-	pub expressions: Vec<Expression<'a>>,
+pub struct GeneratorNode {
+	pub name: Fragment,
+	pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug)]
-pub struct VariableSourceNode<'a> {
-	pub name: Fragment<'a>,
+pub struct VariableSourceNode {
+	pub name: Fragment,
 }
 
 #[derive(Debug)]

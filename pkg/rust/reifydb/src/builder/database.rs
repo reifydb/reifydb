@@ -25,9 +25,8 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
-use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{
-	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
+	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle,
 };
 use tracing::debug;
 
@@ -43,7 +42,6 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
@@ -54,7 +52,7 @@ impl DatabaseBuilder {
 	#[allow(unused_mut)]
 	pub fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {
@@ -73,7 +71,6 @@ impl DatabaseBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
-			worker_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 		}
@@ -96,14 +93,6 @@ impl DatabaseBuilder {
 
 	pub fn with_config(mut self, config: DatabaseConfig) -> Self {
 		self.config = config;
-		self
-	}
-
-	pub fn with_worker<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
-	{
-		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
@@ -154,7 +143,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub fn build(mut self) -> crate::Result<Database> {
+	pub async fn build(mut self) -> crate::Result<Database> {
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -174,11 +163,11 @@ impl DatabaseBuilder {
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
-		let single = self.ioc.resolve::<TransactionSingleVersion>()?;
+		let single = self.ioc.resolve::<TransactionSingle>()?;
 		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
+		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog).await?;
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
@@ -196,7 +185,7 @@ impl DatabaseBuilder {
 			None
 		};
 
-		let engine = StandardEngine::with_functions(
+		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
 			cdc.clone(),
@@ -204,7 +193,8 @@ impl DatabaseBuilder {
 			Box::new(self.interceptors.build()),
 			catalog.clone(),
 			functions,
-		);
+		)
+		.await;
 
 		self.ioc = self.ioc.register(engine.clone());
 
@@ -236,34 +226,22 @@ impl DatabaseBuilder {
 		// 1. Add tracing subsystem first (stopped last during shutdown)
 		#[cfg(feature = "sub_tracing")]
 		if let Some(factory) = self.tracing_factory {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
-		}
-
-		// 2. Add worker subsystem second (always ensure it exists, use default if not configured)
-		let worker_factory = self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::default()));
-		let subsystem = worker_factory.create(&self.ioc)?;
-		all_versions.push(subsystem.version());
-		subsystems.add_subsystem(subsystem);
-
-		// Register SchedulerService in IoC for other subsystems to use
-		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
-		if let Some(ref sched) = scheduler {
-			self.ioc = self.ioc.register(sched.clone());
 		}
 
 		// 3. Add flow subsystem third
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
 		// 4. Add other custom subsystems last (stopped first during shutdown)
 		for factory in self.factories {
-			let subsystem = factory.create(&self.ioc)?;
+			let subsystem = factory.create(&self.ioc).await?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
@@ -284,25 +262,25 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(engine, subsystems, self.config, health_monitor, scheduler))
+		Ok(Database::new(engine, subsystems, self.config, health_monitor))
 	}
 
 	/// Load the materialized catalog from storage
-	fn load_materialized_catalog(
+	async fn load_materialized_catalog(
 		multi: &TransactionMultiVersion,
-		single: &TransactionSingleVersion,
+		single: &TransactionSingle,
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
 		let mut qt = StandardQueryTransaction::new(
-			multi.begin_query()?,
+			multi.begin_query().await?,
 			single.clone(),
 			cdc.clone(),
 			catalog.clone(),
 		);
 
 		debug!("Loading materialized catalog");
-		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+		MaterializedCatalogLoader::load_all(&mut qt, catalog).await?;
 
 		Ok(())
 	}

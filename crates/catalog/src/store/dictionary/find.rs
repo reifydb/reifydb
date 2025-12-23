@@ -13,11 +13,11 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_dictionary(
+	pub async fn find_dictionary(
 		rx: &mut impl QueryTransaction,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
+		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id)).await? else {
 			return Ok(None);
 		};
 
@@ -37,30 +37,26 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_dictionary_by_name(
+	pub async fn find_dictionary_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
-		let Some(dictionary_id) = rx.range(NamespaceDictionaryKey::full_scan(namespace))?.find_map(
-			|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let dictionary_name =
-					dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
-				if name == dictionary_name {
-					Some(DictionaryId(
-						dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID),
-					))
-				} else {
-					None
-				}
-			},
-		) else {
+		let batch = rx.range(NamespaceDictionaryKey::full_scan(namespace)).await?;
+		let Some(dictionary_id) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let dictionary_name = dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
+			if name == dictionary_name {
+				Some(DictionaryId(dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_dictionary(rx, dictionary_id)?))
+		Ok(Some(Self::get_dictionary(rx, dictionary_id).await?))
 	}
 }
 
@@ -75,10 +71,10 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
-	fn test_find_dictionary_exists() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_find_dictionary_exists() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -88,10 +84,12 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+		let created = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 
-		let found =
-			CatalogStore::find_dictionary(&mut txn, created.id).unwrap().expect("Dictionary should exist");
+		let found = CatalogStore::find_dictionary(&mut txn, created.id)
+			.await
+			.unwrap()
+			.expect("Dictionary should exist");
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, created.name);
@@ -100,19 +98,19 @@ mod tests {
 		assert_eq!(found.id_type, Type::Uint2);
 	}
 
-	#[test]
-	fn test_find_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_find_dictionary_not_exists() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_dictionary(&mut txn, DictionaryId(999)).unwrap();
+		let result = CatalogStore::find_dictionary(&mut txn, DictionaryId(999)).await.unwrap();
 
 		assert!(result.is_none());
 	}
 
-	#[test]
-	fn test_find_dictionary_by_name_exists() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_find_dictionary_by_name_exists() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = DictionaryToCreate {
 			namespace: namespace.id,
@@ -122,9 +120,10 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+		let created = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 
 		let found = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "token_mints")
+			.await
 			.unwrap()
 			.expect("Should find dictionary by name");
 
@@ -134,20 +133,22 @@ mod tests {
 		assert_eq!(found.id_type, Type::Uint4);
 	}
 
-	#[test]
-	fn test_find_dictionary_by_name_not_exists() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_find_dictionary_by_name_not_exists() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
-		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "nonexistent_dict").unwrap();
+		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace.id, "nonexistent_dict")
+			.await
+			.unwrap();
 
 		assert!(result.is_none());
 	}
 
-	#[test]
-	fn test_find_dictionary_by_name_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		let namespace1 = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_find_dictionary_by_name_different_namespace() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace1 = ensure_test_namespace(&mut txn).await;
 
 		// Create namespace2
 		let namespace2 = CatalogStore::create_namespace(
@@ -157,6 +158,7 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
+		.await
 		.unwrap();
 
 		// Create dictionary in namespace1
@@ -168,15 +170,17 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
+		CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
 
 		// Try to find in namespace2 - should not exist
-		let result = CatalogStore::find_dictionary_by_name(&mut txn, namespace2.id, "shared_name").unwrap();
+		let result =
+			CatalogStore::find_dictionary_by_name(&mut txn, namespace2.id, "shared_name").await.unwrap();
 
 		assert!(result.is_none());
 
 		// Find in namespace1 - should exist
-		let found = CatalogStore::find_dictionary_by_name(&mut txn, namespace1.id, "shared_name").unwrap();
+		let found =
+			CatalogStore::find_dictionary_by_name(&mut txn, namespace1.id, "shared_name").await.unwrap();
 
 		assert!(found.is_some());
 	}

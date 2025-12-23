@@ -17,11 +17,7 @@ impl GenerateSeries {
 }
 
 impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(
-		&self,
-		_txn: &mut StandardTransaction<'a>,
-		ctx: GeneratorContext<'a>,
-	) -> crate::Result<Columns<'a>> {
+	fn generate<'a>(&self, _txn: &mut StandardTransaction<'a>, ctx: GeneratorContext) -> crate::Result<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 

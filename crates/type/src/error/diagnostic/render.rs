@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use super::Diagnostic;
-use crate::fragment::OwnedFragment;
+use crate::fragment::Fragment;
 
 pub trait DiagnosticRenderer {
 	fn render(&self, diagnostic: &Diagnostic) -> String;
@@ -36,7 +36,7 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "  {}", diagnostic.message);
 		let _ = writeln!(output);
 
-		if let OwnedFragment::Statement {
+		if let Fragment::Statement {
 			line,
 			column,
 			text,
@@ -56,7 +56,7 @@ impl DefaultRenderer {
 
 			let _ = writeln!(output, "CODE");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
-			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
+			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
 			let _ = writeln!(output, "    │");
 
@@ -108,7 +108,7 @@ impl DefaultRenderer {
 		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
 		// Location info
-		if let OwnedFragment::Statement {
+		if let Fragment::Statement {
 			line,
 			column,
 			text,
@@ -138,7 +138,7 @@ impl DefaultRenderer {
 			let line_content = get_line(statement, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
-			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
+			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(
 				output,
 				"{}    │ {}{}",

@@ -7,7 +7,6 @@ use reifydb_core::interface::{
 	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId,
 	TransactionalRingBufferChanges,
 };
-use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -66,23 +65,16 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_ringbuffer_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&RingBufferDef> {
-		let name = name.into_fragment();
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBufferDef> {
 		// Find the last change for this ring buffer name
 		for change in self.changes.ringbuffer_def.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
-				if ringbuffer.namespace == namespace && ringbuffer.name == name.text() {
+				if ringbuffer.namespace == namespace && ringbuffer.name == name {
 					return Some(ringbuffer);
 				}
 			}
 			if let Some(ringbuffer) = &change.pre {
-				if ringbuffer.namespace == namespace
-					&& ringbuffer.name == name.text() && change.op == Delete
-				{
+				if ringbuffer.namespace == namespace && ringbuffer.name == name && change.op == Delete {
 					// Ring buffer was deleted
 					return None;
 				}
@@ -99,15 +91,14 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|rb| rb.id == id).unwrap_or(false))
 	}
 
-	fn is_ringbuffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
+	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		// Check if this ring buffer was deleted in this transaction
 		self.changes.ringbuffer_def.iter().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|rb| rb.namespace == namespace && rb.name == name.text())
+					.map(|rb| rb.namespace == namespace && rb.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -118,11 +109,7 @@ impl TransactionalRingBufferChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_ringbuffer_by_name<'a>(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
-	) -> Option<&RingBufferDef> {
+	fn find_ringbuffer_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&RingBufferDef> {
 		None
 	}
 
@@ -130,7 +117,7 @@ impl TransactionalRingBufferChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_ringbuffer_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
+	fn is_ringbuffer_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

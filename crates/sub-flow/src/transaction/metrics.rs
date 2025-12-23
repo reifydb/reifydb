@@ -33,8 +33,8 @@ impl FlowTransactionMetrics {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_new_metrics() {
+	#[tokio::test]
+	async fn test_new_metrics() {
 		let metrics = FlowTransactionMetrics::new();
 		assert_eq!(metrics.reads, 0);
 		assert_eq!(metrics.writes, 0);
@@ -42,8 +42,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 0);
 	}
 
-	#[test]
-	fn test_default_metrics() {
+	#[tokio::test]
+	async fn test_default_metrics() {
 		let metrics = FlowTransactionMetrics::default();
 		assert_eq!(metrics.reads, 0);
 		assert_eq!(metrics.writes, 0);
@@ -51,8 +51,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 0);
 	}
 
-	#[test]
-	fn test_increment_reads() {
+	#[tokio::test]
+	async fn test_increment_reads() {
 		let mut metrics = FlowTransactionMetrics::new();
 		assert_eq!(metrics.reads, 0);
 
@@ -68,8 +68,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 0);
 	}
 
-	#[test]
-	fn test_increment_writes() {
+	#[tokio::test]
+	async fn test_increment_writes() {
 		let mut metrics = FlowTransactionMetrics::new();
 		assert_eq!(metrics.writes, 0);
 
@@ -85,8 +85,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 0);
 	}
 
-	#[test]
-	fn test_increment_removes() {
+	#[tokio::test]
+	async fn test_increment_removes() {
 		let mut metrics = FlowTransactionMetrics::new();
 		assert_eq!(metrics.removes, 0);
 
@@ -102,8 +102,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 0);
 	}
 
-	#[test]
-	fn test_increment_state_operations() {
+	#[tokio::test]
+	async fn test_increment_state_operations() {
 		let mut metrics = FlowTransactionMetrics::new();
 		assert_eq!(metrics.state_operations, 0);
 
@@ -119,8 +119,8 @@ mod tests {
 		assert_eq!(metrics.removes, 0);
 	}
 
-	#[test]
-	fn test_mixed_metrics() {
+	#[tokio::test]
+	async fn test_mixed_metrics() {
 		let mut metrics = FlowTransactionMetrics::new();
 
 		metrics.increment_reads();
@@ -137,8 +137,8 @@ mod tests {
 		assert_eq!(metrics.state_operations, 3);
 	}
 
-	#[test]
-	fn test_metrics_clone() {
+	#[tokio::test]
+	async fn test_metrics_clone() {
 		let mut original = FlowTransactionMetrics::new();
 		original.increment_reads();
 		original.increment_writes();

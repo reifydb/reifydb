@@ -10,7 +10,6 @@
 
 use std::collections::HashMap;
 
-use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_catalog::{CatalogStore, store::sequence::flow::{next_flow_edge_id, next_flow_node_id}};
 use reifydb_core::interface::FlowId;
 use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowNodeDef};
@@ -56,7 +55,7 @@ pub fn persist_flow(
 		node_map.insert(compiled_node.local_id, real_node_id);
 
 		// Serialize the node type
-		let data = encode_to_vec(&compiled_node.node_type, standard()).map_err(|e| {
+		let data = postcard::to_stdvec(&compiled_node.node_type).map_err(|e| {
 			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 

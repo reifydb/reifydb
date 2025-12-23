@@ -18,6 +18,7 @@ pub(crate) mod registry;
 pub(crate) mod routing;
 pub mod subsystem;
 pub mod transaction;
+pub mod worker;
 
 pub use builder::FlowBuilder;
 pub use config::FlowRuntimeConfig;

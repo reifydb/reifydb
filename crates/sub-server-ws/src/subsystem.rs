@@ -13,16 +13,26 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
+	time::Duration,
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use async_trait::async_trait;
+use reifydb_core::{
+	diagnostic::subsystem::{address_unavailable, bind_failed},
+	error,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{AppState, SharedRuntime};
 use tokio::{
 	net::TcpListener,
 	runtime::Handle,
+	spawn,
 	sync::{Semaphore, watch},
+	time::{Instant, sleep},
 };
+
+use crate::handler::handle_connection;
 
 /// WebSocket server subsystem.
 ///
@@ -129,47 +139,22 @@ impl HasVersion for WsSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for WsSubsystem {
 	fn name(&self) -> &'static str {
 		"WebSocket"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
 
-		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to bind WebSocket server to {}: {}",
-				&addr, e
-			)))
-		})?;
-		std_listener.set_nonblocking(true).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to set non-blocking on {}: {}",
-				&addr, e
-			)))
-		})?;
+		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
 
-		let actual_addr = std_listener.local_addr().map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to get local address: {}",
-				e
-			)))
-		})?;
-
-		// Enter the runtime context to convert std listener to tokio
-		let _guard = self.handle.enter();
-		let listener = TcpListener::from_std(std_listener).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to convert listener: {}",
-				e
-			)))
-		})?;
+		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("WebSocket server bound to {}", actual_addr);
 
@@ -215,8 +200,8 @@ impl Subsystem for WsSubsystem {
 								active.fetch_add(1, Ordering::SeqCst);
 								tracing::debug!("Accepted connection from {}", peer);
 
-								tokio::spawn(async move {
-									crate::handler::handle_connection(stream, conn_state, shutdown_rx).await;
+								spawn(async move {
+									handle_connection(stream, conn_state, shutdown_rx).await;
 									active.fetch_sub(1, Ordering::SeqCst);
 									drop(permit); // Release connection slot
 								});
@@ -237,7 +222,7 @@ impl Subsystem for WsSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		// Send shutdown signal
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
@@ -245,22 +230,19 @@ impl Subsystem for WsSubsystem {
 
 		// Wait for active connections to drain (with timeout)
 		let active = self.active_connections.clone();
-		let handle = self.handle.clone();
 
-		handle.block_on(async {
-			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-			while active.load(Ordering::SeqCst) > 0 {
-				if tokio::time::Instant::now() > deadline {
-					tracing::warn!(
-						"WebSocket shutdown timeout with {} connections still active",
-						active.load(Ordering::SeqCst)
-					);
-					break;
-				}
-				tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+		let deadline = Instant::now() + Duration::from_secs(30);
+		while active.load(Ordering::SeqCst) > 0 {
+			if Instant::now() > deadline {
+				tracing::warn!(
+					"WebSocket shutdown timeout with {} connections still active",
+					active.load(Ordering::SeqCst)
+				);
+				break;
 			}
-			tracing::debug!("WebSocket server shutdown completed");
-		});
+			sleep(Duration::from_millis(100)).await;
+		}
+		tracing::debug!("WebSocket server shutdown completed");
 
 		Ok(())
 	}

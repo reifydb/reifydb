@@ -6,10 +6,10 @@ use reifydb_type::diagnostic::operation::select_multiple_expressions_without_bra
 
 use crate::ast::{AstMap, parse::Parser, tokenize::Keyword};
 
-impl<'a> Parser<'a> {
+impl Parser {
 	/// Parse SELECT statement - this is an alias for MAP that delegates to
 	/// the same logic
-	pub(crate) fn parse_select(&mut self) -> crate::Result<AstMap<'a>> {
+	pub(crate) fn parse_select(&mut self) -> crate::Result<AstMap> {
 		let token = self.consume_keyword(Keyword::Select)?;
 
 		let (nodes, has_braces) = self.parse_expressions(true)?;

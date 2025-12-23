@@ -12,6 +12,7 @@ use std::{
 	sync::atomic::{AtomicBool, Ordering},
 };
 
+use async_trait::async_trait;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_type::Result;
@@ -47,13 +48,14 @@ impl Default for TracingSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for TracingSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-tracing"
 	}
 
 	#[instrument(name = "tracing::subsystem::start", level = "info", skip(self))]
-	fn start(&mut self) -> Result<()> {
+	async fn start(&mut self) -> Result<()> {
 		// Set running flag - tracing_subscriber is already initialized
 		// by the builder
 		self.running.store(true, Ordering::Release);
@@ -64,7 +66,7 @@ impl Subsystem for TracingSubsystem {
 	}
 
 	#[instrument(name = "tracing::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&mut self) -> Result<()> {
+	async fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already shutdown
 			return Ok(());

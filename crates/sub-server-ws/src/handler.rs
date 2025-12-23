@@ -170,19 +170,25 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 fn error_to_response(id: &str, e: ExecuteError) -> String {
 	match e {
 		ExecuteError::Timeout => build_error(id, "QUERY_TIMEOUT", "Query execution timed out"),
-		ExecuteError::TaskPanic(msg) => build_error(id, "INTERNAL_ERROR", &msg),
+		ExecuteError::Cancelled => build_error(id, "QUERY_CANCELLED", "Query was cancelled"),
+		ExecuteError::Disconnected => {
+			tracing::error!("Query stream disconnected unexpectedly");
+			build_error(id, "INTERNAL_ERROR", "Internal server error")
+		}
 		ExecuteError::Engine {
-			error,
+			diagnostic,
 			statement,
 		} => {
-			// Get diagnostic and add statement context for proper display
-			let mut diagnostic = error.diagnostic();
-			diagnostic.with_statement(statement);
+			// Create a copy of the diagnostic with the statement attached
+			let mut diag = (*diagnostic).clone();
+			if diag.statement.is_none() && !statement.is_empty() {
+				diag.statement = Some(statement);
+			}
 			json!({
 				"id": id,
 				"type": "Err",
 				"payload": {
-					"diagnostic": diagnostic
+					"diagnostic": diag
 				}
 			})
 			.to_string()

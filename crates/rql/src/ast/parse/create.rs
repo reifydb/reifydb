@@ -25,13 +25,13 @@ use crate::ast::{
 };
 
 /// Structure to hold WITH block options
-struct WithOptions<'a> {
+struct WithOptions {
 	capacity: Option<u64>,
-	primary_key: Option<AstPrimaryKeyDef<'a>>,
+	primary_key: Option<AstPrimaryKeyDef>,
 }
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'a>> {
+impl Parser {
+	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate> {
 		let token = self.consume_keyword(Create)?;
 
 		// Check for CREATE OR REPLACE
@@ -96,7 +96,7 @@ impl<'a> Parser<'a> {
 		unimplemented!();
 	}
 
-	fn parse_namespace(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_namespace(&mut self, token: Token) -> crate::Result<AstCreate> {
 		// Check for IF NOT EXISTS BEFORE identifier
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -123,7 +123,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_series(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_series(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -139,7 +139,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_deferred_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_deferred_view(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -198,7 +198,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_transactional_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_transactional_view(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -258,7 +258,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_table(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_table(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -287,7 +287,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_ringbuffer(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_ringbuffer(&mut self, token: Token) -> crate::Result<AstCreate> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -302,7 +302,7 @@ impl<'a> Parser<'a> {
 				self.current()
 					.ok()
 					.and_then(|t| Some(t.fragment.clone()))
-					.unwrap_or_else(|| reifydb_type::Fragment::owned_internal("end of input")),
+					.unwrap_or_else(|| reifydb_type::Fragment::internal("end of input")),
 			))
 		})?;
 
@@ -322,7 +322,7 @@ impl<'a> Parser<'a> {
 
 	/// Parse primary key definition: {col1: DESC, col2: ASC}
 	/// Defaults to DESC when sort order is not specified
-	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef<'a>> {
+	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -386,12 +386,12 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse WITH block: WITH { capacity: N, primary_key: {col1, col2} }
-	fn parse_with_block(&mut self) -> crate::Result<WithOptions<'a>> {
+	fn parse_with_block(&mut self) -> crate::Result<WithOptions> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut capacity: Option<u64> = None;
-		let mut primary_key: Option<AstPrimaryKeyDef<'a>> = None;
+		let mut primary_key: Option<AstPrimaryKeyDef> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -450,7 +450,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	fn parse_dictionary(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_dictionary(&mut self, token: Token) -> crate::Result<AstCreate> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
@@ -490,7 +490,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_type(&mut self) -> crate::Result<AstDataType<'a>> {
+	fn parse_type(&mut self) -> crate::Result<AstDataType> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		// Check for type with parameters like DECIMAL(10,2)
@@ -517,7 +517,7 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'a>>> {
+	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate>> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -542,7 +542,7 @@ impl<'a> Parser<'a> {
 		Ok(result)
 	}
 
-	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'a>> {
+	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
@@ -617,7 +617,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	fn parse_flow(&mut self, token: Token<'a>, or_replace: bool) -> crate::Result<AstCreate<'a>> {
+	fn parse_flow(&mut self, token: Token, or_replace: bool) -> crate::Result<AstCreate> {
 		use crate::ast::identifier::MaybeQualifiedFlowIdentifier;
 
 		// Check for IF NOT EXISTS

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
 	value::column::{Column, Columns, headers::ColumnHeaders},
@@ -20,15 +21,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct ExtendNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
-	expressions: Vec<Expression<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct ExtendNode {
+	input: Box<ExecutionPlan>,
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> ExtendNode<'a> {
-	pub fn new(input: Box<ExecutionPlan<'a>>, expressions: Vec<Expression<'a>>) -> Self {
+impl ExtendNode {
+	pub fn new(input: Box<ExecutionPlan>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -38,26 +39,31 @@ impl<'a> ExtendNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for ExtendNode<'a> {
+#[async_trait]
+impl QueryNode for ExtendNode {
 	#[instrument(name = "query::extend::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx)?;
+		self.input.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			// Start with all existing columns (EXTEND preserves
 			// everything)
@@ -88,7 +94,7 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 						source.columns().iter().find(|col| col.name == alias_name)
 					{
 						// Create a resolved column with source information
-						let column_ident = Fragment::borrowed_internal(&table_column.name);
+						let column_ident = Fragment::internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							source.clone(),
@@ -106,10 +112,9 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 
 			// Transmute the vector to extend its lifetime
 			// SAFETY: The columns come from either the input (already transmuted to 'a)
-			// via into_iter() or from column() which returns Column<'a>, so all columns
+			// via into_iter() or from column() which returns Column, so all columns
 			// genuinely have lifetime 'a through the query execution
-			let new_columns =
-				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
+			let new_columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(new_columns) };
 
 			// Create layout combining existing and new columns only
 			// once For extend, we preserve all input columns
@@ -156,19 +161,19 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 		Ok(None)
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
 	}
 }
 
-pub(crate) struct ExtendWithoutInputNode<'a> {
-	expressions: Vec<Expression<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct ExtendWithoutInputNode {
+	expressions: Vec<Expression>,
+	headers: Option<ColumnHeaders>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> ExtendWithoutInputNode<'a> {
-	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
+impl ExtendWithoutInputNode {
+	pub fn new(expressions: Vec<Expression>) -> Self {
 		Self {
 			expressions,
 			headers: None,
@@ -177,19 +182,24 @@ impl<'a> ExtendWithoutInputNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
+#[async_trait]
+impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "query::extend::noinput::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::noinput::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -234,16 +244,16 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 
 		// Transmute the vector to extend its lifetime
 		// SAFETY: The columns either come from the input (already transmuted to 'a)
-		// or from evaluate() which returns Column<'a>, so they all genuinely have
+		// or from evaluate() which returns Column, so they all genuinely have
 		// lifetime 'a through the query execution
-		let new_columns = unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
+		let new_columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(new_columns) };
 
 		Ok(Some(Batch {
 			columns: Columns::new(new_columns),
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
 }

@@ -1,0 +1,48 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests keep_last_versions=2 - keep the last 2 versions.
+
+set a=1 version=1
+set a=2 version=2
+set a=3 version=3
+set a=4 version=4
+set a=5 version=5
+---
+ok
+
+count_versions a
+---
+"a" => 5 versions
+
+# Keep last 2 (versions 4 and 5)
+drop a keep_last_versions=2
+---
+ok
+
+# 2 versions remain
+count_versions a
+---
+"a" => 2 versions
+
+# Versions 1, 2, 3 are gone
+contains a version=1
+contains a version=2
+contains a version=3
+---
+"a" => false
+"a" => false
+"a" => false
+
+# Versions 4 and 5 remain
+contains a version=4
+contains a version=5
+---
+"a" => true
+"a" => true
+
+get a version=4
+get a version=5
+---
+"a" => "4"
+"a" => "5"

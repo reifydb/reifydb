@@ -12,9 +12,9 @@ _set prefix="\n"
 command id=1
 command id=2
 ---
-> 
+>
 > Command { name: "command", args: [Argument { key: Some("id"), value: "1" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 12 }
-> 
+>
 > Command { name: "command", args: [Argument { key: Some("id"), value: "2" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 13 }
 
 _set prefix="" suffix="\n\n"
@@ -22,20 +22,20 @@ command id=1
 command id=2
 ---
 > Command { name: "command", args: [Argument { key: Some("id"), value: "1" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 21 }
-> 
+>
 > Command { name: "command", args: [Argument { key: Some("id"), value: "2" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 22 }
-> 
+>
 
 _set prefix="\n" suffix="\n\n"
 command id=1
 command id=2
 ---
-> 
+>
 > Command { name: "command", args: [Argument { key: Some("id"), value: "1" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 30 }
-> 
-> 
+>
+>
 > Command { name: "command", args: [Argument { key: Some("id"), value: "2" }], prefix: None, tags: {}, silent: false, fail: false, line_number: 31 }
-> 
+>
 
 # Empty output blocks should default to "ok", but only once, and only if none of
 # the commands produce any output. This includes the start_block and end_block

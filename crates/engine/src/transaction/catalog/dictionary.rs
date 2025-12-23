@@ -7,7 +7,6 @@ use reifydb_core::interface::{
 	Change, DictionaryDef, DictionaryId, NamespaceId, OperationType, OperationType::Delete,
 	TransactionalDictionaryChanges,
 };
-use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -65,15 +64,12 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&DictionaryDef> {
-		let name = name.into_fragment();
-		self.changes.dictionary_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name.text())
-		})
+	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&DictionaryDef> {
+		self.changes
+			.dictionary_def
+			.iter()
+			.rev()
+			.find_map(|change| change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name))
 	}
 
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool {
@@ -84,14 +80,13 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|d| d.id) == Some(id))
 	}
 
-	fn is_dictionary_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
+	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.dictionary_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|d| d.namespace == namespace && d.name == name.text())
+					.map(|d| d.namespace == namespace && d.name == name)
 					.unwrap_or(false)
 		})
 	}
@@ -102,11 +97,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_dictionary_by_name<'a>(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
-	) -> Option<&DictionaryDef> {
+	fn find_dictionary_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&DictionaryDef> {
 		None
 	}
 
@@ -114,7 +105,7 @@ impl TransactionalDictionaryChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_dictionary_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
+	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

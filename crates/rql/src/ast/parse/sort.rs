@@ -14,8 +14,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_sort(&mut self) -> crate::Result<AstSort<'a>> {
+impl Parser {
+	pub(crate) fn parse_sort(&mut self) -> crate::Result<AstSort> {
 		let token = self.consume_keyword(Keyword::Sort)?;
 
 		let has_braces = self.current()?.is_operator(OpenCurly);

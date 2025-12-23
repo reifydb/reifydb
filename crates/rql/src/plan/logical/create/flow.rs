@@ -9,15 +9,15 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_flow<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateFlow<'a>,
+	pub(crate) async fn compile_create_flow<T: CatalogQueryTransaction + Send>(
+		ast: AstCreateFlow,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Use the flow identifier directly from AST
 		let flow = ast.flow;
 
 		// Compile the AS clause (required for flows)
-		let with = Compiler::compile(ast.as_clause, tx)?;
+		let with = Compiler::compile(ast.as_clause, tx).await?;
 
 		Ok(LogicalPlan::CreateFlow(CreateFlowNode {
 			flow,

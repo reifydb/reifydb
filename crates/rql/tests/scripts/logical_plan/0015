@@ -9,7 +9,7 @@ logical 'from users aggregate { count(id) }'
 >     ├── Map
 >     │   └── count(id)
 >     └── By
-> 
+>
 
 # Test logical plan for global aggregate with empty BY clause
 logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
@@ -20,7 +20,7 @@ logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
 >     │   ├── count(id) as total
 >     │   └── sum(amount) as sum
 >     └── By
-> 
+>
 
 # Test logical plan for multiple global aggregations
 logical 'from users aggregate { count(id), sum(amount), avg(price), min(age), max(age) } by {}'
@@ -34,4 +34,4 @@ logical 'from users aggregate { count(id), sum(amount), avg(price), min(age), ma
 >     │   ├── min(age)
 >     │   └── max(age)
 >     └── By
-> 
+>

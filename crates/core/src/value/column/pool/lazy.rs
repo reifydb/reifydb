@@ -7,7 +7,7 @@
 //! allowing ColumnData operations to work even when pools haven't been
 //! explicitly initialized.
 
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 use once_cell::sync::Lazy;
 
@@ -16,18 +16,20 @@ use super::{
 	thread_local::{get_thread_pools, has_thread_pools, set_thread_pools},
 };
 
-/// Global default configuration for thread-local pools
-static DEFAULT_CONFIG: Lazy<Mutex<PoolConfig>> = Lazy::new(|| Mutex::new(PoolConfig::default()));
+/// Global default configuration for thread-local pools.
+/// Uses RwLock because config is read frequently (on every lazy pool init)
+/// but only written during initial configuration.
+static DEFAULT_CONFIG: Lazy<RwLock<PoolConfig>> = Lazy::new(|| RwLock::new(PoolConfig::default()));
 
 /// Set the global default pool configuration
 /// This configuration will be used when pools are lazily initialized
 pub fn set_default_pool_config(config: PoolConfig) {
-	*DEFAULT_CONFIG.lock().unwrap() = config;
+	*DEFAULT_CONFIG.write().unwrap() = config;
 }
 
 /// Get a copy of the current default pool configuration
 pub fn get_default_pool_config() -> PoolConfig {
-	DEFAULT_CONFIG.lock().unwrap().clone()
+	DEFAULT_CONFIG.read().unwrap().clone()
 }
 
 /// Get or create thread-local pools using the default configuration
@@ -35,7 +37,7 @@ pub fn get_default_pool_config() -> PoolConfig {
 /// with the default configuration.
 pub fn get_or_init_pools() -> Pools {
 	get_thread_pools().unwrap_or_else(|| {
-		let config = DEFAULT_CONFIG.lock().unwrap().clone();
+		let config = DEFAULT_CONFIG.read().unwrap().clone();
 		let pools = Pools::new(config.max_pool_size);
 		set_thread_pools(pools.clone());
 		pools

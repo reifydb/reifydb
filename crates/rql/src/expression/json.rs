@@ -9,8 +9,10 @@
 //! - Supports round-trip serialization/deserialization
 //! - Is suitable for frontend query builders
 
+use std::sync::Arc;
+
 use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
-use reifydb_type::{Fragment, OwnedFragment};
+use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 
@@ -197,17 +199,17 @@ fn extract_source(source: &ColumnSource) -> (String, String) {
 }
 
 // Helper to create an internal fragment
-fn internal_fragment(text: &str) -> Fragment<'static> {
-	Fragment::Owned(OwnedFragment::Internal {
-		text: text.to_string(),
-	})
+fn internal_fragment(text: &str) -> Fragment {
+	Fragment::Internal {
+		text: Arc::from(text.to_string()),
+	}
 }
 
 // ============================================================================
 // Expression -> JsonExpression conversion
 // ============================================================================
 
-impl From<&Expression<'_>> for JsonExpression {
+impl From<&Expression> for JsonExpression {
 	fn from(expr: &Expression) -> Self {
 		match expr {
 			// Constants
@@ -401,7 +403,7 @@ impl From<&Expression<'_>> for JsonExpression {
 // JsonExpression -> Expression conversion
 // ============================================================================
 
-impl TryFrom<JsonExpression> for Expression<'static> {
+impl TryFrom<JsonExpression> for Expression {
 	type Error = reifydb_type::Error;
 
 	fn try_from(json: JsonExpression) -> Result<Self, Self::Error> {
@@ -677,7 +679,7 @@ impl TryFrom<JsonExpression> for Expression<'static> {
 				else_ifs,
 				else_expr,
 			} => {
-				let converted_else: Option<Box<Expression<'static>>> = match else_expr {
+				let converted_else: Option<Box<Expression>> = match else_expr {
 					Some(ee) => Some(Box::new((*ee).try_into()?)),
 					None => None,
 				};
@@ -795,7 +797,7 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 }
 
 /// Deserialize an Expression from a JSON string.
-pub fn from_json(json: &str) -> reifydb_core::Result<Expression<'static>> {
+pub fn from_json(json: &str) -> reifydb_core::Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
 		reifydb_type::Error(reifydb_type::diagnostic::serde::serde_deserialize_error(e.to_string()))
 	})?;
@@ -807,7 +809,7 @@ mod tests {
 	use super::*;
 
 	// Helper functions to create test expressions
-	fn column_expr(name: &str) -> Expression<'static> {
+	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
 			source: ColumnSource::Source {
 				namespace: internal_fragment("_context"),
@@ -817,19 +819,19 @@ mod tests {
 		}))
 	}
 
-	fn constant_number(val: &str) -> Expression<'static> {
+	fn constant_number(val: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Number {
 			fragment: internal_fragment(val),
 		})
 	}
 
-	fn constant_text(val: &str) -> Expression<'static> {
+	fn constant_text(val: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Text {
 			fragment: internal_fragment(val),
 		})
 	}
 
-	fn constant_bool(val: &str) -> Expression<'static> {
+	fn constant_bool(val: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Bool {
 			fragment: internal_fragment(val),
 		})

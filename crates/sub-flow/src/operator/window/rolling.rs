@@ -51,7 +51,7 @@ impl WindowOperator {
 }
 
 /// Apply changes for rolling windows
-pub fn apply_rolling_window(
+pub async fn apply_rolling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -71,7 +71,7 @@ pub fn apply_rolling_window(
 				// For rolling windows, we use a single window ID per group (always 0)
 				let window_id = 0u64;
 				let window_key = operator.create_window_key(group_hash, window_id);
-				let mut window_state = operator.load_window_state(txn, &window_key)?;
+				let mut window_state = operator.load_window_state(txn, &window_key).await?;
 
 				// Extract timestamp for the event
 				let event_timestamp = match &operator.window_type {
@@ -81,7 +81,8 @@ pub fn apply_rolling_window(
 
 				// Calculate previous aggregation BEFORE adding the new event
 				let previous_aggregation = if window_state.events.len() >= operator.min_events {
-					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
+						.await?
 				} else {
 					None
 				};
@@ -101,12 +102,10 @@ pub fn apply_rolling_window(
 
 				// Always trigger rolling windows (they continuously update)
 				if window_state.events.len() >= operator.min_events {
-					if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
-						txn,
-						&window_key,
-						&window_state.events,
-						evaluator,
-					)? {
+					if let Some((aggregated_row, is_new)) = operator
+						.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
+						.await?
+					{
 						if is_new {
 							// First time this rolling window appears
 							result.push(FlowDiff::Insert {
@@ -139,7 +138,7 @@ pub fn apply_rolling_window(
 				let group_hash = operator.compute_group_key(&post, evaluator)?;
 				let window_id = 0u64;
 				let window_key = operator.create_window_key(group_hash, window_id);
-				let mut window_state = operator.load_window_state(txn, &window_key)?;
+				let mut window_state = operator.load_window_state(txn, &window_key).await?;
 
 				let event_timestamp = match &operator.window_type {
 					WindowType::Time(_) => operator.extract_timestamp_from_row(&post)?,
@@ -148,7 +147,8 @@ pub fn apply_rolling_window(
 
 				// Calculate previous aggregation BEFORE adding the new event
 				let previous_aggregation = if window_state.events.len() >= operator.min_events {
-					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
+						.await?
 				} else {
 					None
 				};
@@ -165,12 +165,10 @@ pub fn apply_rolling_window(
 				operator.evict_old_events(&mut window_state, current_timestamp);
 
 				if window_state.events.len() >= operator.min_events {
-					if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
-						txn,
-						&window_key,
-						&window_state.events,
-						evaluator,
-					)? {
+					if let Some((aggregated_row, is_new)) = operator
+						.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
+						.await?
+					{
 						if is_new {
 							result.push(FlowDiff::Insert {
 								post: aggregated_row,

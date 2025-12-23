@@ -19,7 +19,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::flow::Flow;
 use reifydb_type::{CowVec, diagnostic::flow::flow_version_corrupted};
-use tokio::{sync::mpsc, task::spawn_blocking};
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, trace};
 
 use crate::{FlowEngine, transaction::FlowTransaction};
@@ -51,7 +51,7 @@ pub async fn coordinate_task(
 
 	// Register this flow with the engine
 	{
-		let mut txn = match engine.begin_command() {
+		let mut txn = match engine.begin_command().await {
 			Ok(txn) => txn,
 			Err(e) => {
 				error!("failed to begin transaction for flow registration: {}", e);
@@ -62,18 +62,19 @@ pub async fn coordinate_task(
 		// Perform backfill if requested (new flow)
 		if let Some(target_version) = backfill_version {
 			debug!(target_version = target_version.0, "performing backfill");
-			if let Err(e) = flow_engine.register_with_backfill(&mut txn, flow.clone(), target_version) {
+			if let Err(e) = flow_engine.register_with_backfill(&mut txn, flow.clone(), target_version).await
+			{
 				error!("backfill failed: {}", e);
 				return;
 			}
 
 			// Persist the backfill version
-			if let Err(e) = set_flow_version(&mut txn, flow_id, target_version) {
+			if let Err(e) = set_flow_version(&mut txn, flow_id, target_version).await {
 				error!("failed to persist backfill version: {}", e);
 				return;
 			}
 
-			if let Err(e) = txn.commit() {
+			if let Err(e) = txn.commit().await {
 				error!("failed to commit backfill: {}", e);
 				return;
 			}
@@ -83,12 +84,12 @@ pub async fn coordinate_task(
 			info!(version = target_version.0, "backfill completed");
 		} else {
 			// Existing flow - register without backfill
-			if let Err(e) = flow_engine.register_without_backfill(&mut txn, flow.clone()) {
+			if let Err(e) = flow_engine.register_without_backfill(&mut txn, flow.clone()).await {
 				error!("flow registration failed: {}", e);
 				return;
 			}
 
-			if let Err(e) = txn.commit() {
+			if let Err(e) = txn.commit().await {
 				error!("failed to commit flow registration: {}", e);
 				return;
 			}
@@ -140,43 +141,34 @@ async fn process_batch(
 ) -> Result<()> {
 	let version = changes.first().expect("empty batch should not be sent").version;
 
-	// Use spawn_blocking for CPU-bound operator processing
-	let engine = engine.clone();
-	let flow_engine = flow_engine.clone();
-	let changes: Vec<_> = changes.iter().cloned().collect();
+	let mut txn = engine.begin_command().await?;
 
-	spawn_blocking(move || {
-		let mut txn = engine.begin_command()?;
+	let mut flow_txn = FlowTransaction::new(&txn, version).await;
+	for change in changes {
+		flow_engine.process(&mut flow_txn, change.clone(), flow_id).await?;
+	}
 
-		let mut flow_txn = FlowTransaction::new(&txn, version);
-		for change in changes {
-			flow_engine.process(&mut flow_txn, change, flow_id)?;
-		}
+	flow_txn.commit(&mut txn).await?;
+	set_flow_version(&mut txn, flow_id, version).await?;
 
-		flow_txn.commit(&mut txn)?;
-		set_flow_version(&mut txn, flow_id, version)?;
-
-		txn.commit()?;
-		Ok(())
-	})
-	.await
-	.map_err(|e| reifydb_core::Error(reifydb_type::internal!("spawn_blocking failed: {}", e)))?
+	txn.commit().await?;
+	Ok(())
 }
 
 /// Persist the flow's processed version to catalog.
-fn set_flow_version(txn: &mut StandardCommandTransaction, flow_id: FlowId, version: CommitVersion) -> Result<()> {
+async fn set_flow_version(txn: &mut StandardCommandTransaction, flow_id: FlowId, version: CommitVersion) -> Result<()> {
 	let key = FlowVersionKey::encoded(flow_id);
 	let value = EncodedValues(CowVec::new(version.0.to_le_bytes().to_vec()));
-	txn.set(&key, value)
+	txn.set(&key, value).await
 }
 
 /// Read the flow's processed version from catalog.
 #[allow(dead_code)]
-pub fn get_flow_version(engine: &StandardEngine, flow_id: FlowId) -> Result<Option<CommitVersion>> {
-	let mut txn = engine.begin_query()?;
+pub async fn get_flow_version(engine: &StandardEngine, flow_id: FlowId) -> Result<Option<CommitVersion>> {
+	let mut txn = engine.begin_query().await?;
 	let key = FlowVersionKey::encoded(flow_id);
 
-	match txn.get(&key)? {
+	match txn.get(&key).await? {
 		Some(multi_values) => {
 			let arr: [u8; 8] = multi_values.values.as_slice().try_into().map_err(|_| {
 				reifydb_core::Error(flow_version_corrupted(flow_id.0, multi_values.values.len()))

@@ -8,7 +8,7 @@ command 'map cast(cast(0, uint16), float8)'
 > +-----+
 > |  0  |
 > +-----+
-> 
+>
 
 command 'map cast(cast(9007199254740992, uint16), float8)'
 ---
@@ -17,24 +17,24 @@ command 'map cast(cast(9007199254740992, uint16), float8)'
 > +--------------------+
 > |  9007199254740992  |
 > +--------------------+
-> 
+>
 
 !command 'map cast(cast(9007199254740993, uint16), float8)'
 ---
 >  Error CAST_002: failed to cast to Float8
 >   at "(9007199254740993float8" (line 1, column 9)
-> 
+>
 >   1 │ map cast(cast(9007199254740993, uint16), float8)
 >     │          ~~~~~~~~~~~~~~~~~~~~~~~
 >     │         failed to cast to Float8
-> 
+>
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "9007199254740993" (line 1, column 15)
-> 
+>
 >     1 │ map cast(cast(9007199254740993, uint16), float8)
 >       │               ~~~~~~~~~~~~~~~~
 >       │ converting '9007199254740993' from Uint16 to Float8 would lose precision
-> 
+>
 >     note: Float8 can only represent from 0 to 9_007_199_254_740_992 (2^53) precisely
 >     note: consider using a different numeric type if exact precision is required
-> 
+>

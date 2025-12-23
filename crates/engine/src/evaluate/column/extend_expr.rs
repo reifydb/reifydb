@@ -10,9 +10,9 @@ use crate::evaluate::ColumnEvaluationContext;
 impl StandardColumnEvaluator {
 	pub(super) fn extend_expr<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &ExtendExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		expr: &ExtendExpression,
+	) -> crate::Result<Column> {
 		if expr.expressions.len() == 1 {
 			return self.evaluate(ctx, &expr.expressions[0]);
 		}

@@ -14,14 +14,14 @@ use crate::{
 	},
 };
 
-pub(crate) fn load_tables(
+pub(crate) async fn load_tables(
 	qt: &mut impl MultiVersionQueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = TableKey::full_scan();
-	let tables = qt.range(range)?;
+	let batch = qt.range(range).await?;
 
-	for multi in tables {
+	for multi in batch.items {
 		let version = multi.version;
 
 		let pk_id = get_table_primary_key_id(&multi);

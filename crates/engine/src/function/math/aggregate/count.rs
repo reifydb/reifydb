@@ -1,21 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::Value;
 
 use crate::function::{AggregateFunction, AggregateFunctionContext};
 
 pub struct Count {
-	pub counts: HashMap<Vec<Value>, i64>,
+	pub counts: IndexMap<Vec<Value>, i64>,
 }
 
 impl Count {
 	pub fn new() -> Self {
 		Self {
-			counts: HashMap::new(),
+			counts: IndexMap::new(),
 		}
 	}
 }

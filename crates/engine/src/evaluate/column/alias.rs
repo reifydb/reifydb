@@ -11,16 +11,12 @@ use crate::evaluate::{
 };
 
 impl StandardColumnEvaluator {
-	pub(crate) fn alias<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &AliasExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn alias<'a>(&self, ctx: &ColumnEvaluationContext, expr: &AliasExpression) -> crate::Result<Column> {
 		let evaluated = self.evaluate(ctx, &expr.expression)?;
 		let alias_name = expr.alias.0.clone();
 
 		let source = ctx.target.as_ref().and_then(|c| match c {
-			TargetColumn::Resolved(col) => Some(Fragment::owned_internal(col.source().identifier().text())),
+			TargetColumn::Resolved(col) => Some(Fragment::internal(col.source().identifier().text())),
 			TargetColumn::Partial {
 				..
 			} => None,

@@ -9,11 +9,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_column_policies(
+	pub async fn list_column_policies(
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
+		let batch = rx.range(ColumnPolicyKey::full_scan(column)).await?;
+		Ok(batch.items
+			.into_iter()
 			.map(|multi| {
 				let row = multi.values;
 				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
@@ -33,15 +35,15 @@ impl CatalogStore {
 			.collect::<Vec<_>>())
 	}
 
-	pub fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
+	pub async fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
-		let columns = CatalogStore::list_columns_all(rx)?;
+		let columns = CatalogStore::list_columns_all(rx).await?;
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(rx, info.column.id)?;
+			let policies = CatalogStore::list_column_policies(rx, info.column.id).await?;
 			result.extend(policies);
 		}
 
@@ -63,19 +65,19 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[test]
-	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_table(&mut txn);
+	#[tokio::test]
+	async fn test_ok() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				namespace_name: "test_namespace",
+				namespace_name: "test_namespace".to_string(),
 				table: TableId(1),
-				table_name: "test_table",
+				table_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,
@@ -85,11 +87,12 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).await.unwrap();
 
-		let policies = CatalogStore::list_column_policies(&mut txn, column.id).unwrap();
+		let policies = CatalogStore::list_column_policies(&mut txn, column.id).await.unwrap();
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);

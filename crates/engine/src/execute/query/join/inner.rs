@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value};
@@ -13,21 +14,21 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub struct InnerJoinNode<'a> {
-	left: Box<ExecutionPlan<'a>>,
-	right: Box<ExecutionPlan<'a>>,
-	on: Vec<Expression<'a>>,
-	alias: Option<Fragment<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: JoinContext<'a>,
+pub struct InnerJoinNode {
+	left: Box<ExecutionPlan>,
+	right: Box<ExecutionPlan>,
+	on: Vec<Expression>,
+	alias: Option<Fragment>,
+	headers: Option<ColumnHeaders>,
+	context: JoinContext,
 }
 
-impl<'a> InnerJoinNode<'a> {
+impl InnerJoinNode {
 	pub fn new(
-		left: Box<ExecutionPlan<'a>>,
-		right: Box<ExecutionPlan<'a>>,
-		on: Vec<Expression<'a>>,
-		alias: Option<Fragment<'a>>,
+		left: Box<ExecutionPlan>,
+		right: Box<ExecutionPlan>,
+		on: Vec<Expression>,
+		alias: Option<Fragment>,
 	) -> Self {
 		Self {
 			left,
@@ -40,21 +41,26 @@ impl<'a> InnerJoinNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
+#[async_trait]
+impl QueryNode for InnerJoinNode {
 	#[instrument(level = "trace", skip_all, name = "query::join::inner::initialize")]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context.set(ctx);
-		self.left.initialize(rx, ctx)?;
-		self.right.initialize(rx, ctx)?;
+		self.left.initialize(rx, ctx).await?;
+		self.right.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::join::inner::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_initialized(), "InnerJoinNode::next() called before initialize()");
 		let _stored_ctx = self.context.get();
 
@@ -62,8 +68,8 @@ impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
 			return Ok(None);
 		}
 
-		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
-		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
+		let left_columns = load_and_merge_all(&mut self.left, rx, ctx).await?;
+		let right_columns = load_and_merge_all(&mut self.right, rx, ctx).await?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
@@ -121,7 +127,7 @@ impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
 }

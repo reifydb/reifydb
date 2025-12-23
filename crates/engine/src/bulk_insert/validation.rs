@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::{ColumnDef, RingBufferDef, TableDef},
 	value::column::ColumnData,
 };
-use reifydb_type::{OwnedFragment, Params, Value};
+use reifydb_type::{Fragment, Params, Value};
 
 use super::{coerce::coerce_columns, error::BulkInsertError};
 
@@ -105,7 +105,7 @@ fn collect_rows_to_columns(
 			Params::Positional(vals) => {
 				if vals.len() > num_cols {
 					return Err(BulkInsertError::too_many_values(
-						OwnedFragment::None,
+						Fragment::None,
 						num_cols,
 						vals.len(),
 					)
@@ -129,7 +129,7 @@ fn collect_rows_to_columns(
 			for name in map.keys() {
 				if !columns.iter().any(|c| &c.name == name) {
 					return Err(BulkInsertError::column_not_found(
-						OwnedFragment::None,
+						Fragment::None,
 						source_name,
 						name,
 					)

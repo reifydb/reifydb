@@ -11,8 +11,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_inline(&mut self) -> crate::Result<AstInline<'a>> {
+impl Parser {
+	pub(crate) fn parse_inline(&mut self) -> crate::Result<AstInline> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut keyed_values = Vec::with_capacity(4);

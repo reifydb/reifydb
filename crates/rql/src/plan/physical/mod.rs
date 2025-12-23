@@ -45,23 +45,23 @@ use crate::{
 struct Compiler {}
 
 #[instrument(name = "rql::compile::physical", level = "trace", skip(rx, logical))]
-pub fn compile_physical<'a>(
+pub async fn compile_physical(
 	rx: &mut impl QueryTransaction,
-	logical: Vec<LogicalPlan<'a>>,
-) -> crate::Result<Option<PhysicalPlan<'a>>> {
-	Compiler::compile(rx, logical)
+	logical: Vec<LogicalPlan>,
+) -> crate::Result<Option<PhysicalPlan>> {
+	Compiler::compile(rx, logical).await
 }
 
 impl Compiler {
-	fn compile<'a>(
+	async fn compile(
 		rx: &mut impl QueryTransaction,
-		logical: Vec<LogicalPlan<'a>>,
-	) -> crate::Result<Option<PhysicalPlan<'a>>> {
+		logical: Vec<LogicalPlan>,
+	) -> crate::Result<Option<PhysicalPlan>> {
 		if logical.is_empty() {
 			return Ok(None);
 		}
 
-		let mut stack: Vec<PhysicalPlan<'a>> = Vec::new();
+		let mut stack: Vec<PhysicalPlan> = Vec::new();
 		for plan in logical {
 			match plan {
 				LogicalPlan::Aggregate(aggregate) => {
@@ -78,31 +78,31 @@ impl Compiler {
 				}
 
 				LogicalPlan::CreateTable(create) => {
-					stack.push(Self::compile_create_table(rx, create)?);
+					stack.push(Self::compile_create_table(rx, create).await?);
 				}
 
 				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(Self::compile_create_ringbuffer(rx, create)?);
+					stack.push(Self::compile_create_ringbuffer(rx, create).await?);
 				}
 
 				LogicalPlan::CreateFlow(create) => {
-					stack.push(Self::compile_create_flow(rx, create)?);
+					stack.push(Box::pin(Self::compile_create_flow(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateDeferredView(create) => {
-					stack.push(Self::compile_create_deferred(rx, create)?);
+					stack.push(Box::pin(Self::compile_create_deferred(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateTransactionalView(create) => {
-					stack.push(Self::compile_create_transactional(rx, create)?);
+					stack.push(Box::pin(Self::compile_create_transactional(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateDictionary(create) => {
-					stack.push(Self::compile_create_dictionary(rx, create)?);
+					stack.push(Self::compile_create_dictionary(rx, create).await?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
-					stack.push(Self::compile_alter_sequence(rx, alter)?);
+					stack.push(Self::compile_alter_sequence(rx, alter).await?);
 				}
 
 				LogicalPlan::AlterTable(alter) => {
@@ -114,7 +114,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::AlterFlow(alter) => {
-					stack.push(Self::compile_alter_flow(rx, alter)?);
+					stack.push(Self::compile_alter_flow(rx, alter).await?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -198,7 +198,8 @@ impl Compiler {
 					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
-						let sub_plan = Self::compile(rx, vec![*delete_input])?
+						let sub_plan = Box::pin(Self::compile(rx, vec![*delete_input]))
+							.await?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -218,16 +219,18 @@ impl Compiler {
 							.map(|n| n.text())
 							.unwrap_or("default");
 						let namespace_def =
-							CatalogStore::find_namespace_by_name(rx, namespace_name)?
+							CatalogStore::find_namespace_by_name(rx, namespace_name)
+								.await?
 								.unwrap();
 						let Some(table_def) = CatalogStore::find_table_by_name(
 							rx,
 							namespace_def.id,
 							table_id.name.text(),
-						)?
+						)
+						.await?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone().into_owned(),
+								table_id.name.clone(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
@@ -235,7 +238,7 @@ impl Compiler {
 
 						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
 							use reifydb_type::Fragment;
-							Fragment::owned_internal(namespace_def.name.clone())
+							Fragment::internal(namespace_def.name.clone())
 						});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
@@ -259,7 +262,8 @@ impl Compiler {
 					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
-						let sub_plan = Self::compile(rx, vec![*delete_input])?
+						let sub_plan = Box::pin(Self::compile(rx, vec![*delete_input]))
+							.await?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
 					} else {
@@ -274,16 +278,18 @@ impl Compiler {
 					let ringbuffer_id = delete.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+						.await?
+						.unwrap();
 					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
 						ringbuffer_id.name.text(),
-					)?
+					)
+					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
@@ -291,7 +297,7 @@ impl Compiler {
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
-						Fragment::owned_internal(namespace_def.name.clone())
+						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
@@ -312,34 +318,33 @@ impl Compiler {
 					// Resolve the table
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
-					let table_id = insert.target.clone();
+					let table = insert.target.clone();
 					let namespace_name =
-						table_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+						table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+						.await?
+						.unwrap();
 					let Some(table_def) = CatalogStore::find_table_by_name(
 						rx,
 						namespace_def.id,
-						table_id.name.text(),
-					)?
+						table.name.text(),
+					)
+					.await?
 					else {
 						return_error!(table_not_found(
-							table_id.name.clone().into_owned(),
+							table.name.clone(),
 							&namespace_def.name,
-							table_id.name.text()
+							table.name.text()
 						));
 					};
 
-					let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = table.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
-						Fragment::owned_internal(namespace_def.name.clone())
+						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
-					let target = ResolvedTable::new(
-						table_id.name.clone(),
-						resolved_namespace,
-						table_def,
-					);
+					let target =
+						ResolvedTable::new(table.name.clone(), resolved_namespace, table_def);
 
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: Box::new(input),
@@ -358,16 +363,18 @@ impl Compiler {
 					let ringbuffer_id = insert_rb.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+						.await?
+						.unwrap();
 					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
 						ringbuffer_id.name.text(),
-					)?
+					)
+					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
@@ -375,7 +382,7 @@ impl Compiler {
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
-						Fragment::owned_internal(namespace_def.name.clone())
+						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
@@ -397,16 +404,18 @@ impl Compiler {
 					let dictionary_id = insert_dict.target.clone();
 					let namespace_name =
 						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+						.await?
+						.unwrap();
 					let Some(dictionary_def) = CatalogStore::find_dictionary_by_name(
 						rx,
 						namespace_def.id,
 						dictionary_id.name.text(),
-					)?
+					)
+					.await?
 					else {
 						return_error!(dictionary_not_found(
-							dictionary_id.name.clone().into_owned(),
+							dictionary_id.name.clone(),
 							&namespace_def.name,
 							dictionary_id.name.text()
 						));
@@ -414,7 +423,7 @@ impl Compiler {
 
 					let namespace_id = dictionary_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
-						Fragment::owned_internal(namespace_def.name.clone())
+						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedDictionary::new(
@@ -436,7 +445,8 @@ impl Compiler {
 					let input = if let Some(update_input) = update.input {
 						// Recursively compile
 						// the input pipeline
-						let sub_plan = Self::compile(rx, vec![*update_input])?
+						let sub_plan = Box::pin(Self::compile(rx, vec![*update_input]))
+							.await?
 							.expect("Update input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -455,16 +465,18 @@ impl Compiler {
 							.map(|n| n.text())
 							.unwrap_or("default");
 						let namespace_def =
-							CatalogStore::find_namespace_by_name(rx, namespace_name)?
+							CatalogStore::find_namespace_by_name(rx, namespace_name)
+								.await?
 								.unwrap();
 						let Some(table_def) = CatalogStore::find_table_by_name(
 							rx,
 							namespace_def.id,
 							table_id.name.text(),
-						)?
+						)
+						.await?
 						else {
 							return_error!(table_not_found(
-								table_id.name.clone().into_owned(),
+								table_id.name.clone(),
 								&namespace_def.name,
 								table_id.name.text()
 							));
@@ -472,7 +484,7 @@ impl Compiler {
 
 						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
 							use reifydb_type::Fragment;
-							Fragment::owned_internal(namespace_def.name.clone())
+							Fragment::internal(namespace_def.name.clone())
 						});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
@@ -498,7 +510,8 @@ impl Compiler {
 					let input = if let Some(update_input) = update_rb.input {
 						// Recursively compile
 						// the input pipeline
-						let sub_plan = Self::compile(rx, vec![*update_input])?
+						let sub_plan = Box::pin(Self::compile(rx, vec![*update_input]))
+							.await?
 							.expect("UpdateRingBuffer input must produce a plan");
 						Box::new(sub_plan)
 					} else {
@@ -513,16 +526,18 @@ impl Compiler {
 					let ringbuffer_id = update_rb.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+						.await?
+						.unwrap();
 					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
 						ringbuffer_id.name.text(),
-					)?
+					)
+					.await?
 					else {
 						return_error!(ringbuffer_not_found(
-							ringbuffer_id.name.clone().into_owned(),
+							ringbuffer_id.name.clone(),
 							&namespace_def.name,
 							ringbuffer_id.name.text()
 						));
@@ -530,7 +545,7 @@ impl Compiler {
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
-						Fragment::owned_internal(namespace_def.name.clone())
+						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
@@ -547,7 +562,7 @@ impl Compiler {
 
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Self::compile(rx, join.with)?.unwrap();
+					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -558,7 +573,7 @@ impl Compiler {
 
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Self::compile(rx, join.with)?.unwrap();
+					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -569,7 +584,7 @@ impl Compiler {
 
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Self::compile(rx, join.with)?.unwrap();
+					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -580,7 +595,7 @@ impl Compiler {
 
 				LogicalPlan::Merge(merge) => {
 					let left = stack.pop().unwrap();
-					let right = Self::compile(rx, merge.with)?.unwrap();
+					let right = Box::pin(Self::compile(rx, merge.with)).await?.unwrap();
 					stack.push(PhysicalPlan::Merge(MergeNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -606,7 +621,7 @@ impl Compiler {
 						.map(|col| {
 							// Create a placeholder resolved column
 							let namespace = ResolvedNamespace::new(
-								Fragment::owned_internal("_context"),
+								Fragment::internal("_context"),
 								NamespaceDef {
 									id: NamespaceId(1),
 									name: "_context".to_string(),
@@ -622,7 +637,7 @@ impl Compiler {
 							};
 
 							let resolved_table = ResolvedTable::new(
-								Fragment::owned_internal("_context"),
+								Fragment::internal("_context"),
 								namespace,
 								table_def,
 							);
@@ -710,8 +725,8 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: DeferredView shares the same physical operator as View
-							// We need to convert it to ResolvedView
+							// Note: DeferredView shares the same physical operator
+							// as View We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
@@ -726,8 +741,9 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: TransactionalView shares the same physical operator as
-							// View We need to convert it to ResolvedView
+							// Note: TransactionalView shares the same physical
+							// operator as View We need to convert it to
+							// ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
@@ -812,7 +828,7 @@ impl Compiler {
 					// Compile the pipeline of operations
 					// This ensures they all share the same
 					// stack
-					let pipeline_result = Self::compile(rx, pipeline.steps)?;
+					let pipeline_result = Box::pin(Self::compile(rx, pipeline.steps)).await?;
 					if let Some(result) = pipeline_result {
 						stack.push(result);
 					}
@@ -826,7 +842,8 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									Self::compile(rx, vec![logical_plan])?
+									Box::pin(Self::compile(rx, vec![logical_plan]))
+										.await?
 								{
 									physical_plans.push(physical_plan);
 								}
@@ -850,7 +867,8 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									Self::compile(rx, vec![logical_plan])?
+									Box::pin(Self::compile(rx, vec![logical_plan]))
+										.await?
 								{
 									physical_plans.push(physical_plan);
 								}
@@ -883,7 +901,7 @@ impl Compiler {
 				LogicalPlan::Conditional(conditional_node) => {
 					// Compile the then branch
 					let then_branch = if let Some(then_plan) =
-						Self::compile(rx, vec![*conditional_node.then_branch])?
+						Box::pin(Self::compile(rx, vec![*conditional_node.then_branch])).await?
 					{
 						Box::new(then_plan)
 					} else {
@@ -898,7 +916,7 @@ impl Compiler {
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
 						let then_branch = if let Some(plan) =
-							Self::compile(rx, vec![*else_if.then_branch])?
+							Box::pin(Self::compile(rx, vec![*else_if.then_branch])).await?
 						{
 							Box::new(plan)
 						} else {
@@ -916,7 +934,9 @@ impl Compiler {
 
 					// Compile optional else branch
 					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-						if let Some(plan) = Self::compile(rx, vec![*else_logical])? {
+						if let Some(plan) =
+							Box::pin(Self::compile(rx, vec![*else_logical])).await?
+						{
 							Some(Box::new(plan))
 						} else {
 							return Err(reifydb_type::Error(internal_error(
@@ -938,15 +958,16 @@ impl Compiler {
 
 				LogicalPlan::Scalarize(scalarize_node) => {
 					// Compile the input plan
-					let input_plan =
-						if let Some(plan) = Self::compile(rx, vec![*scalarize_node.input])? {
-							Box::new(plan)
-						} else {
-							return Err(reifydb_type::Error(internal_error(
-								"compile_physical".to_string(),
-								"Failed to compile scalarize input".to_string(),
-							)));
-						};
+					let input_plan = if let Some(plan) =
+						Box::pin(Self::compile(rx, vec![*scalarize_node.input])).await?
+					{
+						Box::new(plan)
+					} else {
+						return Err(reifydb_type::Error(internal_error(
+							"compile_physical".to_string(),
+							"Failed to compile scalarize input".to_string(),
+						)));
+					};
 
 					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
 						input: input_plan,
@@ -970,143 +991,143 @@ impl Compiler {
 }
 
 #[derive(Debug, Clone)]
-pub enum PhysicalPlan<'a> {
-	CreateDeferredView(CreateDeferredViewNode<'a>),
-	CreateTransactionalView(CreateTransactionalViewNode<'a>),
-	CreateNamespace(CreateNamespaceNode<'a>),
-	CreateTable(CreateTableNode<'a>),
-	CreateRingBuffer(CreateRingBufferNode<'a>),
-	CreateFlow(CreateFlowNode<'a>),
-	CreateDictionary(CreateDictionaryNode<'a>),
+pub enum PhysicalPlan {
+	CreateDeferredView(CreateDeferredViewNode),
+	CreateTransactionalView(CreateTransactionalViewNode),
+	CreateNamespace(CreateNamespaceNode),
+	CreateTable(CreateTableNode),
+	CreateRingBuffer(CreateRingBufferNode),
+	CreateFlow(CreateFlowNode),
+	CreateDictionary(CreateDictionaryNode),
 	// Alter
-	AlterSequence(AlterSequenceNode<'a>),
-	AlterTable(AlterTableNode<'a>),
-	AlterView(AlterViewNode<'a>),
-	AlterFlow(AlterFlowNode<'a>),
+	AlterSequence(AlterSequenceNode),
+	AlterTable(AlterTableNode),
+	AlterView(AlterViewNode),
+	AlterFlow(AlterFlowNode),
 	// Mutate
-	Delete(DeleteTableNode<'a>),
-	DeleteRingBuffer(DeleteRingBufferNode<'a>),
-	InsertTable(InsertTableNode<'a>),
-	InsertRingBuffer(InsertRingBufferNode<'a>),
-	InsertDictionary(InsertDictionaryNode<'a>),
-	Update(UpdateTableNode<'a>),
-	UpdateRingBuffer(UpdateRingBufferNode<'a>),
+	Delete(DeleteTableNode),
+	DeleteRingBuffer(DeleteRingBufferNode),
+	InsertTable(InsertTableNode),
+	InsertRingBuffer(InsertRingBufferNode),
+	InsertDictionary(InsertDictionaryNode),
+	Update(UpdateTableNode),
+	UpdateRingBuffer(UpdateRingBufferNode),
 	// Variable assignment
-	Declare(DeclareNode<'a>),
-	Assign(AssignNode<'a>),
+	Declare(DeclareNode),
+	Assign(AssignNode),
 	// Variable resolution
-	Variable(VariableNode<'a>),
+	Variable(VariableNode),
 	Environment(EnvironmentNode),
 	// Control flow
-	Conditional(ConditionalNode<'a>),
+	Conditional(ConditionalNode),
 
 	// Query
-	Aggregate(AggregateNode<'a>),
-	Distinct(DistinctNode<'a>),
-	Filter(FilterNode<'a>),
-	IndexScan(IndexScanNode<'a>),
+	Aggregate(AggregateNode),
+	Distinct(DistinctNode),
+	Filter(FilterNode),
+	IndexScan(IndexScanNode),
 	// Row-number optimized access
-	RowPointLookup(RowPointLookupNode<'a>),
-	RowListLookup(RowListLookupNode<'a>),
-	RowRangeScan(RowRangeScanNode<'a>),
-	JoinInner(JoinInnerNode<'a>),
-	JoinLeft(JoinLeftNode<'a>),
-	JoinNatural(JoinNaturalNode<'a>),
-	Merge(MergeNode<'a>),
-	Take(TakeNode<'a>),
-	Sort(SortNode<'a>),
-	Map(MapNode<'a>),
-	Extend(ExtendNode<'a>),
-	Apply(ApplyNode<'a>),
-	InlineData(InlineDataNode<'a>),
-	TableScan(TableScanNode<'a>),
-	TableVirtualScan(TableVirtualScanNode<'a>),
-	ViewScan(ViewScanNode<'a>),
-	RingBufferScan(RingBufferScanNode<'a>),
-	FlowScan(FlowScanNode<'a>),
-	DictionaryScan(DictionaryScanNode<'a>),
-	Generator(GeneratorNode<'a>),
-	Window(WindowNode<'a>),
+	RowPointLookup(RowPointLookupNode),
+	RowListLookup(RowListLookupNode),
+	RowRangeScan(RowRangeScanNode),
+	JoinInner(JoinInnerNode),
+	JoinLeft(JoinLeftNode),
+	JoinNatural(JoinNaturalNode),
+	Merge(MergeNode),
+	Take(TakeNode),
+	Sort(SortNode),
+	Map(MapNode),
+	Extend(ExtendNode),
+	Apply(ApplyNode),
+	InlineData(InlineDataNode),
+	TableScan(TableScanNode),
+	TableVirtualScan(TableVirtualScanNode),
+	ViewScan(ViewScanNode),
+	RingBufferScan(RingBufferScanNode),
+	FlowScan(FlowScanNode),
+	DictionaryScan(DictionaryScanNode),
+	Generator(GeneratorNode),
+	Window(WindowNode),
 	// Auto-scalarization for 1x1 frames
-	Scalarize(ScalarizeNode<'a>),
+	Scalarize(ScalarizeNode),
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDeferredViewNode<'a> {
+pub struct CreateDeferredViewNode {
 	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
-	pub view: Fragment<'a>,
+	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Box<PhysicalPlan<'a>>,
-	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+	pub as_clause: Box<PhysicalPlan>,
+	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateFlowNode<'a> {
+pub struct CreateFlowNode {
 	pub namespace: NamespaceDef,
-	pub flow: Fragment<'a>,
+	pub flow: Fragment,
 	pub if_not_exists: bool,
-	pub as_clause: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTransactionalViewNode<'a> {
+pub struct CreateTransactionalViewNode {
 	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
-	pub view: Fragment<'a>,
+	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub as_clause: Box<PhysicalPlan<'a>>,
-	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+	pub as_clause: Box<PhysicalPlan>,
+	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateNamespaceNode<'a> {
-	pub namespace: Fragment<'a>,
+pub struct CreateNamespaceNode {
+	pub namespace: Fragment,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTableNode<'a> {
-	pub namespace: ResolvedNamespace<'a>,
-	pub table: Fragment<'a>,
+pub struct CreateTableNode {
+	pub namespace: ResolvedNamespace,
+	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateRingBufferNode<'a> {
-	pub namespace: ResolvedNamespace<'a>,
-	pub ringbuffer: Fragment<'a>,
+pub struct CreateRingBufferNode {
+	pub namespace: ResolvedNamespace,
+	pub ringbuffer: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
-	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDictionaryNode<'a> {
+pub struct CreateDictionaryNode {
 	pub namespace: NamespaceDef,
-	pub dictionary: Fragment<'a>,
+	pub dictionary: Fragment,
 	pub if_not_exists: bool,
 	pub value_type: Type,
 	pub id_type: Type,
 }
 
 #[derive(Debug, Clone)]
-pub struct AlterSequenceNode<'a> {
-	pub sequence: ResolvedSequence<'a>,
-	pub column: ResolvedColumn<'a>,
-	pub value: Expression<'a>,
+pub struct AlterSequenceNode {
+	pub sequence: ResolvedSequence,
+	pub column: ResolvedColumn,
+	pub value: Expression,
 }
 
 #[derive(Debug, Clone)]
-pub enum LetValue<'a> {
-	Expression(Expression<'a>),       // scalar/column expression
-	Statement(Vec<PhysicalPlan<'a>>), // query pipeline as physical plans
+pub enum LetValue {
+	Expression(Expression),       // scalar/column expression
+	Statement(Vec<PhysicalPlan>), // query pipeline as physical plans
 }
 
-impl<'a> std::fmt::Display for LetValue<'a> {
+impl std::fmt::Display for LetValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			LetValue::Expression(expr) => write!(f, "{}", expr),
@@ -1116,19 +1137,19 @@ impl<'a> std::fmt::Display for LetValue<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeclareNode<'a> {
-	pub name: Fragment<'a>,
-	pub value: LetValue<'a>,
+pub struct DeclareNode {
+	pub name: Fragment,
+	pub value: LetValue,
 	pub mutable: bool,
 }
 
 #[derive(Debug, Clone)]
-pub enum AssignValue<'a> {
-	Expression(Expression<'a>),       // scalar/column expression
-	Statement(Vec<PhysicalPlan<'a>>), // query pipeline as physical plans
+pub enum AssignValue {
+	Expression(Expression),       // scalar/column expression
+	Statement(Vec<PhysicalPlan>), // query pipeline as physical plans
 }
 
-impl<'a> std::fmt::Display for AssignValue<'a> {
+impl std::fmt::Display for AssignValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			AssignValue::Expression(expr) => write!(f, "{}", expr),
@@ -1138,225 +1159,225 @@ impl<'a> std::fmt::Display for AssignValue<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AssignNode<'a> {
-	pub name: Fragment<'a>,
-	pub value: AssignValue<'a>,
+pub struct AssignNode {
+	pub name: Fragment,
+	pub value: AssignValue,
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableNode<'a> {
-	pub variable_expr: VariableExpression<'a>,
+pub struct VariableNode {
+	pub variable_expr: VariableExpression,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnvironmentNode {}
 
 #[derive(Debug, Clone)]
-pub struct ConditionalNode<'a> {
-	pub condition: Expression<'a>,
-	pub then_branch: Box<PhysicalPlan<'a>>,
-	pub else_ifs: Vec<ElseIfBranch<'a>>,
-	pub else_branch: Option<Box<PhysicalPlan<'a>>>,
+pub struct ConditionalNode {
+	pub condition: Expression,
+	pub then_branch: Box<PhysicalPlan>,
+	pub else_ifs: Vec<ElseIfBranch>,
+	pub else_branch: Option<Box<PhysicalPlan>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ElseIfBranch<'a> {
-	pub condition: Expression<'a>,
-	pub then_branch: Box<PhysicalPlan<'a>>,
+pub struct ElseIfBranch {
+	pub condition: Expression,
+	pub then_branch: Box<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ScalarizeNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub fragment: Fragment<'a>,
+pub struct ScalarizeNode {
+	pub input: Box<PhysicalPlan>,
+	pub fragment: Fragment,
 }
 
 #[derive(Debug, Clone)]
-pub struct AggregateNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub by: Vec<Expression<'a>>,
-	pub map: Vec<Expression<'a>>,
+pub struct AggregateNode {
+	pub input: Box<PhysicalPlan>,
+	pub by: Vec<Expression>,
+	pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DistinctNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub columns: Vec<ResolvedColumn<'a>>,
+pub struct DistinctNode {
+	pub input: Box<PhysicalPlan>,
+	pub columns: Vec<ResolvedColumn>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FilterNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub conditions: Vec<Expression<'a>>,
+pub struct FilterNode {
+	pub input: Box<PhysicalPlan>,
+	pub conditions: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DeleteTableNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub target: Option<ResolvedTable<'a>>,
+pub struct DeleteTableNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub target: Option<ResolvedTable>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertTableNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub target: ResolvedTable<'a>,
+pub struct InsertTableNode {
+	pub input: Box<PhysicalPlan>,
+	pub target: ResolvedTable,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertRingBufferNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub target: ResolvedRingBuffer<'a>,
+pub struct InsertRingBufferNode {
+	pub input: Box<PhysicalPlan>,
+	pub target: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertDictionaryNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub target: ResolvedDictionary<'a>,
+pub struct InsertDictionaryNode {
+	pub input: Box<PhysicalPlan>,
+	pub target: ResolvedDictionary,
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateTableNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub target: Option<ResolvedTable<'a>>,
+pub struct UpdateTableNode {
+	pub input: Box<PhysicalPlan>,
+	pub target: Option<ResolvedTable>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DeleteRingBufferNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub target: ResolvedRingBuffer<'a>,
+pub struct DeleteRingBufferNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub target: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateRingBufferNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
-	pub target: ResolvedRingBuffer<'a>,
+pub struct UpdateRingBufferNode {
+	pub input: Box<PhysicalPlan>,
+	pub target: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinInnerNode<'a> {
-	pub left: Box<PhysicalPlan<'a>>,
-	pub right: Box<PhysicalPlan<'a>>,
-	pub on: Vec<Expression<'a>>,
-	pub alias: Option<Fragment<'a>>,
+pub struct JoinInnerNode {
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinLeftNode<'a> {
-	pub left: Box<PhysicalPlan<'a>>,
-	pub right: Box<PhysicalPlan<'a>>,
-	pub on: Vec<Expression<'a>>,
-	pub alias: Option<Fragment<'a>>,
+pub struct JoinLeftNode {
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
+	pub on: Vec<Expression>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
-pub struct JoinNaturalNode<'a> {
-	pub left: Box<PhysicalPlan<'a>>,
-	pub right: Box<PhysicalPlan<'a>>,
+pub struct JoinNaturalNode {
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
 	pub join_type: JoinType,
-	pub alias: Option<Fragment<'a>>,
+	pub alias: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
-pub struct MergeNode<'a> {
-	pub left: Box<PhysicalPlan<'a>>,
-	pub right: Box<PhysicalPlan<'a>>,
+pub struct MergeNode {
+	pub left: Box<PhysicalPlan>,
+	pub right: Box<PhysicalPlan>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SortNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
+pub struct SortNode {
+	pub input: Box<PhysicalPlan>,
 	pub by: Vec<SortKey>,
 }
 
 #[derive(Debug, Clone)]
-pub struct MapNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub map: Vec<Expression<'a>>,
+pub struct MapNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub map: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ExtendNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub extend: Vec<Expression<'a>>,
+pub struct ExtendNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub extend: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ApplyNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub operator: Fragment<'a>, // FIXME becomes OperatorIdentifier
-	pub expressions: Vec<Expression<'a>>,
+pub struct ApplyNode {
+	pub input: Option<Box<PhysicalPlan>>,
+	pub operator: Fragment, // FIXME becomes OperatorIdentifier
+	pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InlineDataNode<'a> {
-	pub rows: Vec<Vec<AliasExpression<'a>>>,
+pub struct InlineDataNode {
+	pub rows: Vec<Vec<AliasExpression>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct IndexScanNode<'a> {
-	pub source: ResolvedTable<'a>,
+pub struct IndexScanNode {
+	pub source: ResolvedTable,
 	pub index_name: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableScanNode<'a> {
-	pub source: ResolvedTable<'a>,
+pub struct TableScanNode {
+	pub source: ResolvedTable,
 }
 
 #[derive(Debug, Clone)]
-pub struct ViewScanNode<'a> {
-	pub source: ResolvedView<'a>,
+pub struct ViewScanNode {
+	pub source: ResolvedView,
 }
 
 #[derive(Debug, Clone)]
-pub struct RingBufferScanNode<'a> {
-	pub source: ResolvedRingBuffer<'a>,
+pub struct RingBufferScanNode {
+	pub source: ResolvedRingBuffer,
 }
 
 #[derive(Debug, Clone)]
-pub struct FlowScanNode<'a> {
-	pub source: ResolvedFlow<'a>,
+pub struct FlowScanNode {
+	pub source: ResolvedFlow,
 }
 
 #[derive(Debug, Clone)]
-pub struct DictionaryScanNode<'a> {
-	pub source: ResolvedDictionary<'a>,
+pub struct DictionaryScanNode {
+	pub source: ResolvedDictionary,
 }
 
 #[derive(Debug, Clone)]
-pub struct GeneratorNode<'a> {
-	pub name: Fragment<'a>,
-	pub expressions: Vec<Expression<'a>>,
+pub struct GeneratorNode {
+	pub name: Fragment,
+	pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableVirtualScanNode<'a> {
-	pub source: ResolvedTableVirtual<'a>,
-	pub pushdown_context: Option<TableVirtualPushdownContext<'a>>,
+pub struct TableVirtualScanNode {
+	pub source: ResolvedTableVirtual,
+	pub pushdown_context: Option<TableVirtualPushdownContext>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableVirtualPushdownContext<'a> {
-	pub filters: Vec<Expression<'a>>,
-	pub projections: Vec<Expression<'a>>,
+pub struct TableVirtualPushdownContext {
+	pub filters: Vec<Expression>,
+	pub projections: Vec<Expression>,
 	pub order_by: Vec<SortKey>,
 	pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub struct TakeNode<'a> {
-	pub input: Box<PhysicalPlan<'a>>,
+pub struct TakeNode {
+	pub input: Box<PhysicalPlan>,
 	pub take: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct WindowNode<'a> {
-	pub input: Option<Box<PhysicalPlan<'a>>>,
+pub struct WindowNode {
+	pub input: Option<Box<PhysicalPlan>>,
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,
-	pub group_by: Vec<Expression<'a>>,
-	pub aggregations: Vec<Expression<'a>>,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
 	pub max_window_age: Option<std::time::Duration>,
@@ -1364,27 +1385,27 @@ pub struct WindowNode<'a> {
 
 /// O(1) point lookup by row number: `filter rownum == N`
 #[derive(Debug, Clone)]
-pub struct RowPointLookupNode<'a> {
+pub struct RowPointLookupNode {
 	/// The source to look up in (table, ring buffer, etc.)
-	pub source: ResolvedSource<'a>,
+	pub source: ResolvedSource,
 	/// The row number to fetch
 	pub row_number: u64,
 }
 
 /// O(k) list lookup by row numbers: `filter rownum in [a, b, c]`
 #[derive(Debug, Clone)]
-pub struct RowListLookupNode<'a> {
+pub struct RowListLookupNode {
 	/// The source to look up in
-	pub source: ResolvedSource<'a>,
+	pub source: ResolvedSource,
 	/// The row numbers to fetch
 	pub row_numbers: Vec<u64>,
 }
 
 /// Range scan by row numbers: `filter rownum between X and Y`
 #[derive(Debug, Clone)]
-pub struct RowRangeScanNode<'a> {
+pub struct RowRangeScanNode {
 	/// The source to scan
-	pub source: ResolvedSource<'a>,
+	pub source: ResolvedSource,
 	/// Start of the range (inclusive)
 	pub start: u64,
 	/// End of the range (inclusive)

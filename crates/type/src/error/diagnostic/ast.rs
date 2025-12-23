@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// Generic tokenizeer error with custom message
 pub fn tokenize_error(message: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn tokenize_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("tokenizer error: {}", message),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check syntax and token format".to_string()),
 		notes: vec![],
@@ -25,7 +25,7 @@ pub fn unexpected_eof_error() -> Diagnostic {
 		statement: None,
 		message: "Unexpected end of file".to_string(),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Complete the statement".to_string()),
 		notes: vec![],
@@ -34,8 +34,8 @@ pub fn unexpected_eof_error() -> Diagnostic {
 }
 
 /// Error for when we expect an identifier token specifically  
-pub fn expected_identifier_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn expected_identifier_error(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let label = Some(format!("found `{}`", value));
 
@@ -53,8 +53,8 @@ pub fn expected_identifier_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnos
 }
 
 /// Error for invalid policy tokens
-pub fn invalid_policy_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_policy_error(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Invalid policy token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -73,8 +73,8 @@ pub fn invalid_policy_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 }
 
 /// Error for unexpected tokens
-pub fn unexpected_token_error<'a>(expected: &str, fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unexpected_token_error(expected: &str, fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Unexpected token: expected {}, got {}", expected, value);
 	let label = Some(format!("found `{}`", value));
@@ -92,8 +92,8 @@ pub fn unexpected_token_error<'a>(expected: &str, fragment: impl IntoFragment<'a
 }
 
 /// Error for unsupported tokens
-pub fn unsupported_token_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unsupported_token_error(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Unsupported token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -112,8 +112,8 @@ pub fn unsupported_token_error<'a>(fragment: impl IntoFragment<'a>) -> Diagnosti
 }
 
 /// Multiple expressions require curly braces
-pub fn multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let keyword = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_007".to_string(),
@@ -129,8 +129,8 @@ pub fn multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) 
 }
 
 /// Type not found error
-pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unrecognized_type(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let type_name = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_008".to_string(),
@@ -146,8 +146,8 @@ pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 }
 
 /// Unsupported AST operator in logical plan compilation
-pub fn unsupported_ast_node<'a>(fragment: impl IntoFragment<'a>, node_type: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unsupported_ast_node(fragment: Fragment, node_type: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "AST_009".to_string(),
 		statement: None,
@@ -167,7 +167,7 @@ pub fn empty_pipeline_error() -> Diagnostic {
 		code: "AST_010".to_string(),
 		statement: None,
 		message: "empty query pipeline".to_string(),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("A query pipeline must contain at least one operation".to_string()),
 		column: None,

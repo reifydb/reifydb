@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{EncodedKey, Error, Row, interface::FlowNodeId, util::encoding::keycode::KeySerializer};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
@@ -77,12 +78,13 @@ impl MergeOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for MergeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -104,7 +106,8 @@ impl Operator for MergeOperator {
 					let composite_key = Self::make_composite_key(parent_index as u8, post.number);
 					let (output_row_number, _is_new) = self
 						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)?;
+						.get_or_create_row_number(txn, &composite_key)
+						.await?;
 
 					result_diffs.push(FlowDiff::Insert {
 						post: Row {
@@ -122,7 +125,8 @@ impl Operator for MergeOperator {
 					let composite_key = Self::make_composite_key(parent_index as u8, pre.number);
 					let (output_row_number, _) = self
 						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)?;
+						.get_or_create_row_number(txn, &composite_key)
+						.await?;
 
 					result_diffs.push(FlowDiff::Update {
 						pre: Row {
@@ -143,7 +147,8 @@ impl Operator for MergeOperator {
 					let composite_key = Self::make_composite_key(parent_index as u8, pre.number);
 					let (output_row_number, _) = self
 						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)?;
+						.get_or_create_row_number(txn, &composite_key)
+						.await?;
 
 					result_diffs.push(FlowDiff::Remove {
 						pre: Row {
@@ -159,12 +164,12 @@ impl Operator for MergeOperator {
 		Ok(FlowChange::internal(self.node, change.version, result_diffs))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		let mut result = Vec::with_capacity(rows.len());
 
 		for &row_number in rows {
 			// Reverse lookup: output row number -> composite key
-			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
+			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number).await? else {
 				result.push(None);
 				continue;
 			};
@@ -182,7 +187,7 @@ impl Operator for MergeOperator {
 			}
 
 			// Delegate to parent operator
-			let parent_rows = self.parents[parent_index].get_rows(txn, &[source_row_number])?;
+			let parent_rows = self.parents[parent_index].get_rows(txn, &[source_row_number]).await?;
 
 			if let Some(Some(mut row)) = parent_rows.into_iter().next() {
 				// Replace row number with merge output row number

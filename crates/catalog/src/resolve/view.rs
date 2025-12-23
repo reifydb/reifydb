@@ -10,13 +10,13 @@ use crate::{
 };
 
 /// Resolve a view ID to a fully resolved view with namespace and identifiers
-pub fn resolve_view<'a, T>(txn: &mut T, view_id: ViewId) -> crate::Result<ResolvedView<'a>>
+pub async fn resolve_view<T>(txn: &mut T, view_id: ViewId) -> crate::Result<ResolvedView>
 where
 	T: CatalogViewQueryOperations + CatalogNamespaceQueryOperations,
 {
-	let view_def = txn.get_view(view_id)?;
-	let resolved_namespace = resolve_namespace(txn, view_def.namespace)?;
-	let view_ident = Fragment::owned_internal(view_def.name.clone());
+	let view_def = txn.get_view(view_id).await?;
+	let resolved_namespace = resolve_namespace(txn, view_def.namespace).await?;
+	let view_ident = Fragment::internal(view_def.name.clone());
 
 	Ok(ResolvedView::new(view_ident, resolved_namespace, view_def))
 }

@@ -9,8 +9,8 @@ use serde::{
 };
 
 use crate::{
-	Blob, BorrowedFragment, OrderedF32, OrderedF64, Type, Value, parse_bool, parse_date, parse_datetime,
-	parse_decimal, parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
+	Blob, Fragment, OrderedF32, OrderedF64, Type, Value, parse_bool, parse_date, parse_datetime, parse_decimal,
+	parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
 	value::{
 		IdentityId,
 		number::{parse_primitive_int, parse_primitive_uint},
@@ -96,7 +96,7 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 
 	// Use the appropriate parse function based on type
 	// If parsing fails, return Value::Undefined
-	let fragment = BorrowedFragment::new_internal(str_val);
+	let fragment = Fragment::internal(str_val);
 
 	let parsed_value = match value_type {
 		Type::Boolean => parse_bool(fragment).map(Value::Boolean).unwrap_or(Value::Undefined),

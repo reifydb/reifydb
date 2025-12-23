@@ -8,6 +8,7 @@
 
 use std::any::Any;
 
+use async_trait::async_trait;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -138,12 +139,13 @@ impl HasVersion for ServerSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for ServerSubsystem {
 	fn name(&self) -> &'static str {
 		"Server"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.runtime.is_some() {
 			return Ok(());
@@ -161,7 +163,7 @@ impl Subsystem for ServerSubsystem {
 		// Create and start HTTP subsystem if configured
 		let http = if let Some(ref http_addr) = self.config.http_bind_addr {
 			let mut http = HttpSubsystem::new(http_addr.clone(), state.clone(), handle.clone());
-			http.start()?;
+			http.start().await?;
 			tracing::info!("HTTP server started on {}", http_addr);
 			Some(http)
 		} else {
@@ -171,7 +173,7 @@ impl Subsystem for ServerSubsystem {
 		// Create and start WebSocket subsystem if configured
 		let ws = if let Some(ref ws_addr) = self.config.ws_bind_addr {
 			let mut ws = WsSubsystem::new(ws_addr.clone(), state, handle);
-			ws.start()?;
+			ws.start().await?;
 			tracing::info!("WebSocket server started on {}", ws_addr);
 			Some(ws)
 		} else {
@@ -185,18 +187,18 @@ impl Subsystem for ServerSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		tracing::info!("Shutting down server subsystem");
 
 		// Shutdown WebSocket first (if enabled)
 		if let Some(ref mut ws) = self.ws_subsystem {
-			ws.shutdown()?;
+			ws.shutdown().await?;
 		}
 		self.ws_subsystem = None;
 
 		// Shutdown HTTP
 		if let Some(ref mut http) = self.http_subsystem {
-			http.shutdown()?;
+			http.shutdown().await?;
 		}
 		self.http_subsystem = None;
 
@@ -272,8 +274,9 @@ impl ServerSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for ServerSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let subsystem = ServerSubsystem::new(self.config, engine);
 		Ok(Box::new(subsystem))

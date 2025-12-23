@@ -1,67 +1,61 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::{FlowDef, FlowId, NamespaceId, QueryTransaction},
 	return_error,
 };
-use reifydb_type::{IntoFragment, diagnostic::catalog::flow_not_found};
+use reifydb_type::{Fragment, diagnostic::catalog::flow_not_found};
 use tracing::instrument;
 
 use crate::{CatalogStore, transaction::MaterializedCatalogTransaction};
 
-pub trait CatalogFlowQueryOperations {
-	fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>>;
+#[async_trait]
+pub trait CatalogFlowQueryOperations: Send {
+	async fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>>;
 
-	fn find_flow_by_name<'a>(
+	async fn find_flow_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<Option<FlowDef>>;
+
+	async fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef>;
+
+	async fn get_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> crate::Result<Option<FlowDef>>;
-
-	fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef>;
-
-	fn get_flow_by_name<'a>(
-		&mut self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<FlowDef>;
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogFlowQueryOperations for QT {
+#[async_trait]
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send> CatalogFlowQueryOperations for QT {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self))]
-	fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		CatalogStore::find_flow(self, id)
+	async fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>> {
+		CatalogStore::find_flow(self, id).await
 	}
 
 	#[instrument(name = "catalog::flow::find_by_name", level = "trace", skip(self, name))]
-	fn find_flow_by_name<'a>(
-		&mut self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> crate::Result<Option<FlowDef>> {
-		let name = name.into_fragment();
-		CatalogStore::find_flow_by_name(self, namespace, name.text())
+	async fn find_flow_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<Option<FlowDef>> {
+		CatalogStore::find_flow_by_name(self, namespace, name).await
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self))]
-	fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef> {
-		CatalogStore::get_flow(self, id)
+	async fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef> {
+		CatalogStore::get_flow(self, id).await
 	}
 
 	#[instrument(name = "catalog::flow::get_by_name", level = "trace", skip(self, name))]
-	fn get_flow_by_name<'a>(
+	async fn get_flow_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<FlowDef> {
-		let name = name.into_fragment();
+		let name = name.into();
 		let name_text = name.text().to_string();
-		let flow = self.find_flow_by_name(namespace, name.clone())?;
+		let flow = self.find_flow_by_name(namespace, name.text()).await?;
 		match flow {
 			Some(f) => Ok(f),
 			None => {
-				let namespace = CatalogStore::get_namespace(self, namespace)?;
+				let namespace = CatalogStore::get_namespace(self, namespace).await?;
 				return_error!(flow_not_found(name, &namespace.name, &name_text))
 			}
 		}

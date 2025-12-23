@@ -5,7 +5,7 @@ use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
 use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
 use reifydb_type::{
-	Value,
+	Fragment, Value,
 	diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		query::column_not_found,
@@ -16,31 +16,29 @@ use reifydb_type::{
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn alter_table<'a>(
+	pub(crate) async fn alter_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterTableNode,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		// Get namespace and table names from MaybeQualified type
 		let namespace_name = plan.node.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let table_name = plan.node.table.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-			let ns_fragment = plan.node.table.namespace.clone().unwrap_or_else(|| {
-				use reifydb_type::Fragment;
-				Fragment::owned_internal("default".to_string())
-			});
-			return_error!(namespace_not_found(Some(ns_fragment.into_owned()), namespace_name,));
+		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+			let ns_fragment = plan
+				.node
+				.table
+				.namespace
+				.clone()
+				.unwrap_or_else(|| Fragment::internal("default".to_string()));
+			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
 		// Find the table
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
-			return_error!(table_not_found(
-				plan.node.table.name.clone().into_owned(),
-				&namespace.name,
-				table_name,
-			));
+		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name).await? else {
+			return_error!(table_not_found(plan.node.table.name.clone(), &namespace.name, table_name,));
 		};
 
 		let mut results = Vec::new();
@@ -54,7 +52,7 @@ impl Executor {
 				} => {
 					// Get all columns for the table to
 					// validate and resolve column IDs
-					let table_columns = CatalogStore::list_columns(txn, table.id)?;
+					let table_columns = CatalogStore::list_columns(txn, table.id).await?;
 
 					let mut column_ids = Vec::new();
 					for alter_column in columns {
@@ -65,7 +63,7 @@ impl Executor {
 							table_columns.iter().find(|col| col.name == column_name)
 						else {
 							return_error!(column_not_found(
-								alter_column.column.name.clone().into_owned()
+								alter_column.column.name.clone()
 							));
 						};
 
@@ -78,7 +76,8 @@ impl Executor {
 							source: SourceId::Table(table.id),
 							column_ids,
 						},
-					)?;
+					)
+					.await?;
 
 					let pk_name = name
 						.map(|n| n.text().to_string())

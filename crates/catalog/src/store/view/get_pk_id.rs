@@ -8,8 +8,11 @@ use crate::{CatalogStore, store::view::layout::view};
 impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
-	pub fn get_view_pk_id(rx: &mut impl QueryTransaction, view_id: ViewId) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&ViewKey::encoded(view_id))? {
+	pub async fn get_view_pk_id(
+		rx: &mut impl QueryTransaction,
+		view_id: ViewId,
+	) -> crate::Result<Option<PrimaryKeyId>> {
+		let multi = match rx.get(&ViewKey::encoded(view_id)).await? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -37,10 +40,10 @@ mod tests {
 		view::{ViewColumnToCreate, ViewToCreate},
 	};
 
-	#[test]
-	fn test_get_view_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_get_view_pk_id_with_primary_key() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create a view
 		let view = CatalogStore::create_deferred_view(
@@ -56,10 +59,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut txn, view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, view.id).await.unwrap();
 
 		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
@@ -69,19 +73,22 @@ mod tests {
 				column_ids: vec![columns[0].id],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id =
-			CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap().expect("Primary key ID should exist");
+		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id)
+			.await
+			.unwrap()
+			.expect("Primary key ID should exist");
 
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
 
-	#[test]
-	fn test_get_view_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_get_view_pk_id_without_primary_key() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create a view
 		let view = CatalogStore::create_deferred_view(
@@ -97,20 +104,21 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut txn, view.id).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}
 
-	#[test]
-	fn test_get_view_pk_id_nonexistent_view() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_get_view_pk_id_nonexistent_view() {
+		let mut txn = create_test_command_transaction().await;
 
 		// Get the primary key ID for non-existent view - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut txn, ViewId(999)).await.unwrap();
 
 		assert!(pk_id.is_none());
 	}

@@ -14,11 +14,7 @@ use reifydb_type::diagnostic::operator::{
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn xor<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &XorExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn xor(&self, ctx: &ColumnEvaluationContext, expr: &XorExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &expr.left)?;
 		let right = self.evaluate(ctx, &expr.right)?;
 

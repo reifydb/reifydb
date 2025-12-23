@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	Row,
 	interface::{EncodableKey, FlowNodeId, ResolvedView, RowKey, SourceId},
@@ -16,11 +17,11 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 pub struct SinkViewOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	view: ResolvedView<'static>,
+	view: ResolvedView,
 }
 
 impl SinkViewOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView<'static>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView) -> Self {
 		Self {
 			parent,
 			node,
@@ -29,12 +30,13 @@ impl SinkViewOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SinkViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -104,7 +106,7 @@ impl Operator for SinkViewOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		unreachable!()
 	}
 }

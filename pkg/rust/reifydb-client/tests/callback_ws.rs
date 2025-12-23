@@ -19,7 +19,7 @@ use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
 	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{
 	WsCallbackSession, WsClient,
@@ -28,6 +28,7 @@ use reifydb_client::{
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use thread::sleep;
+use tokio::runtime::Runtime;
 
 use crate::common::create_server_instance;
 
@@ -37,16 +38,21 @@ pub struct CallbackRunner {
 	session: Option<WsCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
+	runtime: Arc<Runtime>,
 }
 
 impl CallbackRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
 			last_command_result: Arc::new(Mutex::new(None)),
 			last_query_result: Arc::new(Mutex::new(None)),
+			runtime,
 		}
 	}
 }
@@ -268,7 +274,7 @@ impl testscript::Runner for CallbackRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_ws_port(server)?;
+		let port = start_server_and_get_ws_port(&self.runtime, server)?;
 
 		let client = connect_ws(("::1", port))?;
 		let session = client.callback_session(Some("mysecrettoken".to_string()))?;
@@ -293,5 +299,11 @@ impl testscript::Runner for CallbackRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback_ws => test_callback }
 
 fn test_callback(path: &Path) {
-	retry(3, || testscript::run_path(&mut CallbackRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		testscript::run_path(&mut CallbackRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

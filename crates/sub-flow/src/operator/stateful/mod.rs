@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{EncodedKey, interface::BoxedMultiVersionIter, value::encoded::EncodedValues};
+use reifydb_core::{EncodedKey, interface::MultiVersionBatch, value::encoded::EncodedValues};
 
 mod keyed;
 mod raw;
@@ -20,21 +20,47 @@ pub use single::SingleStateful;
 pub use utils::*;
 pub use window::WindowStateful;
 
-// Iterator wrapper for state entries
-pub struct StateIterator<'a> {
-	pub(crate) inner: BoxedMultiVersionIter<'a>,
+/// Iterator wrapper for state entries
+///
+/// Wraps a MultiVersionBatch and provides an iterator over decoded state keys.
+/// The batch is eagerly decoded during construction for efficiency.
+pub struct StateIterator {
+	items: Vec<(EncodedKey, EncodedValues)>,
+	position: usize,
 }
 
-impl<'a> Iterator for StateIterator<'a> {
+impl StateIterator {
+	/// Create a new StateIterator from a MultiVersionBatch
+	pub fn new(batch: MultiVersionBatch) -> Self {
+		let items = batch
+			.items
+			.into_iter()
+			.map(|multi| {
+				if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+					(EncodedKey::new(state_key.key), multi.values)
+				} else {
+					(multi.key, multi.values)
+				}
+			})
+			.collect();
+
+		Self {
+			items,
+			position: 0,
+		}
+	}
+}
+
+impl Iterator for StateIterator {
 	type Item = (EncodedKey, EncodedValues);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.inner.next().map(|multi| {
-			if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-				(EncodedKey::new(state_key.key), multi.values)
-			} else {
-				(multi.key, multi.values)
-			}
-		})
+		if self.position < self.items.len() {
+			let item = self.items[self.position].clone();
+			self.position += 1;
+			Some(item)
+		} else {
+			None
+		}
 	}
 }

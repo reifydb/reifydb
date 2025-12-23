@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error, fmt::Write, path::Path};
+use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use reifydb::{
 	Database, ServerBuilder,
@@ -9,30 +9,39 @@ use reifydb::{
 	memory,
 	sub_server_http::HttpConfig,
 	transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{Client, HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 pub struct HttpRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
 	session: Option<HttpBlockingSession>,
+	runtime: Arc<Runtime>,
 }
 
 impl HttpRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
-		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_http(HttpConfig::default().bind_addr("::1:0"))
-			.build()
+		let instance = runtime
+			.block_on(
+				ServerBuilder::new(multi, single, cdc, eventbus)
+					.with_http(HttpConfig::default().bind_addr("::1:0"))
+					.build(),
+			)
 			.unwrap();
 
 		Self {
 			instance: Some(instance),
 			client: None,
 			session: None,
+			runtime,
 		}
 	}
 }
@@ -75,7 +84,7 @@ impl testscript::Runner for HttpRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		server.start()?;
+		self.runtime.block_on(server.start())?;
 
 		let port = server.sub_server_http().unwrap().port().unwrap();
 
@@ -113,5 +122,11 @@ impl testscript::Runner for HttpRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as http => test_http }
 
 fn test_http(path: &Path) {
-	retry(3, || testscript::run_path(&mut HttpRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		testscript::run_path(&mut HttpRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

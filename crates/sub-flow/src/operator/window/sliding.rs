@@ -130,7 +130,7 @@ impl WindowOperator {
 }
 
 /// Apply changes for sliding windows
-pub fn apply_sliding_window(
+pub async fn apply_sliding_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -140,7 +140,7 @@ pub fn apply_sliding_window(
 	let current_timestamp = operator.current_timestamp();
 
 	// First, process any expired windows
-	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
+	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
 	result.extend(expired_diffs);
 
 	// Process each incoming change
@@ -160,8 +160,9 @@ pub fn apply_sliding_window(
 						// For count-based windows, use current processing time and calculate
 						// proper sliding window IDs based on event index
 						let event_timestamp = operator.current_timestamp();
-						let group_count =
-							operator.get_and_increment_global_count(txn, group_hash)?;
+						let group_count = operator
+							.get_and_increment_global_count(txn, group_hash)
+							.await?;
 						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
 						(event_timestamp, window_ids)
 					}
@@ -169,7 +170,7 @@ pub fn apply_sliding_window(
 
 				for window_id in window_ids {
 					let window_key = operator.create_window_key(group_hash, window_id);
-					let mut window_state = operator.load_window_state(txn, &window_key)?;
+					let mut window_state = operator.load_window_state(txn, &window_key).await?;
 
 					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
 					// Only calculate if previous state had enough events for aggregation
@@ -179,7 +180,8 @@ pub fn apply_sliding_window(
 							&window_key,
 							&window_state.events, // Current events before adding new one
 							evaluator,
-						)?
+						)
+						.await?
 					} else {
 						None // Not enough events for previous aggregation
 					};
@@ -202,12 +204,15 @@ pub fn apply_sliding_window(
 
 					if should_trigger {
 						// Apply aggregations and emit result
-						if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
-							txn,
-							&window_key,
-							&window_state.events,
-							evaluator,
-						)? {
+						if let Some((aggregated_row, is_new)) = operator
+							.apply_aggregations(
+								txn,
+								&window_key,
+								&window_state.events,
+								evaluator,
+							)
+							.await?
+						{
 							if is_new {
 								// First time this window appears
 								result.push(FlowDiff::Insert {
@@ -252,8 +257,9 @@ pub fn apply_sliding_window(
 						// For count-based windows, use current processing time and calculate
 						// proper sliding window IDs based on event index
 						let event_timestamp = operator.current_timestamp();
-						let group_count =
-							operator.get_and_increment_global_count(txn, group_hash)?;
+						let group_count = operator
+							.get_and_increment_global_count(txn, group_hash)
+							.await?;
 						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
 						(event_timestamp, window_ids)
 					}
@@ -261,7 +267,7 @@ pub fn apply_sliding_window(
 
 				for window_id in window_ids {
 					let window_key = operator.create_window_key(group_hash, window_id);
-					let mut window_state = operator.load_window_state(txn, &window_key)?;
+					let mut window_state = operator.load_window_state(txn, &window_key).await?;
 
 					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
 					// Only calculate if previous state had enough events for aggregation
@@ -271,7 +277,8 @@ pub fn apply_sliding_window(
 							&window_key,
 							&window_state.events, // Current events before adding new one
 							evaluator,
-						)?
+						)
+						.await?
 					} else {
 						None // Not enough events for previous aggregation
 					};
@@ -287,12 +294,15 @@ pub fn apply_sliding_window(
 
 					let trigger_check_time = operator.current_timestamp();
 					if operator.should_trigger_window(&window_state, trigger_check_time) {
-						if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
-							txn,
-							&window_key,
-							&window_state.events,
-							evaluator,
-						)? {
+						if let Some((aggregated_row, is_new)) = operator
+							.apply_aggregations(
+								txn,
+								&window_key,
+								&window_state.events,
+								evaluator,
+							)
+							.await?
+						{
 							if is_new {
 								// First time this window appears
 								result.push(FlowDiff::Insert {

@@ -223,7 +223,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 });
 
 /// Scan for a keyword token  
-pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {

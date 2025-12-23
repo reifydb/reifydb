@@ -13,12 +13,20 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use async_trait::async_trait;
+use reifydb_core::{
+	diagnostic::subsystem::{address_unavailable, bind_failed},
+	error,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{AppState, SharedRuntime};
-use tokio::{runtime::Handle, sync::oneshot};
+use tokio::{net::TcpListener, runtime::Handle, sync::oneshot, time::timeout};
+
+use crate::routes::router;
 
 /// HTTP server subsystem.
 ///
@@ -115,47 +123,22 @@ impl HasVersion for HttpSubsystem {
 	}
 }
 
+#[async_trait]
 impl Subsystem for HttpSubsystem {
 	fn name(&self) -> &'static str {
 		"Http"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
 
-		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to bind HTTP server to {}: {}",
-				&addr, e
-			)))
-		})?;
-		std_listener.set_nonblocking(true).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to set non-blocking on {}: {}",
-				&addr, e
-			)))
-		})?;
+		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
 
-		let actual_addr = std_listener.local_addr().map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to get local address: {}",
-				e
-			)))
-		})?;
-
-		// Enter the runtime context to convert std listener to tokio
-		let _guard = self.handle.enter();
-		let listener = tokio::net::TcpListener::from_std(std_listener).map_err(|e| {
-			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
-				"Failed to convert listener: {}",
-				e
-			)))
-		})?;
+		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("HTTP server bound to {}", actual_addr);
 
@@ -170,7 +153,7 @@ impl Subsystem for HttpSubsystem {
 			running.store(true, Ordering::SeqCst);
 
 			// Create router and serve
-			let app = crate::routes::router(state);
+			let app = router(state);
 			let server = axum::serve(listener, app).with_graceful_shutdown(async {
 				shutdown_rx.await.ok();
 				tracing::info!("HTTP server received shutdown signal");
@@ -192,7 +175,7 @@ impl Subsystem for HttpSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		// Send shutdown signal
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
@@ -200,17 +183,14 @@ impl Subsystem for HttpSubsystem {
 
 		// Wait for graceful shutdown with timeout
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			let handle = self.handle.clone();
-			handle.block_on(async {
-				match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
-					Ok(_) => {
-						tracing::debug!("HTTP server shutdown completed");
-					}
-					Err(_) => {
-						tracing::warn!("HTTP server shutdown timed out");
-					}
+			match timeout(Duration::from_secs(30), rx).await {
+				Ok(_) => {
+					tracing::debug!("HTTP server shutdown completed");
 				}
-			});
+				Err(_) => {
+					tracing::warn!("HTTP server shutdown timed out");
+				}
+			}
 		}
 
 		Ok(())

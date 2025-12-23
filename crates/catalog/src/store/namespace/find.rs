@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_namespace_by_name(
+	pub async fn find_namespace_by_name(
 		rx: &mut impl QueryTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
@@ -23,24 +23,28 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|multi| {
+		let batch = rx.range(NamespaceKey::full_scan()).await?;
+		Ok(batch.items.iter().find_map(|multi| {
 			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
-				Some(convert_namespace(multi))
+				Some(convert_namespace(multi.clone()))
 			} else {
 				None
 			}
 		}))
 	}
 
-	pub fn find_namespace(rx: &mut impl QueryTransaction, id: NamespaceId) -> crate::Result<Option<NamespaceDef>> {
+	pub async fn find_namespace(
+		rx: &mut impl QueryTransaction,
+		id: NamespaceId,
+	) -> crate::Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
+		Ok(rx.get(&NamespaceKey::encoded(id)).await?.map(convert_namespace))
 	}
 }
 
@@ -50,34 +54,35 @@ mod tests {
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};
 
-	#[test]
-	fn test_ok() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_ok() {
+		let mut txn = create_test_command_transaction().await;
 
-		create_namespace(&mut txn, "test_namespace");
+		create_namespace(&mut txn, "test_namespace").await;
 
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap().unwrap();
 
 		assert_eq!(namespace.id, NamespaceId(1025));
 		assert_eq!(namespace.name, "test_namespace");
 	}
 
-	#[test]
-	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_empty() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
 
 		assert_eq!(result, None);
 	}
 
-	#[test]
-	fn test_not_found() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_not_found() {
+		let mut txn = create_test_command_transaction().await;
 
-		create_namespace(&mut txn, "another_namespace");
+		create_namespace(&mut txn, "another_namespace").await;
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
 		assert_eq!(result, None);
 	}
 }

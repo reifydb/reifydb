@@ -199,8 +199,8 @@ mod tests {
 
 	use super::*;
 
-	#[test]
-	fn test_abs_int1_fully_defined() {
+	#[tokio::test]
+	async fn test_abs_int1_fully_defined() {
 		let function = Abs::new();
 
 		// Create a column with all values defined
@@ -230,8 +230,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_abs_int1_partially_defined() {
+	#[tokio::test]
+	async fn test_abs_int1_partially_defined() {
 		let function = Abs::new();
 
 		// Create a column with some undefined values
@@ -267,8 +267,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_abs_int2_fully_defined() {
+	#[tokio::test]
+	async fn test_abs_int2_fully_defined() {
 		let function = Abs::new();
 
 		// Create a column with all values defined

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::ColumnData;
-use reifydb_type::{OwnedFragment, value::Blob};
+use reifydb_type::{Fragment, value::Blob};
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
 
@@ -30,7 +30,7 @@ impl ScalarFunction for BlobB58 {
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let b58_str = &container[i];
-						let blob = Blob::from_b58(OwnedFragment::internal(b58_str))?;
+						let blob = Blob::from_b58(Fragment::internal(b58_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
@@ -55,15 +55,15 @@ mod tests {
 	use super::*;
 	use crate::function::ScalarFunctionContext;
 
-	#[test]
-	fn test_blob_b58_valid_input() {
+	#[tokio::test]
+	async fn test_blob_b58_valid_input() {
 		let function = BlobB58::new();
 
 		// "Hello" in base58 is "9Ajdvzr"
 		let b58_data = vec!["9Ajdvzr".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -89,14 +89,14 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), "Hello".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b58_empty_string() {
+	#[tokio::test]
+	async fn test_blob_b58_empty_string() {
 		let function = BlobB58::new();
 
 		let b58_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -122,15 +122,15 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[] as &[u8]);
 	}
 
-	#[test]
-	fn test_blob_b58_multiple_rows() {
+	#[tokio::test]
+	async fn test_blob_b58_multiple_rows() {
 		let function = BlobB58::new();
 
 		// "A" = "28", "BC" = "63U", "DEF" = "Pw25"
 		let b58_data = vec!["28".to_string(), "63U".to_string(), "Pw25".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -161,14 +161,14 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b58_with_null_data() {
+	#[tokio::test]
+	async fn test_blob_b58_with_null_data() {
 		let function = BlobB58::new();
 
 		let b58_data = vec!["28".to_string(), "".to_string(), "Pw25".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -199,15 +199,15 @@ mod tests {
 		assert_eq!(container[2].as_bytes(), "DEF".as_bytes());
 	}
 
-	#[test]
-	fn test_blob_b58_binary_data() {
+	#[tokio::test]
+	async fn test_blob_b58_binary_data() {
 		let function = BlobB58::new();
 
 		// Binary data: [0xde, 0xad, 0xbe, 0xef] in base58 is "6h8cQN"
 		let b58_data = vec!["6h8cQN".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -233,15 +233,15 @@ mod tests {
 		assert_eq!(container[0].as_bytes(), &[0xde, 0xad, 0xbe, 0xef]);
 	}
 
-	#[test]
-	fn test_blob_b58_invalid_input_should_error() {
+	#[tokio::test]
+	async fn test_blob_b58_invalid_input_should_error() {
 		let function = BlobB58::new();
 
 		// Characters not in base58 alphabet: 0, O, I, l
 		let b58_data = vec!["invalid0!".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -257,15 +257,15 @@ mod tests {
 		assert!(result.is_err(), "Expected error for invalid base58 input");
 	}
 
-	#[test]
-	fn test_blob_b58_invalid_zero_char() {
+	#[tokio::test]
+	async fn test_blob_b58_invalid_zero_char() {
 		let function = BlobB58::new();
 
 		// '0' is not in base58 alphabet
 		let b58_data = vec!["abc0def".to_string()];
 		let bitvec = vec![true];
 		let input_column = Column {
-			name: Fragment::borrowed_internal("input"),
+			name: Fragment::internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b58_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

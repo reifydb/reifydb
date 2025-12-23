@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl ColumnsTable {
 	}
 }
 
-impl<'a> TableVirtual<'a> for ColumnsTable {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for ColumnsTable {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -52,7 +58,7 @@ impl<'a> TableVirtual<'a> for ColumnsTable {
 		let mut auto_increments = Vec::new();
 		let mut dictionary_ids = Vec::new();
 
-		let columns_list = CatalogStore::list_columns_all(txn)?;
+		let columns_list = CatalogStore::list_columns_all(txn).await?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
 			source_ids.push(info.source_id.as_u64());
@@ -66,35 +72,35 @@ impl<'a> TableVirtual<'a> for ColumnsTable {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ColumnData::uint8(column_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("source_id"),
+				name: Fragment::internal("source_id"),
 				data: ColumnData::uint8(source_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("source_type"),
+				name: Fragment::internal("source_type"),
 				data: ColumnData::uint1(store_types),
 			},
 			Column {
-				name: Fragment::owned_internal("name"),
+				name: Fragment::internal("name"),
 				data: ColumnData::utf8(column_names),
 			},
 			Column {
-				name: Fragment::owned_internal("type"),
+				name: Fragment::internal("type"),
 				data: ColumnData::uint1(column_types),
 			},
 			Column {
-				name: Fragment::owned_internal("position"),
+				name: Fragment::internal("position"),
 				data: ColumnData::uint1(positions),
 			},
 			Column {
-				name: Fragment::owned_internal("auto_increment"),
+				name: Fragment::internal("auto_increment"),
 				data: ColumnData::bool(auto_increments),
 			},
 			Column {
-				name: Fragment::owned_internal("dictionary_id"),
+				name: Fragment::internal("dictionary_id"),
 				data: ColumnData::uint8(dictionary_ids),
 			},
 		];

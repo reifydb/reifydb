@@ -16,7 +16,7 @@ use serde::{
 };
 
 use super::{int::Int, uint::Uint};
-use crate::{Error, OwnedFragment, Type, error};
+use crate::{Error, Fragment, Type, error};
 
 mod parse;
 
@@ -113,7 +113,7 @@ impl FromStr for Decimal {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let big_decimal = BigDecimalInner::from_str(s)
-			.map_err(|_| error!(invalid_number_format(OwnedFragment::None, Type::Decimal)))?;
+			.map_err(|_| error!(invalid_number_format(Fragment::None, Type::Decimal)))?;
 
 		Ok(Self(big_decimal))
 	}
@@ -256,11 +256,6 @@ impl<'de> Deserialize<'de> for Decimal {
 
 #[cfg(test)]
 mod tests {
-	use bincode::{
-		config::standard,
-		serde::{decode_from_slice, encode_to_vec},
-	};
-
 	use super::*;
 
 	#[test]
@@ -332,47 +327,47 @@ mod tests {
 	}
 
 	#[test]
-	fn test_serde_bincode() {
+	fn test_serde_postcard() {
 		let decimal = Decimal::from_str("123.456789").unwrap();
-		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+		let encoded = postcard::to_stdvec(&decimal).unwrap();
 
-		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
-	fn test_serde_bincode_negative() {
+	fn test_serde_postcard_negative() {
 		let decimal = Decimal::from_str("-987.654321").unwrap();
-		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+		let encoded = postcard::to_stdvec(&decimal).unwrap();
 
-		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
-	fn test_serde_bincode_zero() {
+	fn test_serde_postcard_zero() {
 		let decimal = Decimal::zero();
-		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+		let encoded = postcard::to_stdvec(&decimal).unwrap();
 
-		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
-	fn test_serde_bincode_high_precision() {
+	fn test_serde_postcard_high_precision() {
 		let decimal = Decimal::from_str("123456789.123456789123456789").unwrap();
-		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+		let encoded = postcard::to_stdvec(&decimal).unwrap();
 
-		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 
 	#[test]
-	fn test_serde_bincode_large_number() {
+	fn test_serde_postcard_large_number() {
 		let decimal = Decimal::from_str("999999999999999999999999999999.999999999999999999999999").unwrap();
-		let encoded = encode_to_vec(&decimal, standard()).unwrap();
+		let encoded = postcard::to_stdvec(&decimal).unwrap();
 
-		let (decoded, _): (Decimal, usize) = decode_from_slice(&encoded, standard()).unwrap();
+		let decoded: Decimal = postcard::from_bytes(&encoded).unwrap();
 		assert_eq!(decoded, decimal);
 	}
 }

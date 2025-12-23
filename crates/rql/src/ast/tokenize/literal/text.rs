@@ -4,7 +4,7 @@
 use crate::ast::tokenize::{Literal::Text, Token, TokenKind, cursor::Cursor};
 
 /// Scan for a text literal ('...' or "...")
-pub fn scan_text<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
 	let quote = cursor.peek()?;
 	if quote != '\'' && quote != '"' {
 		return None;

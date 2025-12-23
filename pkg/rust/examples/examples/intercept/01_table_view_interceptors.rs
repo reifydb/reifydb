@@ -12,14 +12,16 @@
 //!
 //! Run with: `make intercept-table-view` or `cargo run --bin intercept-table-view`
 
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
-use reifydb::{Params, Session, WithInterceptorBuilder, WithSubsystem, embedded};
+use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
+use tokio::time::sleep;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	tracing_subscriber::registry()
 		.with(fmt::layer().with_span_events(FmtSpan::CLOSE))
 		.with(EnvFilter::from_default_env())
@@ -29,7 +31,7 @@ fn main() {
 	// The fluent API allows chaining interceptor registrations
 	info!("Creating database with interceptors...");
 
-	let mut db = embedded::memory()
+	let mut db = embedded::memory().await.unwrap()
 		// Register interceptors for the users table
 		// These will fire ONLY for operations on test.users
 		.intercept_table("test.users")
@@ -44,19 +46,19 @@ fn main() {
 		.done()
 		// Enable required subsystems
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
-		.with_worker(|w| w)
 		.with_flow(|f| f) // Required for deferred views
-		.build()
+		.build().await
 		.unwrap();
 
-	db.start().unwrap();
+	db.start().await.unwrap();
 
 	// Step 2: Create namespace and table
 	info!("\n--- Creating namespace and table ---");
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+	db.command_as_root(r#"create namespace test;"#, Params::None).await.unwrap();
 
 	log_query("create table test.users { id: int4, username: utf8, active: bool }");
 	db.command_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
+		.await
 		.unwrap();
 
 	// Step 3: Create a deferred view that filters active users
@@ -68,6 +70,7 @@ fn main() {
 		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Step 4: Insert data - this triggers the table interceptors
@@ -87,22 +90,23 @@ fn main() {
         ] insert test.users"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Wait for deferred view to process the data
 	info!("\n--- Waiting for deferred view to process ---");
-	sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(100)).await;
 
 	// Step 5: Query the results
 	info!("\n--- All users (from table) ---");
 	log_query("from test.users");
-	for frame in db.query_as_root(r#"from test.users"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"from test.users"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 
 	info!("\n--- Active users only (from deferred view) ---");
 	log_query("from test.active_users");
-	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 

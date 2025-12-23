@@ -17,5 +17,5 @@ tokenize 'window { count(*) } with { interval: "5s" }'
 >   [ 10] Operator(Colon)
 >   [ 11] Literal(Text)
 >   [ 12] Operator(CloseCurly)
-> 
-> 
+>
+>

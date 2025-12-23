@@ -1,19 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::internal;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
-pub(crate) struct ScalarizeNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct ScalarizeNode {
+	input: Box<ExecutionPlan>,
 	initialized: Option<()>,
 	frame_consumed: bool,
 }
 
-impl<'a> ScalarizeNode<'a> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a>>) -> Self {
+impl<'a> ScalarizeNode {
+	pub(crate) fn new(input: Box<ExecutionPlan>) -> Self {
 		Self {
 			input,
 			initialized: None,
@@ -22,23 +23,24 @@ impl<'a> ScalarizeNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for ScalarizeNode<'a> {
-	fn initialize(
+#[async_trait]
+impl QueryNode for ScalarizeNode {
+	async fn initialize<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext<'a>,
+		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx)?;
+		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		self.frame_consumed = false;
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
 
 		// Scalarize nodes should only produce one result
@@ -47,7 +49,7 @@ impl<'a> QueryNode<'a> for ScalarizeNode<'a> {
 		}
 
 		// Get the input frame
-		let input_batch = match self.input.next(rx, ctx)? {
+		let input_batch = match self.input.next(rx, ctx).await? {
 			Some(batch) => batch,
 			None => {
 				// Empty input - return empty result
@@ -86,7 +88,7 @@ impl<'a> QueryNode<'a> for ScalarizeNode<'a> {
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		// Headers are passed through from input
 		self.input.headers()
 	}

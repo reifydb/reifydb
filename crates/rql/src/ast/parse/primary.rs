@@ -15,8 +15,8 @@ use crate::ast::{
 	},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast<'a>> {
+impl Parser {
+	pub(crate) fn parse_primary(&mut self) -> crate::Result<Ast> {
 		loop {
 			if self.is_eof() {
 				return Ok(Ast::Nop);

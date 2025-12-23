@@ -4,4 +4,4 @@
 physical 'from users'
 ---
 > └── TableScan default.users
-> 
+>

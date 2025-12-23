@@ -1,0 +1,43 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests basic delete tracking.
+# Delete moves current to historical and adds a tombstone.
+
+# Insert a key
+set a=1
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+
+stats_historical
+---
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+
+# Delete the key
+remove a
+---
+ok
+
+# Current should be decremented (key is logically deleted)
+stats_current
+---
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+
+# Historical should have:
+# - The old value (moved from current): versioned_key=9, value=1
+# - The tombstone: versioned_key=9, value=0
+stats_historical
+---
+historical_count: 2
+historical_key_bytes: 18
+historical_value_bytes: 1

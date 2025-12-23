@@ -6,12 +6,12 @@ use reifydb_core::interface::{Key, NamespaceId, QueryTransaction, ViewDef, ViewK
 use crate::{CatalogStore, store::view::layout::view};
 
 impl CatalogStore {
-	pub fn list_views_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ViewDef>> {
+	pub async fn list_views_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ViewDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(ViewKey::full_scan())?.into_iter().collect();
+		let batch = rx.range(ViewKey::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::View(view_key) = key {
 					let view_id = view_key.view;
@@ -28,9 +28,9 @@ impl CatalogStore {
 						ViewKind::Transactional
 					};
 
-					let primary_key = Self::find_primary_key(rx, view_id)?;
+					let primary_key = Self::find_primary_key(rx, view_id).await?;
 
-					let columns = Self::list_columns(rx, view_id)?;
+					let columns = Self::list_columns(rx, view_id).await?;
 
 					let view_def = ViewDef {
 						id: view_id,

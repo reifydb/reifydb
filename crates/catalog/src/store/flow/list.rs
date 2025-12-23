@@ -6,12 +6,12 @@ use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId, Qu
 use crate::{CatalogStore, store::flow::layout::flow};
 
 impl CatalogStore {
-	pub fn list_flows_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<FlowDef>> {
+	pub async fn list_flows_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<FlowDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(FlowKey::full_scan())?.into_iter().collect();
+		let batch = rx.range(FlowKey::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::Flow(flow_key) = key {
 					let flow_id = flow_key.flow;
@@ -50,17 +50,17 @@ mod tests {
 		test_utils::{create_flow, create_namespace},
 	};
 
-	#[test]
-	fn test_list_flows_all() {
-		let mut txn = create_test_command_transaction();
-		let namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+	#[tokio::test]
+	async fn test_list_flows_all() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
-		create_flow(&mut txn, "namespace_one", "flow_one");
-		create_flow(&mut txn, "namespace_one", "flow_two");
-		create_flow(&mut txn, "namespace_two", "flow_three");
+		create_flow(&mut txn, "namespace_one", "flow_one").await;
+		create_flow(&mut txn, "namespace_one", "flow_two").await;
+		create_flow(&mut txn, "namespace_two", "flow_three").await;
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 3);
 
 		// Verify all flows are present (order may vary)
@@ -87,25 +87,26 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_list_flows_empty() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_list_flows_empty() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 0);
 	}
 
-	#[test]
-	fn test_list_flows_all_with_different_statuses() {
-		let mut txn = create_test_command_transaction();
-		create_namespace(&mut txn, "test_namespace");
+	#[tokio::test]
+	async fn test_list_flows_all_with_different_statuses() {
+		let mut txn = create_test_command_transaction().await;
+		create_namespace(&mut txn, "test_namespace").await;
 
 		// Create flows with different statuses
-		create_flow(&mut txn, "test_namespace", "active_flow");
+		create_flow(&mut txn, "test_namespace", "active_flow").await;
 
 		// Create a paused flow by directly using CatalogStore
 		use crate::store::flow::create::FlowToCreate;
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
+		let namespace =
+			CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap().unwrap();
 		CatalogStore::create_flow(
 			&mut txn,
 			FlowToCreate {
@@ -115,9 +116,10 @@ mod tests {
 				status: FlowStatus::Paused,
 			},
 		)
+		.await
 		.unwrap();
 
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
+		let result = CatalogStore::list_flows_all(&mut txn).await.unwrap();
 		assert_eq!(result.len(), 2);
 
 		// Verify both flows are present with correct statuses (order may vary)

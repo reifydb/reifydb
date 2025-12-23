@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
@@ -23,10 +24,10 @@ use crate::{
 	transaction::operation::DictionaryOperations,
 };
 
-pub struct RingBufferScan<'a> {
-	ringbuffer: ResolvedRingBuffer<'a>,
+pub struct RingBufferScan {
+	ringbuffer: ResolvedRingBuffer,
 	metadata: Option<RingBufferMetadata>,
-	headers: ColumnHeaders<'a>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
@@ -34,14 +35,14 @@ pub struct RingBufferScan<'a> {
 	dictionaries: Vec<Option<DictionaryDef>>,
 	current_position: u64,
 	rows_returned: u64,
-	context: Option<Arc<ExecutionContext<'a>>>,
+	context: Option<Arc<ExecutionContext>>,
 	initialized: bool,
 }
 
-impl<'a> RingBufferScan<'a> {
-	pub fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
-		ringbuffer: ResolvedRingBuffer<'a>,
-		context: Arc<ExecutionContext<'a>>,
+impl RingBufferScan {
+	pub async fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
+		ringbuffer: ResolvedRingBuffer,
+		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
 	) -> crate::Result<Self> {
 		// Look up dictionaries and build storage types
@@ -50,7 +51,7 @@ impl<'a> RingBufferScan<'a> {
 
 		for col in ringbuffer.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id).await? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -68,7 +69,7 @@ impl<'a> RingBufferScan<'a> {
 
 		// Create columns headers
 		let headers = ColumnHeaders {
-			columns: ringbuffer.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: ringbuffer.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -86,17 +87,24 @@ impl<'a> RingBufferScan<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for RingBufferScan<'a> {
+#[async_trait]
+impl QueryNode for RingBufferScan {
 	#[instrument(name = "query::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, txn: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		txn: &mut StandardTransaction<'a>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
 				crate::StandardTransaction::Command(cmd_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id)?
+					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id)
+						.await?
 				}
 				crate::StandardTransaction::Query(query_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id)?
+					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id)
+						.await?
 				}
 			};
 			self.metadata = metadata;
@@ -113,11 +121,11 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 	}
 
 	#[instrument(name = "query::scan::ringbuffer::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		txn: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty
@@ -155,7 +163,7 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 			};
 
 			// Get the encoded from storage
-			if let Some(multi) = txn.get(&key.encode())? {
+			if let Some(multi) = txn.get(&key.encode()).await? {
 				let row_data = multi.values;
 				batch_rows.push(row_data);
 				row_numbers.push(row_num);
@@ -177,7 +185,7 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 				.iter()
 				.enumerate()
 				.map(|(idx, col)| Column {
-					name: Fragment::owned_internal(&col.name),
+					name: Fragment::internal(&col.name),
 					data: ColumnData::with_capacity(self.storage_types[idx], 0),
 				})
 				.collect();
@@ -186,7 +194,7 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
 
 			// Decode dictionary columns
-			self.decode_dictionary_columns(&mut columns, txn)?;
+			self.decode_dictionary_columns(&mut columns, txn).await?;
 
 			// Restore row numbers
 			columns.row_numbers = reifydb_core::util::CowVec::new(row_numbers);
@@ -197,16 +205,16 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
-impl<'a> RingBufferScan<'a> {
+impl<'a> RingBufferScan {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
+	async fn decode_dictionary_columns(
 		&self,
-		columns: &mut Columns<'a>,
+		columns: &mut Columns,
 		txn: &mut StandardTransaction<'a>,
 	) -> crate::Result<()> {
 		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
@@ -222,7 +230,7 @@ impl<'a> RingBufferScan<'a> {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 						if let Some(decoded_value) =
-							txn.get_from_dictionary(dictionary, entry_id)?
+							txn.get_from_dictionary(dictionary, entry_id).await?
 						{
 							new_data.push_value(decoded_value);
 						} else {

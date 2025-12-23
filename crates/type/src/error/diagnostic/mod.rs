@@ -21,7 +21,7 @@ pub mod index;
 pub mod internal;
 pub use internal::{internal, internal_with_context, shutdown};
 
-use crate::{OwnedFragment, Type, fragment::IntoFragment};
+use crate::{Fragment, Type};
 
 pub mod network;
 pub mod number;
@@ -32,6 +32,7 @@ pub mod render;
 pub mod runtime;
 pub mod sequence;
 pub mod serde;
+pub mod subsystem;
 pub mod temporal;
 pub mod transaction;
 mod util;
@@ -43,7 +44,7 @@ pub struct Diagnostic {
 	pub statement: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
-	pub fragment: OwnedFragment,
+	pub fragment: Fragment,
 	pub label: Option<String>,
 	pub help: Option<String>,
 	pub notes: Vec<String>,
@@ -63,7 +64,7 @@ impl Default for Diagnostic {
 			statement: None,
 			message: String::new(),
 			column: None,
-			fragment: OwnedFragment::None,
+			fragment: Fragment::None,
 			label: None,
 			help: None,
 			notes: Vec::new(),
@@ -94,11 +95,11 @@ impl Diagnostic {
 
 	/// Set or update the fragment for this diagnostic and all nested
 	/// diagnostics recursively
-	pub fn with_fragment<'a>(&mut self, new_fragment: impl IntoFragment<'a>) {
+	pub fn with_fragment(&mut self, new_fragment: Fragment) {
 		// Always update the fragment, not just when it's None
 		// This is needed for cast errors that need to update the
 		// fragment
-		self.fragment = new_fragment.into_fragment().into_owned();
+		self.fragment = new_fragment;
 
 		if let Some(ref mut cause) = self.cause {
 			cause.with_fragment(self.fragment.clone());
@@ -107,9 +108,9 @@ impl Diagnostic {
 
 	/// Get the fragment if this is a Statement fragment (for backward
 	/// compatibility)
-	pub fn fragment(&self) -> Option<OwnedFragment> {
+	pub fn fragment(&self) -> Option<Fragment> {
 		match &self.fragment {
-			OwnedFragment::Statement {
+			Fragment::Statement {
 				..
 			} => Some(self.fragment.clone()),
 			_ => None,

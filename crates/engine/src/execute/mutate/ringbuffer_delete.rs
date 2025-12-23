@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_type::{
-	Fragment, IntoFragment, Value,
+	Fragment, Value,
 	diagnostic::{catalog::ringbuffer_not_found, engine},
 	return_error,
 };
@@ -25,33 +25,34 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete_ringbuffer<'a>(
+	pub(crate) async fn delete_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: DeleteRingBufferNode<'a>,
+		plan: DeleteRingBufferNode,
 		params: Params,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
+		let Some(ringbuffer) =
+			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
 		else {
-			let fragment = plan.target.name().into_fragment();
+			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata
-		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-			let fragment = plan.target.name().into_fragment();
+		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id).await? else {
+			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
 
 		// Create resolved source for the ring buffer
-		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
+		let namespace_ident = Fragment::internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let rb_ident = Fragment::owned_internal(ringbuffer.name.clone());
+		let rb_ident = Fragment::internal(ringbuffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
 		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
 
@@ -74,7 +75,8 @@ impl Executor {
 						params: params.clone(),
 						stack: Stack::new(),
 					}),
-				);
+				)
+				.await;
 
 				let context = ExecutionContext {
 					executor: self.clone(),
@@ -85,12 +87,12 @@ impl Executor {
 				};
 
 				// Initialize the operator before execution
-				input_node.initialize(&mut std_txn, &context)?;
+				input_node.initialize(&mut std_txn, &context).await?;
 
 				let mut mutable_context = context.clone();
 				while let Some(Batch {
 					columns,
-				}) = input_node.next(&mut std_txn, &mut mutable_context)?
+				}) = input_node.next(&mut std_txn, &mut mutable_context).await?
 				{
 					// Get encoded numbers from the Columns structure
 					if columns.row_numbers.is_empty() {
@@ -119,10 +121,10 @@ impl Executor {
 					row: row_num,
 				};
 
-				if txn.contains_key(&key.encode())? {
+				if txn.contains_key(&key.encode()).await? {
 					if row_numbers_to_delete.contains(&row_num) {
 						// Delete this row
-						txn.remove_from_ringbuffer(ringbuffer.clone(), row_num)?;
+						txn.remove_from_ringbuffer(ringbuffer.clone(), row_num).await?;
 						deleted_count += 1;
 					} else {
 						// Track minimum remaining row number
@@ -157,8 +159,8 @@ impl Executor {
 				.encode();
 
 				// Only delete if the entry exists
-				if txn.contains_key(&row_key)? {
-					txn.remove_from_ringbuffer(ringbuffer.clone(), row_number)?;
+				if txn.contains_key(&row_key).await? {
+					txn.remove_from_ringbuffer(ringbuffer.clone(), row_number).await?;
 					deleted_count += 1;
 				}
 			}
@@ -169,7 +171,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		CatalogStore::update_ringbuffer_metadata(txn, metadata)?;
+		CatalogStore::update_ringbuffer_metadata(txn, metadata).await?;
 
 		// Return summary
 		Ok(Columns::single_row([

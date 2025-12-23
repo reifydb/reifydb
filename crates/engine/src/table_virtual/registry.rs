@@ -8,13 +8,15 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
+use async_trait::async_trait;
 use reifydb_core::interface::{NamespaceId, TableVirtualDef, TableVirtualId};
 
 use super::{
-	VirtualTableFactory,
+	TableVirtual, VirtualTableFactory,
 	adapter::TableVirtualUserAdapter,
 	user::{TableVirtualUser, TableVirtualUserIterator},
 };
+use crate::transaction::StandardTransaction;
 
 /// Registry for user-defined virtual table factories.
 ///
@@ -118,7 +120,7 @@ impl<T: TableVirtualUser + Clone> SimpleVirtualTableFactory<T> {
 }
 
 impl<T: TableVirtualUser + Clone> VirtualTableFactory for SimpleVirtualTableFactory<T> {
-	fn create_boxed(&self) -> Box<dyn super::TableVirtual<'static> + Send + Sync> {
+	fn create_boxed(&self) -> Box<dyn TableVirtual + Send + Sync> {
 		Box::new(TableVirtualUserAdapter::new(self.template.clone(), self.definition.clone()))
 	}
 
@@ -155,7 +157,7 @@ impl<F> VirtualTableFactory for IteratorVirtualTableFactory<F>
 where
 	F: Fn() -> Box<dyn TableVirtualUserIterator> + Send + Sync + 'static,
 {
-	fn create_boxed(&self) -> Box<dyn super::TableVirtual<'static> + Send + Sync> {
+	fn create_boxed(&self) -> Box<dyn TableVirtual + Send + Sync> {
 		let iter = (self.creator)();
 		Box::new(IteratorAdapter {
 			inner: iter,
@@ -178,11 +180,12 @@ struct IteratorAdapter {
 	batch_size: usize,
 }
 
-impl<'a> super::TableVirtual<'a> for IteratorAdapter {
-	fn initialize(
+#[async_trait]
+impl TableVirtual for IteratorAdapter {
+	async fn initialize<'a>(
 		&mut self,
-		_txn: &mut crate::transaction::StandardTransaction<'a>,
-		ctx: super::TableVirtualContext<'a>,
+		_txn: &mut StandardTransaction<'a>,
+		ctx: super::TableVirtualContext,
 	) -> crate::Result<()> {
 		use super::user::TableVirtualUserPushdownContext;
 
@@ -198,15 +201,15 @@ impl<'a> super::TableVirtual<'a> for IteratorAdapter {
 			}),
 		};
 
-		self.inner.initialize(user_ctx.as_ref())?;
+		self.inner.initialize(user_ctx.as_ref()).await?;
 		self.initialized = true;
 		Ok(())
 	}
 
-	fn next(
+	async fn next<'a>(
 		&mut self,
-		_txn: &mut crate::transaction::StandardTransaction<'a>,
-	) -> crate::Result<Option<crate::execute::Batch<'a>>> {
+		_txn: &mut StandardTransaction<'a>,
+	) -> crate::Result<Option<crate::execute::Batch>> {
 		use reifydb_core::value::column::Columns;
 
 		if !self.initialized {
@@ -214,7 +217,7 @@ impl<'a> super::TableVirtual<'a> for IteratorAdapter {
 		}
 
 		let user_columns = self.inner.columns();
-		let user_rows = self.inner.next_batch(self.batch_size)?;
+		let user_rows = self.inner.next_batch(self.batch_size).await?;
 
 		match user_rows {
 			None => Ok(None),

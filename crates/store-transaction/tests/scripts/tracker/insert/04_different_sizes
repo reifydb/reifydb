@@ -1,0 +1,51 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests tracking with various key and value sizes.
+
+# Insert small key with small value
+# Key "a" = 1 byte, versioned = 9 bytes (1 + 8)
+# Value "x" = 1 byte
+set a=x
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+
+# Insert longer key with longer value
+# Key "longkey" = 7 bytes, versioned = 15 bytes (7 + 8)
+# Value "longvalue" = 9 bytes
+set longkey=longvalue
+---
+ok
+
+stats_current
+---
+current_count: 2
+current_key_bytes: 24
+current_value_bytes: 10
+
+# Insert key with empty value
+# Key "empty" = 5 bytes, versioned = 13 bytes (5 + 8)
+# Value "" = 0 bytes
+set empty=
+---
+ok
+
+stats_current
+---
+current_count: 3
+current_key_bytes: 37
+current_value_bytes: 10
+
+# Verify total bytes
+stats_totals
+---
+total_count: 3
+current_bytes: 47
+historical_bytes: 0
+total_bytes: 47

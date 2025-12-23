@@ -3,7 +3,10 @@
 
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};
+use reifydb_core::{
+	CommitVersion, EncodedKey,
+	interface::{MultiVersionBatch, MultiVersionValues},
+};
 
 use super::Pending;
 
@@ -142,6 +145,28 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 	}
 }
 
+/// Collect a merged batch of pending and committed values
+///
+/// This function uses the FlowRangeIter to merge pending writes with committed batch results,
+/// materializing all items into a single batch. The `has_more` field is always false because
+/// pending writes are finite and fully materialized.
+pub fn collect_batch(
+	pending: BTreeMapRange<'_, EncodedKey, Pending>,
+	committed_batch: MultiVersionBatch,
+	version: CommitVersion,
+) -> MultiVersionBatch {
+	// Create iterator with same merge logic
+	let iter = FlowRangeIter::new(pending, Box::new(committed_batch.items.into_iter()), version);
+
+	// Materialize all items
+	let items: Vec<_> = iter.collect();
+
+	MultiVersionBatch {
+		items,
+		has_more: false,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -169,8 +194,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_empty_range_both_iterators() {
+	#[tokio::test]
+	async fn test_empty_range_both_iterators() {
 		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -179,8 +204,8 @@ mod tests {
 		assert!(iter.next().is_none());
 	}
 
-	#[test]
-	fn test_range_only_pending() {
+	#[tokio::test]
+	async fn test_range_only_pending() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("1")));
 		pending.insert(make_key("b"), Pending::Set(make_value("2")));
@@ -202,8 +227,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_only_committed() {
+	#[tokio::test]
+	async fn test_range_only_committed() {
 		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
 		let committed =
 			vec![make_committed("a", "1", 5), make_committed("b", "2", 6), make_committed("c", "3", 7)];
@@ -217,8 +242,8 @@ mod tests {
 		assert_eq!(items[2].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_filters_removes() {
+	#[tokio::test]
+	async fn test_range_filters_removes() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("1")));
 		pending.insert(make_key("b"), Pending::Remove);
@@ -234,8 +259,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_pending_shadows_committed() {
+	#[tokio::test]
+	async fn test_range_pending_shadows_committed() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Set(make_value("new")));
 
@@ -251,8 +276,8 @@ mod tests {
 		assert_eq!(items[1].version, CommitVersion(10));
 	}
 
-	#[test]
-	fn test_range_remove_hides_committed() {
+	#[tokio::test]
+	async fn test_range_remove_hides_committed() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Remove);
 
@@ -267,8 +292,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_bounded_query() {
+	#[tokio::test]
+	async fn test_range_bounded_query() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -298,8 +323,8 @@ mod tests {
 		assert_eq!(items[3].values, make_value("f_old"));
 	}
 
-	#[test]
-	fn test_range_interleaved_merge() {
+	#[tokio::test]
+	async fn test_range_interleaved_merge() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Set(make_value("pending_b")));
 		pending.insert(make_key("d"), Pending::Set(make_value("pending_d")));
@@ -321,8 +346,8 @@ mod tests {
 		assert_eq!(items[4].key, make_key("e"));
 	}
 
-	#[test]
-	fn test_range_sorted_order() {
+	#[tokio::test]
+	async fn test_range_sorted_order() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("m"), Pending::Set(make_value("m")));
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
@@ -343,8 +368,8 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn test_range_with_start_bound() {
+	#[tokio::test]
+	async fn test_range_with_start_bound() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -367,8 +392,8 @@ mod tests {
 		assert_eq!(items[2].key, make_key("d"));
 	}
 
-	#[test]
-	fn test_range_with_end_bound() {
+	#[tokio::test]
+	async fn test_range_with_end_bound() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -390,8 +415,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("b"));
 	}
 
-	#[test]
-	fn test_range_inclusive_bounds() {
+	#[tokio::test]
+	async fn test_range_inclusive_bounds() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -413,8 +438,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[test]
-	fn test_range_complex_scenario() {
+	#[tokio::test]
+	async fn test_range_complex_scenario() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("new_a")));
 		pending.insert(make_key("b"), Pending::Remove);
@@ -452,8 +477,8 @@ mod tests {
 		assert_eq!(items[3].values, make_value("old_e"));
 	}
 
-	#[test]
-	fn test_range_empty_result() {
+	#[tokio::test]
+	async fn test_range_empty_result() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("z"), Pending::Set(make_value("z")));

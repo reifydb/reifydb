@@ -24,63 +24,60 @@ use reifydb_type::{
 	diagnostic::{catalog::table_not_found, index::primary_key_violation},
 	internal_error,
 };
-use tracing::{debug_span, instrument};
+use tracing::instrument;
 
 use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
+	encoding::encode_value,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,
 	transaction::operation::{DictionaryOperations, TableOperations},
-	util::encode_value,
 };
 
 impl Executor {
 	#[instrument(name = "mutate::table::insert", level = "trace", skip_all)]
-	pub(crate) fn insert_table<'a>(
+	pub(crate) async fn insert_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		plan: InsertTableNode<'a>,
+		plan: InsertTableNode,
 		stack: &mut Stack,
-	) -> crate::Result<Columns<'a>> {
+	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
 
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
 
 		let table_name = plan.target.name();
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
+		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name).await? else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 
 		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let table_types: Vec<Type> = table
-			.columns
-			.iter()
-			.map(|c| {
-				if let Some(dict_id) = c.dictionary_id {
-					// For dictionary columns, we store the dictionary ID, not the original value
-					// Look up the dictionary to get its ID type
-					CatalogStore::find_dictionary(txn, dict_id)
-						.ok()
-						.flatten()
-						.map(|d| d.id_type)
-						.unwrap_or_else(|| c.constraint.get_type())
-				} else {
-					c.constraint.get_type()
-				}
-			})
-			.collect();
+		let mut table_types: Vec<Type> = Vec::new();
+		for c in &table.columns {
+			if let Some(dict_id) = c.dictionary_id {
+				// For dictionary columns, we store the dictionary ID, not the original value
+				// Look up the dictionary to get its ID type
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+					Ok(Some(d)) => d.id_type,
+					_ => c.constraint.get_type(),
+				};
+				table_types.push(dict_type);
+			} else {
+				table_types.push(c.constraint.get_type());
+			}
+		}
 		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
-		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
+		let namespace_ident = Fragment::internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = Fragment::owned_internal(table.name.clone());
+		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
@@ -93,20 +90,19 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone()).await;
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context)?;
+		input_node.initialize(&mut std_txn, &execution_context).await?;
 
 		// PASS 1: Validate and encode all rows first, before allocating any row numbers
 		// This ensures we only allocate row numbers for valid rows (fail-fast on validation errors)
 		let mut validated_rows: Vec<EncodedValues> = Vec::new();
 		let mut mutable_context = (*execution_context).clone();
 
-		let validate_span = debug_span!("validate_and_encode_rows").entered();
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context)?
+		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
 		{
 			let row_count = columns.row_count();
 
@@ -134,11 +130,12 @@ impl Executor {
 							std_txn.command_mut(),
 							table.id,
 							table_column.id,
-						)?;
+						)
+						.await?;
 					}
 
 					// Create ResolvedColumn for this column
-					let column_ident = Fragment::owned_internal(table_column.name.clone());
+					let column_ident = Fragment::internal(table_column.name.clone());
 					let resolved_column = ResolvedColumn::new(
 						column_ident,
 						execution_context.source.clone().unwrap(),
@@ -159,9 +156,9 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = table_column.dictionary_id {
-						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
+							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
+								.await?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -171,7 +168,8 @@ impl Executor {
 								})?;
 						let entry_id = std_txn
 							.command_mut()
-							.insert_into_dictionary(&dictionary, &value)?;
+							.insert_into_dictionary(&dictionary, &value)
+							.await?;
 						entry_id.to_value()
 					} else {
 						value
@@ -185,8 +183,6 @@ impl Executor {
 			}
 		}
 
-		validate_span.exit();
-
 		// BATCH ALLOCATION: Now that all rows are validated, allocate row numbers in one batch
 		let total_rows = validated_rows.len();
 		if total_rows == 0 {
@@ -198,30 +194,27 @@ impl Executor {
 			]));
 		}
 
-		let row_numbers = {
-			let _alloc_span = debug_span!("allocate_row_numbers", count = total_rows).entered();
-			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64)?
-		};
+		let row_numbers =
+			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64).await?;
 
 		assert_eq!(row_numbers.len(), validated_rows.len());
 
 		// PASS 2: Insert all validated rows using the pre-allocated row numbers
-		let _insert_span = debug_span!("insert_rows", count = total_rows).entered();
 		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 			// Insert the row directly into storage
-			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number)?;
+			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number).await?;
 
 			// Store primary key index entry if table has one
-			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
+			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table).await? {
 				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
 
 				// Check if primary key already exists
 				let index_entry_key =
 					IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
-				if std_txn.command_mut().contains_key(&index_entry_key.encode())? {
+				if std_txn.command_mut().contains_key(&index_entry_key.encode()).await? {
 					let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
 					return_error!(primary_key_violation(
-						plan.target.identifier().clone().into_owned(),
+						plan.target.identifier().clone(),
 						table.name.clone(),
 						key_columns,
 					));
@@ -232,7 +225,7 @@ impl Executor {
 				let mut row_number_encoded = row_number_layout.allocate();
 				row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
-				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded)?;
+				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded).await?;
 			}
 		}
 

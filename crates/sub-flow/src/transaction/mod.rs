@@ -161,11 +161,11 @@ impl FlowTransaction {
 	/// * `parent` - The parent command transaction to derive from
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent), fields(version = version.0))]
-	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
-		let mut source_query = parent.multi.begin_query().unwrap();
+	pub async fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
+		let mut source_query = parent.multi.begin_query().await.unwrap();
 		source_query.read_as_of_version_inclusive(version);
 
-		let state_query = parent.multi.begin_query().unwrap();
+		let state_query = parent.multi.begin_query().await.unwrap();
 		Self {
 			version,
 			pending: PendingWrites::new(),
@@ -182,7 +182,7 @@ impl FlowTransaction {
 	}
 
 	/// Update the transaction to read at a new version
-	pub fn update_version(&mut self, new_version: CommitVersion) {
+	pub async fn update_version(&mut self, new_version: CommitVersion) {
 		self.version = new_version;
 		self.source_query.read_as_of_version_inclusive(new_version);
 	}

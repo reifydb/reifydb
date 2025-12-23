@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{
 	interface::{
 		CommandTransaction, NamespaceId, QueryTransaction, RingBufferDef, RingBufferId, TransactionalChanges,
@@ -9,65 +10,66 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_type::{
-	IntoFragment,
+	Fragment,
 	diagnostic::catalog::{ringbuffer_already_exists, ringbuffer_not_found},
 };
 use tracing::instrument;
 
 use crate::{CatalogStore, store::ringbuffer::create::RingBufferToCreate, transaction::MaterializedCatalogTransaction};
 
-pub trait CatalogRingBufferQueryOperations {
-	fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>>;
+#[async_trait]
+pub trait CatalogRingBufferQueryOperations: Send {
+	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>>;
 
-	fn find_ringbuffer_by_name<'a>(
+	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: &str,
 	) -> crate::Result<Option<RingBufferDef>>;
 
-	fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef>;
+	async fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef>;
 
-	fn get_ringbuffer_by_name<'a>(
+	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<RingBufferDef>;
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogRingBufferQueryOperations for QT {
+#[async_trait]
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + Send + 'static> CatalogRingBufferQueryOperations for QT {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self))]
-	fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
-		CatalogStore::find_ringbuffer(self, id)
+	async fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
+		CatalogStore::find_ringbuffer(self, id).await
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_by_name", level = "trace", skip(self, name))]
-	fn find_ringbuffer_by_name<'a>(
+	async fn find_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: &str,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let name = name.into_fragment();
-		CatalogStore::find_ringbuffer_by_name(self, namespace, name.text())
+		CatalogStore::find_ringbuffer_by_name(self, namespace, name).await
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self))]
-	fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef> {
-		CatalogStore::get_ringbuffer(self, id)
+	async fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef> {
+		CatalogStore::get_ringbuffer(self, id).await
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get_by_name", level = "trace", skip(self, name))]
-	fn get_ringbuffer_by_name<'a>(
+	async fn get_ringbuffer_by_name(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl Into<Fragment> + Send,
 	) -> crate::Result<RingBufferDef> {
-		let name = name.into_fragment();
+		let name = name.into();
 		let name_text = name.text().to_string();
-		let ringbuffer = self.find_ringbuffer_by_name(namespace, name.clone())?;
+		let ringbuffer = self.find_ringbuffer_by_name(namespace, name.text()).await?;
 		match ringbuffer {
 			Some(rb) => Ok(rb),
 			None => {
-				let namespace = CatalogStore::get_namespace(self, namespace)?;
+				let namespace = CatalogStore::get_namespace(self, namespace).await?;
 				return_error!(ringbuffer_not_found(name, &namespace.name, &name_text))
 			}
 		}
@@ -83,22 +85,28 @@ pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> crate::Result<()>;
 }
 
+#[async_trait]
 pub trait CatalogRingBufferCommandOperations: CatalogRingBufferQueryOperations {
-	fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef>;
+	async fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef>;
 }
 
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackRingBufferChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send
+		+ 'static,
 > CatalogRingBufferCommandOperations for CT
 {
 	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, to_create))]
-	fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef> {
-		if let Some(_ringbuffer) = self.find_ringbuffer_by_name(to_create.namespace, &to_create.ringbuffer)? {
-			let namespace = CatalogStore::get_namespace(self, to_create.namespace)?;
+	async fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef> {
+		if let Some(_ringbuffer) =
+			self.find_ringbuffer_by_name(to_create.namespace, to_create.ringbuffer.as_str()).await?
+		{
+			let namespace = CatalogStore::get_namespace(self, to_create.namespace).await?;
 			return_error!(ringbuffer_already_exists(
 				to_create.fragment.unwrap_or_default(),
 				&namespace.name,
@@ -106,6 +114,6 @@ impl<
 			));
 		}
 
-		CatalogStore::create_ringbuffer(self, to_create)
+		CatalogStore::create_ringbuffer(self, to_create).await
 	}
 }

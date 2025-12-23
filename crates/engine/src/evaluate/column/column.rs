@@ -13,11 +13,7 @@ use reifydb_type::{
 use crate::{StandardColumnEvaluator, evaluate::ColumnEvaluationContext};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn column<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		column: &ColumnExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn column(&self, ctx: &ColumnEvaluationContext, column: &ColumnExpression) -> crate::Result<Column> {
 		let name = column.0.name.text();
 
 		// Check for rownum pseudo-column first
@@ -33,11 +29,7 @@ impl StandardColumnEvaluator {
 		Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
 	}
 
-	fn extract_column_data<'a>(
-		&self,
-		col: &Column<'a>,
-		ctx: &ColumnEvaluationContext<'a>,
-	) -> crate::Result<Column<'a>> {
+	fn extract_column_data<'a>(&self, col: &Column, ctx: &ColumnEvaluationContext) -> crate::Result<Column> {
 		let take = ctx.take.unwrap_or(usize::MAX);
 
 		// Use the column's actual data type instead of checking the first value
@@ -589,6 +581,28 @@ impl StandardColumnEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::uint_with_bitvec(data, bitvec)))
 			}
+			Type::Any => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::Any(boxed) => {
+							data.push(Box::new(*boxed.clone()));
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(Box::new(Value::Undefined));
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(ColumnData::any_with_bitvec(data, bitvec)))
+			}
 			Type::Decimal => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
@@ -615,7 +629,6 @@ impl StandardColumnEvaluator {
 				let count = min(ctx.row_count, take);
 				Ok(col.with_new_data(ColumnData::undefined(count)))
 			}
-			Type::Any => unreachable!("Any type not supported in column operations"),
 		}
 	}
 }
@@ -634,8 +647,8 @@ mod tests {
 		stack::Stack,
 	};
 
-	#[test]
-	fn test_column_not_found_returns_correct_row_count() {
+	#[tokio::test]
+	async fn test_column_not_found_returns_correct_row_count() {
 		// Create context with 5 rows
 		let columns =
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
@@ -657,8 +670,8 @@ mod tests {
 			.column(
 				&ctx,
 				&ColumnExpression(ColumnIdentifier {
-					source: ColumnSource::Alias(Fragment::owned_internal("nonexistent_col")),
-					name: Fragment::owned_internal("nonexistent_col"),
+					source: ColumnSource::Alias(Fragment::internal("nonexistent_col")),
+					name: Fragment::internal("nonexistent_col"),
 				}),
 			)
 			.unwrap();

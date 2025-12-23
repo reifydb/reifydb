@@ -3,8 +3,10 @@
 
 use std::sync::Arc;
 
+use async_recursion::async_recursion;
 use reifydb_core::interface::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
+use reifydb_type::Fragment;
 use tracing::instrument;
 
 use crate::{
@@ -16,7 +18,8 @@ use crate::{
 			assign::AssignNode,
 			conditional::ConditionalNode,
 			declare::DeclareNode,
-			dictionary_scan::DictionaryScan,
+			dictionary_scan::DictionaryScanNode,
+			environment::EnvironmentNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
 			generator::GeneratorNode,
@@ -31,6 +34,8 @@ use crate::{
 			table_scan::TableScanNode,
 			table_virtual_scan::VirtualScanNode,
 			take::TakeNode,
+			top_k::TopKNode,
+			variable::VariableNode,
 			view_scan::ViewScanNode,
 		},
 	},
@@ -48,20 +53,12 @@ use crate::{
 };
 
 // Extract the source name from a physical plan if it's a scan node
-fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reifydb_type::Fragment<'static>> {
+fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<Fragment> {
 	match plan {
-		PhysicalPlan::TableScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
-		PhysicalPlan::ViewScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
-		PhysicalPlan::RingBufferScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
-		PhysicalPlan::DictionaryScan(node) => {
-			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
-		}
+		PhysicalPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		PhysicalPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		PhysicalPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		PhysicalPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		// For other node types, try to recursively find the source
 		PhysicalPlan::Filter(node) => extract_source_name_from_physical(&node.input),
 		PhysicalPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_physical(p)),
@@ -70,19 +67,20 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reif
 	}
 }
 
+#[async_recursion]
 #[instrument(name = "query::compile", level = "trace", skip(plan, rx, context))]
-pub(crate) fn compile<'a>(
-	plan: PhysicalPlan<'a>,
+pub(crate) async fn compile<'a>(
+	plan: PhysicalPlan,
 	rx: &mut StandardTransaction<'a>,
-	context: Arc<ExecutionContext<'a>>,
-) -> ExecutionPlan<'a> {
+	context: Arc<ExecutionContext>,
+) -> ExecutionPlan {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context.clone()));
+			let input_node = Box::new(compile(*input, rx, context.clone()).await);
 			ExecutionPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
@@ -90,7 +88,7 @@ pub(crate) fn compile<'a>(
 			conditions,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile(*input, rx, context).await);
 			ExecutionPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
@@ -98,7 +96,17 @@ pub(crate) fn compile<'a>(
 			take,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
+			// Top-K optimization: if input is a Sort, fuse into TopKNode
+			if let PhysicalPlan::Sort(physical::SortNode {
+				by,
+				input: sort_input,
+			}) = *input
+			{
+				let input_node = Box::new(compile(*sort_input, rx, context).await);
+				return ExecutionPlan::TopK(TopKNode::new(input_node, by, take));
+			}
+			// Fallback: regular Take
+			let input_node = Box::new(compile(*input, rx, context).await);
 			ExecutionPlan::Take(TakeNode::new(input_node, take))
 		}
 
@@ -106,7 +114,7 @@ pub(crate) fn compile<'a>(
 			by,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context));
+			let input_node = Box::new(compile(*input, rx, context).await);
 			ExecutionPlan::Sort(SortNode::new(input_node, by))
 		}
 
@@ -115,7 +123,7 @@ pub(crate) fn compile<'a>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
+				let input_node = Box::new(compile(*input, rx, context).await);
 				ExecutionPlan::Map(MapNode::new(input_node, map))
 			} else {
 				ExecutionPlan::MapWithoutInput(MapWithoutInputNode::new(map))
@@ -127,7 +135,7 @@ pub(crate) fn compile<'a>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context));
+				let input_node = Box::new(compile(*input, rx, context).await);
 				ExecutionPlan::Extend(ExtendNode::new(input_node, extend))
 			} else {
 				ExecutionPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
@@ -142,13 +150,13 @@ pub(crate) fn compile<'a>(
 		}) => {
 			// Extract source name from right plan for fallback alias
 			let source_name = extract_source_name_from_physical(&right);
-			// Use explicit alias, or fall back to extracted source name, or use "other"
-			let effective_alias = alias
-				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			// Use explicit alias, or fall back to extracted source name, or use "other"
+			let effective_alias =
+				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
+
+			let left_node = Box::new(compile(*left, rx, context.clone()).await);
+			let right_node = Box::new(compile(*right, rx, context.clone()).await);
 			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -160,13 +168,13 @@ pub(crate) fn compile<'a>(
 		}) => {
 			// Extract source name from right plan for fallback alias
 			let source_name = extract_source_name_from_physical(&right);
-			// Use explicit alias, or fall back to extracted source name, or use "other"
-			let effective_alias = alias
-				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			// Use explicit alias, or fall back to extracted source name, or use "other"
+			let effective_alias =
+				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
+
+			let left_node = Box::new(compile(*left, rx, context.clone()).await);
+			let right_node = Box::new(compile(*right, rx, context.clone()).await);
 			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -179,12 +187,11 @@ pub(crate) fn compile<'a>(
 			// Extract source name from right plan for fallback alias
 			let source_name = extract_source_name_from_physical(&right);
 			// Use explicit alias, or fall back to extracted source name, or use "other"
-			let effective_alias = alias
-				.or(source_name)
-				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+			let effective_alias =
+				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()));
-			let right_node = Box::new(compile(*right, rx, context.clone()));
+			let left_node = Box::new(compile(*left, rx, context.clone()).await);
+			let right_node = Box::new(compile(*right, rx, context.clone()).await);
 			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
 				left_node,
 				right_node,
@@ -212,16 +219,16 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::TableScan(node) => {
-			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
+			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).await.unwrap())
 		}
 
 		PhysicalPlan::ViewScan(node) => {
 			ExecutionPlan::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
 		}
 
-		PhysicalPlan::RingBufferScan(node) => {
-			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
-		}
+		PhysicalPlan::RingBufferScan(node) => ExecutionPlan::RingBufferScan(
+			RingBufferScan::new(node.source.clone(), context, rx).await.unwrap(),
+		),
 
 		PhysicalPlan::FlowScan(_node) => {
 			// TODO: Implement FlowScan execution
@@ -229,7 +236,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::DictionaryScan(node) => {
-			ExecutionPlan::DictionaryScan(DictionaryScan::new(node.source.clone(), context).unwrap())
+			ExecutionPlan::DictionaryScan(DictionaryScanNode::new(node.source.clone(), context).unwrap())
 		}
 
 		PhysicalPlan::TableVirtualScan(node) => {
@@ -242,7 +249,7 @@ pub(crate) fn compile<'a>(
 				context.executor.virtual_table_registry.find_by_name(namespace.id, &table.name)
 			{
 				// User-defined virtual table
-				crate::table_virtual::extend_virtual_table_lifetime(factory.create_boxed())
+				factory.create_boxed()
 			} else if namespace.id == NamespaceId(1) {
 				// Built-in system virtual tables
 				match table.name.as_str() {
@@ -328,16 +335,12 @@ pub(crate) fn compile<'a>(
 			ExecutionPlan::Conditional(ConditionalNode::new(conditional_node))
 		}
 
-		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
-			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),
-		),
+		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(VariableNode::new(var_node.variable_expr)),
 
-		PhysicalPlan::Environment(_) => {
-			ExecutionPlan::Environment(crate::execute::query::environment::EnvironmentNode::new())
-		}
+		PhysicalPlan::Environment(_) => ExecutionPlan::Environment(EnvironmentNode::new()),
 
 		PhysicalPlan::Scalarize(scalarize_node) => {
-			let input = compile(*scalarize_node.input, rx, context.clone());
+			let input = compile(*scalarize_node.input, rx, context.clone()).await;
 			ExecutionPlan::Scalarize(ScalarizeNode::new(Box::new(input)))
 		}
 

@@ -4,7 +4,7 @@
 use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
 
 /// Scan for a number literal
-pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_number(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

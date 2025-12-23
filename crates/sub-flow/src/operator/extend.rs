@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::FlowChange;
@@ -14,11 +15,11 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 pub struct ExtendOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression<'static>>,
+	expressions: Vec<Expression>,
 }
 
 impl ExtendOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -27,12 +28,13 @@ impl ExtendOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for ExtendOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -43,7 +45,7 @@ impl Operator for ExtendOperator {
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows)
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows).await
 	}
 }

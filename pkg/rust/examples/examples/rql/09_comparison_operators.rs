@@ -9,14 +9,15 @@
 //!
 //! Run with: `make rql-comparison` or `cargo run --bin rql-comparison`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
+	db.start().await.unwrap();
 
 	// Example 1: Basic comparisons with numbers
 	info!("Example 1: Numeric comparisons");
@@ -46,6 +47,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -73,6 +75,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -98,13 +101,14 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
 	}
 
 	// Set up sample data
-	db.command_as_root("create namespace test", Params::None).unwrap();
+	db.command_as_root("create namespace test", Params::None).await.unwrap();
 	db.command_as_root(
 		r#"
 		create table test.scores {
@@ -118,6 +122,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -136,6 +141,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Example 4: Equality comparisons in filters
@@ -149,6 +155,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -165,6 +172,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -181,6 +189,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -197,6 +206,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -213,6 +223,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -244,6 +255,7 @@ map {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -263,6 +275,7 @@ filter score >= 80 and score < 95"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);

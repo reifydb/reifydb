@@ -3,7 +3,10 @@
 
 use std::cmp;
 
-use crate::value::encoded::{EncodedKey, EncodedValues};
+use crate::{
+	CommitVersion,
+	value::encoded::{EncodedKey, EncodedValues},
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
@@ -13,6 +16,21 @@ pub enum Delta {
 	},
 	Remove {
 		key: EncodedKey,
+	},
+	/// Drop operation - completely erases versioned entries from storage.
+	/// Unlike Remove (which writes a tombstone and generates CDC), Drop:
+	/// - Deletes existing entries without writing anything new
+	/// - Never generates CDC events
+	Drop {
+		key: EncodedKey,
+		/// If Some(v), drop all versions where version < v (keeps v and later).
+		/// If None, this constraint is not applied.
+		up_to_version: Option<CommitVersion>,
+		/// If Some(n), keep the n most recent versions, drop older ones.
+		/// If None, this constraint is not applied.
+		/// Can be combined with up_to_version (both constraints apply).
+		/// If both are None, drops ALL versions.
+		keep_last_versions: Option<usize>,
 	},
 }
 
@@ -39,10 +57,14 @@ impl Delta {
 			Self::Remove {
 				key,
 			} => key,
+			Self::Drop {
+				key,
+				..
+			} => key,
 		}
 	}
 
-	/// Returns the encoded, if None, it means the entry is marked as remove.
+	/// Returns the encoded values, if None, it means the entry is marked as remove or drop.
 	pub fn values(&self) -> Option<&EncodedValues> {
 		match self {
 			Self::Set {
@@ -50,6 +72,9 @@ impl Delta {
 				..
 			} => Some(row),
 			Self::Remove {
+				..
+			} => None,
+			Self::Drop {
 				..
 			} => None,
 		}
@@ -70,6 +95,15 @@ impl Clone for Delta {
 				key,
 			} => Self::Remove {
 				key: key.clone(),
+			},
+			Self::Drop {
+				key,
+				up_to_version,
+				keep_last_versions,
+			} => Self::Drop {
+				key: key.clone(),
+				up_to_version: *up_to_version,
+				keep_last_versions: *keep_last_versions,
 			},
 		}
 	}

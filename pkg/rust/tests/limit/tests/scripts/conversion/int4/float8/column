@@ -12,7 +12,7 @@ command 'from test.conversion map cast(col, float8)'
 > +----------+-------+
 > |    1     |   0   |
 > +----------+-------+
-> 
+>
 
 
 (command 'from [{ col: -2147483648 }] insert test.conversion')
@@ -24,7 +24,7 @@ command 'from test.conversion map cast(col, float8)'
 > |    2     |  -2147483648  |
 > |    1     |       0       |
 > +----------+---------------+
-> 
+>
 
 (command 'from [{ col: 2147483647 }] insert test.conversion')
 command 'from test.conversion map cast(col, float8)'
@@ -36,4 +36,4 @@ command 'from test.conversion map cast(col, float8)'
 > |    2     |  -2147483648  |
 > |    1     |       0       |
 > +----------+---------------+
-> 
+>

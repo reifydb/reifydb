@@ -13,16 +13,26 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()>;
+	async fn insert_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedValues,
+		row_number: RowNumber,
+	) -> crate::Result<()>;
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
+	async fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
+	async fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
 }
 
 impl TableOperations for StandardCommandTransaction {
-	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
-		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
+	async fn insert_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedValues,
+		row_number: RowNumber,
+	) -> crate::Result<()> {
+		TableInterceptor::pre_insert(self, &table, row_number, &row).await?;
 
 		self.set(
 			&RowKey {
@@ -31,9 +41,10 @@ impl TableOperations for StandardCommandTransaction {
 			}
 			.encode(),
 			row.clone(),
-		)?;
+		)
+		.await?;
 
-		TableInterceptor::post_insert(self, &table, row_number, &row)?;
+		TableInterceptor::post_insert(self, &table, row_number, &row).await?;
 
 		// Track insertion for post-commit event emission
 		self.row_changes.push(RowChange::TableInsert(TableRowInsertion {
@@ -45,7 +56,7 @@ impl TableOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
+	async fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
 		let key = RowKey {
 			source: table.id.into(),
 			row: id,
@@ -53,15 +64,15 @@ impl TableOperations for StandardCommandTransaction {
 		.encode();
 
 		// Get the current encoded before updating (for post-update
-		// interceptor) let old_row = self.get(&key)?.map(|v|
+		// interceptor) let old_row = self.get(&key).await?.map(|v|
 		// v.into());
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		TableInterceptor::pre_update(self, &table, id, &row).await?;
 
-		self.set(&key, row.clone())?;
+		self.set(&key, row.clone()).await?;
 
 		// if let Some(ref old) = old_row {
-		// 	TableInterceptor::post_update(self, &table, id, &encoded, old)?;
+		// 	TableInterceptor::post_update(self, &table, id, &encoded, old).await?;
 		// }
 
 		// self.add_pending(PendingWrite::TableUpdate {
@@ -73,7 +84,7 @@ impl TableOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
+	async fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey {
 			source: table.id.into(),
 			row: id,
@@ -81,17 +92,17 @@ impl TableOperations for StandardCommandTransaction {
 		.encode();
 
 		// Get the encoded before removing (for post-delete interceptor)
-		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
+		// let deleted_row = self.get(&key).await?.map(|v| v.into_row());
 
 		// Execute pre-delete interceptors
-		TableInterceptor::pre_delete(self, &table, id)?;
+		TableInterceptor::pre_delete(self, &table, id).await?;
 
 		// Remove the encoded from the database
-		self.remove(&key)?;
+		self.remove(&key).await?;
 
 		// Execute post-delete interceptors if we had a encoded
 		// if let Some(ref encoded) = deleted_row {
-		// 	TableInterceptor::post_delete(self, &table, id, encoded)?;
+		// 	TableInterceptor::post_delete(self, &table, id, encoded).await?;
 		// }
 
 		// Track the removal for flow processing

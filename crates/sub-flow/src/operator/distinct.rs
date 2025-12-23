@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
+use async_trait::async_trait;
 use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
@@ -138,12 +135,12 @@ impl Default for DistinctState {
 pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	expressions: Vec<Expression<'static>>,
+	expressions: Vec<Expression>,
 	layout: EncodedValuesLayout,
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -175,8 +172,8 @@ impl DistinctOperator {
 		Ok(xxh3_128(&data))
 	}
 
-	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
-		let state_row = self.load_state(txn)?;
+	async fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
+		let state_row = self.load_state(txn).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(DistinctState::default());
@@ -187,15 +184,12 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		let config = standard();
-		decode_from_slice(blob.as_ref(), config)
-			.map(|(state, _)| state)
+		postcard::from_bytes(blob.as_ref())
 			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
-		let config = standard();
-		let serialized = encode_to_vec(state, config)
+		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
@@ -216,18 +210,19 @@ impl SingleStateful for DistinctOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut state = self.load_distinct_state(txn)?;
+		let mut state = self.load_distinct_state(txn).await?;
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -343,7 +338,7 @@ impl Operator for DistinctOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows)
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows).await
 	}
 }

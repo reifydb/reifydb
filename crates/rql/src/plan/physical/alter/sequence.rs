@@ -14,25 +14,22 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<'a>(
+	pub(crate) async fn compile_alter_sequence(
 		rx: &mut impl QueryTransaction,
-		alter: logical::AlterSequenceNode<'a>,
-	) -> crate::Result<PhysicalPlan<'a>> {
+		alter: logical::AlterSequenceNode,
+	) -> crate::Result<PhysicalPlan> {
 		// Get the namespace name from the sequence identifier
 		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
 
 		// Query the catalog for the actual namespace
-		let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)?
+		let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+			.await?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name)? else {
-			return_error!(table_not_found(
-				alter.sequence.name.clone().into_owned(),
-				&namespace_def.name,
-				table_name
-			));
+		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name).await? else {
+			return_error!(table_not_found(alter.sequence.name.clone(), &namespace_def.name, table_name));
 		};
 
 		// Find the column in the table
@@ -45,7 +42,7 @@ impl Compiler {
 			.clone();
 
 		// Create resolved namespace
-		let namespace_fragment = Fragment::owned_internal(namespace_def.name.clone());
+		let namespace_fragment = Fragment::internal(namespace_def.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace_def.clone());
 
 		// Create resolved sequence (using table name as sequence name)
@@ -58,7 +55,7 @@ impl Compiler {
 			ResolvedSequence::new(alter.sequence.name.clone(), resolved_namespace.clone(), sequence_def);
 
 		// Create resolved table
-		let table_fragment = Fragment::owned_internal(table_name.to_string());
+		let table_fragment = Fragment::internal(table_name.to_string());
 		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table_def);
 
 		// Create resolved source and column

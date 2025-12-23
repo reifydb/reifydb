@@ -10,16 +10,22 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{Result, event::lifecycle::OnStartEvent, interface::WithEventBus};
+use futures_util::TryStreamExt;
+use reifydb_core::{
+	Frame, Result,
+	event::lifecycle::OnStartEvent,
+	interface::{Engine as EngineInterface, Identity, Params, WithEventBus},
+	stream::StreamError,
+};
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, SchedulerService};
+use reifydb_sub_api::HealthStatus;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::WsSubsystem;
-use reifydb_sub_worker::WorkerSubsystem;
+use tokio::{runtime::Handle, task::block_in_place};
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
@@ -75,14 +81,9 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
-	scheduler: Option<SchedulerService>,
 }
 
 impl Database {
-	pub fn sub_worker(&self) -> Option<&WorkerSubsystem> {
-		self.subsystem::<WorkerSubsystem>()
-	}
-
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
@@ -105,7 +106,6 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		scheduler: Option<SchedulerService>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -114,7 +114,6 @@ impl Database {
 			config,
 			health_monitor,
 			running: false,
-			scheduler,
 		}
 	}
 
@@ -135,19 +134,19 @@ impl Database {
 	}
 
 	#[instrument(name = "api::database::start", level = "info", skip(self))]
-	pub fn start(&mut self) -> Result<()> {
+	pub async fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(()); // Already running
 		}
 
-		self.bootloader.load()?;
+		self.bootloader.load().await?;
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		self.engine.event_bus().emit(OnStartEvent {});
+		self.engine.event_bus().emit(OnStartEvent {}).await;
 
 		// Start all subsystems
-		match self.subsystems.start_all(self.config.max_startup_time) {
+		match self.subsystems.start_all(self.config.max_startup_time).await {
 			Ok(()) => {
 				self.running = true;
 				debug!("System started successfully");
@@ -170,7 +169,7 @@ impl Database {
 	}
 
 	#[instrument(name = "api::database::stop", level = "info", skip(self))]
-	pub fn stop(&mut self) -> Result<()> {
+	pub async fn stop(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped
 		}
@@ -178,7 +177,7 @@ impl Database {
 		debug!("Stopping system gracefully");
 
 		// Stop all subsystems
-		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
+		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout).await;
 
 		self.running = false;
 
@@ -240,8 +239,24 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	pub fn scheduler(&self) -> Option<SchedulerService> {
-		self.scheduler.clone()
+	/// Execute a transactional command as root user.
+	pub async fn command_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> std::result::Result<Vec<Frame>, StreamError> {
+		let identity = Identity::root();
+		self.engine.command_as(&identity, rql, params.into()).try_collect().await
+	}
+
+	/// Execute a read-only query as root user.
+	pub async fn query_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> std::result::Result<Vec<Frame>, StreamError> {
+		let identity = Identity::root();
+		self.engine.query_as(&identity, rql, params.into()).try_collect().await
 	}
 
 	pub fn await_signal(&self) -> Result<()> {
@@ -285,15 +300,15 @@ impl Database {
 		Ok(())
 	}
 
-	pub fn start_and_await_signal(&mut self) -> Result<()> {
-		self.start_and_await_signal_with_shutdown(|| Ok(()))
+	pub async fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start_and_await_signal_with_shutdown(|| Ok(())).await
 	}
 
-	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
+	pub async fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
 	where
 		F: FnOnce() -> Result<()>,
 	{
-		self.start()?;
+		self.start().await?;
 		debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;
@@ -302,7 +317,7 @@ impl Database {
 		on_shutdown()?;
 
 		debug!("Shutdown handler completed, shutting down database...");
-		self.stop()?;
+		self.stop().await?;
 
 		Ok(())
 	}
@@ -312,7 +327,10 @@ impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
 			warn!("System being dropped while running, attempting graceful shutdown");
-			let _ = self.stop();
+			// Use block_on to call async stop() from sync Drop context
+			if let Ok(handle) = Handle::try_current() {
+				let _ = block_in_place(|| handle.block_on(self.stop()));
+			}
 		}
 	}
 }
@@ -324,9 +342,5 @@ impl Session for Database {
 
 	fn query_session(&self, session: impl IntoQuerySession) -> Result<QuerySession> {
 		session.into_query_session(self.engine.clone())
-	}
-
-	fn scheduler(&self) -> Option<SchedulerService> {
-		self.scheduler.clone()
 	}
 }

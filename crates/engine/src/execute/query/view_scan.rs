@@ -3,9 +3,10 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	EncodedKey,
-	interface::{EncodableKey, MultiVersionQueryTransaction, RowKey, RowKeyRange, resolved::ResolvedView},
+	interface::{EncodableKey, RowKey, RowKeyRange, resolved::ResolvedView},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
@@ -16,22 +17,22 @@ use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
-pub(crate) struct ViewScanNode<'a> {
-	view: ResolvedView<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+pub(crate) struct ViewScanNode {
+	view: ResolvedView,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
 
-impl<'a> ViewScanNode<'a> {
-	pub fn new(view: ResolvedView<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
+impl ViewScanNode {
+	pub fn new(view: ResolvedView, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let data = view.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedValuesLayout::new(&data);
 
 		let headers = ColumnHeaders {
-			columns: view.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -45,23 +46,24 @@ impl<'a> ViewScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for ViewScanNode<'a> {
+#[async_trait]
+impl QueryNode for ViewScanNode {
 	#[instrument(name = "query::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::view::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -76,8 +78,8 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let multi_rows: Vec<_> =
-			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect();
+		let batch = rx.range_batch(range, batch_size).await?;
+		let multi_rows: Vec<_> = batch.items.into_iter().take(batch_size as usize).collect();
 
 		for multi in multi_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&multi.key) {
@@ -102,7 +104,7 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }

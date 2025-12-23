@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
-pub fn invalid_boolean_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_boolean_format(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let label = Some(format!("expected 'true' or 'false', found '{}'", value));
 	Diagnostic {
@@ -20,8 +20,8 @@ pub fn invalid_boolean_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic
 	}
 }
 
-pub fn empty_boolean_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn empty_boolean_value(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let label = Some("boolean value cannot be empty".to_string());
 	Diagnostic {
 		code: "BOOLEAN_002".to_string(),
@@ -36,8 +36,8 @@ pub fn empty_boolean_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-pub fn invalid_number_boolean<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_number_boolean(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	let label = Some(format!("number '{}' cannot be cast to boolean, only 1 or 0 are allowed", value));
 	Diagnostic {

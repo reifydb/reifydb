@@ -15,10 +15,10 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_table<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateTable<'a>,
+	pub(crate) async fn compile_create_table<T: CatalogQueryTransaction>(
+		ast: AstCreateTable,
 		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
 		// Get the table's namespace for dictionary resolution
@@ -43,7 +43,7 @@ impl Compiler {
 				} => name.clone(),
 			};
 
-			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]).into_owned());
+			let fragment = Some(Fragment::merge_all([col.name.clone(), ty_fragment]));
 
 			// Resolve dictionary if specified
 			let dictionary_id = if let Some(ref dict_ident) = col.dictionary {
@@ -53,7 +53,7 @@ impl Compiler {
 				let dict_name = dict_ident.name.text();
 
 				// Find the namespace
-				let Some(namespace) = tx.find_namespace_by_name(dict_namespace_name)? else {
+				let Some(namespace) = tx.find_namespace_by_name(dict_namespace_name).await? else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
 						dict_namespace_name,
@@ -62,7 +62,8 @@ impl Compiler {
 				};
 
 				// Find the dictionary
-				let Some(dictionary) = tx.find_dictionary_by_name(namespace.id, dict_name)? else {
+				let Some(dictionary) = tx.find_dictionary_by_name(namespace.id, dict_name).await?
+				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
 						dict_namespace_name,

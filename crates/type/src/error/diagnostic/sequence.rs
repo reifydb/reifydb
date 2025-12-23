@@ -2,9 +2,8 @@
 // This file is licensed under the MIT, see license.md file
 
 use crate::{
-	OwnedFragment, Type,
+	Fragment, Type,
 	error::diagnostic::{Diagnostic, util::value_max},
-	fragment::IntoFragment,
 };
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {
@@ -12,7 +11,7 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 		code: "SEQUENCE_001".to_string(),
 		statement: None,
 		message: format!("sequence generator of type `{}` is exhausted", value),
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: Some("no more values can be generated".to_string()),
 		help: Some(format!("maximum value for `{}` is `{}`", value, value_max(value))),
 		column: None,
@@ -21,8 +20,8 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 	}
 }
 
-pub fn can_not_alter_not_auto_increment<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn can_not_alter_not_auto_increment(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "SEQUENCE_002".to_string(),
 		statement: None,

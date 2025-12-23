@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 use reifydb_core::{
-	interface::LazyFragment,
 	return_error,
 	value::{
 		column::ColumnData,
@@ -12,12 +11,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{
-	IsNumber, OwnedFragment, Type,
+	Fragment, IsNumber, LazyFragment, Type,
 	diagnostic::{boolean::invalid_number_boolean, cast},
 	parse_bool,
 };
 
-pub fn to_boolean<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
+pub fn to_boolean(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Int1(container) => from_int1(container, lazy_fragment),
 		ColumnData::Int2(container) => from_int2(container, lazy_fragment),
@@ -42,9 +41,9 @@ pub fn to_boolean<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -
 	}
 }
 
-fn to_bool<'a, T>(
+fn to_bool<T>(
 	container: &NumberContainer<T>,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 	validate: impl Fn(T) -> Option<bool>,
 ) -> crate::Result<ColumnData>
 where
@@ -56,9 +55,9 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					let base_fragment = lazy_fragment.fragment().into_owned();
-					let error_fragment = OwnedFragment::Statement {
-						text: container[idx].to_string(),
+					let base_fragment = lazy_fragment.fragment();
+					let error_fragment = Fragment::Statement {
+						text: Arc::from(container[idx].to_string()),
 						line: base_fragment.line(),
 						column: base_fragment.column(),
 					};
@@ -75,9 +74,9 @@ where
 macro_rules! impl_integer_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name<'a>(
+		fn $fn_name(
 			container: &NumberContainer<$type>,
-			lazy_fragment: impl LazyFragment<'a>,
+			lazy_fragment: impl LazyFragment,
 		) -> crate::Result<ColumnData> {
 			to_bool(container, lazy_fragment, |val| match val {
 				0 => Some(false),
@@ -91,9 +90,9 @@ macro_rules! impl_integer_to_bool {
 macro_rules! impl_float_to_bool {
 	($fn_name:ident, $type:ty) => {
 		#[inline]
-		fn $fn_name<'a>(
+		fn $fn_name(
 			container: &NumberContainer<$type>,
-			lazy_fragment: impl LazyFragment<'a>,
+			lazy_fragment: impl LazyFragment,
 		) -> crate::Result<ColumnData> {
 			to_bool(container, lazy_fragment, |val| {
 				if val == 0.0 {
@@ -121,20 +120,20 @@ impl_integer_to_bool!(from_uint16, u128);
 impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
-fn from_utf8<'a>(container: &Utf8Container, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
-	use reifydb_type::BorrowedFragment;
+fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
+	use reifydb_type::Fragment;
 	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			// Parse with internal fragment, then replace with
 			// proper source fragment if error
-			let temp_fragment = BorrowedFragment::new_internal(&container[idx]);
+			let temp_fragment = Fragment::internal(&container[idx]);
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {
 					// Replace the error's fragment with the
 					// proper source fragment
-					e.0.with_fragment(lazy_fragment.fragment().into_owned());
+					e.0.with_fragment(lazy_fragment.fragment());
 					return Err(e);
 				}
 			}

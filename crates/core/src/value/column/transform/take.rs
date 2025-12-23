@@ -3,7 +3,7 @@
 
 use crate::{util::CowVec, value::column::Columns};
 
-impl<'a> Columns<'a> {
+impl Columns {
 	pub fn take(&mut self, n: usize) -> crate::Result<()> {
 		// Take the first n encoded numbers
 		if !self.row_numbers.is_empty() {

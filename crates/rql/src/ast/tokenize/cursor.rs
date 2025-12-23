@@ -1,7 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{BorrowedFragment, Fragment, StatementColumn, StatementLine};
+use std::sync::Arc;
+
+use reifydb_type::{Fragment, StatementColumn, StatementLine};
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'a> {
@@ -171,14 +173,14 @@ impl<'a> Cursor<'a> {
 		self.column
 	}
 
-	/// Create a Fragment (borrowed) from a start position to current
+	/// Create a Fragment (owned) from a start position to current
 	/// position
-	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment<'a> {
-		Fragment::Borrowed(BorrowedFragment::Statement {
-			text: &self.input[start_pos..self.pos],
+	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment {
+		Fragment::Statement {
+			text: Arc::from(self.input[start_pos..self.pos].to_string()),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
-		})
+		}
 	}
 
 	/// Create a fragment for UTF-8 text content (without surrounding
@@ -189,12 +191,12 @@ impl<'a> Cursor<'a> {
 		text_end: usize,
 		start_line: u32,
 		start_column: u32,
-	) -> Fragment<'a> {
-		Fragment::Borrowed(BorrowedFragment::Statement {
-			text: &self.input[text_start..text_end],
+	) -> Fragment {
+		Fragment::Statement {
+			text: Arc::from(self.input[text_start..text_end].to_string()),
 			line: StatementLine(start_line),
 			column: StatementColumn(start_column),
-		})
+		}
 	}
 
 	/// Save current position state

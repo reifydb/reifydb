@@ -3,9 +3,8 @@
 
 //! CDC event dispatcher for independent flow processing.
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
-use crossbeam_channel::{Receiver, RecvTimeoutError};
 use reifydb_core::{
 	Result,
 	interface::{Cdc, KeyKind, catalog::FlowId},
@@ -14,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_rql::flow::load_flow;
-use tokio::task::spawn_blocking;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, trace};
 
@@ -28,7 +27,7 @@ use crate::{registry::FlowRegistry, routing::route_to_flows};
 /// 3. Routing data events to interested flows
 #[instrument(name = "dispatcher", level = "info", skip(cdc_rx, registry, engine, shutdown))]
 pub async fn dispatcher(
-	cdc_rx: Receiver<Cdc>,
+	mut cdc_rx: mpsc::UnboundedReceiver<Cdc>,
 	registry: Arc<FlowRegistry>,
 	engine: StandardEngine,
 	shutdown: CancellationToken,
@@ -36,41 +35,24 @@ pub async fn dispatcher(
 	info!("dispatcher started");
 
 	loop {
-		// Check shutdown signal
-		if shutdown.is_cancelled() {
-			info!("dispatcher received shutdown signal");
-			break;
-		}
+		// Use tokio::select! to handle both CDC events and shutdown
+		let cdc = tokio::select! {
+			biased;
 
-		// Receive CDC from channel (blocking in spawn_blocking to not block async runtime)
-		let cdc = {
-			let rx = cdc_rx.clone();
-			let shutdown = shutdown.clone();
+			_ = shutdown.cancelled() => {
+				info!("dispatcher received shutdown signal");
+				break;
+			}
 
-			spawn_blocking(move || {
-				// Use recv_timeout to periodically check shutdown
-				loop {
-					match rx.recv_timeout(Duration::from_millis(1)) {
-						Ok(cdc) => return Some(cdc),
-						Err(RecvTimeoutError::Timeout) => {
-							if shutdown.is_cancelled() {
-								return None;
-							}
-							// Continue waiting
-						}
-						Err(RecvTimeoutError::Disconnected) => {
-							return None;
-						}
+			msg = cdc_rx.recv() => {
+				match msg {
+					Some(cdc) => cdc,
+					None => {
+						// Channel closed
+						break;
 					}
 				}
-			})
-			.await
-			.expect("blocking recv panicked")
-		};
-
-		let Some(cdc) = cdc else {
-			// Channel closed or shutdown
-			break;
+			}
 		};
 
 		let version = cdc.version;
@@ -129,7 +111,7 @@ async fn handle_flow_changes(registry: &FlowRegistry, engine: &StandardEngine, c
 	// Process each affected flow
 	for flow_id in affected_flows {
 		let existed_before = registry.contains(flow_id).await;
-		let exists_now = flow_exists_in_catalog(engine, flow_id)?;
+		let exists_now = flow_exists_in_catalog(engine, flow_id).await?;
 
 		match (existed_before, exists_now) {
 			// Flow created
@@ -141,7 +123,7 @@ async fn handle_flow_changes(registry: &FlowRegistry, engine: &StandardEngine, c
 				);
 
 				// Load flow definition from catalog
-				let flow = load_flow_from_catalog(engine, flow_id)?;
+				let flow = load_flow_from_catalog(engine, flow_id).await?;
 				let sources = get_flow_sources(&flow);
 
 				// Register with backfill at this version
@@ -204,20 +186,20 @@ fn extract_flow_id_from_key(key: &[u8]) -> Option<FlowId> {
 }
 
 /// Check if flow exists in catalog.
-fn flow_exists_in_catalog(engine: &StandardEngine, flow_id: FlowId) -> Result<bool> {
+async fn flow_exists_in_catalog(engine: &StandardEngine, flow_id: FlowId) -> Result<bool> {
 	use reifydb_core::interface::{Engine, MultiVersionQueryTransaction};
 
-	let mut txn = engine.begin_query()?;
+	let mut txn = engine.begin_query().await?;
 	let key = FlowKey::encoded(flow_id);
-	Ok(txn.get(&key)?.is_some())
+	Ok(txn.get(&key).await?.is_some())
 }
 
 /// Load flow definition from catalog.
-fn load_flow_from_catalog(engine: &StandardEngine, flow_id: FlowId) -> Result<reifydb_rql::flow::Flow> {
+async fn load_flow_from_catalog(engine: &StandardEngine, flow_id: FlowId) -> Result<reifydb_rql::flow::Flow> {
 	use reifydb_core::interface::Engine;
 
-	let mut txn = engine.begin_query()?;
-	load_flow(&mut txn, flow_id)
+	let mut txn = engine.begin_query().await?;
+	load_flow(&mut txn, flow_id).await
 }
 
 /// Get the source tables/views this flow subscribes to.

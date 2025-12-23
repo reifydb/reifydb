@@ -6,12 +6,12 @@ use reifydb_type::Fragment;
 use crate::value::column::Columns;
 
 #[derive(Debug, Clone)]
-pub struct ColumnHeaders<'a> {
-	pub columns: Vec<Fragment<'a>>,
+pub struct ColumnHeaders {
+	pub columns: Vec<Fragment>,
 }
 
-impl<'a> ColumnHeaders<'a> {
-	pub fn from_columns(columns: &Columns<'a>) -> Self {
+impl ColumnHeaders {
+	pub fn from_columns(columns: &Columns) -> Self {
 		Self {
 			columns: columns.iter().map(|c| c.name().clone()).collect(),
 		}

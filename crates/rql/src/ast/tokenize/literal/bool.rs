@@ -7,7 +7,7 @@ use crate::ast::{
 };
 
 /// Scan for a boolean literal (true/false)
-pub fn scan_boolean<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
+pub fn scan_boolean(cursor: &mut Cursor) -> Option<Token> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();

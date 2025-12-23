@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	JoinType,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -16,21 +17,21 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub struct NaturalJoinNode<'a> {
-	left: Box<ExecutionPlan<'a>>,
-	right: Box<ExecutionPlan<'a>>,
+pub struct NaturalJoinNode {
+	left: Box<ExecutionPlan>,
+	right: Box<ExecutionPlan>,
 	join_type: JoinType,
-	alias: Option<Fragment<'a>>,
-	headers: Option<ColumnHeaders<'a>>,
-	context: JoinContext<'a>,
+	alias: Option<Fragment>,
+	headers: Option<ColumnHeaders>,
+	context: JoinContext,
 }
 
-impl<'a> NaturalJoinNode<'a> {
+impl NaturalJoinNode {
 	pub fn new(
-		left: Box<ExecutionPlan<'a>>,
-		right: Box<ExecutionPlan<'a>>,
+		left: Box<ExecutionPlan>,
+		right: Box<ExecutionPlan>,
 		join_type: JoinType,
-		alias: Option<Fragment<'a>>,
+		alias: Option<Fragment>,
 	) -> Self {
 		Self {
 			left,
@@ -57,29 +58,34 @@ impl<'a> NaturalJoinNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
+#[async_trait]
+impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "query::join::natural::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context.set(ctx);
-		self.left.initialize(rx, ctx)?;
-		self.right.initialize(rx, ctx)?;
+		self.left.initialize(rx, ctx).await?;
+		self.right.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::join::natural::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.headers.is_some() {
 			return Ok(None);
 		}
 
-		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
-		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
+		let left_columns = load_and_merge_all(&mut self.left, rx, ctx).await?;
+		let right_columns = load_and_merge_all(&mut self.right, rx, ctx).await?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
@@ -149,7 +155,7 @@ impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone()
 	}
 }

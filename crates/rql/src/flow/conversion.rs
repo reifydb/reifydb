@@ -18,114 +18,113 @@ use crate::{
 	plan::physical::PhysicalPlan,
 };
 
-/// Converts an Expression<'a> to Expression<'static> by converting all
-/// fragments to owned
-pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
+/// Converts an Expression to owned form
+pub fn to_owned_expression(expr: Expression) -> Expression {
 	match expr {
 		Expression::AccessSource(access) => Expression::AccessSource(AccessSourceExpression {
-			column: access.column.into_owned(),
+			column: access.column,
 		}),
 		Expression::Alias(alias) => Expression::Alias(AliasExpression {
-			alias: IdentExpression(Fragment::Owned(alias.alias.0.into_owned())),
+			alias: IdentExpression(alias.alias.0),
 			expression: Box::new(to_owned_expression(*alias.expression)),
-			fragment: Fragment::Owned(alias.fragment.into_owned()),
+			fragment: alias.fragment,
 		}),
 		Expression::Cast(cast) => Expression::Cast(CastExpression {
 			expression: Box::new(to_owned_expression(*cast.expression)),
-			fragment: Fragment::Owned(cast.fragment.into_owned()),
+			fragment: cast.fragment,
 			to: to_owned_type_expression(cast.to),
 		}),
 		Expression::Constant(constant) => Expression::Constant(to_owned_constant_expression(constant)),
-		Expression::Column(column) => Expression::Column(ColumnExpression(column.0.into_owned())),
+		Expression::Column(column) => Expression::Column(ColumnExpression(column.0)),
 		Expression::Add(add) => Expression::Add(AddExpression {
 			left: Box::new(to_owned_expression(*add.left)),
 			right: Box::new(to_owned_expression(*add.right)),
-			fragment: Fragment::Owned(add.fragment.into_owned()),
+			fragment: add.fragment,
 		}),
 		Expression::Div(div) => Expression::Div(DivExpression {
 			left: Box::new(to_owned_expression(*div.left)),
 			right: Box::new(to_owned_expression(*div.right)),
-			fragment: Fragment::Owned(div.fragment.into_owned()),
+			fragment: div.fragment,
 		}),
 		Expression::Call(call) => Expression::Call(CallExpression {
-			func: IdentExpression(Fragment::Owned(call.func.0.into_owned())),
+			func: IdentExpression(call.func.0),
 			args: call.args.into_iter().map(to_owned_expression).collect(),
-			fragment: Fragment::Owned(call.fragment.into_owned()),
+			fragment: call.fragment,
 		}),
 		Expression::Rem(rem) => Expression::Rem(RemExpression {
 			left: Box::new(to_owned_expression(*rem.left)),
 			right: Box::new(to_owned_expression(*rem.right)),
-			fragment: Fragment::Owned(rem.fragment.into_owned()),
+			fragment: rem.fragment,
 		}),
 		Expression::Mul(mul) => Expression::Mul(MulExpression {
 			left: Box::new(to_owned_expression(*mul.left)),
 			right: Box::new(to_owned_expression(*mul.right)),
-			fragment: Fragment::Owned(mul.fragment.into_owned()),
+			fragment: mul.fragment,
 		}),
 		Expression::Sub(sub) => Expression::Sub(SubExpression {
 			left: Box::new(to_owned_expression(*sub.left)),
 			right: Box::new(to_owned_expression(*sub.right)),
-			fragment: Fragment::Owned(sub.fragment.into_owned()),
+			fragment: sub.fragment,
 		}),
 		Expression::Tuple(tuple) => Expression::Tuple(TupleExpression {
 			expressions: tuple.expressions.into_iter().map(to_owned_expression).collect(),
-			fragment: Fragment::Owned(tuple.fragment.into_owned()),
+			fragment: tuple.fragment,
 		}),
 		Expression::Prefix(prefix) => Expression::Prefix(PrefixExpression {
 			operator: to_owned_prefix_operator(prefix.operator),
 			expression: Box::new(to_owned_expression(*prefix.expression)),
-			fragment: Fragment::Owned(prefix.fragment.into_owned()),
+			fragment: prefix.fragment,
 		}),
 		Expression::GreaterThan(gt) => Expression::GreaterThan(GreaterThanExpression {
 			left: Box::new(to_owned_expression(*gt.left)),
 			right: Box::new(to_owned_expression(*gt.right)),
-			fragment: Fragment::Owned(gt.fragment.into_owned()),
+			fragment: gt.fragment,
 		}),
 		Expression::LessThan(lt) => Expression::LessThan(LessThanExpression {
 			left: Box::new(to_owned_expression(*lt.left)),
 			right: Box::new(to_owned_expression(*lt.right)),
-			fragment: Fragment::Owned(lt.fragment.into_owned()),
+			fragment: lt.fragment,
 		}),
 		Expression::GreaterThanEqual(gte) => Expression::GreaterThanEqual(GreaterThanEqExpression {
 			left: Box::new(to_owned_expression(*gte.left)),
 			right: Box::new(to_owned_expression(*gte.right)),
-			fragment: Fragment::Owned(gte.fragment.into_owned()),
+			fragment: gte.fragment,
 		}),
 		Expression::LessThanEqual(lte) => Expression::LessThanEqual(LessThanEqExpression {
 			left: Box::new(to_owned_expression(*lte.left)),
 			right: Box::new(to_owned_expression(*lte.right)),
-			fragment: Fragment::Owned(lte.fragment.into_owned()),
+			fragment: lte.fragment,
 		}),
 		Expression::Equal(eq) => Expression::Equal(EqExpression {
 			left: Box::new(to_owned_expression(*eq.left)),
 			right: Box::new(to_owned_expression(*eq.right)),
-			fragment: Fragment::Owned(eq.fragment.into_owned()),
+			fragment: eq.fragment,
 		}),
 		Expression::NotEqual(ne) => Expression::NotEqual(NotEqExpression {
 			left: Box::new(to_owned_expression(*ne.left)),
 			right: Box::new(to_owned_expression(*ne.right)),
-			fragment: Fragment::Owned(ne.fragment.into_owned()),
+			fragment: ne.fragment,
 		}),
 		Expression::And(and) => Expression::And(AndExpression {
 			left: Box::new(to_owned_expression(*and.left)),
 			right: Box::new(to_owned_expression(*and.right)),
-			fragment: Fragment::Owned(and.fragment.into_owned()),
+			fragment: and.fragment,
 		}),
 		Expression::Or(or) => Expression::Or(OrExpression {
 			left: Box::new(to_owned_expression(*or.left)),
 			right: Box::new(to_owned_expression(*or.right)),
-			fragment: Fragment::Owned(or.fragment.into_owned()),
+			fragment: or.fragment,
 		}),
 		Expression::Xor(xor) => Expression::Xor(XorExpression {
 			left: Box::new(to_owned_expression(*xor.left)),
 			right: Box::new(to_owned_expression(*xor.right)),
-			fragment: Fragment::Owned(xor.fragment.into_owned()),
+			fragment: xor.fragment,
 		}),
 		Expression::Between(between) => Expression::Between(BetweenExpression {
 			value: Box::new(to_owned_expression(*between.value)),
 			lower: Box::new(to_owned_expression(*between.lower)),
 			upper: Box::new(to_owned_expression(*between.upper)),
-			fragment: Fragment::Owned(between.fragment.into_owned()),
+			fragment: between.fragment,
 		}),
 		Expression::Type(type_expr) => Expression::Type(to_owned_type_expression(type_expr)),
 		Expression::Parameter(param) => Expression::Parameter(to_owned_parameter_expression(param)),
@@ -137,72 +136,72 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 			value: Box::new(to_owned_expression(*in_expr.value)),
 			list: Box::new(to_owned_expression(*in_expr.list)),
 			negated: in_expr.negated,
-			fragment: Fragment::Owned(in_expr.fragment.into_owned()),
+			fragment: in_expr.fragment,
 		}),
 	}
 }
 
-fn to_owned_constant_expression(constant: ConstantExpression<'_>) -> ConstantExpression<'static> {
+fn to_owned_constant_expression(constant: ConstantExpression) -> ConstantExpression {
 	match constant {
 		ConstantExpression::Undefined {
 			fragment,
 		} => ConstantExpression::Undefined {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 		ConstantExpression::Bool {
 			fragment,
 		} => ConstantExpression::Bool {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 		ConstantExpression::Number {
 			fragment,
 		} => ConstantExpression::Number {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 		ConstantExpression::Text {
 			fragment,
 		} => ConstantExpression::Text {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 		ConstantExpression::Temporal {
 			fragment,
 		} => ConstantExpression::Temporal {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 	}
 }
 
-fn to_owned_type_expression(type_expr: TypeExpression<'_>) -> TypeExpression<'static> {
+fn to_owned_type_expression(type_expr: TypeExpression) -> TypeExpression {
 	TypeExpression {
 		ty: type_expr.ty,
-		fragment: Fragment::Owned(type_expr.fragment.into_owned()),
+		fragment: type_expr.fragment,
 	}
 }
 
-/// Helper function to convert ParameterExpression<'a> to
-/// ParameterExpression<'static>
-fn to_owned_parameter_expression(param: ParameterExpression<'_>) -> ParameterExpression<'static> {
+/// Helper function to convert ParameterExpression to
+/// ParameterExpression
+fn to_owned_parameter_expression(param: ParameterExpression) -> ParameterExpression {
 	match param {
 		ParameterExpression::Positional {
 			fragment,
 		} => ParameterExpression::Positional {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 		ParameterExpression::Named {
 			fragment,
 		} => ParameterExpression::Named {
-			fragment: Fragment::Owned(fragment.into_owned()),
+			fragment,
 		},
 	}
 }
 
-fn to_owned_variable_expression(var: VariableExpression<'_>) -> VariableExpression<'static> {
+fn to_owned_variable_expression(var: VariableExpression) -> VariableExpression {
 	VariableExpression {
-		fragment: Fragment::Owned(var.fragment.into_owned()),
+		fragment: var.fragment,
 	}
 }
 
-fn to_owned_if_expression(if_expr: IfExpression<'_>) -> IfExpression<'static> {
+fn to_owned_if_expression(if_expr: IfExpression) -> IfExpression {
 	IfExpression {
 		condition: Box::new(to_owned_expression(*if_expr.condition)),
 		then_expr: Box::new(to_owned_expression(*if_expr.then_expr)),
@@ -212,32 +211,32 @@ fn to_owned_if_expression(if_expr: IfExpression<'_>) -> IfExpression<'static> {
 			.map(|else_if| ElseIfExpression {
 				condition: Box::new(to_owned_expression(*else_if.condition)),
 				then_expr: Box::new(to_owned_expression(*else_if.then_expr)),
-				fragment: Fragment::Owned(else_if.fragment.into_owned()),
+				fragment: else_if.fragment,
 			})
 			.collect(),
 		else_expr: if_expr.else_expr.map(|else_expr| Box::new(to_owned_expression(*else_expr))),
-		fragment: Fragment::Owned(if_expr.fragment.into_owned()),
+		fragment: if_expr.fragment,
 	}
 }
 
-fn to_owned_prefix_operator(op: PrefixOperator<'_>) -> PrefixOperator<'static> {
+fn to_owned_prefix_operator(op: PrefixOperator) -> PrefixOperator {
 	match op {
-		PrefixOperator::Minus(fragment) => PrefixOperator::Minus(Fragment::Owned(fragment.into_owned())),
-		PrefixOperator::Plus(fragment) => PrefixOperator::Plus(Fragment::Owned(fragment.into_owned())),
-		PrefixOperator::Not(fragment) => PrefixOperator::Not(Fragment::Owned(fragment.into_owned())),
+		PrefixOperator::Minus(fragment) => PrefixOperator::Minus(fragment),
+		PrefixOperator::Plus(fragment) => PrefixOperator::Plus(fragment),
+		PrefixOperator::Not(fragment) => PrefixOperator::Not(fragment),
 	}
 }
 
 /// Converts a vector of expressions to owned forms
-pub fn to_owned_expressions(exprs: Vec<Expression<'_>>) -> Vec<Expression<'static>> {
+pub fn to_owned_expressions(exprs: Vec<Expression>) -> Vec<Expression> {
 	exprs.into_iter().map(to_owned_expression).collect()
 }
 
-pub fn to_owned_fragment(fragment: Fragment<'_>) -> Fragment<'static> {
-	Fragment::Owned(fragment.into_owned())
+pub fn to_owned_fragment(fragment: Fragment) -> Fragment {
+	fragment
 }
 
-pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
+pub fn to_owned_physical_plan(plan: PhysicalPlan) -> PhysicalPlan {
 	match plan {
 		PhysicalPlan::Aggregate(node) => PhysicalPlan::Aggregate(crate::plan::physical::AggregateNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
@@ -262,19 +261,19 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		}),
 		PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
-			columns: node.columns.into_iter().map(|c| c.to_static()).collect(),
+			columns: node.columns.into_iter().map(|c| c).collect(),
 		}),
 		PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
-			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			alias: node.alias.map(|a| a),
 		}),
 		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
-			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			alias: node.alias.map(|a| a),
 		}),
 		PhysicalPlan::Merge(node) => PhysicalPlan::Merge(crate::plan::physical::MergeNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
@@ -293,25 +292,25 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			// For TableScan, we need to extract the namespace and table defs
 			// from the resolved source and convert them to owned versions
 			PhysicalPlan::TableScan(crate::plan::physical::TableScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 			})
 		}
 		PhysicalPlan::ViewScan(node) => {
 			// For ViewScan, convert the resolved view to owned
 			PhysicalPlan::ViewScan(crate::plan::physical::ViewScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 			})
 		}
 		PhysicalPlan::RingBufferScan(node) => {
 			// For RingBufferScan, convert the resolved ring buffer to owned
 			PhysicalPlan::RingBufferScan(crate::plan::physical::RingBufferScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 			})
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			// For TableVirtualScan, convert resolved table virtual and context to owned
 			PhysicalPlan::TableVirtualScan(crate::plan::physical::TableVirtualScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 				pushdown_context: node.pushdown_context.map(|ctx| {
 					crate::plan::physical::TableVirtualPushdownContext {
 						filters: to_owned_expressions(ctx.filters),
@@ -325,7 +324,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		PhysicalPlan::IndexScan(node) => {
 			// For IndexScan, convert the resolved table to owned
 			PhysicalPlan::IndexScan(crate::plan::physical::IndexScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 				index_name: node.index_name.clone(),
 			})
 		}
@@ -336,13 +335,11 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 				.map(|row| {
 					row.into_iter()
 						.map(|alias_expr| AliasExpression {
-							alias: IdentExpression(Fragment::Owned(
-								alias_expr.alias.0.into_owned(),
-							)),
+							alias: IdentExpression(alias_expr.alias.0),
 							expression: Box::new(to_owned_expression(
 								*alias_expr.expression,
 							)),
-							fragment: Fragment::Owned(alias_expr.fragment.into_owned()),
+							fragment: alias_expr.fragment,
 						})
 						.collect()
 				})
@@ -362,24 +359,24 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		PhysicalPlan::FlowScan(node) => {
 			// For FlowScan, convert the resolved flow to owned
 			PhysicalPlan::FlowScan(crate::plan::physical::FlowScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 			})
 		}
 		PhysicalPlan::RowPointLookup(node) => {
 			PhysicalPlan::RowPointLookup(crate::plan::physical::RowPointLookupNode {
-				source: node.source.to_static(),
+				source: node.source,
 				row_number: node.row_number,
 			})
 		}
 		PhysicalPlan::RowListLookup(node) => {
 			PhysicalPlan::RowListLookup(crate::plan::physical::RowListLookupNode {
-				source: node.source.to_static(),
+				source: node.source,
 				row_numbers: node.row_numbers,
 			})
 		}
 		PhysicalPlan::RowRangeScan(node) => {
 			PhysicalPlan::RowRangeScan(crate::plan::physical::RowRangeScanNode {
-				source: node.source.to_static(),
+				source: node.source,
 				start: node.start,
 				end: node.end,
 			})
@@ -388,18 +385,18 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 	}
 }
 
-/// Helper function to convert MapExpression<'a> to MapExpression<'static>
-fn to_owned_map_expression(map: MapExpression<'_>) -> MapExpression<'static> {
+/// Helper function to convert MapExpression to MapExpression
+fn to_owned_map_expression(map: MapExpression) -> MapExpression {
 	MapExpression {
 		expressions: map.expressions.into_iter().map(to_owned_expression).collect(),
-		fragment: Fragment::Owned(map.fragment.into_owned()),
+		fragment: map.fragment,
 	}
 }
 
-/// Helper function to convert ExtendExpression<'a> to ExtendExpression<'static>
-fn to_owned_extend_expression(extend: ExtendExpression<'_>) -> ExtendExpression<'static> {
+/// Helper function to convert ExtendExpression to ExtendExpression
+fn to_owned_extend_expression(extend: ExtendExpression) -> ExtendExpression {
 	ExtendExpression {
 		expressions: extend.expressions.into_iter().map(to_owned_expression).collect(),
-		fragment: Fragment::Owned(extend.fragment.into_owned()),
+		fragment: extend.fragment,
 	}
 }

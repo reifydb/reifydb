@@ -3,6 +3,7 @@
 
 //! Factory for creating admin subsystem instances.
 
+use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -24,8 +25,9 @@ impl AdminSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Use provided runtime or create a default one

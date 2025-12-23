@@ -2,22 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{WindowSize, WindowSlide, WindowType};
-use reifydb_type::{Error, OwnedFragment, diagnostic::operation, return_error};
+use reifydb_type::{Error, Fragment, diagnostic::operation, return_error};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, expression::Expression};
 
-pub fn create_sliding_window<'a>(
+pub fn create_sliding_window(
 	config: WindowConfig,
-	group_by: Vec<Expression<'a>>,
-	aggregations: Vec<Expression<'a>>,
-) -> Result<WindowNode<'a>> {
+	group_by: Vec<Expression>,
+	aggregations: Vec<Expression>,
+) -> Result<WindowNode> {
 	validate_sliding_config(&config)?;
 
 	let window_type =
-		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(OwnedFragment::None)))?;
+		config.window_type.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
 
-	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(OwnedFragment::None)))?;
+	let size = config.size.ok_or_else(|| Error(operation::window_missing_type_or_size(Fragment::None)))?;
 
 	let slide = config.slide;
 
@@ -37,21 +37,21 @@ fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
 	let slide = config
 		.slide
 		.as_ref()
-		.ok_or_else(|| Error(operation::window_missing_slide_parameter(OwnedFragment::None)))?;
+		.ok_or_else(|| Error(operation::window_missing_slide_parameter(Fragment::None)))?;
 
 	match (&config.window_type, &config.size) {
 		(Some(WindowType::Time(_)), Some(WindowSize::Duration(window_duration))) => {
 			if let WindowSlide::Duration(slide_duration) = slide {
 				if slide_duration >= window_duration {
 					return_error!(operation::window_slide_too_large(
-						OwnedFragment::None,
+						Fragment::None,
 						format!("{:?}", slide_duration),
 						format!("{:?}", window_duration)
 					));
 				}
 			} else {
 				return_error!(operation::window_incompatible_slide_type(
-					OwnedFragment::None,
+					Fragment::None,
 					"time-based".to_string(),
 					"count-based".to_string()
 				));
@@ -61,14 +61,14 @@ fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
 			if let WindowSlide::Count(slide_count) = slide {
 				if slide_count >= window_count {
 					return_error!(operation::window_slide_too_large(
-						OwnedFragment::None,
+						Fragment::None,
 						slide_count.to_string(),
 						window_count.to_string()
 					));
 				}
 			} else {
 				return_error!(operation::window_incompatible_slide_type(
-					OwnedFragment::None,
+					Fragment::None,
 					"count-based".to_string(),
 					"time-based".to_string()
 				));
@@ -76,13 +76,13 @@ fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
 		}
 		(Some(window_type), Some(size)) => {
 			return_error!(operation::window_incompatible_type_size(
-				OwnedFragment::None,
+				Fragment::None,
 				format!("{:?}", window_type),
 				format!("{:?}", size)
 			));
 		}
 		_ => {
-			return_error!(operation::window_missing_type_or_size(OwnedFragment::None));
+			return_error!(operation::window_missing_type_or_size(Fragment::None));
 		}
 	}
 

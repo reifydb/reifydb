@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// View flow processing error
 pub fn flow_error(message: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn flow_error(message: String) -> Diagnostic {
 		statement: None,
 		message: format!("Flow processing error: {}", message),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check view flow configuration".to_string()),
 		notes: vec![],
@@ -28,7 +28,7 @@ pub fn flow_transaction_keyspace_overlap(key_debug: String) -> Diagnostic {
 			key_debug
 		),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("FlowTransactions must operate on non-overlapping keyspaces. \
 			This is typically enforced at the flow scheduler level."
@@ -45,7 +45,7 @@ pub fn flow_already_registered(flow_id: u64) -> Diagnostic {
 		statement: None,
 		message: format!("Flow {} is already registered", flow_id),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Each flow can only be registered once. Check if the flow is already active.".to_string()),
 		notes: vec![],
@@ -63,7 +63,7 @@ pub fn flow_version_corrupted(flow_id: u64, byte_count: usize) -> Diagnostic {
 			flow_id, byte_count
 		),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("The flow version stored in the catalog is corrupted. \
 			This may indicate data corruption or a schema migration issue. \
@@ -84,7 +84,7 @@ pub fn flow_backfill_timeout(flow_id: u64, timeout_secs: u64) -> Diagnostic {
 			flow_id, timeout_secs
 		),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("The flow backfill operation did not complete within the timeout period. \
 			This may indicate a large dataset, slow queries, or resource constraints. \
@@ -102,7 +102,7 @@ pub fn flow_dispatcher_unavailable() -> Diagnostic {
 		statement: None,
 		message: "Flow dispatcher is unavailable (channel closed)".to_string(),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("The flow dispatcher task has stopped or crashed. \
 			This may occur during shutdown or if the dispatcher encountered a fatal error. \

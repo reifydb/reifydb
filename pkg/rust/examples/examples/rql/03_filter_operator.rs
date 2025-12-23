@@ -8,18 +8,19 @@
 //!
 //! Run with: `make rql-filter` or `cargo run --bin rql-filter`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
+	db.start().await.unwrap();
 
 	// Set up sample data
 	info!("Setting up sample employee data...");
-	db.command_as_root("create namespace hr", Params::None).unwrap();
+	db.command_as_root("create namespace hr", Params::None).await.unwrap();
 	db.command_as_root(
 		r#"
 		create table hr.employees {
@@ -33,6 +34,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -51,6 +53,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Example 1: Simple equality filter
@@ -64,6 +67,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -81,6 +85,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -98,6 +103,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -115,6 +121,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -132,6 +139,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -152,6 +160,7 @@ filter department == "Engineering" and salary > 100000"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -172,6 +181,7 @@ filter department == "Sales" or department == "Marketing""#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -194,6 +204,7 @@ filter (department == "Engineering" or department == "Sales")
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -224,6 +235,7 @@ filter score >= 90"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -246,6 +258,7 @@ filter is_manager == false"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -266,6 +279,7 @@ filter salary between 90000 and 110000"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);

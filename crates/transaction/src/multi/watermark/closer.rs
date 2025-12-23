@@ -13,71 +13,15 @@ use std::{
 	ops::Deref,
 	sync::{
 		Arc,
-		atomic::{AtomicPtr, Ordering},
+		atomic::{AtomicBool, Ordering},
 	},
 };
 
-use crossbeam_channel::{Receiver, Sender, unbounded};
 use reifydb_core::WaitGroup;
+use tokio::sync::broadcast;
 
-#[derive(Debug)]
-struct Canceler {
-	ptr: AtomicPtr<()>,
-}
-
-impl Canceler {
-	fn cancel(&self) {
-		// Safely take the sender out of the AtomicPtr.
-		let tx_ptr = self.ptr.swap(std::ptr::null_mut(), Ordering::AcqRel);
-
-		// Check if the pointer is not null (indicating it hasn't been
-		// taken already).
-		if !tx_ptr.is_null() {
-			// Safe because we ensure that this is the only place
-			// that takes ownership of the pointer,
-			// and it is done only once.
-			unsafe {
-				// Convert the pointer back to a Box to take
-				// ownership and drop the sender.
-				let tx = Box::from_raw(tx_ptr as *mut Sender<()>);
-				drop(tx);
-			}
-		}
-	}
-}
-
-impl Drop for Canceler {
-	fn drop(&mut self) {
-		self.cancel();
-	}
-}
-
-#[derive(Debug)]
-#[repr(transparent)]
-struct CancelContext {
-	rx: Receiver<()>,
-}
-
-impl CancelContext {
-	fn new() -> (Self, Canceler) {
-		let (tx, rx) = unbounded();
-		(
-			Self {
-				rx,
-			},
-			Canceler {
-				ptr: AtomicPtr::new(Box::into_raw(Box::new(tx)) as _),
-			},
-		)
-	}
-
-	fn done(&self) -> Receiver<()> {
-		self.rx.clone()
-	}
-}
-
-/// Closer holds the two things we need to close a thread and wait for it to
-/// finish: a chan to tell the thread to shut down, and a WaitGroup with
+/// Closer holds the two things we need to close a task and wait for it to
+/// finish: a channel to tell the task to shut down, and a WaitGroup with
 /// which to wait for it to finish shutting down.
 #[derive(Debug, Clone)]
 #[repr(transparent)]
@@ -93,26 +37,26 @@ impl Deref for Closer {
 #[derive(Debug)]
 pub struct CloserInner {
 	wg: WaitGroup,
-	ctx: CancelContext,
-	cancel: Canceler,
+	tx: broadcast::Sender<()>,
+	signaled: AtomicBool,
 }
 
 impl CloserInner {
 	fn new() -> Self {
-		let (ctx, cancel) = CancelContext::new();
+		let (tx, _rx) = broadcast::channel(1);
 		Self {
 			wg: WaitGroup::new(),
-			ctx,
-			cancel,
+			tx,
+			signaled: AtomicBool::new(false),
 		}
 	}
 
 	fn with(initial: usize) -> Self {
-		let (ctx, cancel) = CancelContext::new();
+		let (tx, _rx) = broadcast::channel(1);
 		Self {
 			wg: WaitGroup::from(initial),
-			ctx,
-			cancel,
+			tx,
+			signaled: AtomicBool::new(false),
 		}
 	}
 }
@@ -135,81 +79,101 @@ impl Closer {
 		self.wg.done();
 	}
 
-	/// Signals the [`Closer::has_been_closed`] signal.
+	/// Signals the shutdown.
 	pub fn signal(&self) {
-		self.cancel.cancel();
+		// Only signal once
+		if !self.signaled.swap(true, Ordering::AcqRel) {
+			let _ = self.tx.send(());
+		}
 	}
 
 	/// Waits on the [`WaitGroup`]. (It waits for the Closer's initial
 	/// value, [`Closer::add_running`], and [`Closer::done`]
-	pub fn wait(&self) {
-		self.wg.wait();
+	pub async fn wait(&self) {
+		self.wg.wait().await;
 	}
 
 	/// Calls [`Closer::signal`], then [`Closer::wait`].
-	pub fn signal_and_wait(&self) {
+	pub async fn signal_and_wait(&self) {
 		self.signal();
-		self.wait();
+		self.wait().await;
 	}
 
-	/// Listens for the [`Closer::signal`] signal.
-	pub fn listen(&self) -> Receiver<()> {
-		self.ctx.done()
+	/// Listens for the shutdown signal.
+	/// Returns a receiver that will receive a message when signal() is called.
+	pub fn listen(&self) -> broadcast::Receiver<()> {
+		self.tx.subscribe()
+	}
+
+	/// Returns true if signal() has been called.
+	pub fn is_signaled(&self) -> bool {
+		self.signaled.load(Ordering::Acquire)
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use tokio::{
+		spawn,
+		time::{Duration, sleep, timeout},
+	};
+
 	use crate::multi::watermark::Closer;
 
-	#[test]
-	fn test_multiple_singles() {
+	#[tokio::test]
+	async fn test_multiple_singles() {
 		let closer = Closer::default();
 		closer.signal();
 		closer.signal();
-		closer.signal_and_wait();
+		closer.signal_and_wait().await;
 
 		let closer = Closer::new(1);
 		closer.done();
-		closer.signal_and_wait();
-		closer.signal_and_wait();
+		closer.signal_and_wait().await;
+		closer.signal_and_wait().await;
 		closer.signal();
 	}
 
-	#[test]
-	fn test_closer_single() {
+	#[tokio::test]
+	async fn test_closer_single() {
 		let closer = Closer::new(1);
 		let tc = closer.clone();
-		std::thread::spawn(move || {
-			if let Err(err) = tc.listen().recv() {
-				println!("err: {}", err);
-			}
+		spawn(async move {
+			let mut rx = tc.listen();
+			let _ = rx.recv().await;
 			tc.done();
 		});
-		closer.signal_and_wait();
+		// Give tasks time to start and subscribe
+		sleep(Duration::from_millis(10)).await;
+		closer.signal_and_wait().await;
 	}
 
-	#[test]
-	fn test_closer_many() {
-		use core::time::Duration;
+	#[tokio::test]
+	async fn test_closer_many() {
+		use tokio::sync::mpsc;
 
-		use crossbeam_channel::unbounded;
-
-		let (tx, rx) = unbounded();
+		let (tx, mut rx) = mpsc::channel(10);
 
 		let c = Closer::default();
 
 		for _ in 0..10 {
 			let c = c.clone();
 			let tx = tx.clone();
-			std::thread::spawn(move || {
-				assert!(c.listen().recv().is_err());
-				tx.send(()).unwrap();
+			spawn(async move {
+				let mut listener = c.listen();
+				// Wait for signal (recv returns Err when sender is dropped or message received)
+				let _ = listener.recv().await;
+				tx.send(()).await.unwrap();
 			});
 		}
+
+		// Give tasks time to start and subscribe
+		sleep(Duration::from_millis(10)).await;
+
 		c.signal();
+
 		for _ in 0..10 {
-			rx.recv_timeout(Duration::from_millis(10)).unwrap();
+			timeout(Duration::from_millis(100), rx.recv()).await.expect("timeout").expect("channel closed");
 		}
 	}
 }

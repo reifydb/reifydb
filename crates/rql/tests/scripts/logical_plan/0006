@@ -5,4 +5,4 @@ logical 'map 1+1 as sum'
 ---
 > └── Map
 >     └── (Constant(1) + Constant(1)) as sum
-> 
+>

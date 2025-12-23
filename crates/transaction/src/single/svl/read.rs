@@ -1,25 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use diagnostic::transaction::key_out_of_scope;
-use parking_lot::{RwLock as ParkingRwLock, RwLockReadGuard as ParkingRwLockReadGuard};
 use reifydb_core::interface::SingleVersionQueryTransaction;
 use reifydb_store_transaction::{SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic, error, util::hex};
-use self_cell::self_cell;
+use tokio::sync::OwnedRwLockReadGuard;
 
 use super::*;
 
-type ReadGuard<'a> = ParkingRwLockReadGuard<'a, ()>;
-
-// Safe self-referential struct that owns both the Arc and the guard borrowing from it
-self_cell! {
-	pub struct KeyReadLock {
-		owner: Arc<ParkingRwLock<()>>,
-		#[covariant]
-		dependent: ReadGuard,
-	}
-}
+/// Simple wrapper around tokio's OwnedRwLockReadGuard.
+/// OwnedRwLockReadGuard is Send, so this struct is Send.
+#[allow(dead_code)]
+pub struct KeyReadLock(pub(super) OwnedRwLockReadGuard<()>);
 
 pub struct SvlQueryTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
@@ -38,16 +32,20 @@ impl<'a> SvlQueryTransaction<'a> {
 	}
 }
 
+#[async_trait]
 impl SingleVersionQueryTransaction for SvlQueryTransaction<'_> {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
-		let store = self.inner.store.read().unwrap();
-		store.get(key)
+		// Clone the store to avoid holding the lock across await
+		// TransactionStore is Arc-based, so clone is cheap
+		let store = self.inner.store.read().await.clone();
+		SingleVersionGet::get(&store, key).await
 	}
 
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
-		let store = self.inner.store.read().unwrap();
-		store.contains(key)
+		// Clone the store to avoid holding the lock across await
+		let store = self.inner.store.read().await.clone();
+		SingleVersionContains::contains(&store, key).await
 	}
 }

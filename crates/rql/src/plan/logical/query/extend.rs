@@ -11,9 +11,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_extend<'a, T: CatalogQueryTransaction>(
-		ast: AstExtend<'a>,
+		ast: AstExtend,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Extend(ExtendNode {
 			extend: ast
 				.nodes

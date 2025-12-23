@@ -3,7 +3,7 @@
 
 use reifydb_core::value::{column::ColumnData, container::NumberContainer};
 use reifydb_type::{
-	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,
+	Decimal, Fragment, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,
 	diagnostic::cast,
 	error, parse_decimal, parse_float, return_error,
 	value::number::{parse_primitive_int, parse_primitive_uint},
@@ -11,11 +11,11 @@ use reifydb_type::{
 
 use crate::evaluate::convert::Convert;
 
-pub fn to_number<'a>(
+pub fn to_number(
 	ctx: impl Convert,
 	data: &ColumnData,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		let source_type = data.get_type();
@@ -48,11 +48,7 @@ pub fn to_number<'a>(
 	return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 }
 
-fn boolean_to_number<'a>(
-	data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnData, val: bool| {
@@ -152,11 +148,7 @@ fn boolean_to_number<'a>(
 	}
 }
 
-fn float_to_integer<'a>(
-	data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Float4(container) => match target {
 			Type::Int1 => f32_to_i8_vec(container),
@@ -231,22 +223,18 @@ macro_rules! parse_and_push {
 	}};
 }
 
-fn text_to_integer<'a>(
-	data: &ColumnData,
-	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
 			..
 		} => {
-			let base_fragment = lazy_fragment.fragment().into_owned();
+			let base_fragment = lazy_fragment.fragment();
 			let mut out = ColumnData::with_capacity(target, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					let temp_fragment = BorrowedFragment::new_internal(val);
+					let temp_fragment = Fragment::internal(val);
 
 					match target {
 						Type::Int1 => {
@@ -413,7 +401,7 @@ fn text_to_integer<'a>(
 fn text_to_float<'a>(
 	column_data: &ColumnData,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
@@ -421,14 +409,14 @@ fn text_to_float<'a>(
 	} = column_data
 	{
 		// Create base fragment once for efficiency
-		let base_fragment = lazy_fragment.fragment().into_owned();
+		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
 				// Create efficient borrowed fragment for
 				// parsing
-				let temp_fragment = BorrowedFragment::new_internal(val);
+				let temp_fragment = Fragment::internal(val);
 
 				match target {
 					Type::Float4 => {
@@ -485,19 +473,19 @@ fn text_to_float<'a>(
 fn text_to_decimal<'a>(
 	column_data: &ColumnData,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
 	} = column_data
 	{
-		let base_fragment = lazy_fragment.fragment().into_owned();
+		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
-				let temp_fragment = BorrowedFragment::new_internal(val);
+				let temp_fragment = Fragment::internal(val);
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
 					e.0.with_fragment(base_fragment.clone());
@@ -663,11 +651,11 @@ fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> crate::
 	Ok(out)
 }
 
-fn number_to_number<'a>(
+fn number_to_number(
 	data: &ColumnData,
 	target: Type,
 	ctx: impl Convert,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), data.get_type(), target,));
@@ -1199,7 +1187,7 @@ fn number_to_number<'a>(
 pub(crate) fn convert_vec<'a, From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -1211,7 +1199,8 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.convert::<From, To>(val, || lazy_fragment.fragment().into_owned())? {
+			let fragment = lazy_fragment.fragment();
+			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -1225,7 +1214,7 @@ where
 pub(crate) fn convert_vec_clone<'a, From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 	target_kind: Type,
 	mut push: impl FnMut(&mut ColumnData, To),
 ) -> crate::Result<ColumnData>
@@ -1237,7 +1226,8 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx].clone();
-			match ctx.convert::<From, To>(val, || lazy_fragment.fragment().into_owned())? {
+			let fragment = lazy_fragment.fragment();
+			match ctx.convert::<From, To>(val, fragment)? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -1256,8 +1246,8 @@ mod tests {
 
 		use crate::evaluate::{column::cast::number::convert_vec, convert::Convert};
 
-		#[test]
-		fn test_promote_ok() {
+		#[tokio::test]
+		async fn test_promote_ok() {
 			let data = [1i8, 2i8];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
@@ -1276,8 +1266,8 @@ mod tests {
 			assert_eq!(slice, &[1i16, 2i16]);
 		}
 
-		#[test]
-		fn test_promote_none_maps_to_undefined() {
+		#[tokio::test]
+		async fn test_promote_none_maps_to_undefined() {
 			// 42 mapped to None
 			let data = [42i8];
 			let bitvec = BitVec::from_slice(&[true]);
@@ -1296,8 +1286,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[test]
-		fn test_promote_invalid_bitmaps_are_undefined() {
+		#[tokio::test]
+		async fn test_promote_invalid_bitmaps_are_undefined() {
 			let data = [1i8];
 			let bitvec = BitVec::from_slice(&[false]);
 			let ctx = TestCtx::new();
@@ -1315,8 +1305,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[test]
-		fn test_promote_mixed_bitvec_and_failure() {
+		#[tokio::test]
+		async fn test_promote_mixed_bitvec_and_failure() {
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
@@ -1352,7 +1342,7 @@ mod tests {
 			fn convert<From, To>(
 				&self,
 				val: From,
-				_fragment: impl reifydb_type::IntoFragment<'static>,
+				_fragment: impl Into<reifydb_type::Fragment>,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafeConvert<To> + GetType,
@@ -1375,8 +1365,8 @@ mod tests {
 			}
 		}
 
-		#[test]
-		fn test_demote_ok() {
+		#[tokio::test]
+		async fn test_demote_ok() {
 			let data = [1i16, 2i16];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
@@ -1397,8 +1387,8 @@ mod tests {
 			assert!(result.is_defined(1));
 		}
 
-		#[test]
-		fn test_demote_none_maps_to_undefined() {
+		#[tokio::test]
+		async fn test_demote_none_maps_to_undefined() {
 			let data = [42i16];
 			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
@@ -1416,8 +1406,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[test]
-		fn test_demote_invalid_bitmaps_are_undefined() {
+		#[tokio::test]
+		async fn test_demote_invalid_bitmaps_are_undefined() {
 			let data = [1i16];
 			let bitvec = BitVec::repeat(1, false);
 			let ctx = TestCtx::new();
@@ -1435,8 +1425,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[test]
-		fn test_demote_mixed_bitvec_and_failure() {
+		#[tokio::test]
+		async fn test_demote_mixed_bitvec_and_failure() {
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();

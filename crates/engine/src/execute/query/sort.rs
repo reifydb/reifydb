@@ -3,6 +3,7 @@
 
 use std::cmp::Ordering::Equal;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
@@ -17,14 +18,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct SortNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
+pub(crate) struct SortNode {
+	input: Box<ExecutionPlan>,
 	by: Vec<SortKey>,
 	initialized: Option<()>,
 }
 
-impl<'a> SortNode<'a> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, by: Vec<SortKey>) -> Self {
+impl<'a> SortNode {
+	pub(crate) fn new(input: Box<ExecutionPlan>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,
 			by,
@@ -33,27 +34,32 @@ impl<'a> SortNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for SortNode<'a> {
+#[async_trait]
+impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "query::sort::initialize")]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
-		self.input.initialize(rx, ctx)?;
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		self.input.initialize(rx, ctx).await?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::sort::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			if let Some(existing_columns) = &mut columns_opt {
 				for (i, col) in columns.into_iter().enumerate() {
@@ -117,7 +123,7 @@ impl<'a> QueryNode<'a> for SortNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
 	}
 }

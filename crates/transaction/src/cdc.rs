@@ -3,11 +3,12 @@
 
 use std::ops::Bound;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcQueryTransaction, CdcTransaction},
+	interface::{Cdc, CdcBatch, CdcQueryTransaction, CdcTransaction},
 };
-use reifydb_store_transaction::{CdcCount, CdcGet, CdcRange, CdcScan, TransactionStore};
+use reifydb_store_transaction::{CdcCount, CdcGet, CdcRange, TransactionStore};
 
 #[derive(Clone)]
 pub struct TransactionCdc {
@@ -46,24 +47,26 @@ impl StandardCdcQueryTransaction {
 	}
 }
 
+#[async_trait]
 impl CdcQueryTransaction for StandardCdcQueryTransaction {
-	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		self.store.get(version)
+	async fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
+		CdcGet::get(&self.store, version).await
 	}
 
-	fn range(
+	async fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
-	) -> Result<Box<dyn Iterator<Item = Cdc> + '_>> {
-		Ok(Box::new(self.store.range(start, end)?))
+		batch_size: u64,
+	) -> Result<CdcBatch> {
+		let store_batch = CdcRange::range_batch(&self.store, start, end, batch_size).await?;
+		Ok(CdcBatch {
+			items: store_batch.items,
+			has_more: store_batch.has_more,
+		})
 	}
 
-	fn scan(&self) -> Result<Box<dyn Iterator<Item = Cdc> + '_>> {
-		Ok(Box::new(self.store.scan()?))
-	}
-
-	fn count(&self, version: CommitVersion) -> Result<usize> {
-		self.store.count(version)
+	async fn count(&self, version: CommitVersion) -> Result<usize> {
+		CdcCount::count(&self.store, version).await
 	}
 }

@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{CatalogStore, store::sequence::SystemSequence};
 
@@ -19,13 +19,13 @@ pub struct RingBufferColumnToCreate {
 	pub constraint: TypeConstraint,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct RingBufferToCreate {
-	pub fragment: Option<OwnedFragment>,
+	pub fragment: Option<Fragment>,
 	pub ringbuffer: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
@@ -33,7 +33,7 @@ pub struct RingBufferToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_ringbuffer(
+	pub async fn create_ringbuffer(
 		txn: &mut impl CommandTransaction,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<RingBufferDef> {
@@ -41,34 +41,38 @@ impl CatalogStore {
 
 		// Check if ring buffer already exists
 		if let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, &to_create.ringbuffer)?
+			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, &to_create.ringbuffer).await?
 		{
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
-			return_error!(ringbuffer_already_exists(to_create.fragment, &namespace.name, &ringbuffer.name));
+			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
+			return_error!(ringbuffer_already_exists(
+				to_create.fragment.unwrap_or_else(|| Fragment::None),
+				&namespace.name,
+				&ringbuffer.name
+			));
 		}
 
 		// Allocate new ring buffer ID
-		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
+		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn).await?;
 
 		// Store the ring buffer
-		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
+		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create).await?;
 
 		// Link ring buffer to namespace
-		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, &to_create.ringbuffer)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, &to_create.ringbuffer).await?;
 
 		// Save capacity before moving to_create
 		let capacity = to_create.capacity;
 
 		// Insert columns
-		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
+		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create).await?;
 
 		// Initialize ring buffer metadata
-		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity).await?;
 
-		Ok(Self::get_ringbuffer(txn, ringbuffer_id)?)
+		Ok(Self::get_ringbuffer(txn, ringbuffer_id).await?)
 	}
 
-	fn store_ringbuffer(
+	async fn store_ringbuffer(
 		txn: &mut impl CommandTransaction,
 		ringbuffer: RingBufferId,
 		namespace: NamespaceId,
@@ -86,12 +90,12 @@ impl CatalogStore {
 		// Initialize with no primary key
 		ringbuffer::LAYOUT.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 
-		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
+		txn.set(&RingBufferKey::encoded(ringbuffer), row).await?;
 
 		Ok(())
 	}
 
-	fn link_ringbuffer_to_namespace(
+	async fn link_ringbuffer_to_namespace(
 		txn: &mut impl CommandTransaction,
 		namespace: NamespaceId,
 		ringbuffer: RingBufferId,
@@ -105,12 +109,12 @@ impl CatalogStore {
 		ringbuffer_namespace::LAYOUT.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
 		ringbuffer_namespace::LAYOUT.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
-		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row)?;
+		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row).await?;
 
 		Ok(())
 	}
 
-	fn insert_ringbuffer_columns(
+	async fn insert_ringbuffer_columns(
 		txn: &mut impl CommandTransaction,
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
@@ -123,14 +127,14 @@ impl CatalogStore {
 				ringbuffer_id,
 				ColumnToCreate {
 					fragment: col.fragment,
-					namespace_name: "", /* Not used in
-					                     * create_column */
+					namespace_name: String::new(), /* Not used in
+					                                * create_column */
 					table: TableId(0), /* Not used in
 					                    * create_column -
 					                    * source is passed
 					                    * separately */
-					table_name: "", /* Not used in
-					                 * create_column */
+					table_name: String::new(), /* Not used in
+					                            * create_column */
 					column: col.name,
 					constraint: col.constraint,
 					if_not_exists: false,
@@ -139,13 +143,14 @@ impl CatalogStore {
 					auto_increment: col.auto_increment,
 					dictionary_id: col.dictionary_id,
 				},
-			)?;
+			)
+			.await?;
 		}
 
 		Ok(())
 	}
 
-	fn initialize_ringbuffer_metadata(
+	async fn initialize_ringbuffer_metadata(
 		txn: &mut impl CommandTransaction,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
@@ -161,7 +166,7 @@ impl CatalogStore {
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::TAIL, 0u64);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
-		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row).await?;
 
 		Ok(())
 	}
@@ -176,10 +181,10 @@ mod tests {
 	use super::*;
 	use crate::{store::ringbuffer::layout::ringbuffer_namespace, test_utils::ensure_test_namespace};
 
-	#[test]
-	fn test_create_simple_ringbuffer() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_simple_ringbuffer() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -206,7 +211,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
@@ -218,10 +223,10 @@ mod tests {
 		assert_eq!(result.primary_key, None);
 	}
 
-	#[test]
-	fn test_create_ringbuffer_empty_columns() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_ringbuffer_empty_columns() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -231,7 +236,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
@@ -240,10 +245,10 @@ mod tests {
 		assert_eq!(result.columns.len(), 0);
 	}
 
-	#[test]
-	fn test_create_duplicate_ringbuffer() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_duplicate_ringbuffer() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -254,20 +259,20 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_ringbuffer(&mut txn, to_create.clone()).unwrap();
+		let result = CatalogStore::create_ringbuffer(&mut txn, to_create.clone()).await.unwrap();
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
 		assert_eq!(result.name, "test_ringbuffer");
 
 		// Second creation should fail with duplicate error
-		let err = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
 
-	#[test]
-	fn test_ringbuffer_linked_to_namespace() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_ringbuffer_linked_to_namespace() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -277,7 +282,7 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -287,11 +292,16 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		// Check namespace links
-		let links =
-			txn.range(NamespaceRingBufferKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
+		let links = txn
+			.range(NamespaceRingBufferKey::full_scan(test_namespace.id))
+			.await
+			.unwrap()
+			.items
+			.into_iter()
+			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		// Check first link (descending order, so buffer2 comes first)
@@ -309,10 +319,10 @@ mod tests {
 		assert_eq!(ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
 	}
 
-	#[test]
-	fn test_create_ringbuffer_with_metadata() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_ringbuffer_with_metadata() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = RingBufferToCreate {
 			namespace: test_namespace.id,
@@ -322,10 +332,11 @@ mod tests {
 			fragment: None,
 		};
 
-		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		// Check that metadata was created
 		let metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, result.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -336,10 +347,10 @@ mod tests {
 		assert_eq!(metadata.tail, 0);
 	}
 
-	#[test]
-	fn test_create_multiple_ringbuffers_with_different_capacities() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_multiple_ringbuffers_with_different_capacities() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create small buffer
 		let small = RingBufferToCreate {
@@ -349,7 +360,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
+		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).await.unwrap();
 		assert_eq!(small_result.capacity, 10);
 
 		// Create medium buffer
@@ -360,7 +371,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
+		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).await.unwrap();
 		assert_eq!(medium_result.capacity, 1000);
 
 		// Create large buffer
@@ -371,7 +382,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
+		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).await.unwrap();
 		assert_eq!(large_result.capacity, 1000000);
 
 		// Verify they have different IDs
@@ -380,10 +391,10 @@ mod tests {
 		assert_ne!(small_result.id, large_result.id);
 	}
 
-	#[test]
-	fn test_create_ringbuffer_preserves_column_order() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_create_ringbuffer_preserves_column_order() {
+		let mut txn = create_test_command_transaction().await;
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let columns = vec![
 			RingBufferColumnToCreate {
@@ -420,7 +431,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
+		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).await.unwrap();
 
 		assert_eq!(result.columns.len(), 3);
 		assert_eq!(result.columns[0].name, "first");

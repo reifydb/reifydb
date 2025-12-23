@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::ColumnSaturationPolicy;
 use reifydb_type::{
-	GetType, IntoFragment, SafeConvert,
+	Fragment, GetType, SafeConvert,
 	diagnostic::number::{integer_precision_loss, number_out_of_range},
 	error,
 };
@@ -11,22 +11,14 @@ use reifydb_type::{
 use crate::evaluate::ColumnEvaluationContext;
 
 pub trait Convert {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
 }
 
 impl Convert for ColumnEvaluationContext<'_> {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -36,22 +28,19 @@ impl Convert for ColumnEvaluationContext<'_> {
 }
 
 impl Convert for &ColumnEvaluationContext<'_> {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
 	{
+		let fragment = fragment.into();
 		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => from
 				.checked_convert()
 				.ok_or_else(|| {
 					if From::get_type().is_integer() && To::get_type().is_floating_point() {
 						return error!(integer_precision_loss(
-							fragment,
+							fragment.clone(),
 							From::get_type(),
 							To::get_type(),
 						));
@@ -59,7 +48,7 @@ impl Convert for &ColumnEvaluationContext<'_> {
 
 					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return error!(number_out_of_range(
-						fragment,
+						fragment.clone(),
 						To::get_type(),
 						descriptor.as_ref(),
 					));

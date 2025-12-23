@@ -8,7 +8,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use parking_lot::RwLock;
 use reifydb_catalog::{
 	CatalogStore, CatalogViewQueryOperations,
 	resolve::{resolve_ringbuffer, resolve_table, resolve_view},
@@ -19,6 +18,7 @@ use reifydb_core::{
 	interface::{ColumnDef, DictionaryDef, QueryTransaction, SourceId},
 };
 use reifydb_type::Type;
+use tokio::sync::RwLock;
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -34,22 +34,12 @@ pub struct SourceMetadata {
 /// Thread-safe cache for source metadata.
 ///
 /// Caches column definitions, type layouts, and dictionary info per SourceId.
-/// The cache is invalidated when schema changes are observed via CDC.
 ///
 /// # Thread Safety
 ///
-/// Uses `parking_lot::RwLock` for efficient concurrent access:
-/// - Read path: Multiple threads can read cached metadata concurrently
-/// - Write path: Single writer for cache updates and invalidation
-///
-/// # Cache Invalidation
-///
-/// The cache observes CDC changes and invalidates affected entries:
-/// - `KeyKind::Table` - invalidate `SourceId::Table(table_id)`
-/// - `KeyKind::View` - invalidate `SourceId::View(view_id)`
-/// - `KeyKind::RingBuffer` - invalidate `SourceId::RingBuffer(rb_id)`
-/// - `KeyKind::Column` - invalidate the source the column belongs to
-/// - `KeyKind::Dictionary` - clear entire cache (no reverse lookup available)
+/// Uses `tokio::sync::RwLock` for async-safe concurrent access:
+/// - Read path: Multiple tasks can read cached metadata concurrently
+/// - Write path: Single writer for cache updates
 pub struct FlowCatalog {
 	sources: RwLock<HashMap<SourceId, Arc<SourceMetadata>>>,
 }
@@ -66,7 +56,7 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
+	pub async fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -76,19 +66,19 @@ impl FlowCatalog {
 	{
 		// Fast path: read lock check
 		{
-			let cache = self.sources.read();
+			let cache = self.sources.read().await;
 			if let Some(metadata) = cache.get(&source) {
 				return Ok(Arc::clone(metadata));
 			}
 		}
 
 		// Slow path: load and cache
-		let metadata = Arc::new(self.load_source_metadata(txn, source)?);
-		let mut cache = self.sources.write();
+		let metadata = Arc::new(self.load_source_metadata(txn, source).await?);
+		let mut cache = self.sources.write().await;
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
+	async fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -98,9 +88,9 @@ impl FlowCatalog {
 	{
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
-			SourceId::Table(table_id) => resolve_table(txn, table_id)?.def().columns.clone(),
-			SourceId::View(view_id) => resolve_view(txn, view_id)?.def().columns.clone(),
-			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id)?.def().columns.clone(),
+			SourceId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
+			SourceId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
+			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
 			SourceId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
 			SourceId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
 			SourceId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
@@ -114,7 +104,7 @@ impl FlowCatalog {
 
 		for col in &columns {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
+				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id).await? {
 					storage_types.push(dict.id_type);
 					value_types.push((col.name.clone(), dict.value_type));
 					dictionaries.push(Some(dict));
@@ -158,29 +148,25 @@ mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;
 
-	// Basic construction tests
-
-	#[test]
-	fn test_new_creates_empty_cache() {
+	#[tokio::test]
+	async fn test_new_creates_empty_cache() {
 		let catalog = FlowCatalog::new();
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 
-	#[test]
-	fn test_default() {
+	#[tokio::test]
+	async fn test_default() {
 		let catalog = FlowCatalog::default();
-		assert!(catalog.sources.read().is_empty());
+		assert!(catalog.sources.read().await.is_empty());
 	}
 
-	// Cache operations tests
-
-	#[test]
-	fn test_get_or_load_table() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
+	#[tokio::test]
+	async fn test_get_or_load_table() {
+		let mut txn = create_test_transaction().await;
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -189,42 +175,42 @@ mod tests {
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[test]
-	fn test_get_or_load_cache_hit() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
+	#[tokio::test]
+	async fn test_get_or_load_cache_hit() {
+		let mut txn = create_test_transaction().await;
+		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
-		let first = catalog.get_or_load(&mut txn, source).unwrap();
-		let second = catalog.get_or_load(&mut txn, source).unwrap();
+		let first = catalog.get_or_load(&mut txn, source).await.unwrap();
+		let second = catalog.get_or_load(&mut txn, source).await.unwrap();
 
 		// Should return the same Arc (cache hit)
 		assert!(Arc::ptr_eq(&first, &second));
 	}
 
-	#[test]
-	fn test_get_or_load_view() {
-		let mut txn = create_test_transaction();
-		ensure_test_namespace(&mut txn);
-		let view = create_view(&mut txn, "test_namespace", "test_view", &[]);
+	#[tokio::test]
+	async fn test_get_or_load_view() {
+		let mut txn = create_test_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[test]
-	fn test_get_or_load_ringbuffer() {
-		let mut txn = create_test_transaction();
-		let rb = ensure_test_ringbuffer(&mut txn);
+	#[tokio::test]
+	async fn test_get_or_load_ringbuffer() {
+		let mut txn = create_test_transaction().await;
+		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
+		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());

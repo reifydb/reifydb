@@ -7,19 +7,20 @@
 //!
 //! Run with: `make rql-from` or `cargo run --bin rql-from`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
+	db.start().await.unwrap();
 
 	// Example 1: FROM with inline data (single encoded)
 	info!("Example 1: FROM with single inline encoded");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
-	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +--------+-------+
@@ -49,6 +50,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -77,6 +79,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -93,7 +96,7 @@ fn main() {
 
 	// First create a namespace and table
 	info!("Creating namespace and table...");
-	db.command_as_root(r#"create namespace demo"#, Params::None).unwrap();
+	db.command_as_root(r#"create namespace demo"#, Params::None).await.unwrap();
 
 	db.command_as_root(
 		r#"
@@ -106,6 +109,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Insert some data
@@ -121,11 +125,12 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Now query from the table
 	log_query(r#"from demo.users"#);
-	for frame in db.query_as_root(r#"from demo.users"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"from demo.users"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +------+------------+----------------------+-------------+
@@ -140,7 +145,7 @@ fn main() {
 	// Example 5: FROM with empty array
 	info!("\nExample 5: FROM with empty array");
 	log_query(r#"from []"#);
-	for frame in db.query_as_root(r#"from []"#, Params::None).unwrap() {
+	for frame in db.query_as_root(r#"from []"#, Params::None).await.unwrap() {
 		info!("{}", frame);
 		// Output: (empty result set)
 	}

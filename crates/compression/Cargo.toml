@@ -10,4 +10,4 @@ description = "Column compression for storage and network in ReifyDB"
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
-bincode = { workspace = true, features = ["serde"] }
+postcard = { workspace = true }

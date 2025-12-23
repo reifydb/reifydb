@@ -18,6 +18,8 @@ reifydb-sub-api = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
+
+async-trait = {workspace = true}
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }

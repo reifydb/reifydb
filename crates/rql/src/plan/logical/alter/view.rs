@@ -14,31 +14,31 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewNode<'a> {
-	pub view: MaybeQualifiedViewIdentifier<'a>,
-	pub operations: Vec<AlterViewOperation<'a>>,
+pub struct AlterViewNode {
+	pub view: MaybeQualifiedViewIdentifier,
+	pub operations: Vec<AlterViewOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AlterViewOperation<'a> {
+pub enum AlterViewOperation {
 	CreatePrimaryKey {
-		name: Option<Fragment<'a>>,
-		columns: Vec<AlterIndexColumn<'a>>,
+		name: Option<Fragment>,
+		columns: Vec<AlterIndexColumn>,
 	},
 	DropPrimaryKey,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterIndexColumn<'a> {
-	pub column: MaybeQualifiedColumnIdentifier<'a>,
+pub struct AlterIndexColumn {
+	pub column: MaybeQualifiedColumnIdentifier,
 	pub order: Option<SortDirection>,
 }
 
 impl Compiler {
 	pub(crate) fn compile_alter_view<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterView<'a>,
+		ast: AstAlterView,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Use the view identifier directly from AST
 		let view = ast.view.clone();
 

@@ -14,11 +14,7 @@ use reifydb_type::{
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
-	pub(crate) fn div<'a>(
-		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		div: &DivExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+	pub(crate) fn div(&self, ctx: &ColumnEvaluationContext, div: &DivExpression) -> crate::Result<Column> {
 		let left = self.evaluate(ctx, &div.left)?;
 		let right = self.evaluate(ctx, &div.right)?;
 		let target = Type::promote(left.get_type(), right.get_type());
@@ -1117,8 +1113,8 @@ fn div_numeric<'a, L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -1173,8 +1169,8 @@ fn div_numeric_clone<'a, L, R>(
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	target: Type,
-	fragment: impl LazyFragment<'a> + Copy,
-) -> crate::Result<Column<'a>>
+	fragment: impl LazyFragment + Copy,
+) -> crate::Result<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

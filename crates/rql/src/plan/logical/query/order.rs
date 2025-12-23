@@ -11,9 +11,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_sort<'a, T: CatalogQueryTransaction>(
-		ast: AstSort<'a>,
+		ast: AstSort,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()
@@ -27,7 +27,7 @@ impl Compiler {
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column.name.into_owned(),
+						column: column.name,
 						direction,
 					}
 				})

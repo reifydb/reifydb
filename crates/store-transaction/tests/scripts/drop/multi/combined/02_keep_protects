@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that keep_last_versions always protects N versions,
+# even if up_to_version would otherwise drop them.
+
+set a=1 version=1
+set a=2 version=2
+set a=3 version=3
+---
+ok
+
+count_versions a
+---
+"a" => 3 versions
+
+# up_to_version=100 would drop all (all < 100)
+# BUT keep_last_versions=2 protects v2 and v3
+drop a up_to_version=100 keep_last_versions=2
+---
+ok
+
+# 2 versions remain (the top 2: v2 and v3)
+count_versions a
+---
+"a" => 2 versions
+
+# v1 is dropped (< 100 AND not in top 2)
+contains a version=1
+---
+"a" => false
+
+# v2 and v3 are protected
+contains a version=2
+contains a version=3
+---
+"a" => true
+"a" => true
+
+get a version=2
+get a version=3
+---
+"a" => "2"
+"a" => "3"

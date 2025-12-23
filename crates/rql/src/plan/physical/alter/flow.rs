@@ -13,28 +13,28 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct AlterFlowNode<'a> {
-	pub flow: MaybeQualifiedFlowIdentifier<'a>,
-	pub action: AlterFlowAction<'a>,
+pub struct AlterFlowNode {
+	pub flow: MaybeQualifiedFlowIdentifier,
+	pub action: AlterFlowAction,
 }
 
 #[derive(Debug, Clone)]
-pub enum AlterFlowAction<'a> {
+pub enum AlterFlowAction {
 	Rename {
-		new_name: Fragment<'a>,
+		new_name: Fragment,
 	},
 	SetQuery {
-		query: Box<PhysicalPlan<'a>>,
+		query: Box<PhysicalPlan>,
 	},
 	Pause,
 	Resume,
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_flow<'a>(
+	pub(crate) async fn compile_alter_flow(
 		rx: &mut impl QueryTransaction,
-		alter: logical::alter::AlterFlowNode<'a>,
-	) -> crate::Result<PhysicalPlan<'a>> {
+		alter: logical::alter::AlterFlowNode,
+	) -> crate::Result<PhysicalPlan> {
 		let action = match alter.action {
 			logical::alter::AlterFlowAction::Rename {
 				new_name,
@@ -45,7 +45,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile logical plans to physical plans
-				let physical_query = Self::compile(rx, query)?.map(Box::new).unwrap();
+				let physical_query = Box::pin(Self::compile(rx, query)).await?.map(Box::new).unwrap();
 				AlterFlowAction::SetQuery {
 					query: physical_query,
 				}

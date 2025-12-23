@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	Row,
@@ -31,15 +32,18 @@ impl CatalogEventInterceptor {
 	}
 }
 
+#[async_trait]
 impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventInterceptor {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
+	async fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		// Emit events for namespace changes
 		for change in &ctx.changes.namespace_def {
 			if change.op == OperationType::Create {
 				if let Some(namespace) = &change.post {
-					self.event_bus.emit(NamespaceCreatedEvent {
-						namespace: namespace.clone(),
-					});
+					self.event_bus
+						.emit(NamespaceCreatedEvent {
+							namespace: namespace.clone(),
+						})
+						.await;
 				}
 			}
 		}
@@ -48,9 +52,11 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 		for change in &ctx.changes.table_def {
 			if change.op == OperationType::Create {
 				if let Some(table) = &change.post {
-					self.event_bus.emit(TableCreatedEvent {
-						table: table.clone(),
-					});
+					self.event_bus
+						.emit(TableCreatedEvent {
+							table: table.clone(),
+						})
+						.await;
 				}
 			}
 		}
@@ -59,9 +65,11 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 		for change in &ctx.changes.view_def {
 			if change.op == OperationType::Create {
 				if let Some(view) = &change.post {
-					self.event_bus.emit(ViewCreatedEvent {
-						view: view.clone(),
-					});
+					self.event_bus
+						.emit(ViewCreatedEvent {
+							view: view.clone(),
+						})
+						.await;
 				}
 			}
 		}
@@ -70,9 +78,11 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 		for change in &ctx.changes.ringbuffer_def {
 			if change.op == OperationType::Create {
 				if let Some(ringbuffer) = &change.post {
-					self.event_bus.emit(RingBufferCreatedEvent {
-						ringbuffer: ringbuffer.clone(),
-					});
+					self.event_bus
+						.emit(RingBufferCreatedEvent {
+							ringbuffer: ringbuffer.clone(),
+						})
+						.await;
 				}
 			}
 		}
@@ -81,9 +91,11 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 		for change in &ctx.changes.dictionary_def {
 			if change.op == OperationType::Create {
 				if let Some(dictionary) = &change.post {
-					self.event_bus.emit(DictionaryCreatedEvent {
-						dictionary: dictionary.clone(),
-					});
+					self.event_bus
+						.emit(DictionaryCreatedEvent {
+							dictionary: dictionary.clone(),
+						})
+						.await;
 				}
 			}
 		}
@@ -104,14 +116,17 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 
 					if let Some(table) = table {
 						let layout = table.get_named_layout();
-						self.event_bus.emit(TableInsertedEvent {
-							table,
-							row: Row {
-								number: insertion.row_number,
-								encoded: insertion.encoded.clone(),
-								layout,
-							},
-						});
+						let row = Row {
+							number: insertion.row_number,
+							encoded: insertion.encoded.clone(),
+							layout,
+						};
+						self.event_bus
+							.emit(TableInsertedEvent {
+								table,
+								row,
+							})
+							.await;
 					}
 				} // Future: handle other RowChange variants
 			}

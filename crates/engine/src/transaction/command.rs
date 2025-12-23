@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
+use async_trait::async_trait;
 use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
@@ -17,7 +16,7 @@ use reifydb_core::{
 		TablePreUpdateInterceptor,
 	},
 	interface::{
-		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
+		CdcTransaction, CommandTransaction, MultiVersionBatch, MultiVersionCommandTransaction,
 		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction, RowChange,
 		SingleVersionTransaction, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
@@ -28,7 +27,7 @@ use reifydb_core::{
 use reifydb_transaction::{
 	cdc::TransactionCdc,
 	multi::{TransactionMultiVersion, pending::PendingWrites},
-	single::TransactionSingleVersion,
+	single::TransactionSingle,
 };
 use tracing::instrument;
 
@@ -40,7 +39,7 @@ use crate::transaction::query::StandardQueryTransaction;
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction {
 	pub multi: TransactionMultiVersion,
-	pub single: TransactionSingleVersion,
+	pub single: TransactionSingle,
 	pub(crate) cdc: TransactionCdc,
 	state: TransactionState,
 
@@ -53,8 +52,6 @@ pub struct StandardCommandTransaction {
 	pub(crate) row_changes: Vec<RowChange>,
 
 	pub(crate) interceptors: Interceptors<Self>,
-	// Marker to prevent Send and Sync
-	_not_send_sync: PhantomData<*const ()>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -67,15 +64,15 @@ enum TransactionState {
 impl StandardCommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
 	#[instrument(name = "engine::transaction::command::new", level = "debug", skip_all)]
-	pub fn new(
+	pub async fn new(
 		multi: TransactionMultiVersion,
-		single: TransactionSingleVersion,
+		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
 		catalog: MaterializedCatalog,
 		interceptors: Interceptors<Self>,
 	) -> reifydb_core::Result<Self> {
-		let cmd = multi.begin_command()?;
+		let cmd = multi.begin_command().await?;
 		let txn_id = cmd.id();
 		Ok(Self {
 			cmd: Some(cmd),
@@ -88,7 +85,6 @@ impl StandardCommandTransaction {
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
-			_not_send_sync: PhantomData,
 		})
 	}
 
@@ -115,20 +111,20 @@ impl StandardCommandTransaction {
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
 	#[instrument(name = "engine::transaction::command::commit", level = "debug", skip(self))]
-	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
+	pub async fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
-		TransactionInterceptor::pre_commit(self)?;
+		TransactionInterceptor::pre_commit(self).await?;
 
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
 			let row_changes = std::mem::take(&mut self.row_changes);
 
-			let version = multi.commit()?;
-			TransactionInterceptor::post_commit(self, id, version, changes, row_changes)?;
+			let version = multi.commit().await?;
+			TransactionInterceptor::post_commit(self, id, version, changes, row_changes).await?;
 
 			Ok(version)
 		} else {
@@ -141,7 +137,7 @@ impl StandardCommandTransaction {
 	#[instrument(name = "engine::transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			self.state = TransactionState::RolledBack;
 			multi.rollback()
 		} else {
@@ -167,38 +163,40 @@ impl StandardCommandTransaction {
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
-	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_query(keys, f)
+		self.single.with_query(keys, f).await
 	}
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "engine::transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
-	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub async fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Command<'_>) -> crate::Result<R> + Send,
+		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_command(keys, f)
+		self.single.with_command(keys, f).await
 	}
 
 	/// Execute a function with a query transaction view.
 	/// This creates a new query transaction using the stored multi-version storage.
 	/// The query transaction will operate independently but share the same single/CDC storage.
 	#[instrument(name = "engine::transaction::command::with_multi_query", level = "trace", skip(self, f))]
-	pub fn with_multi_query<F, R>(&self, f: F) -> crate::Result<R>
+	pub async fn with_multi_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
 	{
 		self.check_active()?;
 
 		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query()?,
+			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
@@ -212,20 +210,20 @@ impl StandardCommandTransaction {
 		level = "trace",
 		skip(self, f)
 	)]
-	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
+	pub async fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
 	{
 		self.check_active()?;
 
 		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query()?,
+			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
 		);
 
-		query_txn.read_as_of_version_exclusive(version)?;
+		query_txn.read_as_of_version_exclusive(version).await?;
 
 		f(&mut query_txn)
 	}
@@ -235,20 +233,20 @@ impl StandardCommandTransaction {
 		level = "trace",
 		skip(self, f)
 	)]
-	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
+	pub async fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
 	{
 		self.check_active()?;
 
 		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query()?,
+			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
 		);
 
-		query_txn.read_as_of_version_inclusive(version)?;
+		query_txn.read_as_of_version_inclusive(version).await?;
 
 		f(&mut query_txn)
 	}
@@ -260,6 +258,7 @@ impl MaterializedCatalogTransaction for StandardCommandTransaction {
 	}
 }
 
+#[async_trait]
 impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
@@ -272,81 +271,72 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	}
 
 	#[inline]
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key)
+		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key)
+		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn range_batched(
+	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
+		self.check_active()?;
+		MultiVersionQueryTransaction::range_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
+	}
+
+	#[inline]
+	async fn range_rev_batch(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	) -> crate::Result<MultiVersionBatch> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::range_batched(self.cmd.as_mut().unwrap(), range, batch_size)
+		MultiVersionQueryTransaction::range_rev_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
 	}
 
 	#[inline]
-	fn range_rev_batched(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionQueryTransaction::range_rev_batched(self.cmd.as_mut().unwrap(), range, batch_size)
-	}
-
-	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.check_active()?;
-		MultiVersionQueryTransaction::prefix(self.cmd.as_mut().unwrap(), prefix)
-	}
-
-	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.check_active()?;
-		MultiVersionQueryTransaction::prefix_rev(self.cmd.as_mut().unwrap(), prefix)
-	}
-
-	#[inline]
-	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		self.check_active()?;
-		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version).await
 	}
 }
 
+#[async_trait]
 impl MultiVersionCommandTransaction for StandardCommandTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+	async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row)
+		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row).await
 	}
 
 	#[inline]
-	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_active()?;
-		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key)
+		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key).await
 	}
 
 	#[inline]
-	fn commit(mut self) -> crate::Result<CommitVersion> {
+	async fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
-		self.state = TransactionState::Committed;
-		MultiVersionCommandTransaction::commit(self.cmd.take().unwrap())
+		let result = MultiVersionCommandTransaction::commit(self.cmd.as_mut().unwrap()).await;
+		if result.is_ok() {
+			self.state = TransactionState::Committed;
+		}
+		result
 	}
 
 	#[inline]
-	fn rollback(mut self) -> crate::Result<()> {
+	async fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
-		self.state = TransactionState::RolledBack;
-		MultiVersionCommandTransaction::rollback(self.cmd.take().unwrap())
+		let result = MultiVersionCommandTransaction::rollback(self.cmd.as_mut().unwrap()).await;
+		if result.is_ok() {
+			self.state = TransactionState::RolledBack;
+		}
+		result
 	}
 }
 
@@ -356,34 +346,36 @@ impl WithEventBus for StandardCommandTransaction {
 	}
 }
 
+#[async_trait]
 impl QueryTransaction for StandardCommandTransaction {
-	type SingleVersionQuery<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Query<'a>;
+	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
 
 	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		self.single.begin_query(keys)
+		self.single.begin_query(keys).await
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
 		self.check_active()?;
-		self.cdc.begin_query()
+		Ok(self.cdc.begin_query()?)
 	}
 }
 
+#[async_trait]
 impl CommandTransaction for StandardCommandTransaction {
-	type SingleVersionCommand<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Command<'a>;
+	type SingleVersionCommand<'a> = <TransactionSingle as SingleVersionTransaction>::Command<'a>;
 
-	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	async fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>,
+		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
 		self.check_active()?;
-		self.single.begin_command(keys)
+		self.single.begin_command(keys).await
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {
@@ -394,19 +386,28 @@ impl CommandTransaction for StandardCommandTransaction {
 impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction {
 	fn table_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_insert
 	}
 
 	fn table_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePostInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_post_insert
 	}
 
 	fn table_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_update
 	}
 
@@ -414,68 +415,94 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TablePostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TablePostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_post_update
 	}
 
 	fn table_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_delete
 	}
 
 	fn table_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePostDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_post_delete
 	}
 
 	fn ringbuffer_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_insert
 	}
 
 	fn ringbuffer_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_insert
 	}
 
 	fn ringbuffer_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_update
 	}
 
 	fn ringbuffer_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_update
 	}
 
 	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_delete
 	}
 
 	fn ringbuffer_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_delete
 	}
 
 	fn pre_commit_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PreCommitInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<StandardCommandTransaction, dyn PreCommitInterceptor<StandardCommandTransaction> + Send + Sync>
+	{
 		&mut self.interceptors.pre_commit
 	}
 
 	fn post_commit_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PostCommitInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<StandardCommandTransaction, dyn PostCommitInterceptor<StandardCommandTransaction> + Send + Sync>
+	{
 		&mut self.interceptors.post_commit
 	}
 
@@ -484,7 +511,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_post_create
 	}
@@ -493,7 +520,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_pre_update
 	}
@@ -502,7 +529,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_post_update
 	}
@@ -511,7 +538,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_pre_delete
 	}
@@ -521,7 +548,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_post_create
 	}
@@ -530,7 +557,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_pre_update
 	}
@@ -539,7 +566,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_post_update
 	}
@@ -548,7 +575,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_pre_delete
 	}
@@ -558,7 +585,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_post_create
 	}
@@ -567,7 +594,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_pre_update
 	}
@@ -576,7 +603,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_post_update
 	}
@@ -585,7 +612,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_pre_delete
 	}
@@ -595,7 +622,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_post_create
 	}
@@ -604,7 +631,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_pre_update
 	}
@@ -613,7 +640,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_post_update
 	}
@@ -622,7 +649,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_pre_delete
 	}
@@ -632,7 +659,7 @@ impl TransactionalChanges for StandardCommandTransaction {}
 
 impl Drop for StandardCommandTransaction {
 	fn drop(&mut self) {
-		if let Some(multi) = self.cmd.take() {
+		if let Some(mut multi) = self.cmd.take() {
 			// Auto-rollback if still active (not committed or
 			// rolled back)
 			if self.state == TransactionState::Active {

@@ -6,7 +6,6 @@ use reifydb_catalog::transaction::CatalogTrackNamespaceChangeOperations;
 use reifydb_core::interface::{
 	Change, NamespaceDef, NamespaceId, OperationType, OperationType::Delete, TransactionalNamespaceChanges,
 };
-use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
@@ -60,13 +59,12 @@ impl TransactionalNamespaceChanges for StandardCommandTransaction {
 		None
 	}
 
-	fn find_namespace_by_name<'a>(&self, name: impl IntoFragment<'a>) -> Option<&NamespaceDef> {
-		let name = name.into_fragment();
+	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef> {
 		self.changes
 			.namespace_def
 			.iter()
 			.rev()
-			.find_map(|change| change.post.as_ref().filter(|s| s.name == name.text()))
+			.find_map(|change| change.post.as_ref().filter(|s| s.name == name))
 	}
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool {
@@ -77,11 +75,12 @@ impl TransactionalNamespaceChanges for StandardCommandTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id) == Some(id))
 	}
 
-	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool {
-		let name = name.into_fragment();
-		self.changes.namespace_def.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|s| s.name.as_str()) == Some(name.text())
-		})
+	fn is_namespace_deleted_by_name(&self, name: &str) -> bool {
+		self.changes
+			.namespace_def
+			.iter()
+			.rev()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.name.as_str()) == Some(name))
 	}
 }
 
@@ -90,7 +89,7 @@ impl TransactionalNamespaceChanges for StandardQueryTransaction {
 		None
 	}
 
-	fn find_namespace_by_name<'a>(&self, _name: impl IntoFragment<'a>) -> Option<&NamespaceDef> {
+	fn find_namespace_by_name(&self, _name: &str) -> Option<&NamespaceDef> {
 		None
 	}
 
@@ -98,7 +97,7 @@ impl TransactionalNamespaceChanges for StandardQueryTransaction {
 		false
 	}
 
-	fn is_namespace_deleted_by_name<'a>(&self, _name: impl IntoFragment<'a>) -> bool {
+	fn is_namespace_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }
@@ -114,7 +113,7 @@ mod tests {
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper function to create test namespace definition
-	fn test_namespace_def(id: u64, name: &str) -> NamespaceDef {
+	async fn test_namespace_def(id: u64, name: &str) -> NamespaceDef {
 		NamespaceDef {
 			id: NamespaceId(id),
 			name: name.to_string(),
@@ -124,10 +123,10 @@ mod tests {
 	mod track_namespace_def_created {
 		use super::*;
 
-		#[test]
-		fn test_successful_creation() {
-			let mut txn = create_test_command_transaction();
-			let namespace = test_namespace_def(1, "test_namespace");
+		#[tokio::test]
+		async fn test_successful_creation() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace = test_namespace_def(1, "test_namespace").await;
 
 			let result = txn.track_namespace_def_created(namespace.clone());
 			assert!(result.is_ok());
@@ -154,12 +153,12 @@ mod tests {
 	mod track_namespace_def_updated {
 		use super::*;
 
-		#[test]
-		fn test_multiple_updates_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let namespace_v1 = test_namespace_def(1, "namespace_v1");
-			let namespace_v2 = test_namespace_def(1, "namespace_v2");
-			let namespace_v3 = test_namespace_def(1, "namespace_v3");
+		#[tokio::test]
+		async fn test_multiple_updates_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace_v1 = test_namespace_def(1, "namespace_v1").await;
+			let namespace_v2 = test_namespace_def(1, "namespace_v2").await;
+			let namespace_v3 = test_namespace_def(1, "namespace_v3").await;
 
 			// First update
 			txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone()).unwrap();
@@ -187,11 +186,11 @@ mod tests {
 			assert_eq!(txn.changes.log.len(), 2);
 		}
 
-		#[test]
-		fn test_create_then_update_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let namespace_v1 = test_namespace_def(1, "namespace_v1");
-			let namespace_v2 = test_namespace_def(1, "namespace_v2");
+		#[tokio::test]
+		async fn test_create_then_update_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace_v1 = test_namespace_def(1, "namespace_v1").await;
+			let namespace_v2 = test_namespace_def(1, "namespace_v2").await;
 
 			// First track creation
 			txn.track_namespace_def_created(namespace_v1.clone()).unwrap();
@@ -212,11 +211,11 @@ mod tests {
 			assert_eq!(txn.changes.namespace_def[1].op, Update);
 		}
 
-		#[test]
-		fn test_normal_update() {
-			let mut txn = create_test_command_transaction();
-			let namespace_v1 = test_namespace_def(1, "namespace_v1");
-			let namespace_v2 = test_namespace_def(1, "namespace_v2");
+		#[tokio::test]
+		async fn test_normal_update() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace_v1 = test_namespace_def(1, "namespace_v1").await;
+			let namespace_v2 = test_namespace_def(1, "namespace_v2").await;
 
 			let result = txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone());
 			assert!(result.is_ok());
@@ -243,10 +242,10 @@ mod tests {
 	mod track_namespace_def_deleted {
 		use super::*;
 
-		#[test]
-		fn test_delete_after_create_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let namespace = test_namespace_def(1, "test_namespace");
+		#[tokio::test]
+		async fn test_delete_after_create_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace = test_namespace_def(1, "test_namespace").await;
 
 			// First track creation
 			txn.track_namespace_def_created(namespace.clone()).unwrap();
@@ -271,11 +270,11 @@ mod tests {
 			assert_eq!(txn.changes.log.len(), 2);
 		}
 
-		#[test]
-		fn test_delete_after_update_no_coalescing() {
-			let mut txn = create_test_command_transaction();
-			let namespace_v1 = test_namespace_def(1, "namespace_v1");
-			let namespace_v2 = test_namespace_def(1, "namespace_v2");
+		#[tokio::test]
+		async fn test_delete_after_update_no_coalescing() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace_v1 = test_namespace_def(1, "namespace_v1").await;
+			let namespace_v2 = test_namespace_def(1, "namespace_v2").await;
 
 			// First track update
 			txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone()).unwrap();
@@ -298,10 +297,10 @@ mod tests {
 			assert_eq!(txn.changes.log.len(), 2);
 		}
 
-		#[test]
-		fn test_normal_delete() {
-			let mut txn = create_test_command_transaction();
-			let namespace = test_namespace_def(1, "test_namespace");
+		#[tokio::test]
+		async fn test_normal_delete() {
+			let mut txn = create_test_command_transaction().await;
+			let namespace = test_namespace_def(1, "test_namespace").await;
 
 			let result = txn.track_namespace_def_deleted(namespace.clone());
 			assert!(result.is_ok());

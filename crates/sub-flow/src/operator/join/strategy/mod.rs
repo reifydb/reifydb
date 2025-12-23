@@ -26,7 +26,7 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_insert(
+	pub(crate) async fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Row,
@@ -36,12 +36,12 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
-			JoinStrategy::InnerHash(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
+			JoinStrategy::LeftHash(s) => s.handle_insert(txn, post, side, key_hash, state, operator).await,
+			JoinStrategy::InnerHash(s) => s.handle_insert(txn, post, side, key_hash, state, operator).await,
 		}
 	}
 
-	pub(crate) fn handle_remove(
+	pub(crate) async fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Row,
@@ -53,15 +53,15 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_remove(txn, pre, side, key_hash, state, operator, version)
+				s.handle_remove(txn, pre, side, key_hash, state, operator, version).await
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_remove(txn, pre, side, key_hash, state, operator, version)
+				s.handle_remove(txn, pre, side, key_hash, state, operator, version).await
 			}
 		}
 	}
 
-	pub(crate) fn handle_update(
+	pub(crate) async fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Row,
@@ -75,15 +75,15 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version)
+				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version).await
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version)
+				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version).await
 			}
 		}
 	}
 
-	pub(crate) fn handle_insert_batch(
+	pub(crate) async fn handle_insert_batch(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -93,12 +93,16 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_insert_batch(txn, rows, side, key_hash, state, operator),
-			JoinStrategy::InnerHash(s) => s.handle_insert_batch(txn, rows, side, key_hash, state, operator),
+			JoinStrategy::LeftHash(s) => {
+				s.handle_insert_batch(txn, rows, side, key_hash, state, operator).await
+			}
+			JoinStrategy::InnerHash(s) => {
+				s.handle_insert_batch(txn, rows, side, key_hash, state, operator).await
+			}
 		}
 	}
 
-	pub(crate) fn handle_remove_batch(
+	pub(crate) async fn handle_remove_batch(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -110,10 +114,10 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version)
+				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version).await
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version)
+				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version).await
 			}
 		}
 	}

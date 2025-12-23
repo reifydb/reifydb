@@ -13,5 +13,5 @@ tokenize 'CREATE FLOW IF NOT EXISTS my_flow AS from users'
 >   [  6] Operator(As)
 >   [  7] Keyword(From)
 >   [  8] Identifier("users")
-> 
-> 
+>
+>

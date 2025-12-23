@@ -11,9 +11,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_aggregate<'a, T: CatalogQueryTransaction>(
-		ast: AstAggregate<'a>,
+		ast: AstAggregate,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Aggregate(AggregateNode {
 			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,
 			map: ast.map.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,

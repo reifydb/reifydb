@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Duration, Error, IntoFragment, error::diagnostic::temporal, return_error};
+use crate::{Duration, Error, Fragment, error::diagnostic::temporal, return_error};
 
-pub fn parse_duration<'a>(fragment: impl IntoFragment<'a>) -> Result<Duration, Error> {
-	let fragment = fragment.into_fragment();
+pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
+	let fragment = fragment;
 	let fragment_value = fragment.text();
 	// Parse ISO 8601 duration format (P1D, PT2H30M, P1Y2M3DT4H5M6S)
 
@@ -157,11 +157,11 @@ pub fn parse_duration<'a>(fragment: impl IntoFragment<'a>) -> Result<Duration, E
 #[cfg(test)]
 mod tests {
 	use super::parse_duration;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_days() {
-		let fragment = OwnedFragment::testing("P1D");
+		let fragment = Fragment::testing("P1D");
 		let duration = parse_duration(fragment).unwrap();
 		// 1 day = 1 day, 0 nanos
 		assert_eq!(duration.get_days(), 1);
@@ -170,7 +170,7 @@ mod tests {
 
 	#[test]
 	fn test_time_hours_minutes() {
-		let fragment = OwnedFragment::testing("PT2H30M");
+		let fragment = Fragment::testing("PT2H30M");
 		let duration = parse_duration(fragment).unwrap();
 		// 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000
 		// nanos
@@ -179,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn test_comptokenize() {
-		let fragment = OwnedFragment::testing("P1DT2H30M");
+		let fragment = Fragment::testing("P1DT2H30M");
 		let duration = parse_duration(fragment).unwrap();
 		// 1 day + 2 hours + 30 minutes
 		let expected_nanos = (2 * 60 * 60 + 30 * 60) * 1_000_000_000;
@@ -189,28 +189,28 @@ mod tests {
 
 	#[test]
 	fn test_seconds_only() {
-		let fragment = OwnedFragment::testing("PT45S");
+		let fragment = Fragment::testing("PT45S");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_nanos(), 45 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_minutes_only() {
-		let fragment = OwnedFragment::testing("PT5M");
+		let fragment = Fragment::testing("PT5M");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_nanos(), 5 * 60 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_hours_only() {
-		let fragment = OwnedFragment::testing("PT1H");
+		let fragment = Fragment::testing("PT1H");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_nanos(), 60 * 60 * 1_000_000_000);
 	}
 
 	#[test]
 	fn test_weeks() {
-		let fragment = OwnedFragment::testing("P1W");
+		let fragment = Fragment::testing("P1W");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_days(), 7);
 		assert_eq!(duration.get_nanos(), 0);
@@ -218,7 +218,7 @@ mod tests {
 
 	#[test]
 	fn test_years() {
-		let fragment = OwnedFragment::testing("P1Y");
+		let fragment = Fragment::testing("P1Y");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_months(), 12);
 		assert_eq!(duration.get_days(), 0);
@@ -227,7 +227,7 @@ mod tests {
 
 	#[test]
 	fn test_months() {
-		let fragment = OwnedFragment::testing("P1M");
+		let fragment = Fragment::testing("P1M");
 		let duration = parse_duration(fragment).unwrap();
 		assert_eq!(duration.get_months(), 1);
 		assert_eq!(duration.get_days(), 0);
@@ -236,7 +236,7 @@ mod tests {
 
 	#[test]
 	fn test_full_format() {
-		let fragment = OwnedFragment::testing("P1Y2M3DT4H5M6S");
+		let fragment = Fragment::testing("P1Y2M3DT4H5M6S");
 		let duration = parse_duration(fragment).unwrap();
 		let expected_months = 12 + 2; // 1 year + 2 months
 		let expected_days = 3;
@@ -250,56 +250,56 @@ mod tests {
 
 	#[test]
 	fn test_invalid_format() {
-		let fragment = OwnedFragment::testing("invalid");
+		let fragment = Fragment::testing("invalid");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_004");
 	}
 
 	#[test]
 	fn test_invalid_character() {
-		let fragment = OwnedFragment::testing("P1X");
+		let fragment = Fragment::testing("P1X");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_014");
 	}
 
 	#[test]
 	fn test_years_in_time_part() {
-		let fragment = OwnedFragment::testing("PTY");
+		let fragment = Fragment::testing("PTY");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_weeks_in_time_part() {
-		let fragment = OwnedFragment::testing("PTW");
+		let fragment = Fragment::testing("PTW");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_days_in_time_part() {
-		let fragment = OwnedFragment::testing("PTD");
+		let fragment = Fragment::testing("PTD");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_hours_in_date_part() {
-		let fragment = OwnedFragment::testing("P1H");
+		let fragment = Fragment::testing("P1H");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_seconds_in_date_part() {
-		let fragment = OwnedFragment::testing("P1S");
+		let fragment = Fragment::testing("P1S");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_016");
 	}
 
 	#[test]
 	fn test_incomplete_specification() {
-		let fragment = OwnedFragment::testing("P1");
+		let fragment = Fragment::testing("P1");
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_015");
 	}

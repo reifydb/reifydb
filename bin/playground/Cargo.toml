@@ -13,4 +13,5 @@ path = "src/main.rs"
 
 [dependencies]
 reifydb = { workspace = true, features = ["sub_flow", "sub_tracing"] }
+tokio = { workspace = true }
 tracing-subscriber = {workspace = true}

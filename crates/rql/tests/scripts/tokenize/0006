@@ -18,5 +18,5 @@ tokenize 'create index idx_active on test.users {email} filter active == true'
 >   [ 11] Identifier("active")
 >   [ 12] Operator(DoubleEqual)
 >   [ 13] Literal(True)
-> 
-> 
+>
+>

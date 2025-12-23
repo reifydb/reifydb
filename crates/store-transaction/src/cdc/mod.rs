@@ -8,39 +8,71 @@ mod layout;
 
 use std::collections::Bound;
 
+use async_trait::async_trait;
 use exclude::should_exclude_from_cdc;
 pub(crate) use reifydb_core::delta::Delta;
 use reifydb_core::{CommitVersion, EncodedKey, interface::Cdc, key::Key};
 use reifydb_type::diagnostic::internal::internal;
 
-pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
+pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcCount {}
 
-pub trait CdcGet: Send + Sync {
-	fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>>;
+/// A batch of CDC range results with continuation info.
+#[derive(Debug, Clone)]
+pub struct CdcBatch {
+	/// The CDC entries in this batch.
+	pub items: Vec<Cdc>,
+	/// Whether there are more items after this batch.
+	pub has_more: bool,
 }
 
-pub trait CdcRange: Send + Sync {
-	type RangeIter<'a>: Iterator<Item = Cdc> + 'a
-	where
-		Self: 'a;
+impl CdcBatch {
+	/// Creates an empty batch with no more results.
+	pub fn empty() -> Self {
+		Self {
+			items: Vec::new(),
+			has_more: false,
+		}
+	}
 
-	fn range(
+	/// Returns true if this batch contains no items.
+	pub fn is_empty(&self) -> bool {
+		self.items.is_empty()
+	}
+}
+
+#[async_trait]
+pub trait CdcGet: Send + Sync {
+	async fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>>;
+}
+
+#[async_trait]
+pub trait CdcRange: Send + Sync {
+	/// Fetch a batch of CDC entries in version order (ascending).
+	async fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
-	) -> reifydb_type::Result<Self::RangeIter<'_>>;
+		batch_size: u64,
+	) -> reifydb_type::Result<CdcBatch>;
+
+	/// Convenience method with default batch size.
+	async fn range(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+	) -> reifydb_type::Result<CdcBatch> {
+		self.range_batch(start, end, 1024).await
+	}
+
+	/// Scan all CDC entries.
+	async fn scan(&self, batch_size: u64) -> reifydb_type::Result<CdcBatch> {
+		self.range_batch(Bound::Unbounded, Bound::Unbounded, batch_size).await
+	}
 }
 
-pub trait CdcScan: Send + Sync {
-	type ScanIter<'a>: Iterator<Item = Cdc> + 'a
-	where
-		Self: 'a;
-
-	fn scan(&self) -> reifydb_type::Result<Self::ScanIter<'_>>;
-}
-
+#[async_trait]
 pub trait CdcCount: Send + Sync {
-	fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize>;
+	async fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize>;
 }
 
 /// Internal representation of CDC change with version references
@@ -146,6 +178,11 @@ fn generate_internal_cdc_change(
 				None
 			}
 		}
+
+		// Drop operations never generate CDC events - they are for internal cleanup
+		Delta::Drop {
+			..
+		} => None,
 	}
 }
 

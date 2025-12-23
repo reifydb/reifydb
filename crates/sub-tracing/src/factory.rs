@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -40,6 +41,7 @@ impl Default for TracingSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for TracingSubsystemFactory {
 	fn provide_interceptors(
 		&self,
@@ -50,7 +52,7 @@ impl SubsystemFactory<StandardCommandTransaction> for TracingSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> crate::Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(TracingBuilder::new())
 		} else {

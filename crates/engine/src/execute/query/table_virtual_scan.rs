@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::Fragment;
 use tracing::instrument;
@@ -13,23 +14,23 @@ use crate::{
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
-pub(crate) struct VirtualScanNode<'a> {
-	virtual_table: Box<dyn TableVirtual<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
-	table_context: Option<TableVirtualContext<'a>>,
+pub(crate) struct VirtualScanNode {
+	virtual_table: Box<dyn TableVirtual>,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
+	table_context: Option<TableVirtualContext>,
 }
 
-impl<'a> VirtualScanNode<'a> {
+impl VirtualScanNode {
 	pub fn new(
-		virtual_table: Box<dyn TableVirtual<'a>>,
-		context: Arc<ExecutionContext<'a>>,
-		table_context: TableVirtualContext<'a>,
+		virtual_table: Box<dyn TableVirtual>,
+		context: Arc<ExecutionContext>,
+		table_context: TableVirtualContext,
 	) -> crate::Result<Self> {
 		let def = virtual_table.definition();
 
 		let headers = ColumnHeaders {
-			columns: def.columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: def.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -41,27 +42,32 @@ impl<'a> VirtualScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for VirtualScanNode<'a> {
+#[async_trait]
+impl QueryNode for VirtualScanNode {
 	#[instrument(name = "query::scan::virtual::initialize", level = "trace", skip_all)]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		_ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
-		self.virtual_table.initialize(rx, ctx)?;
+		self.virtual_table.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::virtual::next", level = "trace", skip_all)]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
-		self.virtual_table.next(rx)
+		self.virtual_table.next(rx).await
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }

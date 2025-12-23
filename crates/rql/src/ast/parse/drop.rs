@@ -8,8 +8,8 @@ use crate::ast::{
 	tokenize::{Keyword, Operator, Token, TokenKind},
 };
 
-impl<'a> Parser<'a> {
-	pub(crate) fn parse_drop(&mut self) -> crate::Result<AstDrop<'a>> {
+impl Parser {
+	pub(crate) fn parse_drop(&mut self) -> crate::Result<AstDrop> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
 		// Check what we're dropping
@@ -24,7 +24,7 @@ impl<'a> Parser<'a> {
 		)))
 	}
 
-	fn parse_drop_flow(&mut self, token: Token<'a>) -> crate::Result<AstDrop<'a>> {
+	fn parse_drop_flow(&mut self, token: Token) -> crate::Result<AstDrop> {
 		// Check for IF EXISTS
 		let if_exists = if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;

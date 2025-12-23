@@ -10,9 +10,9 @@ use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 impl StandardColumnEvaluator {
 	pub(crate) fn parameter<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &ParameterExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		expr: &ParameterExpression,
+	) -> crate::Result<Column> {
 		let value = match expr {
 			ParameterExpression::Positional {
 				fragment,
@@ -66,7 +66,7 @@ impl StandardColumnEvaluator {
 			Value::Any(_) => unreachable!("Any type not supported as parameter"),
 		};
 		Ok(Column {
-			name: Fragment::owned_internal("parameter"),
+			name: Fragment::internal("parameter"),
 			data: column_data,
 		})
 	}

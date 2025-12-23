@@ -3,10 +3,13 @@
 
 //! Lifecycle hook contexts and implementations
 
+use async_trait::async_trait;
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as _, Identity, Params},
+	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
 use tracing::error;
@@ -16,65 +19,83 @@ pub struct OnCreateContext {
 	engine: StandardEngine,
 }
 
-impl<'a> OnCreateContext {
+impl OnCreateContext {
 	pub fn new(engine: StandardEngine) -> Self {
 		Self {
 			engine,
 		}
 	}
 
-	/// Execute a transactional command as the specified identity
-	pub fn command_as(
+	/// Execute a transactional command as the specified identity.
+	pub async fn command_as(
 		&self,
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
-		self.engine.command_as(identity, rql, params.into())
+	) -> Result<Vec<Frame>, StreamError> {
+		self.engine.command_as(identity, rql, params.into()).try_collect().await
 	}
 
-	/// Execute a transactional command as root user
-	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	/// Execute a transactional command as root user.
+	pub async fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
 		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
 		};
-		self.engine.command_as(&identity, rql, params.into())
+		self.command_as(&identity, rql, params).await
 	}
 
-	/// Execute a read-only query as the specified identity
-	pub fn query_as(
+	/// Execute a read-only query as the specified identity.
+	pub async fn query_as(
 		&self,
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
-		self.engine.query_as(identity, rql, params.into())
+	) -> Result<Vec<Frame>, StreamError> {
+		self.engine.query_as(identity, rql, params.into()).try_collect().await
 	}
 
-	/// Execute a read-only query as root user
-	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	/// Execute a read-only query as root user.
+	pub async fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
 		let identity = Identity::root();
-		self.engine.query_as(&identity, rql, params.into())
+		self.query_as(&identity, rql, params).await
 	}
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateEventListener<F>
+pub struct OnCreateEventListener<F, Fut>
 where
-	F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
+	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
+	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
 {
 	pub callback: F,
 	pub engine: StandardEngine,
+	_marker: std::marker::PhantomData<fn() -> Fut>,
 }
 
-impl<F> EventListener<OnCreateEvent> for OnCreateEventListener<F>
+impl<F, Fut> OnCreateEventListener<F, Fut>
 where
-	F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
+	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
+	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
 {
-	fn on(&self, _hook: &OnCreateEvent) {
+	pub fn new(engine: StandardEngine, callback: F) -> Self {
+		Self {
+			callback,
+			engine,
+			_marker: std::marker::PhantomData,
+		}
+	}
+}
+
+#[async_trait]
+impl<F, Fut> EventListener<OnCreateEvent> for OnCreateEventListener<F, Fut>
+where
+	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
+	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
+{
+	async fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());
-		if let Err(e) = (self.callback)(&context) {
+		if let Err(e) = (self.callback)(context).await {
 			error!("Failed to handle OnCreate event: {}", e);
 		}
 	}

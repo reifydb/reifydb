@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, util::ioc::IocContainer};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -39,6 +40,7 @@ impl Default for FlowSubsystemFactory {
 	}
 }
 
+#[async_trait]
 impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
 	fn provide_interceptors(
 		&self,
@@ -49,13 +51,13 @@ impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	async fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(FlowBuilder::new())
 		} else {
 			FlowBuilder::default()
 		};
 		let config = builder.build_config();
-		Ok(Box::new(FlowSubsystem::new(config, ioc)?))
+		Ok(Box::new(FlowSubsystem::new(config, ioc).await?))
 	}
 }

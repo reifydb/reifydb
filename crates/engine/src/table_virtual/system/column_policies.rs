@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -32,13 +33,18 @@ impl ColumnPolicies {
 	}
 }
 
-impl<'a> TableVirtual<'a> for ColumnPolicies {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for ColumnPolicies {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -48,7 +54,7 @@ impl<'a> TableVirtual<'a> for ColumnPolicies {
 		let mut policy_types = Vec::new();
 		let mut policy_values = Vec::new();
 
-		let policies = CatalogStore::list_column_policies_all(txn)?;
+		let policies = CatalogStore::list_column_policies_all(txn).await?;
 		for policy in policies {
 			policy_ids.push(policy.id.0);
 			column_ids.push(policy.column.0);
@@ -59,19 +65,19 @@ impl<'a> TableVirtual<'a> for ColumnPolicies {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ColumnData::uint8(policy_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("column_id"),
+				name: Fragment::internal("column_id"),
 				data: ColumnData::uint8(column_ids),
 			},
 			Column {
-				name: Fragment::owned_internal("type"),
+				name: Fragment::internal("type"),
 				data: ColumnData::uint1(policy_types),
 			},
 			Column {
-				name: Fragment::owned_internal("value"),
+				name: Fragment::internal("value"),
 				data: ColumnData::uint1(policy_values),
 			},
 		];

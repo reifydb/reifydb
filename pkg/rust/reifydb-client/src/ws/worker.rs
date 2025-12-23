@@ -30,8 +30,6 @@ pub(crate) fn worker_thread_with_addr(
 		}
 	};
 
-	println!("WebSocket worker thread started for {}", addr);
-
 	// Poll for commands and responses
 	loop {
 		// Check for outgoing requests (non-blocking)

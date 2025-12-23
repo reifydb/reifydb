@@ -15,9 +15,9 @@ use crate::{evaluate::ColumnEvaluationContext, stack::Variable};
 impl StandardColumnEvaluator {
 	pub(super) fn variable<'a>(
 		&self,
-		ctx: &ColumnEvaluationContext<'a>,
-		expr: &VariableExpression<'a>,
-	) -> crate::Result<Column<'a>> {
+		ctx: &ColumnEvaluationContext,
+		expr: &VariableExpression,
+	) -> crate::Result<Column> {
 		let variable_name = expr.name();
 
 		// Special case: $env variable returns environment dataframe
@@ -36,7 +36,7 @@ impl StandardColumnEvaluator {
 				}
 
 				Ok(Column {
-					name: Fragment::owned_internal(variable_name),
+					name: Fragment::internal(variable_name),
 					data,
 				})
 			}

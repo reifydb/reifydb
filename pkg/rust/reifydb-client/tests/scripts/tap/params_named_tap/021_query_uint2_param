@@ -8,4 +8,4 @@ query_named 'MAP $uint2_val as result' 'uint2_val=65535'
 > +----------+
 > |  65535   |
 > +----------+
-> 
+>

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
@@ -43,13 +44,18 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl<'a> TableVirtual<'a> for ViewStorageStats {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+#[async_trait]
+impl TableVirtual for ViewStorageStats {
+	async fn initialize<'a>(
+		&mut self,
+		_txn: &mut StandardTransaction<'a>,
+		_ctx: TableVirtualContext,
+	) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
+	async fn next<'a>(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -63,7 +69,7 @@ impl<'a> TableVirtual<'a> for ViewStorageStats {
 				// Filter for view sources only
 				if let ObjectId::Source(SourceId::View(view_id)) = obj_id {
 					// Look up namespace_id from catalog
-					let namespace_id = match CatalogStore::find_view(txn, view_id)? {
+					let namespace_id = match CatalogStore::find_view(txn, view_id).await? {
 						Some(view_def) => view_def.namespace.0,
 						None => 0,
 					};
@@ -129,67 +135,67 @@ impl<'a> TableVirtual<'a> for ViewStorageStats {
 
 		let columns = vec![
 			Column {
-				name: Fragment::owned_internal("id"),
+				name: Fragment::internal("id"),
 				data: ids,
 			},
 			Column {
-				name: Fragment::owned_internal("namespace_id"),
+				name: Fragment::internal("namespace_id"),
 				data: namespace_ids,
 			},
 			Column {
-				name: Fragment::owned_internal("tier"),
+				name: Fragment::internal("tier"),
 				data: tiers,
 			},
 			Column {
-				name: Fragment::owned_internal("current_key_bytes"),
+				name: Fragment::internal("current_key_bytes"),
 				data: current_key_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("current_value_bytes"),
+				name: Fragment::internal("current_value_bytes"),
 				data: current_value_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("current_total_bytes"),
+				name: Fragment::internal("current_total_bytes"),
 				data: current_total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("current_count"),
+				name: Fragment::internal("current_count"),
 				data: current_counts,
 			},
 			Column {
-				name: Fragment::owned_internal("historical_key_bytes"),
+				name: Fragment::internal("historical_key_bytes"),
 				data: historical_key_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("historical_value_bytes"),
+				name: Fragment::internal("historical_value_bytes"),
 				data: historical_value_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("historical_total_bytes"),
+				name: Fragment::internal("historical_total_bytes"),
 				data: historical_total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("historical_count"),
+				name: Fragment::internal("historical_count"),
 				data: historical_counts,
 			},
 			Column {
-				name: Fragment::owned_internal("total_bytes"),
+				name: Fragment::internal("total_bytes"),
 				data: total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_key_bytes"),
+				name: Fragment::internal("cdc_key_bytes"),
 				data: cdc_key_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_value_bytes"),
+				name: Fragment::internal("cdc_value_bytes"),
 				data: cdc_value_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_total_bytes"),
+				name: Fragment::internal("cdc_total_bytes"),
 				data: cdc_total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("cdc_count"),
+				name: Fragment::internal("cdc_count"),
 				data: cdc_counts,
 			},
 		];

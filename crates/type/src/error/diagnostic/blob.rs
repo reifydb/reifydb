@@ -5,11 +5,11 @@
 
 use std::str::Utf8Error;
 
-use crate::{OwnedFragment, error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// Invalid hexadecimal string in BLOB constructor
-pub fn invalid_hex_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_hex_string(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_001".to_string(),
@@ -25,8 +25,8 @@ pub fn invalid_hex_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 }
 
 /// Invalid base64 string in BLOB constructor
-pub fn invalid_base64_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_base64_string(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_002".to_string(),
@@ -42,8 +42,8 @@ pub fn invalid_base64_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic 
 }
 
 /// Invalid base64url string in BLOB constructor
-pub fn invalid_base64url_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_base64url_string(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_003".to_string(),
@@ -59,8 +59,8 @@ pub fn invalid_base64url_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnost
 }
 
 /// Invalid base58 string in BLOB constructor
-pub fn invalid_base58_string<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn invalid_base58_string(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_005".to_string(),
@@ -82,7 +82,7 @@ pub fn invalid_utf8_sequence(error: Utf8Error) -> Diagnostic {
 		statement: None,
 		message: format!("Invalid UTF-8 sequence in BLOB: {}", error),
 		column: None,
-		fragment: OwnedFragment::internal(error.to_string()),
+		fragment: Fragment::internal(error.to_string()),
 		label: Some("BLOB contains invalid UTF-8 bytes".to_string()),
 		help: Some("Use to_utf8_lossy() if you want to replace invalid sequences with replacement characters"
 			.to_string()),

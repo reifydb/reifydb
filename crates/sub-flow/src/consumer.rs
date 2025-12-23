@@ -5,7 +5,7 @@
 
 use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
 
-use crossbeam_channel::Sender;
+use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::{Flow, FlowNodeType, load_flow};
 use tokio::{
-	runtime::Runtime,
+	sync::mpsc,
 	task::JoinHandle,
 	time::{Instant, timeout},
 };
@@ -23,25 +23,20 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-	FlowEngine, builder::OperatorFactory, config::FlowRuntimeConfig, coordinator::get_flow_version,
-	dispatcher::dispatcher, registry::FlowRegistry,
+	FlowEngine, builder::OperatorFactory, coordinator::get_flow_version, dispatcher::dispatcher,
+	registry::FlowRegistry,
 };
 
 /// Independent flow consumer with per-flow task architecture.
 ///
 /// Each flow runs as an independent task with its own channel and version tracking.
 /// This allows flows to process at their own pace without blocking each other.
-///
-/// IMPORTANT: Field order matters for drop order!
-/// - `shutdown` must be dropped (cancelled) before `runtime`
-/// - `cdc_tx` must be dropped (closed) before `runtime`
-/// This ensures the dispatcher task can exit before runtime shutdown waits for it.
 pub struct IndependentFlowConsumer {
-	/// Shutdown signal - dropped first to signal dispatcher to exit.
+	/// Shutdown signal to signal dispatcher to exit.
 	shutdown: CancellationToken,
 
-	/// Channel sender for CDC events - dropped second to unblock dispatcher.
-	cdc_tx: Sender<Cdc>,
+	/// Channel sender for CDC events.
+	cdc_tx: mpsc::UnboundedSender<Cdc>,
 
 	/// Registry of active flows.
 	registry: Arc<FlowRegistry>,
@@ -49,24 +44,15 @@ pub struct IndependentFlowConsumer {
 	/// Dispatcher task handle.
 	#[allow(dead_code)]
 	dispatcher_handle: JoinHandle<()>,
-
-	/// Tokio runtime (owned, separate from main runtime) - dropped last.
-	runtime: Runtime,
 }
 
 impl IndependentFlowConsumer {
 	/// Create a new independent flow consumer.
-	pub fn new(
+	pub async fn new(
 		engine: StandardEngine,
-		config: FlowRuntimeConfig,
 		operators: Vec<(String, OperatorFactory)>,
 		operators_dir: Option<PathBuf>,
 	) -> Result<Self> {
-		// Create tokio runtime
-		let runtime = config
-			.build_runtime()
-			.map_err(|e| reifydb_core::Error(reifydb_type::internal!("failed to create runtime: {}", e)))?;
-
 		// Load FFI operators eagerly so they're available in system.flow_operators
 		// before any flows are created
 		if let Some(ref dir) = operators_dir {
@@ -76,22 +62,22 @@ impl IndependentFlowConsumer {
 		}
 
 		let registry = Arc::new(FlowRegistry::new(engine.clone(), operators, operators_dir));
-		let (cdc_tx, cdc_rx) = crossbeam_channel::unbounded();
+		let (cdc_tx, cdc_rx) = mpsc::unbounded_channel();
 		let shutdown = CancellationToken::new();
 
 		// Load existing flows from catalog and register them
-		let existing_flows = load_all_flows(&engine)?;
+		let existing_flows = load_all_flows(&engine).await?;
 		info!(flow_count = existing_flows.len(), "loading existing flows");
 
 		for (flow, sources) in existing_flows {
 			let flow_id = flow.id;
-			let persisted_version = get_flow_version(&engine, flow_id)?.unwrap_or(CommitVersion(0));
-			runtime.block_on(async { registry.register(flow, sources, persisted_version).await })?;
+			let persisted_version = get_flow_version(&engine, flow_id).await?.unwrap_or(CommitVersion(0));
+			registry.register(flow, sources, persisted_version).await?;
 			debug!(flow_id = flow_id.0, version = persisted_version.0, "registered existing flow");
 		}
 
-		// Spawn dispatcher task
-		let dispatcher_handle = runtime.spawn(dispatcher(cdc_rx, registry.clone(), engine, shutdown.clone()));
+		// Spawn dispatcher task on the current runtime
+		let dispatcher_handle = tokio::spawn(dispatcher(cdc_rx, registry.clone(), engine, shutdown.clone()));
 
 		info!("independent flow consumer started");
 
@@ -100,41 +86,37 @@ impl IndependentFlowConsumer {
 			cdc_tx,
 			registry,
 			dispatcher_handle,
-			runtime,
 		})
 	}
 
 	/// Graceful shutdown with drain timeout.
-	pub fn shutdown(self, drain_timeout: Duration) {
+	pub async fn shutdown(self, drain_timeout: Duration) {
 		info!("initiating graceful shutdown");
 
 		// Signal shutdown
 		self.shutdown.cancel();
 
-		// Get all flow IDs and deregister them
-		self.runtime.block_on(async {
-			let drain_deadline = Instant::now() + drain_timeout;
+		let drain_deadline = Instant::now() + drain_timeout;
 
-			let flow_ids = self.registry.flow_ids().await;
-			info!(flow_count = flow_ids.len(), "draining flow tasks");
+		let flow_ids = self.registry.flow_ids().await;
+		info!(flow_count = flow_ids.len(), "draining flow tasks");
 
-			for flow_id in flow_ids {
-				if let Some(task) = self.registry.deregister(flow_id).await {
-					let remaining = drain_deadline.saturating_duration_since(Instant::now());
-					match timeout(remaining, task).await {
-						Ok(Ok(())) => {
-							debug!(flow_id = flow_id.0, "flow drained successfully");
-						}
-						Ok(Err(e)) => {
-							warn!(flow_id = flow_id.0, error = ?e, "flow task panicked");
-						}
-						Err(_) => {
-							warn!(flow_id = flow_id.0, "flow drain timed out");
-						}
+		for flow_id in flow_ids {
+			if let Some(task) = self.registry.deregister(flow_id).await {
+				let remaining = drain_deadline.saturating_duration_since(Instant::now());
+				match timeout(remaining, task).await {
+					Ok(Ok(())) => {
+						debug!(flow_id = flow_id.0, "flow drained successfully");
+					}
+					Ok(Err(e)) => {
+						warn!(flow_id = flow_id.0, error = ?e, "flow task panicked");
+					}
+					Err(_) => {
+						warn!(flow_id = flow_id.0, "flow drain timed out");
 					}
 				}
 			}
-		});
+		}
 
 		info!("shutdown complete");
 	}
@@ -149,8 +131,9 @@ impl Drop for IndependentFlowConsumer {
 	}
 }
 
+#[async_trait]
 impl CdcConsume for IndependentFlowConsumer {
-	fn consume(&self, _txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+	async fn consume(&self, _txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		if cdcs.is_empty() {
 			return Ok(());
 		}
@@ -176,14 +159,14 @@ impl CdcConsume for IndependentFlowConsumer {
 }
 
 /// Load all flows from catalog at startup.
-fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<reifydb_core::interface::SourceId>)>> {
-	let mut txn = engine.begin_query()?;
+async fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<reifydb_core::interface::SourceId>)>> {
+	let mut txn = engine.begin_query().await?;
 
-	let flow_defs = CatalogStore::list_flows_all(&mut txn)?;
+	let flow_defs = CatalogStore::list_flows_all(&mut txn).await?;
 	let mut result = Vec::with_capacity(flow_defs.len());
 
 	for flow_def in flow_defs {
-		match load_flow(&mut txn, flow_def.id) {
+		match load_flow(&mut txn, flow_def.id).await {
 			Ok(flow) => {
 				let sources = get_flow_sources(&flow);
 				result.push((flow, sources));

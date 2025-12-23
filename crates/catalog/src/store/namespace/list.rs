@@ -6,14 +6,14 @@ use reifydb_core::interface::{Key, NamespaceDef, NamespaceKey, QueryTransaction}
 use crate::{CatalogStore, store::namespace::layout::namespace};
 
 impl CatalogStore {
-	pub fn list_namespaces_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<NamespaceDef>> {
+	pub async fn list_namespaces_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<NamespaceDef>> {
 		let mut result = Vec::new();
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let entries: Vec<_> = rx.range(namespace_range)?.into_iter().collect();
+		let batch = rx.range(namespace_range).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::Namespace(namespace_key) = key {
 					let namespace_id = namespace_key.namespace;

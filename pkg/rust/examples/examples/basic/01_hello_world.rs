@@ -12,22 +12,23 @@ use reifydb::{Identity, Params, Session, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
-	// Step 1: Create and start a synchronous in-memory database
-	// The sync::memory() builder creates a database that:
+#[tokio::main]
+async fn main() {
+	// Step 1: Create and start an in-memory database
+	// The embedded::memory() builder creates a database that:
 	// - Stores all data in memory (no persistence)
-	// - Operates synchronously (blocking operations)
-	let mut db = embedded::memory().build().unwrap();
+	// - Operates asynchronously
+	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries
-	db.start().unwrap();
+	db.start().await.unwrap();
 
 	// Step 2: Execute a COMMAND (write operation) as root user
 	// Commands can modify the database state and return results
 	// The MAP command creates a result set with computed values
 	log_query("MAP { 42 as answer }");
-	for frame in db.command_as_root("MAP { 42 as answer}", Params::None).unwrap() {
+	for frame in db.command_as_root("MAP { 42 as answer}", Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 
@@ -35,7 +36,7 @@ fn main() {
 	// Queries are read-only operations that cannot modify database state
 	// They're useful for retrieving and computing data without side effects
 	log_query("Map { 40 + 2 as another_answer }");
-	for frame in db.query_as_root("Map { 40 + 2 as another_answer}", Params::None).unwrap() {
+	for frame in db.query_as_root("Map { 40 + 2 as another_answer}", Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 
@@ -49,7 +50,7 @@ fn main() {
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations
 	log_query("map { 20 * 2 + 2 as yet_another_answer}");
-	for frame in session.query("map { 20 * 2 + 2 as yet_another_answer}", Params::None).unwrap() {
+	for frame in session.query("map { 20 * 2 + 2 as yet_another_answer}", Params::None).await.unwrap() {
 		info!("{}", frame);
 	}
 

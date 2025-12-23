@@ -13,7 +13,6 @@ use std::{
 	sync::Arc,
 };
 
-use parking_lot::RwLock;
 use reifydb_core::{
 	CommitVersion, Error,
 	event::{
@@ -25,6 +24,7 @@ use reifydb_core::{
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
+use tokio::sync::RwLock;
 use tracing::{debug, error, instrument};
 
 use crate::{
@@ -113,7 +113,7 @@ impl FlowEngine {
 			}
 
 			// Register the operator without instantiating it
-			let mut guard = loader.write();
+			let mut guard = loader.write().unwrap();
 			let info = match guard.register_operator(&path)? {
 				Some(info) => info,
 				None => {
@@ -136,7 +136,8 @@ impl FlowEngine {
 			}
 
 			// Emit event for loaded operator
-			event_bus.emit(FlowOperatorLoadedEvent {
+			let event_bus = event_bus.clone();
+			let event = FlowOperatorLoadedEvent {
 				operator: info.operator,
 				library_path: info.library_path,
 				api: info.api,
@@ -145,7 +146,13 @@ impl FlowEngine {
 				input: convert_column_defs(&info.input_columns),
 				output: convert_column_defs(&info.output_columns),
 				capabilities: info.capabilities,
-			});
+			};
+			// Only spawn if there's a tokio runtime available
+			if let Ok(handle) = tokio::runtime::Handle::try_current() {
+				handle.spawn(async move {
+					event_bus.emit(event).await;
+				});
+			}
 		}
 
 		Ok(())
@@ -160,10 +167,10 @@ impl FlowEngine {
 		config: &HashMap<String, Value>,
 	) -> crate::Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
-		let mut loader_write = loader.write();
+		let mut loader_write = loader.write().unwrap();
 
-		// Serialize config to bincode
-		let config_bytes = bincode::serde::encode_to_vec(config, bincode::config::standard())
+		// Serialize config to postcard
+		let config_bytes = postcard::to_stdvec(config)
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
 		let operator = loader_write
@@ -176,53 +183,53 @@ impl FlowEngine {
 	/// Check if an operator name corresponds to an FFI operator
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
-		let loader_read = loader.read();
+		let loader_read = loader.read().unwrap();
 		loader_read.has_operator(operator)
 	}
 
-	pub fn has_registered_flows(&self) -> bool {
-		!self.inner.flows.read().is_empty()
+	pub async fn has_registered_flows(&self) -> bool {
+		!self.inner.flows.read().await.is_empty()
 	}
 
 	/// Returns a set of all currently registered flow IDs
-	pub fn flow_ids(&self) -> HashSet<FlowId> {
-		self.inner.flows.read().keys().copied().collect()
+	pub async fn flow_ids(&self) -> HashSet<FlowId> {
+		self.inner.flows.read().await.keys().copied().collect()
 	}
 
 	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
-	pub fn clear(&self) {
-		self.inner.operators.write().clear();
-		self.inner.flows.write().clear();
-		self.inner.sources.write().clear();
-		self.inner.sinks.write().clear();
-		self.inner.analyzer.write().clear();
-		self.inner.flow_creation_versions.write().clear();
+	pub async fn clear(&self) {
+		self.inner.operators.write().await.clear();
+		self.inner.flows.write().await.clear();
+		self.inner.sources.write().await.clear();
+		self.inner.sinks.write().await.clear();
+		self.inner.analyzer.write().await.clear();
+		self.inner.flow_creation_versions.write().await.clear();
 	}
 
-	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
-		self.inner.analyzer.read().get_dependency_graph().clone()
+	pub async fn get_dependency_graph(&self) -> FlowDependencyGraph {
+		self.inner.analyzer.read().await.get_dependency_graph().clone()
 	}
 
-	pub fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
+	pub async fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read().await;
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flows_depending_on_table(dependency_graph, table_id)
 	}
 
-	pub fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
+	pub async fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read().await;
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flows_depending_on_view(dependency_graph, view_id)
 	}
 
-	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
-		let analyzer = self.inner.analyzer.read();
+	pub async fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
+		let analyzer = self.inner.analyzer.read().await;
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
-	pub fn calculate_execution_order(&self) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
+	pub async fn calculate_execution_order(&self) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read().await;
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.calculate_execution_order(dependency_graph)
 	}

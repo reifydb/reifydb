@@ -75,7 +75,7 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	config_len: usize,
 	operator_id: u64,
 ) -> *mut c_void {
-	// Deserialize configuration from bincode if provided
+	// Deserialize configuration from postcard if provided
 	let config = if config_ptr.is_null() || config_len == 0 {
 		// No configuration provided, use empty HashMap
 		HashMap::new()
@@ -83,11 +83,8 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
-		match bincode::serde::decode_from_slice::<HashMap<String, Value>, _>(
-			config_bytes,
-			bincode::config::standard(),
-		) {
-			Ok((decoded_config, _bytes_read)) => decoded_config,
+		match postcard::from_bytes::<HashMap<String, Value>>(config_bytes) {
+			Ok(decoded_config) => decoded_config,
 			Err(e) => {
 				panic!(
 					"Failed to deserialize operator config for operator {}: {}. Using empty config.",

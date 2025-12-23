@@ -5,6 +5,7 @@ mod factory;
 
 use std::{any::Any, path::PathBuf, time::Duration};
 
+use async_trait::async_trait;
 pub use factory::FlowSubsystemFactory;
 use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
@@ -16,18 +17,16 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
+use reifydb_sub_api::{HealthStatus, Subsystem};
 use tracing::instrument;
 
-use crate::{builder::OperatorFactory, config::FlowRuntimeConfig, consumer::IndependentFlowConsumer};
+use crate::{builder::OperatorFactory, consumer::IndependentFlowConsumer};
 
 pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
-	/// Priority for the polling task in the worker pool
-	pub priority: Priority,
 	/// Custom operator factories
 	pub operators: Vec<(String, OperatorFactory)>,
 	/// Maximum batch size for CDC polling (None = unbounded)
@@ -43,18 +42,11 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
-	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
+	pub async fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		// Use default runtime config for now
-		// TODO: Make this configurable via FlowSubsystemConfig
-		let runtime_config = FlowRuntimeConfig::default();
-		let consumer = IndependentFlowConsumer::new(
-			engine.clone(),
-			runtime_config,
-			cfg.operators.clone(),
-			cfg.operators_dir,
-		)?;
+		let consumer =
+			IndependentFlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir).await?;
 
 		Ok(Self {
 			consumer: PollConsumer::new(
@@ -69,17 +61,22 @@ impl FlowSubsystem {
 
 impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
-		let _ = self.shutdown();
+		// Perform synchronous cleanup - the async shutdown should be called explicitly
+		if self.running {
+			let _ = self.consumer.stop();
+			self.running = false;
+		}
 	}
 }
 
+#[async_trait]
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-flow"
 	}
 
 	#[instrument(name = "flow::subsystem::start", level = "info", skip(self))]
-	fn start(&mut self) -> Result<()> {
+	async fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
 		}
@@ -91,7 +88,7 @@ impl Subsystem for FlowSubsystem {
 	}
 
 	#[instrument(name = "flow::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&mut self) -> Result<()> {
+	async fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
 		}

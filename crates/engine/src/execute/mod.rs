@@ -3,12 +3,13 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use query::{
 	aggregate::AggregateNode,
 	assign::AssignNode,
 	compile::compile,
 	declare::DeclareNode,
-	dictionary_scan::DictionaryScan,
+	dictionary_scan::DictionaryScanNode,
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
@@ -24,6 +25,7 @@ use query::{
 	table_scan::TableScanNode,
 	table_virtual_scan::VirtualScanNode,
 	take::TakeNode,
+	top_k::TopKNode,
 	variable::VariableNode,
 	view_scan::ViewScanNode,
 };
@@ -50,162 +52,179 @@ mod catalog;
 pub(crate) mod mutate;
 mod query;
 
-/// Unified trait for query execution nodes following the volcano iterator
-/// pattern
-pub(crate) trait QueryNode<'a> {
+/// Unified trait for query execution nodes following the volcano iterator pattern
+#[async_trait]
+pub(crate) trait QueryNode {
 	/// Initialize the operator with execution context
 	/// Called once before iteration begins
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>>;
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>>;
 
 	/// Get the headers of columns this node produces
-	fn headers(&self) -> Option<ColumnHeaders<'a>>;
+	fn headers(&self) -> Option<ColumnHeaders>;
 }
 
 #[derive(Clone)]
-pub struct ExecutionContext<'a> {
+pub struct ExecutionContext {
 	pub executor: Executor,
-	pub source: Option<ResolvedSource<'a>>,
+	pub source: Option<ResolvedSource>,
 	pub batch_size: u64,
 	pub params: Params,
 	pub stack: Stack,
 }
 
 #[derive(Debug)]
-pub struct Batch<'a> {
-	pub columns: Columns<'a>,
+pub struct Batch {
+	pub columns: Columns,
 }
 
-pub(crate) enum ExecutionPlan<'a> {
-	Aggregate(AggregateNode<'a>),
-	DictionaryScan(DictionaryScan<'a>),
-	Filter(FilterNode<'a>),
-	IndexScan(IndexScanNode<'a>),
-	InlineData(InlineDataNode<'a>),
-	InnerJoin(InnerJoinNode<'a>),
-	LeftJoin(LeftJoinNode<'a>),
-	NaturalJoin(NaturalJoinNode<'a>),
-	Map(MapNode<'a>),
-	MapWithoutInput(MapWithoutInputNode<'a>),
-	Extend(ExtendNode<'a>),
-	ExtendWithoutInput(ExtendWithoutInputNode<'a>),
-	Sort(SortNode<'a>),
-	TableScan(TableScanNode<'a>),
-	Take(TakeNode<'a>),
-	ViewScan(ViewScanNode<'a>),
-	Variable(VariableNode<'a>),
+pub(crate) enum ExecutionPlan {
+	Aggregate(AggregateNode),
+	DictionaryScan(DictionaryScanNode),
+	Filter(FilterNode),
+	IndexScan(IndexScanNode),
+	InlineData(InlineDataNode),
+	InnerJoin(InnerJoinNode),
+	LeftJoin(LeftJoinNode),
+	NaturalJoin(NaturalJoinNode),
+	Map(MapNode),
+	MapWithoutInput(MapWithoutInputNode),
+	Extend(ExtendNode),
+	ExtendWithoutInput(ExtendWithoutInputNode),
+	Sort(SortNode),
+	TableScan(TableScanNode),
+	Take(TakeNode),
+	TopK(TopKNode),
+	ViewScan(ViewScanNode),
+	Variable(VariableNode),
 	Environment(EnvironmentNode),
-	VirtualScan(VirtualScanNode<'a>),
-	RingBufferScan(RingBufferScan<'a>),
-	Generator(GeneratorNode<'a>),
-	Declare(DeclareNode<'a>),
-	Assign(AssignNode<'a>),
-	Conditional(query::conditional::ConditionalNode<'a>),
-	Scalarize(ScalarizeNode<'a>),
+	VirtualScan(VirtualScanNode),
+	RingBufferScan(RingBufferScan),
+	Generator(GeneratorNode),
+	Declare(DeclareNode),
+	Assign(AssignNode),
+	Conditional(query::conditional::ConditionalNode),
+	Scalarize(ScalarizeNode),
 	// Row-number optimized access
-	RowPointLookup(RowPointLookupNode<'a>),
-	RowListLookup(RowListLookupNode<'a>),
-	RowRangeScan(RowRangeScanNode<'a>),
+	RowPointLookup(RowPointLookupNode),
+	RowListLookup(RowListLookupNode),
+	RowRangeScan(RowRangeScanNode),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
-impl<'a> QueryNode<'a> for Box<ExecutionPlan<'a>> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
-		(**self).initialize(rx, ctx)
-	}
-
-	fn next(
+#[async_trait]
+impl QueryNode for Box<ExecutionPlan> {
+	async fn initialize<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
-		(**self).next(rx, ctx)
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
+		(**self).initialize(rx, ctx).await
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	async fn next<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
+		(**self).next(rx, ctx).await
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
 		(**self).headers()
 	}
 }
 
-impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
-		match self {
-			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
-			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
-			ExecutionPlan::IndexScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::InlineData(node) => node.initialize(rx, ctx),
-			ExecutionPlan::InnerJoin(node) => node.initialize(rx, ctx),
-			ExecutionPlan::LeftJoin(node) => node.initialize(rx, ctx),
-			ExecutionPlan::NaturalJoin(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Map(node) => node.initialize(rx, ctx),
-			ExecutionPlan::MapWithoutInput(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Extend(node) => node.initialize(rx, ctx),
-			ExecutionPlan::ExtendWithoutInput(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Sort(node) => node.initialize(rx, ctx),
-			ExecutionPlan::TableScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Take(node) => node.initialize(rx, ctx),
-			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Variable(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Environment(node) => node.initialize(rx, ctx),
-			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Declare(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx),
-			ExecutionPlan::RowPointLookup(node) => node.initialize(rx, ctx),
-			ExecutionPlan::RowListLookup(node) => node.initialize(rx, ctx),
-			ExecutionPlan::RowRangeScan(node) => node.initialize(rx, ctx),
-		}
-	}
-
-	fn next(
+#[async_trait]
+impl QueryNode for ExecutionPlan {
+	async fn initialize<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		match self {
-			ExecutionPlan::Aggregate(node) => node.next(rx, ctx),
-			ExecutionPlan::DictionaryScan(node) => node.next(rx, ctx),
-			ExecutionPlan::Filter(node) => node.next(rx, ctx),
-			ExecutionPlan::IndexScan(node) => node.next(rx, ctx),
-			ExecutionPlan::InlineData(node) => node.next(rx, ctx),
-			ExecutionPlan::InnerJoin(node) => node.next(rx, ctx),
-			ExecutionPlan::LeftJoin(node) => node.next(rx, ctx),
-			ExecutionPlan::NaturalJoin(node) => node.next(rx, ctx),
-			ExecutionPlan::Map(node) => node.next(rx, ctx),
-			ExecutionPlan::MapWithoutInput(node) => node.next(rx, ctx),
-			ExecutionPlan::Extend(node) => node.next(rx, ctx),
-			ExecutionPlan::ExtendWithoutInput(node) => node.next(rx, ctx),
-			ExecutionPlan::Sort(node) => node.next(rx, ctx),
-			ExecutionPlan::TableScan(node) => node.next(rx, ctx),
-			ExecutionPlan::Take(node) => node.next(rx, ctx),
-			ExecutionPlan::ViewScan(node) => node.next(rx, ctx),
-			ExecutionPlan::Variable(node) => node.next(rx, ctx),
-			ExecutionPlan::Environment(node) => node.next(rx, ctx),
-			ExecutionPlan::VirtualScan(node) => node.next(rx, ctx),
-			ExecutionPlan::RingBufferScan(node) => node.next(rx, ctx),
-			ExecutionPlan::Generator(node) => node.next(rx, ctx),
-			ExecutionPlan::Declare(node) => node.next(rx, ctx),
-			ExecutionPlan::Assign(node) => node.next(rx, ctx),
-			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
-			ExecutionPlan::Scalarize(node) => node.next(rx, ctx),
-			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx),
-			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx),
-			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx),
+			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Filter(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::IndexScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::InlineData(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::InnerJoin(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::LeftJoin(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::NaturalJoin(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Map(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::MapWithoutInput(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Extend(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::ExtendWithoutInput(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Sort(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::TableScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Take(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::TopK(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Variable(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Environment(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Generator(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Declare(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Assign(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::RowPointLookup(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::RowListLookup(node) => node.initialize(rx, ctx).await,
+			ExecutionPlan::RowRangeScan(node) => node.initialize(rx, ctx).await,
 		}
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	async fn next<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
+		match self {
+			ExecutionPlan::Aggregate(node) => node.next(rx, ctx).await,
+			ExecutionPlan::DictionaryScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Filter(node) => node.next(rx, ctx).await,
+			ExecutionPlan::IndexScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::InlineData(node) => node.next(rx, ctx).await,
+			ExecutionPlan::InnerJoin(node) => node.next(rx, ctx).await,
+			ExecutionPlan::LeftJoin(node) => node.next(rx, ctx).await,
+			ExecutionPlan::NaturalJoin(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Map(node) => node.next(rx, ctx).await,
+			ExecutionPlan::MapWithoutInput(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Extend(node) => node.next(rx, ctx).await,
+			ExecutionPlan::ExtendWithoutInput(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Sort(node) => node.next(rx, ctx).await,
+			ExecutionPlan::TableScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Take(node) => node.next(rx, ctx).await,
+			ExecutionPlan::TopK(node) => node.next(rx, ctx).await,
+			ExecutionPlan::ViewScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Variable(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Environment(node) => node.next(rx, ctx).await,
+			ExecutionPlan::VirtualScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::RingBufferScan(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Generator(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Declare(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Assign(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Conditional(node) => node.next(rx, ctx).await,
+			ExecutionPlan::Scalarize(node) => node.next(rx, ctx).await,
+			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx).await,
+			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx).await,
+			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx).await,
+		}
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.headers(),
 			ExecutionPlan::DictionaryScan(node) => node.headers(),
@@ -222,6 +241,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Sort(node) => node.headers(),
 			ExecutionPlan::TableScan(node) => node.headers(),
 			ExecutionPlan::Take(node) => node.headers(),
+			ExecutionPlan::TopK(node) => node.headers(),
 			ExecutionPlan::ViewScan(node) => node.headers(),
 			ExecutionPlan::Variable(node) => node.headers(),
 			ExecutionPlan::Environment(node) => node.headers(),
@@ -309,9 +329,14 @@ impl Executor {
 	}
 }
 
+#[async_trait]
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+	async fn execute_command(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		cmd: Command<'_>,
+	) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -339,9 +364,10 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 		}
 
 		for statement in statements {
-			if let Some(plan) = plan(txn, statement)? {
-				if let Some(er) =
-					self.execute_command_plan(txn, plan, cmd.params.clone(), &mut persistent_stack)?
+			if let Some(plan) = plan(txn, statement).await? {
+				if let Some(er) = self
+					.execute_command_plan(txn, plan, cmd.params.clone(), &mut persistent_stack)
+					.await?
 				{
 					result.push(Frame::from(er));
 				}
@@ -352,9 +378,10 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 	}
 }
 
+#[async_trait]
 impl ExecuteQuery<StandardQueryTransaction> for Executor {
 	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
-	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
 
@@ -382,9 +409,10 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 		}
 
 		for statement in statements {
-			if let Some(plan) = plan(txn, statement)? {
-				if let Some(er) =
-					self.execute_query_plan(txn, plan, qry.params.clone(), &mut persistent_stack)?
+			if let Some(plan) = plan(txn, statement).await? {
+				if let Some(er) = self
+					.execute_query_plan(txn, plan, qry.params.clone(), &mut persistent_stack)
+					.await?
 				{
 					result.push(Frame::from(er));
 				}
@@ -399,13 +427,13 @@ impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor 
 
 impl Executor {
 	#[instrument(name = "executor::plan::query", level = "debug", skip(self, rx, plan, params, stack))]
-	pub(crate) fn execute_query_plan<'a>(
+	pub(crate) async fn execute_query_plan<'a>(
 		&self,
 		rx: &'a mut StandardQueryTransaction,
-		plan: PhysicalPlan<'a>,
+		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,
-	) -> crate::Result<Option<Columns<'a>>> {
+	) -> crate::Result<Option<Columns>> {
 		match plan {
 			// Query
 			PhysicalPlan::Aggregate(_)
@@ -441,11 +469,11 @@ impl Executor {
 			| PhysicalPlan::RowListLookup(_)
 			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
-				self.query(&mut std_txn, plan, params, stack)
+				self.query(&mut std_txn, plan, params, stack).await
 			}
 			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
-				self.query(&mut std_txn, plan, params, stack)?;
+				self.query(&mut std_txn, plan, params, stack).await?;
 				Ok(None)
 			}
 			PhysicalPlan::AlterSequence(_)
@@ -484,31 +512,41 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::plan::command", level = "debug", skip(self, txn, plan, params, stack))]
-	pub fn execute_command_plan<'a>(
+	pub async fn execute_command_plan<'a>(
 		&self,
 		txn: &'a mut StandardCommandTransaction,
-		plan: PhysicalPlan<'a>,
+		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,
-	) -> crate::Result<Option<Columns<'a>>> {
+	) -> crate::Result<Option<Columns>> {
 		match plan {
-			PhysicalPlan::AlterSequence(plan) => Ok(Some(self.alter_table_sequence(txn, plan)?)),
-			PhysicalPlan::CreateDeferredView(plan) => Ok(Some(self.create_deferred_view(txn, plan)?)),
-			PhysicalPlan::CreateTransactionalView(plan) => {
-				Ok(Some(self.create_transactional_view(txn, plan)?))
+			PhysicalPlan::AlterSequence(plan) => Ok(Some(self.alter_table_sequence(txn, plan).await?)),
+			PhysicalPlan::CreateDeferredView(plan) => {
+				Ok(Some(self.create_deferred_view(txn, plan).await?))
 			}
-			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan)?)),
-			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
-			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ringbuffer(txn, plan)?)),
-			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan)?)),
-			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan)?)),
-			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
-			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ringbuffer(txn, plan, params)?)),
-			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
-			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ringbuffer(txn, plan, params)?)),
-			PhysicalPlan::InsertDictionary(plan) => Ok(Some(self.insert_dictionary(txn, plan, stack)?)),
-			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params)?)),
-			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ringbuffer(txn, plan, params)?)),
+			PhysicalPlan::CreateTransactionalView(plan) => {
+				Ok(Some(self.create_transactional_view(txn, plan).await?))
+			}
+			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan).await?)),
+			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan).await?)),
+			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ringbuffer(txn, plan).await?)),
+			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan).await?)),
+			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan).await?)),
+			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params).await?)),
+			PhysicalPlan::DeleteRingBuffer(plan) => {
+				Ok(Some(self.delete_ringbuffer(txn, plan, params).await?))
+			}
+			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack).await?)),
+			PhysicalPlan::InsertRingBuffer(plan) => {
+				Ok(Some(self.insert_ringbuffer(txn, plan, params).await?))
+			}
+			PhysicalPlan::InsertDictionary(plan) => {
+				Ok(Some(self.insert_dictionary(txn, plan, stack).await?))
+			}
+			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params).await?)),
+			PhysicalPlan::UpdateRingBuffer(plan) => {
+				Ok(Some(self.update_ringbuffer(txn, plan, params).await?))
+			}
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::DictionaryScan(_)
@@ -538,54 +576,53 @@ impl Executor {
 			| PhysicalPlan::RowListLookup(_)
 			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
-				self.query(&mut std_txn, plan, params, stack)
+				self.query(&mut std_txn, plan, params, stack).await
 			}
 			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
-				self.query(&mut std_txn, plan, params, stack)?;
+				self.query(&mut std_txn, plan, params, stack).await?;
 				Ok(None)
 			}
 			PhysicalPlan::Window(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
-				self.query(&mut std_txn, plan, params, stack)
+				self.query(&mut std_txn, plan, params, stack).await
 			}
 			PhysicalPlan::Merge(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
-				self.query(&mut std_txn, plan, params, stack)
+				self.query(&mut std_txn, plan, params, stack).await
 			}
 
-			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan)?)),
-			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan)?)),
-			PhysicalPlan::AlterFlow(plan) => Ok(Some(self.execute_alter_flow(txn, plan)?)),
+			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan).await?)),
+			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan).await?)),
+			PhysicalPlan::AlterFlow(plan) => Ok(Some(self.execute_alter_flow(txn, plan).await?)),
 		}
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, rx, plan, params, stack))]
-	fn query<'a>(
+	async fn query<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,
-		plan: PhysicalPlan<'a>,
+		plan: PhysicalPlan,
 		params: Params,
 		stack: &mut Stack,
-	) -> crate::Result<Option<Columns<'a>>> {
-		let context = Arc::new(ExecutionContext {
+	) -> crate::Result<Option<Columns>> {
+		let mut context = ExecutionContext {
 			executor: self.clone(),
 			source: None,
 			batch_size: 1024,
 			params: params.clone(),
 			stack: stack.clone(),
-		});
-		let mut node = compile(plan, rx, context.clone());
+		};
+		let mut node = compile(plan, rx, Arc::new(context.clone())).await;
 
 		// Initialize the operator before execution
-		node.initialize(rx, &context)?;
+		node.initialize(rx, &context).await?;
 
 		let mut result: Option<Columns> = None;
-		let mut mutable_context = (*context).clone();
 
 		while let Some(Batch {
 			columns,
-		}) = node.next(rx, &mut mutable_context)?
+		}) = node.next(rx, &mut context).await?
 		{
 			if let Some(mut result_columns) = result.take() {
 				result_columns.append_columns(columns)?;
@@ -596,7 +633,7 @@ impl Executor {
 		}
 
 		// Copy stack changes back to persistent stack
-		*stack = mutable_context.stack;
+		*stack = context.stack;
 
 		let headers = node.headers();
 
@@ -609,7 +646,7 @@ impl Executor {
 		} else {
 			// empty columns - reconstruct table,
 			// for better UX
-			let columns: Vec<Column<'a>> = node
+			let columns: Vec<Column> = node
 				.headers()
 				.unwrap_or(ColumnHeaders {
 					columns: vec![],

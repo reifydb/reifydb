@@ -1,0 +1,41 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that total_bytes calculation is correct.
+# total_bytes = current_bytes + historical_bytes + cdc_bytes
+
+# Insert a key
+set a=hello
+---
+ok
+
+# Update to create historical entry
+set a=world
+---
+ok
+
+# Check totals
+# Key "a" = 1 byte, versioned key = 9 bytes (1 + 8)
+# current: versioned_key=9, value=5 = 14
+# historical: versioned_key=9, value=5 = 14
+# total: 28 (CDC bytes are NOT included in total_bytes)
+stats_totals
+---
+total_count: 2
+current_bytes: 14
+historical_bytes: 14
+total_bytes: 28
+
+# Full stats should be consistent
+stats
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 5
+historical_count: 1
+historical_key_bytes: 9
+historical_value_bytes: 5
+cdc_count: 2
+cdc_key_bytes: 2
+cdc_value_bytes: 152
+total_bytes: 28

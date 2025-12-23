@@ -284,14 +284,18 @@ pub fn mock_time_with_control<T>(initial_millis: u64, f: impl FnOnce(&MockTimeCo
 
 #[cfg(test)]
 mod tests {
+	use std::time::Duration;
+
+	use tokio::time::sleep;
+
 	use super::*;
 
-	#[test]
-	fn test_system_time() {
+	#[tokio::test]
+	async fn test_system_time() {
 		mock_time_clear(); // Ensure no mock time is set
 
 		let t1 = now_millis();
-		std::thread::sleep(std::time::Duration::from_millis(10));
+		sleep(Duration::from_millis(10)).await;
 		let t2 = now_millis();
 		assert!(t2 >= t1 + 10);
 	}

@@ -8,4 +8,4 @@ command_positional 'MAP $1 as result' '1234'
 > +----------+
 > |   1234   |
 > +----------+
-> 
+>

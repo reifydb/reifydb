@@ -12,10 +12,13 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a source (table or view) by its SourceId
 	/// Returns an error if the source doesn't exist
-	pub fn get_source(rx: &mut impl QueryTransaction, source: impl Into<SourceId>) -> crate::Result<SourceDef> {
+	pub async fn get_source(
+		rx: &mut impl QueryTransaction,
+		source: impl Into<SourceId>,
+	) -> crate::Result<SourceDef> {
 		let source_id = source.into();
 
-		CatalogStore::find_source(rx, source_id)?.ok_or_else(|| {
+		CatalogStore::find_source(rx, source_id).await?.ok_or_else(|| {
 			let source_type = match source_id {
 				SourceId::Table(_) => "Table",
 				SourceId::View(_) => "View",
@@ -46,13 +49,13 @@ mod tests {
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
-	#[test]
-	fn test_get_source_table() {
-		let mut txn = create_test_command_transaction();
-		let table = ensure_test_table(&mut txn);
+	#[tokio::test]
+	async fn test_get_source_table() {
+		let mut txn = create_test_command_transaction().await;
+		let table = ensure_test_table(&mut txn).await;
 
 		// Get store by TableId
-		let source = CatalogStore::get_source(&mut txn, table.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, table.id).await.unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -63,7 +66,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::Table
-		let source = CatalogStore::get_source(&mut txn, SourceId::Table(table.id)).unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::Table(table.id)).await.unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -73,10 +76,10 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_get_source_view() {
-		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+	#[tokio::test]
+	async fn test_get_source_view() {
+		let mut txn = create_test_command_transaction().await;
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -91,10 +94,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Get store by ViewId
-		let source = CatalogStore::get_source(&mut txn, view.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, view.id).await.unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -105,7 +109,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::View
-		let source = CatalogStore::get_source(&mut txn, SourceId::View(view.id)).unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::View(view.id)).await.unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -115,12 +119,12 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_get_source_not_found_table() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_get_source_not_found_table() {
+		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent table should error
-		let result = CatalogStore::get_source(&mut txn, TableId(999));
+		let result = CatalogStore::get_source(&mut txn, TableId(999)).await;
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -128,12 +132,12 @@ mod tests {
 		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
-	#[test]
-	fn test_get_source_not_found_view() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_get_source_not_found_view() {
+		let mut txn = create_test_command_transaction().await;
 
 		// Non-existent view should error
-		let result = CatalogStore::get_source(&mut txn, ViewId(999));
+		let result = CatalogStore::get_source(&mut txn, ViewId(999)).await;
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

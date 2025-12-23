@@ -6,9 +6,9 @@ use std::{
 	sync::Arc,
 };
 
-use parking_lot::{Mutex, RwLock};
 use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
-use tracing::{debug_span, instrument};
+use tokio::sync::{Mutex, RwLock};
+use tracing::instrument;
 
 use crate::multi::{
 	conflict::ConflictManager,
@@ -136,7 +136,7 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub fn new(clock: L) -> Self {
+	pub async fn new(clock: L) -> Self {
 		let closer = Closer::new(2);
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -149,8 +149,8 @@ where
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
 			version_lock: Mutex::new(()),
-			query: WaterMark::new("txn-mark-query".into(), closer.clone()),
-			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()),
+			query: WaterMark::new("txn-mark-query".into(), closer.clone()).await,
+			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()).await,
 			shutdown_signal,
 			closer,
 		}
@@ -158,7 +158,7 @@ where
 
 	/// Efficient conflict detection using time windows and key indexing
 	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(%version))]
-	pub(super) fn new_commit(
+	pub(super) async fn new_commit(
 		&self,
 		done_read: &mut bool,
 		version: CommitVersion,
@@ -166,7 +166,7 @@ where
 	) -> crate::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
-		let inner = self.inner.read();
+		let inner = self.inner.read().await;
 
 		// Get keys involved in this transaction for efficient filtering
 		// Use references to avoid cloning
@@ -175,95 +175,79 @@ where
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
-		let relevant_windows: Vec<CommitVersion> = {
-			let _span = debug_span!(
-				"find_relevant_windows",
-				read_key_count = read_keys.len(),
-				conflict_key_count = write_keys.len(),
-				has_range_ops = conflicts.has_range_operations()
-			)
-			.entered();
+		let relevant_windows: Vec<CommitVersion> = if !has_keys {
+			// If no specific keys, we need to check recent windows
+			// for range/all operations
+			inner.time_windows.range(version..).take(5).map(|(&v, _)| v).collect()
+		} else {
+			let mut windows = HashSet::new();
 
-			if !has_keys {
-				// If no specific keys, we need to check recent windows
-				// for range/all operations
-				inner.time_windows.range(version..).take(5).map(|(&v, _)| v).collect()
-			} else {
-				let mut windows = HashSet::new();
-
-				// Iterate over combined keys once instead of twice
-				for key in read_keys.iter().chain(write_keys.iter()) {
-					if let Some(window_versions) = inner.key_to_windows.get(key) {
-						windows.extend(window_versions.iter().copied());
-					}
+			// Iterate over combined keys once instead of twice
+			for key in read_keys.iter().chain(write_keys.iter()) {
+				if let Some(window_versions) = inner.key_to_windows.get(key) {
+					windows.extend(window_versions.iter().copied());
 				}
+			}
 
-				// If no windows found via key index, only fall back to full
-				// window scan if there are range operations. For point
-				// operations on new keys, no conflicts are possible since
-				// no other transaction could have written to those keys.
-				if windows.is_empty() {
-					if conflicts.has_range_operations() {
-						// Range operations require checking all windows
-						inner.time_windows.keys().copied().collect()
-					} else {
-						// New keys with no range ops = no possible conflicts
-						Vec::new()
-					}
+			// If no windows found via key index, only fall back to full
+			// window scan if there are range operations. For point
+			// operations on new keys, no conflicts are possible since
+			// no other transaction could have written to those keys.
+			if windows.is_empty() {
+				if conflicts.has_range_operations() {
+					// Range operations require checking all windows
+					inner.time_windows.keys().copied().collect()
 				} else {
-					windows.into_iter().collect()
+					// New keys with no range ops = no possible conflicts
+					Vec::new()
 				}
+			} else {
+				windows.into_iter().collect()
 			}
 		};
 
 		// Check for conflicts only in relevant windows
-		{
-			let _span = debug_span!("check_windows", window_count = relevant_windows.len()).entered();
+		for window_version in &relevant_windows {
+			if let Some(window) = inner.time_windows.get(window_version) {
+				// OPTIMIZATION: Early skip if all transactions in window are older
+				// than our read version - no need to acquire lock
+				if window.max_version <= version {
+					continue;
+				}
 
-			for window_version in &relevant_windows {
-				if let Some(window) = inner.time_windows.get(window_version) {
-					// OPTIMIZATION: Early skip if all transactions in window are older
-					// than our read version - no need to acquire lock
-					if window.max_version <= version {
+				// Quick bloom filter check first to potentially
+				// skip this window. But only if we don't
+				// have range operations (which can't be bloom filtered)
+				if !conflicts.has_range_operations() {
+					// We need to check both:
+					// 1. If any of our writes conflict with window's writes (write-write conflict)
+					// 2. If any of our reads overlap with window's writes (read-write conflict)
+					let needs_detailed_check = read_keys
+						.iter()
+						.chain(write_keys.iter())
+						.any(|key| window.might_have_key(key));
+
+					if !needs_detailed_check {
+						continue;
+					}
+				}
+
+				// Acquire read lock on the window for conflict
+				// checking
+				let _window_lock = window.lock.read().await;
+
+				// Check conflicts with transactions in this
+				// window
+				for committed_txn in &window.transactions {
+					// Skip transactions that committed
+					// before we started reading
+					if committed_txn.version <= version {
 						continue;
 					}
 
-					// Quick bloom filter check first to potentially
-					// skip this window. But only if we don't
-					// have range operations (which can't be bloom filtered)
-					if !conflicts.has_range_operations() {
-						// We need to check both:
-						// 1. If any of our writes conflict with window's writes (write-write
-						//    conflict)
-						// 2. If any of our reads overlap with window's writes (read-write
-						//    conflict)
-						let needs_detailed_check = read_keys
-							.iter()
-							.chain(write_keys.iter())
-							.any(|key| window.might_have_key(key));
-
-						if !needs_detailed_check {
-							continue;
-						}
-					}
-
-					// Acquire read lock on the window for conflict
-					// checking
-					let _window_lock = window.lock.read();
-
-					// Check conflicts with transactions in this
-					// window
-					for committed_txn in &window.transactions {
-						// Skip transactions that committed
-						// before we started reading
-						if committed_txn.version <= version {
-							continue;
-						}
-
-						if let Some(old_conflicts) = &committed_txn.conflict_manager {
-							if conflicts.has_conflict(old_conflicts) {
-								return Ok(CreateCommitResult::Conflict(conflicts));
-							}
+					if let Some(old_conflicts) = &committed_txn.conflict_manager {
+						if conflicts.has_conflict(old_conflicts) {
+							return Ok(CreateCommitResult::Conflict(conflicts));
 						}
 					}
 				}
@@ -281,16 +265,20 @@ where
 
 		// Get commit version with minimal locking
 		let commit_version = {
-			let _span = debug_span!("allocate_version").entered();
-			let _version_guard = self.version_lock.lock();
-			let inner = self.inner.read();
-			inner.clock.next()?
+			let _version_guard = self.version_lock.lock().await;
+
+			let clock = {
+				let inner = self.inner.read().await;
+				inner.clock.clone()
+			};
+
+			clock.next().await?
 		};
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
-			let _span = debug_span!("add_to_index").entered();
-			let mut inner = self.inner.write();
+			let mut inner = self.inner.write().await;
+
 			inner.add_committed_transaction(commit_version, conflicts);
 
 			// Check if cleanup is needed
@@ -298,8 +286,7 @@ where
 		};
 
 		if needs_cleanup {
-			let _span = debug_span!("cleanup_windows").entered();
-			let mut inner = self.inner.write();
+			let mut inner = self.inner.write().await;
 			let inner = &mut *inner;
 			super::oracle_cleanup::cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
 		}
@@ -309,22 +296,26 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
-	pub(super) fn version(&self) -> crate::Result<CommitVersion> {
-		self.inner.read().clock.current()
+	pub(super) async fn version(&self) -> crate::Result<CommitVersion> {
+		let clock = {
+			let inner = self.inner.read().await;
+			inner.clock.clone()
+		};
+		clock.current().await
 	}
 
 	pub(super) fn discard_at_or_below(&self) -> CommitVersion {
 		self.command.done_until()
 	}
 
-	pub fn stop(&mut self) {
-		// Signal shutdown
+	pub async fn stop(&mut self) {
+		// Signal shutdown - use blocking_write since this is called from Drop
 		{
-			let mut shutdown = self.shutdown_signal.write();
+			let mut shutdown = self.shutdown_signal.write().await;
 			*shutdown = true;
 		}
 
-		self.closer.signal_and_wait();
+		self.closer.signal_and_wait().await;
 	}
 
 	/// Mark a query as done (for compatibility with existing API)
@@ -373,7 +364,7 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		self.stop();
+		let _ = self.stop();
 	}
 }
 
@@ -384,11 +375,13 @@ mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
+	use async_trait::async_trait;
+
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
 	// Mock version provider for testing
-	#[derive(Debug)]
+	#[derive(Debug, Clone)]
 	struct MockVersionProvider {
 		current: Arc<AtomicU64>,
 	}
@@ -401,12 +394,13 @@ mod tests {
 		}
 	}
 
+	#[async_trait]
 	impl VersionProvider for MockVersionProvider {
-		fn next(&self) -> crate::Result<CommitVersion> {
+		async fn next(&self) -> crate::Result<CommitVersion> {
 			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
 		}
 
-		fn current(&self) -> crate::Result<CommitVersion> {
+		async fn current(&self) -> crate::Result<CommitVersion> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
 	}
@@ -415,19 +409,19 @@ mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	#[test]
-	fn test_oracle_basic_creation() {
+	#[tokio::test]
+	async fn test_oracle_basic_creation() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Oracle should be created successfully
-		assert_eq!(oracle.version().unwrap(), 0);
+		assert_eq!(oracle.version().await.unwrap(), 0);
 	}
 
-	#[test]
-	fn test_window_creation_and_indexing() {
+	#[tokio::test]
+	async fn test_window_creation_and_indexing() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -438,14 +432,14 @@ mod tests {
 
 		// Simulate committing a transaction
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).await.unwrap();
 
 		match result {
 			CreateCommitResult::Success(version) => {
 				assert!(version.0 >= 1); // Should get a new version
 
 				// Check that keys were indexed
-				let inner = oracle.inner.read();
+				let inner = oracle.inner.read().await;
 				assert!(inner.key_to_windows.contains_key(&key1));
 				assert!(inner.key_to_windows.contains_key(&key2));
 
@@ -456,10 +450,10 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_conflict_detection_between_transactions() {
+	#[tokio::test]
+	async fn test_conflict_detection_between_transactions() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -470,7 +464,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		let _commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v, // This should be version 2
 			_ => panic!("First transaction should succeed"),
@@ -486,17 +480,17 @@ mod tests {
 		let mut done_read2 = false;
 		// txn2 also started reading at version 1, but txn1 committed at
 		// version 2 So txn2 should see the conflict
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 
 		// Should detect conflict because txn2 read shared_key which
 		// txn1 wrote to
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[test]
-	fn test_no_conflict_different_keys() {
+	#[tokio::test]
+	async fn test_no_conflict_different_keys() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -507,7 +501,7 @@ mod tests {
 		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads and writes key2 (different key, no
@@ -517,16 +511,16 @@ mod tests {
 		conflicts2.mark_write(&key2);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 
 		// Should succeed because different keys
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 	}
 
-	#[test]
-	fn test_key_indexing_multiple_windows() {
+	#[tokio::test]
+	async fn test_key_indexing_multiple_windows() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -543,12 +537,12 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
-			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
+			let result = oracle.new_commit(&mut done_read, version_start, conflicts).await.unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
 		// Check key indexing across multiple windows
-		let inner = oracle.inner.read();
+		let inner = oracle.inner.read().await;
 
 		// key1 should be in windows 0 and 2000 (i=0,2)
 		let key1_windows = inner.key_to_windows.get(&key1).unwrap();
@@ -559,10 +553,10 @@ mod tests {
 		assert!(key2_windows.len() >= 1);
 	}
 
-	#[test]
-	fn test_version_filtering_in_conflict_detection() {
+	#[tokio::test]
+	async fn test_version_filtering_in_conflict_detection() {
 		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -571,7 +565,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).await.unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -585,7 +579,7 @@ mod tests {
 		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).await.unwrap();
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 
 		// Third transaction that started BEFORE the first committed
@@ -597,14 +591,14 @@ mod tests {
 
 		let mut done_read3 = false;
 		let read_version = CommitVersion(commit_v1.0 - 1); // Started reading before txn1 committed
-		let result3 = oracle.new_commit(&mut done_read3, read_version, conflicts3).unwrap();
+		let result3 = oracle.new_commit(&mut done_read3, read_version, conflicts3).await.unwrap();
 		assert!(matches!(result3, CreateCommitResult::Conflict(_)));
 	}
 
-	#[test]
-	fn test_range_operations_fallback() {
+	#[tokio::test]
+	async fn test_range_operations_fallback() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key1 = create_test_key("key1");
 
@@ -613,7 +607,7 @@ mod tests {
 		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: does a range operation (which can't be
@@ -627,16 +621,16 @@ mod tests {
 
 		// This should use the fallback mechanism to check all windows
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 
 		// Should detect conflict due to the range overlap with key1
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[test]
-	fn test_window_cleanup_mechanism() {
+	#[tokio::test]
+	async fn test_window_cleanup_mechanism() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -649,12 +643,12 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
-			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
+			let result = oracle.new_commit(&mut done_read, version_start, conflicts).await.unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
 		// Check that cleanup occurred
-		let inner = oracle.inner.read();
+		let inner = oracle.inner.read().await;
 		assert!(inner.time_windows.len() <= MAX_WINDOWS);
 
 		// Verify that key index was also cleaned up
@@ -669,21 +663,21 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_empty_conflict_manager() {
+	#[tokio::test]
+	async fn test_empty_conflict_manager() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
 
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).await.unwrap();
 
 		// Should succeed but not create any key index entries
 		match result {
 			CreateCommitResult::Success(_) => {
-				let inner = oracle.inner.read();
+				let inner = oracle.inner.read().await;
 				assert!(inner.key_to_windows.is_empty());
 			}
 			CreateCommitResult::Conflict(_) => {
@@ -692,10 +686,10 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_write_write_conflict() {
+	#[tokio::test]
+	async fn test_write_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -704,7 +698,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: also writes to shared_key (write-write
@@ -713,17 +707,17 @@ mod tests {
 		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 
 		// Should detect conflict because both transactions write to the
 		// same key
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[test]
-	fn test_read_write_conflict() {
+	#[tokio::test]
+	async fn test_read_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -732,7 +726,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads from shared_key (read-write
@@ -741,17 +735,17 @@ mod tests {
 		conflicts2.mark_read(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 
 		// Should detect conflict because txn2 read from key that txn1
 		// wrote to
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[test]
-	fn test_sequential_transactions_no_conflict() {
+	#[tokio::test]
+	async fn test_sequential_transactions_no_conflict() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let shared_key = create_test_key("shared_key");
 
@@ -761,7 +755,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -774,16 +768,16 @@ mod tests {
 
 		let mut done_read2 = false;
 		let read_version = CommitVersion(commit_v1.0 + 1); // Started after first committed
-		let result2 = oracle.new_commit(&mut done_read2, read_version, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, read_version, conflicts2).await.unwrap();
 
 		// Should NOT conflict because they don't overlap in time
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 	}
 
-	#[test]
-	fn test_comptokenize_multi_key_scenario() {
+	#[tokio::test]
+	async fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock);
+		let oracle = Oracle::<_>::new(clock).await;
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");
@@ -795,7 +789,7 @@ mod tests {
 		conflicts1.mark_write(&key_b);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Transaction 2: reads B, writes C (should conflict because
@@ -805,7 +799,7 @@ mod tests {
 		conflicts2.mark_write(&key_c);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 
 		// Transaction 3: reads C, writes A (should not conflict)
@@ -814,7 +808,7 @@ mod tests {
 		conflicts3.mark_write(&key_a);
 
 		let mut done_read3 = false;
-		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).unwrap();
+		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).await.unwrap();
 		assert!(matches!(result3, CreateCommitResult::Success(_)));
 	}
 }

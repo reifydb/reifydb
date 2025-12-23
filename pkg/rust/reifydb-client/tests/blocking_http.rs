@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 mod common;
 
-use std::{error::Error, path::Path};
+use std::{error::Error, path::Path, sync::Arc};
 
 use common::{
 	cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_http_port,
@@ -11,11 +11,12 @@ use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
 	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
@@ -23,14 +24,19 @@ pub struct BlockingRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
 	session: Option<HttpBlockingSession>,
+	runtime: Arc<Runtime>,
 }
 
 impl BlockingRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
+			runtime,
 		}
 	}
 }
@@ -94,7 +100,7 @@ impl testscript::Runner for BlockingRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_http_port(server)?;
+		let port = start_server_and_get_http_port(&self.runtime, server)?;
 
 		let client = connect_http(("::1", port))?;
 		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;
@@ -119,5 +125,11 @@ impl testscript::Runner for BlockingRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
-	retry(3, || testscript::run_path(&mut BlockingRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		testscript::run_path(&mut BlockingRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

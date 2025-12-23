@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{IntoFragment, Type, error::diagnostic::Diagnostic, fragment::OwnedFragment};
+use crate::{Fragment, Type, error::diagnostic::Diagnostic};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {
@@ -10,7 +10,7 @@ pub fn unknown_function(name: String) -> Diagnostic {
 		statement: None,
 		message: format!("Unknown function: {}", name),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check the function name and available functions".to_string()),
 		notes: vec![],
@@ -25,7 +25,7 @@ pub fn arity_mismatch(function: String, expected: usize, actual: usize) -> Diagn
 		statement: None,
 		message: format!("Function {} expects {} arguments, got {}", function, expected, actual),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some(format!("Provide exactly {} arguments to function {}", expected, function)),
 		notes: vec![],
@@ -40,7 +40,7 @@ pub fn too_many_arguments(function: String, max_args: usize, actual: usize) -> D
 		statement: None,
 		message: format!("Function {} accepts at most {} arguments, got {}", function, max_args, actual),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some(format!("Provide at most {} arguments to function {}", max_args, function)),
 		notes: vec![],
@@ -63,7 +63,7 @@ pub fn invalid_argument_type(function: String, index: usize, expected_one_of: Ve
 			actual
 		),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some(format!("Provide an argument of type: {}", expected_types)),
 		notes: vec![],
@@ -78,7 +78,7 @@ pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 		statement: None,
 		message: format!("Function {} argument {} is undefined", function, index + 1),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Provide a defined value for this argument".to_string()),
 		notes: vec![],
@@ -93,7 +93,7 @@ pub fn missing_input(function: String) -> Diagnostic {
 		statement: None,
 		message: format!("Function {} requires input but none was provided", function),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Provide input data to the function".to_string()),
 		notes: vec![],
@@ -108,7 +108,7 @@ pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 		statement: None,
 		message: format!("Function {} execution failed: {}", function, reason),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("Check function arguments and data".to_string()),
 		notes: vec![],
@@ -123,7 +123,7 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 		statement: None,
 		message: format!("Internal error in function {}: {}", function, details),
 		column: None,
-		fragment: OwnedFragment::None,
+		fragment: Fragment::None,
 		label: None,
 		help: Some("This is an internal error - please report this issue".to_string()),
 		notes: vec![],
@@ -132,8 +132,8 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 }
 
 /// Generator function is not recognized or does not exist
-pub fn generator_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn generator_not_found(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	let name = fragment.text();
 	Diagnostic {
 		code: "FUNCTION_009".to_string(),

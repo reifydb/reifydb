@@ -3,7 +3,12 @@
 
 mod common;
 
-use std::{error::Error, path::Path, sync::mpsc::Receiver, time::Duration};
+use std::{
+	error::Error,
+	path::Path,
+	sync::{Arc, mpsc::Receiver},
+	time::Duration,
+};
 
 use common::{
 	cleanup_server, cleanup_ws_client, create_server_instance, parse_named_params, parse_positional_params,
@@ -13,26 +18,32 @@ use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
 	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_client::{ChannelResponse, ResponseMessage, WsChannelSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 pub struct ChannelRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsChannelSession>,
 	receiver: Option<Receiver<ResponseMessage>>,
+	runtime: Arc<Runtime>,
 }
 
 impl ChannelRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
 			receiver: None,
+			runtime,
 		}
 	}
 }
@@ -223,7 +234,7 @@ impl testscript::Runner for ChannelRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = common::start_server_and_get_ws_port(server)?;
+		let port = common::start_server_and_get_ws_port(&self.runtime, server)?;
 
 		let client = common::connect_ws(("::1", port))?;
 		let (session, receiver) = client.channel_session(Some("mysecrettoken".to_string()))?;
@@ -277,5 +288,11 @@ impl testscript::Runner for ChannelRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_ws => test_channel }
 
 fn test_channel(path: &Path) {
-	retry(3, || testscript::run_path(&mut ChannelRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		testscript::run_path(&mut ChannelRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

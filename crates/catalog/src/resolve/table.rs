@@ -10,13 +10,13 @@ use crate::{
 };
 
 /// Resolve a table ID to a fully resolved table with namespace and identifiers
-pub fn resolve_table<'a, T>(txn: &mut T, table_id: TableId) -> crate::Result<ResolvedTable<'a>>
+pub async fn resolve_table<T>(txn: &mut T, table_id: TableId) -> crate::Result<ResolvedTable>
 where
 	T: CatalogTableQueryOperations + CatalogNamespaceQueryOperations,
 {
-	let table_def = txn.get_table(table_id)?;
-	let resolved_namespace = resolve_namespace(txn, table_def.namespace)?;
-	let table_ident = Fragment::owned_internal(table_def.name.clone());
+	let table_def = txn.get_table(table_id).await?;
+	let resolved_namespace = resolve_namespace(txn, table_def.namespace).await?;
+	let table_ident = Fragment::internal(table_def.name.clone());
 
 	Ok(ResolvedTable::new(table_ident, resolved_namespace, table_def))
 }

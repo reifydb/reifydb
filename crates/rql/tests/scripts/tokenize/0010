@@ -21,5 +21,5 @@ tokenize 'window { sum(amount) } with { count: 100, slide: 20 }'
 >   [ 14] Operator(Colon)
 >   [ 15] Literal(Number)
 >   [ 16] Operator(CloseCurly)
-> 
-> 
+>
+>

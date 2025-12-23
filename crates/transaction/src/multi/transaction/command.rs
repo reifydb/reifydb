@@ -239,7 +239,7 @@ where
 		pending_count = self.pending_writes.len(),
 		size_bytes = self.size
 	))]
-	pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_type::Error>
+	pub async fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_type::Error>
 	where
 		F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
 	{
@@ -253,7 +253,7 @@ where
 			return Ok(());
 		}
 
-		let (version, entries) = self.commit_pending().map_err(|e| {
+		let (version, entries) = self.commit_pending().await.map_err(|e| {
 			// Check if this is a conflict error by
 			// examining the error code
 			if e.0.code == "TXN_001" {
@@ -274,6 +274,47 @@ where
 				self.discard();
 				error!(transaction::commit_failed(e.to_string()))
 			})
+	}
+
+	/// Finalize the commit after the async storage operation completes.
+	/// This should be called after the storage has been successfully updated.
+	#[instrument(name = "transaction::command::commit_finalize", level = "debug", skip(self), fields(txn_id = %self.id))]
+	pub async fn commit_finalize(&mut self) -> Result<(), reifydb_type::Error> {
+		if self.discarded {
+			return_error!(transaction::transaction_rolled_back());
+		}
+
+		if self.pending_writes.is_empty() {
+			// Nothing was committed
+			self.discard();
+			return Ok(());
+		}
+
+		// Get the version that was used for this commit
+		// The pending writes have the version set during the prepare phase
+		let _version = self.pending_writes.iter().next().map(|(_k, p)| p.version).unwrap_or(CommitVersion(0));
+
+		// Prepare the commit to update oracle state
+		let conflict_manager = mem::take(&mut self.conflicts);
+		let base_version = self.base_version();
+
+		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager).await? {
+			CreateCommitResult::Conflict(conflicts) => {
+				self.conflicts = conflicts;
+				return_error!(transaction::transaction_conflict())
+			}
+			CreateCommitResult::Success(commit_version) => {
+				// Clear the pending writes
+				self.pending_writes = PendingWrites::new();
+				self.duplicates.clear();
+
+				// Signal that the commit is done
+				self.oracle().done_commit(commit_version);
+				self.discard();
+
+				Ok(())
+			}
+		}
 	}
 }
 
@@ -362,7 +403,7 @@ where
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
+	pub(crate) async fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -370,7 +411,7 @@ where
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager)? {
+		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager).await? {
 			CreateCommitResult::Conflict(conflicts) => {
 				// If there is a conflict, we should not send
 				// the updates to the write channel.

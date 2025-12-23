@@ -154,16 +154,16 @@ mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	#[test]
-	fn test_new_is_empty() {
+	#[tokio::test]
+	async fn test_new_is_empty() {
 		let pending = PendingWrites::new();
 		assert!(pending.is_empty());
 		assert_eq!(pending.len(), 0);
 		assert_eq!(pending.estimated_size(), 0);
 	}
 
-	#[test]
-	fn test_insert_single_write() {
+	#[tokio::test]
+	async fn test_insert_single_write() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -177,8 +177,8 @@ mod tests {
 		assert!(pending.contains_key(&key));
 	}
 
-	#[test]
-	fn test_insert_multiple_writes() {
+	#[tokio::test]
+	async fn test_insert_multiple_writes() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("key1"), make_value("value1"));
@@ -191,8 +191,8 @@ mod tests {
 		assert_eq!(pending.get(&make_key("key3")), Some(&make_value("value3")));
 	}
 
-	#[test]
-	fn test_insert_overwrites_existing_key() {
+	#[tokio::test]
+	async fn test_insert_overwrites_existing_key() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 
@@ -203,8 +203,8 @@ mod tests {
 		assert_eq!(pending.get(&key), Some(&make_value("value2")));
 	}
 
-	#[test]
-	fn test_remove_operation() {
+	#[tokio::test]
+	async fn test_remove_operation() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 
@@ -216,8 +216,8 @@ mod tests {
 		assert_eq!(pending.get(&key), None); // Remove returns None for get
 	}
 
-	#[test]
-	fn test_write_then_remove() {
+	#[tokio::test]
+	async fn test_write_then_remove() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 
@@ -230,8 +230,8 @@ mod tests {
 		assert_eq!(pending.len(), 1); // Still one entry, but marked as Remove
 	}
 
-	#[test]
-	fn test_remove_then_write() {
+	#[tokio::test]
+	async fn test_remove_then_write() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 
@@ -244,8 +244,8 @@ mod tests {
 		assert_eq!(pending.len(), 1);
 	}
 
-	#[test]
-	fn test_estimated_size_tracking() {
+	#[tokio::test]
+	async fn test_estimated_size_tracking() {
 		let mut pending = PendingWrites::new();
 
 		let key1 = make_key("k1");
@@ -263,8 +263,8 @@ mod tests {
 		assert_eq!(pending.estimated_size(), expected_size2);
 	}
 
-	#[test]
-	fn test_estimated_size_on_overwrite() {
+	#[tokio::test]
+	async fn test_estimated_size_on_overwrite() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 		let short_val = make_value("short");
@@ -284,8 +284,8 @@ mod tests {
 		assert_eq!(pending.len(), 1, "Should have exactly one entry after overwrite");
 	}
 
-	#[test]
-	fn test_estimated_size_with_removes() {
+	#[tokio::test]
+	async fn test_estimated_size_with_removes() {
 		let mut pending = PendingWrites::new();
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -305,8 +305,8 @@ mod tests {
 		assert_eq!(pending.estimated_size(), write_size, "Size should be back to key + value");
 	}
 
-	#[test]
-	fn test_iter_sorted_order() {
+	#[tokio::test]
+	async fn test_iter_sorted_order() {
 		let mut pending = PendingWrites::new();
 
 		// Insert in non-sorted order
@@ -320,8 +320,8 @@ mod tests {
 		assert_eq!(keys, vec![make_key("apple"), make_key("mango"), make_key("zebra")]);
 	}
 
-	#[test]
-	fn test_iter_insertion_order() {
+	#[tokio::test]
+	async fn test_iter_insertion_order() {
 		let mut pending = PendingWrites::new();
 
 		// Insert in specific order
@@ -335,8 +335,8 @@ mod tests {
 		assert_eq!(keys, vec![make_key("zebra"), make_key("apple"), make_key("mango")]);
 	}
 
-	#[test]
-	fn test_insertion_order_preserved_on_update() {
+	#[tokio::test]
+	async fn test_insertion_order_preserved_on_update() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("first"), make_value("1"));
@@ -349,8 +349,8 @@ mod tests {
 		assert_eq!(keys, vec![make_key("first"), make_key("second")]);
 	}
 
-	#[test]
-	fn test_range_query() {
+	#[tokio::test]
+	async fn test_range_query() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("a"), make_value("1"));
@@ -363,8 +363,8 @@ mod tests {
 		assert_eq!(range_keys, vec![make_key("b"), make_key("c")]);
 	}
 
-	#[test]
-	fn test_range_query_inclusive() {
+	#[tokio::test]
+	async fn test_range_query_inclusive() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("a"), make_value("1"));
@@ -376,8 +376,8 @@ mod tests {
 		assert_eq!(range_keys, vec![make_key("a"), make_key("b"), make_key("c")]);
 	}
 
-	#[test]
-	fn test_range_query_empty() {
+	#[tokio::test]
+	async fn test_range_query_empty() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("a"), make_value("1"));
@@ -388,8 +388,8 @@ mod tests {
 		assert!(range_keys.is_empty());
 	}
 
-	#[test]
-	fn test_contains_key() {
+	#[tokio::test]
+	async fn test_contains_key() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("key1"), make_value("value1"));
@@ -400,8 +400,8 @@ mod tests {
 		assert!(!pending.contains_key(&make_key("key3")));
 	}
 
-	#[test]
-	fn test_clear() {
+	#[tokio::test]
+	async fn test_clear() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("key1"), make_value("value1"));
@@ -419,20 +419,20 @@ mod tests {
 		assert_eq!(pending.iter_insertion_order().count(), 0);
 	}
 
-	#[test]
-	fn test_get_nonexistent_key() {
+	#[tokio::test]
+	async fn test_get_nonexistent_key() {
 		let pending = PendingWrites::new();
 		assert_eq!(pending.get(&make_key("missing")), None);
 	}
 
-	#[test]
-	fn test_is_removed_nonexistent_key() {
+	#[tokio::test]
+	async fn test_is_removed_nonexistent_key() {
 		let pending = PendingWrites::new();
 		assert!(!pending.is_removed(&make_key("missing")));
 	}
 
-	#[test]
-	fn test_mixed_writes_and_removes() {
+	#[tokio::test]
+	async fn test_mixed_writes_and_removes() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("write1"), make_value("v1"));
@@ -449,8 +449,8 @@ mod tests {
 		assert_eq!(pending.get(&make_key("remove2")), None);
 	}
 
-	#[test]
-	fn test_iter_sorted_includes_removes() {
+	#[tokio::test]
+	async fn test_iter_sorted_includes_removes() {
 		let mut pending = PendingWrites::new();
 
 		pending.insert(make_key("b"), make_value("2"));
@@ -471,8 +471,8 @@ mod tests {
 		assert!(matches!(items[2].1, Pending::Set(_)));
 	}
 
-	#[test]
-	fn test_default_trait() {
+	#[tokio::test]
+	async fn test_default_trait() {
 		let pending = PendingWrites::default();
 		assert!(pending.is_empty());
 		assert_eq!(pending.len(), 0);

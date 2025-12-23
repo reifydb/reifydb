@@ -41,14 +41,14 @@ mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn get_values(parent: &mut StandardCommandTransaction, key: &EncodedKey) -> Option<EncodedValues> {
-		parent.get(key).unwrap().map(|m| m.values)
+	async fn get_values(parent: &mut StandardCommandTransaction, key: &EncodedKey) -> Option<EncodedValues> {
+		parent.get(key).await.unwrap().map(|m| m.values)
 	}
 
-	#[test]
-	fn test_set_buffers_to_pending() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_set_buffers_to_pending() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -60,10 +60,10 @@ mod tests {
 		assert_eq!(txn.pending.len(), 1);
 	}
 
-	#[test]
-	fn test_set_increments_writes_metric() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_set_increments_writes_metric() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		assert_eq!(txn.metrics().writes, 0);
 
@@ -74,10 +74,10 @@ mod tests {
 		assert_eq!(txn.metrics().writes, 2);
 	}
 
-	#[test]
-	fn test_set_multiple_keys() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_set_multiple_keys() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -90,10 +90,10 @@ mod tests {
 		assert_eq!(txn.pending.get(&make_key("key3")), Some(&make_value("value3")));
 	}
 
-	#[test]
-	fn test_set_overwrites_same_key() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_set_overwrites_same_key() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -106,10 +106,10 @@ mod tests {
 		assert_eq!(txn.metrics().writes, 2);
 	}
 
-	#[test]
-	fn test_remove_buffers_to_pending() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_remove_buffers_to_pending() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -119,10 +119,10 @@ mod tests {
 		assert_eq!(txn.pending.len(), 1);
 	}
 
-	#[test]
-	fn test_remove_increments_removes_metric() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_remove_increments_removes_metric() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		assert_eq!(txn.metrics().removes, 0);
 
@@ -133,10 +133,10 @@ mod tests {
 		assert_eq!(txn.metrics().removes, 2);
 	}
 
-	#[test]
-	fn test_remove_multiple_keys() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_remove_multiple_keys() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		txn.remove(&make_key("key1")).unwrap();
 		txn.remove(&make_key("key2")).unwrap();
@@ -149,10 +149,10 @@ mod tests {
 		assert!(txn.pending.is_removed(&make_key("key3")));
 	}
 
-	#[test]
-	fn test_set_then_remove() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_set_then_remove() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -167,10 +167,10 @@ mod tests {
 		assert_eq!(txn.metrics().removes, 1);
 	}
 
-	#[test]
-	fn test_remove_then_set() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_remove_then_set() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -185,10 +185,10 @@ mod tests {
 		assert_eq!(txn.metrics().writes, 1);
 	}
 
-	#[test]
-	fn test_writes_not_visible_to_parent() {
-		let mut parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_writes_not_visible_to_parent() {
+		let mut parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -197,32 +197,32 @@ mod tests {
 		txn.set(&key, value.clone()).unwrap();
 
 		// Parent should not see the write
-		assert_eq!(get_values(&mut parent, &key), None);
+		assert_eq!(get_values(&mut parent, &key).await, None);
 	}
 
-	#[test]
-	fn test_removes_not_visible_to_parent() {
-		let mut parent = create_test_transaction();
+	#[tokio::test]
+	async fn test_removes_not_visible_to_parent() {
+		let mut parent = create_test_transaction().await;
 
 		// Set a value in parent
 		let key = make_key("key1");
 		let value = make_value("value1");
-		parent.set(&key, value.clone()).unwrap();
-		assert_eq!(get_values(&mut parent, &key), Some(value.clone()));
+		parent.set(&key, value.clone()).await.unwrap();
+		assert_eq!(get_values(&mut parent, &key).await, Some(value.clone()));
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, parent_version);
+		let mut txn = FlowTransaction::new(&parent, parent_version).await;
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
-		assert_eq!(get_values(&mut parent, &key), Some(value));
+		assert_eq!(get_values(&mut parent, &key).await, Some(value));
 	}
 
-	#[test]
-	fn test_mixed_writes_and_removes() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
+	#[tokio::test]
+	async fn test_mixed_writes_and_removes() {
+		let parent = create_test_transaction().await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
 
 		txn.set(&make_key("write1"), make_value("v1")).unwrap();
 		txn.remove(&make_key("remove1")).unwrap();

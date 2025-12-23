@@ -9,7 +9,7 @@ use reifydb_core::value::{
 };
 use reifydb_type::{Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type, diagnostic::cast, err};
 
-pub fn to_text<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
+pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Blob {
 			container,
@@ -42,7 +42,7 @@ pub fn to_text<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> c
 }
 
 #[inline]
-pub fn from_blob<'a>(container: &BlobContainer, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
+pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -129,15 +129,15 @@ mod tests {
 		BitVec,
 		value::{column::ColumnData, container::BlobContainer},
 	};
-	use reifydb_type::{Blob, Fragment, OwnedFragment};
+	use reifydb_type::{Blob, Fragment};
 
 	use crate::evaluate::column::cast::text::from_blob;
 
-	#[test]
-	fn test_from_blob() {
+	#[tokio::test]
+	async fn test_from_blob() {
 		let blobs = vec![
-			Blob::from_utf8(OwnedFragment::internal("Hello")),
-			Blob::from_utf8(OwnedFragment::internal("World")),
+			Blob::from_utf8(Fragment::internal("Hello")),
+			Blob::from_utf8(Fragment::internal("World")),
 		];
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);
@@ -156,8 +156,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_from_blob_invalid() {
+	#[tokio::test]
+	async fn test_from_blob_invalid() {
 		let blobs = vec![
 			Blob::new(vec![0xFF, 0xFE]), // Invalid UTF-8
 		];

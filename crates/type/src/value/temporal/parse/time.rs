@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Error, IntoFragment, Time, error::diagnostic::temporal, return_error};
+use crate::{Error, Fragment, Time, error::diagnostic::temporal, return_error};
 
-pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
+pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
-	let fragment = fragment.into_fragment();
+	let fragment = fragment;
 	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 
@@ -94,71 +94,71 @@ pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 #[cfg(test)]
 mod tests {
 	use super::parse_time;
-	use crate::OwnedFragment;
+	use crate::Fragment;
 
 	#[test]
 	fn test_basic() {
-		let fragment = OwnedFragment::testing("14:30:00");
+		let fragment = Fragment::testing("14:30:00");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.000000000");
 	}
 
 	#[test]
 	fn test_with_timezone_z() {
-		let fragment = OwnedFragment::testing("14:30:00Z");
+		let fragment = Fragment::testing("14:30:00Z");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.000000000");
 	}
 
 	#[test]
 	fn test_with_milliseconds() {
-		let fragment = OwnedFragment::testing("14:30:00.123");
+		let fragment = Fragment::testing("14:30:00.123");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.123000000");
 	}
 
 	#[test]
 	fn test_with_microseconds() {
-		let fragment = OwnedFragment::testing("14:30:00.123456");
+		let fragment = Fragment::testing("14:30:00.123456");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.123456000");
 	}
 
 	#[test]
 	fn test_with_nanoseconds() {
-		let fragment = OwnedFragment::testing("14:30:00.123456789");
+		let fragment = Fragment::testing("14:30:00.123456789");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.123456789");
 	}
 
 	#[test]
 	fn test_with_utc_timezone() {
-		let fragment = OwnedFragment::testing("14:30:00Z");
+		let fragment = Fragment::testing("14:30:00Z");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "14:30:00.000000000");
 	}
 
 	#[test]
 	fn test_boundaries() {
-		let fragment = OwnedFragment::testing("00:00:00");
+		let fragment = Fragment::testing("00:00:00");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "00:00:00.000000000");
 
-		let fragment = OwnedFragment::testing("23:59:59");
+		let fragment = Fragment::testing("23:59:59");
 		let time = parse_time(fragment).unwrap();
 		assert_eq!(time.to_string(), "23:59:59.000000000");
 	}
 
 	#[test]
 	fn test_invalid_format() {
-		let fragment = OwnedFragment::testing("14:30");
+		let fragment = Fragment::testing("14:30");
 		let err = parse_time(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_003");
 	}
 
 	#[test]
 	fn test_invalid_hour() {
-		let fragment = OwnedFragment::testing("invalid:30:00");
+		let fragment = Fragment::testing("invalid:30:00");
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -167,7 +167,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_minute() {
-		let fragment = OwnedFragment::testing("14:invalid:00");
+		let fragment = Fragment::testing("14:invalid:00");
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -176,7 +176,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_second() {
-		let fragment = OwnedFragment::testing("14:30:invalid");
+		let fragment = Fragment::testing("14:30:invalid");
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -185,7 +185,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_time_values() {
-		let fragment = OwnedFragment::testing("25:70:80");
+		let fragment = Fragment::testing("25:70:80");
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -194,7 +194,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_fractional_seconds() {
-		let fragment = OwnedFragment::testing("14:30:00.123.456");
+		let fragment = Fragment::testing("14:30:00.123.456");
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();

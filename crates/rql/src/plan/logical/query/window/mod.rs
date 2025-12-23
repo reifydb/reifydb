@@ -25,12 +25,12 @@ pub use sliding::*;
 pub use tumbling::*;
 
 #[derive(Debug, Clone)]
-pub struct WindowNode<'a> {
+pub struct WindowNode {
 	pub window_type: WindowType,
 	pub size: WindowSize,
 	pub slide: Option<WindowSlide>,
-	pub group_by: Vec<Expression<'a>>,
-	pub aggregations: Vec<Expression<'a>>,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
 	pub max_window_age: Option<Duration>,
@@ -51,9 +51,9 @@ pub struct WindowConfig {
 
 impl Compiler {
 	pub(crate) fn compile_window<'a, T: CatalogQueryTransaction>(
-		ast: AstWindow<'a>,
+		ast: AstWindow,
 		_tx: &mut T,
-	) -> Result<LogicalPlan<'a>> {
+	) -> Result<LogicalPlan> {
 		let mut config = WindowConfig::default();
 		let mut group_by = Vec::new();
 

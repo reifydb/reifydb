@@ -3,26 +3,20 @@
 
 use std::mem::take;
 
+use async_trait::async_trait;
 use indexmap::IndexMap;
-use parking_lot::{RwLock as ParkingRwLock, RwLockWriteGuard as ParkingRwLockWriteGuard};
 use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
-use self_cell::self_cell;
-use tracing::debug_span;
+use tokio::sync::OwnedRwLockWriteGuard;
+use tracing::{Instrument, debug_span};
 
 use super::*;
 
-type WriteGuard<'a> = ParkingRwLockWriteGuard<'a, ()>;
-
-// Safe self-referential struct that owns both the Arc and the write guard borrowing from it
-self_cell! {
-	pub struct KeyWriteLock {
-		owner: Arc<ParkingRwLock<()>>,
-		#[covariant]
-		dependent: WriteGuard,
-	}
-}
+/// Simple wrapper around tokio's OwnedRwLockWriteGuard.
+/// OwnedRwLockWriteGuard is Send, so this struct is Send.
+#[allow(dead_code)]
+pub struct KeyWriteLock(pub(super) OwnedRwLockWriteGuard<()>);
 
 pub struct SvlCommandTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
@@ -53,8 +47,9 @@ impl<'a> SvlCommandTransaction<'a> {
 	}
 }
 
+#[async_trait]
 impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -69,18 +64,19 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 				Delta::Remove {
 					..
 				} => Ok(None),
+				Delta::Drop {
+					..
+				} => Ok(None),
 			};
 		}
 
-		let _span = debug_span!("svl_get_from_store").entered();
-		let store = {
-			let _lock_span = debug_span!("svl_acquire_store_read_lock").entered();
-			self.inner.store.read().unwrap()
-		};
-		store.get(key)
+		// Clone the store to avoid holding the lock across await
+		// TransactionStore is Arc-based, so clone is cheap
+		let store = self.inner.store.read().await.clone();
+		SingleVersionGet::get(&store, key).instrument(debug_span!("svl_get_from_store")).await
 	}
 
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -91,16 +87,20 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 				Delta::Remove {
 					..
 				} => Ok(false),
+				Delta::Drop {
+					..
+				} => Ok(false),
 			};
 		}
 
-		// Then check storage
-		let store = self.inner.store.read().unwrap();
-		store.contains(key)
+		// Clone the store to avoid holding the lock across await
+		let store = self.inner.store.read().await.clone();
+		SingleVersionContains::contains(&store, key).await
 	}
 }
 
-impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
+#[async_trait]
+impl SingleVersionCommandTransaction for SvlCommandTransaction<'_> {
 	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
@@ -112,7 +112,7 @@ impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -124,27 +124,21 @@ impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	fn commit(mut self) -> crate::Result<()> {
-		let _span = debug_span!("svl_commit").entered();
-
+	async fn commit(&mut self) -> crate::Result<()> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			let mut store = {
-				let _lock_span = debug_span!("svl_acquire_store_write_lock").entered();
-				self.inner.store.write().unwrap()
-			};
-			{
-				let _commit_span = debug_span!("svl_store_commit").entered();
-				store.commit(CowVec::new(deltas))?;
-			}
+			let mut store = self.inner.store.write().await;
+			SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))
+				.instrument(debug_span!("svl_store_commit"))
+				.await?;
 		}
 
 		self.completed = true;
 		Ok(())
 	}
 
-	fn rollback(mut self) -> crate::Result<()> {
+	async fn rollback(&mut self) -> crate::Result<()> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

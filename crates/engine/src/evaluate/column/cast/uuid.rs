@@ -6,10 +6,10 @@ use reifydb_core::value::{
 	container::{Utf8Container, UuidContainer},
 };
 use reifydb_type::{
-	BorrowedFragment, LazyFragment, Type, Uuid4, Uuid7, diagnostic::cast, err, error, parse_uuid4, parse_uuid7,
+	Fragment, LazyFragment, Type, Uuid4, Uuid7, diagnostic::cast, err, error, parse_uuid4, parse_uuid7,
 };
 
-pub fn to_uuid<'a>(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
+pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
@@ -25,11 +25,7 @@ pub fn to_uuid<'a>(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 }
 
 #[inline]
-fn from_text<'a>(
-	container: &Utf8Container,
-	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid4 => to_uuid4(container, lazy_fragment),
 		Type::Uuid7 => to_uuid7(container, lazy_fragment),
@@ -43,19 +39,16 @@ fn from_text<'a>(
 macro_rules! impl_to_uuid {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name<'a>(
-			container: &Utf8Container,
-			lazy_fragment: impl LazyFragment<'a>,
-		) -> crate::Result<ColumnData> {
+		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 			let mut out = ColumnData::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					let temp_fragment = BorrowedFragment::new_internal(val.as_str());
+					let temp_fragment = Fragment::internal(val.as_str());
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting
-						let proper_fragment = lazy_fragment.fragment().into_owned();
+						let proper_fragment = lazy_fragment.fragment();
 
 						// Replace the error's origin with the proper RQL fragment
 						// This ensures the error shows "at col" not the actual value
@@ -79,10 +72,10 @@ impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
 impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 
 #[inline]
-fn from_uuid4<'a>(
+fn from_uuid4(
 	container: &UuidContainer<Uuid4>,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid4 => {
@@ -96,10 +89,10 @@ fn from_uuid4<'a>(
 }
 
 #[inline]
-fn from_uuid7<'a>(
+fn from_uuid7(
 	container: &UuidContainer<Uuid7>,
 	target: Type,
-	lazy_fragment: impl LazyFragment<'a>,
+	lazy_fragment: impl LazyFragment,
 ) -> crate::Result<ColumnData> {
 	match target {
 		Type::Uuid7 => {

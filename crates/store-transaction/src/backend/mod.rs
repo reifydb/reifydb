@@ -8,5 +8,5 @@ pub mod result;
 pub mod sqlite;
 pub mod storage;
 
-pub use primitive::{PrimitiveBackend, PrimitiveStorage, RawEntry, TableId};
+pub use primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
 pub use storage::BackendStorage;

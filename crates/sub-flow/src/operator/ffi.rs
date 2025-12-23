@@ -7,6 +7,7 @@ use std::{
 	slice::from_raw_parts,
 };
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
@@ -71,12 +72,13 @@ impl Drop for FFIOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -123,7 +125,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.borrow_mut();
 

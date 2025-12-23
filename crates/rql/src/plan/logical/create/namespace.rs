@@ -10,9 +10,9 @@ use crate::{
 
 impl Compiler {
 	pub(crate) fn compile_create_namespace<'a, T: CatalogQueryTransaction>(
-		ast: AstCreateNamespace<'a>,
+		ast: AstCreateNamespace,
 		_tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	) -> crate::Result<LogicalPlan> {
 		// Use Fragment directly instead of NamespaceIdentifier
 		let namespace = ast.namespace.name;
 

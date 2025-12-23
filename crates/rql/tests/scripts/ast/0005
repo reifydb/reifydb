@@ -6,4 +6,4 @@ ast 'alter table test.users { create primary key pk_users {id} }'
 > └── ALTER TABLE test.users @ line 1, column 1 — "alter"
 >     └──CREATE PRIMARY KEY pk_users
 >          └──Column: id
-> 
+>

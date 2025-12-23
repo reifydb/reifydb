@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
+use crate::{Fragment, error::diagnostic::Diagnostic};
 
-pub fn column_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn column_not_found(fragment: Fragment) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "QUERY_001".to_string(),
 		statement: None,
@@ -23,7 +23,7 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 		code: "EXTEND_002".to_string(),
 		statement: None,
 		message: format!("Cannot extend with duplicate column name '{}'", column_name),
-		fragment: crate::fragment::OwnedFragment::None,
+		fragment: crate::fragment::Fragment::None,
 		label: Some("column already exists in the current frame".to_string()),
 		help: Some("Use a different column name or remove the existing column first".to_string()),
 		column: None,
@@ -36,8 +36,8 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 	}
 }
 
-pub fn unsupported_source_qualification<'a>(fragment: impl IntoFragment<'a>, name: &str) -> Diagnostic {
-	let fragment = fragment.into_fragment().into_owned();
+pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagnostic {
+	let fragment = fragment;
 	Diagnostic {
 		code: "QUERY_002".to_string(),
 		statement: None,

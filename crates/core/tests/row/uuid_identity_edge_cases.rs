@@ -3,10 +3,11 @@
 
 //! UUID and identity edge case tests for the encoded encoding system
 
-use std::{collections::HashSet, thread::sleep, time::Duration};
+use std::{collections::HashSet, time::Duration};
 
 use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
+use tokio::time::sleep;
 
 #[test]
 fn test_uuid_uniqueness() {
@@ -40,8 +41,8 @@ fn test_uuid_uniqueness() {
 	}
 }
 
-#[test]
-fn test_uuid7_timestamp_ordering() {
+#[tokio::test]
+async fn test_uuid7_timestamp_ordering() {
 	let layout = EncodedValuesLayout::new(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
@@ -52,7 +53,7 @@ fn test_uuid7_timestamp_ordering() {
 		uuids.push(layout.get_uuid7(&row, 0));
 
 		// Small delay to ensure timestamp progression
-		sleep(Duration::from_millis(1));
+		sleep(Duration::from_millis(1)).await;
 	}
 
 	// UUID7s should be timestamp-ordered

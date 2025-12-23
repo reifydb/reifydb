@@ -4,4 +4,4 @@
 ast 'CREATE FLOW aggregated AS from users map {id, name}'
 ---
 > └── Create @ line 1, column 1 — "CREATE"
-> 
+>

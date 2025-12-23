@@ -8,6 +8,7 @@
 
 use std::ops::Bound;
 
+use async_trait::async_trait;
 use reifydb_core::interface::{FlowNodeId, SourceId};
 use reifydb_type::Result;
 
@@ -37,63 +38,86 @@ pub struct RawEntry {
 	pub value: Option<Vec<u8>>,
 }
 
+/// A batch of range results with continuation info for pagination.
+#[derive(Debug, Clone)]
+pub struct RangeBatch {
+	/// The entries in this batch.
+	pub entries: Vec<RawEntry>,
+	/// Whether there are more entries after this batch.
+	pub has_more: bool,
+}
+
+impl RangeBatch {
+	/// Creates an empty batch with no more results.
+	pub fn empty() -> Self {
+		Self {
+			entries: Vec::new(),
+			has_more: false,
+		}
+	}
+
+	/// Returns true if this batch contains no entries.
+	pub fn is_empty(&self) -> bool {
+		self.entries.is_empty()
+	}
+}
+
 /// The primitive key-value storage trait.
 ///
 /// This is intentionally minimal - just raw bytes in/out.
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
+#[async_trait]
 pub trait PrimitiveStorage: Send + Sync + Clone + 'static {
-	/// Iterator type for forward range scans
-	type RangeIter<'a>: Iterator<Item = Result<RawEntry>> + Send
-	where
-		Self: 'a;
-
-	/// Iterator type for reverse range scans
-	type RangeRevIter<'a>: Iterator<Item = Result<RawEntry>> + Send
-	where
-		Self: 'a;
-
 	/// Get the value for a key, or None if not found.
-	fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>>;
+	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
 	/// Check if a key exists in storage.
-	fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
-		Ok(self.get(table, key)?.is_some())
+	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
+		Ok(self.get(table, key).await?.is_some())
 	}
 
 	/// Store a batch of entries atomically.
 	///
 	/// Each entry is (key, optional_value). None value = tombstone/deletion.
 	/// All entries go to the specified table.
-	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()>;
+	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()>;
 
-	/// Iterate entries in key order (ascending).
-	fn range(
+	/// Fetch a batch of entries in key order (ascending).
+	///
+	/// Returns up to `batch_size` entries. The `has_more` field indicates
+	/// whether there are more entries after this batch. Use the last key
+	/// from the batch as the `start` bound (excluded) for the next call.
+	async fn range_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeIter<'_>>;
+	) -> Result<RangeBatch>;
 
-	/// Iterate entries in reverse key order (descending).
-	fn range_rev(
+	/// Fetch a batch of entries in reverse key order (descending).
+	///
+	/// Returns up to `batch_size` entries. The `has_more` field indicates
+	/// whether there are more entries after this batch. Use the last key
+	/// from the batch as the `end` bound (excluded) for the next call.
+	async fn range_rev_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeRevIter<'_>>;
+	) -> Result<RangeBatch>;
 
 	/// Ensure a table exists (creates if needed).
 	///
 	/// For memory backends this is typically a no-op.
 	/// For SQL backends this may create tables.
-	fn ensure_table(&self, table: TableId) -> Result<()>;
+	async fn ensure_table(&self, table: TableId) -> Result<()>;
 
 	/// Delete all entries in a table.
-	fn clear_table(&self, table: TableId) -> Result<()>;
+	async fn clear_table(&self, table: TableId) -> Result<()>;
 }
 
 /// Marker trait for backends that support the primitive storage interface.

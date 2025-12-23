@@ -6,7 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_type::OwnedFragment;
+use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub enum SortDirection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SortKey {
-	pub column: OwnedFragment,
+	pub column: Fragment,
 	pub direction: SortDirection,
 }
 

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{
 	BitVec,
 	value::column::{ColumnData, headers::ColumnHeaders},
@@ -16,14 +17,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct FilterNode<'a> {
-	input: Box<ExecutionPlan<'a>>,
-	expressions: Vec<Expression<'a>>,
-	context: Option<Arc<ExecutionContext<'a>>>,
+pub(crate) struct FilterNode {
+	input: Box<ExecutionPlan>,
+	expressions: Vec<Expression>,
+	context: Option<Arc<ExecutionContext>>,
 }
 
-impl<'a> FilterNode<'a> {
-	pub fn new(input: Box<ExecutionPlan<'a>>, expressions: Vec<Expression<'a>>) -> Self {
+impl FilterNode {
+	pub fn new(input: Box<ExecutionPlan>, expressions: Vec<Expression>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -32,26 +33,31 @@ impl<'a> FilterNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for FilterNode<'a> {
+#[async_trait]
+impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "query::filter::initialize")]
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+	async fn initialize<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &ExecutionContext,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx)?;
+		self.input.initialize(rx, ctx).await?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::filter::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
-		ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(rx, ctx)?
+		}) = self.input.next(rx, ctx).await?
 		{
 			let mut row_count = columns.row_count();
 
@@ -106,7 +112,7 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 		Ok(None)
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
 	}
 }

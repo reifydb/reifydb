@@ -16,6 +16,7 @@ reifydb-core = { workspace = true }
 reifydb-testing = { workspace = true }
 criterion = { workspace = true }
 rand = { workspace = true }
+tokio = { workspace = true }
 
 [[bench]]
 name = "store"

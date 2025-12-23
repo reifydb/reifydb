@@ -3,11 +3,10 @@
 use std::{
 	collections::HashMap,
 	path::{Path, PathBuf},
-	sync::OnceLock,
+	sync::{OnceLock, RwLock},
 };
 
 use libloading::{Library, Symbol};
-use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
 	BufferFFI, CURRENT_API, FFIOperatorColumnDefs, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn,

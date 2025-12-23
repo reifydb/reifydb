@@ -11,8 +11,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
+	pub async fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		let Some(multi) = rx.get(&ViewKey::encoded(id)).await? else {
 			return Ok(None);
 		};
 
@@ -32,32 +32,31 @@ impl CatalogStore {
 			name,
 			namespace,
 			kind,
-			columns: Self::list_columns(rx, id)?,
-			primary_key: Self::find_view_primary_key(rx, id)?,
+			columns: Self::list_columns(rx, id).await?,
+			primary_key: Self::find_view_primary_key(rx, id).await?,
 		}))
 	}
 
-	pub fn find_view_by_name(
+	pub async fn find_view_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let Some(view) =
-			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
-				if name == view_name {
-					Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
-				} else {
-					None
-				}
-			})
-		else {
+		let batch = rx.range(NamespaceViewKey::full_scan(namespace)).await?;
+		let Some(view) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
+			if name == view_name {
+				Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_view(rx, view)?))
+		Ok(Some(Self::get_view(rx, view).await?))
 	}
 }
 
@@ -71,61 +70,65 @@ mod tests {
 		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
-	#[test]
-	fn test_ok() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+	#[tokio::test]
+	async fn test_ok() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1027), "view_two").unwrap().unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1027), "view_two")
+			.await
+			.unwrap()
+			.unwrap();
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
 	}
 
-	#[test]
-	fn test_empty() {
-		let mut txn = create_test_command_transaction();
+	#[tokio::test]
+	async fn test_empty() {
+		let mut txn = create_test_command_transaction().await;
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "some_view").unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "some_view").await.unwrap();
 		assert!(result.is_none());
 	}
 
-	#[test]
-	fn test_not_found_different_view() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+	#[tokio::test]
+	async fn test_not_found_different_view() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "view_four_two").unwrap();
+		let result =
+			CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "view_four_two").await.unwrap();
 		assert!(result.is_none());
 	}
 
-	#[test]
-	fn test_not_found_different_namespace() {
-		let mut txn = create_test_command_transaction();
-		ensure_test_namespace(&mut txn);
-		create_namespace(&mut txn, "namespace_one");
-		create_namespace(&mut txn, "namespace_two");
-		create_namespace(&mut txn, "namespace_three");
+	#[tokio::test]
+	async fn test_not_found_different_namespace() {
+		let mut txn = create_test_command_transaction().await;
+		ensure_test_namespace(&mut txn).await;
+		create_namespace(&mut txn, "namespace_one").await;
+		create_namespace(&mut txn, "namespace_two").await;
+		create_namespace(&mut txn, "namespace_three").await;
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]);
-		create_view(&mut txn, "namespace_two", "view_two", &[]);
-		create_view(&mut txn, "namespace_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
+		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
+		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
 
-		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(2), "view_two").unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(2), "view_two").await.unwrap();
 		assert!(result.is_none());
 	}
 }

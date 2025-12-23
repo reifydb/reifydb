@@ -13,14 +13,11 @@ reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 
+async-trait = {workspace = true}
+
 # Tracing
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-appender = { workspace = true }
-
-# Performance
-crossbeam-channel = { workspace = true }
-parking_lot = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

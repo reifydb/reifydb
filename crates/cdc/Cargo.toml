@@ -8,11 +8,14 @@ repository.workspace = true
 description = "Change Data Capture module for ReifyDB"
 
 [dependencies]
+async-trait = { workspace = true }
 reifydb-core = {workspace = true}
 reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+
 
 [dev-dependencies]
 reifydb-catalog = { workspace = true }

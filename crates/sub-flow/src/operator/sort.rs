@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::FlowChange;
@@ -14,11 +15,11 @@ use crate::{
 pub struct SortOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	_expressions: Vec<Expression<'static>>,
+	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -27,12 +28,13 @@ impl SortOperator {
 	}
 }
 
+#[async_trait]
 impl Operator for SortOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	fn apply(
+	async fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -43,7 +45,7 @@ impl Operator for SortOperator {
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows)
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows).await
 	}
 }

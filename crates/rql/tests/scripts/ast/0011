@@ -4,4 +4,4 @@
 ast 'window { count(*) } with { interval: "5s" }'
 ---
 > └── Window @ line 1, column 1 — "window"
-> 
+>

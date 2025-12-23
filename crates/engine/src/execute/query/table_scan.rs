@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey,
@@ -24,10 +25,10 @@ use crate::{
 	transaction::operation::DictionaryOperations,
 };
 
-pub(crate) struct TableScanNode<'a> {
-	table: ResolvedTable<'a>,
-	context: Option<Arc<ExecutionContext<'a>>>,
-	headers: ColumnHeaders<'a>,
+pub(crate) struct TableScanNode {
+	table: ResolvedTable,
+	context: Option<Arc<ExecutionContext>>,
+	headers: ColumnHeaders,
 	row_layout: EncodedValuesLayout,
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
@@ -37,10 +38,10 @@ pub(crate) struct TableScanNode<'a> {
 	exhausted: bool,
 }
 
-impl<'a> TableScanNode<'a> {
-	pub fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
-		table: ResolvedTable<'a>,
-		context: Arc<ExecutionContext<'a>>,
+impl TableScanNode {
+	pub async fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
+		table: ResolvedTable,
+		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
 	) -> crate::Result<Self> {
 		// Look up dictionaries and build storage types
@@ -49,7 +50,7 @@ impl<'a> TableScanNode<'a> {
 
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id).await? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -66,7 +67,7 @@ impl<'a> TableScanNode<'a> {
 		let row_layout = EncodedValuesLayout::new(&storage_types);
 
 		let headers = ColumnHeaders {
-			columns: table.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
+			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
@@ -82,23 +83,24 @@ impl<'a> TableScanNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for TableScanNode<'a> {
+#[async_trait]
+impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::initialize")]
-	fn initialize(
+	async fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext<'a>,
+		_ctx: &ExecutionContext,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next")]
-	fn next(
+	async fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &mut ExecutionContext<'a>,
-	) -> crate::Result<Option<Batch<'a>>> {
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -115,12 +117,13 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		let mut new_last_key = None;
 
 		let multi_rows: Vec<_> = {
-			let _span = debug_span!("range_batched", batch_size).entered();
-			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect()
+			let _span = debug_span!("range_batch", batch_size);
+			let batch = rx.range_batch(range, batch_size).await?;
+			drop(_span);
+			batch.items.into_iter().take(batch_size as usize).collect()
 		};
 
 		{
-			let _span = debug_span!("decode_row_keys").entered();
 			for multi in multi_rows.into_iter() {
 				if let Some(key) = RowKey::decode(&multi.key) {
 					batch_rows.push(multi.values);
@@ -132,7 +135,6 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 
 		// Instrumentation: identify the 60ms gap between decode_row_keys and create_storage_columns
 		{
-			let _span = debug_span!("post_decode_checks", row_count = batch_rows.len()).entered();
 			if batch_rows.is_empty() {
 				self.exhausted = true;
 				return Ok(None);
@@ -143,13 +145,12 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
 		let storage_columns: Vec<Column> = {
-			let _span = debug_span!("create_storage_columns").entered();
 			self.table
 				.columns()
 				.iter()
 				.enumerate()
 				.map(|(idx, col)| Column {
-					name: Fragment::owned_internal(&col.name),
+					name: Fragment::internal(&col.name),
 					data: ColumnData::with_capacity(self.storage_types[idx], 0),
 				})
 				.collect()
@@ -157,16 +158,9 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 
 		let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
 		{
-			let _span = debug_span!("append_rows", row_count = row_numbers.len()).entered();
 			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
 		}
-
-		// Decode dictionary columns
-		{
-			let dict_count = self.dictionaries.iter().filter(|d| d.is_some()).count();
-			let _span = debug_span!("decode_dictionary_columns", dict_count).entered();
-			self.decode_dictionary_columns(&mut columns, rx)?;
-		}
+		self.decode_dictionary_columns(&mut columns, rx).await?;
 
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
@@ -176,23 +170,22 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		}))
 	}
 
-	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
 }
 
-impl<'a> TableScanNode<'a> {
+impl<'a> TableScanNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	fn decode_dictionary_columns(
+	async fn decode_dictionary_columns(
 		&self,
-		columns: &mut Columns<'a>,
+		columns: &mut Columns,
 		rx: &mut crate::StandardTransaction<'a>,
 	) -> crate::Result<()> {
 		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
 			if let Some(dictionary) = dict_opt {
 				let col = &columns[col_idx];
 				let row_count = col.data().len();
-				let _span = debug_span!("decode_single_dict_column", col_idx, row_count).entered();
 
 				// Create new column data with the original value type
 				let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
@@ -202,7 +195,7 @@ impl<'a> TableScanNode<'a> {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 						if let Some(decoded_value) =
-							rx.get_from_dictionary(dictionary, entry_id)?
+							rx.get_from_dictionary(dictionary, entry_id).await?
 						{
 							new_data.push_value(decoded_value);
 						} else {

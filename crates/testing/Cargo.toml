@@ -10,6 +10,7 @@ description = "Testing utilities and helpers for ReifyDB"
 [dependencies]
 reifydb-core = { workspace = true }
 uuid = { workspace = true }
+tokio = {workspace = true}
 
 [dev-dependencies]
 test_each_file = { workspace = true }

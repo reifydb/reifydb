@@ -4,4 +4,4 @@
 logical 'from users'
 ---
 > └── TableScan default.users
-> 
+>
