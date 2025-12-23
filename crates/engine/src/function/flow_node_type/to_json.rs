@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-use bincode::{config::standard, serde::decode_from_slice};
 use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
 use reifydb_rql::{expression::json::JsonExpression, flow::FlowNodeType};
 use reifydb_type::internal;
@@ -219,9 +218,9 @@ impl ScalarFunction for FlowNodeTypeToJson {
 						let blob = &container[i];
 						let bytes = blob.as_bytes();
 
-						// Deserialize from bincode
-						let (node_type, _): (FlowNodeType, usize) =
-							decode_from_slice(bytes, standard()).map_err(|e| {
+						// Deserialize from postcard
+						let node_type: FlowNodeType =
+							postcard::from_bytes(bytes).map_err(|e| {
 								reifydb_core::Error(internal!(
 									"Failed to deserialize FlowNodeType: {}",
 									e
@@ -279,7 +278,6 @@ impl ScalarFunction for FlowNodeTypeToJson {
 mod tests {
 	use std::sync::Arc;
 
-	use bincode::{config::standard, serde::encode_to_vec};
 	use reifydb_core::{
 		JoinType, SortDirection, SortKey, WindowSize, WindowType,
 		interface::{ColumnIdentifier, ColumnSource, FlowId, TableId, ViewId},
@@ -350,7 +348,7 @@ mod tests {
 	}
 
 	fn create_blob_from_node_type(node_type: &FlowNodeType) -> Blob {
-		let bytes = encode_to_vec(node_type, standard()).unwrap();
+		let bytes = postcard::to_stdvec(node_type).unwrap();
 		Blob::new(bytes)
 	}
 

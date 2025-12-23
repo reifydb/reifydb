@@ -1,10 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use reifydb_core::value::column::{ColumnData, CompressedColumn, CompressionType};
 use reifydb_type::{Result, diagnostic, error};
 
@@ -12,11 +8,9 @@ use crate::ColumnCompressor;
 
 pub struct NoneCompressor {}
 
-const CONFIG: bincode::config::Configuration = standard();
-
 impl ColumnCompressor for NoneCompressor {
 	fn compress(&self, data: &ColumnData) -> Result<CompressedColumn> {
-		let serialized = encode_to_vec(data, CONFIG)
+		let serialized = postcard::to_stdvec(data)
 			.map_err(|e| error!(diagnostic::serde::serde_serialize_error(e.to_string())))?;
 
 		let uncompressed_size = serialized.len();
@@ -33,7 +27,7 @@ impl ColumnCompressor for NoneCompressor {
 	fn decompress(&self, compressed: &CompressedColumn) -> Result<ColumnData> {
 		assert_eq!(compressed.compression, CompressionType::None);
 
-		let (result, _): (ColumnData, usize) = decode_from_slice(&compressed.data, CONFIG)
+		let result: ColumnData = postcard::from_bytes(&compressed.data)
 			.map_err(|e| error!(diagnostic::serde::serde_deserialize_error(e.to_string())))?;
 
 		Ok(result)

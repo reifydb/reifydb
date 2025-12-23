@@ -4,10 +4,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
@@ -188,15 +184,12 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		let config = standard();
-		decode_from_slice(blob.as_ref(), config)
-			.map(|(state, _)| state)
+		postcard::from_bytes(blob.as_ref())
 			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
-		let config = standard();
-		let serialized = encode_to_vec(state, config)
+		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();

@@ -4,10 +4,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
 	interface::FlowNodeId,
@@ -421,12 +417,8 @@ impl WindowOperator {
 			return Ok(WindowState::default());
 		}
 
-		let config = standard();
-		let result: Result<WindowState, _> = decode_from_slice(blob.as_ref(), config)
-			.map(|(state, _): (WindowState, usize)| state)
-			.map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)));
-
-		result
+		postcard::from_bytes(blob.as_ref())
+			.map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)))
 	}
 
 	/// Save window state to storage
@@ -436,8 +428,7 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> crate::Result<()> {
-		let config = standard();
-		let serialized = encode_to_vec(state, config)
+		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
@@ -463,16 +454,14 @@ impl WindowOperator {
 			if blob.is_empty() {
 				0
 			} else {
-				let config = standard();
-				decode_from_slice(blob.as_ref(), config).map(|(count, _): (u64, _)| count).unwrap_or(0)
+				postcard::from_bytes(blob.as_ref()).unwrap_or(0)
 			}
 		};
 
 		let new_count = current_count + 1;
 
 		// Save updated count
-		let config = standard();
-		let serialized = encode_to_vec(&new_count, config)
+		let serialized = postcard::to_stdvec(&new_count)
 			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
 		let mut count_state_row = self.layout.allocate();

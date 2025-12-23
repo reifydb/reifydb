@@ -168,8 +168,8 @@ impl FlowEngine {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write().unwrap();
 
-		// Serialize config to bincode
-		let config_bytes = bincode::serde::encode_to_vec(config, bincode::config::standard())
+		// Serialize config to postcard
+		let config_bytes = postcard::to_stdvec(config)
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
 		let operator = loader_write

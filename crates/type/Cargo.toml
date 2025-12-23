@@ -18,5 +18,5 @@ bigdecimal = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-bincode = {workspace = true}
+postcard = { workspace = true }
 tokio = { workspace = true}

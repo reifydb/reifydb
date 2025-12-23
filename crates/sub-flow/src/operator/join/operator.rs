@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bincode::{config::standard, serde::encode_to_vec};
 use indexmap::IndexMap;
 use reifydb_core::{
 	EncodedKey, Error, JoinType, Row, interface::FlowNodeId, util::encoding::keycode::KeySerializer,
@@ -113,7 +112,7 @@ impl JoinOperator {
 				return Ok(None);
 			}
 
-			let bytes = encode_to_vec(&value, standard())
+			let bytes = postcard::to_stdvec(&value)
 				.map_err(|e| Error(internal!("Failed to encode value for hash: {}", e)))?;
 
 			hasher.extend_from_slice(&bytes);

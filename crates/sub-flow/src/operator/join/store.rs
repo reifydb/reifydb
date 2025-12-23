@@ -1,7 +1,3 @@
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use reifydb_core::{Error, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_hash::Hash128;
 use reifydb_type::{Blob, Type, internal};
@@ -52,8 +48,7 @@ impl Store {
 				if blob.is_empty() {
 					return Ok(None);
 				}
-				let config = standard();
-				let (entry, _): (JoinSideEntry, usize) = decode_from_slice(blob.as_ref(), config)
+				let entry: JoinSideEntry = postcard::from_bytes(blob.as_ref())
 					.map_err(|e| Error(internal!("Failed to deserialize JoinSideEntry: {}", e)))?;
 				Ok(Some(entry))
 			}
@@ -70,8 +65,7 @@ impl Store {
 		let key = self.make_key(hash);
 
 		// Serialize JoinSideEntry
-		let config = standard();
-		let serialized = encode_to_vec(entry, config)
+		let serialized = postcard::to_stdvec(entry)
 			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow

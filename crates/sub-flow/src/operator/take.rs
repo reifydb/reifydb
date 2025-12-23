@@ -1,10 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
 use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
@@ -64,15 +60,12 @@ impl TakeOperator {
 			return Ok(TakeState::default());
 		}
 
-		let config = standard();
-		decode_from_slice(blob.as_ref(), config)
-			.map(|(state, _)| state)
+		postcard::from_bytes(blob.as_ref())
 			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
-		let config = standard();
-		let serialized = encode_to_vec(state, config)
+		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();

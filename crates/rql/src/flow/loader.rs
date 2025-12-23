@@ -3,10 +3,6 @@
 
 //! Loader module for reconstructing Flows from catalog nodes and edges
 
-use bincode::{
-	config::{Configuration, standard},
-	serde::decode_from_slice,
-};
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	Error,
@@ -30,9 +26,8 @@ pub async fn load_flow(txn: &mut impl QueryTransaction, flow_id: FlowId) -> crat
 	// Deserialize and add all nodes
 	for node_def in node_defs {
 		// Deserialize the FlowNodeType from the blob
-		let (node_type, _) =
-			decode_from_slice::<FlowNodeType, Configuration>(node_def.data.as_ref(), standard())
-				.map_err(|e| Error(internal!("Failed to deserialize FlowNodeType: {}", e)))?;
+		let node_type: FlowNodeType = postcard::from_bytes(node_def.data.as_ref())
+			.map_err(|e| Error(internal!("Failed to deserialize FlowNodeType: {}", e)))?;
 
 		// Create and add the FlowNode
 		let node = FlowNode::new(node_def.id, node_type);

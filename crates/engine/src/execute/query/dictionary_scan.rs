@@ -101,11 +101,9 @@ impl QueryNode for DictionaryScanNode {
 				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type)?;
 
 				// Decode the value from the entry
-				let (value, _): (Value, _) =
-					bincode::serde::decode_from_slice(&entry.values, bincode::config::standard())
-						.map_err(|e| {
-						internal_error!("Failed to deserialize dictionary value: {}", e)
-					})?;
+				let value: Value = postcard::from_bytes(&entry.values).map_err(|e| {
+					internal_error!("Failed to deserialize dictionary value: {}", e)
+				})?;
 
 				ids.push(entry_id);
 				values.push(value);

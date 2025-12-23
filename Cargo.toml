@@ -207,7 +207,7 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_bytes = { version = "0.11.17" }
 serde_json = { version = "1.0.143" }
-bincode = { version = "2.0.1", features = ["serde"] }
+postcard = { version = "1.1", features = ["use-std"] }
 
 # testing
 test_each_file = { version = "0.3.5" }

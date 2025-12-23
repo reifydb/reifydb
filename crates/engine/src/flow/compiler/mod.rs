@@ -7,7 +7,6 @@
 //! over CommandTransaction to avoid lifetime issues with async recursion.
 
 use async_recursion::async_recursion;
-use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_catalog::{
 	CatalogStore,
 	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
@@ -107,7 +106,7 @@ impl FlowCompiler {
 		let flow_id = self.builder.id();
 
 		// Serialize the node type to blob
-		let data = encode_to_vec(&node_type, standard()).map_err(|e| {
+		let data = postcard::to_stdvec(&node_type).map_err(|e| {
 			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 

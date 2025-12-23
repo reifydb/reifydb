@@ -216,11 +216,7 @@ impl FlowEngine {
 					.encode();
 					match txn.get(&index_key).await? {
 						Some(v) => {
-							let (decoded_value, _): (Value, _) =
-								bincode::serde::decode_from_slice(
-									&v.values,
-									bincode::config::standard(),
-								)
+							let decoded_value: Value = postcard::from_bytes(&v.values)
 								.map_err(|e| {
 									Error(internal!(
 										"Failed to deserialize dictionary value: {}",
