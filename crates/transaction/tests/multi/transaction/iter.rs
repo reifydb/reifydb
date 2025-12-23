@@ -175,19 +175,19 @@ async fn test_iter_edge_case() {
 		assert_eq!(5, engine.version().await.unwrap());
 	}
 
-	let check_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, r.values), "read_vs={}", r.version);
+			assert_eq!(expected[i], from_values!(u64, &r.values), "read_vs={}", r.version);
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_rev_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
+			assert_eq!(expected[i], from_values!(u64, &r.values), "read_vs={}", r.version);
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -266,19 +266,19 @@ async fn test_iter_edge_case2() {
 		assert_eq!(5, engine.version().await.unwrap());
 	}
 
-	let check_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()));
+			assert_eq!(expected[i], from_values!(u64, &r.values));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_rev_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()));
+			assert_eq!(expected[i], from_values!(u64, &r.values));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);

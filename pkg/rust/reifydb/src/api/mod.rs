@@ -13,11 +13,12 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
+pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
+	let storage = BackendStorage::memory().await;
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			storage: BackendStorage::memory(),
+			storage,
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
@@ -31,12 +32,12 @@ pub fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBu
 }
 
 /// Convenience function to create SQLite storage
-pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
+pub async fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-
+	let storage = BackendStorage::sqlite(config).await;
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			storage: BackendStorage::sqlite(config),
+			storage,
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,

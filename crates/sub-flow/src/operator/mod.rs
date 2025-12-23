@@ -48,7 +48,7 @@ pub trait Operator: Send + Sync {
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange>;
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>>;
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>>;
 }
 
 pub type BoxedOperator = Box<dyn Operator>;
@@ -95,22 +95,22 @@ impl Operators {
 		}
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		match self {
-			Operators::Filter(op) => op.get_rows(txn, rows),
-			Operators::Map(op) => op.get_rows(txn, rows),
-			Operators::Extend(op) => op.get_rows(txn, rows),
-			Operators::Join(op) => op.get_rows(txn, rows),
-			Operators::Sort(op) => op.get_rows(txn, rows),
-			Operators::Take(op) => op.get_rows(txn, rows),
-			Operators::Distinct(op) => op.get_rows(txn, rows),
-			Operators::Merge(op) => op.get_rows(txn, rows),
-			Operators::Apply(op) => op.get_rows(txn, rows),
-			Operators::SinkView(op) => op.get_rows(txn, rows),
-			Operators::Window(op) => op.get_rows(txn, rows),
-			Operators::SourceTable(op) => op.get_rows(txn, rows),
-			Operators::SourceView(op) => op.get_rows(txn, rows),
-			Operators::SourceFlow(op) => op.get_rows(txn, rows),
+			Operators::Filter(op) => op.get_rows(txn, rows).await,
+			Operators::Map(op) => op.get_rows(txn, rows).await,
+			Operators::Extend(op) => op.get_rows(txn, rows).await,
+			Operators::Join(op) => op.get_rows(txn, rows).await,
+			Operators::Sort(op) => op.get_rows(txn, rows).await,
+			Operators::Take(op) => op.get_rows(txn, rows).await,
+			Operators::Distinct(op) => op.get_rows(txn, rows).await,
+			Operators::Merge(op) => op.get_rows(txn, rows).await,
+			Operators::Apply(op) => op.get_rows(txn, rows).await,
+			Operators::SinkView(op) => op.get_rows(txn, rows).await,
+			Operators::Window(op) => op.get_rows(txn, rows).await,
+			Operators::SourceTable(op) => op.get_rows(txn, rows).await,
+			Operators::SourceView(op) => op.get_rows(txn, rows).await,
+			Operators::SourceFlow(op) => op.get_rows(txn, rows).await,
 		}
 	}
 }

@@ -25,8 +25,11 @@ impl TransactionSingle {
 }
 
 impl TransactionSingle {
-	pub fn testing() -> Self {
-		Self::SingleVersionLock(TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default()))
+	pub async fn testing() -> Self {
+		Self::SingleVersionLock(TransactionSvl::new(
+			TransactionStore::testing_memory().await,
+			EventBus::default(),
+		))
 	}
 
 	/// Async helper for single-version queries.

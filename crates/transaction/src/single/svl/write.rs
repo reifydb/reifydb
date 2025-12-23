@@ -15,6 +15,7 @@ use super::*;
 
 /// Simple wrapper around tokio's OwnedRwLockWriteGuard.
 /// OwnedRwLockWriteGuard is Send, so this struct is Send.
+#[allow(dead_code)]
 pub struct KeyWriteLock(pub(super) OwnedRwLockWriteGuard<()>);
 
 pub struct SvlCommandTransaction<'a> {

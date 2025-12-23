@@ -16,7 +16,7 @@ use crate::{
 pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
-	pub(crate) fn handle_insert(
+	pub(crate) async fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Row,
@@ -31,7 +31,7 @@ impl InnerHashJoin {
 			match side {
 				JoinSide::Left => {
 					// Add to left entries
-					add_to_state_entry(txn, &mut state.left, &key_hash, post)?;
+					add_to_state_entry(txn, &mut state.left, &key_hash, post).await?;
 
 					// Only emit if there are matching right rows (inner join)
 					let joined_rows = emit_joined_rows_left_to_right(
@@ -41,12 +41,13 @@ impl InnerHashJoin {
 						&key_hash,
 						operator,
 						&operator.right_parent,
-					)?;
+					)
+					.await?;
 					result.extend(joined_rows);
 				}
 				JoinSide::Right => {
 					// Add to right entries
-					add_to_state_entry(txn, &mut state.right, &key_hash, post)?;
+					add_to_state_entry(txn, &mut state.right, &key_hash, post).await?;
 
 					// Only emit if there are matching left rows (inner join)
 					let joined_rows = emit_joined_rows_right_to_left(
@@ -56,7 +57,8 @@ impl InnerHashJoin {
 						&key_hash,
 						operator,
 						&operator.left_parent,
-					)?;
+					)
+					.await?;
 					result.extend(joined_rows);
 				}
 			}
@@ -81,7 +83,7 @@ impl InnerHashJoin {
 		if let Some(key_hash) = key_hash {
 			match side {
 				JoinSide::Left => {
-					if state.left.contains_key(txn, &key_hash)? {
+					if state.left.contains_key(txn, &key_hash).await? {
 						operator.cleanup_left_row_joins(txn, pre.number.0).await?;
 
 						// Remove all joins involving this encoded
@@ -92,15 +94,16 @@ impl InnerHashJoin {
 							&key_hash,
 							operator,
 							&operator.right_parent,
-						)?;
+						)
+						.await?;
 						result.extend(removed_joins);
 
 						// Remove from left entries and clean up if empty
-						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
+						remove_from_state_entry(txn, &mut state.left, &key_hash, pre).await?;
 					}
 				}
 				JoinSide::Right => {
-					if state.right.contains_key(txn, &key_hash)? {
+					if state.right.contains_key(txn, &key_hash).await? {
 						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_right(
 							txn,
@@ -109,11 +112,12 @@ impl InnerHashJoin {
 							&key_hash,
 							operator,
 							&operator.left_parent,
-						)?;
+						)
+						.await?;
 						result.extend(removed_joins);
 
 						// Remove from right entries and clean up if empty
-						remove_from_state_entry(txn, &mut state.right, &key_hash, pre)?;
+						remove_from_state_entry(txn, &mut state.right, &key_hash, pre).await?;
 					}
 				}
 			}
@@ -142,7 +146,7 @@ impl InnerHashJoin {
 				match side {
 					JoinSide::Left => {
 						// Update the encoded in state
-						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
+						if update_row_in_entry(txn, &mut state.left, &key, pre, post).await? {
 							// Emit updates for all joined rows (only if right rows exist)
 							let updates = emit_update_joined_rows_left(
 								txn,
@@ -153,13 +157,14 @@ impl InnerHashJoin {
 								operator,
 								&operator.right_parent,
 								version,
-							)?;
+							)
+							.await?;
 							result.extend(updates);
 						}
 					}
 					JoinSide::Right => {
 						// Update the encoded in state
-						if update_row_in_entry(txn, &mut state.right, &key, pre, post)? {
+						if update_row_in_entry(txn, &mut state.right, &key, pre, post).await? {
 							// Emit updates for all joined rows (only if left rows exist)
 							let updates = emit_update_joined_rows_right(
 								txn,
@@ -170,7 +175,8 @@ impl InnerHashJoin {
 								operator,
 								&operator.left_parent,
 								version,
-							)?;
+							)
+							.await?;
 							result.extend(updates);
 						}
 					}
@@ -182,14 +188,14 @@ impl InnerHashJoin {
 				self.handle_remove(txn, pre, side, old_key, state, operator, version).await?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
+			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator).await?;
 			result.extend(insert_diffs);
 		}
 
 		Ok(result)
 	}
 
-	pub(crate) fn handle_insert_batch(
+	pub(crate) async fn handle_insert_batch(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -206,32 +212,38 @@ impl InnerHashJoin {
 		for row in rows {
 			match side {
 				JoinSide::Left => {
-					add_to_state_entry(txn, &mut state.left, key_hash, row)?;
+					add_to_state_entry(txn, &mut state.left, key_hash, row).await?;
 				}
 				JoinSide::Right => {
-					add_to_state_entry(txn, &mut state.right, key_hash, row)?;
+					add_to_state_entry(txn, &mut state.right, key_hash, row).await?;
 				}
 			}
 		}
 
 		// Then emit all joined rows in one batch
 		match side {
-			JoinSide::Left => emit_joined_rows_batch_left(
-				txn,
-				rows,
-				&state.right,
-				key_hash,
-				operator,
-				&operator.right_parent,
-			),
-			JoinSide::Right => emit_joined_rows_batch_right(
-				txn,
-				rows,
-				&state.left,
-				key_hash,
-				operator,
-				&operator.left_parent,
-			),
+			JoinSide::Left => {
+				emit_joined_rows_batch_left(
+					txn,
+					rows,
+					&state.right,
+					key_hash,
+					operator,
+					&operator.right_parent,
+				)
+				.await
+			}
+			JoinSide::Right => {
+				emit_joined_rows_batch_right(
+					txn,
+					rows,
+					&state.left,
+					key_hash,
+					operator,
+					&operator.left_parent,
+				)
+				.await
+			}
 		}
 	}
 
@@ -264,26 +276,30 @@ impl InnerHashJoin {
 					key_hash,
 					operator,
 					&operator.right_parent,
-				)?
+				)
+				.await?
 			}
-			JoinSide::Right => emit_remove_joined_rows_batch_right(
-				txn,
-				rows,
-				&state.left,
-				key_hash,
-				operator,
-				&operator.left_parent,
-			)?,
+			JoinSide::Right => {
+				emit_remove_joined_rows_batch_right(
+					txn,
+					rows,
+					&state.left,
+					key_hash,
+					operator,
+					&operator.left_parent,
+				)
+				.await?
+			}
 		};
 
 		// Then remove all rows from state
 		for row in rows {
 			match side {
 				JoinSide::Left => {
-					remove_from_state_entry(txn, &mut state.left, key_hash, row)?;
+					remove_from_state_entry(txn, &mut state.left, key_hash, row).await?;
 				}
 				JoinSide::Right => {
-					remove_from_state_entry(txn, &mut state.right, key_hash, row)?;
+					remove_from_state_entry(txn, &mut state.right, key_hash, row).await?;
 				}
 			}
 		}

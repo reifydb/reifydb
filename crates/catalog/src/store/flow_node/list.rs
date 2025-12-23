@@ -123,8 +123,8 @@ mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace").await;
 		let flow = ensure_test_flow(&mut txn).await;
 
-		create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
+		create_flow_node(&mut txn, flow.id, 4, &[0x02]).await;
 
 		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).await.unwrap();
 		assert_eq!(nodes.len(), 2);
@@ -146,9 +146,9 @@ mod tests {
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one").await;
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two").await;
 
-		create_flow_node(&mut txn, flow1.id, 1, &[0x01]);
-		create_flow_node(&mut txn, flow1.id, 4, &[0x02]);
-		create_flow_node(&mut txn, flow2.id, 1, &[0x03]);
+		create_flow_node(&mut txn, flow1.id, 1, &[0x01]).await;
+		create_flow_node(&mut txn, flow1.id, 4, &[0x02]).await;
+		create_flow_node(&mut txn, flow2.id, 1, &[0x03]).await;
 
 		let all_nodes = CatalogStore::list_flow_nodes_all(&mut txn).await.unwrap();
 		assert_eq!(all_nodes.len(), 3);

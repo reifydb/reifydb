@@ -24,7 +24,7 @@ use reifydb_type::{
 	diagnostic::{catalog::table_not_found, index::primary_key_violation},
 	internal_error,
 };
-use tracing::{debug_span, instrument};
+use tracing::instrument;
 
 use super::primary_key;
 use crate::{

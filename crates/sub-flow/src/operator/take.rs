@@ -52,8 +52,8 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
-		let state_row = self.load_state(txn)?;
+	async fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
+		let state_row = self.load_state(txn).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(TakeState::default());
@@ -82,7 +82,11 @@ impl TakeOperator {
 		self.save_state(txn, state_row)
 	}
 
-	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> crate::Result<Vec<FlowDiff>> {
+	async fn promote_candidates(
+		&self,
+		state: &mut TakeState,
+		txn: &mut FlowTransaction,
+	) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -90,7 +94,7 @@ impl TakeOperator {
 				state.candidates.remove(&candidate_row);
 				state.active.insert(candidate_row, count);
 
-				let rows = self.parent.get_rows(txn, &[candidate_row])?;
+				let rows = self.parent.get_rows(txn, &[candidate_row]).await?;
 				if let Some(Some(row)) = rows.first() {
 					output_diffs.push(FlowDiff::Insert {
 						post: row.clone(),
@@ -102,7 +106,7 @@ impl TakeOperator {
 		Ok(output_diffs)
 	}
 
-	fn evict_to_candidates(
+	async fn evict_to_candidates(
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
@@ -115,7 +119,7 @@ impl TakeOperator {
 				state.active.remove(&evicted_row);
 				state.candidates.insert(evicted_row, count);
 
-				let rows = self.parent.get_rows(txn, &[evicted_row])?;
+				let rows = self.parent.get_rows(txn, &[evicted_row]).await?;
 				if let Some(Some(row)) = rows.first() {
 					output_diffs.push(FlowDiff::Remove {
 						pre: row.clone(),
@@ -156,7 +160,7 @@ impl Operator for TakeOperator {
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut state = self.load_take_state(txn)?;
+		let mut state = self.load_take_state(txn).await?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
 
@@ -192,7 +196,8 @@ impl Operator for TakeOperator {
 
 									let rows = self
 										.parent
-										.get_rows(txn, &[smallest])?;
+										.get_rows(txn, &[smallest])
+										.await?;
 									if let Some(Some(row)) = rows.first() {
 										output_diffs.push(FlowDiff::Remove {
 											pre: row.clone(),
@@ -255,7 +260,7 @@ impl Operator for TakeOperator {
 								pre,
 							});
 
-							let promoted = self.promote_candidates(&mut state, txn)?;
+							let promoted = self.promote_candidates(&mut state, txn).await?;
 							output_diffs.extend(promoted);
 						}
 					} else if let Some(count) = state.candidates.get_mut(&row_number) {
@@ -274,7 +279,7 @@ impl Operator for TakeOperator {
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows)
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows).await
 	}
 }

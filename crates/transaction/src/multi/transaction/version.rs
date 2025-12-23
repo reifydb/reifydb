@@ -291,9 +291,11 @@ mod tests {
 		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, 500u64);
 
-		let mut tx = single.begin_command([&key]).await.unwrap();
-		tx.set(&key, values).unwrap();
-		tx.commit().await.unwrap();
+		{
+			let mut tx = single.begin_command([&key]).await.unwrap();
+			tx.set(&key, values).unwrap();
+			tx.commit().await.unwrap();
+		} // tx is dropped here, releasing the key lock
 
 		// Create provider - should start from the existing version
 		let provider = StandardVersionProvider::new(single.clone()).await.unwrap();

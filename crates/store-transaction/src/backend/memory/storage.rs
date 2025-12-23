@@ -39,15 +39,9 @@ impl Drop for MemoryPrimitiveStorageInner {
 	}
 }
 
-impl Default for MemoryPrimitiveStorage {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::new", level = "debug")]
-	pub fn new() -> Self {
+	pub async fn new() -> Self {
 		let tables = Arc::new(RwLock::new(Tables::default()));
 
 		let (sender, receiver) = mpsc::channel(1024);
@@ -238,7 +232,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Put and get
 		storage.put(TableId::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))]).await.unwrap();
@@ -256,7 +250,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_separate_tables() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))]).await.unwrap();
 		storage.put(TableId::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))]).await.unwrap();
@@ -269,7 +263,7 @@ mod tests {
 	async fn test_source_tables() {
 		use reifydb_core::interface::SourceId;
 
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		let source1 = SourceId::Table(CoreTableId(1));
 		let source2 = SourceId::Table(CoreTableId(2));
@@ -283,7 +277,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
 		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
@@ -300,7 +294,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_rev_batch() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
 		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
@@ -318,7 +312,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Insert 10 entries
 		for i in 0..10u8 {
@@ -346,7 +340,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_rev_batch_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Insert 10 entries
 		for i in 0..10u8 {

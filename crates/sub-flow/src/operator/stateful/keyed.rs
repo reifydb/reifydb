@@ -39,9 +39,9 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
+	async fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
-		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
+		utils::load_or_create_row(self.id(), txn, &key, &self.layout()).await
 	}
 
 	/// Save state for a specific key
@@ -51,12 +51,17 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> crate::Result<EncodedValues>
+	async fn update_state<F>(
+		&self,
+		txn: &mut FlowTransaction,
+		key_values: &[Value],
+		f: F,
+	) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
-		let mut row = self.load_state(txn, key_values)?;
+		let mut row = self.load_state(txn, key_values).await?;
 		f(&layout, &mut row)?;
 		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
@@ -125,7 +130,7 @@ mod tests {
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
 		// Initially should create new state
-		let state1 = operator.load_state(&mut txn, &key).unwrap();
+		let state1 = operator.load_state(&mut txn, &key).await.unwrap();
 
 		// Modify and save
 		let mut modified = state1.clone();
@@ -133,7 +138,7 @@ mod tests {
 		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
 		// Load should return modified state
-		let state2 = operator.load_state(&mut txn, &key).unwrap();
+		let state2 = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(state2.as_ref()[0], 0x42);
 	}
 
@@ -151,12 +156,13 @@ mod tests {
 				row.make_mut()[0] = 0x55;
 				Ok(())
 			})
+			.await
 			.unwrap();
 
 		assert_eq!(result.as_ref()[0], 0x55);
 
 		// Verify it was persisted
-		let loaded = operator.load_state(&mut txn, &key).unwrap();
+		let loaded = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(loaded.as_ref()[0], 0x55);
 	}
 
@@ -175,7 +181,7 @@ mod tests {
 		operator.remove_state(&mut txn, &key).unwrap();
 
 		// Loading should create new state (not find existing)
-		let new_state = operator.load_state(&mut txn, &key).unwrap();
+		let new_state = operator.load_state(&mut txn, &key).await.unwrap();
 		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
 	}
 
@@ -192,13 +198,14 @@ mod tests {
 				row.make_mut()[0] = i as u8;
 				Ok(())
 			})
+			.await
 			.unwrap();
 		}
 
 		// Verify each key has its own state
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
-			let state = operator.load_state(&mut txn, &key).unwrap();
+			let state = operator.load_state(&mut txn, &key).await.unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}

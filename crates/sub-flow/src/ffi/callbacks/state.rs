@@ -49,8 +49,13 @@ pub(super) extern "C" fn host_state_get(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get state from transaction
-		match flow_txn.state_get(FlowNodeId(operator_id), &key) {
+		// Get state from transaction (use block_in_place for async call from sync FFI)
+		let result = tokio::task::block_in_place(|| {
+			tokio::runtime::Handle::current()
+				.block_on(async { flow_txn.state_get(FlowNodeId(operator_id), &key).await })
+		});
+
+		match result {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
 				let value_bytes = value.as_ref();

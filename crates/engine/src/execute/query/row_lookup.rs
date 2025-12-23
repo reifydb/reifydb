@@ -12,13 +12,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{EncodableKey, MultiVersionQueryTransaction, RowKey, catalog::SourceId, resolved::ResolvedSource},
+	interface::{EncodableKey, RowKey, catalog::SourceId, resolved::ResolvedSource},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
-use reifydb_type::{Fragment, RowNumber, return_internal_error};
+use reifydb_type::{Fragment, RowNumber};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};

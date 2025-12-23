@@ -33,7 +33,7 @@ use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::
 
 /// Create a test engine with in-memory storage.
 pub async fn create_test_engine() -> StandardEngine {
-	let store = TransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory().await;
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());

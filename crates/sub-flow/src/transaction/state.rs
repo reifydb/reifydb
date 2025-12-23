@@ -18,11 +18,11 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		found
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+	pub async fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		self.metrics.increment_state_operations();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
-		let result = tokio::runtime::Handle::current().block_on(self.get(&encoded_key))?;
+		let result = self.get(&encoded_key).await?;
 		tracing::Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -102,13 +102,13 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		created
 	))]
-	pub fn load_or_create_row(
+	pub async fn load_or_create_row(
 		&mut self,
 		id: FlowNodeId,
 		key: &EncodedKey,
 		layout: &EncodedValuesLayout,
 	) -> crate::Result<EncodedValues> {
-		match self.state_get(id, key)? {
+		match self.state_get(id, key).await? {
 			Some(row) => {
 				tracing::Span::current().record("created", false);
 				Ok(row)
@@ -162,7 +162,7 @@ mod tests {
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// Get state back
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(node_id, &key).await.unwrap();
 		assert_eq!(result, Some(value));
 	}
 
@@ -174,7 +174,7 @@ mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("missing");
 
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(node_id, &key).await.unwrap();
 		assert_eq!(result, None);
 	}
 
@@ -189,10 +189,10 @@ mod tests {
 
 		// Set then remove
 		txn.state_set(node_id, &key, value.clone()).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(value));
+		assert_eq!(txn.state_get(node_id, &key).await.unwrap(), Some(value));
 
 		txn.state_remove(node_id, &key).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), None);
+		assert_eq!(txn.state_get(node_id, &key).await.unwrap(), None);
 	}
 
 	#[tokio::test]
@@ -208,8 +208,8 @@ mod tests {
 		txn.state_set(node2, &key, make_value("node2_value")).unwrap();
 
 		// Each node should have its own value
-		assert_eq!(txn.state_get(node1, &key).unwrap(), Some(make_value("node1_value")));
-		assert_eq!(txn.state_get(node2, &key).unwrap(), Some(make_value("node2_value")));
+		assert_eq!(txn.state_get(node1, &key).await.unwrap(), Some(make_value("node1_value")));
+		assert_eq!(txn.state_get(node2, &key).await.unwrap(), Some(make_value("node2_value")));
 	}
 
 	#[tokio::test]
@@ -351,7 +351,7 @@ mod tests {
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// load_or_create should return existing value
-		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &layout).await.unwrap();
 		assert_eq!(result, value);
 	}
 
@@ -365,7 +365,7 @@ mod tests {
 		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
-		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &layout).await.unwrap();
 
 		// Result should be a newly allocated row (layout.allocate())
 		assert!(!result.as_ref().is_empty());
@@ -383,7 +383,7 @@ mod tests {
 		txn.save_row(node_id, &key, row.clone()).unwrap();
 
 		// Verify saved
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(node_id, &key).await.unwrap();
 		assert_eq!(result, Some(row));
 	}
 
@@ -400,7 +400,7 @@ mod tests {
 		txn.state_set(node_id, &key, make_value("value")).unwrap();
 		assert_eq!(txn.metrics().state_operations, 1);
 
-		txn.state_get(node_id, &key).unwrap();
+		txn.state_get(node_id, &key).await.unwrap();
 		assert_eq!(txn.metrics().state_operations, 2);
 
 		txn.state_remove(node_id, &key).unwrap();
@@ -434,14 +434,14 @@ mod tests {
 		txn.state_set(node3, &make_key("c"), make_value("n3_c")).unwrap();
 
 		// Verify each node has correct state
-		assert_eq!(txn.state_get(node1, &make_key("a")).unwrap(), Some(make_value("n1_a")));
-		assert_eq!(txn.state_get(node1, &make_key("b")).unwrap(), Some(make_value("n1_b")));
-		assert_eq!(txn.state_get(node2, &make_key("a")).unwrap(), Some(make_value("n2_a")));
-		assert_eq!(txn.state_get(node3, &make_key("c")).unwrap(), Some(make_value("n3_c")));
+		assert_eq!(txn.state_get(node1, &make_key("a")).await.unwrap(), Some(make_value("n1_a")));
+		assert_eq!(txn.state_get(node1, &make_key("b")).await.unwrap(), Some(make_value("n1_b")));
+		assert_eq!(txn.state_get(node2, &make_key("a")).await.unwrap(), Some(make_value("n2_a")));
+		assert_eq!(txn.state_get(node3, &make_key("c")).await.unwrap(), Some(make_value("n3_c")));
 
 		// Cross-node keys should not exist
-		assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
-		assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
+		assert_eq!(txn.state_get(node2, &make_key("b")).await.unwrap(), None);
+		assert_eq!(txn.state_get(node3, &make_key("a")).await.unwrap(), None);
 	}
 
 	#[tokio::test]
@@ -455,7 +455,7 @@ mod tests {
 
 		let initial_count = txn.metrics().state_operations;
 
-		txn.load_or_create_row(node_id, &key, &layout).unwrap();
+		txn.load_or_create_row(node_id, &key, &layout).await.unwrap();
 
 		// load_or_create calls state_get internally
 		assert!(txn.metrics().state_operations > initial_count);

@@ -22,8 +22,8 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a window
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
-		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
+	async fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
+		utils::load_or_create_row(self.id(), txn, window_key, &self.layout()).await
 	}
 
 	/// Save state for a window
@@ -117,7 +117,7 @@ mod tests {
 		let window_key = test_window_key(42);
 
 		// Initially should create new state
-		let state1 = operator.load_state(&mut txn, &window_key).unwrap();
+		let state1 = operator.load_state(&mut txn, &window_key).await.unwrap();
 
 		// Modify and save
 		let mut modified = state1.clone();
@@ -125,7 +125,7 @@ mod tests {
 		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
 
 		// Load should return modified state
-		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
+		let state2 = operator.load_state(&mut txn, &window_key).await.unwrap();
 		assert_eq!(state2.as_ref()[0], 0xAB);
 	}
 
@@ -145,7 +145,7 @@ mod tests {
 
 		// Verify each window has its own state
 		for (i, window_key) in window_keys.iter().enumerate() {
-			let state = operator.load_state(&mut txn, window_key).unwrap();
+			let state = operator.load_state(&mut txn, window_key).await.unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}
@@ -174,13 +174,13 @@ mod tests {
 
 		// Verify windows 0-4 are gone
 		for i in 0..5 {
-			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
+			let state = operator.load_state(&mut txn, &window_keys[i]).await.unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
 		}
 
 		// Verify windows 5-9 still exist
 		for i in 5..10 {
-			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
+			let state = operator.load_state(&mut txn, &window_keys[i]).await.unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}
@@ -207,7 +207,7 @@ mod tests {
 
 		// All windows should still exist
 		for (idx, window_key) in window_keys.iter().enumerate() {
-			let state = operator.load_state(&mut txn, window_key).unwrap();
+			let state = operator.load_state(&mut txn, window_key).await.unwrap();
 			assert_eq!(state.as_ref()[0], (idx + 5) as u8);
 		}
 	}
@@ -234,7 +234,7 @@ mod tests {
 
 		// All windows should be gone
 		for window_key in &window_keys {
-			let state = operator.load_state(&mut txn, window_key).unwrap();
+			let state = operator.load_state(&mut txn, window_key).await.unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
 		}
 	}
@@ -268,12 +268,12 @@ mod tests {
 
 		// Only windows 7, 8, 9 should exist
 		for i in 0..7 {
-			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
+			let state = operator.load_state(&mut txn, &all_window_keys[i]).await.unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be default (expired)
 		}
 
 		for i in 7..10 {
-			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
+			let state = operator.load_state(&mut txn, &all_window_keys[i]).await.unwrap();
 			assert_eq!(state.as_ref()[0], i as u8); // Should have saved data
 		}
 	}

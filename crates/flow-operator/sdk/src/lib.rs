@@ -1,6 +1,6 @@
 //! ReifyDB Operator SDK
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use std::collections::HashMap;
 

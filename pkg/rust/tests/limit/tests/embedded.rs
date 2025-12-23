@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error, fmt::Write, path::Path};
+use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use reifydb::{
 	Database, EmbeddedBuilder,
@@ -15,15 +15,18 @@ use tokio::runtime::Runtime;
 
 pub struct Runner {
 	instance: Database,
-	runtime: Runtime,
+	runtime: Arc<Runtime>,
 }
 
 impl Runner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
-			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
-			runtime: Runtime::new().unwrap(),
+			instance: runtime.block_on(EmbeddedBuilder::new(multi, single, cdc, eventbus).build()).unwrap(),
+			runtime,
 		}
 	}
 }
@@ -78,5 +81,8 @@ impl testscript::Runner for Runner {
 test_each_path! { in "pkg/rust/tests/limit/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-	testscript::run_path(&mut Runner::new(serializable(memory())), path).expect("test failed")
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let input = runtime.block_on(serializable(memory())).unwrap();
+	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
 }

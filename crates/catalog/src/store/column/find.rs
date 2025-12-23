@@ -46,9 +46,9 @@ mod tests {
 	#[tokio::test]
 	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
 
 		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").await.unwrap().unwrap();
 
@@ -61,7 +61,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_not_found() {
 		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
 
 		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").await.unwrap();
 

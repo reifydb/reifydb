@@ -685,7 +685,7 @@ mod tests {
 		use crate::backend::BackendStorage;
 
 		// Create a memory storage backend
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 
 		// Create tracker with some data
 		let config = StorageTrackerConfig {
@@ -737,7 +737,7 @@ mod tests {
 	async fn test_checkpoint_resets_timer() {
 		use crate::backend::BackendStorage;
 
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
@@ -765,7 +765,7 @@ mod tests {
 		use crate::backend::BackendStorage;
 
 		// Create empty storage
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_secs(10),

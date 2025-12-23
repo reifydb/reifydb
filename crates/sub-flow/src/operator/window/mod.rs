@@ -301,7 +301,7 @@ impl WindowOperator {
 	}
 
 	/// Apply aggregations to all events in a window
-	pub fn apply_aggregations(
+	pub async fn apply_aggregations(
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
@@ -315,7 +315,7 @@ impl WindowOperator {
 		if self.aggregations.is_empty() {
 			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
-				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
+				self.row_number_provider.get_or_create_row_number(txn, window_key).await?;
 			let mut result_row = events[0].to_row();
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
@@ -367,7 +367,8 @@ impl WindowOperator {
 		layout.set_values(&mut encoded, &result_values);
 
 		// Use RowNumberProvider to get unique, stable row number for this window
-		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
+		let (result_row_number, is_new) =
+			self.row_number_provider.get_or_create_row_number(txn, window_key).await?;
 
 		let result_row = Row {
 			number: result_row_number,
@@ -404,12 +405,12 @@ impl WindowOperator {
 	}
 
 	/// Load window state from storage
-	pub fn load_window_state(
+	pub async fn load_window_state(
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<WindowState> {
-		let state_row = self.load_state(txn, window_key)?;
+		let state_row = self.load_state(txn, window_key).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(WindowState::default());
@@ -447,13 +448,13 @@ impl WindowOperator {
 	}
 
 	/// Get and increment global event count for count-based windows
-	pub fn get_and_increment_global_count(
+	pub async fn get_and_increment_global_count(
 		&self,
 		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 	) -> crate::Result<u64> {
 		let count_key = self.create_count_key(group_hash);
-		let count_row = self.load_state(txn, &count_key)?;
+		let count_row = self.load_state(txn, &count_key).await?;
 
 		let current_count = if count_row.is_empty() || !count_row.is_defined(0) {
 			0
@@ -518,17 +519,13 @@ impl Operator for WindowOperator {
 		// We'll need to refactor the architecture to support this properly.
 		// For now, return an error indicating async is needed.
 		match &self.slide {
-			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
-			Some(_) => Err(Error(internal!(
-				"Sliding window requires async runtime - not yet supported in sync context"
-			))),
-			None => Err(Error(internal!(
-				"Tumbling window requires async runtime - not yet supported in sync context"
-			))),
+			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator).await,
+			Some(_) => apply_sliding_window(self, txn, change, evaluator).await,
+			None => apply_tumbling_window(self, txn, change, evaluator).await,
 		}
 	}
 
-	fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		todo!()
 	}
 }

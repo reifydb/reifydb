@@ -22,3 +22,4 @@ reifydb-testing = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 test_each_file = { workspace = true }
+tokio = { workspace = true }

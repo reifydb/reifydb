@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	EncodedKey,
-	interface::{EncodableKey, MultiVersionQueryTransaction, RowKey, RowKeyRange, resolved::ResolvedView},
+	interface::{EncodableKey, RowKey, RowKeyRange, resolved::ResolvedView},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,

@@ -38,9 +38,13 @@ impl Store {
 		reifydb_core::EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn get(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<Option<JoinSideEntry>> {
+	pub(crate) async fn get(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+	) -> crate::Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
-		match state_get(self.node_id, txn, &key)? {
+		match state_get(self.node_id, txn, &key).await? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
 				let layout = EncodedValuesLayout::new(&[Type::Blob]);
@@ -80,9 +84,9 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
+	pub(crate) async fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
 		let key = self.make_key(hash);
-		Ok(state_get(self.node_id, txn, &key)?.is_some())
+		Ok(state_get(self.node_id, txn, &key).await?.is_some())
 	}
 
 	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<()> {
@@ -91,7 +95,7 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn get_or_insert_with<F>(
+	pub(crate) async fn get_or_insert_with<F>(
 		&self,
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
@@ -100,7 +104,7 @@ impl Store {
 	where
 		F: FnOnce() -> JoinSideEntry,
 	{
-		if let Some(entry) = self.get(txn, hash)? {
+		if let Some(entry) = self.get(txn, hash).await? {
 			Ok(entry)
 		} else {
 			let entry = f();
@@ -109,11 +113,11 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
+	pub(crate) async fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
 	where
 		F: FnOnce(&mut JoinSideEntry),
 	{
-		if let Some(mut entry) = self.get(txn, hash)? {
+		if let Some(mut entry) = self.get(txn, hash).await? {
 			f(&mut entry);
 			self.set(txn, hash, &entry)?;
 		}

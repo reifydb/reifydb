@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{Fragment, RowNumber, Type, Value, diagnostic::catalog::ringbuffer_not_found, internal_error};
-use tracing::{debug_span, instrument};
+use tracing::instrument;
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{

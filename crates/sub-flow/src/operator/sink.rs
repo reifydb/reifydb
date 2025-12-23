@@ -106,7 +106,7 @@ impl Operator for SinkViewOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		unreachable!()
 	}
 }

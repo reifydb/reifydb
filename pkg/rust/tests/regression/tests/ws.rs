@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error, fmt::Write, path::Path};
+use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use reifydb::{
 	Database, ServerBuilder,
@@ -20,22 +20,28 @@ pub struct WsRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
-	runtime: Runtime,
+	runtime: Arc<Runtime>,
 }
 
 impl WsRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
-		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_ws(WsConfig::default().bind_addr("::1:0"))
-			.build()
+		let instance = runtime
+			.block_on(
+				ServerBuilder::new(multi, single, cdc, eventbus)
+					.with_ws(WsConfig::default().bind_addr("::1:0"))
+					.build(),
+			)
 			.unwrap();
 
 		Self {
 			instance: Some(instance),
 			client: None,
 			session: None,
-			runtime: Runtime::new().unwrap(),
+			runtime,
 		}
 	}
 }
@@ -116,5 +122,11 @@ impl testscript::Runner for WsRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as ws => test_ws }
 
 fn test_ws(path: &Path) {
-	retry(3, || testscript::run_path(&mut WsRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(transaction(memory())).unwrap();
+		testscript::run_path(&mut WsRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

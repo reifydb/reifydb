@@ -871,7 +871,7 @@ mod tests {
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
 
-		engine.inner.flow_creation_versions.write().insert(f(1), v(50));
+		engine.inner.flow_creation_versions.write().await.insert(f(1), v(50));
 
 		let mut input = BTreeMap::new();
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
@@ -897,8 +897,8 @@ mod tests {
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		let engine = setup_test_engine(subscriptions);
 
-		engine.inner.flow_creation_versions.write().insert(f(1), v(30));
-		engine.inner.flow_creation_versions.write().insert(f(2), v(50));
+		engine.inner.flow_creation_versions.write().await.insert(f(1), v(30));
+		engine.inner.flow_creation_versions.write().await.insert(f(2), v(50));
 
 		let mut input = BTreeMap::new();
 		input.insert(v(20), vec![(s(1), vec![mk_diff("d20")])]);
@@ -942,7 +942,7 @@ mod tests {
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
 
-		engine.inner.flow_creation_versions.write().insert(f(1), v(100));
+		engine.inner.flow_creation_versions.write().await.insert(f(1), v(100));
 
 		let mut input = BTreeMap::new();
 		input.insert(v(99), vec![(s(1), vec![mk_diff("d99")])]);

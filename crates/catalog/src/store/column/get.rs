@@ -97,9 +97,9 @@ mod tests {
 	#[tokio::test]
 	async fn test_ok() {
 		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
 
 		let result = CatalogStore::get_column(&mut txn, ColumnId(8194)).await.unwrap();
 
@@ -112,9 +112,9 @@ mod tests {
 	#[tokio::test]
 	async fn test_not_found() {
 		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
 
 		let err = CatalogStore::get_column(&mut txn, ColumnId(4)).await.unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");

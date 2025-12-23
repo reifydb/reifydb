@@ -6,7 +6,6 @@ use reifydb_catalog::transaction::CatalogTrackNamespaceChangeOperations;
 use reifydb_core::interface::{
 	Change, NamespaceDef, NamespaceId, OperationType, OperationType::Delete, TransactionalNamespaceChanges,
 };
-use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 

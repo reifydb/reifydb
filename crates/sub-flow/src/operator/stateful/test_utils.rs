@@ -25,7 +25,7 @@ pub mod test {
 
 	/// Create a test engine with memory storage
 	pub async fn create_test_engine() -> StandardEngine {
-		let store = TransactionStore::testing_memory();
+		let store = TransactionStore::testing_memory().await;
 		let eventbus = EventBus::new();
 		let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 		let cdc = TransactionCdc::new(store.clone());
@@ -92,7 +92,11 @@ pub mod test {
 			todo!()
 		}
 
-		fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		async fn get_rows(
+			&self,
+			txn: &mut FlowTransaction,
+			rows: &[RowNumber],
+		) -> crate::Result<Vec<Option<Row>>> {
 			unimplemented!()
 		}
 	}
@@ -122,6 +126,6 @@ pub mod test {
 	/// Helper to create a test transaction
 	pub async fn create_test_transaction() -> StandardCommandTransaction {
 		let engine = create_test_engine().await;
-		engine.begin_command().unwrap()
+		engine.begin_command().await.unwrap()
 	}
 }

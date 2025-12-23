@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::headers::ColumnHeaders;
 
 use crate::{
 	StandardTransaction,

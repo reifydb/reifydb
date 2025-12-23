@@ -176,8 +176,8 @@ impl DistinctOperator {
 		Ok(xxh3_128(&data))
 	}
 
-	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
-		let state_row = self.load_state(txn)?;
+	async fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
+		let state_row = self.load_state(txn).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(DistinctState::default());
@@ -229,7 +229,7 @@ impl Operator for DistinctOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut state = self.load_distinct_state(txn)?;
+		let mut state = self.load_distinct_state(txn).await?;
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -345,7 +345,7 @@ impl Operator for DistinctOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows)
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows).await
 	}
 }

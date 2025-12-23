@@ -44,42 +44,55 @@ impl CommandTransaction {
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub async fn commit(&mut self) -> Result<CommitVersion, Error> {
-		let mut version: Option<CommitVersion> = None;
-		let mut deltas = CowVec::with_capacity(8);
+		// For read-only transactions (no pending writes), skip conflict detection
+		// This matches the original behavior in commit_finalize
+		if self.tm.pending_writes().is_empty() {
+			self.tm.discard();
+			return Ok(CommitVersion(0));
+		}
 
-		// First, collect the pending writes
-		for (_key, pending) in self.tm.pending_writes().iter() {
-			if version.is_none() {
-				version = Some(pending.version);
-			}
-			debug_assert_eq!(version.unwrap(), pending.version);
+		// Use commit_pending to allocate the commit version via oracle BEFORE writing to storage
+		// This ensures entries have the correct commit version
+		let (commit_version, entries) = self.tm.commit_pending().await?;
+
+		if entries.is_empty() {
+			self.tm.discard();
+			return Ok(CommitVersion(0));
+		}
+
+		// Collect deltas for storage commit
+		let mut deltas = CowVec::with_capacity(entries.len());
+		for pending in &entries {
 			deltas.push(pending.delta.clone());
 		}
 
-		// Commit to storage first (async)
-		if let Some(v) = version {
-			MultiVersionCommit::commit(&self.engine.store, deltas.clone(), v).await?;
+		// Commit to storage with the correct commit version
+		let storage_result =
+			MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version).await;
+
+		// Mark the commit as done in the oracle (whether storage succeeded or failed)
+		self.tm.oracle.done_commit(commit_version);
+		self.tm.discard();
+
+		// Check storage result
+		storage_result?;
+
+		// Emit event on success
+		let event_bus = self.engine.event_bus.clone();
+		let version = commit_version;
+		// Only spawn if there's a tokio runtime available
+		if let Ok(handle) = tokio::runtime::Handle::try_current() {
+			handle.spawn(async move {
+				event_bus
+					.emit(PostCommitEvent {
+						deltas,
+						version,
+					})
+					.await;
+			});
 		}
 
-		// Then complete the transaction manager commit (synchronous bookkeeping)
-		self.tm.commit_finalize().await?;
-
-		if let Some(version) = version {
-			let event_bus = self.engine.event_bus.clone();
-			// Only spawn if there's a tokio runtime available
-			if let Ok(handle) = tokio::runtime::Handle::try_current() {
-				handle.spawn(async move {
-					event_bus
-						.emit(PostCommitEvent {
-							deltas,
-							version,
-						})
-						.await;
-				});
-			}
-		}
-
-		Ok(version.unwrap_or(CommitVersion(0)))
+		Ok(commit_version)
 	}
 }
 

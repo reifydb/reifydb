@@ -19,7 +19,7 @@ use reifydb_core::{
 	key::{CdcConsumerKey, EncodableKey},
 };
 use reifydb_engine::StandardEngine;
-use tokio::task::JoinHandle;
+use tokio::{task::JoinHandle, time::sleep};
 use tracing::{debug, error};
 
 use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
@@ -170,16 +170,16 @@ impl<C: CdcConsume> PollConsumer<C> {
 		while state.running.load(Ordering::Acquire) {
 			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size).await {
 				Ok(Some((_processed_version, _lag))) => {
-					tokio::time::sleep(config.poll_interval).await;
+					sleep(config.poll_interval).await;
 				}
 				Ok(None) => {
 					// No events to process - sleep before retrying
-					tokio::time::sleep(config.poll_interval).await;
+					sleep(config.poll_interval).await;
 				}
 				Err(error) => {
 					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 					// Sleep before retrying on error
-					tokio::time::sleep(config.poll_interval).await;
+					sleep(config.poll_interval).await;
 				}
 			}
 		}

@@ -6,7 +6,6 @@ use reifydb_catalog::transaction::CatalogTrackTableChangeOperations;
 use reifydb_core::interface::{
 	Change, NamespaceId, OperationType, OperationType::Delete, TableDef, TableId, TransactionalTableChanges,
 };
-use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 

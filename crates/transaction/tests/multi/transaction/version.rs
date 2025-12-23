@@ -34,15 +34,15 @@ async fn test_versions() {
 		let v = idx;
 		{
 			let tv = txn.get(&k0).await.unwrap().unwrap();
-			assert_eq!(v, from_values!(i32, *tv.values()));
+			assert_eq!(v, from_values!(i32, tv.values()));
 		}
 
 		// Try retrieving the latest version forward and reverse.
 		let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
 		let mut count = 0;
 		for sv in batch.items {
-			assert_eq!(sv.key(), &k0);
-			let value = from_values!(i32, sv.values());
+			assert_eq!(&sv.key, &k0);
+			let value = from_values!(i32, &sv.values);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -51,7 +51,7 @@ async fn test_versions() {
 		let batch_rev = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
 		let mut count = 0;
 		for sv in batch_rev.items {
-			let value = from_values!(i32, sv.values());
+			let value = from_values!(i32, &sv.values);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -60,6 +60,6 @@ async fn test_versions() {
 
 	let mut txn = engine.begin_command().await.unwrap();
 	let sv = txn.get(&k0).await.unwrap().unwrap();
-	let val = from_values!(i32, *sv.values());
+	let val = from_values!(i32, sv.values());
 	assert_eq!(9, val)
 }

@@ -12,6 +12,7 @@ use super::*;
 
 /// Simple wrapper around tokio's OwnedRwLockReadGuard.
 /// OwnedRwLockReadGuard is Send, so this struct is Send.
+#[allow(dead_code)]
 pub struct KeyReadLock(pub(super) OwnedRwLockReadGuard<()>);
 
 pub struct SvlQueryTransaction<'a> {

@@ -212,7 +212,7 @@ impl FlowConsumer {
 		// Invalidate cache for any schema changes before processing
 		for cdc in &cdcs {
 			for change in &cdc.changes {
-				self.catalog_cache.invalidate_from_cdc(change.key());
+				self.catalog_cache.invalidate_from_cdc(change.key()).await;
 			}
 		}
 

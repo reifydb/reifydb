@@ -1,15 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{
 	error,
 	interface::{NamespaceId, QueryTransaction, SourceDef, SourceId},
 };
-use reifydb_type::{Fragment, internal};
+use reifydb_type::internal;
 use tracing::instrument;
 
 use crate::{CatalogTableQueryOperations, CatalogViewQueryOperations};
 
+#[async_trait]
 pub trait CatalogSourceQueryOperations {
 	async fn find_source_by_name(
 		&mut self,
@@ -24,6 +26,7 @@ pub trait CatalogSourceQueryOperations {
 	async fn get_source_by_name(&mut self, namespace: NamespaceId, name: &str) -> crate::Result<SourceDef>;
 }
 
+#[async_trait]
 impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperations> CatalogSourceQueryOperations
 	for T
 {

@@ -125,7 +125,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.borrow_mut();
 

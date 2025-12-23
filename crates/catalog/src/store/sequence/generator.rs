@@ -138,7 +138,7 @@ macro_rules! impl_generator {
 					}
 
 					let key = EncodedKey::new("sequence");
-					let mut tx = txn.begin_single_query([&key]).unwrap();
+					let mut tx = txn.begin_single_query([&key]).await.unwrap();
 					let single = tx.get(&key).await.unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
@@ -154,7 +154,7 @@ macro_rules! impl_generator {
 					LAYOUT.$setter(&mut row, 0, $max);
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+					txn.with_single_command([&key], |tx| tx.set(&key, row)).await.unwrap();
 
 					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
 						.await
@@ -232,7 +232,7 @@ macro_rules! impl_generator {
 					}
 
 					let key = EncodedKey::new("sequence_by_5000");
-					let mut tx = txn.begin_single_query([&key]).unwrap();
+					let mut tx = txn.begin_single_query([&key]).await.unwrap();
 					let single = tx.get(&key).await.unwrap().unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
@@ -270,7 +270,7 @@ macro_rules! impl_generator {
 					LAYOUT.$setter(&mut row, 0, initial_val);
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+					txn.with_single_command([&key], |tx| tx.set(&key, row)).await.unwrap();
 
 					// This should succeed (initial + batch_size saturates to something less than
 					// MAX)

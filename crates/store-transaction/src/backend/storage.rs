@@ -32,17 +32,17 @@ pub enum BackendStorage {
 
 impl BackendStorage {
 	/// Create a new in-memory backend for testing
-	pub fn memory() -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new())
+	pub async fn memory() -> Self {
+		Self::Memory(MemoryPrimitiveStorage::new().await)
 	}
 
 	/// Create a new SQLite backend with in-memory database
-	pub fn sqlite_in_memory() -> Self {
+	pub async fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
 	}
 
 	/// Create a new SQLite backend with the given configuration
-	pub fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
+	pub async fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
 }
@@ -126,7 +126,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_memory_backend() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 
 		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
 		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
@@ -134,7 +134,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_sqlite_backend() {
-		let storage = BackendStorage::sqlite_in_memory();
+		let storage = BackendStorage::sqlite_in_memory().await;
 
 		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
 		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
@@ -142,7 +142,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch_memory() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 
 		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
 		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
@@ -156,7 +156,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch_sqlite() {
-		let storage = BackendStorage::sqlite_in_memory();
+		let storage = BackendStorage::sqlite_in_memory().await;
 
 		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
 		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();

@@ -6,7 +6,6 @@ use std::{
 		Arc, Mutex,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	thread,
 	time::Duration,
 };
 
@@ -30,6 +29,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_store_transaction::TransactionStore;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
 use reifydb_type::{Fragment, RowNumber};
+use tokio::time::sleep;
 
 #[tokio::test]
 async fn test_consumer_lifecycle() -> Result<()> {
@@ -45,7 +45,7 @@ async fn test_consumer_lifecycle() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 	assert!(test_instance.is_running());
 
-	thread::sleep(Duration::from_millis(50));
+	sleep(Duration::from_millis(50)).await;
 	assert!(test_instance.is_running());
 
 	test_instance.stop().expect("Failed to stop consumer");
@@ -71,7 +71,7 @@ async fn test_event_processing() -> Result<()> {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	thread::sleep(Duration::from_millis(200));
+	sleep(Duration::from_millis(200)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed 5 changes");
@@ -115,7 +115,7 @@ async fn test_checkpoint_persistence() -> Result<()> {
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 	test_instance.stop().expect("Failed to stop consumer");
 
 	let changes_first_run = consumer_clone.get_total_changes();
@@ -129,13 +129,13 @@ async fn test_checkpoint_persistence() -> Result<()> {
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 	test_instance2.stop().expect("Failed to stop consumer");
 
 	let changes_second_run = consumer2_clone.get_total_changes();
 	assert_eq!(changes_second_run, 2, "Should have processed only 2 new changes");
 
-	let mut txn = engine.begin_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query().await.expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
 		consumer: consumer_id,
 	}
@@ -165,7 +165,7 @@ async fn test_error_handling() -> Result<()> {
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
-	thread::sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(100)).await;
 
 	let changes_before_error = consumer_clone.get_total_changes();
 	assert_eq!(changes_before_error, 3, "Should have processed 3 changes before error");
@@ -173,13 +173,13 @@ async fn test_error_handling() -> Result<()> {
 	consumer_clone.set_should_fail(true);
 
 	insert_test_events(&engine, 2).await.expect("Failed to insert more test events");
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes_during_error = consumer_clone.get_total_changes();
 	assert_eq!(changes_during_error, 3, "Should not have processed new changes during error");
 
 	consumer_clone.set_should_fail(false);
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes_after_recovery = consumer_clone.get_total_changes();
 	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
@@ -200,14 +200,14 @@ async fn test_empty_events_handling() -> Result<()> {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 0, "Should have no changes to process");
 	assert_eq!(consumer_clone.get_process_count(), 0, "Should not have called consume");
 
 	insert_test_events(&engine, 1).await.expect("Failed to insert test event");
-	thread::sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(100)).await;
 
 	let changes_after_insert = consumer_clone.get_total_changes();
 	assert_eq!(changes_after_insert, 1, "Should have processed 1 change");
@@ -240,7 +240,7 @@ async fn test_multiple_consumers() -> Result<()> {
 	test_instance1.start().expect("Failed to start consumer 1");
 	test_instance2.start().expect("Failed to start consumer 2");
 
-	thread::sleep(Duration::from_millis(200));
+	sleep(Duration::from_millis(200)).await;
 
 	let changes1 = consumer1_clone.get_total_changes();
 	let changes2 = consumer2_clone.get_total_changes();
@@ -250,7 +250,7 @@ async fn test_multiple_consumers() -> Result<()> {
 
 	insert_test_events(&engine, 2).await.expect("Failed to insert more test events");
 
-	thread::sleep(Duration::from_millis(200));
+	sleep(Duration::from_millis(200)).await;
 
 	let changes1_after = consumer1_clone.get_total_changes();
 	let changes2_after = consumer2_clone.get_total_changes();
@@ -258,7 +258,7 @@ async fn test_multiple_consumers() -> Result<()> {
 	assert_eq!(changes1_after, 5, "Consumer 1 should have processed 5 changes total");
 	assert_eq!(changes2_after, 5, "Consumer 2 should have processed 5 changes total");
 
-	let mut txn = engine.begin_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query().await.expect("Failed to begin transaction");
 
 	let consumer1_key = CdcConsumerKey {
 		consumer: consumer_id1,
@@ -300,7 +300,7 @@ async fn test_non_table_events_filtered() -> Result<()> {
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
-	let mut txn = engine.begin_command().expect("Failed to begin transaction");
+	let mut txn = engine.begin_command().await.expect("Failed to begin transaction");
 
 	let table_key = RowKey {
 		source: SourceId::table(1),
@@ -315,13 +315,13 @@ async fn test_non_table_events_filtered() -> Result<()> {
 		.await
 		.expect("Failed to set non-table encoded");
 
-	txn.commit().expect("Failed to commit transaction");
+	txn.commit().await.expect("Failed to commit transaction");
 
 	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	test_instance.start().expect("Failed to start consumer");
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 	test_instance.stop().expect("Failed to stop consumer");
 
 	// The transaction contains both changes, but it was included because it has at least one table encoded
@@ -367,7 +367,7 @@ async fn test_rapid_start_stop() -> Result<()> {
 		test_instance.start().expect("Failed to start consumer");
 		assert!(test_instance.is_running());
 
-		thread::sleep(Duration::from_millis(10));
+		sleep(Duration::from_millis(10)).await;
 
 		test_instance.stop().expect("Failed to stop consumer");
 		assert!(!test_instance.is_running());
@@ -392,7 +392,7 @@ async fn test_batch_size_limits_processing() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for processing - should take at least 3 cycles (10, 10, 5)
-	thread::sleep(Duration::from_millis(300));
+	sleep(Duration::from_millis(300)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 25, "Should have processed all 25 changes");
@@ -421,7 +421,7 @@ async fn test_batch_size_one_processes_sequentially() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for processing
-	thread::sleep(Duration::from_millis(400));
+	sleep(Duration::from_millis(400)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed all 5 changes");
@@ -450,7 +450,7 @@ async fn test_batch_size_none_processes_all_at_once() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for processing
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 20, "Should have processed all 20 changes");
@@ -479,7 +479,7 @@ async fn test_batch_size_larger_than_events() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for processing
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed all 5 changes");
@@ -508,7 +508,7 @@ async fn test_batch_size_with_checkpoint_resume() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for partial processing
-	thread::sleep(Duration::from_millis(180));
+	sleep(Duration::from_millis(180)).await;
 	test_instance.stop().expect("Failed to stop consumer");
 
 	let changes_first_run = consumer_clone.get_total_changes();
@@ -524,7 +524,7 @@ async fn test_batch_size_with_checkpoint_resume() -> Result<()> {
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
-	thread::sleep(Duration::from_millis(250));
+	sleep(Duration::from_millis(250)).await;
 	test_instance2.stop().expect("Failed to stop consumer");
 
 	let changes_second_run = consumer2_clone.get_total_changes();
@@ -552,7 +552,7 @@ async fn test_batch_size_exact_match() -> Result<()> {
 	test_instance.start().expect("Failed to start consumer");
 
 	// Wait for processing
-	thread::sleep(Duration::from_millis(150));
+	sleep(Duration::from_millis(150)).await;
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 10, "Should have processed all 10 changes");
@@ -591,7 +591,7 @@ async fn test_multiple_consumers_different_batch_sizes() -> Result<()> {
 	test_instance2.start().expect("Failed to start consumer 2");
 
 	// Wait for processing
-	thread::sleep(Duration::from_millis(400));
+	sleep(Duration::from_millis(400)).await;
 
 	let changes1 = consumer1_clone.get_total_changes();
 	let changes2 = consumer2_clone.get_total_changes();
@@ -615,7 +615,7 @@ async fn test_multiple_consumers_different_batch_sizes() -> Result<()> {
 async fn create_test_engine() -> Result<StandardEngine> {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
-	let store = TransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory().await;
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
@@ -698,14 +698,14 @@ impl CdcConsume for TestConsumer {
 
 async fn insert_test_events(engine: &StandardEngine, count: usize) -> Result<()> {
 	for i in 0..count {
-		let mut txn = engine.begin_command()?;
+		let mut txn = engine.begin_command().await?;
 		let key = RowKey {
 			source: SourceId::table(1),
 			row: RowNumber((i + 1) as u64),
 		};
 		let value = format!("value_{}", i);
 		txn.set(&key.encode(), EncodedValues(CowVec::new(value.into_bytes()))).await?;
-		txn.commit()?;
+		txn.commit().await?;
 	}
 
 	Ok(())

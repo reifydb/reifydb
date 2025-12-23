@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use bincode::{config::standard, serde::decode_from_slice};
 use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
@@ -277,6 +277,8 @@ impl ScalarFunction for FlowNodeTypeToJson {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use bincode::{config::standard, serde::encode_to_vec};
 	use reifydb_core::{
 		JoinType, SortDirection, SortKey, WindowSize, WindowType,

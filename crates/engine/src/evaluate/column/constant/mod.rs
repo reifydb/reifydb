@@ -15,9 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::expression::ConstantExpression;
-use reifydb_type::{
-	Fragment, Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint,
-};
+use reifydb_type::{Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint};
 use temporal::TemporalParser;
 use text::TextParser;
 

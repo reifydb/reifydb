@@ -131,7 +131,7 @@ mod tests {
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]).await;
 
-		create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
+		create_flow_edge(&mut txn, flow.id, node1.id, node2.id).await;
 
 		let edges = CatalogStore::list_flow_edges_all(&mut txn).await.unwrap();
 		assert_eq!(edges.len(), 1);
@@ -158,8 +158,8 @@ mod tests {
 		let node2a = create_flow_node(&mut txn, flow2.id, 1, &[0x03]).await;
 		let node2b = create_flow_node(&mut txn, flow2.id, 4, &[0x04]).await;
 
-		create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
-		create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);
+		create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id).await;
+		create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id).await;
 
 		let all_edges = CatalogStore::list_flow_edges_all(&mut txn).await.unwrap();
 		assert_eq!(all_edges.len(), 2);

@@ -13,11 +13,15 @@ use crate::transaction::FlowTransaction;
 /// Helper functions for state operations that can be used by any stateful trait
 
 /// Get raw bytes for a key
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+pub async fn state_get(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
-	match tokio::runtime::Handle::current().block_on(txn.get(&encoded_key))? {
+	match txn.get(&encoded_key).await? {
 		Some(multi) => Ok(Some(multi)),
 		None => Ok(None),
 	}
@@ -45,7 +49,7 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 }
 
 /// Get raw bytes for a key from internal state (not subject to retention policies)
-pub fn internal_state_get(
+pub async fn internal_state_get(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
@@ -53,7 +57,7 @@ pub fn internal_state_get(
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
-	match tokio::runtime::Handle::current().block_on(txn.get(&encoded_key))? {
+	match txn.get(&encoded_key).await? {
 		Some(multi) => Ok(Some(multi)),
 		None => Ok(None),
 	}
@@ -110,13 +114,13 @@ pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Re
 }
 
 /// Load state for a key, creating if not exists
-pub fn load_or_create_row(
+pub async fn load_or_create_row(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	layout: &EncodedValuesLayout,
 ) -> crate::Result<EncodedValues> {
-	match state_get(id, txn, key)? {
+	match state_get(id, txn, key).await? {
 		Some(row) => Ok(row),
 		None => Ok(layout.allocate()),
 	}
@@ -154,7 +158,7 @@ mod tests {
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Get should return the value
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
 	}
@@ -166,7 +170,7 @@ mod tests {
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
 
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap();
 		assert!(result.is_none());
 	}
 
@@ -181,12 +185,12 @@ mod tests {
 
 		// Set initial value
 		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 		assert_row_eq(&result, &value1);
 
 		// Update value
 		state_set(node_id, &mut txn, &key, value2.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 		assert_row_eq(&result, &value2);
 	}
 
@@ -200,11 +204,11 @@ mod tests {
 
 		// Set and verify
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
-		assert!(state_get(node_id, &mut txn, &key).unwrap().is_some());
+		assert!(state_get(node_id, &mut txn, &key).await.unwrap().is_some());
 
 		// Remove and verify
 		state_remove(node_id, &mut txn, &key).unwrap();
-		assert!(state_get(node_id, &mut txn, &key).unwrap().is_none());
+		assert!(state_get(node_id, &mut txn, &key).await.unwrap().is_none());
 	}
 
 	#[tokio::test]
@@ -321,7 +325,7 @@ mod tests {
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Load should return existing
-		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();
+		let result = load_or_create_row(node_id, &mut txn, &key, &layout).await.unwrap();
 		assert_row_eq(&result, &value);
 	}
 
@@ -334,7 +338,7 @@ mod tests {
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
 
 		// Load non-existing should create new
-		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();
+		let result = load_or_create_row(node_id, &mut txn, &key, &layout).await.unwrap();
 		// Should create a encoded with the expected layout
 		assert!(result.len() > 0);
 	}
@@ -351,7 +355,7 @@ mod tests {
 		save_row(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Verify saved
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
 	}
@@ -378,16 +382,16 @@ mod tests {
 		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
 
 		// Each operator should have its own value
-		let result1 = state_get(node1, &mut txn, &key).unwrap().unwrap();
-		let result2 = state_get(node2, &mut txn, &key).unwrap().unwrap();
+		let result1 = state_get(node1, &mut txn, &key).await.unwrap().unwrap();
+		let result2 = state_get(node2, &mut txn, &key).await.unwrap().unwrap();
 
 		assert_row_eq(&result1, &value1);
 		assert_row_eq(&result2, &value2);
 
 		// Clearing one operator shouldn't affect the other
 		state_clear(node1, &mut txn).await.unwrap();
-		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
-		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());
+		assert!(state_get(node1, &mut txn, &key).await.unwrap().is_none());
+		assert!(state_get(node2, &mut txn, &key).await.unwrap().is_some());
 	}
 
 	#[tokio::test]
@@ -402,7 +406,7 @@ mod tests {
 
 		// Store and retrieve
 		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 
 		assert_row_eq(&result, &large_value);
 	}

@@ -403,7 +403,7 @@ where
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	async fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
+	pub(crate) async fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}

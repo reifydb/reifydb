@@ -94,10 +94,13 @@ async fn test_black_white() {
 	let mut white = engine.begin_command().await.unwrap();
 	let indices = white
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|sv| {
-			if *sv.values() == as_values!("black".to_string()) {
-				Some(sv.key().clone())
+			if sv.values == as_values!("black".to_string()) {
+				Some(sv.key.clone())
 			} else {
 				None
 			}
@@ -111,10 +114,13 @@ async fn test_black_white() {
 	let mut black = engine.begin_command().await.unwrap();
 	let indices = black
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|sv| {
-			if *sv.values() == as_values!("white".to_string()) {
-				Some(sv.key().clone())
+			if sv.values == as_values!("white".to_string()) {
+				Some(sv.key.clone())
 			} else {
 				None
 			}
@@ -130,7 +136,7 @@ async fn test_black_white() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
-	let result: Vec<_> = rx.range(EncodedKeyRange::all()).unwrap().collect();
+	let result = rx.range(EncodedKeyRange::all()).await.unwrap().items;
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
@@ -189,11 +195,14 @@ async fn test_primary_colors() {
 
 	let mut red = engine.begin_command().await.unwrap();
 	let indices = red
-		.range(EncodedKeyRange::all())
+		.range_batch(EncodedKeyRange::all(), 15000)
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|sv| {
-			if *sv.values() == as_values!("yellow".to_string()) {
-				Some(sv.key().clone())
+			if sv.values == as_values!("yellow".to_string()) {
+				Some(sv.key.clone())
 			} else {
 				None
 			}
@@ -205,11 +214,14 @@ async fn test_primary_colors() {
 
 	let mut yellow = engine.begin_command().await.unwrap();
 	let indices = yellow
-		.range(EncodedKeyRange::all())
+		.range_batch(EncodedKeyRange::all(), 15000)
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|sv| {
-			if *sv.values() == as_values!("blue".to_string()) {
-				Some(sv.key().clone())
+			if sv.values == as_values!("blue".to_string()) {
+				Some(sv.key.clone())
 			} else {
 				None
 			}
@@ -221,11 +233,14 @@ async fn test_primary_colors() {
 
 	let mut red_two = engine.begin_command().await.unwrap();
 	let indices = red_two
-		.range(EncodedKeyRange::all())
+		.range_batch(EncodedKeyRange::all(), 15000)
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|sv| {
-			if *sv.values() == as_values!("blue".to_string()) {
-				Some(sv.key().clone())
+			if sv.values == as_values!("blue".to_string()) {
+				Some(sv.key.clone())
 			} else {
 				None
 			}
@@ -243,7 +258,7 @@ async fn test_primary_colors() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
-	let result: Vec<_> = rx.range(EncodedKeyRange::all()).unwrap().collect();
+	let result = rx.range_batch(EncodedKeyRange::all(), 15000).await.unwrap().items;
 	assert_eq!(result.len(), 9000);
 
 	let mut red_count = 0;
@@ -282,10 +297,13 @@ async fn test_intersecting_data() {
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|tv| {
-			let key = from_key!(String, tv.key());
-			let value = from_values!(u64, *tv.values());
+			let key = from_key!(String, &tv.key);
+			let value = from_values!(u64, tv.values);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -300,10 +318,13 @@ async fn test_intersecting_data() {
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|tv| {
-			let key = from_key!(String, tv.key());
-			let value = from_values!(u64, *tv.values());
+			let key = from_key!(String, &tv.key);
+			let value = from_values!(u64, tv.values);
 			if key.starts_with('b') {
 				Some(value)
 			} else {
@@ -315,17 +336,20 @@ async fn test_intersecting_data() {
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
 
-	txn2.commit().unwrap();
-	let err = txn1.commit().unwrap_err();
+	txn2.commit().await.unwrap();
+	let err = txn1.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|tv| {
-			let key = from_key!(String, tv.key());
-			let value = from_values!(u64, *tv.values());
+			let key = from_key!(String, &tv.key);
+			let value = from_values!(u64, tv.values);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -353,8 +377,11 @@ async fn test_intersecting_data2() {
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
 		.range(EncodedKeyRange::parse("a..b"))
+		.await
 		.unwrap()
-		.map(|tv| from_values!(u64, *tv.values()))
+		.items
+		.into_iter()
+		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
 
 	txn1.set(&as_key!("b3"), as_values!(10)).unwrap();
@@ -363,24 +390,30 @@ async fn test_intersecting_data2() {
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
 		.range(EncodedKeyRange::parse("b..c"))
+		.await
 		.unwrap()
-		.map(|tv| from_values!(u64, *tv.values()))
+		.items
+		.into_iter()
+		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
 
 	assert_eq!(300, val);
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
-	txn2.commit().unwrap();
+	txn2.commit().await.unwrap();
 
-	let err = txn1.commit().unwrap_err();
+	let err = txn1.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|tv| {
-			let key = from_key!(String, tv.key());
-			let value = from_values!(u64, *tv.values());
+			let key = from_key!(String, &tv.key);
+			let value = from_values!(u64, tv.values);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -406,8 +439,11 @@ async fn test_intersecting_data3() {
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
 		.range(EncodedKeyRange::parse("a..b"))
+		.await
 		.unwrap()
-		.map(|tv| from_values!(u64, *tv.values()))
+		.items
+		.into_iter()
+		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
 	txn1.set(&as_key!("b3"), as_values!(0u64)).unwrap();
 	assert_eq!(0, val);
@@ -415,23 +451,29 @@ async fn test_intersecting_data3() {
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
 		.range(EncodedKeyRange::parse("b..c"))
+		.await
 		.unwrap()
-		.map(|tv| from_values!(u64, *tv.values()))
+		.items
+		.into_iter()
+		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
 
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
-	txn2.commit().unwrap();
-	let err = txn1.commit().unwrap_err();
+	txn2.commit().await.unwrap();
+	let err = txn1.commit().await.unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
 		.range(EncodedKeyRange::all())
+		.await
 		.unwrap()
+		.items
+		.into_iter()
 		.filter_map(|tv| {
-			let key = from_key!(String, tv.key());
-			let value = from_values!(u64, *tv.values());
+			let key = from_key!(String, &tv.key);
+			let value = from_values!(u64, tv.values);
 			if key.starts_with('a') {
 				Some(value)
 			} else {

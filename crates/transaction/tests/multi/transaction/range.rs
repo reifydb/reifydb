@@ -53,16 +53,16 @@ async fn test_range2() {
 
 	let batch = txn.range(four_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=3).rev().zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 1);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 1);
 	}
 
 	let batch = txn.range_rev(four_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=3).zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 1);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 1);
 	}
 
 	txn.commit().await.unwrap();
@@ -76,16 +76,16 @@ async fn test_range2() {
 
 	let batch = txn.range(seven_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=6).rev().zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 2);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 2);
 	}
 
 	let batch = txn.range_rev(seven_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=6).zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 2);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 2);
 	}
 }
 
@@ -101,16 +101,16 @@ async fn test_range3() {
 
 	let batch = txn.range(seven_to_four.clone()).await.unwrap();
 	for (expected, v) in (4..=6).rev().zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 1);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 1);
 	}
 
 	let batch = txn.range_rev(seven_to_four.clone()).await.unwrap();
 	for (expected, v) in (4..=6).zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 1);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 1);
 	}
 
 	txn.commit().await.unwrap();
@@ -124,16 +124,16 @@ async fn test_range3() {
 
 	let batch = txn.range(five_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=5).rev().zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 2);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 2);
 	}
 
 	let batch = txn.range_rev(five_to_one.clone()).await.unwrap();
 	for (expected, v) in (1..=5).zip(batch.items) {
-		assert_eq!(v.key(), &as_key!(expected));
-		assert_eq!(v.values(), &as_values!(expected));
-		assert_eq!(v.version(), 2);
+		assert_eq!(&v.key, &as_key!(expected));
+		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(v.version, 2);
 	}
 }
 
@@ -184,19 +184,19 @@ async fn test_range_edge() {
 		assert_eq!(5, engine.version().await.unwrap());
 	}
 
-	let check_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()));
+			assert_eq!(expected[i], from_values!(u64, &r.values));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |items: Vec<_>, expected: &[u64]| {
+	let check_rev_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, *r.values()));
+			assert_eq!(expected[i], from_values!(u64, &r.values));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -214,11 +214,11 @@ async fn test_range_edge() {
 	let batch = txn.range(ten_to_one.clone()).await.unwrap();
 	let mut count = 2;
 	for v in batch.items {
-		if *v.key() == as_key!(1) {
+		if v.key == as_key!(1) {
 			count -= 1;
 		}
 
-		if *v.key() == as_key!(3) {
+		if v.key == as_key!(3) {
 			count -= 1;
 		}
 	}
@@ -227,11 +227,11 @@ async fn test_range_edge() {
 	let batch = txn.range(ten_to_one.clone()).await.unwrap();
 	let mut count = 2;
 	for v in batch.items {
-		if *v.key() == as_key!(1) {
+		if v.key == as_key!(1) {
 			count -= 1;
 		}
 
-		if *v.key() == as_key!(3) {
+		if v.key == as_key!(3) {
 			count -= 1;
 		}
 	}

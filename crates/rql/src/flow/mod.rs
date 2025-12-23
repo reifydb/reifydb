@@ -20,15 +20,10 @@ mod source;
 use std::marker::PhantomData;
 
 use bincode::{config::standard, serde::encode_to_vec};
-use reifydb_catalog::{
-	CatalogStore,
-	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
-};
 use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, ViewDef};
 use reifydb_type::Blob;
 
 use self::{
-	conversion::to_owned_physical_plan,
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
 		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, merge::MergeCompiler, sort::SortCompiler,

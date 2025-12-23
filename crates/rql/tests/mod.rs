@@ -52,65 +52,73 @@ impl testscript::Runner for Runner {
 				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 
-				let mut dummy_tx = create_test_command_transaction();
+				let rt = tokio::runtime::Runtime::new().unwrap();
+				let result = rt.block_on(async {
+					let mut dummy_tx = create_test_command_transaction().await;
 
-				let default_namespace = CatalogStore::create_namespace(
-					&mut dummy_tx,
-					NamespaceToCreate {
-						namespace_fragment: None,
-						name: "default".to_string(),
-					},
-				)
-				.unwrap();
+					let default_namespace = CatalogStore::create_namespace(
+						&mut dummy_tx,
+						NamespaceToCreate {
+							namespace_fragment: None,
+							name: "default".to_string(),
+						},
+					)
+					.await
+					.unwrap();
 
-				CatalogStore::create_table(
-					&mut dummy_tx,
-					TableToCreate {
-						fragment: None,
-						table: "users".to_string(),
-						namespace: default_namespace.id,
-						columns: vec![],
-						retention_policy: None,
-					},
-				)
-				.unwrap();
+					CatalogStore::create_table(
+						&mut dummy_tx,
+						TableToCreate {
+							fragment: None,
+							table: "users".to_string(),
+							namespace: default_namespace.id,
+							columns: vec![],
+							retention_policy: None,
+						},
+					)
+					.await
+					.unwrap();
 
-				CatalogStore::create_table(
-					&mut dummy_tx,
-					TableToCreate {
-						fragment: None,
-						table: "orders".to_string(),
-						namespace: default_namespace.id,
-						columns: vec![],
-						retention_policy: None,
-					},
-				)
-				.unwrap();
+					CatalogStore::create_table(
+						&mut dummy_tx,
+						TableToCreate {
+							fragment: None,
+							table: "orders".to_string(),
+							namespace: default_namespace.id,
+							columns: vec![],
+							retention_policy: None,
+						},
+					)
+					.await
+					.unwrap();
 
-				// Also create test namespace for tests that
-				// explicitly use test.users
-				let test_ns = CatalogStore::create_namespace(
-					&mut dummy_tx,
-					NamespaceToCreate {
-						namespace_fragment: None,
-						name: "test".to_string(),
-					},
-				)
-				.unwrap();
+					// Also create test namespace for tests that
+					// explicitly use test.users
+					let test_ns = CatalogStore::create_namespace(
+						&mut dummy_tx,
+						NamespaceToCreate {
+							namespace_fragment: None,
+							name: "test".to_string(),
+						},
+					)
+					.await
+					.unwrap();
 
-				CatalogStore::create_table(
-					&mut dummy_tx,
-					TableToCreate {
-						fragment: None,
-						table: "users".to_string(),
-						namespace: test_ns.id,
-						columns: vec![],
-						retention_policy: None,
-					},
-				)
-				.unwrap();
+					CatalogStore::create_table(
+						&mut dummy_tx,
+						TableToCreate {
+							fragment: None,
+							table: "users".to_string(),
+							namespace: test_ns.id,
+							columns: vec![],
+							retention_policy: None,
+						},
+					)
+					.await
+					.unwrap();
 
-				let result = explain_logical_plan(&mut dummy_tx, query).unwrap();
+					explain_logical_plan(&mut dummy_tx, query).await.unwrap()
+				});
 				writeln!(output, "{}", result).unwrap();
 			}
 			// physical QUERY
@@ -119,42 +127,48 @@ impl testscript::Runner for Runner {
 				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 
-				let mut dummy_tx = create_test_command_transaction();
+				let rt = tokio::runtime::Runtime::new().unwrap();
+				let result = rt.block_on(async {
+					let mut dummy_tx = create_test_command_transaction().await;
 
-				let namespace = CatalogStore::create_namespace(
-					&mut dummy_tx,
-					NamespaceToCreate {
-						namespace_fragment: None,
-						name: "default".to_string(),
-					},
-				)
-				.unwrap();
+					let namespace = CatalogStore::create_namespace(
+						&mut dummy_tx,
+						NamespaceToCreate {
+							namespace_fragment: None,
+							name: "default".to_string(),
+						},
+					)
+					.await
+					.unwrap();
 
-				CatalogStore::create_table(
-					&mut dummy_tx,
-					TableToCreate {
-						fragment: None,
-						table: "users".to_string(),
-						namespace: namespace.id,
-						columns: vec![],
-						retention_policy: None,
-					},
-				)
-				.unwrap();
+					CatalogStore::create_table(
+						&mut dummy_tx,
+						TableToCreate {
+							fragment: None,
+							table: "users".to_string(),
+							namespace: namespace.id,
+							columns: vec![],
+							retention_policy: None,
+						},
+					)
+					.await
+					.unwrap();
 
-				CatalogStore::create_table(
-					&mut dummy_tx,
-					TableToCreate {
-						fragment: None,
-						table: "orders".to_string(),
-						namespace: namespace.id,
-						columns: vec![],
-						retention_policy: None,
-					},
-				)
-				.unwrap();
+					CatalogStore::create_table(
+						&mut dummy_tx,
+						TableToCreate {
+							fragment: None,
+							table: "orders".to_string(),
+							namespace: namespace.id,
+							columns: vec![],
+							retention_policy: None,
+						},
+					)
+					.await
+					.unwrap();
 
-				let result = explain_physical_plan(&mut dummy_tx, query).unwrap();
+					explain_physical_plan(&mut dummy_tx, query).await.unwrap()
+				});
 				writeln!(output, "{}", result).unwrap();
 			}
 			_ => unimplemented!(),

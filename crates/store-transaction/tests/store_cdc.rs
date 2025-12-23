@@ -31,7 +31,7 @@ fn test_memory(path: &Path) {
 	let (config, store) = runtime.block_on(async {
 		let config = TransactionStoreConfig {
 			hot: Some(BackendConfig {
-				storage: BackendStorage::memory(),
+				storage: BackendStorage::memory().await,
 				retention_period: Duration::from_secs(300),
 			}),
 			warm: None,
@@ -54,7 +54,7 @@ fn test_sqlite(path: &Path) {
 		let (config, store) = runtime.block_on(async {
 			let config = TransactionStoreConfig {
 				hot: Some(BackendConfig {
-					storage: BackendStorage::sqlite_in_memory(),
+					storage: BackendStorage::sqlite_in_memory().await,
 					retention_period: Duration::from_secs(86400),
 				}),
 				warm: None,

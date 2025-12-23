@@ -113,7 +113,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_drop_all_versions() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -132,7 +132,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_drop_up_to_version() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -154,7 +154,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_drop_up_to_version_boundary() {
 		// Test exact boundary - version == threshold should NOT be dropped
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -169,7 +169,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_keep_last_n_versions() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -191,7 +191,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_keep_more_than_exists() {
 		// Keep 10 but only 3 exist - should drop nothing
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -205,7 +205,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_keep_zero_versions() {
 		// Keep 0 = drop all
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -218,7 +218,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_keep_one_version() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -234,7 +234,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_combined_constraints_keep_protects() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -263,7 +263,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_combined_constraints_version_restricts() {
 		// Test case where up_to_version is more restrictive than keep_last
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -288,7 +288,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_combined_constraints_both_aggressive() {
 		// Both constraints are aggressive
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -318,7 +318,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_empty_storage() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"nonexistent";
 
@@ -328,7 +328,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_version_drop_all() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -341,7 +341,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_version_keep_one() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -354,7 +354,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_different_keys_isolated() {
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 
 		setup_versioned_entries(&storage, table, b"key_a", &[1, 2, 3]).await;
@@ -374,7 +374,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_up_to_version_zero() {
 		// up_to_version=0 means drop nothing (no versions < 0)
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 
@@ -388,7 +388,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_up_to_version_max() {
 		// up_to_version=MAX means drop all (all versions < MAX)
-		let storage = BackendStorage::memory();
+		let storage = BackendStorage::memory().await;
 		let table = TableId::Multi;
 		let key = b"test_key";
 

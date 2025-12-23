@@ -817,7 +817,7 @@ impl ResolvedColumn {
 
 // Helper function to convert ResolvedColumn to NumberOfRangeColumnDescriptor
 // This is used in evaluation context for error reporting
-pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOfRangeColumnDescriptor {
+pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOfRangeColumnDescriptor<'_> {
 	let (namespace, table) = match column.source() {
 		ResolvedSource::Table(table) => (Some(table.namespace().name().as_ref()), Some(table.name().as_ref())),
 		ResolvedSource::TableVirtual(table) => {

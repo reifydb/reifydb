@@ -38,18 +38,21 @@ pub struct CallbackRunner {
 	session: Option<WsCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
-	runtime: Runtime,
+	runtime: Arc<Runtime>,
 }
 
 impl CallbackRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
 			last_command_result: Arc::new(Mutex::new(None)),
 			last_query_result: Arc::new(Mutex::new(None)),
-			runtime: Runtime::new().unwrap(),
+			runtime,
 		}
 	}
 }
@@ -296,5 +299,11 @@ impl testscript::Runner for CallbackRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback_ws => test_callback }
 
 fn test_callback(path: &Path) {
-	retry(3, || testscript::run_path(&mut CallbackRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(transaction(memory())).unwrap();
+		testscript::run_path(&mut CallbackRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

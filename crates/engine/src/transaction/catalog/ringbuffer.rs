@@ -7,7 +7,6 @@ use reifydb_core::interface::{
 	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId,
 	TransactionalRingBufferChanges,
 };
-use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 

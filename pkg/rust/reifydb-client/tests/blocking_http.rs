@@ -2,7 +2,7 @@
 // This file is licensed under the MIT
 mod common;
 
-use std::{error::Error, path::Path};
+use std::{error::Error, path::Path, sync::Arc};
 
 use common::{
 	cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_http_port,
@@ -24,16 +24,19 @@ pub struct BlockingRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
 	session: Option<HttpBlockingSession>,
-	runtime: Runtime,
+	runtime: Arc<Runtime>,
 }
 
 impl BlockingRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
-			runtime: Runtime::new().unwrap(),
+			runtime,
 		}
 	}
 }
@@ -122,5 +125,11 @@ impl testscript::Runner for BlockingRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
-	retry(3, || testscript::run_path(&mut BlockingRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(transaction(memory())).unwrap();
+		testscript::run_path(&mut BlockingRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

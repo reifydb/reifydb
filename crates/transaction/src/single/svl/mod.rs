@@ -143,13 +143,13 @@ mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default())
+	async fn create_test_svl() -> TransactionSvl {
+		TransactionSvl::new(TransactionStore::testing_memory().await, EventBus::default())
 	}
 
 	#[tokio::test]
 	async fn test_allowed_key_query() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key = make_key("test_key");
 
 		// Start scoped query with the key
@@ -162,7 +162,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_disallowed_key_query() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key1 = make_key("allowed");
 		let key2 = make_key("disallowed");
 
@@ -182,7 +182,7 @@ mod tests {
 	#[tokio::test]
 	#[should_panic(expected = "SVL transactions must declare keys upfront - empty keysets are not allowed")]
 	async fn test_empty_keyset_query_panics() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 
 		// Should panic when trying to create transaction with empty keys
 		let _tx = svl.begin_query(std::iter::empty()).await;
@@ -191,7 +191,7 @@ mod tests {
 	#[tokio::test]
 	#[should_panic(expected = "SVL transactions must declare keys upfront - empty keysets are not allowed")]
 	async fn test_empty_keyset_command_panics() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 
 		// Should panic when trying to create transaction with empty keys
 		let _tx = svl.begin_command(std::iter::empty()).await;
@@ -199,7 +199,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_allowed_key_command() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key = make_key("test_key");
 		let value = make_value("test_value");
 
@@ -214,7 +214,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_disallowed_key_command() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key1 = make_key("allowed");
 		let key2 = make_key("disallowed");
 		let value = make_value("test_value");
@@ -234,7 +234,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_command_commit_with_valid_keys() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key1 = make_key("key1");
 		let key2 = make_key("key2");
 		let value1 = make_value("value1");
@@ -262,7 +262,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_rollback_with_scoped_keys() {
-		let svl = create_test_svl();
+		let svl = create_test_svl().await;
 		let key = make_key("test_key");
 		let value = make_value("test_value");
 
@@ -283,7 +283,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_reads() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key = make_key("shared_key");
 		let value = make_value("shared_value");
 
@@ -318,7 +318,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_writers_disjoint_keys() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 
 		// Spawn multiple writers with disjoint keys
 		let mut handles = vec![];
@@ -354,7 +354,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_readers_and_writer() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key1 = make_key("key1");
 		let key2 = make_key("key2");
 		let value1 = make_value("value1");
@@ -402,7 +402,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_no_panics_with_rwlock() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 
 		// Mix of operations across multiple tasks
 		let mut handles = vec![];
@@ -433,7 +433,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_write_blocks_concurrent_write() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key = make_key("blocking_key");
 		let barrier = Arc::new(tokio::sync::Barrier::new(2));
 
@@ -483,7 +483,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_write_blocks_concurrent_read() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key = make_key("blocking_key");
 
 		// Write initial value
@@ -538,7 +538,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_concurrent_reads_allowed() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key = make_key("shared_read_key");
 
 		// Write initial value
@@ -581,7 +581,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_overlapping_keys_different_order() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key1 = make_key("deadlock_key1");
 		let key2 = make_key("deadlock_key2");
 		let barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -627,7 +627,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_circular_dependency_three_transactions() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key1 = make_key("circular_key1");
 		let key2 = make_key("circular_key2");
 		let key3 = make_key("circular_key3");
@@ -679,7 +679,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_locks_released_on_drop() {
-		let svl = Arc::new(create_test_svl());
+		let svl = Arc::new(create_test_svl().await);
 		let key = make_key("drop_test_key");
 
 		// Task 1: Acquire lock and drop without commit

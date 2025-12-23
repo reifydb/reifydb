@@ -26,9 +26,9 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Load the operator's single state encoded
-	fn load_state(&self, txn: &mut FlowTransaction) -> crate::Result<EncodedValues> {
+	async fn load_state(&self, txn: &mut FlowTransaction) -> crate::Result<EncodedValues> {
 		let key = self.key();
-		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
+		utils::load_or_create_row(self.id(), txn, &key, &self.layout()).await
 	}
 
 	/// Save the operator's single state encoded
@@ -38,12 +38,12 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> crate::Result<EncodedValues>
+	async fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
-		let mut row = self.load_state(txn)?;
+		let mut row = self.load_state(txn).await?;
 		f(&layout, &mut row)?;
 		self.save_state(txn, row.clone())?;
 		Ok(row)
@@ -95,7 +95,7 @@ mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Initially should create new state
-		let state1 = operator.load_state(&mut txn).unwrap();
+		let state1 = operator.load_state(&mut txn).await.unwrap();
 
 		// Modify and save
 		let mut modified = state1.clone();
@@ -103,7 +103,7 @@ mod tests {
 		operator.save_state(&mut txn, modified.clone()).unwrap();
 
 		// Load should return modified state
-		let state2 = operator.load_state(&mut txn).unwrap();
+		let state2 = operator.load_state(&mut txn).await.unwrap();
 		assert_eq!(state2.as_ref()[0], 0x33);
 	}
 
@@ -119,12 +119,13 @@ mod tests {
 				row.make_mut()[0] = 0x77;
 				Ok(())
 			})
+			.await
 			.unwrap();
 
 		assert_eq!(result.as_ref()[0], 0x77);
 
 		// Verify persistence
-		let loaded = operator.load_state(&mut txn).unwrap();
+		let loaded = operator.load_state(&mut txn).await.unwrap();
 		assert_eq!(loaded.as_ref()[0], 0x77);
 	}
 
@@ -139,13 +140,14 @@ mod tests {
 			row.make_mut()[0] = 0x99;
 			Ok(())
 		})
+		.await
 		.unwrap();
 
 		// Clear state
 		operator.clear_state(&mut txn).unwrap();
 
 		// Loading should create new default state
-		let new_state = operator.load_state(&mut txn).unwrap();
+		let new_state = operator.load_state(&mut txn).await.unwrap();
 		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
 	}
 
@@ -162,6 +164,7 @@ mod tests {
 				row.make_mut()[0] = 0x11;
 				Ok(())
 			})
+			.await
 			.unwrap();
 
 		operator2
@@ -169,11 +172,12 @@ mod tests {
 				row.make_mut()[0] = 0x22;
 				Ok(())
 			})
+			.await
 			.unwrap();
 
 		// Verify each operator has its own state
-		let state1 = operator1.load_state(&mut txn).unwrap();
-		let state2 = operator2.load_state(&mut txn).unwrap();
+		let state1 = operator1.load_state(&mut txn).await.unwrap();
+		let state2 = operator2.load_state(&mut txn).await.unwrap();
 
 		assert_eq!(state1.as_ref()[0], 0x11);
 		assert_eq!(state2.as_ref()[0], 0x22);
@@ -193,9 +197,10 @@ mod tests {
 				row.make_mut()[0] = current.wrapping_add(1);
 				Ok(())
 			})
+			.await
 			.unwrap();
 
-			let state = operator.load_state(&mut txn).unwrap();
+			let state = operator.load_state(&mut txn).await.unwrap();
 			assert_eq!(state.as_ref()[0], i);
 		}
 	}

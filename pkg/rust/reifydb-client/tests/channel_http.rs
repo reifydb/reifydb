@@ -3,7 +3,12 @@
 
 mod common;
 
-use std::{error::Error, path::Path, sync::mpsc::Receiver, time::Duration};
+use std::{
+	error::Error,
+	path::Path,
+	sync::{Arc, mpsc::Receiver},
+	time::Duration,
+};
 
 use common::{
 	cleanup_http_client, cleanup_server, create_server_instance, parse_named_params, parse_positional_params,
@@ -25,17 +30,20 @@ pub struct ChannelRunner {
 	client: Option<HttpClient>,
 	session: Option<HttpChannelSession>,
 	receiver: Option<Receiver<HttpResponseMessage>>,
-	runtime: Runtime,
+	runtime: Arc<Runtime>,
 }
 
 impl ChannelRunner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
+	pub fn new(
+		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
+		runtime: Arc<Runtime>,
+	) -> Self {
 		Self {
-			instance: Some(create_server_instance(input)),
+			instance: Some(create_server_instance(&runtime, input)),
 			client: None,
 			session: None,
 			receiver: None,
-			runtime: Runtime::new().unwrap(),
+			runtime,
 		}
 	}
 }
@@ -280,5 +288,11 @@ impl testscript::Runner for ChannelRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_http => test_channel }
 
 fn test_channel(path: &Path) {
-	retry(3, || testscript::run_path(&mut ChannelRunner::new(transaction(memory())), path)).expect("test failed")
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		let input = runtime.block_on(transaction(memory())).unwrap();
+		testscript::run_path(&mut ChannelRunner::new(input, Arc::clone(&runtime)), path)
+	})
+	.expect("test failed")
 }

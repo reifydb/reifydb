@@ -130,17 +130,17 @@ mod tests {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// First commit some data to the underlying storage
 		let key1 = make_key("key1");
 		let key2 = make_key("key2");
 		parent.set(&key1, make_value("value1")).await.unwrap();
 		parent.set(&key2, make_value("value2")).await.unwrap();
-		let commit_version = parent.commit().unwrap();
+		let commit_version = parent.commit().await.unwrap();
 
 		// Create new parent transaction after commit
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// Verify values exist in storage
 		assert_eq!(from_store(&mut parent, &key1).await, Some(make_value("value1")));
@@ -154,10 +154,10 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// Commit parent to persist the removes
-		parent.commit().unwrap();
+		parent.commit().await.unwrap();
 
 		// Create new transaction to verify removes were persisted
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 		assert_eq!(from_store(&mut parent, &key1).await, None);
 		assert_eq!(from_store(&mut parent, &key2).await, None);
 	}
@@ -169,15 +169,15 @@ mod tests {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// First commit some data to the underlying storage
 		let existing_key = make_key("existing");
 		parent.set(&existing_key, make_value("old")).await.unwrap();
-		let commit_version = parent.commit().unwrap();
+		let commit_version = parent.commit().await.unwrap();
 
 		// Create new parent transaction after commit
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// Verify value exists in storage
 		assert_eq!(from_store(&mut parent, &existing_key).await, Some(make_value("old")));
@@ -193,10 +193,10 @@ mod tests {
 		txn.commit(&mut parent).await.unwrap();
 
 		// Commit parent to persist the changes
-		parent.commit().unwrap();
+		parent.commit().await.unwrap();
 
 		// Create new transaction to verify changes were persisted
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 		assert_eq!(from_store(&mut parent, &new_key).await, Some(make_value("value")));
 		assert_eq!(from_store(&mut parent, &existing_key).await, None);
 	}
@@ -224,15 +224,15 @@ mod tests {
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// First commit some data to the underlying storage
 		let key = make_key("key1");
 		parent.set(&key, make_value("old")).await.unwrap();
-		let commit_version = parent.commit().unwrap();
+		let commit_version = parent.commit().await.unwrap();
 
 		// Create new parent transaction after commit
-		let mut parent = engine.begin_command().unwrap();
+		let mut parent = engine.begin_command().await.unwrap();
 
 		// Verify old value exists in storage
 		assert_eq!(from_store(&mut parent, &key).await, Some(make_value("old")));

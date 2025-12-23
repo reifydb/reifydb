@@ -23,14 +23,14 @@ test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as stor
 
 fn test_memory(path: &Path) {
 	let runtime = Runtime::new().unwrap();
-	let storage = runtime.block_on(async { BackendStorage::memory() });
+	let storage = runtime.block_on(async { BackendStorage::memory().await });
 	testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let runtime = Runtime::new().unwrap();
-		let storage = runtime.block_on(async { BackendStorage::sqlite_in_memory() });
+		let storage = runtime.block_on(async { BackendStorage::sqlite_in_memory().await });
 		testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path)
 	})
 	.expect("test failed")

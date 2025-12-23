@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-#![cfg_attr(not(debug_assertions), deny(warnings))]
+// #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod error;
 pub mod fragment;

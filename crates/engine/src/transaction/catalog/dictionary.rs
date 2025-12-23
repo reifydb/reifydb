@@ -7,7 +7,6 @@ use reifydb_core::interface::{
 	Change, DictionaryDef, DictionaryId, NamespaceId, OperationType, OperationType::Delete,
 	TransactionalDictionaryChanges,
 };
-use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 

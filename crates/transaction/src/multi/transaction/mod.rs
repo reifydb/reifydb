@@ -209,7 +209,7 @@ impl Inner {
 
 impl TransactionMulti {
 	pub async fn testing() -> Self {
-		let store = TransactionStore::testing_memory();
+		let store = TransactionStore::testing_memory().await;
 		let event_bus = EventBus::new();
 		Self::new(
 			store.clone(),

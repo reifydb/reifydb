@@ -10,8 +10,8 @@ use crate::{operator::transform::TransformOperator, transaction::FlowTransaction
 /// This is the foundation for operators that need state management
 pub trait RawStatefulOperator: TransformOperator {
 	/// Get raw bytes for a key
-	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
-		utils::state_get(self.id(), txn, key)
+	async fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+		utils::state_get(self.id(), txn, key).await
 	}
 
 	/// Set raw bytes for a key
@@ -70,11 +70,11 @@ mod tests {
 		let value = test_row();
 
 		// Initially should be None
-		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
+		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
 
 		// Set and verify
 		operator.state_set(&mut txn, &key, value.clone()).unwrap();
-		let result = operator.state_get(&mut txn, &key).unwrap();
+		let result = operator.state_get(&mut txn, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
 	}
@@ -89,10 +89,10 @@ mod tests {
 
 		// Set, verify, remove, verify
 		operator.state_set(&mut txn, &key, value).unwrap();
-		assert!(operator.state_get(&mut txn, &key).unwrap().is_some());
+		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_some());
 
 		operator.state_remove(&mut txn, &key).unwrap();
-		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
+		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
 	}
 
 	#[tokio::test]
@@ -184,8 +184,8 @@ mod tests {
 		operator2.state_set(&mut txn, &shared_key, value2.clone()).unwrap();
 
 		// Each operator should have its own value
-		let result1 = operator1.state_get(&mut txn, &shared_key).unwrap().unwrap();
-		let result2 = operator2.state_get(&mut txn, &shared_key).unwrap().unwrap();
+		let result1 = operator1.state_get(&mut txn, &shared_key).await.unwrap().unwrap();
+		let result2 = operator2.state_get(&mut txn, &shared_key).await.unwrap().unwrap();
 
 		assert_row_eq(&result1, &value1);
 		assert_row_eq(&result2, &value2);
@@ -228,7 +228,7 @@ mod tests {
 		operator.state_set(&mut txn, &key, value2.clone()).unwrap();
 
 		// Should have the new value
-		let result = operator.state_get(&mut txn, &key).unwrap().unwrap();
+		let result = operator.state_get(&mut txn, &key).await.unwrap().unwrap();
 		assert_row_eq(&result, &value2);
 	}
 
@@ -243,7 +243,7 @@ mod tests {
 		operator.state_remove(&mut txn, &key).unwrap();
 
 		// Should still be None
-		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
+		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
 	}
 
 	#[tokio::test]
@@ -275,24 +275,24 @@ mod tests {
 		let key = test_key("isolation");
 
 		// Transaction 1: Write a value
-		let mut parent_txn1 = engine.begin_command().unwrap();
+		let mut parent_txn1 = engine.begin_command().await.unwrap();
 		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1)).await;
 		let value1 = EncodedValues(CowVec::new(vec![1]));
 		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
 
 		// Transaction 2: Should not see uncommitted value
-		let parent_txn2 = engine.begin_command().unwrap();
+		let parent_txn2 = engine.begin_command().await.unwrap();
 		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2)).await;
-		assert!(operator.state_get(&mut flow_txn2, &key).unwrap().is_none());
+		assert!(operator.state_get(&mut flow_txn2, &key).await.unwrap().is_none());
 
 		// Commit transaction 1
 		flow_txn1.commit(&mut parent_txn1).await.unwrap();
-		parent_txn1.commit().unwrap();
+		parent_txn1.commit().await.unwrap();
 
 		// Transaction 3: Should now see the value
-		let parent_txn3 = engine.begin_command().unwrap();
+		let parent_txn3 = engine.begin_command().await.unwrap();
 		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3)).await;
-		let result = operator.state_get(&mut flow_txn3, &key).unwrap();
+		let result = operator.state_get(&mut flow_txn3, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value1);
 	}

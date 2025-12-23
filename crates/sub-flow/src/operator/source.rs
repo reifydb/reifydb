@@ -42,7 +42,7 @@ impl Operator for SourceTableOperator {
 		Ok(change)
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
 			let key = RowKey {
@@ -50,7 +50,7 @@ impl Operator for SourceTableOperator {
 				row: *row,
 			}
 			.encode();
-			result.push(tokio::runtime::Handle::current().block_on(txn.get(&key))?.map(|values| Row {
+			result.push(txn.get(&key).await?.map(|values| Row {
 				number: *row,
 				encoded: values,
 				layout: (&self.table).into(),
@@ -89,7 +89,7 @@ impl Operator for SourceViewOperator {
 		Ok(change)
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
 			let key = RowKey {
@@ -97,7 +97,7 @@ impl Operator for SourceViewOperator {
 				row: *row,
 			}
 			.encode();
-			result.push(tokio::runtime::Handle::current().block_on(txn.get(&key))?.map(|encoded| Row {
+			result.push(txn.get(&key).await?.map(|encoded| Row {
 				number: *row,
 				encoded,
 				layout: (&self.view).into(),
@@ -136,7 +136,7 @@ impl Operator for SourceFlowOperator {
 		Ok(change)
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		// let mut result = Vec::with_capacity(rows.len());
 		// for row in rows {
 		// 	result.push(txn

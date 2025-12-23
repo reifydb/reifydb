@@ -7,7 +7,6 @@ use reifydb_core::interface::{
 	OperationType::{Create, Delete, Update},
 	TransactionalViewChanges, ViewDef, ViewId,
 };
-use reifydb_type::Fragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
