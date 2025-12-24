@@ -37,6 +37,9 @@ impl BufferFFI {
 	}
 
 	/// Get the buffer as a slice (unsafe - caller must ensure pointer validity)
+	///
+	/// # Safety
+	/// Caller must ensure the pointer is valid and the buffer has not been freed.
 	pub unsafe fn as_slice(&self) -> &[u8] {
 		if self.is_empty() {
 			&[]
@@ -93,6 +96,9 @@ impl LayoutFFI {
 	}
 
 	/// Get a field by index
+	///
+	/// # Safety
+	/// Caller must ensure the fields pointer is valid and the index is within bounds.
 	pub unsafe fn get_field(&self, index: usize) -> Option<&FieldFFI> {
 		if index < self.field_count && !self.fields.is_null() {
 			// SAFETY: Caller must ensure fields pointer is valid and index is in bounds

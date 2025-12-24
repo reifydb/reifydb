@@ -4,7 +4,6 @@
 use crate::{Fragment, error::diagnostic::Diagnostic};
 
 pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "TAKE_001".to_string(),
@@ -25,7 +24,6 @@ pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 
 /// Missing aggregate map block error
 pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_001".to_string(),
 		statement: None,
@@ -44,7 +42,6 @@ pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 
 /// Multiple aggregate map expressions without braces error
 pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_002".to_string(),
 		statement: None,
@@ -63,7 +60,6 @@ pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 
 /// Multiple aggregate by expressions without braces error
 pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "AGGREGATE_003".to_string(),
 		statement: None,
@@ -82,7 +78,6 @@ pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 
 /// Multiple SELECT expressions without braces error
 pub fn select_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "SELECT_001".to_string(),
 		statement: None,
@@ -101,7 +96,6 @@ pub fn select_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 
 /// Multiple DISTINCT columns without braces error
 pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "DISTINCT_001".to_string(),
 		statement: None,
@@ -121,7 +115,6 @@ pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnosti
 
 /// Multiple MAP expressions without braces error
 pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "MAP_001".to_string(),
 		statement: None,
@@ -145,7 +138,6 @@ pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic
 
 /// Multiple EXTEND expressions without braces error
 pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "EXTEND_001".to_string(),
 		statement: None,
@@ -164,7 +156,6 @@ pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 
 /// Multiple APPLY arguments without braces error
 pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "APPLY_001".to_string(),
 		statement: None,
@@ -185,7 +176,6 @@ pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic
 
 /// Missing slide parameter for sliding window error
 pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_002".to_string(),
 		statement: None,
@@ -204,8 +194,7 @@ pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 }
 
 /// Slide interval too large for window error
-pub fn window_slide_too_large<'a>(fragment: Fragment, slide_value: String, window_value: String) -> Diagnostic {
-	let fragment = fragment;
+pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_value: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_003".to_string(),
 		statement: None,
@@ -229,8 +218,7 @@ pub fn window_slide_too_large<'a>(fragment: Fragment, slide_value: String, windo
 }
 
 /// Incompatible slide type with window type error
-pub fn window_incompatible_slide_type<'a>(fragment: Fragment, window_type: String, slide_type: String) -> Diagnostic {
-	let fragment = fragment;
+pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, slide_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_004".to_string(),
 		statement: None,
@@ -254,7 +242,6 @@ pub fn window_incompatible_slide_type<'a>(fragment: Fragment, window_type: Strin
 
 /// Tumbling window with slide parameter error
 pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_005".to_string(),
 		statement: None,
@@ -276,8 +263,7 @@ pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 }
 
 /// Incompatible window type and size combination error
-pub fn window_incompatible_type_size<'a>(fragment: Fragment, window_type: String, size_type: String) -> Diagnostic {
-	let fragment = fragment;
+pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, size_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_006".to_string(),
 		statement: None,
@@ -299,7 +285,6 @@ pub fn window_incompatible_type_size<'a>(fragment: Fragment, window_type: String
 
 /// Missing window type or size error
 pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "WINDOW_007".to_string(),
 		statement: None,

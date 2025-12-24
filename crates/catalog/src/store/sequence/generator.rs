@@ -113,10 +113,7 @@ macro_rules! impl_generator {
 				use reifydb_core::{
 					EncodedKey,
 					diagnostic::sequence::sequence_exhausted,
-					interface::{
-						QueryTransaction, SingleVersionCommandTransaction,
-						SingleVersionQueryTransaction,
-					},
+					interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction},
 				};
 				use reifydb_engine::test_utils::create_test_command_transaction;
 				use reifydb_type::Type;

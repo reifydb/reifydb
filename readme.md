@@ -4,12 +4,14 @@
   <img src="https://reifydb.com/img/logo.png" alt="ReifyDB Logo" width="512">
 </picture>
 
-<b>ReifyDB</b>: is a versatile, embeddable relational database built to solve real problems for real developers. Designed for those who care more about building than configuring.
+<b>ReifyDB</b>  
+<strong>Application State Database</strong>
+
+A database designed to manage live application state with transactional guarantees, incremental derived state, and embedded state transitions.
 
 <h3>
   <a href="https://reifydb.com">Homepage</a> |
   <a href="https://reifydb.com/#/documentation">Docs</a> |
-  <a href="https://discord.com/invite/vuBrm5kuuF">Discord</a> |
   <a href="https://x.com/reifydb">X</a>
 </h3>
 
@@ -22,75 +24,220 @@
 
 <p align="center">
   <strong>IN DEVELOPMENT</strong><br>
-  <em>Do not use in production yet. The API is unstable and may change at any time.</em>
+  <em>Do not use in production yet. APIs and guarantees may change.</em>
 </p>
 
 ---
 
-ReifyDB combines a relational database and backend into one. Clients connect directly to the database and execute logic inside the database itself, eliminating the need for a separate web server layer.
-
----
-
-## Examples
-
-Learn ReifyDB through practical, working examples in [`pkg/rust/examples`](pkg/rust/examples):
-
-### Quick Start
-
-```bash
-# Run all examples
-cd pkg/rust/examples && make
-
-# Run individual examples
-cd pkg/rust/examples && make basic-hello-world
-```
-
-
-See the [examples README](pkg/rust/examples/readme.md) for the complete list and detailed instructions.
-
----
-
 </div>
-<h2>What Makes ReifyDB Unique</h2>
 
-<table>
-  <thead>
-    <tr>
-      <th>Feature</th>
-      <th>Why It Matters</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Imperative query language</td>
-      <td>Developers specify exactly what happens. No planner surprises, no magic.</td>
-    </tr>
-    <tr>
-      <td>No ORM, no REST, no boilerplate</td>
-      <td>Write logic directly on the data. The DB is the backend.</td>
-    </tr>
-    <tr>
-      <td>Frontend can talk to DB directly</td>
-      <td>No injection risk. App users are DB users.</td>
-    </tr>
-    <tr>
-      <td>Embeddable or server</td>
-      <td>Works like SQLite or DuckDB. Use in apps, scripts, or as a daemon.</td>
-    </tr>
-    <tr>
-      <td>Multi-statement transactions</td>
-      <td>One request equals one atomic block, reducing race conditions.</td>
-    </tr>
-    <tr>
-      <td>Optimized for reads and reactive views</td>
-      <td>Great for dashboards, analytics, and apps that read more than write.</td>
-    </tr>
-    <tr>
-      <td>Testable, deterministic, inspectable</td>
-      <td>Write fast, reliable integration tests. The DB is predictable and local.</td>
-    </tr>
-  </tbody>
-</table>
+## About ReifyDB
+
+ReifyDB is a **database for application state**.
+
+It stores, mutates, and derives live application state under a single transactional model.  
+State is kept in memory for low latency, persisted asynchronously for durability, and extended with application-defined logic that runs next to the data.
+
+ReifyDB is built for systems where correctness, freshness, and predictable performance matter more than synchronous durability on every write.
+
+It is designed to be **application-owned**. The database is part of your application, not a shared SQL endpoint for untrusted users.
+
+---
+
+## What ReifyDB Is For
+
+ReifyDB is designed to manage **live, mutable application state**, such as:
+
+- User and session state
+- Trading and financial state
+- Game and simulation state
+- Workflow and process state
+- Counters, queues, buffers, and aggregates
+- Derived state that must stay correct as data changes
+
+ReifyDB is not designed for BI, analytics warehouses, ad-hoc reporting, or untrusted multi-tenant SQL access.
+
+---
+
+## Core Capabilities
+
+- **Transactional Application State**  
+  ACID transactions over live, mutable state with predictable low latency
+
+- **Incremental Derived State**  
+  Materialized views that update automatically as state changes, without polling or batch refresh
+
+- **Programmable State Transitions**  
+  Application-defined logic that runs inside the database under the same transactional guarantees
+
+- **Multiple Native State Primitives**  
+  Tables, views, counters, ring buffers, histograms, and other state structures in one engine
+
+- **Asynchronous Durability**  
+  State is persisted off the hot path with bounded durability latency and deterministic recovery
+
+- **Embeddable or Server Mode**  
+  Run ReifyDB embedded in your application or as a standalone process, similar to SQLite or DuckDB
+
+- **Direct Client Access**  
+  Applications and services can connect directly using WebSocket or HTTP without intermediary APIs
+
+---
+
+## Design Principles
+
+- Application state is first class  
+- All state changes happen through transactions  
+- Derived state is maintained incrementally  
+- Logic runs next to state, not around it  
+- Durability is decoupled from commit latency  
+- The database is owned by the application, not end users  
+
+---
+## How ReifyDB Defines Application State
+
+In ReifyDB, **application state** is the live, mutable data that directly determines how an application behaves at any moment in time.
+
+This is not historical data, analytical data, or reporting data.  
+It is the state that your application reads, updates, and reasons about on every request.
+
+### What Counts as Application State
+
+Application state includes:
+
+- User and session state  
+- Balances, positions, and counters  
+- Game world and simulation state  
+- Workflow progress and task coordination  
+- Queues, buffers, and rate limits  
+- Feature flags and configuration state  
+- Derived aggregates that must stay correct as data changes  
+
+This state is **continuously evolving** and must be:
+
+- Fast to read and write  
+- Correct under concurrency  
+- Immediately visible to application logic  
+- Safe to mutate transactionally  
+
+---
+
+### What Does Not Count as Application State
+
+ReifyDB deliberately does not optimize for:
+
+- Long term historical analytics  
+- BI dashboards and reporting  
+- Ad-hoc exploratory queries  
+- Cold archival data  
+- Untrusted, user-facing SQL workloads  
+
+Those workloads have very different tradeoffs and belong in different systems.
+
+---
+
+### State First, Queries Second
+
+In ReifyDB, state is primary. Queries are secondary.
+
+- Tables represent authoritative state  
+- Counters, buffers, and other primitives represent specialized state  
+- Views represent **derived state**, not reports  
+
+Derived state is maintained incrementally as part of state changes, not recomputed later through batch jobs or polling.
+
+---
+
+### State Changes Are Transactions
+
+All application state in ReifyDB is mutated through transactions.
+
+This guarantees that:
+
+- State transitions are atomic  
+- Invariants are preserved  
+- Concurrent updates are isolated  
+- Derived state remains consistent  
+
+Application logic, whether expressed as queries or programmable state transitions, always executes within this transactional boundary.
+
+---
+
+### Durability Is a Property of State, Not the Hot Path
+
+ReifyDB treats durability as a property of application state, not as a requirement for every individual write to block on disk.
+
+- State changes become visible immediately after commit  
+- Persistence happens asynchronously with bounded latency  
+- Recovery deterministically rebuilds state from durable storage  
+
+This allows ReifyDB to prioritize low latency and predictable performance while still providing strong durability guarantees over time.
+
+---
+
+### Why This Matters
+
+Most modern applications struggle because application state is fragmented across databases, caches, workers, and background jobs.
+
+ReifyDB defines application state as a single, first class concept and manages it under one transactional engine.
+
+This reduces complexity, eliminates glue code, and makes stateful systems easier to build, reason about, and maintain.
+
+---
+
+## What ReifyDB Replaces
+
+Modern applications often manage state across multiple systems. Each layer adds complexity, operational overhead, and failure modes.
+
+ReifyDB replaces these patterns by centralizing application state under a single transactional engine.
+
+### Databases Plus Caches
+
+Traditional stacks separate durable storage from fast access layers.
+
+- PostgreSQL or MySQL for persistence  
+- Redis or Memcached for speed  
+- Manual cache invalidation and consistency logic  
+
+ReifyDB combines durability and low-latency state access in one system. State is kept in memory for fast reads and writes and persisted asynchronously, removing the need for a separate cache layer.
+
+---
+
+### Batch Materialized Views and Polling
+
+Many systems rely on background jobs to keep derived data up to date.
+
+- Periodic refresh of materialized views  
+- Polling-based read models  
+- Cron jobs and scheduled workers  
+
+ReifyDB maintains derived state incrementally as part of the write path. Views stay correct automatically as data changes, without polling, refresh jobs, or batch recomputation.
+
+---
+
+### Glue Code and Background Workers
+
+Application logic is often scattered across services.
+
+- Triggers in the database  
+- Workers updating counters and aggregates  
+- Custom in-memory state machines  
+
+ReifyDB allows application-defined state transitions to run inside the database under transactional guarantees. Logic and state evolve together, reducing glue code and synchronization bugs.
+
+---
+
+### Fragmented State Primitives
+
+Different state representations are often handled by different systems.
+
+- Tables in databases  
+- Counters and queues in Redis  
+- Buffers and streams in custom services  
+
+ReifyDB provides multiple native state primitives under one transactional model. Tables, counters, ring buffers, and derived views all participate in the same consistency guarantees.
+
+---
 
 ## Installation
 Coming soon...

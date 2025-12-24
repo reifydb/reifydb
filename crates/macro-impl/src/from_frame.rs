@@ -298,18 +298,19 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		match_body.push(parens([ident("col")]));
 		match_body.extend(fat_arrow());
 
-		let mut some_body = Vec::new();
-		some_body.push(ident("col"));
-		some_body.push(punct('.'));
-		some_body.push(ident("data"));
-		some_body.push(punct('.'));
-		some_body.push(ident("iter"));
-		some_body.push(parens([]));
-		some_body.push(punct('.'));
-		some_body.push(ident("enumerate"));
-		some_body.push(parens([]));
-		some_body.push(punct('.'));
-		some_body.push(ident("map"));
+		let mut some_body = vec![
+			ident("col"),
+			punct('.'),
+			ident("data"),
+			punct('.'),
+			ident("iter"),
+			parens([]),
+			punct('.'),
+			ident("enumerate"),
+			parens([]),
+			punct('.'),
+			ident("map"),
+		];
 		some_body.push(parens(generate_optional_map_closure(
 			trait_name,
 			method_name,
@@ -399,13 +400,13 @@ fn generate_optional_map_closure(
 	tokens.push(parens([ident("row"), punct(','), ident("v")]));
 	tokens.push(punct('|'));
 
-	let mut body = Vec::new();
-
 	// if matches!(v, ::crate_path::Value::Undefined)
-	body.push(ident("if"));
-	body.push(ident("matches"));
-	body.push(punct('!'));
-	body.push(parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "Value", "Undefined"]))));
+	let mut body = vec![
+		ident("if"),
+		ident("matches"),
+		punct('!'),
+		parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "Value", "Undefined"]))),
+	];
 
 	// { Ok(None) }
 	body.push(braces([ident("Ok"), parens([ident("None")])]));

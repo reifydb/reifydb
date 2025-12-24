@@ -6,8 +6,8 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
-		CommandTransaction, MultiVersionBatch, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
-		TransactionId, WithEventBus,
+		CommandTransaction as CommandTransactionInterface, MultiVersionBatch, MultiVersionTransaction,
+		MultiVersionValues, QueryTransaction as QueryTransactionInterface, TransactionId, WithEventBus,
 	},
 	value::encoded::EncodedValues,
 };
@@ -110,7 +110,7 @@ impl reifydb_core::interface::SingleVersionCommandTransaction for StubSingleVers
 }
 
 #[async_trait]
-impl QueryTransaction for QueryTransaction {
+impl QueryTransactionInterface for QueryTransaction {
 	type SingleVersionQuery<'a> = StubSingleVersionQuery;
 	type CdcQuery<'a> = StubCdcQuery;
 
@@ -188,7 +188,7 @@ impl QueryTransaction for QueryTransaction {
 }
 
 #[async_trait]
-impl QueryTransaction for CommandTransaction {
+impl QueryTransactionInterface for CommandTransaction {
 	type SingleVersionQuery<'a> = StubSingleVersionQuery;
 	type CdcQuery<'a> = StubCdcQuery;
 	fn version(&self) -> CommitVersion {
@@ -249,7 +249,7 @@ impl QueryTransaction for CommandTransaction {
 }
 
 #[async_trait]
-impl CommandTransaction for CommandTransaction {
+impl CommandTransactionInterface for CommandTransaction {
 	type SingleVersionCommand<'a> = StubSingleVersionCommand;
 
 	async fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {

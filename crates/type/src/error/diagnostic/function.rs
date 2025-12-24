@@ -133,7 +133,6 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 
 /// Generator function is not recognized or does not exist
 pub fn generator_not_found(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let name = fragment.text();
 	Diagnostic {
 		code: "FUNCTION_009".to_string(),

@@ -54,21 +54,21 @@ pub fn parse_struct_with_crate(input: TokenStream, crate_path: &str) -> Result<P
 	}
 
 	// Skip visibility (pub, pub(crate), etc.)
-	if let Some(TokenTree::Ident(i)) = iter.peek() {
-		if i.to_string() == "pub" {
+	if let Some(TokenTree::Ident(i)) = iter.peek()
+		&& *i == "pub"
+	{
+		iter.next();
+		// Handle pub(crate), pub(super), etc.
+		if let Some(TokenTree::Group(g)) = iter.peek()
+			&& g.delimiter() == Delimiter::Parenthesis
+		{
 			iter.next();
-			// Handle pub(crate), pub(super), etc.
-			if let Some(TokenTree::Group(g)) = iter.peek() {
-				if g.delimiter() == Delimiter::Parenthesis {
-					iter.next();
-				}
-			}
 		}
 	}
 
 	// Expect "struct"
 	match iter.next() {
-		Some(TokenTree::Ident(i)) if i.to_string() == "struct" => {}
+		Some(TokenTree::Ident(i)) if *i == "struct" => {}
 		_ => return Err(compile_error("FromFrame can only be derived for structs")),
 	}
 
@@ -98,7 +98,7 @@ pub fn parse_struct_with_crate(input: TokenStream, crate_path: &str) -> Result<P
 					}
 				}
 			}
-			Some(TokenTree::Ident(i)) if i.to_string() == "where" => {
+			Some(TokenTree::Ident(i)) if *i == "where" => {
 				// Skip where clause until we hit the brace
 				continue;
 			}
@@ -159,14 +159,14 @@ fn parse_fields(group: Group) -> Result<Vec<ParsedField>, TokenStream> {
 		}
 
 		// Skip visibility
-		if let Some(TokenTree::Ident(i)) = iter.peek() {
-			if i.to_string() == "pub" {
+		if let Some(TokenTree::Ident(i)) = iter.peek()
+			&& *i == "pub"
+		{
+			iter.next();
+			if let Some(TokenTree::Group(g)) = iter.peek()
+				&& g.delimiter() == Delimiter::Parenthesis
+			{
 				iter.next();
-				if let Some(TokenTree::Group(g)) = iter.peek() {
-					if g.delimiter() == Delimiter::Parenthesis {
-						iter.next();
-					}
-				}
 			}
 		}
 
@@ -234,7 +234,7 @@ fn parse_field_attrs(attr_groups: &[Group]) -> FieldAttrs {
 
 		// Check if this is a #[frame(...)] attribute
 		match iter.next() {
-			Some(TokenTree::Ident(i)) if i.to_string() == "frame" => {}
+			Some(TokenTree::Ident(i)) if *i == "frame" => {}
 			_ => continue,
 		}
 
@@ -258,16 +258,14 @@ fn parse_field_attrs(attr_groups: &[Group]) -> FieldAttrs {
 			match attr_name.as_str() {
 				"column" => {
 					// Expect = "value"
-					if let Some(TokenTree::Punct(p)) = inner_iter.next() {
-						if p.as_char() == '=' {
-							if let Some(TokenTree::Literal(lit)) = inner_iter.next() {
-								let s = lit.to_string();
-								// Remove quotes
-								if s.starts_with('"') && s.ends_with('"') {
-									result.column_name =
-										Some(s[1..s.len() - 1].to_string());
-								}
-							}
+					if let Some(TokenTree::Punct(p)) = inner_iter.next()
+						&& p.as_char() == '=' && let Some(TokenTree::Literal(lit)) =
+						inner_iter.next()
+					{
+						let s = lit.to_string();
+						// Remove quotes
+						if s.starts_with('"') && s.ends_with('"') {
+							result.column_name = Some(s[1..s.len() - 1].to_string());
 						}
 					}
 				}
@@ -278,10 +276,10 @@ fn parse_field_attrs(attr_groups: &[Group]) -> FieldAttrs {
 			}
 
 			// Skip comma if present
-			if let Some(TokenTree::Punct(p)) = inner_iter.peek() {
-				if p.as_char() == ',' {
-					inner_iter.next();
-				}
+			if let Some(TokenTree::Punct(p)) = inner_iter.peek()
+				&& p.as_char() == ','
+			{
+				inner_iter.next();
 			}
 		}
 	}
