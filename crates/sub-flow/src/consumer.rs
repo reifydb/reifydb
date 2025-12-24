@@ -7,9 +7,7 @@ use indexmap::IndexMap;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, CowVec, Error, Result, Row,
-	interface::{
-		Cdc, CdcChange, EncodableKey, Engine, KeyKind, MultiVersionQueryTransaction, SourceId, WithEventBus,
-	},
+	interface::{Cdc, CdcChange, EncodableKey, Engine, KeyKind, QueryTransaction, SourceId, WithEventBus},
 	key::{DictionaryEntryIndexKey, Key},
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };

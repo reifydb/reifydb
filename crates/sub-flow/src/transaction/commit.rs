@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use diagnostic::flow::flow_transaction_keyspace_overlap;
-use reifydb_core::interface::MultiVersionCommandTransaction;
+use reifydb_core::interface::CommandTransaction;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{diagnostic, return_error, util::hex};
 use tracing::instrument;

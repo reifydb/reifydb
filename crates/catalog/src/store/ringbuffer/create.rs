@@ -174,7 +174,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{MultiVersionQueryTransaction, NamespaceRingBufferKey};
+	use reifydb_core::interface::{NamespaceRingBufferKey, QueryTransaction};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 

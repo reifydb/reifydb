@@ -7,9 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
-		MultiVersionCommandTransaction, MultiVersionQueryTransaction, Params, ResolvedNamespace,
-		ResolvedSource, ResolvedTable, RowKey, RowKeyRange,
+		CommandTransaction, EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
+		Params, QueryTransaction, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, RowKeyRange,
 	},
 	value::column::Columns,
 };

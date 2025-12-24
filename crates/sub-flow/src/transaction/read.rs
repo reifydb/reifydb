@@ -5,7 +5,7 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{Key, MultiVersionBatch, MultiVersionQueryTransaction},
+	interface::{Key, MultiVersionBatch, QueryTransaction},
 	key::KeyKind,
 	value::encoded::EncodedValues,
 };
@@ -137,7 +137,7 @@ impl FlowTransaction {
 mod tests {
 	use reifydb_core::{
 		CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-		interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+		interface::{CommandTransaction, Engine, QueryTransaction},
 		value::encoded::EncodedValues,
 	};
 

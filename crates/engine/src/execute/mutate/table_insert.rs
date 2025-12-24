@@ -9,8 +9,8 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
-		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable,
+		CommandTransaction, EncodableKey, IndexEntryKey, IndexId, Params, QueryTransaction, ResolvedColumn,
+		ResolvedNamespace, ResolvedSource, ResolvedTable,
 	},
 	return_error,
 	value::{

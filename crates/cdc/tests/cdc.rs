@@ -19,8 +19,8 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, MultiVersionQueryTransaction, SourceId, TableId,
+		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, CommandTransaction, EncodableKey,
+		Engine as EngineInterface, Key, QueryTransaction, SourceId, TableId,
 	},
 	key::RowKey,
 	util::{CowVec, mock_time_set},

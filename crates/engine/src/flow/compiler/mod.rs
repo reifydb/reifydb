@@ -4,7 +4,7 @@
 //! Flow compilation - compiles RQL physical plans into Flows
 //!
 //! This module uses StandardCommandTransaction directly instead of being generic
-//! over CommandTransaction to avoid lifetime issues with async recursion.
+//! over MultiVersionCommandTransaction to avoid lifetime issues with async recursion.
 
 use async_recursion::async_recursion;
 use reifydb_catalog::{

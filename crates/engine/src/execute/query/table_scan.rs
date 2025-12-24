@@ -7,10 +7,7 @@ use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey,
-	interface::{
-		DictionaryDef, EncodableKey, MultiVersionQueryTransaction, QueryTransaction, RowKey, RowKeyRange,
-		resolved::ResolvedTable,
-	},
+	interface::{DictionaryDef, EncodableKey, QueryTransaction, RowKey, RowKeyRange, resolved::ResolvedTable},
 	util::CowVec,
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
@@ -39,7 +36,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub async fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
+	pub async fn new<Rx: QueryTransaction + QueryTransaction>(
 		table: ResolvedTable,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,

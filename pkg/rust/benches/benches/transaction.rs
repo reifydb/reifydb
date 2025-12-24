@@ -23,7 +23,7 @@ use reifydb_core::{
 	CowVec, EncodedKey,
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
-	interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+	interface::{CommandTransaction, Engine, QueryTransaction},
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::StandardEngine;

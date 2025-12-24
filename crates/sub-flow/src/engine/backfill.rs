@@ -5,8 +5,8 @@ use reifydb_catalog::{CatalogSourceQueryOperations, CatalogStore};
 use reifydb_core::{
 	CommitVersion, Error, Row,
 	interface::{
-		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, MultiVersionQueryTransaction, RowKey, RowKeyRange,
-		SourceDef, SourceId,
+		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, QueryTransaction, RowKey, RowKeyRange, SourceDef,
+		SourceId,
 	},
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };

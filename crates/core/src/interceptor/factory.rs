@@ -3,9 +3,9 @@
 
 use crate::{interceptor::Interceptors, interface::CommandTransaction};
 
-/// Factory trait for creating interceptor instances for each CommandTransaction
+/// Factory trait for creating interceptor instances for each MultiVersionCommandTransaction
 pub trait InterceptorFactory<CT: CommandTransaction>: Send + Sync {
-	/// Create a new instance of interceptors for a CommandTransaction
+	/// Create a new instance of interceptors for a MultiVersionCommandTransaction
 	fn create(&self) -> Interceptors<CT>;
 }
 

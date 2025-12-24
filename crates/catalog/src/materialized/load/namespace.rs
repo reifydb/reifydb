@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{MultiVersionQueryTransaction, NamespaceKey};
+use reifydb_core::interface::{NamespaceKey, QueryTransaction};
 
 use crate::{MaterializedCatalog, store::namespace};
 
 /// Load all namespaces from storage
 pub(crate) async fn load_namespaces(
-	tx: &mut impl MultiVersionQueryTransaction,
+	tx: &mut impl QueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = NamespaceKey::full_scan();

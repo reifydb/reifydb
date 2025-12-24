@@ -4,7 +4,7 @@
 use std::marker::PhantomData;
 
 use reifydb_catalog::{CatalogStore, sequence::RowSequence};
-use reifydb_core::interface::{Identity, MultiVersionCommandTransaction, MultiVersionQueryTransaction};
+use reifydb_core::interface::{CommandTransaction, Identity, QueryTransaction};
 use reifydb_type::{Fragment, Value};
 
 use super::{

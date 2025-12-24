@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	MultiVersionQueryTransaction, MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, ViewDef, ViewId,
-	ViewKey, ViewKind,
+	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, QueryTransaction, ViewDef, ViewId, ViewKey,
+	ViewKind,
 };
 
 use crate::{
@@ -14,10 +14,7 @@ use crate::{
 	},
 };
 
-pub(crate) async fn load_views(
-	qt: &mut impl MultiVersionQueryTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
+pub(crate) async fn load_views(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = ViewKey::full_scan();
 	let batch = qt.range(range).await?;
 

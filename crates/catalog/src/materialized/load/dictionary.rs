@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	DictionaryDef, DictionaryId, DictionaryKey, MultiVersionQueryTransaction, MultiVersionValues, NamespaceId,
+	DictionaryDef, DictionaryId, DictionaryKey, MultiVersionValues, NamespaceId, QueryTransaction,
 };
 use reifydb_type::Type;
 
@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub(crate) async fn load_dictionaries(
-	qt: &mut impl MultiVersionQueryTransaction,
+	qt: &mut impl QueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = DictionaryKey::full_scan();

@@ -2,14 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::MultiVersionQueryTransaction,
+	interface::QueryTransaction,
 	key::{EncodableKey, SourceRetentionPolicyKey, SourceRetentionPolicyKeyRange},
 };
 
 use crate::{MaterializedCatalog, store::retention_policy::decode_retention_policy};
 
 pub(crate) async fn load_source_retention_policies(
-	qt: &mut impl MultiVersionQueryTransaction,
+	qt: &mut impl QueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = SourceRetentionPolicyKeyRange::full_scan();
