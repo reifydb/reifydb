@@ -10,7 +10,7 @@
 //! - `[VERSION][0x25][0x02][tier:1][object_id:variable]` -> StorageStats for (tier, ObjectId)
 
 use reifydb_core::{
-	interface::{FlowNodeId, SourceId},
+	interface::{FlowNodeId, PrimitiveId},
 	key::KeyKind,
 };
 
@@ -193,15 +193,15 @@ fn decode_object_id(bytes: &[u8]) -> Option<ObjectId> {
 	}
 }
 
-// SourceId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
-fn encode_source_id(source_id: SourceId) -> [u8; 9] {
+// PrimitiveId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
+fn encode_source_id(source_id: PrimitiveId) -> [u8; 9] {
 	let mut buf = [0u8; 9];
 	buf[0] = source_id.to_type_u8();
 	buf[1..9].copy_from_slice(&source_id.as_u64().to_be_bytes());
 	buf
 }
 
-fn decode_source_id(bytes: &[u8]) -> Option<SourceId> {
+fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
 	use reifydb_core::interface::{DictionaryId, FlowId, RingBufferId, TableId, TableVirtualId, ViewId};
 
 	if bytes.len() < 9 {
@@ -211,12 +211,12 @@ fn decode_source_id(bytes: &[u8]) -> Option<SourceId> {
 	let id = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
 
 	match discriminant {
-		1 => Some(SourceId::Table(TableId(id))),
-		2 => Some(SourceId::View(ViewId(id))),
-		3 => Some(SourceId::Flow(FlowId(id))),
-		4 => Some(SourceId::TableVirtual(TableVirtualId(id))),
-		5 => Some(SourceId::RingBuffer(RingBufferId(id))),
-		6 => Some(SourceId::Dictionary(DictionaryId(id))),
+		1 => Some(PrimitiveId::Table(TableId(id))),
+		2 => Some(PrimitiveId::View(ViewId(id))),
+		3 => Some(PrimitiveId::Flow(FlowId(id))),
+		4 => Some(PrimitiveId::TableVirtual(TableVirtualId(id))),
+		5 => Some(PrimitiveId::RingBuffer(RingBufferId(id))),
+		6 => Some(PrimitiveId::Dictionary(DictionaryId(id))),
 		_ => None,
 	}
 }
@@ -241,7 +241,7 @@ mod tests {
 	#[test]
 	fn test_object_stats_key_source_roundtrip() {
 		let tier = Tier::Hot;
-		let source_id = SourceId::Table(TableId(12345));
+		let source_id = PrimitiveId::Table(TableId(12345));
 		let object_id = ObjectId::Source(source_id);
 
 		let key = encode_object_stats_key(tier, object_id);

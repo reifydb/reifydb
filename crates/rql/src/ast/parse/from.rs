@@ -31,7 +31,7 @@ impl Parser {
 				list: self.parse_static()?,
 			})
 		} else {
-			use crate::ast::{AstVariable, identifier::UnresolvedSourceIdentifier};
+			use crate::ast::{AstVariable, identifier::UnresolvedPrimitiveIdentifier};
 
 			// Check if this is a variable or identifier
 			let current = self.current()?;
@@ -105,8 +105,8 @@ impl Parser {
 				let second_identifier = self.parse_identifier_with_hyphens()?;
 
 				// namespace.table - create
-				// UnresolvedSourceIdentifier with namespace
-				let mut source = UnresolvedSourceIdentifier::new(
+				// UnresolvedPrimitiveIdentifier with namespace
+				let mut source = UnresolvedPrimitiveIdentifier::new(
 					Some(first_identifier.fragment().clone()),
 					second_identifier.into_fragment(),
 				);
@@ -120,9 +120,9 @@ impl Parser {
 				source
 			} else {
 				// Just table - create
-				// UnresolvedSourceIdentifier without namespace
+				// UnresolvedPrimitiveIdentifier without namespace
 				let mut source =
-					UnresolvedSourceIdentifier::new(None, first_identifier.into_fragment());
+					UnresolvedPrimitiveIdentifier::new(None, first_identifier.into_fragment());
 
 				// Check for alias after table
 				if !self.is_eof() && self.current()?.is_identifier() {

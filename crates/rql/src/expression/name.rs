@@ -61,18 +61,18 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			} => Fragment::internal("undefined"),
 		},
 		Expression::AccessSource(access_expr) => {
-			use reifydb_core::interface::identifier::ColumnSource;
+			use reifydb_core::interface::identifier::ColumnPrimitive;
 
-			// Extract source name based on the ColumnSource type
-			let source_name = match &access_expr.column.source {
-				ColumnSource::Source {
-					source,
+			// Extract primitive name based on the ColumnPrimitive type
+			let primitive_name = match &access_expr.column.primitive {
+				ColumnPrimitive::Primitive {
+					primitive,
 					..
-				} => source.text(),
-				ColumnSource::Alias(alias) => alias.text(),
+				} => primitive.text(),
+				ColumnPrimitive::Alias(alias) => alias.text(),
 			};
 
-			Fragment::internal(format!("{}.{}", source_name, access_expr.column.name.text()))
+			Fragment::internal(format!("{}.{}", primitive_name, access_expr.column.name.text()))
 		}
 		Expression::Call(call_expr) => Fragment::internal(format!(
 			"{}({})",

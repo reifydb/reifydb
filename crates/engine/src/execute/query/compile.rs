@@ -45,9 +45,9 @@ use crate::{
 			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges,
 			FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs,
 			FlowOperators, FlowStorageStats, Flows, IndexStorageStats, Namespaces,
-			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, RingBufferStorageStats, RingBuffers,
-			Sequences, SourceRetentionPolicies, TableStorageStats, Tables, TablesVirtual, Types, Versions,
-			ViewStorageStats, Views,
+			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, PrimitiveRetentionPolicies,
+			RingBufferStorageStats, RingBuffers, Sequences, TableStorageStats, Tables, TablesVirtual,
+			Types, Versions, ViewStorageStats, Views,
 		},
 	},
 };
@@ -265,7 +265,7 @@ pub(crate) async fn compile<'a>(
 					"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
 					"column_policies" => Box::new(ColumnPolicies::new()),
 					"versions" => Box::new(Versions::new()),
-					"source_retention_policies" => Box::new(SourceRetentionPolicies::new()),
+					"primitive_retention_policies" => Box::new(PrimitiveRetentionPolicies::new()),
 					"operator_retention_policies" => Box::new(OperatorRetentionPolicies::new()),
 					"cdc_consumers" => Box::new(CdcConsumers::new()),
 					"flow_operators" => Box::new(FlowOperators::new(
@@ -384,7 +384,7 @@ pub(crate) async fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowPointLookup(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -394,7 +394,7 @@ pub(crate) async fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowListLookup(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -405,7 +405,7 @@ pub(crate) async fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowRangeScan(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

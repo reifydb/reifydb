@@ -12,13 +12,13 @@ use crate::ast::tokenize::Token;
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnresolvedSourceIdentifier {
+pub struct UnresolvedPrimitiveIdentifier {
 	pub namespace: Option<Fragment>,
 	pub name: Fragment,
 	pub alias: Option<Fragment>,
 }
 
-impl UnresolvedSourceIdentifier {
+impl UnresolvedPrimitiveIdentifier {
 	pub fn new(namespace: Option<Fragment>, name: Fragment) -> Self {
 		Self {
 			namespace,
@@ -345,11 +345,11 @@ impl MaybeQualifiedIndexIdentifier {
 
 /// How a maybe-qualified column is referenced
 #[derive(Debug, Clone, PartialEq)]
-pub enum MaybeQualifiedColumnSource {
-	/// Qualified by source name (table/view) - namespace still optional
-	Source {
+pub enum MaybeQualifiedColumnPrimitive {
+	/// Qualified by primitive name (table/view) - namespace still optional
+	Primitive {
 		namespace: Option<Fragment>,
-		source: Fragment,
+		primitive: Fragment,
 	},
 	/// Qualified by alias
 	Alias(Fragment),
@@ -357,26 +357,26 @@ pub enum MaybeQualifiedColumnSource {
 	Unqualified,
 }
 
-/// Maybe-qualified column identifier - source qualification is optional
+/// Maybe-qualified column identifier - primitive qualification is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier {
-	pub source: MaybeQualifiedColumnSource,
+	pub primitive: MaybeQualifiedColumnPrimitive,
 	pub name: Fragment,
 }
 
 impl MaybeQualifiedColumnIdentifier {
 	pub fn unqualified(name: Fragment) -> Self {
 		Self {
-			source: MaybeQualifiedColumnSource::Unqualified,
+			primitive: MaybeQualifiedColumnPrimitive::Unqualified,
 			name,
 		}
 	}
 
-	pub fn with_source(namespace: Option<Fragment>, source: Fragment, name: Fragment) -> Self {
+	pub fn with_primitive(namespace: Option<Fragment>, primitive: Fragment, name: Fragment) -> Self {
 		Self {
-			source: MaybeQualifiedColumnSource::Source {
+			primitive: MaybeQualifiedColumnPrimitive::Primitive {
 				namespace,
-				source,
+				primitive,
 			},
 			name,
 		}
@@ -384,7 +384,7 @@ impl MaybeQualifiedColumnIdentifier {
 
 	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
-			source: MaybeQualifiedColumnSource::Alias(alias),
+			primitive: MaybeQualifiedColumnPrimitive::Alias(alias),
 			name,
 		}
 	}

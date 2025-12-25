@@ -8,7 +8,7 @@ use reifydb_type::Fragment;
 
 use crate::{
 	expression::{
-		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		AccessPrimitiveExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
 		EqExpression, Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression,
 		IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MapExpression,
@@ -21,7 +21,7 @@ use crate::{
 /// Converts an Expression to owned form
 pub fn to_owned_expression(expr: Expression) -> Expression {
 	match expr {
-		Expression::AccessSource(access) => Expression::AccessSource(AccessSourceExpression {
+		Expression::AccessSource(access) => Expression::AccessSource(AccessPrimitiveExpression {
 			column: access.column,
 		}),
 		Expression::Alias(alias) => Expression::Alias(AliasExpression {

@@ -7,7 +7,7 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{
 		Ast, AstAlterSequence,
-		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnSource},
+		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnPrimitive},
 	},
 	expression::ExpressionCompiler,
 	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver},
@@ -34,9 +34,9 @@ impl Compiler {
 		// Create a maybe qualified column identifier
 		// The column belongs to the same table as the sequence
 		let column = MaybeQualifiedColumnIdentifier {
-			source: MaybeQualifiedColumnSource::Source {
+			primitive: MaybeQualifiedColumnPrimitive::Primitive {
 				namespace: Some(namespace),
-				source: sequence_name,
+				primitive: sequence_name,
 			},
 			name: ast.column.clone(),
 		};

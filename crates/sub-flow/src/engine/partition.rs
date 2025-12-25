@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use indexmap::IndexMap;
 use reifydb_core::{
 	CommitVersion,
-	interface::{FlowId, SourceId},
+	interface::{FlowId, PrimitiveId},
 };
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 
@@ -27,7 +27,7 @@ impl crate::engine::FlowEngine {
 	/// UnitsOfWork where each flow has its units ordered by version
 	pub async fn create_partition(
 		&self,
-		changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>>,
+		changes_by_version: BTreeMap<CommitVersion, Vec<(PrimitiveId, Vec<FlowDiff>)>>,
 	) -> UnitsOfWork {
 		let mut all_units_by_flow: BTreeMap<FlowId, Vec<UnitOfWork>> = BTreeMap::new();
 
@@ -37,7 +37,7 @@ impl crate::engine::FlowEngine {
 
 			// Group changes by source for this version
 			// Using IndexMap to preserve CDC insertion order within the version
-			let mut changes_by_source: IndexMap<SourceId, Vec<FlowDiff>> = IndexMap::new();
+			let mut changes_by_source: IndexMap<PrimitiveId, Vec<FlowDiff>> = IndexMap::new();
 			for (source_id, diffs) in changes {
 				changes_by_source.entry(*source_id).or_insert_with(Vec::new).extend(diffs.clone());
 			}
@@ -94,7 +94,7 @@ impl crate::engine::FlowEngine {
 
 	async fn partition_into_units_of_work(
 		&self,
-		changes_by_source: IndexMap<SourceId, Vec<FlowDiff>>,
+		changes_by_source: IndexMap<PrimitiveId, Vec<FlowDiff>>,
 		version: CommitVersion,
 	) -> UnitsOfWork {
 		// Map to collect all source changes per flow
@@ -147,7 +147,7 @@ mod tests {
 	use reifydb_core::{
 		CommitVersion, Row,
 		event::EventBus,
-		interface::{FlowId, FlowNodeId, SourceId, TableId},
+		interface::{FlowId, FlowNodeId, PrimitiveId, TableId},
 		util::CowVec,
 		value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 	};
@@ -167,11 +167,13 @@ mod tests {
 	/// Maps source_id to list of (flow_id, node_id) pairs
 	/// The node_id encodes BOTH the source and flow: source_id*1000 + flow_id
 	/// This ensures unique node IDs across all source subscriptions
-	fn mk_sources(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> HashMap<SourceId, Vec<(FlowId, FlowNodeId)>> {
+	fn mk_sources(
+		subscriptions: HashMap<PrimitiveId, Vec<FlowId>>,
+	) -> HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>> {
 		let mut sources_map = HashMap::new();
 		for (source_id, flows) in subscriptions {
 			let source_num = match source_id {
-				SourceId::Table(tid) => tid.0,
+				PrimitiveId::Table(tid) => tid.0,
 				_ => panic!("Only Table sources supported in tests"),
 			};
 			let subscriptions_with_nodes: Vec<(FlowId, FlowNodeId)> = flows
@@ -187,7 +189,7 @@ mod tests {
 		sources_map
 	}
 
-	fn setup_test_engine(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> FlowEngine {
+	fn setup_test_engine(subscriptions: HashMap<PrimitiveId, Vec<FlowId>>) -> FlowEngine {
 		let evaluator = StandardRowEvaluator::default();
 		let executor = Executor::testing();
 		let registry = TransformOperatorRegistry::new();
@@ -247,7 +249,7 @@ mod tests {
 	/// Extract a snapshot of a unit: (version, source_id -> diff_count)
 	/// Note: After the fix, FlowChanges use Internal origin with node_id
 	/// In tests, node_id = source_id * 1000 + flow_id, so we reverse-engineer source_id
-	fn snapshot_unit(unit: &UnitOfWork) -> (CommitVersion, BTreeMap<SourceId, usize>) {
+	fn snapshot_unit(unit: &UnitOfWork) -> (CommitVersion, BTreeMap<PrimitiveId, usize>) {
 		let mut sources = BTreeMap::new();
 
 		for change in &unit.source_changes {
@@ -260,7 +262,7 @@ mod tests {
 					// In test setup, node_id = source_id * 1000 + flow_id
 					// So source_id = node_id / 1000
 					let source_num = node_id.0 / 1000;
-					let source_id = SourceId::Table(TableId(source_num));
+					let source_id = PrimitiveId::Table(TableId(source_num));
 					let count = change.diffs.len();
 					*sources.entry(source_id).or_insert(0) += count;
 				}
@@ -270,8 +272,8 @@ mod tests {
 	}
 
 	/// Helper to create source IDs
-	fn s(id: u64) -> SourceId {
-		SourceId::Table(TableId(id))
+	fn s(id: u64) -> PrimitiveId {
+		PrimitiveId::Table(TableId(id))
 	}
 
 	/// Helper to create flow IDs

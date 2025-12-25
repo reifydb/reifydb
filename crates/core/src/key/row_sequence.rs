@@ -4,13 +4,13 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::SourceId,
+	interface::catalog::PrimitiveId,
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowSequenceKey {
-	pub source: SourceId,
+	pub primitive: PrimitiveId,
 }
 
 const VERSION: u8 = 1;
@@ -20,7 +20,7 @@ impl EncodableKey for RowSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(self.source);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(self.primitive);
 		serializer.to_encoded_key()
 	}
 
@@ -37,18 +37,18 @@ impl EncodableKey for RowSequenceKey {
 			return None;
 		}
 
-		let source = de.read_source_id().ok()?;
+		let primitive = de.read_primitive_id().ok()?;
 
 		Some(Self {
-			source,
+			primitive,
 		})
 	}
 }
 
 impl RowSequenceKey {
-	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
+	pub fn encoded(primitive: impl Into<PrimitiveId>) -> EncodedKey {
 		Self {
-			source: source.into(),
+			primitive: primitive.into(),
 		}
 		.encode()
 	}
@@ -73,23 +73,23 @@ impl RowSequenceKey {
 #[cfg(test)]
 mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::SourceId;
+	use crate::interface::catalog::PrimitiveId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowSequenceKey {
-			source: SourceId::table(0xABCD),
+			primitive: PrimitiveId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
 			0xF7, // kind
-			0x01, // SourceId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // source id bytes
+			0x01, // PrimitiveId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // primitive id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.source, 0xABCD);
+		assert_eq!(key.primitive, 0xABCD);
 	}
 }

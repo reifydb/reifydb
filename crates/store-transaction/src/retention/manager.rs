@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
     retention::{CleanupAction, CleanupMode, RetentionPolicy},
-    interface::{SourceId, FlowNodeId},
+    interface::{PrimitiveId, FlowNodeId},
     key::{SourceRetentionPolicyKey, OperatorRetentionPolicyKey, RowKey, FlowNodeStateKey},
     CommitVersion, EncodedKey,
 };
@@ -15,7 +15,7 @@ pub struct RetentionPolicyManager {
     cleaner: RetentionCleaner,
     two_stage_tracker: TwoStageCleanupTracker,
     /// Cache of source retention policies
-    source_policies: HashMap<SourceId, RetentionPolicy>,
+    source_policies: HashMap<PrimitiveId, RetentionPolicy>,
     /// Cache of operator retention policies
     operator_policies: HashMap<FlowNodeId, RetentionPolicy>,
 }
@@ -34,7 +34,7 @@ impl RetentionPolicyManager {
     /// TODO: This needs to be integrated with the actual store implementation
     pub  fn apply_source_retention(
         &mut self,
-        _source_id: SourceId,
+        _source_id: PrimitiveId,
         _current_version: CommitVersion,
     ) -> Result<()> {
         // Placeholder for now
@@ -81,7 +81,7 @@ impl RetentionPolicyManager {
     pub  fn get_source_policy<T: TransactionStore + MultiVersionGet>(
         &mut self,
         store: &T,
-        source_id: SourceId,
+        source_id: PrimitiveId,
     ) -> Result<Option<RetentionPolicy>> {
         // Check cache first
         if let Some(policy) = self.source_policies.get(&source_id) {
@@ -127,7 +127,7 @@ impl RetentionPolicyManager {
     pub  fn set_source_policy<T: TransactionStore>(
         &mut self,
         store: &T,
-        source_id: SourceId,
+        source_id: PrimitiveId,
         policy: RetentionPolicy,
         version: CommitVersion,
     ) -> Result<()> {
@@ -165,7 +165,7 @@ impl RetentionPolicyManager {
      fn find_keys_for_source<T: TransactionStore + MultiVersionGet>(
         &self,
         store: &T,
-        source_id: SourceId,
+        source_id: PrimitiveId,
     ) -> Result<Vec<EncodedKey>> {
         // Use RowKey range scanning to find all rows for this source
         let range = RowKey::source_range(source_id);

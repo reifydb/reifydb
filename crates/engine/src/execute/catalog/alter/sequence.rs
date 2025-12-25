@@ -3,7 +3,7 @@
 
 use reifydb_catalog::sequence::ColumnSequence;
 use reifydb_core::{
-	interface::{Params, resolved::ResolvedSource},
+	interface::{Params, resolved::ResolvedPrimitive},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
@@ -31,8 +31,8 @@ impl Executor {
 		// };
 
 		// Get the table from the resolved column's source
-		let table = match plan.column.source() {
-			ResolvedSource::Table(t) => t.def().clone(),
+		let table = match plan.column.primitive() {
+			ResolvedPrimitive::Table(t) => t.def().clone(),
 			_ => unimplemented!(),
 		};
 

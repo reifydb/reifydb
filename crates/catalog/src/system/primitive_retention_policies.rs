@@ -6,22 +6,22 @@ use std::sync::{Arc, OnceLock};
 use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::source_retention_policies::*, table_virtual::SOURCE_RETENTION_POLICIES};
+use super::ids::{columns::primitive_retention_policies::*, table_virtual::PRIMITIVE_RETENTION_POLICIES};
 
-/// Returns the static definition for the system.source_retention_policies virtual table
-/// This table exposes retention policy information for data sources (tables, views, ring buffers)
-pub fn source_retention_policies() -> Arc<TableVirtualDef> {
+/// Returns the static definition for the system.primitive_retention_policies virtual table
+/// This table exposes retention policy information for primitives (tables, views, ring buffers)
+pub fn primitive_retention_policies() -> Arc<TableVirtualDef> {
 	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(TableVirtualDef {
-			id: SOURCE_RETENTION_POLICIES,
+			id: PRIMITIVE_RETENTION_POLICIES,
 			namespace: NamespaceId(1), // system namespace
-			name: "source_retention_policies".to_string(),
+			name: "primitive_retention_policies".to_string(),
 			columns: vec![
 				ColumnDef {
-					id: SOURCE_ID,
-					name: "source_id".to_string(),
+					id: PRIMITIVE_ID,
+					name: "primitive_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(0),
@@ -29,8 +29,8 @@ pub fn source_retention_policies() -> Arc<TableVirtualDef> {
 					dictionary_id: None,
 				},
 				ColumnDef {
-					id: SOURCE_TYPE,
-					name: "source_type".to_string(),
+					id: PRIMITIVE_TYPE,
+					name: "primitive_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(1),

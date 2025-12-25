@@ -8,7 +8,7 @@ use std::{
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::ResolvedSource,
+	interface::ResolvedPrimitive,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::AliasExpression;
@@ -44,7 +44,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnHeaders {
+	fn create_columns_layout_from_source(source: &ResolvedPrimitive) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}

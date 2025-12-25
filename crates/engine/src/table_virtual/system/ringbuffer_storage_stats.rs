@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::{SourceId, TableVirtualDef},
+	interface::{PrimitiveId, TableVirtualDef},
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_transaction::{ObjectId, StorageTracker, Tier};
@@ -67,7 +67,7 @@ impl TableVirtual for RingBufferStorageStats {
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			for (obj_id, stats) in self.stats_tracker.objects_by_tier(tier) {
 				// Filter for ring buffer sources only
-				if let ObjectId::Source(SourceId::RingBuffer(ringbuffer_id)) = obj_id {
+				if let ObjectId::Source(PrimitiveId::RingBuffer(ringbuffer_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id =
 						match CatalogStore::find_ringbuffer(txn, ringbuffer_id).await? {

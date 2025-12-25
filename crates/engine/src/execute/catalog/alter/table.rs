@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{interface::SourceId, value::column::Columns};
+use reifydb_core::{interface::PrimitiveId, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
 use reifydb_type::{
 	Fragment, Value,
@@ -73,7 +73,7 @@ impl Executor {
 					CatalogStore::create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
-							source: SourceId::Table(table.id),
+							source: PrimitiveId::Table(table.id),
 							column_ids,
 						},
 					)

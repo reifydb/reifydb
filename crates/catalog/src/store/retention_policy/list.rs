@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{FlowNodeId, QueryTransaction, SourceId},
+	interface::{FlowNodeId, PrimitiveId, QueryTransaction},
 	key::{
-		EncodableKey, OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SourceRetentionPolicyKey,
-		SourceRetentionPolicyKeyRange,
+		EncodableKey, OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, PrimitiveRetentionPolicyKey,
+		PrimitiveRetentionPolicyKeyRange,
 	},
 	retention::RetentionPolicy,
 };
@@ -13,10 +13,10 @@ use reifydb_core::{
 use super::decode_retention_policy;
 use crate::CatalogStore;
 
-/// A source retention policy entry
+/// A primitive retention policy entry
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceRetentionPolicyEntry {
-	pub source: SourceId,
+pub struct PrimitiveRetentionPolicyEntry {
+	pub primitive: PrimitiveId,
 	pub policy: RetentionPolicy,
 }
 
@@ -28,19 +28,19 @@ pub struct OperatorRetentionPolicyEntry {
 }
 
 impl CatalogStore {
-	/// List all retention policies for sources (tables, views, ring buffers)
-	pub async fn list_source_retention_policies(
+	/// List all retention policies for primitives (tables, views, ring buffers)
+	pub async fn list_primitive_retention_policies(
 		rx: &mut impl QueryTransaction,
-	) -> crate::Result<Vec<SourceRetentionPolicyEntry>> {
+	) -> crate::Result<Vec<PrimitiveRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let batch = rx.range(SourceRetentionPolicyKeyRange::full_scan()).await?;
+		let batch = rx.range(PrimitiveRetentionPolicyKeyRange::full_scan()).await?;
 
 		for entry in batch.items {
-			if let Some(key) = SourceRetentionPolicyKey::decode(&entry.key) {
+			if let Some(key) = PrimitiveRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.values) {
-					result.push(SourceRetentionPolicyEntry {
-						source: key.source,
+					result.push(PrimitiveRetentionPolicyEntry {
+						primitive: key.primitive,
 						policy,
 					});
 				}
@@ -83,50 +83,50 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_primitive_retention_policy,
 	};
 
 	#[tokio::test]
-	async fn test_list_source_retention_policies_empty() {
+	async fn test_list_primitive_retention_policies_empty() {
 		let mut txn = create_test_command_transaction().await;
 
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
+		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
 	#[tokio::test]
-	async fn test_list_source_retention_policies_multiple() {
+	async fn test_list_primitive_retention_policies_multiple() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Create policies for different sources
-		let table_source = SourceId::Table(TableId(1));
+		let table_source = PrimitiveId::Table(TableId(1));
 		let table_policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_source_retention_policy(&mut txn, table_source, &table_policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, table_source, &table_policy).await.unwrap();
 
-		let view_source = SourceId::View(ViewId(2));
+		let view_source = PrimitiveId::View(ViewId(2));
 		let view_policy = RetentionPolicy::KeepForever;
-		create_source_retention_policy(&mut txn, view_source, &view_policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, view_source, &view_policy).await.unwrap();
 
-		let ringbuffer_source = SourceId::RingBuffer(RingBufferId(3));
+		let ringbuffer_source = PrimitiveId::RingBuffer(RingBufferId(3));
 		let ringbuffer_policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).await.unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
+		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).await.unwrap();
 
 		assert_eq!(policies.len(), 3);
 
 		// Verify each policy
-		assert!(policies.iter().any(|p| p.source == table_source && p.policy == table_policy));
-		assert!(policies.iter().any(|p| p.source == view_source && p.policy == view_policy));
-		assert!(policies.iter().any(|p| p.source == ringbuffer_source && p.policy == ringbuffer_policy));
+		assert!(policies.iter().any(|p| p.primitive == table_source && p.policy == table_policy));
+		assert!(policies.iter().any(|p| p.primitive == view_source && p.policy == view_policy));
+		assert!(policies.iter().any(|p| p.primitive == ringbuffer_source && p.policy == ringbuffer_policy));
 	}
 
 	#[tokio::test]
@@ -173,16 +173,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_list_source_retention_policies_after_updates() {
+	async fn test_list_primitive_retention_policies_after_updates() {
 		let mut txn = create_test_command_transaction().await;
 
-		let source = SourceId::Table(TableId(42));
+		let source = PrimitiveId::Table(TableId(42));
 
 		// Create initial policy
 		let policy1 = RetentionPolicy::KeepForever;
-		create_source_retention_policy(&mut txn, source, &policy1).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy1).await.unwrap();
 
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
+		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
@@ -191,10 +191,10 @@ mod tests {
 			count: 20,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, source, &policy2).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy2).await.unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_source_retention_policies(&mut txn).await.unwrap();
+		let policies = CatalogStore::list_primitive_retention_policies(&mut txn).await.unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}

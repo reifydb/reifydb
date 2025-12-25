@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{FlowNodeId, QueryTransaction, SourceId},
-	key::{OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
+	interface::{FlowNodeId, PrimitiveId, QueryTransaction},
+	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 
@@ -13,11 +13,11 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
-	pub async fn find_source_retention_policy(
+	pub async fn find_primitive_retention_policy(
 		txn: &mut impl QueryTransaction,
-		source: SourceId,
+		source: PrimitiveId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let value = txn.get(&SourceRetentionPolicyKey::encoded(source)).await?;
+		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source)).await?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 
@@ -42,31 +42,31 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_primitive_retention_policy,
 	};
 
 	#[tokio::test]
-	async fn test_find_source_retention_policy_exists() {
+	async fn test_find_primitive_retention_policy_exists() {
 		let mut txn = create_test_command_transaction().await;
-		let source = SourceId::Table(TableId(42));
+		let source = PrimitiveId::Table(TableId(42));
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
 
-		let found = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).await.unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
 	#[tokio::test]
-	async fn test_find_source_retention_policy_not_exists() {
+	async fn test_find_primitive_retention_policy_not_exists() {
 		let mut txn = create_test_command_transaction().await;
-		let source = SourceId::Table(TableId(9999));
+		let source = PrimitiveId::Table(TableId(9999));
 
-		let found = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).await.unwrap();
 		assert_eq!(found, None);
 	}
 

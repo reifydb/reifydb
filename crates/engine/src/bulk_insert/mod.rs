@@ -26,7 +26,7 @@
 mod builder;
 mod coerce;
 mod error;
-mod source;
+mod primitive;
 mod validation;
 
 pub use builder::{BulkInsertBuilder, Trusted, Validated, ValidationMode};

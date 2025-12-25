@@ -4,7 +4,7 @@
 use async_trait::async_trait;
 use reifydb_core::{
 	Row,
-	interface::{FlowDef, FlowNodeId, SourceId, TableDef, ViewDef},
+	interface::{FlowDef, FlowNodeId, PrimitiveId, TableDef, ViewDef},
 	key::{EncodableKey, RowKey},
 };
 use reifydb_engine::StandardRowEvaluator;
@@ -13,12 +13,12 @@ use reifydb_type::RowNumber;
 
 use crate::{Operator, transaction::FlowTransaction};
 
-pub struct SourceTableOperator {
+pub struct PrimitiveTableOperator {
 	node: FlowNodeId,
 	table: TableDef,
 }
 
-impl SourceTableOperator {
+impl PrimitiveTableOperator {
 	pub fn new(node: FlowNodeId, table: TableDef) -> Self {
 		Self {
 			node,
@@ -28,7 +28,7 @@ impl SourceTableOperator {
 }
 
 #[async_trait]
-impl Operator for SourceTableOperator {
+impl Operator for PrimitiveTableOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -46,7 +46,7 @@ impl Operator for SourceTableOperator {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
 			let key = RowKey {
-				source: SourceId::table(self.table.id),
+				primitive: PrimitiveId::table(self.table.id),
 				row: *row,
 			}
 			.encode();
@@ -60,12 +60,12 @@ impl Operator for SourceTableOperator {
 	}
 }
 
-pub struct SourceViewOperator {
+pub struct PrimitiveViewOperator {
 	node: FlowNodeId,
 	view: ViewDef,
 }
 
-impl SourceViewOperator {
+impl PrimitiveViewOperator {
 	pub fn new(node: FlowNodeId, view: ViewDef) -> Self {
 		Self {
 			node,
@@ -75,7 +75,7 @@ impl SourceViewOperator {
 }
 
 #[async_trait]
-impl Operator for SourceViewOperator {
+impl Operator for PrimitiveViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -93,7 +93,7 @@ impl Operator for SourceViewOperator {
 		let mut result = Vec::with_capacity(rows.len());
 		for row in rows {
 			let key = RowKey {
-				source: SourceId::view(self.view.id),
+				primitive: PrimitiveId::view(self.view.id),
 				row: *row,
 			}
 			.encode();
@@ -107,12 +107,12 @@ impl Operator for SourceViewOperator {
 	}
 }
 
-pub struct SourceFlowOperator {
+pub struct PrimitiveFlowOperator {
 	node: FlowNodeId,
 	flow: FlowDef,
 }
 
-impl SourceFlowOperator {
+impl PrimitiveFlowOperator {
 	pub fn new(node: FlowNodeId, flow: FlowDef) -> Self {
 		Self {
 			node,
@@ -122,7 +122,7 @@ impl SourceFlowOperator {
 }
 
 #[async_trait]
-impl Operator for SourceFlowOperator {
+impl Operator for PrimitiveFlowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -141,7 +141,7 @@ impl Operator for SourceFlowOperator {
 		// for row in rows {
 		// 	result.push(txn
 		// 		.get(&RowKey {
-		// 			source: SourceId::flow(self.flow.id),
+		// 			primitive: PrimitiveId::flow(self.flow.id),
 		// 			row: *row,
 		// 		}
 		// 		.encode())?

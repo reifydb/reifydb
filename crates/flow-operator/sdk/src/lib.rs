@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	CommitVersion, Row,
-	interface::{FlowNodeId, SourceId},
+	interface::{FlowNodeId, PrimitiveId},
 };
 use reifydb_type::{RowNumber, TypeConstraint, Value};
 
@@ -36,7 +36,7 @@ pub use store::Store;
 #[derive(Debug, Clone)]
 pub enum FlowChangeOrigin {
 	/// Change originated from an external source (table, view, ring buffer)
-	External(SourceId),
+	External(PrimitiveId),
 	/// Change originated from an internal flow node
 	Internal(FlowNodeId),
 }
@@ -76,7 +76,7 @@ pub struct FlowChange {
 
 impl FlowChange {
 	/// Create a flow change from an external source
-	pub fn external(source: SourceId, version: CommitVersion, diffs: Vec<FlowDiff>) -> Self {
+	pub fn external(source: PrimitiveId, version: CommitVersion, diffs: Vec<FlowDiff>) -> Self {
 		Self {
 			origin: FlowChangeOrigin::External(source),
 			diffs,

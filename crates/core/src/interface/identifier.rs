@@ -7,19 +7,19 @@ use serde::{Deserialize, Serialize};
 // NOTE: ColumnIdentifier is kept temporarily for backward compatibility with the expression system.
 // It should be replaced with proper resolved types in the future.
 
-/// Column identifier with source qualification
+/// Column identifier with primitive qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier {
-	pub source: ColumnSource,
+	pub primitive: ColumnPrimitive,
 	pub name: Fragment,
 }
 
 impl ColumnIdentifier {
-	pub fn with_source(namespace: Fragment, source: Fragment, name: Fragment) -> Self {
+	pub fn with_primitive(namespace: Fragment, primitive: Fragment, name: Fragment) -> Self {
 		Self {
-			source: ColumnSource::Source {
+			primitive: ColumnPrimitive::Primitive {
 				namespace,
-				source,
+				primitive,
 			},
 			name,
 		}
@@ -27,21 +27,21 @@ impl ColumnIdentifier {
 
 	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
-			source: ColumnSource::Alias(alias),
+			primitive: ColumnPrimitive::Alias(alias),
 			name,
 		}
 	}
 
 	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			source: self.source,
+			primitive: self.primitive,
 			name: self.name,
 		}
 	}
 
 	pub fn to_static(&self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			source: self.source.clone(),
+			primitive: self.primitive.clone(),
 			name: Fragment::internal(self.name.text()),
 		}
 	}
@@ -49,50 +49,50 @@ impl ColumnIdentifier {
 
 /// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ColumnSource {
-	/// Fully qualified by namespace.source
-	Source {
+pub enum ColumnPrimitive {
+	/// Fully qualified by namespace.primitive
+	Primitive {
 		namespace: Fragment,
-		source: Fragment,
+		primitive: Fragment,
 	},
-	/// Qualified by alias (which maps to a fully qualified source)
+	/// Qualified by alias (which maps to a fully qualified primitive)
 	Alias(Fragment),
 }
 
-impl ColumnSource {
-	pub fn into_owned(self) -> ColumnSource {
+impl ColumnPrimitive {
+	pub fn into_owned(self) -> ColumnPrimitive {
 		match self {
-			ColumnSource::Source {
+			ColumnPrimitive::Primitive {
 				namespace,
-				source,
-			} => ColumnSource::Source {
+				primitive,
+			} => ColumnPrimitive::Primitive {
 				namespace,
-				source,
+				primitive,
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(alias),
+			ColumnPrimitive::Alias(alias) => ColumnPrimitive::Alias(alias),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnSource {
+	pub fn to_static(&self) -> ColumnPrimitive {
 		match self {
-			ColumnSource::Source {
+			ColumnPrimitive::Primitive {
 				namespace,
-				source,
-			} => ColumnSource::Source {
+				primitive,
+			} => ColumnPrimitive::Primitive {
 				namespace: Fragment::internal(namespace.text()),
-				source: Fragment::internal(source.text()),
+				primitive: Fragment::internal(primitive.text()),
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::internal(alias.text())),
+			ColumnPrimitive::Alias(alias) => ColumnPrimitive::Alias(Fragment::internal(alias.text())),
 		}
 	}
 
 	pub fn as_fragment(&self) -> &Fragment {
 		match self {
-			ColumnSource::Source {
-				source,
+			ColumnPrimitive::Primitive {
+				primitive,
 				..
-			} => source,
-			ColumnSource::Alias(alias) => alias,
+			} => primitive,
+			ColumnPrimitive::Alias(alias) => alias,
 		}
 	}
 }

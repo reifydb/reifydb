@@ -8,7 +8,7 @@ use crate::{
 	ast::{Ast, AstFrom},
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode,
+		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, PrimitiveScanNode,
 		VariableSourceNode, resolver,
 	},
 };
@@ -25,7 +25,7 @@ impl Compiler {
 			} => {
 				let resolved_source = resolver::resolve_unresolved_source(tx, &source).await?;
 
-				Ok(LogicalPlan::SourceScan(SourceScanNode {
+				Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
 					index: None,

@@ -12,7 +12,7 @@ use super::{Flow, FlowNodeType};
 
 /// Represents a reference to a data source
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SourceReference {
+pub enum PrimitiveReference {
 	Table(TableId),
 	View(ViewId),
 }
@@ -27,7 +27,7 @@ pub enum SinkReference {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSummary {
 	pub id: FlowId,
-	pub sources: Vec<SourceReference>,
+	pub sources: Vec<PrimitiveReference>,
 	pub sinks: Vec<SinkReference>,
 	pub node_count: usize,
 	pub edge_count: usize,
@@ -95,7 +95,7 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	fn get_sources(flow: &Flow) -> Vec<SourceReference> {
+	fn get_sources(flow: &Flow) -> Vec<PrimitiveReference> {
 		let mut sources = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -104,12 +104,12 @@ impl FlowGraphAnalyzer {
 					FlowNodeType::SourceTable {
 						table,
 					} => {
-						sources.push(SourceReference::Table(*table));
+						sources.push(PrimitiveReference::Table(*table));
 					}
 					FlowNodeType::SourceView {
 						view,
 					} => {
-						sources.push(SourceReference::View(*view));
+						sources.push(PrimitiveReference::View(*view));
 					}
 					_ => {}
 				}
@@ -154,10 +154,10 @@ impl FlowGraphAnalyzer {
 			// Track which flows use which tables as sources
 			for source in &summary.sources {
 				match source {
-					SourceReference::Table(table_id) => {
+					PrimitiveReference::Table(table_id) => {
 						source_tables.entry(*table_id).or_default().push(flow.id());
 					}
-					SourceReference::View(view_id) => {
+					PrimitiveReference::View(view_id) => {
 						source_views.entry(*view_id).or_default().push(flow.id());
 					}
 				}
@@ -197,7 +197,7 @@ impl FlowGraphAnalyzer {
 
 		for flow_summary in summaries {
 			for source in &flow_summary.sources {
-				if let SourceReference::View(view_id) = source {
+				if let PrimitiveReference::View(view_id) = source {
 					// Check if this view is produced by another flow
 					if let Some(&producer_flow_id) = sink_views.get(view_id) {
 						// Don't create self-dependencies
@@ -355,7 +355,7 @@ mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(1));
-		assert_eq!(summary.sources, vec![SourceReference::Table(TableId(100))]);
+		assert_eq!(summary.sources, vec![PrimitiveReference::Table(TableId(100))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(200))]);
 		assert_eq!(summary.node_count, 2);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -383,7 +383,7 @@ mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(2));
-		assert_eq!(summary.sources, vec![SourceReference::View(ViewId(300))]);
+		assert_eq!(summary.sources, vec![PrimitiveReference::View(ViewId(300))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(400))]);
 		assert_eq!(summary.node_count, 3);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -421,8 +421,8 @@ mod tests {
 
 		assert_eq!(summary.id, FlowId(3));
 		assert_eq!(summary.sources.len(), 2);
-		assert!(summary.sources.contains(&SourceReference::Table(TableId(500))));
-		assert!(summary.sources.contains(&SourceReference::View(ViewId(600))));
+		assert!(summary.sources.contains(&PrimitiveReference::Table(TableId(500))));
+		assert!(summary.sources.contains(&PrimitiveReference::View(ViewId(600))));
 		assert_eq!(summary.sinks.len(), 2);
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(700))));
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(800))));
@@ -449,8 +449,8 @@ mod tests {
 		let sources = FlowGraphAnalyzer::get_sources(&flow);
 
 		assert_eq!(sources.len(), 2);
-		assert!(sources.contains(&SourceReference::Table(TableId(100))));
-		assert!(sources.contains(&SourceReference::View(ViewId(200))));
+		assert!(sources.contains(&PrimitiveReference::Table(TableId(100))));
+		assert!(sources.contains(&PrimitiveReference::View(ViewId(200))));
 	}
 
 	#[test]

@@ -31,7 +31,7 @@ use query::{
 };
 use reifydb_core::{
 	Frame,
-	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource},
+	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -78,7 +78,7 @@ pub(crate) trait QueryNode {
 #[derive(Clone)]
 pub struct ExecutionContext {
 	pub executor: Executor,
-	pub source: Option<ResolvedSource>,
+	pub source: Option<ResolvedPrimitive>,
 	pub batch_size: u64,
 	pub params: Params,
 	pub stack: Stack,

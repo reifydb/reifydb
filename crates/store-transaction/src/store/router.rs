@@ -16,7 +16,7 @@ use crate::backend::TableId;
 /// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> TableId {
 	match Key::decode(key) {
-		Some(Key::Row(row_key)) => TableId::Source(row_key.source),
+		Some(Key::Row(row_key)) => TableId::Source(row_key.primitive),
 		Some(Key::FlowNodeState(state_key)) => TableId::Operator(state_key.node),
 		Some(Key::FlowNodeInternalState(internal_key)) => TableId::Operator(internal_key.node),
 		_ => TableId::Multi,
@@ -37,7 +37,7 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 /// or `None` if the range spans multiple tables.
 pub fn classify_range(range: &EncodedKeyRange) -> Option<TableId> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(TableId::Source(start.source));
+		return Some(TableId::Source(start.primitive));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {

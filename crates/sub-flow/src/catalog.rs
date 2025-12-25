@@ -15,7 +15,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	EncodedKey, Result,
-	interface::{ColumnDef, DictionaryDef, KeyKind, QueryTransaction, SourceId},
+	interface::{ColumnDef, DictionaryDef, KeyKind, PrimitiveId, QueryTransaction},
 	key::Key,
 };
 use reifydb_type::Type;
@@ -25,7 +25,7 @@ use tokio::sync::RwLock;
 ///
 /// Contains all information needed to decode row bytes into `Row` values,
 /// including storage types, value types, and dictionary definitions.
-pub struct SourceMetadata {
+pub struct PrimitiveMetadata {
 	pub storage_types: Vec<Type>,
 	pub value_types: Vec<(String, Type)>,
 	pub dictionaries: Vec<Option<DictionaryDef>>,
@@ -34,7 +34,7 @@ pub struct SourceMetadata {
 
 /// Thread-safe cache for source metadata.
 ///
-/// Caches column definitions, type layouts, and dictionary info per SourceId.
+/// Caches column definitions, type layouts, and dictionary info per PrimitiveId.
 /// The cache is invalidated when schema changes are observed via CDC.
 ///
 /// # Thread Safety
@@ -46,13 +46,13 @@ pub struct SourceMetadata {
 /// # Cache Invalidation
 ///
 /// The cache observes CDC changes and invalidates affected entries:
-/// - `KeyKind::Table` - invalidate `SourceId::Table(table_id)`
-/// - `KeyKind::View` - invalidate `SourceId::View(view_id)`
-/// - `KeyKind::RingBuffer` - invalidate `SourceId::RingBuffer(rb_id)`
+/// - `KeyKind::Table` - invalidate `PrimitiveId::Table(table_id)`
+/// - `KeyKind::View` - invalidate `PrimitiveId::View(view_id)`
+/// - `KeyKind::RingBuffer` - invalidate `PrimitiveId::RingBuffer(rb_id)`
 /// - `KeyKind::Column` - invalidate the source the column belongs to
 /// - `KeyKind::Dictionary` - clear entire cache (no reverse lookup available)
 pub struct FlowCatalog {
-	sources: RwLock<HashMap<SourceId, Arc<SourceMetadata>>>,
+	sources: RwLock<HashMap<PrimitiveId, Arc<PrimitiveMetadata>>>,
 }
 
 impl FlowCatalog {
@@ -67,7 +67,7 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub async fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
+	pub async fn get_or_load<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<Arc<PrimitiveMetadata>>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -84,7 +84,7 @@ impl FlowCatalog {
 		}
 
 		// Slow path: load and cache
-		let metadata = Arc::new(self.load_source_metadata(txn, source).await?);
+		let metadata = Arc::new(self.load_primitive_metadata(txn, source).await?);
 		let mut cache = self.sources.write().await;
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
@@ -102,25 +102,25 @@ impl FlowCatalog {
 			// Table definition changed - invalidate that table
 			KeyKind::Table => {
 				if let Some(Key::Table(table_key)) = Key::decode(key) {
-					self.invalidate(SourceId::Table(table_key.table)).await;
+					self.invalidate(PrimitiveId::Table(table_key.table)).await;
 				}
 			}
 			// View definition changed - invalidate that view
 			KeyKind::View => {
 				if let Some(Key::View(view_key)) = Key::decode(key) {
-					self.invalidate(SourceId::View(view_key.view)).await;
+					self.invalidate(PrimitiveId::View(view_key.view)).await;
 				}
 			}
 			// RingBuffer definition changed - invalidate that ringbuffer
 			KeyKind::RingBuffer => {
 				if let Some(Key::RingBuffer(rb_key)) = Key::decode(key) {
-					self.invalidate(SourceId::RingBuffer(rb_key.ringbuffer)).await;
+					self.invalidate(PrimitiveId::RingBuffer(rb_key.ringbuffer)).await;
 				}
 			}
 			// Column changed - invalidate the source it belongs to
 			KeyKind::Column => {
 				if let Some(Key::Column(col_key)) = Key::decode(key) {
-					self.invalidate(col_key.source).await;
+					self.invalidate(col_key.primitive).await;
 				}
 			}
 			// Dictionary changed - clear entire cache since we can't easily
@@ -133,7 +133,7 @@ impl FlowCatalog {
 	}
 
 	/// Invalidate a specific source from the cache.
-	pub async fn invalidate(&self, source: SourceId) {
+	pub async fn invalidate(&self, source: PrimitiveId) {
 		self.sources.write().await.remove(&source);
 	}
 
@@ -142,7 +142,7 @@ impl FlowCatalog {
 		self.sources.write().await.clear();
 	}
 
-	async fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
+	async fn load_primitive_metadata<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<PrimitiveMetadata>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -152,12 +152,12 @@ impl FlowCatalog {
 	{
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
-			SourceId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
-			SourceId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
-			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
-			SourceId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
-			SourceId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
-			SourceId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
+			PrimitiveId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
+			PrimitiveId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
+			PrimitiveId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
+			PrimitiveId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
+			PrimitiveId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
+			PrimitiveId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
 		};
 
 		// Build type info and dictionary info
@@ -186,7 +186,7 @@ impl FlowCatalog {
 			}
 		}
 
-		Ok(SourceMetadata {
+		Ok(PrimitiveMetadata {
 			storage_types,
 			value_types,
 			dictionaries,
@@ -242,7 +242,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -257,7 +257,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
+		let source = PrimitiveId::Table(table.id);
 
 		let first = catalog.get_or_load(&mut txn, source).await.unwrap();
 		let second = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -273,7 +273,7 @@ mod tests {
 		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -286,7 +286,7 @@ mod tests {
 		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -335,7 +335,7 @@ mod tests {
 		.await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
+		let source = PrimitiveId::Table(table.id);
 
 		// Load into cache
 		let metadata = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -373,7 +373,7 @@ mod tests {
 		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::View(view.id);
+		let source = PrimitiveId::View(view.id);
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -395,7 +395,7 @@ mod tests {
 		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::RingBuffer(rb.id);
+		let source = PrimitiveId::RingBuffer(rb.id);
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -414,7 +414,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
+		let source = PrimitiveId::Table(table.id);
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -422,7 +422,7 @@ mod tests {
 
 		// Invalidate via column key (should invalidate the source the column belongs to)
 		let key = ColumnKey {
-			source,
+			primitive: source,
 			column: ColumnId(1),
 		}
 		.encode();
@@ -440,8 +440,8 @@ mod tests {
 		let catalog = FlowCatalog::new();
 
 		// Load multiple sources into cache
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
 		assert_eq!(catalog.sources.read().await.len(), 2);
 
 		// Invalidate via dictionary key (should clear entire cache)
@@ -462,7 +462,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
+		let source = PrimitiveId::Table(table.id);
 
 		// Load into cache
 		let _ = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -479,7 +479,7 @@ mod tests {
 		let catalog = FlowCatalog::new();
 
 		// Should not panic when invalidating non-existent entry
-		catalog.invalidate(SourceId::Table(reifydb_core::interface::TableId(999))).await;
+		catalog.invalidate(PrimitiveId::Table(reifydb_core::interface::TableId(999))).await;
 	}
 
 	#[tokio::test]
@@ -491,8 +491,8 @@ mod tests {
 		let catalog = FlowCatalog::new();
 
 		// Load multiple sources
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
+		let _ = catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
 		assert_eq!(catalog.sources.read().await.len(), 2);
 
 		// Clear all

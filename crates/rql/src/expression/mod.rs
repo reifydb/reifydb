@@ -37,7 +37,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
+use reifydb_core::interface::{ColumnIdentifier, ColumnPrimitive};
 use reifydb_type::{Fragment, Type};
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +56,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
-	AccessSource(AccessSourceExpression),
+	AccessSource(AccessPrimitiveExpression),
 
 	Alias(AliasExpression),
 
@@ -115,19 +115,19 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessSourceExpression {
+pub struct AccessPrimitiveExpression {
 	pub column: ColumnIdentifier,
 }
 
-impl AccessSourceExpression {
+impl AccessPrimitiveExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		// For backward compatibility, merge source and column fragments
-		match &self.column.source {
-			ColumnSource::Source {
-				source,
+		// For backward compatibility, merge primitive and column fragments
+		match &self.column.primitive {
+			ColumnPrimitive::Primitive {
+				primitive,
 				..
-			} => Fragment::merge_all([source.clone(), self.column.name.clone()]),
-			ColumnSource::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
+			} => Fragment::merge_all([primitive.clone(), self.column.name.clone()]),
+			ColumnPrimitive::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
 		}
 	}
 }
@@ -455,16 +455,16 @@ impl ColumnExpression {
 impl Display for Expression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Expression::AccessSource(AccessSourceExpression {
+			Expression::AccessSource(AccessPrimitiveExpression {
 				column,
-			}) => match &column.source {
-				ColumnSource::Source {
-					source,
+			}) => match &column.primitive {
+				ColumnPrimitive::Primitive {
+					primitive,
 					..
 				} => {
-					write!(f, "{}.{}", source.text(), column.name.text())
+					write!(f, "{}.{}", primitive.text(), column.name.text())
 				}
-				ColumnSource::Alias(alias) => {
+				ColumnPrimitive::Alias(alias) => {
 					write!(f, "{}.{}", alias.text(), column.name.text())
 				}
 			},
@@ -867,15 +867,15 @@ impl ExpressionCompiler {
 			},
 			Ast::Identifier(identifier) => {
 				// Create an unqualified column identifier
-				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
 				use reifydb_type::Fragment;
 
 				let column = ColumnIdentifier {
-					source: ColumnSource::Source {
+					primitive: ColumnPrimitive::Primitive {
 						namespace: Fragment::Internal {
 							text: Arc::new("_context".to_string()),
 						},
-						source: Fragment::Internal {
+						primitive: Fragment::Internal {
 							text: Arc::new("_context".to_string()),
 						},
 					},
@@ -976,15 +976,15 @@ impl ExpressionCompiler {
 			})),
 			Ast::Rownum(_rownum) => {
 				// Compile rownum to a column reference for rownum
-				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
 				use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
 
 				let column = ColumnIdentifier {
-					source: ColumnSource::Source {
+					primitive: ColumnPrimitive::Primitive {
 						namespace: Fragment::Internal {
 							text: Arc::new("_context".to_string()),
 						},
-						source: Fragment::Internal {
+						primitive: Fragment::Internal {
 							text: Arc::new("_context".to_string()),
 						},
 					},

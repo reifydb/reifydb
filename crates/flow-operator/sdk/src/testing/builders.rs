@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion, Row,
-	interface::{FlowNodeId, SourceId, TableId},
+	interface::{FlowNodeId, PrimitiveId, TableId},
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_type::{RowNumber, Type, Value};
@@ -103,14 +103,14 @@ impl TestFlowChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
-			origin: FlowChangeOrigin::External(SourceId::Table(TableId(1))),
+			origin: FlowChangeOrigin::External(PrimitiveId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
 		}
 	}
 
 	/// Set the origin as an external source
-	pub fn changed_by_source(mut self, source: SourceId) -> Self {
+	pub fn changed_by_source(mut self, source: PrimitiveId) -> Self {
 		self.origin = FlowChangeOrigin::External(source);
 		self
 	}
@@ -305,7 +305,7 @@ mod tests {
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestFlowChangeBuilder::new()
-			.changed_by_source(SourceId::table(100))
+			.changed_by_source(PrimitiveId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -317,7 +317,7 @@ mod tests {
 
 		match &change.origin {
 			FlowChangeOrigin::External(source) => {
-				assert_eq!(*source, SourceId::table(100));
+				assert_eq!(*source, PrimitiveId::table(100));
 			}
 			_ => panic!("Expected external origin"),
 		}

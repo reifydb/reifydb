@@ -14,7 +14,7 @@ pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
 pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
 pub use flow_node_internal_state::{FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
 pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
-pub use index::{IndexKey, SourceIndexKeyRange};
+pub use index::{IndexKey, PrimitiveIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
@@ -25,8 +25,8 @@ pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
 pub use retention_policy::{
-	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SourceRetentionPolicyKey,
-	SourceRetentionPolicyKeyRange,
+	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, PrimitiveRetentionPolicyKey,
+	PrimitiveRetentionPolicyKeyRange,
 };
 pub use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
@@ -97,7 +97,7 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	SourceRetentionPolicy(SourceRetentionPolicyKey),
+	PrimitiveRetentionPolicy(PrimitiveRetentionPolicyKey),
 	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
@@ -134,7 +134,7 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::SourceRetentionPolicy(key) => key.encode(),
+			Key::PrimitiveRetentionPolicy(key) => key.encode(),
 			Key::OperatorRetentionPolicy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
@@ -217,8 +217,8 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::SourceRetentionPolicy => {
-				SourceRetentionPolicyKey::decode(&key).map(Self::SourceRetentionPolicy)
+			KeyKind::PrimitiveRetentionPolicy => {
+				PrimitiveRetentionPolicyKey::decode(&key).map(Self::PrimitiveRetentionPolicy)
 			}
 			KeyKind::OperatorRetentionPolicy => {
 				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
@@ -256,7 +256,7 @@ mod tests {
 	};
 	use crate::{
 		interface::{
-			FlowNodeId, SourceId,
+			FlowNodeId, PrimitiveId,
 			catalog::{ColumnId, ColumnPolicyId, IndexId, NamespaceId, SequenceId, TableId},
 		},
 		key::{
@@ -285,7 +285,7 @@ mod tests {
 	#[test]
 	fn test_column() {
 		let key = Key::Column(ColumnKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			column: ColumnId(42),
 		});
 
@@ -294,7 +294,7 @@ mod tests {
 
 		match decoded {
 			Key::Column(decoded_inner) => {
-				assert_eq!(decoded_inner.source, SourceId::table(1));
+				assert_eq!(decoded_inner.primitive, PrimitiveId::table(1));
 				assert_eq!(decoded_inner.column, 42);
 			}
 			_ => unreachable!(),
@@ -393,7 +393,7 @@ mod tests {
 	#[test]
 	fn test_index() {
 		let key = Key::Index(IndexKey {
-			source: SourceId::table(42),
+			primitive: PrimitiveId::table(42),
 			index: IndexId::primary(999_999),
 		});
 
@@ -402,7 +402,7 @@ mod tests {
 
 		match decoded {
 			Key::Index(decoded_inner) => {
-				assert_eq!(decoded_inner.source, SourceId::table(42));
+				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
 				assert_eq!(decoded_inner.index, 999_999);
 			}
 			_ => unreachable!(),
@@ -412,7 +412,7 @@ mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			source: SourceId::table(42),
+			primitive: PrimitiveId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -421,7 +421,7 @@ mod tests {
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(decoded_inner.source, SourceId::table(42));
+				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),
@@ -431,7 +431,7 @@ mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			source: SourceId::table(42),
+			primitive: PrimitiveId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -439,7 +439,7 @@ mod tests {
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.source, SourceId::table(42));
+				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
 			}
 			_ => unreachable!(),
 		}
@@ -448,7 +448,7 @@ mod tests {
 	#[test]
 	fn test_column_sequence() {
 		let key = Key::TableColumnSequence(ColumnSequenceKey {
-			source: SourceId::table(42),
+			primitive: PrimitiveId::table(42),
 			column: ColumnId(123),
 		});
 
@@ -457,7 +457,7 @@ mod tests {
 
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.source, SourceId::table(42));
+				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
 				assert_eq!(decoded_inner.column, 123);
 			}
 			_ => unreachable!(),

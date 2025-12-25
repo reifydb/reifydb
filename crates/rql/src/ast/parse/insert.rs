@@ -11,17 +11,17 @@ impl Parser {
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		use crate::ast::identifier::UnresolvedSourceIdentifier;
+		use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 		let first = self.parse_identifier_with_hyphens()?;
 
 		let target = if self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
 			let second = self.parse_identifier_with_hyphens()?;
 			// namespace.source
-			Some(UnresolvedSourceIdentifier::new(Some(first.into_fragment()), second.into_fragment()))
+			Some(UnresolvedPrimitiveIdentifier::new(Some(first.into_fragment()), second.into_fragment()))
 		} else {
 			// source only
-			Some(UnresolvedSourceIdentifier::new(None, first.into_fragment()))
+			Some(UnresolvedPrimitiveIdentifier::new(None, first.into_fragment()))
 		};
 
 		Ok(AstInsert {

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
-	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, SourceId},
+	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, PrimitiveId},
 	return_error, return_internal_error,
 };
 use reifydb_type::Fragment;
@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub struct PrimaryKeyToCreate {
-	pub source: SourceId,
+	pub source: PrimitiveId,
 	pub column_ids: Vec<ColumnId>,
 }
 
@@ -59,28 +59,28 @@ impl CatalogStore {
 
 		// Update the table or view to reference this primary key
 		match to_create.source {
-			SourceId::Table(table_id) => {
+			PrimitiveId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id).await?;
 			}
-			SourceId::View(view_id) => {
+			PrimitiveId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id).await?;
 			}
-			SourceId::Flow(_) => {
+			PrimitiveId::Flow(_) => {
 				// Flows don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for flow. Flows do not support primary keys."
 				);
 			}
-			SourceId::TableVirtual(_) => {
+			PrimitiveId::TableVirtual(_) => {
 				// Virtual tables don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			SourceId::RingBuffer(ringbuffer_id) => {
+			PrimitiveId::RingBuffer(ringbuffer_id) => {
 				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id).await?;
 			}
-			SourceId::Dictionary(_) => {
+			PrimitiveId::Dictionary(_) => {
 				// Dictionaries don't support traditional primary keys
 				return_internal_error!(
 					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
@@ -94,7 +94,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{ColumnId, PrimaryKeyId, SourceId, TableId, ViewId};
+	use reifydb_core::interface::{ColumnId, PrimaryKeyId, PrimitiveId, TableId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -157,7 +157,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table.id),
+				source: PrimitiveId::Table(table.id),
 				column_ids: vec![col1.id, col2.id],
 			},
 		)
@@ -218,7 +218,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::View(view.id),
+				source: PrimitiveId::View(view.id),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -274,7 +274,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table.id),
+				source: PrimitiveId::Table(table.id),
 				column_ids: column_ids.clone(),
 			},
 		)
@@ -329,7 +329,7 @@ mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table.id),
+				source: PrimitiveId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)
@@ -355,7 +355,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(TableId(999)),
+				source: PrimitiveId::Table(TableId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		)
@@ -378,7 +378,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::View(ViewId(999)),
+				source: PrimitiveId::View(ViewId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		)
@@ -400,7 +400,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table.id),
+				source: PrimitiveId::Table(table.id),
 				column_ids: vec![],
 			},
 		)
@@ -420,7 +420,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table.id),
+				source: PrimitiveId::Table(table.id),
 				column_ids: vec![ColumnId(999)],
 			},
 		)
@@ -499,7 +499,7 @@ mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: SourceId::Table(table1.id),
+				source: PrimitiveId::Table(table1.id),
 				column_ids: vec![col2.id],
 			},
 		)

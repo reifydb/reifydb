@@ -24,13 +24,13 @@ use reifydb_type::Blob;
 use crate::StandardCommandTransaction;
 
 mod operator;
-mod source;
+mod primitive;
 
 use operator::{
 	AggregateCompiler, ApplyCompiler, DistinctCompiler, ExtendCompiler, FilterCompiler, JoinCompiler, MapCompiler,
 	MergeCompiler, SortCompiler, TakeCompiler, WindowCompiler,
 };
-use source::{FlowScanCompiler, InlineDataCompiler, TableScanCompiler, ViewScanCompiler};
+use primitive::{FlowScanCompiler, InlineDataCompiler, TableScanCompiler, ViewScanCompiler};
 
 /// Public API for compiling logical plans to Flows with an existing flow ID.
 pub async fn compile_flow(

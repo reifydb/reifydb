@@ -18,20 +18,20 @@ impl Parser {
 				crate::ast::tokenize::TokenKind::Identifier
 					| crate::ast::tokenize::TokenKind::Keyword(_)
 			) {
-			use crate::ast::identifier::UnresolvedSourceIdentifier;
+			use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 			let first = self.parse_identifier_with_hyphens()?;
 
 			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 				self.consume_operator(Operator::Dot)?;
 				let second = self.parse_identifier_with_hyphens()?;
 				// namespace.source
-				Some(UnresolvedSourceIdentifier::new(
+				Some(UnresolvedPrimitiveIdentifier::new(
 					Some(first.into_fragment()),
 					second.into_fragment(),
 				))
 			} else {
 				// source only
-				Some(UnresolvedSourceIdentifier::new(None, first.into_fragment()))
+				Some(UnresolvedPrimitiveIdentifier::new(None, first.into_fragment()))
 			}
 		} else {
 			// No target specified - will be inferred from input

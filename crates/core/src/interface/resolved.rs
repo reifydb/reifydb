@@ -590,9 +590,9 @@ impl ResolvedFunction {
 		&self.0.def
 	}
 }
-/// Unified enum for any resolved source type
+/// Unified enum for any resolved primitive type
 #[derive(Debug, Clone)]
-pub enum ResolvedSource {
+pub enum ResolvedPrimitive {
 	Table(ResolvedTable),
 	TableVirtual(ResolvedTableVirtual),
 	View(ResolvedView),
@@ -603,7 +603,7 @@ pub enum ResolvedSource {
 	Dictionary(ResolvedDictionary),
 }
 
-impl ResolvedSource {
+impl ResolvedPrimitive {
 	/// Get the identifier fragment
 	pub fn identifier(&self) -> &Fragment {
 		match self {
@@ -618,7 +618,7 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Get the namespace if this source has one
+	/// Get the namespace if this primitive has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
@@ -632,17 +632,17 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Check if this source supports indexes
+	/// Check if this primitive supports indexes
 	pub fn supports_indexes(&self) -> bool {
 		matches!(self, Self::Table(_))
 	}
 
-	/// Check if this source supports mutations
+	/// Check if this primitive supports mutations
 	pub fn supports_mutations(&self) -> bool {
 		matches!(self, Self::Table(_) | Self::RingBuffer(_))
 	}
 
-	/// Get columns for this source
+	/// Get columns for this primitive
 	pub fn columns(&self) -> &[ColumnDef] {
 		match self {
 			Self::Table(t) => t.columns(),
@@ -661,7 +661,7 @@ impl ResolvedSource {
 		self.columns().iter().find(|c| c.name == name)
 	}
 
-	/// Get the source kind name for error messages
+	/// Get the primitive kind name for error messages
 	pub fn kind_name(&self) -> &'static str {
 		match self {
 			Self::Table(_) => "table",
@@ -689,7 +689,7 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Convert to a table if this is a table source
+	/// Convert to a table if this is a table primitive
 	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
@@ -697,7 +697,7 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Convert to a view if this is a view source
+	/// Convert to a view if this is a view primitive
 	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
@@ -705,7 +705,7 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Convert to a ring buffer if this is a ring buffer source
+	/// Convert to a ring buffer if this is a ring buffer primitive
 	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
@@ -713,7 +713,7 @@ impl ResolvedSource {
 		}
 	}
 
-	/// Convert to a dictionary if this is a dictionary source
+	/// Convert to a dictionary if this is a dictionary primitive
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
@@ -722,7 +722,7 @@ impl ResolvedSource {
 	}
 }
 
-/// Column with its resolved source
+/// Column with its resolved primitive
 #[derive(Debug, Clone)]
 pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
@@ -730,17 +730,17 @@ pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 struct ResolvedColumnInner {
 	/// Original identifier with fragments
 	pub identifier: Fragment,
-	/// The resolved source this column belongs to
-	pub source: ResolvedSource,
+	/// The resolved primitive this column belongs to
+	pub primitive: ResolvedPrimitive,
 	/// The column definition
 	pub def: ColumnDef,
 }
 
 impl ResolvedColumn {
-	pub fn new(identifier: Fragment, source: ResolvedSource, def: ColumnDef) -> Self {
+	pub fn new(identifier: Fragment, primitive: ResolvedPrimitive, def: ColumnDef) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
-			source,
+			primitive,
 			def,
 		}))
 	}
@@ -760,9 +760,9 @@ impl ResolvedColumn {
 		&self.0.identifier
 	}
 
-	/// Get the source
-	pub fn source(&self) -> &ResolvedSource {
-		&self.0.source
+	/// Get the primitive
+	pub fn primitive(&self) -> &ResolvedPrimitive {
+		&self.0.primitive
 	}
 
 	/// Get the type constraint of this column
@@ -787,16 +787,16 @@ impl ResolvedColumn {
 
 	/// Get the namespace this column belongs to
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
-		self.0.source.namespace()
+		self.0.primitive.namespace()
 	}
 
 	/// Get fully qualified name
 	pub fn qualified_name(&self) -> String {
-		match self.0.source.fully_qualified_name() {
-			Some(source_name) => {
-				format!("{}.{}", source_name, self.name())
+		match self.0.primitive.fully_qualified_name() {
+			Some(primitive_name) => {
+				format!("{}.{}", primitive_name, self.name())
 			}
-			None => format!("{}.{}", self.0.source.identifier().text(), self.name()),
+			None => format!("{}.{}", self.0.primitive.identifier().text(), self.name()),
 		}
 	}
 
@@ -809,7 +809,7 @@ impl ResolvedColumn {
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
-			source: self.0.source.clone(),
+			primitive: self.0.primitive.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -818,21 +818,23 @@ impl ResolvedColumn {
 // Helper function to convert ResolvedColumn to NumberOfRangeColumnDescriptor
 // This is used in evaluation context for error reporting
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOfRangeColumnDescriptor<'_> {
-	let (namespace, table) = match column.source() {
-		ResolvedSource::Table(table) => (Some(table.namespace().name().as_ref()), Some(table.name().as_ref())),
-		ResolvedSource::TableVirtual(table) => {
+	let (namespace, table) = match column.primitive() {
+		ResolvedPrimitive::Table(table) => {
 			(Some(table.namespace().name().as_ref()), Some(table.name().as_ref()))
 		}
-		ResolvedSource::RingBuffer(rb) => (Some(rb.namespace().name().as_ref()), Some(rb.name().as_ref())),
-		ResolvedSource::View(view) => (Some(view.namespace().name().as_ref()), Some(view.name().as_ref())),
-		ResolvedSource::DeferredView(view) => {
+		ResolvedPrimitive::TableVirtual(table) => {
+			(Some(table.namespace().name().as_ref()), Some(table.name().as_ref()))
+		}
+		ResolvedPrimitive::RingBuffer(rb) => (Some(rb.namespace().name().as_ref()), Some(rb.name().as_ref())),
+		ResolvedPrimitive::View(view) => (Some(view.namespace().name().as_ref()), Some(view.name().as_ref())),
+		ResolvedPrimitive::DeferredView(view) => {
 			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
 		}
-		ResolvedSource::TransactionalView(view) => {
+		ResolvedPrimitive::TransactionalView(view) => {
 			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
 		}
-		ResolvedSource::Flow(flow) => (Some(flow.namespace().name().as_ref()), Some(flow.name().as_ref())),
-		ResolvedSource::Dictionary(dict) => {
+		ResolvedPrimitive::Flow(flow) => (Some(flow.namespace().name().as_ref()), Some(flow.name().as_ref())),
+		ResolvedPrimitive::Dictionary(dict) => {
 			(Some(dict.namespace().name().as_ref()), Some(dict.name().as_ref()))
 		}
 	};
@@ -938,20 +940,20 @@ mod tests {
 	}
 
 	#[test]
-	fn test_resolved_source_enum() {
+	fn test_resolved_primitive_enum() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
 
-		let source = ResolvedSource::Table(table);
+		let primitive = ResolvedPrimitive::Table(table);
 
-		assert!(source.supports_indexes());
-		assert!(source.supports_mutations());
-		assert_eq!(source.kind_name(), "table");
+		assert!(primitive.supports_indexes());
+		assert!(primitive.supports_mutations());
+		assert_eq!(primitive.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(source.fully_qualified_name(), Some("public.users".to_string()));
-		assert!(source.as_table().is_some());
-		assert!(source.as_view().is_none());
+		assert_eq!(primitive.fully_qualified_name(), Some("public.users".to_string()));
+		assert!(primitive.as_table().is_some());
+		assert!(primitive.as_view().is_none());
 	}
 
 	#[test]
@@ -960,7 +962,7 @@ mod tests {
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
 
-		let source = ResolvedSource::Table(table);
+		let primitive = ResolvedPrimitive::Table(table);
 
 		let column_ident = Fragment::testing("id");
 
@@ -974,7 +976,7 @@ mod tests {
 			dictionary_id: None,
 		};
 
-		let column = ResolvedColumn::new(column_ident, source, column_def);
+		let column = ResolvedColumn::new(column_ident, primitive, column_def);
 
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));

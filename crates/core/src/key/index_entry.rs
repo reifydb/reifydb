@@ -6,7 +6,7 @@ use std::collections::Bound;
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{IndexId, SourceId},
+	interface::catalog::{IndexId, PrimitiveId},
 	util::{
 		CowVec,
 		encoding::keycode::{KeyDeserializer, KeySerializer},
@@ -19,28 +19,28 @@ const VERSION: u8 = 1;
 /// Key for storing actual index entries with the encoded index key data
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKey {
-	pub source: SourceId,
+	pub primitive: PrimitiveId,
 	pub index: IndexId,
 	pub key: EncodedIndexKey,
 }
 
 impl IndexEntryKey {
-	pub fn new(source: impl Into<SourceId>, index: IndexId, key: EncodedIndexKey) -> Self {
+	pub fn new(primitive: impl Into<PrimitiveId>, index: IndexId, key: EncodedIndexKey) -> Self {
 		Self {
-			source: source.into(),
+			primitive: primitive.into(),
 			index,
 			key,
 		}
 	}
 
-	pub fn encoded(source: impl Into<SourceId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
-		Self::new(source, index, key).encode()
+	pub fn encoded(primitive: impl Into<PrimitiveId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
+		Self::new(primitive, index, key).encode()
 	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKeyRange {
-	pub source: SourceId,
+	pub primitive: PrimitiveId,
 	pub index: IndexId,
 }
 
@@ -58,11 +58,11 @@ impl IndexEntryKeyRange {
 			return None;
 		}
 
-		let source = de.read_source_id().ok()?;
+		let primitive = de.read_primitive_id().ok()?;
 		let index = de.read_index_id().ok()?;
 
 		Some(IndexEntryKeyRange {
-			source,
+			primitive,
 			index,
 		})
 	}
@@ -76,7 +76,7 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source)
+			.extend_primitive_id(self.primitive)
 			.extend_index_id(self.index);
 		Some(serializer.to_encoded_key())
 	}
@@ -86,7 +86,7 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source)
+			.extend_primitive_id(self.primitive)
 			.extend_index_id(self.index.prev());
 		Some(serializer.to_encoded_key())
 	}
@@ -117,7 +117,7 @@ impl EncodableKey for IndexEntryKey {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source)
+			.extend_primitive_id(self.primitive)
 			.extend_index_id(self.index)
 			// Append the raw index key bytes
 			.extend_raw(self.key.as_slice());
@@ -137,7 +137,7 @@ impl EncodableKey for IndexEntryKey {
 			return None;
 		}
 
-		let source = de.read_source_id().ok()?;
+		let primitive = de.read_primitive_id().ok()?;
 		let index = de.read_index_id().ok()?;
 
 		// The remaining bytes are the index key
@@ -146,7 +146,7 @@ impl EncodableKey for IndexEntryKey {
 			let remaining_bytes = de.read_raw(remaining).ok()?;
 			let index_key = EncodedIndexKey(CowVec::new(remaining_bytes.to_vec()));
 			Some(Self {
-				source,
+				primitive,
 				index,
 				key: index_key,
 			})
@@ -158,23 +158,26 @@ impl EncodableKey for IndexEntryKey {
 
 impl IndexEntryKey {
 	/// Create a range for scanning all entries of a specific index
-	pub fn index_range(source: impl Into<SourceId>, index: IndexId) -> EncodedKeyRange {
+	pub fn index_range(primitive: impl Into<PrimitiveId>, index: IndexId) -> EncodedKeyRange {
 		let range = IndexEntryKeyRange {
-			source: source.into(),
+			primitive: primitive.into(),
 			index,
 		};
 		EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(range.end().unwrap()))
 	}
 
-	/// Create a range for scanning all entries of a source (all indexes)
-	pub fn source_range(source: impl Into<SourceId>) -> EncodedKeyRange {
-		let source = source.into();
+	/// Create a range for scanning all entries of a primitive (all indexes)
+	pub fn primitive_range(primitive: impl Into<PrimitiveId>) -> EncodedKeyRange {
+		let primitive = primitive.into();
 		let mut start_serializer = KeySerializer::with_capacity(11);
-		start_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_source_id(source);
+		start_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_primitive_id(primitive);
 
-		let next_source = source.next();
+		let next_primitive = primitive.next();
 		let mut end_serializer = KeySerializer::with_capacity(11);
-		end_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_source_id(next_source);
+		end_serializer
+			.extend_u8(VERSION)
+			.extend_u8(KeyKind::IndexEntry as u8)
+			.extend_primitive_id(next_primitive);
 
 		EncodedKeyRange {
 			start: Bound::Included(start_serializer.to_encoded_key()),
@@ -184,13 +187,17 @@ impl IndexEntryKey {
 
 	/// Create a range for scanning entries within an index with a specific
 	/// key prefix
-	pub fn key_prefix_range(source: impl Into<SourceId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
-		let source = source.into();
+	pub fn key_prefix_range(
+		primitive: impl Into<PrimitiveId>,
+		index: IndexId,
+		key_prefix: &[u8],
+	) -> EncodedKeyRange {
+		let primitive = primitive.into();
 		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_source_id(source)
+			.extend_primitive_id(primitive)
 			.extend_index_id(index)
 			.extend_raw(key_prefix);
 		let start = serializer.to_encoded_key();
@@ -209,17 +216,17 @@ impl IndexEntryKey {
 	/// This method leverages the EncodedIndexKeyRange type for cleaner
 	/// range handling.
 	pub fn key_range(
-		source: impl Into<SourceId>,
+		primitive: impl Into<PrimitiveId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
 	) -> EncodedKeyRange {
-		let source = source.into();
-		// Build the prefix for this source and index
+		let primitive = primitive.into();
+		// Build the prefix for this primitive and index
 		let mut prefix_serializer = KeySerializer::with_capacity(20);
 		prefix_serializer
 			.extend_u8(VERSION)
 			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_source_id(source)
+			.extend_primitive_id(primitive)
 			.extend_index_id(index);
 		let prefix = prefix_serializer.to_encoded_key().to_vec();
 
@@ -258,7 +265,7 @@ impl IndexEntryKey {
 				serializer
 					.extend_u8(VERSION)
 					.extend_u8(KeyKind::IndexEntry as u8)
-					.extend_source_id(source)
+					.extend_primitive_id(primitive)
 					// Use prev() for end bound in descending order
 					.extend_index_id(index.prev());
 				Bound::Excluded(serializer.to_encoded_key())
@@ -291,7 +298,7 @@ mod tests {
 		layout.set_row_number(&mut index_key, 1, 1u64);
 
 		let entry = IndexEntryKey {
-			source: SourceId::table(42),
+			primitive: PrimitiveId::table(42),
 			index: IndexId::primary(7),
 			key: index_key.clone(),
 		};
@@ -299,7 +306,7 @@ mod tests {
 		let encoded = entry.encode();
 		let decoded = IndexEntryKey::decode(&encoded).unwrap();
 
-		assert_eq!(decoded.source, SourceId::table(42));
+		assert_eq!(decoded.primitive, PrimitiveId::table(42));
 		assert_eq!(decoded.index, IndexId::primary(7));
 		assert_eq!(decoded.key.as_slice(), index_key.as_slice());
 	}
@@ -314,15 +321,15 @@ mod tests {
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64);
 
-		// Same source and index, different keys
+		// Same primitive and index, different keys
 		let entry1 = IndexEntryKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			index: IndexId::primary(1),
 			key: key1,
 		};
 
 		let entry2 = IndexEntryKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			index: IndexId::primary(1),
 			key: key2,
 		};
@@ -336,7 +343,7 @@ mod tests {
 
 	#[test]
 	fn test_index_range() {
-		let range = IndexEntryKey::index_range(SourceId::table(10), IndexId::primary(5));
+		let range = IndexEntryKey::index_range(PrimitiveId::table(10), IndexId::primary(5));
 
 		// Create entries that should be included
 		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
@@ -345,7 +352,7 @@ mod tests {
 		layout.set_u64(&mut key, 0, 50u64);
 
 		let entry = IndexEntryKey {
-			source: SourceId::table(10),
+			primitive: PrimitiveId::table(10),
 			index: IndexId::primary(5),
 			key,
 		};
@@ -365,7 +372,7 @@ mod tests {
 		// encoded value than IndexId(5) since keycode inverts bits
 		// (larger numbers become smaller byte sequences)
 		let entry2 = IndexEntryKey {
-			source: SourceId::table(10),
+			primitive: PrimitiveId::table(10),
 			index: IndexId::primary(6),
 			key: layout.allocate_key(),
 		};
@@ -391,12 +398,12 @@ mod tests {
 
 		// Use the full encoded key up to the first field as the prefix
 		let prefix = &key.as_slice()[..layout.fields[1].offset]; // Include bitvec and first field
-		let range = IndexEntryKey::key_prefix_range(SourceId::table(1), IndexId::primary(1), prefix);
+		let range = IndexEntryKey::key_prefix_range(PrimitiveId::table(1), IndexId::primary(1), prefix);
 
 		// Now create a full key with the same prefix
 		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = IndexEntryKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			index: IndexId::primary(1),
 			key: key.clone(),
 		};
@@ -415,7 +422,7 @@ mod tests {
 		layout.set_row_number(&mut key2, 1, 1u64);
 
 		let entry2 = IndexEntryKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			index: IndexId::primary(1),
 			key: key2,
 		};

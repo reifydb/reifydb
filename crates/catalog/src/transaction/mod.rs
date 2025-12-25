@@ -8,8 +8,8 @@ use reifydb_core::interface::{
 mod dictionary;
 mod flow;
 mod namespace;
+mod primitive;
 mod ringbuffer;
-mod source;
 mod table;
 mod table_virtual_user;
 mod view;
@@ -43,7 +43,7 @@ pub trait CatalogQueryTransaction:
 	+ CatalogFlowQueryOperations
 	+ CatalogNamespaceQueryOperations
 	+ CatalogRingBufferQueryOperations
-	+ CatalogSourceQueryOperations
+	+ CatalogPrimitiveQueryOperations
 	+ CatalogTableQueryOperations
 	+ CatalogTableVirtualUserQueryOperations
 	+ CatalogViewQueryOperations
@@ -74,10 +74,10 @@ pub use flow::{CatalogFlowQueryOperations, CatalogTrackFlowChangeOperations};
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };
+pub use primitive::CatalogPrimitiveQueryOperations;
 pub use ringbuffer::{
 	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations, CatalogTrackRingBufferChangeOperations,
 };
-pub use source::CatalogSourceQueryOperations;
 pub use table::{CatalogTableCommandOperations, CatalogTableQueryOperations, CatalogTrackTableChangeOperations};
 pub use table_virtual_user::CatalogTableVirtualUserQueryOperations;
 pub use view::{CatalogTrackViewChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations};

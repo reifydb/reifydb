@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
+	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, PrimitiveId, QueryTransaction, TableId, ViewId},
 	return_internal_error,
 };
 
@@ -14,7 +14,7 @@ use crate::{
 impl CatalogStore {
 	pub async fn find_primary_key(
 		rx: &mut impl QueryTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		let source_id = source.into();
 
@@ -22,29 +22,29 @@ impl CatalogStore {
 		// Virtual tables and ring buffers don't have primary keys
 		// stored separately
 		let primary_key_id = match source_id {
-			SourceId::Table(table_id) => match Self::get_table_pk_id(rx, table_id).await? {
+			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(rx, table_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SourceId::View(view_id) => match Self::get_view_pk_id(rx, view_id).await? {
+			PrimitiveId::View(view_id) => match Self::get_view_pk_id(rx, view_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SourceId::Flow(_) => {
+			PrimitiveId::Flow(_) => {
 				// Flows don't have primary keys
 				return Ok(None);
 			}
-			SourceId::TableVirtual(_) => {
+			PrimitiveId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SourceId::RingBuffer(ringbuffer_id) => {
+			PrimitiveId::RingBuffer(ringbuffer_id) => {
 				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id).await? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
 			}
-			SourceId::Dictionary(_) => {
+			PrimitiveId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}

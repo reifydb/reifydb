@@ -67,7 +67,7 @@ impl TableVirtual for TablesVirtual {
 			(table_virtual::PRIMARY_KEYS, "primary_keys"),
 			(table_virtual::PRIMARY_KEY_COLUMNS, "primary_key_columns"),
 			(table_virtual::VERSIONS, "versions"),
-			(table_virtual::SOURCE_RETENTION_POLICIES, "source_retention_policies"),
+			(table_virtual::PRIMITIVE_RETENTION_POLICIES, "primitive_retention_policies"),
 			(table_virtual::OPERATOR_RETENTION_POLICIES, "operator_retention_policies"),
 			(table_virtual::CDC_CONSUMERS, "cdc_consumers"),
 			(table_virtual::FLOW_OPERATORS, "flow_operators"),

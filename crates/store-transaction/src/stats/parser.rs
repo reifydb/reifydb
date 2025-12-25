@@ -4,7 +4,7 @@
 //! Key parsing utilities for extracting ObjectId from encoded keys.
 
 use reifydb_core::{
-	interface::{DictionaryId, FlowNodeId, SourceId},
+	interface::{DictionaryId, FlowNodeId, PrimitiveId},
 	key::KeyKind,
 	util::encoding::keycode::KeyDeserializer,
 };
@@ -14,12 +14,12 @@ use super::types::ObjectId;
 /// Extract ObjectId from an encoded key based on its KeyKind.
 ///
 /// Different key types embed different IDs:
-/// - Row, Index, IndexEntry, etc. contain SourceId
+/// - Row, Index, IndexEntry, etc. contain PrimitiveId
 /// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
 /// - Other keys are classified as System
 pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 	match kind {
-		// Keys that contain SourceId at bytes 2..11
+		// Keys that contain PrimitiveId at bytes 2..11
 		KeyKind::Row
 		| KeyKind::RowSequence
 		| KeyKind::Column
@@ -33,7 +33,7 @@ pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
-				.map(|id| ObjectId::Source(SourceId::Dictionary(DictionaryId(id))))
+				.map(|id| ObjectId::Source(PrimitiveId::Dictionary(DictionaryId(id))))
 				.unwrap_or(ObjectId::System)
 		}
 
@@ -47,10 +47,10 @@ pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 	}
 }
 
-/// Extract SourceId from a key.
+/// Extract PrimitiveId from a key.
 ///
-/// Assumes key format: `[VERSION:1][KIND:1][SourceId:9][...]`
-fn extract_source_id(key: &[u8]) -> Option<SourceId> {
+/// Assumes key format: `[VERSION:1][KIND:1][PrimitiveId:9][...]`
+fn extract_source_id(key: &[u8]) -> Option<PrimitiveId> {
 	if key.len() < 11 {
 		// 1 + 1 + 9 = 11 bytes minimum
 		return None;
@@ -59,7 +59,7 @@ fn extract_source_id(key: &[u8]) -> Option<SourceId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?; // Skip version
 	let _ = de.read_u8().ok()?; // Skip kind
-	de.read_source_id().ok()
+	de.read_primitive_id().ok()
 }
 
 /// Extract FlowNodeId from a key.
@@ -96,7 +96,7 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		interface::{DictionaryId, EncodableKey, FlowNodeId, SourceId},
+		interface::{DictionaryId, EncodableKey, FlowNodeId, PrimitiveId},
 		key::{DictionaryEntryKey, FlowNodeStateKey, KeyKind, RowKey},
 	};
 	use reifydb_type::RowNumber;
@@ -105,9 +105,9 @@ mod tests {
 
 	#[test]
 	fn test_extract_object_id_row() {
-		let source = SourceId::table(42);
+		let source = PrimitiveId::table(42);
 		let row_key = RowKey {
-			source,
+			primitive: source,
 			row: RowNumber(100),
 		};
 		let encoded = row_key.encode();
@@ -142,6 +142,6 @@ mod tests {
 		let encoded = key.encode();
 
 		let object_id = extract_object_id(encoded.as_slice(), KeyKind::DictionaryEntry);
-		assert_eq!(object_id, ObjectId::Source(SourceId::Dictionary(dictionary_id)));
+		assert_eq!(object_id, ObjectId::Source(PrimitiveId::Dictionary(dictionary_id)));
 	}
 }

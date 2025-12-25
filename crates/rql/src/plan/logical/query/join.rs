@@ -5,11 +5,11 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
 
 use crate::{
-	ast::{Ast, AstFrom, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedSourceIdentifier},
+	ast::{Ast, AstFrom, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedPrimitiveIdentifier},
 	expression::JoinConditionCompiler,
 	plan::logical::{
-		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
-		SourceScanNode, resolver,
+		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::PrimitiveScan,
+		PrimitiveScanNode, resolver,
 	},
 };
 
@@ -32,9 +32,9 @@ impl Compiler {
 						..
 					}) => {
 						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							source.namespace.clone(),
 							source.name.clone(),
 						);
@@ -46,7 +46,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -55,9 +55,9 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							None,
 							identifier.token.fragment.clone(),
 						);
@@ -69,7 +69,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -90,9 +90,9 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							Some(namespace.token.fragment.clone()),
 							table.token.fragment.clone(),
 						);
@@ -104,7 +104,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -136,9 +136,9 @@ impl Compiler {
 						..
 					}) => {
 						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							source.namespace.clone(),
 							source.name.clone(),
 						);
@@ -150,7 +150,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -159,9 +159,9 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							None,
 							identifier.token.fragment.clone(),
 						);
@@ -173,7 +173,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -194,9 +194,9 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							Some(namespace.token.fragment.clone()),
 							table.token.fragment.clone(),
 						);
@@ -208,7 +208,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -241,9 +241,9 @@ impl Compiler {
 						..
 					}) => {
 						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							source.namespace.clone(),
 							source.name.clone(),
 						);
@@ -255,7 +255,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -264,9 +264,9 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
 							None,
 							identifier.token.fragment.clone(),
 						);
@@ -278,7 +278,7 @@ impl Compiler {
 						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,
@@ -298,7 +298,7 @@ impl Compiler {
 							unreachable!()
 						};
 
-						let unresolved = UnresolvedSourceIdentifier::new(
+						let unresolved = UnresolvedPrimitiveIdentifier::new(
 							Some(namespace.token.fragment.clone()),
 							table.token.fragment.clone(),
 						);
@@ -306,7 +306,7 @@ impl Compiler {
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved).await?;
 
-						vec![SourceScan(SourceScanNode {
+						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
 							index: None,

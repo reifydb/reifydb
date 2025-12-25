@@ -16,7 +16,7 @@ impl StandardColumnEvaluator {
 		let alias_name = expr.alias.0.clone();
 
 		let source = ctx.target.as_ref().and_then(|c| match c {
-			TargetColumn::Resolved(col) => Some(Fragment::internal(col.source().identifier().text())),
+			TargetColumn::Resolved(col) => Some(Fragment::internal(col.primitive().identifier().text())),
 			TargetColumn::Partial {
 				..
 			} => None,

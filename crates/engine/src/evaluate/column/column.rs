@@ -636,7 +636,7 @@ impl StandardColumnEvaluator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		interface::identifier::{ColumnIdentifier, ColumnSource},
+		interface::identifier::{ColumnIdentifier, ColumnPrimitive},
 		value::column::{Column, ColumnData, Columns},
 	};
 	use reifydb_rql::expression::ColumnExpression;
@@ -670,7 +670,7 @@ mod tests {
 			.column(
 				&ctx,
 				&ColumnExpression(ColumnIdentifier {
-					source: ColumnSource::Alias(Fragment::internal("nonexistent_col")),
+					primitive: ColumnPrimitive::Alias(Fragment::internal("nonexistent_col")),
 					name: Fragment::internal("nonexistent_col"),
 				}),
 			)

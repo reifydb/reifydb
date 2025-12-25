@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
 		CommandTransaction, EncodableKey, IndexEntryKey, IndexId, Params, QueryTransaction, ResolvedColumn,
-		ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey,
+		ResolvedNamespace, ResolvedPrimitive, ResolvedTable, RowKey,
 	},
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
@@ -79,7 +79,7 @@ impl Executor {
 
 		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-		let resolved_source = Some(ResolvedSource::Table(resolved_table));
+		let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
 
 		let context = ExecutionContext {
 			executor: self.clone(),
@@ -208,7 +208,7 @@ impl Executor {
 					let row_number = row_numbers[row_numberx];
 
 					let row_key = RowKey {
-						source: table.id.into(),
+						primitive: table.id.into(),
 						row: row_number,
 					}
 					.encode();

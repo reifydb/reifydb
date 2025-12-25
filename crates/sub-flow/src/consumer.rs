@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, CowVec, Error, Result, Row,
-	interface::{Cdc, CdcChange, EncodableKey, Engine, KeyKind, QueryTransaction, SourceId, WithEventBus},
+	interface::{Cdc, CdcChange, EncodableKey, Engine, KeyKind, PrimitiveId, QueryTransaction, WithEventBus},
 	key::{DictionaryEntryIndexKey, Key},
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
@@ -91,7 +91,7 @@ impl FlowConsumer {
 	async fn create_row(
 		&self,
 		txn: &mut StandardCommandTransaction,
-		source: SourceId,
+		source: PrimitiveId,
 		row_number: RowNumber,
 		row_bytes: Vec<u8>,
 	) -> Result<Row> {
@@ -210,7 +210,7 @@ impl FlowConsumer {
 		}
 
 		// Collect all changes grouped by version
-		let mut changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Change)>> = BTreeMap::new();
+		let mut changes_by_version: BTreeMap<CommitVersion, Vec<(PrimitiveId, Change)>> = BTreeMap::new();
 		let mut flows_changed_at_version: Option<CommitVersion> = None;
 
 		for cdc in cdcs {
@@ -236,7 +236,7 @@ impl FlowConsumer {
 				// Then try to decode as Key::Row for data changes
 				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
 					if let Key::Row(table_row) = decoded_key {
-						let source_id = table_row.source;
+						let source_id = table_row.primitive;
 
 						// CDC now returns resolved values directly
 						let change = match &sequenced_change.change {
@@ -301,12 +301,12 @@ impl FlowConsumer {
 			return Ok(());
 		}
 
-		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = BTreeMap::new();
+		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(PrimitiveId, Vec<FlowDiff>)>> = BTreeMap::new();
 
 		for (version, changes) in changes_by_version {
 			// Group changes by source for this version
 			// Using IndexMap to preserve CDC insertion order within the version
-			let mut changes_by_source: IndexMap<SourceId, Vec<FlowDiff>> = IndexMap::new();
+			let mut changes_by_source: IndexMap<PrimitiveId, Vec<FlowDiff>> = IndexMap::new();
 
 			for (source_id, change) in changes {
 				let diff = match change {
@@ -349,7 +349,7 @@ impl FlowConsumer {
 			}
 
 			// Convert to Vec format expected by create_partition
-			let source_diffs: Vec<(SourceId, Vec<FlowDiff>)> = changes_by_source.into_iter().collect();
+			let source_diffs: Vec<(PrimitiveId, Vec<FlowDiff>)> = changes_by_source.into_iter().collect();
 			diffs_by_version.insert(version, source_diffs);
 		}
 

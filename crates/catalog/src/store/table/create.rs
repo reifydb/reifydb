@@ -4,8 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, NamespaceTableKey, SourceId, TableDef,
-		TableId, TableKey,
+		ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, NamespaceTableKey, PrimitiveId,
+		TableDef, TableId, TableKey,
 	},
 	retention::RetentionPolicy,
 	return_error,
@@ -16,7 +16,7 @@ use crate::{
 	CatalogStore,
 	store::{
 		column::{ColumnIndex, ColumnToCreate},
-		retention_policy::create::create_source_retention_policy,
+		retention_policy::create::create_primitive_retention_policy,
 		sequence::SystemSequence,
 		table::layout::{table, table_namespace},
 	},
@@ -62,7 +62,7 @@ impl CatalogStore {
 		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table).await?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
-			create_source_retention_policy(txn, SourceId::Table(table_id), retention_policy).await?;
+			create_primitive_retention_policy(txn, PrimitiveId::Table(table_id), retention_policy).await?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create).await?;

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
+use reifydb_core::interface::{ColumnKey, PrimitiveId, QueryTransaction};
 
 use crate::{
 	CatalogStore,
@@ -11,14 +11,14 @@ use crate::{
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: ColumnDef,
-	pub source_id: SourceId,
+	pub source_id: PrimitiveId,
 	pub is_view: bool,
 }
 
 impl CatalogStore {
 	pub async fn list_columns(
 		rx: &mut impl QueryTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
 		let source = source.into();
 		let mut result = vec![];

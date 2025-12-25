@@ -484,7 +484,7 @@ impl StorageTracker {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::SourceId;
+	use reifydb_core::interface::PrimitiveId;
 	use tokio::time::sleep;
 
 	use super::*;
@@ -494,7 +494,7 @@ mod tests {
 		use reifydb_type::RowNumber;
 
 		let key = RowKey {
-			source: SourceId::table(source_id),
+			primitive: PrimitiveId::table(source_id),
 			row: RowNumber(row),
 		};
 		key.encode().to_vec()
@@ -599,14 +599,14 @@ mod tests {
 		tracker.record_write(Tier::Hot, &key2, key2_bytes, 60, None);
 		tracker.record_write(Tier::Hot, &key3, key3_bytes, 70, None);
 
-		// Object 1 (SourceId::table(1)) should have 2 entries
-		let source1 = ObjectId::Source(SourceId::table(1));
+		// Object 1 (PrimitiveId::table(1)) should have 2 entries
+		let source1 = ObjectId::Source(PrimitiveId::table(1));
 		let stats1 = tracker.stats_for_object(source1).unwrap();
 		assert_eq!(stats1.hot.current_count, 2);
 		assert_eq!(stats1.hot.current_value_bytes, 110);
 
-		// Object 2 (SourceId::table(2)) should have 1 entry
-		let source2 = ObjectId::Source(SourceId::table(2));
+		// Object 2 (PrimitiveId::table(2)) should have 1 entry
+		let source2 = ObjectId::Source(PrimitiveId::table(2));
 		let stats2 = tracker.stats_for_object(source2).unwrap();
 		assert_eq!(stats2.hot.current_count, 1);
 		assert_eq!(stats2.hot.current_value_bytes, 70);
@@ -655,9 +655,9 @@ mod tests {
 		assert_eq!(top.len(), 2);
 
 		// First should be source 2 (200 bytes)
-		assert_eq!(top[0].0, ObjectId::Source(SourceId::table(2)));
+		assert_eq!(top[0].0, ObjectId::Source(PrimitiveId::table(2)));
 		// Second should be source 1 (100 bytes)
-		assert_eq!(top[1].0, ObjectId::Source(SourceId::table(1)));
+		assert_eq!(top[1].0, ObjectId::Source(PrimitiveId::table(1)));
 	}
 
 	// ============================================
@@ -728,7 +728,7 @@ mod tests {
 		);
 
 		// Verify per-object stats
-		let source1 = ObjectId::Source(SourceId::table(1));
+		let source1 = ObjectId::Source(PrimitiveId::table(1));
 		let original_obj = tracker.stats_for_object(source1).unwrap();
 		let restored_obj = restored.stats_for_object(source1).unwrap();
 		assert_eq!(original_obj.hot.current_value_bytes, restored_obj.hot.current_value_bytes);

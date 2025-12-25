@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::{SourceId, TableVirtualDef},
+	interface::{PrimitiveId, TableVirtualDef},
 	retention::{CleanupMode, RetentionPolicy},
 	value::column::{Column, ColumnData, Columns},
 };
@@ -19,23 +19,23 @@ use crate::{
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
-/// Virtual table that exposes source retention policy information
-pub struct SourceRetentionPolicies {
+/// Virtual table that exposes primitive retention policy information
+pub struct PrimitiveRetentionPolicies {
 	definition: Arc<TableVirtualDef>,
 	exhausted: bool,
 }
 
-impl SourceRetentionPolicies {
+impl PrimitiveRetentionPolicies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_source_retention_policies_table_def().clone(),
+			definition: SystemCatalog::get_system_primitive_retention_policies_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
 #[async_trait]
-impl TableVirtual for SourceRetentionPolicies {
+impl TableVirtual for PrimitiveRetentionPolicies {
 	async fn initialize<'a>(
 		&mut self,
 		_txn: &mut StandardTransaction<'a>,
@@ -50,27 +50,27 @@ impl TableVirtual for SourceRetentionPolicies {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_source_retention_policies(txn).await?;
+		let policies = CatalogStore::list_primitive_retention_policies(txn).await?;
 
-		let mut source_ids = ColumnData::uint8_with_capacity(policies.len());
-		let mut source_types = ColumnData::utf8_with_capacity(policies.len());
+		let mut primitive_ids = ColumnData::uint8_with_capacity(policies.len());
+		let mut primitive_types = ColumnData::utf8_with_capacity(policies.len());
 		let mut policy_types = ColumnData::utf8_with_capacity(policies.len());
 		let mut cleanup_modes = ColumnData::utf8_with_capacity(policies.len());
 		let mut values = ColumnData::uint8_with_capacity(policies.len());
 
 		for entry in policies {
-			// Extract source ID and type
-			let (source_id, source_type) = match entry.source {
-				SourceId::Table(id) => (id.0, "table"),
-				SourceId::View(id) => (id.0, "view"),
-				SourceId::TableVirtual(id) => (id.0, "table_virtual"),
-				SourceId::RingBuffer(id) => (id.0, "ringbuffer"),
-				SourceId::Flow(id) => (id.0, "flow"),
-				SourceId::Dictionary(id) => (id.0, "dictionary"),
+			// Extract primitive ID and type
+			let (primitive_id, primitive_type) = match entry.primitive {
+				PrimitiveId::Table(id) => (id.0, "table"),
+				PrimitiveId::View(id) => (id.0, "view"),
+				PrimitiveId::TableVirtual(id) => (id.0, "table_virtual"),
+				PrimitiveId::RingBuffer(id) => (id.0, "ringbuffer"),
+				PrimitiveId::Flow(id) => (id.0, "flow"),
+				PrimitiveId::Dictionary(id) => (id.0, "dictionary"),
 			};
 
-			source_ids.push(source_id);
-			source_types.push(source_type);
+			primitive_ids.push(primitive_id);
+			primitive_types.push(primitive_type);
 
 			// Encode policy
 			match entry.policy {
@@ -95,12 +95,12 @@ impl TableVirtual for SourceRetentionPolicies {
 
 		let columns = vec![
 			Column {
-				name: Fragment::internal("source_id"),
-				data: source_ids,
+				name: Fragment::internal("primitive_id"),
+				data: primitive_ids,
 			},
 			Column {
-				name: Fragment::internal("source_type"),
-				data: source_types,
+				name: Fragment::internal("primitive_type"),
+				data: primitive_types,
 			},
 			Column {
 				name: Fragment::internal("policy_type"),

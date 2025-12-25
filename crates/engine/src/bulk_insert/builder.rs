@@ -10,7 +10,7 @@ use reifydb_type::{Fragment, Value};
 use super::{
 	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
 	error::BulkInsertError,
-	source::{PendingRingBufferInsert, PendingTableInsert, RingBufferInsertBuilder, TableInsertBuilder},
+	primitive::{PendingRingBufferInsert, PendingTableInsert, RingBufferInsertBuilder, TableInsertBuilder},
 	validation::{
 		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
 	},

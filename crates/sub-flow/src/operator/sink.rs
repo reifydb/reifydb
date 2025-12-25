@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	Row,
-	interface::{EncodableKey, FlowNodeId, ResolvedView, RowKey, SourceId},
+	interface::{EncodableKey, FlowNodeId, PrimitiveId, ResolvedView, RowKey},
 };
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
@@ -58,7 +58,7 @@ impl Operator for SinkViewOperator {
 					let row = transformed_row.encoded;
 
 					let key = RowKey {
-						source: SourceId::view(view_def.id),
+						primitive: PrimitiveId::view(view_def.id),
 						row: row_id,
 					}
 					.encode();
@@ -74,13 +74,13 @@ impl Operator for SinkViewOperator {
 					let transformed_row = evaluator.coerce(post, target_columns)?;
 
 					let old_key = RowKey {
-						source: SourceId::view(view_def.id),
+						primitive: PrimitiveId::view(view_def.id),
 						row: pre.number,
 					}
 					.encode();
 
 					let new_key = RowKey {
-						source: SourceId::view(view_def.id),
+						primitive: PrimitiveId::view(view_def.id),
 						row: post.number,
 					}
 					.encode();
@@ -93,7 +93,7 @@ impl Operator for SinkViewOperator {
 					..
 				} => {
 					let key = RowKey {
-						source: SourceId::view(view_def.id),
+						primitive: PrimitiveId::view(view_def.id),
 						row: pre.number,
 					}
 					.encode();

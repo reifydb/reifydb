@@ -18,7 +18,7 @@ pub mod node;
 // Re-export the flow types for external use
 pub use self::{
 	analyzer::{
-		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
+		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, PrimitiveReference, SinkReference,
 	},
 	flow::{Flow, FlowBuilder},
 	loader::load_flow,

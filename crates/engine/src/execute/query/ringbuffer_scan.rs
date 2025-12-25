@@ -157,7 +157,7 @@ impl QueryNode for RingBufferScan {
 
 			// Create the encoded key
 			let key = RowKey {
-				source: self.ringbuffer.def().id.into(),
+				primitive: self.ringbuffer.def().id.into(),
 				row: row_num,
 			};
 

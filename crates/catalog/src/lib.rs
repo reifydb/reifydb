@@ -17,11 +17,11 @@ pub mod transaction;
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 // Re-export moved modules for backward compatibility
 pub use store::column;
-pub use store::{column_policy, namespace, primary_key, ringbuffer, sequence, source, table, view};
+pub use store::{column_policy, namespace, primary_key, primitive, ringbuffer, sequence, table, view};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations,
-	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogQueryTransaction,
-	CatalogSourceQueryOperations, CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogPrimitiveQueryOperations,
+	CatalogQueryTransaction, CatalogTableCommandOperations, CatalogTableQueryOperations,
 	CatalogTableVirtualUserQueryOperations, CatalogTrackChangeOperations, CatalogViewCommandOperations,
 	CatalogViewQueryOperations,
 };
