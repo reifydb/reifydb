@@ -9,7 +9,6 @@ use crate::{Fragment, error::diagnostic::Diagnostic};
 
 /// Invalid hexadecimal string in BLOB constructor
 pub fn invalid_hex_string(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_001".to_string(),
@@ -26,7 +25,6 @@ pub fn invalid_hex_string(fragment: Fragment) -> Diagnostic {
 
 /// Invalid base64 string in BLOB constructor
 pub fn invalid_base64_string(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_002".to_string(),
@@ -43,7 +41,6 @@ pub fn invalid_base64_string(fragment: Fragment) -> Diagnostic {
 
 /// Invalid base64url string in BLOB constructor
 pub fn invalid_base64url_string(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_003".to_string(),
@@ -60,7 +57,6 @@ pub fn invalid_base64url_string(fragment: Fragment) -> Diagnostic {
 
 /// Invalid base58 string in BLOB constructor
 pub fn invalid_base58_string(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "BLOB_005".to_string(),

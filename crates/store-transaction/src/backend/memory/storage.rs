@@ -224,12 +224,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_source_tables() {
-		use reifydb_core::interface::SourceId;
+		use reifydb_core::interface::PrimitiveId;
 
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		let source1 = SourceId::Table(CoreTableId(1));
-		let source2 = SourceId::Table(CoreTableId(2));
+		let source1 = PrimitiveId::Table(CoreTableId(1));
+		let source2 = PrimitiveId::Table(CoreTableId(2));
 
 		storage.put(TableId::Source(source1), vec![(b"key".to_vec(), Some(b"table1".to_vec()))]).await.unwrap();
 		storage.put(TableId::Source(source2), vec![(b"key".to_vec(), Some(b"table2".to_vec()))]).await.unwrap();

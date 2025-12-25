@@ -25,7 +25,7 @@ impl FlowTransaction {
 mod tests {
 	use reifydb_core::{
 		CommitVersion, CowVec, EncodedKey,
-		interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+		interface::{CommandTransaction, QueryTransaction},
 		value::encoded::EncodedValues,
 	};
 	use reifydb_engine::StandardCommandTransaction;

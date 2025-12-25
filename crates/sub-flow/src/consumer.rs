@@ -10,7 +10,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, Engine, SourceId, WithEventBus},
+	interface::{Cdc, Engine, PrimitiveId, WithEventBus},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::{Flow, FlowNodeType, load_flow};
@@ -159,7 +159,7 @@ impl CdcConsume for IndependentFlowConsumer {
 }
 
 /// Load all flows from catalog at startup.
-async fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<reifydb_core::interface::SourceId>)>> {
+async fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<PrimitiveId>)>> {
 	let mut txn = engine.begin_query().await?;
 
 	let flow_defs = CatalogStore::list_flows_all(&mut txn).await?;
@@ -181,7 +181,7 @@ async fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<re
 }
 
 /// Get the source tables/views this flow subscribes to.
-fn get_flow_sources(flow: &Flow) -> HashSet<SourceId> {
+fn get_flow_sources(flow: &Flow) -> HashSet<PrimitiveId> {
 	let mut sources = HashSet::new();
 
 	for (_node_id, node) in flow.graph.nodes() {
@@ -189,17 +189,17 @@ fn get_flow_sources(flow: &Flow) -> HashSet<SourceId> {
 			FlowNodeType::SourceTable {
 				table,
 			} => {
-				sources.insert(SourceId::Table(*table));
+				sources.insert(PrimitiveId::Table(*table));
 			}
 			FlowNodeType::SourceView {
 				view,
 			} => {
-				sources.insert(SourceId::View(*view));
+				sources.insert(PrimitiveId::View(*view));
 			}
 			FlowNodeType::SourceFlow {
 				flow,
 			} => {
-				sources.insert(SourceId::Flow(*flow));
+				sources.insert(PrimitiveId::Flow(*flow));
 			}
 			_ => {}
 		}

@@ -4,13 +4,13 @@
 use std::marker::PhantomData;
 
 use reifydb_catalog::{CatalogStore, sequence::RowSequence};
-use reifydb_core::interface::{Identity, MultiVersionCommandTransaction, MultiVersionQueryTransaction};
+use reifydb_core::interface::{CommandTransaction, Identity, QueryTransaction};
 use reifydb_type::{Fragment, Value};
 
 use super::{
 	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
 	error::BulkInsertError,
-	source::{PendingRingBufferInsert, PendingTableInsert, RingBufferInsertBuilder, TableInsertBuilder},
+	primitive::{PendingRingBufferInsert, PendingTableInsert, RingBufferInsertBuilder, TableInsertBuilder},
 	validation::{
 		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
 	},

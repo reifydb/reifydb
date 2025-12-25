@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::Column;
-use reifydb_rql::expression::AccessSourceExpression;
+use reifydb_rql::expression::AccessPrimitiveExpression;
 use reifydb_type::{Fragment, diagnostic::query::column_not_found, error};
 
 use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
@@ -13,17 +13,17 @@ impl StandardColumnEvaluator {
 	pub(crate) fn access<'a>(
 		&self,
 		ctx: &ColumnEvaluationContext,
-		expr: &AccessSourceExpression,
+		expr: &AccessPrimitiveExpression,
 	) -> crate::Result<Column> {
-		use reifydb_core::interface::identifier::ColumnSource;
+		use reifydb_core::interface::identifier::ColumnPrimitive;
 
-		// Extract source name based on the ColumnSource type
-		let source = match &expr.column.source {
-			ColumnSource::Source {
-				source,
+		// Extract primitive name based on the ColumnPrimitive type
+		let source = match &expr.column.primitive {
+			ColumnPrimitive::Primitive {
+				primitive,
 				..
-			} => source,
-			ColumnSource::Alias(alias) => alias,
+			} => primitive,
+			ColumnPrimitive::Alias(alias) => alias,
 		};
 		let column = expr.column.name.text().to_string();
 
@@ -39,7 +39,7 @@ impl StandardColumnEvaluator {
 
 			// For non-aliased columns, just match on the column name
 			// (but only if this isn't an aliased access)
-			if matches!(&expr.column.source, ColumnSource::Source { .. }) {
+			if matches!(&expr.column.primitive, ColumnPrimitive::Primitive { .. }) {
 				if col.name().text() == column {
 					// Make sure this column doesn't belong to a different source
 					// by checking if it has a dot in the name (qualified)

@@ -4,7 +4,7 @@
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, TransactionId,
-	interface::{MultiVersionBatch, MultiVersionQueryTransaction, MultiVersionValues},
+	interface::{MultiVersionBatch, MultiVersionValues, QueryTransaction},
 };
 
 mod catalog;
@@ -27,8 +27,8 @@ impl<'a> StandardTransaction<'a> {
 	/// Get the transaction version
 	pub fn version(&self) -> CommitVersion {
 		match self {
-			Self::Command(txn) => MultiVersionQueryTransaction::version(*txn),
-			Self::Query(txn) => MultiVersionQueryTransaction::version(*txn),
+			Self::Command(txn) => QueryTransaction::version(*txn),
+			Self::Query(txn) => QueryTransaction::version(*txn),
 		}
 	}
 
@@ -160,19 +160,49 @@ impl<'a> StandardTransaction<'a> {
 			StandardTransaction::Query(txn) => &txn.catalog,
 		}
 	}
+
+	/// Begin a single-version query transaction for specific keys
+	pub async fn begin_single_query<'b, I>(
+		&self,
+		keys: I,
+	) -> crate::Result<reifydb_transaction::single::SvlQueryTransaction<'_>>
+	where
+		I: IntoIterator<Item = &'b EncodedKey> + Send,
+	{
+		match self {
+			StandardTransaction::Command(txn) => txn.begin_single_query(keys).await,
+			StandardTransaction::Query(txn) => txn.begin_single_query(keys).await,
+		}
+	}
+
+	/// Begin a CDC query transaction
+	pub async fn begin_cdc_query(&self) -> crate::Result<reifydb_transaction::cdc::StandardCdcQueryTransaction> {
+		match self {
+			StandardTransaction::Command(txn) => txn.begin_cdc_query().await,
+			StandardTransaction::Query(txn) => txn.begin_cdc_query().await,
+		}
+	}
 }
 
 use async_trait::async_trait;
-use reifydb_core::interface::QueryTransaction;
 
 // StandardTransaction already has MultiVersionQueryTransaction methods defined above,
 // but we need the trait implementation for trait bounds
 #[async_trait]
-impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
+impl<'a> QueryTransaction for StandardTransaction<'a> {
+	type SingleVersionQuery<'b>
+		= reifydb_transaction::single::SvlQueryTransaction<'b>
+	where
+		Self: 'b;
+	type CdcQuery<'b>
+		= reifydb_transaction::cdc::StandardCdcQueryTransaction
+	where
+		Self: 'b;
+
 	fn version(&self) -> CommitVersion {
 		match self {
-			Self::Command(txn) => MultiVersionQueryTransaction::version(*txn),
-			Self::Query(txn) => MultiVersionQueryTransaction::version(*txn),
+			Self::Command(txn) => QueryTransaction::version(*txn),
+			Self::Query(txn) => QueryTransaction::version(*txn),
 		}
 	}
 
@@ -221,22 +251,10 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
 		}
 	}
-}
 
-#[async_trait]
-impl<'a> QueryTransaction for StandardTransaction<'a> {
-	type SingleVersionQuery<'b>
-		= <StandardQueryTransaction as QueryTransaction>::SingleVersionQuery<'b>
+	async fn begin_single_query<'b, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
-		Self: 'b;
-	type CdcQuery<'b>
-		= <StandardQueryTransaction as QueryTransaction>::CdcQuery<'b>
-	where
-		Self: 'b;
-
-	async fn begin_single_query<'c, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
-	where
-		I: IntoIterator<Item = &'c EncodedKey> + Send,
+		I: IntoIterator<Item = &'b EncodedKey> + Send,
 	{
 		match self {
 			StandardTransaction::Command(txn) => txn.begin_single_query(keys).await,

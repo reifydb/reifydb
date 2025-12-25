@@ -10,7 +10,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	CommitVersion, Error,
-	interface::{FlowId, FlowNodeId, SourceId},
+	interface::{FlowId, FlowNodeId, PrimitiveId},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
@@ -25,8 +25,8 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator,
-		MergeOperator, Operators, SinkViewOperator, SortOperator, SourceFlowOperator, SourceTableOperator,
-		SourceViewOperator, TakeOperator, WindowOperator,
+		MergeOperator, Operators, PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator,
+		SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
 	},
 };
 
@@ -96,30 +96,30 @@ impl FlowEngine {
 			} => {
 				let table = txn.get_table(table).await?;
 
-				self.add_source(flow.id, node.id, SourceId::table(table.id)).await;
+				self.add_source(flow.id, node.id, PrimitiveId::table(table.id)).await;
 				self.inner.operators.write().await.insert(
 					node.id,
-					Arc::new(Operators::SourceTable(SourceTableOperator::new(node.id, table))),
+					Arc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
 				);
 			}
 			SourceView {
 				view,
 			} => {
 				let view = txn.get_view(view).await?;
-				self.add_source(flow.id, node.id, SourceId::view(view.id)).await;
+				self.add_source(flow.id, node.id, PrimitiveId::view(view.id)).await;
 				self.inner.operators.write().await.insert(
 					node.id,
-					Arc::new(Operators::SourceView(SourceViewOperator::new(node.id, view))),
+					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
 				);
 			}
 			SourceFlow {
 				flow: source_flow,
 			} => {
 				let source_flow_def = txn.get_flow(source_flow).await?;
-				self.add_source(flow.id, node.id, SourceId::flow(source_flow_def.id)).await;
+				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id)).await;
 				self.inner.operators.write().await.insert(
 					node.id,
-					Arc::new(Operators::SourceFlow(SourceFlowOperator::new(
+					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
 						node.id,
 						source_flow_def,
 					))),
@@ -137,7 +137,7 @@ impl FlowEngine {
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 
-				self.add_sink(flow.id, node.id, SourceId::view(*view)).await;
+				self.add_sink(flow.id, node.id, PrimitiveId::view(*view)).await;
 				let resolved = resolve_view(txn, view).await?;
 				self.inner.operators.write().await.insert(
 					node.id,
@@ -397,7 +397,7 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	async fn add_source(&self, flow: FlowId, node: FlowNodeId, source: SourceId) {
+	async fn add_source(&self, flow: FlowId, node: FlowNodeId, source: PrimitiveId) {
 		let mut sources = self.inner.sources.write().await;
 		let nodes = sources.entry(source).or_insert_with(Vec::new);
 
@@ -407,7 +407,7 @@ impl FlowEngine {
 		}
 	}
 
-	async fn add_sink(&self, flow: FlowId, node: FlowNodeId, sink: SourceId) {
+	async fn add_sink(&self, flow: FlowId, node: FlowNodeId, sink: PrimitiveId) {
 		let mut sinks = self.inner.sinks.write().await;
 		let nodes = sinks.entry(sink).or_insert_with(Vec::new);
 

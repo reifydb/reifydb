@@ -42,7 +42,7 @@ use reifydb_transaction::multi::StandardQueryTransaction;
 /// │  FlowTransaction│
 /// └────────┬────────┘
 ///          │
-///          ├──► source_query (at CDC version)
+///          ├──► primitive_query (at CDC version)
 ///          │    - Source tables
 ///          │    - Source views
 ///          │    - Regular data
@@ -109,12 +109,9 @@ use reifydb_transaction::multi::StandardQueryTransaction;
 ///
 /// # Thread Safety
 ///
-/// FlowTransaction implements `Send` because:
-/// - `version` is Copy
-/// - `source_query` and `state_query` wrap Arc-based transactions (Send + Sync)
-/// - `pending` and `metrics` are owned and not shared
-///
-/// This allows FlowTransactions to be moved to blocking threads for CPU-bound processing.
+/// FlowTransaction is Send because all fields are either Copy, owned, or
+/// Send (StandardQueryTransaction). StandardCommandTransaction is now
+/// natively Send + Sync, requiring no special workarounds.
 pub struct FlowTransaction {
 	/// CDC event version for snapshot isolation.
 	///
@@ -133,11 +130,11 @@ pub struct FlowTransaction {
 	/// Performance metrics tracking reads, writes, and other operations.
 	metrics: FlowTransactionMetrics,
 
-	/// Read-only query transaction for accessing source data at CDC snapshot version.
+	/// Read-only query transaction for accessing storage primitive data at CDC snapshot version.
 	///
-	/// Provides snapshot reads at `version`. Used for reading source tables/views
+	/// Provides snapshot reads at `version`. Used for reading storage primitives tables/views
 	/// to ensure consistent view of the data being processed by the flow.
-	source_query: StandardQueryTransaction,
+	primitive_query: StandardQueryTransaction,
 
 	/// Read-only query transaction for accessing flow state at latest version.
 	///
@@ -154,7 +151,7 @@ impl FlowTransaction {
 	/// Create a new FlowTransaction from a parent transaction at a specific CDC version.
 	///
 	/// Creates dual query transactions:
-	/// - `source_query`: Reads at the specified CDC version (snapshot isolation)
+	/// - `primitive_query`: Reads at the specified CDC version (snapshot isolation)
 	/// - `state_query`: Reads at the latest version (state continuity)
 	///
 	/// # Parameters
@@ -162,15 +159,15 @@ impl FlowTransaction {
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent), fields(version = version.0))]
 	pub async fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
-		let mut source_query = parent.multi.begin_query().await.unwrap();
-		source_query.read_as_of_version_inclusive(version);
+		let mut primitive_query = parent.multi.begin_query().await.unwrap();
+		primitive_query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().await.unwrap();
 		Self {
 			version,
 			pending: PendingWrites::new(),
 			metrics: FlowTransactionMetrics::new(),
-			source_query,
+			primitive_query,
 			state_query,
 			catalog: parent.catalog().clone(),
 		}
@@ -184,7 +181,7 @@ impl FlowTransaction {
 	/// Update the transaction to read at a new version
 	pub async fn update_version(&mut self, new_version: CommitVersion) {
 		self.version = new_version;
-		self.source_query.read_as_of_version_inclusive(new_version);
+		self.primitive_query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get immutable reference to the metrics

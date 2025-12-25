@@ -10,7 +10,7 @@ use reifydb_type::{
 use super::{catalog, deserialize};
 use crate::{
 	Result, error,
-	interface::{IndexId, SourceId},
+	interface::{IndexId, PrimitiveId},
 };
 
 pub struct KeyDeserializer<'a> {
@@ -167,9 +167,9 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_source_id(&mut self) -> Result<SourceId> {
+	pub fn read_primitive_id(&mut self) -> Result<PrimitiveId> {
 		let bytes = self.read_exact(9)?;
-		catalog::deserialize_source_id(bytes)
+		catalog::deserialize_primitive_id(bytes)
 	}
 
 	pub fn read_index_id(&mut self) -> Result<IndexId> {
@@ -562,15 +562,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_read_source_id() {
-		use crate::interface::SourceId;
+	fn test_read_primitive_id() {
+		use crate::interface::PrimitiveId;
 		let mut ser = KeySerializer::new();
-		let source = SourceId::table(42);
-		ser.extend_source_id(source);
+		let primitive = PrimitiveId::table(42);
+		ser.extend_primitive_id(primitive);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_source_id().unwrap(), source);
+		assert_eq!(de.read_primitive_id().unwrap(), primitive);
 		assert!(de.is_empty());
 	}
 

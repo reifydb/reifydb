@@ -6,8 +6,8 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		EncodableKey, MultiVersionQueryTransaction, Params, ResolvedNamespace, ResolvedRingBuffer,
-		ResolvedSource, RowKey,
+		EncodableKey, Params, QueryTransaction, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+		RowKey,
 	},
 	value::column::Columns,
 };
@@ -54,7 +54,7 @@ impl Executor {
 
 		let rb_ident = Fragment::internal(ringbuffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
+		let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
 
 		let mut deleted_count = 0;
 
@@ -117,7 +117,7 @@ impl Executor {
 			for row_num_value in metadata.head..metadata.tail {
 				let row_num = reifydb_type::RowNumber(row_num_value);
 				let key = RowKey {
-					source: ringbuffer.id.into(),
+					primitive: ringbuffer.id.into(),
 					row: row_num,
 				};
 
@@ -153,7 +153,7 @@ impl Executor {
 			for row_num_value in metadata.head..metadata.tail {
 				let row_number = reifydb_type::RowNumber(row_num_value);
 				let row_key = RowKey {
-					source: ringbuffer.id.into(),
+					primitive: ringbuffer.id.into(),
 					row: row_number,
 				}
 				.encode();

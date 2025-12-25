@@ -20,9 +20,9 @@ mod namespaces;
 mod operator_retention_policies;
 mod primary_key_columns;
 mod primary_keys;
+mod primitive_retention_policies;
 mod ringbuffers;
 mod sequence;
-mod source_retention_policies;
 mod storage_stats_dictionary;
 mod storage_stats_flow;
 mod storage_stats_flow_node;
@@ -51,8 +51,8 @@ use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
+use primitive_retention_policies::primitive_retention_policies;
 use sequence::sequences;
-use source_retention_policies::source_retention_policies;
 use storage_stats_dictionary::dictionary_storage_stats;
 use storage_stats_flow::flow_storage_stats;
 use storage_stats_flow_node::flow_node_storage_stats;
@@ -236,16 +236,16 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, TYPE];
 		}
 
-		pub mod source_retention_policies {
+		pub mod primitive_retention_policies {
 			use reifydb_core::interface::ColumnId;
 
-			pub const SOURCE_ID: ColumnId = ColumnId(1);
-			pub const SOURCE_TYPE: ColumnId = ColumnId(2);
+			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
+			pub const PRIMITIVE_TYPE: ColumnId = ColumnId(2);
 			pub const POLICY_TYPE: ColumnId = ColumnId(3);
 			pub const CLEANUP_MODE: ColumnId = ColumnId(4);
 			pub const VALUE: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [SOURCE_ID, SOURCE_TYPE, POLICY_TYPE, CLEANUP_MODE, VALUE];
+			pub const ALL: [ColumnId; 5] = [PRIMITIVE_ID, PRIMITIVE_TYPE, POLICY_TYPE, CLEANUP_MODE, VALUE];
 		}
 
 		pub mod operator_retention_policies {
@@ -350,7 +350,7 @@ pub mod ids {
 		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
 		pub const PRIMARY_KEY_COLUMNS: TableVirtualId = TableVirtualId(8);
 		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
-		pub const SOURCE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
+		pub const PRIMITIVE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
 		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
 		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
 		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
@@ -382,7 +382,7 @@ pub mod ids {
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
-			SOURCE_RETENTION_POLICIES,
+			PRIMITIVE_RETENTION_POLICIES,
 			OPERATOR_RETENTION_POLICIES,
 			CDC_CONSUMERS,
 			FLOW_OPERATORS,
@@ -478,9 +478,9 @@ impl SystemCatalog {
 		versions()
 	}
 
-	/// Get the source_retention_policies virtual table definition
-	pub fn get_system_source_retention_policies_table_def() -> Arc<TableVirtualDef> {
-		source_retention_policies()
+	/// Get the primitive_retention_policies virtual table definition
+	pub fn get_system_primitive_retention_policies_table_def() -> Arc<TableVirtualDef> {
+		primitive_retention_policies()
 	}
 
 	/// Get the operator_retention_policies virtual table definition

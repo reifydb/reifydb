@@ -19,7 +19,7 @@ use reifydb_core::{
 		EventBus,
 		flow::{FlowOperatorLoadedEvent, OperatorColumnDef},
 	},
-	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
+	interface::{FlowId, FlowNodeId, PrimitiveId, TableId, ViewId},
 };
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
@@ -38,8 +38,8 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) registry: TransformOperatorRegistry,
 	pub(crate) operators: RwLock<HashMap<FlowNodeId, Arc<Operators>>>,
 	pub(crate) flows: RwLock<HashMap<FlowId, Flow>>,
-	pub(crate) sources: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
-	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
+	pub(crate) sources: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
+	pub(crate) sinks: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: RwLock<HashMap<FlowId, CommitVersion>>,

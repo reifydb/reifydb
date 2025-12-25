@@ -14,7 +14,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{MultiVersionQueryTransaction, MultiVersionValues},
+	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -197,7 +197,7 @@ impl<'a> testscript::Runner for MvccRunner {
 						TransactionHandle::Query(rx) => self
 							.runtime
 							.block_on(async { rx.get(&key).await })
-							.map(|r| r.and_then(|tv| Some(tv.values.to_vec()))),
+							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
 						TransactionHandle::Command(tx) => self
 							.runtime
 							.block_on(async { tx.get(&key).await })

@@ -7,7 +7,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{FlowId, FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
+	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
 };
 use reifydb_flow_operator_abi::*;
 
@@ -50,27 +50,27 @@ impl Marshaller {
 				id: node_id.0,
 			},
 			FlowChangeOrigin::External(source_id) => match source_id {
-				SourceId::Table(id) => FlowOriginFFI {
+				PrimitiveId::Table(id) => FlowOriginFFI {
 					origin_type: 1,
 					id: id.0,
 				},
-				SourceId::View(id) => FlowOriginFFI {
+				PrimitiveId::View(id) => FlowOriginFFI {
 					origin_type: 2,
 					id: id.0,
 				},
-				SourceId::TableVirtual(id) => FlowOriginFFI {
+				PrimitiveId::TableVirtual(id) => FlowOriginFFI {
 					origin_type: 3,
 					id: id.0,
 				},
-				SourceId::RingBuffer(id) => FlowOriginFFI {
+				PrimitiveId::RingBuffer(id) => FlowOriginFFI {
 					origin_type: 4,
 					id: id.0,
 				},
-				&SourceId::Flow(id) => FlowOriginFFI {
+				&PrimitiveId::Flow(id) => FlowOriginFFI {
 					origin_type: 5,
 					id: id.0,
 				},
-				SourceId::Dictionary(id) => FlowOriginFFI {
+				PrimitiveId::Dictionary(id) => FlowOriginFFI {
 					origin_type: 6,
 					id: id.0,
 				},
@@ -131,11 +131,11 @@ impl Marshaller {
 	fn unmarshal_origin(ffi: &FlowOriginFFI) -> Result<FlowChangeOrigin, String> {
 		match ffi.origin_type {
 			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
-			1 => Ok(FlowChangeOrigin::External(SourceId::Table(TableId(ffi.id)))),
-			2 => Ok(FlowChangeOrigin::External(SourceId::View(ViewId(ffi.id)))),
-			3 => Ok(FlowChangeOrigin::External(SourceId::TableVirtual(TableVirtualId(ffi.id)))),
-			4 => Ok(FlowChangeOrigin::External(SourceId::RingBuffer(RingBufferId(ffi.id)))),
-			5 => Ok(FlowChangeOrigin::External(SourceId::Flow(FlowId(ffi.id)))),
+			1 => Ok(FlowChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
+			2 => Ok(FlowChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
+			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(TableVirtualId(ffi.id)))),
+			4 => Ok(FlowChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
+			5 => Ok(FlowChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin_type)),
 		}
 	}

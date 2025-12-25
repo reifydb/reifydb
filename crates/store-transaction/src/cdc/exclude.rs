@@ -78,7 +78,7 @@ mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::SourceRetentionPolicy => {}
+			KeyKind::PrimitiveRetentionPolicy => {}
 			KeyKind::OperatorRetentionPolicy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
@@ -238,7 +238,7 @@ mod tests {
 
 	#[test]
 	fn test_include_source_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::SourceRetentionPolicy));
+		assert!(!should_exclude_from_cdc(KeyKind::PrimitiveRetentionPolicy));
 	}
 
 	#[test]

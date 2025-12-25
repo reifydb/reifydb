@@ -19,7 +19,7 @@ use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
-		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
+		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
 	return_error,
 };
@@ -503,7 +503,7 @@ pub enum LogicalPlan {
 	Extend(ExtendNode),
 	Apply(ApplyNode),
 	InlineData(InlineDataNode),
-	SourceScan(SourceScanNode),
+	PrimitiveScan(PrimitiveScanNode),
 	Window(WindowNode),
 	Generator(GeneratorNode),
 	VariableSource(VariableSourceNode),
@@ -790,8 +790,8 @@ pub struct InlineDataNode {
 }
 
 #[derive(Debug)]
-pub struct SourceScanNode {
-	pub source: ResolvedSource,
+pub struct PrimitiveScanNode {
+	pub source: ResolvedPrimitive,
 	pub columns: Option<Vec<ResolvedColumn>>,
 	pub index: Option<ResolvedIndex>,
 }

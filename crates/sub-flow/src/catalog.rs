@@ -15,7 +15,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	Result,
-	interface::{ColumnDef, DictionaryDef, QueryTransaction, SourceId},
+	interface::{ColumnDef, DictionaryDef, PrimitiveId, QueryTransaction},
 };
 use reifydb_type::Type;
 use tokio::sync::RwLock;
@@ -24,7 +24,7 @@ use tokio::sync::RwLock;
 ///
 /// Contains all information needed to decode row bytes into `Row` values,
 /// including storage types, value types, and dictionary definitions.
-pub struct SourceMetadata {
+pub struct PrimitiveMetadata {
 	pub storage_types: Vec<Type>,
 	pub value_types: Vec<(String, Type)>,
 	pub dictionaries: Vec<Option<DictionaryDef>>,
@@ -33,7 +33,7 @@ pub struct SourceMetadata {
 
 /// Thread-safe cache for source metadata.
 ///
-/// Caches column definitions, type layouts, and dictionary info per SourceId.
+/// Caches column definitions, type layouts, and dictionary info per PrimitiveId.
 ///
 /// # Thread Safety
 ///
@@ -41,7 +41,7 @@ pub struct SourceMetadata {
 /// - Read path: Multiple tasks can read cached metadata concurrently
 /// - Write path: Single writer for cache updates
 pub struct FlowCatalog {
-	sources: RwLock<HashMap<SourceId, Arc<SourceMetadata>>>,
+	sources: RwLock<HashMap<PrimitiveId, Arc<PrimitiveMetadata>>>,
 }
 
 impl FlowCatalog {
@@ -56,7 +56,7 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub async fn get_or_load<T>(&self, txn: &mut T, source: SourceId) -> Result<Arc<SourceMetadata>>
+	pub async fn get_or_load<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<Arc<PrimitiveMetadata>>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -73,12 +73,12 @@ impl FlowCatalog {
 		}
 
 		// Slow path: load and cache
-		let metadata = Arc::new(self.load_source_metadata(txn, source).await?);
+		let metadata = Arc::new(self.load_primitive_metadata(txn, source).await?);
 		let mut cache = self.sources.write().await;
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	async fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
+	async fn load_primitive_metadata<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<PrimitiveMetadata>
 	where
 		T: CatalogTableQueryOperations
 			+ CatalogNamespaceQueryOperations
@@ -88,12 +88,12 @@ impl FlowCatalog {
 	{
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
-			SourceId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
-			SourceId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
-			SourceId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
-			SourceId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
-			SourceId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
-			SourceId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
+			PrimitiveId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
+			PrimitiveId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
+			PrimitiveId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
+			PrimitiveId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
+			PrimitiveId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
+			PrimitiveId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
 		};
 
 		// Build type info and dictionary info
@@ -122,7 +122,7 @@ impl FlowCatalog {
 			}
 		}
 
-		Ok(SourceMetadata {
+		Ok(PrimitiveMetadata {
 			storage_types,
 			value_types,
 			dictionaries,
@@ -166,7 +166,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -181,7 +181,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
+		let source = PrimitiveId::Table(table.id);
 
 		let first = catalog.get_or_load(&mut txn, source).await.unwrap();
 		let second = catalog.get_or_load(&mut txn, source).await.unwrap();
@@ -197,7 +197,7 @@ mod tests {
 		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::View(view.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -210,7 +210,7 @@ mod tests {
 		let rb = ensure_test_ringbuffer(&mut txn).await;
 
 		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).await.unwrap();
+		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());

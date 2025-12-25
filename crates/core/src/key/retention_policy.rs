@@ -3,52 +3,52 @@ use serde::{Deserialize, Serialize};
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{DictionaryId, FlowId, FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
+	interface::{DictionaryId, FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention policy for a data source (table, view, ringbuffer)
+/// Key for storing retention policy for a data primitive (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SourceRetentionPolicyKey {
-	pub source: SourceId,
+pub struct PrimitiveRetentionPolicyKey {
+	pub primitive: PrimitiveId,
 }
 
-impl SourceRetentionPolicyKey {
-	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
+impl PrimitiveRetentionPolicyKey {
+	pub fn encoded(primitive: impl Into<PrimitiveId>) -> EncodedKey {
 		Self {
-			source: source.into(),
+			primitive: primitive.into(),
 		}
 		.encode()
 	}
 }
 
-impl EncodableKey for SourceRetentionPolicyKey {
-	const KIND: KeyKind = KeyKind::SourceRetentionPolicy;
+impl EncodableKey for PrimitiveRetentionPolicyKey {
+	const KIND: KeyKind = KeyKind::PrimitiveRetentionPolicy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
 
-		// Encode source_id with discriminator
-		match &self.source {
-			SourceId::Table(id) => {
+		// Encode primitive_id with discriminator
+		match &self.primitive {
+			PrimitiveId::Table(id) => {
 				serializer.extend_u8(0x01).extend_u64(id.0);
 			}
-			SourceId::View(id) => {
+			PrimitiveId::View(id) => {
 				serializer.extend_u8(0x02).extend_u64(id.0);
 			}
-			SourceId::Flow(id) => {
+			PrimitiveId::Flow(id) => {
 				serializer.extend_u8(0x05).extend_u64(id.0);
 			}
-			SourceId::TableVirtual(id) => {
+			PrimitiveId::TableVirtual(id) => {
 				serializer.extend_u8(0x03).extend_u64(id.0);
 			}
-			SourceId::RingBuffer(id) => {
+			PrimitiveId::RingBuffer(id) => {
 				serializer.extend_u8(0x04).extend_u64(id.0);
 			}
-			SourceId::Dictionary(id) => {
+			PrimitiveId::Dictionary(id) => {
 				serializer.extend_u8(0x06).extend_u64(id.0);
 			}
 		}
@@ -72,18 +72,18 @@ impl EncodableKey for SourceRetentionPolicyKey {
 		let discriminator = de.read_u8().ok()?;
 		let id = de.read_u64().ok()?;
 
-		let source_id = match discriminator {
-			0x01 => SourceId::Table(TableId(id)),
-			0x02 => SourceId::View(ViewId(id)),
-			0x03 => SourceId::TableVirtual(TableVirtualId(id)),
-			0x04 => SourceId::RingBuffer(RingBufferId(id)),
-			0x05 => SourceId::Flow(FlowId(id)),
-			0x06 => SourceId::Dictionary(DictionaryId(id)),
+		let primitive_id = match discriminator {
+			0x01 => PrimitiveId::Table(TableId(id)),
+			0x02 => PrimitiveId::View(ViewId(id)),
+			0x03 => PrimitiveId::TableVirtual(TableVirtualId(id)),
+			0x04 => PrimitiveId::RingBuffer(RingBufferId(id)),
+			0x05 => PrimitiveId::Flow(FlowId(id)),
+			0x06 => PrimitiveId::Dictionary(DictionaryId(id)),
 			_ => return None,
 		};
 
 		Some(Self {
-			source: source_id,
+			primitive: primitive_id,
 		})
 	}
 }
@@ -131,23 +131,23 @@ impl EncodableKey for OperatorRetentionPolicyKey {
 	}
 }
 
-/// Range for scanning all source retention policies
-pub struct SourceRetentionPolicyKeyRange;
+/// Range for scanning all primitive retention policies
+pub struct PrimitiveRetentionPolicyKeyRange;
 
-impl SourceRetentionPolicyKeyRange {
+impl PrimitiveRetentionPolicyKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(SourceRetentionPolicyKey::KIND as u8);
+		serializer.extend_u8(VERSION).extend_u8(PrimitiveRetentionPolicyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(SourceRetentionPolicyKey::KIND as u8 - 1);
+		serializer.extend_u8(VERSION).extend_u8(PrimitiveRetentionPolicyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -178,9 +178,9 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_source_retention_policy_key_encoding() {
-		let key = SourceRetentionPolicyKey {
-			source: SourceId::Table(TableId(42)),
+	fn test_primitive_retention_policy_key_encoding() {
+		let key = PrimitiveRetentionPolicyKey {
+			primitive: PrimitiveId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
@@ -188,7 +188,7 @@ mod tests {
 		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
 		assert_eq!(&encoded[3..11], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xD5]);
 
-		let decoded = SourceRetentionPolicyKey::decode(&encoded).unwrap();
+		let decoded = PrimitiveRetentionPolicyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 

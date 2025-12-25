@@ -86,13 +86,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self))]
 	async fn find_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<Option<DictionaryDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(dictionary) = TransactionalDictionaryChanges::find_dictionary(self, id) {
 			return Ok(Some(dictionary.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalDictionaryChanges::is_dictionary_deleted(self, id) {
 			return Ok(None);
 		}
@@ -118,14 +118,14 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		name: &str,
 	) -> reifydb_core::Result<Option<DictionaryDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(dictionary) = TransactionalDictionaryChanges::find_dictionary_by_name(self, namespace, name)
 		{
 			return Ok(Some(dictionary.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}

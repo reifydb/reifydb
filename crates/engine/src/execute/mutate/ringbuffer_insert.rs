@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::{CatalogStore, sequence::RowSequence};
 use reifydb_core::{
-	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource},
+	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	return_error,
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
@@ -68,7 +68,7 @@ impl Executor {
 
 		let rb_ident = Fragment::internal(ringbuffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
+		let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
 
 		let execution_context = Arc::new(ExecutionContext {
 			executor: self.clone(),

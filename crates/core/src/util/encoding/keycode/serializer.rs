@@ -8,7 +8,7 @@ use super::{
 	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64,
 	encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128, serialize,
 };
-use crate::interface::{IndexId, SourceId};
+use crate::interface::{IndexId, PrimitiveId};
 
 /// A builder for constructing binary keys using keycode encoding
 pub struct KeySerializer {
@@ -129,10 +129,10 @@ impl KeySerializer {
 		crate::EncodedKey::new(self.buffer)
 	}
 
-	/// Extend with a SourceId value (includes type discriminator)
-	pub fn extend_source_id(&mut self, source: impl Into<SourceId>) -> &mut Self {
-		let source = source.into();
-		self.buffer.extend_from_slice(&catalog::serialize_source_id(&source));
+	/// Extend with a PrimitiveId value (includes type discriminator)
+	pub fn extend_primitive_id(&mut self, primitive: impl Into<PrimitiveId>) -> &mut Self {
+		let primitive = primitive.into();
+		self.buffer.extend_from_slice(&catalog::serialize_primitive_id(&primitive));
 		self
 	}
 
@@ -990,23 +990,23 @@ mod tests {
 	}
 
 	#[test]
-	fn test_source_id() {
-		use crate::interface::{SourceId, TableId};
+	fn test_primitive_id() {
+		use crate::interface::{PrimitiveId, TableId};
 
 		let mut serializer = KeySerializer::new();
-		serializer.extend_source_id(SourceId::Table(TableId(987654321)));
+		serializer.extend_primitive_id(PrimitiveId::Table(TableId(987654321)));
 		let result = serializer.finish();
 
-		// SourceId Table uses 1 byte prefix + 8 bytes u64 with bitwise NOT
+		// PrimitiveId Table uses 1 byte prefix + 8 bytes u64 with bitwise NOT
 		assert_eq!(result.len(), 9);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
 		// Verify ordering
 		let mut serializer2 = KeySerializer::new();
-		serializer2.extend_source_id(SourceId::Table(TableId(987654322)));
+		serializer2.extend_primitive_id(PrimitiveId::Table(TableId(987654322)));
 		let result2 = serializer2.finish();
 
-		// result2 (for larger SourceId) should be < result (inverted ordering)
+		// result2 (for larger PrimitiveId) should be < result (inverted ordering)
 		// Compare from byte 1 onwards (after the variant prefix)
 		assert!(result2[1..] < result[1..]);
 	}

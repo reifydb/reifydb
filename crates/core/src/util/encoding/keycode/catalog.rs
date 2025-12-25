@@ -4,36 +4,36 @@
 use reifydb_type::return_internal_error;
 
 use crate::interface::{
-	DictionaryId, FlowId, IndexId, PrimaryKeyId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId,
+	DictionaryId, FlowId, IndexId, PrimaryKeyId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId,
 };
 
-/// Serialize a SourceId for use in database keys
+/// Serialize a PrimitiveId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
-pub fn serialize_source_id(source: &SourceId) -> Vec<u8> {
+pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
-	match source {
-		SourceId::Table(TableId(id)) => {
+	match primitive {
+		PrimitiveId::Table(TableId(id)) => {
 			result.push(0x01);
 			result.extend(&super::serialize(id));
 		}
-		SourceId::View(ViewId(id)) => {
+		PrimitiveId::View(ViewId(id)) => {
 			result.push(0x02);
 			result.extend(&super::serialize(id));
 		}
-		SourceId::TableVirtual(TableVirtualId(id)) => {
+		PrimitiveId::TableVirtual(TableVirtualId(id)) => {
 			result.push(0x03);
 			result.extend(&super::serialize(id));
 		}
-		SourceId::RingBuffer(RingBufferId(id)) => {
+		PrimitiveId::RingBuffer(RingBufferId(id)) => {
 			result.push(0x04);
 			result.extend(&super::serialize(id));
 		}
-		SourceId::Flow(FlowId(id)) => {
+		PrimitiveId::Flow(FlowId(id)) => {
 			result.push(0x05);
 			result.extend(&super::serialize(id));
 		}
-		SourceId::Dictionary(DictionaryId(id)) => {
+		PrimitiveId::Dictionary(DictionaryId(id)) => {
 			result.push(0x06);
 			result.extend(&super::serialize(id));
 		}
@@ -41,25 +41,25 @@ pub fn serialize_source_id(source: &SourceId) -> Vec<u8> {
 	result
 }
 
-/// Deserialize a SourceId from database key bytes
+/// Deserialize a PrimitiveId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
-pub fn deserialize_source_id(bytes: &[u8]) -> crate::Result<SourceId> {
+pub fn deserialize_primitive_id(bytes: &[u8]) -> crate::Result<PrimitiveId> {
 	if bytes.len() != 9 {
-		return_internal_error!("Invalid SourceId encoding: expected 9 bytes, got {}", bytes.len());
+		return_internal_error!("Invalid PrimitiveId encoding: expected 9 bytes, got {}", bytes.len());
 	}
 
 	let type_byte = bytes[0];
 	let id: u64 = super::deserialize(&bytes[1..9])?;
 
 	match type_byte {
-		0x01 => Ok(SourceId::Table(TableId(id))),
-		0x02 => Ok(SourceId::View(ViewId(id))),
-		0x03 => Ok(SourceId::TableVirtual(TableVirtualId(id))),
-		0x04 => Ok(SourceId::RingBuffer(RingBufferId(id))),
-		0x05 => Ok(SourceId::Flow(FlowId(id))),
-		0x06 => Ok(SourceId::Dictionary(DictionaryId(id))),
-		_ => return_internal_error!("Invalid SourceId type byte: 0x{:02x}.", type_byte),
+		0x01 => Ok(PrimitiveId::Table(TableId(id))),
+		0x02 => Ok(PrimitiveId::View(ViewId(id))),
+		0x03 => Ok(PrimitiveId::TableVirtual(TableVirtualId(id))),
+		0x04 => Ok(PrimitiveId::RingBuffer(RingBufferId(id))),
+		0x05 => Ok(PrimitiveId::Flow(FlowId(id))),
+		0x06 => Ok(PrimitiveId::Dictionary(DictionaryId(id))),
+		_ => return_internal_error!("Invalid PrimitiveId type byte: 0x{:02x}.", type_byte),
 	}
 }
 
@@ -98,54 +98,54 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_source_id_ordering() {
+	fn test_primitive_id_ordering() {
 		// Test that larger IDs encode to smaller byte sequences
 		// (descending order)
-		let source1 = SourceId::table(1);
-		let source2 = SourceId::table(2);
-		let source100 = SourceId::table(100);
-		let source200 = SourceId::table(200);
+		let primitive1 = PrimitiveId::table(1);
+		let primitive2 = PrimitiveId::table(2);
+		let primitive100 = PrimitiveId::table(100);
+		let primitive200 = PrimitiveId::table(200);
 
-		let bytes1 = serialize_source_id(&source1);
-		let bytes2 = serialize_source_id(&source2);
-		let bytes100 = serialize_source_id(&source100);
-		let bytes200 = serialize_source_id(&source200);
+		let bytes1 = serialize_primitive_id(&primitive1);
+		let bytes2 = serialize_primitive_id(&primitive2);
+		let bytes100 = serialize_primitive_id(&primitive100);
+		let bytes200 = serialize_primitive_id(&primitive200);
 
 		// In descending order, larger values should have smaller byte
 		// representations
-		assert!(bytes2 < bytes1, "source(2) should be < source(1) in bytes");
-		assert!(bytes200 < bytes100, "source(200) should be < source(100) in bytes");
-		assert!(bytes100 < bytes2, "source(100) should be < source(2) in bytes");
+		assert!(bytes2 < bytes1, "primitive(2) should be < primitive(1) in bytes");
+		assert!(bytes200 < bytes100, "primitive(200) should be < primitive(100) in bytes");
+		assert!(bytes100 < bytes2, "primitive(100) should be < primitive(2) in bytes");
 	}
 
 	#[test]
 	fn test_range_boundaries() {
 		// Test range boundary creation for tables
-		let source10 = SourceId::table(10);
-		let source9 = source10.prev();
+		let primitive10 = PrimitiveId::table(10);
+		let primitive9 = primitive10.prev();
 
-		let bytes10 = serialize_source_id(&source10);
-		let bytes9 = serialize_source_id(&source9);
+		let bytes10 = serialize_primitive_id(&primitive10);
+		let bytes9 = serialize_primitive_id(&primitive9);
 
-		// In descending order, source(9) > source(10)
-		assert!(bytes9 > bytes10, "source(9) should be > source(10) in bytes");
+		// In descending order, primitive(9) > primitive(10)
+		assert!(bytes9 > bytes10, "primitive(9) should be > primitive(10) in bytes");
 
 		// Test with views
-		let view10 = SourceId::view(10);
+		let view10 = PrimitiveId::view(10);
 		let view9 = view10.prev();
 
-		let vbytes10 = serialize_source_id(&view10);
-		let vbytes9 = serialize_source_id(&view9);
+		let vbytes10 = serialize_primitive_id(&view10);
+		let vbytes9 = serialize_primitive_id(&view9);
 
 		// In descending order, view(9) > view(10)
 		assert!(vbytes9 > vbytes10, "view(9) should be > view(10) in bytes");
 
 		// Test with virtual tables
-		let virtual10 = SourceId::table_virtual(10);
+		let virtual10 = PrimitiveId::table_virtual(10);
 		let virtual9 = virtual10.prev();
 
-		let tvbytes10 = serialize_source_id(&virtual10);
-		let tvbytes9 = serialize_source_id(&virtual9);
+		let tvbytes10 = serialize_primitive_id(&virtual10);
+		let tvbytes9 = serialize_primitive_id(&virtual9);
 
 		// In descending order, table_virtual(9) > table_virtual(10)
 		assert!(tvbytes9 > tvbytes10, "table_virtual(9) should be > table_virtual(10) in bytes");
@@ -173,10 +173,10 @@ mod tests {
 		end_key.extend(&bytes9);
 
 		// Range check assertions
-		assert!(key1 >= bytes10, "key1 should be >= start(source10)");
-		assert!(key1 < end_key, "key1 should be < end(source9)");
-		assert!(key2 >= bytes10, "key2 should be >= start(source10)");
-		assert!(key2 < end_key, "key2 should be < end(source9)");
+		assert!(key1 >= bytes10, "key1 should be >= start(primitive10)");
+		assert!(key1 < end_key, "key1 should be < end(primitive9)");
+		assert!(key2 >= bytes10, "key2 should be >= start(primitive10)");
+		assert!(key2 < end_key, "key2 should be < end(primitive9)");
 	}
 
 	#[test]
@@ -184,26 +184,26 @@ mod tests {
 		use crate::interface::TableVirtualId;
 
 		// Test basic serialization/deserialization
-		let virtual_source = SourceId::table_virtual(42);
-		let bytes = serialize_source_id(&virtual_source);
-		let deserialized = deserialize_source_id(&bytes).unwrap();
-		assert_eq!(virtual_source, deserialized);
+		let virtual_primitive = PrimitiveId::table_virtual(42);
+		let bytes = serialize_primitive_id(&virtual_primitive);
+		let deserialized = deserialize_primitive_id(&bytes).unwrap();
+		assert_eq!(virtual_primitive, deserialized);
 
 		// Test that type byte is 0x03
 		assert_eq!(bytes[0], 0x03);
 
 		// Test with TableVirtualId directly
 		let virtual_id = TableVirtualId(123);
-		let source_from_id = SourceId::from(virtual_id);
-		let bytes_from_id = serialize_source_id(&source_from_id);
-		let deserialized_id = deserialize_source_id(&bytes_from_id).unwrap();
-		assert_eq!(source_from_id, deserialized_id);
+		let primitive_from_id = PrimitiveId::from(virtual_id);
+		let bytes_from_id = serialize_primitive_id(&primitive_from_id);
+		let deserialized_id = deserialize_primitive_id(&bytes_from_id).unwrap();
+		assert_eq!(primitive_from_id, deserialized_id);
 
 		// Test ordering
-		let virtual1 = SourceId::table_virtual(1);
-		let virtual2 = SourceId::table_virtual(2);
-		let bytes1 = serialize_source_id(&virtual1);
-		let bytes2 = serialize_source_id(&virtual2);
+		let virtual1 = PrimitiveId::table_virtual(1);
+		let virtual2 = PrimitiveId::table_virtual(2);
+		let bytes1 = serialize_primitive_id(&virtual1);
+		let bytes2 = serialize_primitive_id(&virtual2);
 		// In descending order, larger values should have smaller byte
 		// representations
 		assert!(bytes2 < bytes1, "table_virtual(2) should be < table_virtual(1) in bytes");
@@ -277,23 +277,23 @@ mod tests {
 	#[test]
 	fn test_index_entry_key_encoding_with_discriminator() {
 		// Simulate IndexEntryKey encoding with proper discriminators
-		let source = SourceId::table(42);
+		let primitive = PrimitiveId::table(42);
 		let index = IndexId::primary(7);
 
-		let source_bytes = serialize_source_id(&source);
+		let primitive_bytes = serialize_primitive_id(&primitive);
 		let index_bytes = serialize_index_id(&index);
 
 		// Verify sizes
-		assert_eq!(source_bytes.len(), 9, "SourceId should be 9 bytes");
+		assert_eq!(primitive_bytes.len(), 9, "PrimitiveId should be 9 bytes");
 		assert_eq!(index_bytes.len(), 9, "IndexId should be 9 bytes");
 
 		// Verify discriminators
-		assert_eq!(source_bytes[0], 0x01, "Table source should have type byte 0x01");
+		assert_eq!(primitive_bytes[0], 0x01, "Table primitive should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
-		// Total key prefix would be: version(1) + kind(1) + source(9) +
+		// Total key prefix would be: version(1) + kind(1) + primitive(9) +
 		// index(9) = 20 bytes
-		let total_prefix_size = 1 + 1 + source_bytes.len() + index_bytes.len();
+		let total_prefix_size = 1 + 1 + primitive_bytes.len() + index_bytes.len();
 		assert_eq!(total_prefix_size, 20, "Total IndexEntryKey prefix should be 20 bytes");
 	}
 }

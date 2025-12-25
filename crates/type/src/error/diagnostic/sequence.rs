@@ -21,7 +21,6 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 }
 
 pub fn can_not_alter_not_auto_increment(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "SEQUENCE_002".to_string(),
 		statement: None,

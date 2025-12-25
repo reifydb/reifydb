@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, RingBufferId, RowSequenceKey, SourceId, TableId};
+use reifydb_core::interface::{CommandTransaction, PrimitiveId, RingBufferId, RowSequenceKey, TableId};
 use reifydb_type::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
@@ -10,7 +10,7 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub async fn next_row_number(txn: &mut impl CommandTransaction, table: TableId) -> crate::Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(table)), None).await.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).await.map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
@@ -20,7 +20,7 @@ impl RowSequence {
 		table: TableId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, SourceId::from(table), count).await
+		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(table), count).await
 	}
 
 	/// Allocates the next row number for a ring buffer.
@@ -28,7 +28,9 @@ impl RowSequence {
 		txn: &mut impl CommandTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(ringbuffer)), None).await.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None)
+			.await
+			.map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
@@ -38,13 +40,13 @@ impl RowSequence {
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, SourceId::from(ringbuffer), count).await
+		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(ringbuffer), count).await
 	}
 
 	/// Allocates a batch of contiguous row numbers for any source.
 	async fn next_row_number_batch_for_source(
 		txn: &mut impl CommandTransaction,
-		source: SourceId,
+		source: PrimitiveId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
 		let last_row_number =

@@ -11,7 +11,7 @@ use std::sync::{
 use mpsc::UnboundedReceiver;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction, catalog::FlowId},
+	interface::{CommandTransaction, Engine, QueryTransaction, catalog::FlowId},
 	key::FlowVersionKey,
 	value::encoded::EncodedValues,
 };

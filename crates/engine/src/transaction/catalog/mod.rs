@@ -4,7 +4,7 @@
 mod dictionary;
 mod flow;
 mod namespace;
+mod primitive;
 mod ringbuffer;
-mod source;
 mod table;
 mod view;

@@ -87,13 +87,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self))]
 	async fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(table) = TransactionalTableChanges::find_table(self, id) {
 			return Ok(Some(table.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalTableChanges::is_table_deleted(self, id) {
 			return Ok(None);
 		}
@@ -119,13 +119,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		name: &str,
 	) -> reifydb_core::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(table) = TransactionalTableChanges::find_table_by_name(self, namespace, name) {
 			return Ok(Some(table.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalTableChanges::is_table_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}

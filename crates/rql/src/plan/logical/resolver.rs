@@ -7,24 +7,24 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		resolved::{
-			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
-			ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
+			ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 		},
 	},
 };
 use reifydb_type::Fragment;
 
-use crate::ast::identifier::UnresolvedSourceIdentifier;
+use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
 /// Default namespace for unqualified identifiers
 pub const DEFAULT_NAMESPACE: &str = "default";
 
-/// Resolve an unresolved source identifier to a ResolvedSource
+/// Resolve an unresolved source identifier to a ResolvedPrimitive
 /// This is used when processing From clauses and joins
 pub async fn resolve_unresolved_source(
 	tx: &mut impl CatalogQueryTransaction,
-	unresolved: &UnresolvedSourceIdentifier,
-) -> Result<ResolvedSource> {
+	unresolved: &UnresolvedPrimitiveIdentifier,
+) -> Result<ResolvedPrimitive> {
 	let namespace_str = if let Some(ref ns) = unresolved.namespace {
 		ns.text()
 	} else {
@@ -46,7 +46,7 @@ pub async fn resolve_unresolved_source(
 
 	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = tx.find_table_virtual_user_by_name(ns_def.id, name_str) {
-		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			(*virtual_def).clone(),
@@ -64,21 +64,25 @@ pub async fn resolve_unresolved_source(
 			columns: vec![], // Columns are populated at execution time
 		};
 
-		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(name_fragment, namespace, def)));
+		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(name_fragment, namespace, def)));
 	}
 
 	// Try table first
 	if let Some(table) = tx.find_table_by_name(ns_def.id, name_str).await? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Table(ResolvedTable::new(name_fragment, namespace, table)));
+		return Ok(ResolvedPrimitive::Table(ResolvedTable::new(name_fragment, namespace, table)));
 	}
 
 	// Try ring buffer
 	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str).await? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ringbuffer)));
+		return Ok(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
+			name_fragment,
+			namespace,
+			ringbuffer,
+		)));
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
@@ -87,32 +91,36 @@ pub async fn resolve_unresolved_source(
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		let resolved_source = match view.kind {
-			ViewKind::Deferred => {
-				ResolvedSource::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
-			}
-			ViewKind::Transactional => ResolvedSource::TransactionalView(ResolvedTransactionalView::new(
+			ViewKind::Deferred => ResolvedPrimitive::DeferredView(ResolvedDeferredView::new(
 				name_fragment,
 				namespace,
 				view,
 			)),
+			ViewKind::Transactional => ResolvedPrimitive::TransactionalView(
+				ResolvedTransactionalView::new(name_fragment, namespace, view),
+			),
 		};
 		return Ok(resolved_source);
 	}
 
 	// Try dictionaries
 	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str).await? {
-		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
+		return Ok(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
+			name_fragment,
+			namespace,
+			dictionary,
+		)));
 	}
 
 	// Try flows (after views, since deferred views take precedence)
 	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str).await? {
 		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
+		return Ok(ResolvedPrimitive::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
 	}
 
 	// Not found
-	Err(crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
+	Err(crate::error::IdentifierError::SourceNotFound(crate::error::PrimitiveNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
 		fragment: unresolved.name.clone(),

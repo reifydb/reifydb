@@ -3,14 +3,14 @@
 
 use crate::{
 	EncodedKey,
-	interface::{ColumnId, SourceId},
+	interface::{ColumnId, PrimitiveId},
 	key::{EncodableKey, KeyKind},
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnSequenceKey {
-	pub source: SourceId,
+	pub primitive: PrimitiveId,
 	pub column: ColumnId,
 }
 
@@ -24,7 +24,7 @@ impl EncodableKey for ColumnSequenceKey {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source)
+			.extend_primitive_id(self.primitive)
 			.extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
@@ -42,20 +42,20 @@ impl EncodableKey for ColumnSequenceKey {
 			return None;
 		}
 
-		let source = de.read_source_id().ok()?;
+		let primitive = de.read_primitive_id().ok()?;
 		let column = de.read_u64().ok()?;
 
 		Some(Self {
-			source,
+			primitive,
 			column: ColumnId(column),
 		})
 	}
 }
 
 impl ColumnSequenceKey {
-	pub fn encoded(source: impl Into<SourceId>, column: impl Into<ColumnId>) -> EncodedKey {
+	pub fn encoded(primitive: impl Into<PrimitiveId>, column: impl Into<ColumnId>) -> EncodedKey {
 		Self {
-			source: source.into(),
+			primitive: primitive.into(),
 			column: column.into(),
 		}
 		.encode()
@@ -67,13 +67,13 @@ mod tests {
 	use super::{ColumnSequenceKey, EncodableKey};
 	use crate::{
 		EncodedKey,
-		interface::{ColumnId, SourceId},
+		interface::{ColumnId, PrimitiveId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnSequenceKey {
-			source: SourceId::table(0x1234),
+			primitive: PrimitiveId::table(0x1234),
 			column: ColumnId(0x5678),
 		};
 		let encoded = key.encode();
@@ -83,7 +83,7 @@ mod tests {
 
 		// Test decode
 		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.source, SourceId::table(0x1234));
+		assert_eq!(decoded.primitive, PrimitiveId::table(0x1234));
 		assert_eq!(decoded.column, ColumnId(0x5678));
 	}
 

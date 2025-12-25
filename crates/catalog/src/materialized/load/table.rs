@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	MultiVersionQueryTransaction, MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId,
-	TableKey,
+	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, QueryTransaction, TableDef, TableId, TableKey,
 };
 
 use crate::{
@@ -14,10 +13,7 @@ use crate::{
 	},
 };
 
-pub(crate) async fn load_tables(
-	qt: &mut impl MultiVersionQueryTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
+pub(crate) async fn load_tables(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = TableKey::full_scan();
 	let batch = qt.range(range).await?;
 

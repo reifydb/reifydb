@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Error,
-	interface::{FlowNodeId, QueryTransaction, SourceId},
+	interface::{FlowNodeId, PrimitiveId, QueryTransaction},
 	retention::RetentionPolicy,
 };
 use reifydb_type::internal;
@@ -13,11 +13,11 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a retention policy for a source (table, view, or ring buffer)
 	/// Returns an error if no retention policy is set
-	pub async fn get_source_retention_policy(
+	pub async fn get_primitive_retention_policy(
 		txn: &mut impl QueryTransaction,
-		source: SourceId,
+		source: PrimitiveId,
 	) -> crate::Result<RetentionPolicy> {
-		Self::find_source_retention_policy(txn, source).await?.ok_or_else(|| {
+		Self::find_primitive_retention_policy(txn, source).await?.ok_or_else(|| {
 			Error(internal!(
 				"Retention policy for source {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				source
@@ -50,28 +50,28 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_primitive_retention_policy,
 	};
 
 	#[tokio::test]
-	async fn test_get_source_retention_policy_exists() {
+	async fn test_get_primitive_retention_policy_exists() {
 		let mut txn = create_test_command_transaction().await;
-		let source = SourceId::View(ViewId(100));
+		let source = PrimitiveId::View(ViewId(100));
 
 		let policy = RetentionPolicy::KeepForever;
 
-		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
 
-		let retrieved = CatalogStore::get_source_retention_policy(&mut txn, source).await.unwrap();
+		let retrieved = CatalogStore::get_primitive_retention_policy(&mut txn, source).await.unwrap();
 		assert_eq!(retrieved, policy);
 	}
 
 	#[tokio::test]
-	async fn test_get_source_retention_policy_not_exists() {
+	async fn test_get_primitive_retention_policy_not_exists() {
 		let mut txn = create_test_command_transaction().await;
-		let source = SourceId::RingBuffer(RingBufferId(9999));
+		let source = PrimitiveId::RingBuffer(RingBufferId(9999));
 
-		let err = CatalogStore::get_source_retention_policy(&mut txn, source).await.unwrap_err();
+		let err = CatalogStore::get_primitive_retention_policy(&mut txn, source).await.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("Retention policy"));

@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogSourceQueryOperations, CatalogStore};
+use reifydb_catalog::{CatalogPrimitiveQueryOperations, CatalogStore};
 use reifydb_core::{
 	CommitVersion, Error, Row,
 	interface::{
-		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, MultiVersionQueryTransaction, RowKey, RowKeyRange,
-		SourceDef, SourceId,
+		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, PrimitiveDef, PrimitiveId, QueryTransaction,
+		RowKey, RowKeyRange,
 	},
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
@@ -52,22 +52,22 @@ impl FlowEngine {
 			let source_id = match &source_node.ty {
 				FlowNodeType::SourceTable {
 					table,
-				} => SourceId::table(*table),
+				} => PrimitiveId::table(*table),
 				FlowNodeType::SourceView {
 					view,
-				} => SourceId::view(*view),
+				} => PrimitiveId::view(*view),
 				_ => continue,
 			};
 
-			let source_def = txn.get_source(source_id).await?;
+			let source_def = txn.get_primitive(source_id).await?;
 			let rows = self.scan_all_rows(txn, &mut flow_txn, &source_def).await?;
 			if rows.is_empty() {
 				continue;
 			}
 
 			let (namespace, name) = match &source_def {
-				SourceDef::Table(t) => (&t.namespace, &t.name),
-				SourceDef::View(v) => (&v.namespace, &v.name),
+				PrimitiveDef::Table(t) => (&t.namespace, &t.name),
+				PrimitiveDef::View(v) => (&v.namespace, &v.name),
 				_ => unreachable!("Only Table and View sources are supported for backfill"),
 			};
 
@@ -117,14 +117,14 @@ impl FlowEngine {
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow_txn: &mut FlowTransaction,
-		source: &SourceDef,
+		source: &PrimitiveDef,
 	) -> crate::Result<Vec<Row>> {
 		let mut rows = Vec::new();
 
 		// Get column definitions from the source
 		let columns: &[ColumnDef] = match source {
-			SourceDef::Table(t) => &t.columns,
-			SourceDef::View(v) => &v.columns,
+			PrimitiveDef::Table(t) => &t.columns,
+			PrimitiveDef::View(v) => &v.columns,
 			_ => unreachable!("Only Table and View sources are supported for backfill"),
 		};
 

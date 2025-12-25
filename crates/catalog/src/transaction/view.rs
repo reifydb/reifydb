@@ -87,13 +87,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self))]
 	async fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(view) = TransactionalViewChanges::find_view(self, id) {
 			return Ok(Some(view.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalViewChanges::is_view_deleted(self, id) {
 			return Ok(None);
 		}
@@ -119,13 +119,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		name: &str,
 	) -> reifydb_core::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(view) = TransactionalViewChanges::find_view_by_name(self, namespace, name) {
 			return Ok(Some(view.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalViewChanges::is_view_deleted_by_name(self, namespace, name) {
 			return Ok(None);
 		}

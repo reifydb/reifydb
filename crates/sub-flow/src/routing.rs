@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	CowVec, Result, Row,
-	interface::{Cdc, CdcChange, Engine, SourceId, catalog::FlowId},
+	interface::{Cdc, CdcChange, Engine, PrimitiveId, catalog::FlowId},
 	key::Key,
 	value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 };
@@ -46,7 +46,7 @@ pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cd
 			continue;
 		};
 
-		let source_id = row_key.source;
+		let source_id = row_key.primitive;
 		let row_number = row_key.row;
 
 		// Find flows that subscribe to this source
@@ -110,7 +110,7 @@ pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cd
 async fn convert_cdc_to_flow_change(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
-	source_id: SourceId,
+	source_id: PrimitiveId,
 	row_number: reifydb_type::RowNumber,
 	cdc_change: &CdcChange,
 	version: reifydb_core::CommitVersion,
@@ -157,13 +157,13 @@ async fn convert_cdc_to_flow_change(
 async fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
-	source_id: SourceId,
+	source_id: PrimitiveId,
 	row_number: reifydb_type::RowNumber,
 	row_bytes: Vec<u8>,
 ) -> Result<Row> {
 	use reifydb_core::{
 		Error,
-		interface::{EncodableKey, MultiVersionQueryTransaction},
+		interface::{EncodableKey, QueryTransaction},
 		key::DictionaryEntryIndexKey,
 		value::encoded::EncodedValuesLayout,
 	};

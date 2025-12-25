@@ -4,7 +4,9 @@
 use reifydb_catalog::CatalogStore;
 use reifydb_core::interface::{
 	QueryTransaction,
-	resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSequence, ResolvedSource, ResolvedTable, SequenceDef},
+	resolved::{
+		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
+	},
 };
 use reifydb_type::{Fragment, diagnostic::catalog::table_not_found, return_error};
 
@@ -59,7 +61,7 @@ impl Compiler {
 		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table_def);
 
 		// Create resolved source and column
-		let resolved_source = ResolvedSource::Table(resolved_table);
+		let resolved_source = ResolvedPrimitive::Table(resolved_table);
 		let resolved_column = ResolvedColumn::new(alter.column.name.clone(), resolved_source, column_def);
 
 		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {

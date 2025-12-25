@@ -280,7 +280,7 @@ mod tests {
 
 	use reifydb_core::{
 		JoinType, SortDirection, SortKey, WindowSize, WindowType,
-		interface::{ColumnIdentifier, ColumnSource, FlowId, TableId, ViewId},
+		interface::{ColumnIdentifier, ColumnPrimitive, FlowId, TableId, ViewId},
 		value::{
 			column::{Column, Columns},
 			container::BlobContainer,
@@ -303,11 +303,11 @@ mod tests {
 	// Helper functions to create expressions for tests
 	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			source: ColumnSource::Source {
+			primitive: ColumnPrimitive::Primitive {
 				namespace: Fragment::Internal {
 					text: Arc::new("_context".to_string()),
 				},
-				source: Fragment::Internal {
+				primitive: Fragment::Internal {
 					text: Arc::new("_context".to_string()),
 				},
 			},

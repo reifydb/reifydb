@@ -19,7 +19,7 @@ pub fn internal_with_context(
 	let error_id = format!(
 		"ERR-{}-{}:{}",
 		DateTime::now().timestamp_millis(),
-		file.split('/').last().unwrap_or(file).replace(".rs", ""),
+		file.rsplit('/').next().unwrap_or(file).replace(".rs", ""),
 		line
 	);
 

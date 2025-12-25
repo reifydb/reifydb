@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnId, ColumnSequenceKey, CommandTransaction, SourceId};
+use reifydb_core::interface::{ColumnId, ColumnSequenceKey, CommandTransaction, PrimitiveId};
 use reifydb_type::{Type, Value};
 
 use crate::{
@@ -17,7 +17,7 @@ pub struct ColumnSequence {}
 impl ColumnSequence {
 	pub async fn next_value(
 		txn: &mut impl CommandTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 	) -> crate::Result<Value> {
 		let column = CatalogStore::get_column(txn, column).await?;
@@ -40,7 +40,7 @@ impl ColumnSequence {
 
 	pub async fn set_value(
 		txn: &mut impl CommandTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 		column: ColumnId,
 		value: Value,
 	) -> crate::Result<()> {

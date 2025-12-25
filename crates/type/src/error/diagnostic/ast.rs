@@ -33,9 +33,8 @@ pub fn unexpected_eof_error() -> Diagnostic {
 	}
 }
 
-/// Error for when we expect an identifier token specifically  
+/// Error for when we expect an identifier token specifically
 pub fn expected_identifier_error(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	let label = Some(format!("found `{}`", value));
 
@@ -54,7 +53,6 @@ pub fn expected_identifier_error(fragment: Fragment) -> Diagnostic {
 
 /// Error for invalid policy tokens
 pub fn invalid_policy_error(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Invalid policy token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -74,7 +72,6 @@ pub fn invalid_policy_error(fragment: Fragment) -> Diagnostic {
 
 /// Error for unexpected tokens
 pub fn unexpected_token_error(expected: &str, fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Unexpected token: expected {}, got {}", expected, value);
 	let label = Some(format!("found `{}`", value));
@@ -93,7 +90,6 @@ pub fn unexpected_token_error(expected: &str, fragment: Fragment) -> Diagnostic 
 
 /// Error for unsupported tokens
 pub fn unsupported_token_error(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	let message = format!("Unsupported token: {}", value);
 	let label = Some(format!("found `{}`", value));
@@ -113,7 +109,6 @@ pub fn unsupported_token_error(fragment: Fragment) -> Diagnostic {
 
 /// Multiple expressions require curly braces
 pub fn multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let keyword = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_007".to_string(),
@@ -130,7 +125,6 @@ pub fn multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 
 /// Type not found error
 pub fn unrecognized_type(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let type_name = fragment.text().to_string();
 	Diagnostic {
 		code: "AST_008".to_string(),
@@ -147,7 +141,6 @@ pub fn unrecognized_type(fragment: Fragment) -> Diagnostic {
 
 /// Unsupported AST operator in logical plan compilation
 pub fn unsupported_ast_node(fragment: Fragment, node_type: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "AST_009".to_string(),
 		statement: None,

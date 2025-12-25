@@ -13,9 +13,9 @@ mod filter;
 pub mod join;
 mod map;
 mod merge;
+mod primitive;
 mod sink;
 mod sort;
-mod source;
 pub mod stateful;
 mod take;
 pub mod transform;
@@ -29,10 +29,10 @@ pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::MapOperator;
 pub use merge::MergeOperator;
+pub use primitive::{PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator};
 use reifydb_flow_operator_sdk::FlowChange;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
-pub use source::{SourceFlowOperator, SourceTableOperator, SourceViewOperator};
 pub use take::TakeOperator;
 pub use window::WindowOperator;
 
@@ -53,9 +53,9 @@ pub trait Operator: Send + Sync {
 pub type BoxedOperator = Box<dyn Operator>;
 
 pub enum Operators {
-	SourceTable(SourceTableOperator),
-	SourceView(SourceViewOperator),
-	SourceFlow(SourceFlowOperator),
+	SourceTable(PrimitiveTableOperator),
+	SourceView(PrimitiveViewOperator),
+	SourceFlow(PrimitiveFlowOperator),
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),

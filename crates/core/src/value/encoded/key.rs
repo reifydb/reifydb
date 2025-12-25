@@ -15,7 +15,7 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{IndexId, SourceId},
+	interface::{IndexId, PrimitiveId},
 	util::{
 		CowVec,
 		encoding::{binary::decode_binary, keycode::KeySerializer},
@@ -175,9 +175,9 @@ impl EncodedKeyBuilder {
 		self
 	}
 
-	/// Extend with a SourceId value
-	pub fn source_id(mut self, source: impl Into<SourceId>) -> Self {
-		self.serializer.extend_source_id(source);
+	/// Extend with a PrimitiveId value
+	pub fn primitive_id(mut self, primitive: impl Into<PrimitiveId>) -> Self {
+		self.serializer.extend_primitive_id(primitive);
 		self
 	}
 

@@ -6,7 +6,6 @@ mod change;
 pub mod interceptor;
 mod multi;
 mod single;
-mod transaction;
 
 use std::{
 	fmt::{Display, Formatter},
@@ -18,7 +17,6 @@ pub use change::*;
 pub use multi::*;
 use reifydb_type::{Error, Uuid7, return_internal_error};
 pub use single::*;
-pub use transaction::{CommandTransaction, QueryTransaction};
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource},
+	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
@@ -69,7 +69,7 @@ impl Executor {
 
 		let rb_ident = Fragment::internal(ringbuffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
+		let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
 
 		// Create execution context
 		let context = ExecutionContext {

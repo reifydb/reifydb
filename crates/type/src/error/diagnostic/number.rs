@@ -8,7 +8,6 @@ use crate::{
 };
 
 pub fn invalid_number_format(fragment: Fragment, target: Type) -> Diagnostic {
-	let fragment = fragment;
 	let label = Some(format!("'{}' is not a valid {} number", fragment.text(), target));
 
 	let (help, notes) = match target {
@@ -52,14 +51,20 @@ pub struct NumberOfRangeColumnDescriptor<'a> {
 	pub column_type: Option<Type>,
 }
 
-impl<'a> NumberOfRangeColumnDescriptor<'a> {
-	pub fn new() -> Self {
+impl<'a> Default for NumberOfRangeColumnDescriptor<'a> {
+	fn default() -> Self {
 		Self {
 			namespace: None,
 			table: None,
 			column: None,
 			column_type: None,
 		}
+	}
+}
+
+impl<'a> NumberOfRangeColumnDescriptor<'a> {
+	pub fn new() -> Self {
+		Self::default()
 	}
 
 	pub fn with_namespace(mut self, namespace: &'a str) -> Self {
@@ -104,8 +109,6 @@ pub fn number_out_of_range(
 	target: Type,
 	descriptor: Option<&NumberOfRangeColumnDescriptor>,
 ) -> Diagnostic {
-	let fragment = fragment;
-
 	let range = value_range(target);
 
 	let label = if let Some(desc) = descriptor {
@@ -160,7 +163,6 @@ pub fn nan_not_allowed() -> Diagnostic {
 }
 
 pub fn integer_precision_loss(fragment: Fragment, source_type: Type, target: Type) -> Diagnostic {
-	let fragment = fragment;
 	let is_signed = source_type.is_signed_integer();
 
 	let (min_limit, max_limit) = match target {
@@ -213,8 +215,6 @@ pub fn decimal_scale_exceeds_precision(
 ) -> Diagnostic {
 	let scale = scale.into();
 	let precision = precision.into();
-
-	let fragment = fragment;
 	let label = Some(format!("scale ({}) cannot be greater than precision ({})", scale, precision));
 
 	Diagnostic {

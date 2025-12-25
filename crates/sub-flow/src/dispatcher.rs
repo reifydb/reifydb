@@ -187,7 +187,7 @@ fn extract_flow_id_from_key(key: &[u8]) -> Option<FlowId> {
 
 /// Check if flow exists in catalog.
 async fn flow_exists_in_catalog(engine: &StandardEngine, flow_id: FlowId) -> Result<bool> {
-	use reifydb_core::interface::{Engine, MultiVersionQueryTransaction};
+	use reifydb_core::interface::{Engine, QueryTransaction};
 
 	let mut txn = engine.begin_query().await?;
 	let key = FlowKey::encoded(flow_id);
@@ -203,8 +203,8 @@ async fn load_flow_from_catalog(engine: &StandardEngine, flow_id: FlowId) -> Res
 }
 
 /// Get the source tables/views this flow subscribes to.
-fn get_flow_sources(flow: &reifydb_rql::flow::Flow) -> HashSet<reifydb_core::interface::SourceId> {
-	use reifydb_core::interface::SourceId;
+fn get_flow_sources(flow: &reifydb_rql::flow::Flow) -> HashSet<reifydb_core::interface::PrimitiveId> {
+	use reifydb_core::interface::PrimitiveId;
 	use reifydb_rql::flow::FlowNodeType;
 
 	let mut sources = HashSet::new();
@@ -214,17 +214,17 @@ fn get_flow_sources(flow: &reifydb_rql::flow::Flow) -> HashSet<reifydb_core::int
 			FlowNodeType::SourceTable {
 				table,
 			} => {
-				sources.insert(SourceId::Table(*table));
+				sources.insert(PrimitiveId::Table(*table));
 			}
 			FlowNodeType::SourceView {
 				view,
 			} => {
-				sources.insert(SourceId::View(*view));
+				sources.insert(PrimitiveId::View(*view));
 			}
 			FlowNodeType::SourceFlow {
 				flow,
 			} => {
-				sources.insert(SourceId::Flow(*flow));
+				sources.insert(PrimitiveId::Flow(*flow));
 			}
 			_ => {}
 		}

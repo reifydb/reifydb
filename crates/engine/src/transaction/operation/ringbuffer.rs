@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, MultiVersionCommandTransaction, MultiVersionQueryTransaction, RingBufferDef, RowKey,
+		CommandTransaction, EncodableKey, QueryTransaction, RingBufferDef, RowKey,
 		interceptor::RingBufferInterceptor,
 	},
 	value::encoded::EncodedValues,
@@ -57,7 +57,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		row: EncodedValues,
 	) -> crate::Result<()> {
 		let key = RowKey {
-			source: ringbuffer.id.into(),
+			primitive: ringbuffer.id.into(),
 			row: row_number,
 		}
 		.encode();
@@ -88,7 +88,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		row: EncodedValues,
 	) -> crate::Result<()> {
 		let key = RowKey {
-			source: ringbuffer.id.into(),
+			primitive: ringbuffer.id.into(),
 			row: id,
 		}
 		.encode();
@@ -109,7 +109,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 
 	async fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey {
-			source: ringbuffer.id.into(),
+			primitive: ringbuffer.id.into(),
 			row: id,
 		}
 		.encode();

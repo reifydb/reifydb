@@ -9,7 +9,7 @@
 use std::ops::Bound;
 
 use async_trait::async_trait;
-use reifydb_core::interface::{FlowNodeId, SourceId};
+use reifydb_core::interface::{FlowNodeId, PrimitiveId};
 use reifydb_type::Result;
 
 /// Identifies a logical table/namespace in storage.
@@ -24,7 +24,7 @@ pub enum TableId {
 	/// Change Data Capture entries (keyed by version)
 	Cdc,
 	/// Per-source table for row data
-	Source(SourceId),
+	Source(PrimitiveId),
 	/// Per-operator table for flow node state
 	Operator(FlowNodeId),
 }

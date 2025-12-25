@@ -141,7 +141,7 @@ impl Parser {
 				let third = self.parse_identifier_with_hyphens()?;
 
 				// namespace.table.column
-				Ok(MaybeQualifiedColumnIdentifier::with_source(
+				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
 					Some(first.into_fragment()),
 					second.into_fragment(),
 					third.into_fragment(),
@@ -151,7 +151,7 @@ impl Parser {
 				// At parse time, we don't know if first is a
 				// table or alias The resolve will
 				// determine this
-				Ok(MaybeQualifiedColumnIdentifier::with_source(
+				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
 					None,
 					first.into_fragment(),
 					second.into_fragment(),
@@ -179,14 +179,14 @@ impl Parser {
 				let third = self.advance()?;
 
 				// namespace.table.column
-				Ok(MaybeQualifiedColumnIdentifier::with_source(
+				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
 					Some(first.fragment.clone()),
 					second.fragment.clone(),
 					third.fragment.clone(),
 				))
 			} else {
 				// table.column or alias.column
-				Ok(MaybeQualifiedColumnIdentifier::with_source(
+				Ok(MaybeQualifiedColumnIdentifier::with_primitive(
 					None,
 					first.fragment.clone(),
 					second.fragment.clone(),

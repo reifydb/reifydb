@@ -9,7 +9,7 @@ use crate::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
-		OrderNode, SourceScanNode, TakeNode, VariableSourceNode,
+		OrderNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{AlterTableNode, AlterViewNode},
 		compile_logical,
 	},
@@ -391,7 +391,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
 			}
 		}
-		LogicalPlan::SourceScan(SourceScanNode {
+		LogicalPlan::PrimitiveScan(PrimitiveScanNode {
 			source,
 			columns: _,
 			index,

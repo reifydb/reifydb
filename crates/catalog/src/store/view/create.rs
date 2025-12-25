@@ -149,7 +149,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{MultiVersionQueryTransaction, NamespaceId, NamespaceViewKey, ViewId};
+	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, QueryTransaction, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

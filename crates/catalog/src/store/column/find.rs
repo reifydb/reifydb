@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
+use reifydb_core::interface::{ColumnKey, PrimitiveId, QueryTransaction};
 
 use crate::{
 	CatalogStore,
@@ -11,7 +11,7 @@ use crate::{
 impl CatalogStore {
 	pub async fn find_column_by_name(
 		rx: &mut impl QueryTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
 		let batch = rx.range(ColumnKey::full_scan(source)).await?;

@@ -84,7 +84,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalNamespaceChanges::is_namespace_deleted(self, id) {
 			return Ok(None);
 		}
@@ -106,13 +106,13 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, name))]
 	async fn find_namespace_by_name(&mut self, name: &str) -> reifydb_core::Result<Option<NamespaceDef>> {
 		// 1. Check transactional changes first
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace_by_name(self, name) {
 			return Ok(Some(namespace.clone()));
 		}
 
 		// 2. Check if deleted
-		// nop for QueryTransaction
+		// nop for MultiVersionQueryTransaction
 		if TransactionalNamespaceChanges::is_namespace_deleted_by_name(self, name) {
 			return Ok(None);
 		}

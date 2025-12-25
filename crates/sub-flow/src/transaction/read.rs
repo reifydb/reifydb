@@ -5,7 +5,7 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{Key, MultiVersionBatch, MultiVersionQueryTransaction},
+	interface::{Key, MultiVersionBatch, QueryTransaction},
 	key::KeyKind,
 	value::encoded::EncodedValues,
 };
@@ -28,7 +28,7 @@ impl FlowTransaction {
 		let query = if Self::is_flow_state_key(key) {
 			&mut self.state_query
 		} else {
-			&mut self.source_query
+			&mut self.primitive_query
 		};
 
 		match query.get(key).await? {
@@ -52,7 +52,7 @@ impl FlowTransaction {
 		let query = if Self::is_flow_state_key(key) {
 			&mut self.state_query
 		} else {
-			&mut self.source_query
+			&mut self.primitive_query
 		};
 
 		query.contains_key(key).await
@@ -69,10 +69,10 @@ impl FlowTransaction {
 				if Self::is_flow_state_key(start) {
 					&mut self.state_query
 				} else {
-					&mut self.source_query
+					&mut self.primitive_query
 				}
 			}
-			Unbounded => &mut self.source_query,
+			Unbounded => &mut self.primitive_query,
 		};
 		let committed_batch = query.range_batch(range, 1024).await?;
 
@@ -94,10 +94,10 @@ impl FlowTransaction {
 				if Self::is_flow_state_key(start) {
 					&mut self.state_query
 				} else {
-					&mut self.source_query
+					&mut self.primitive_query
 				}
 			}
-			Unbounded => &mut self.source_query,
+			Unbounded => &mut self.primitive_query,
 		};
 		let committed_batch = query.range_batch(range, batch_size).await?;
 
@@ -114,7 +114,7 @@ impl FlowTransaction {
 		let query = if Self::is_flow_state_key(prefix) {
 			&mut self.state_query
 		} else {
-			&mut self.source_query
+			&mut self.primitive_query
 		};
 		let committed_batch = query.prefix(prefix).await?;
 
@@ -137,7 +137,7 @@ impl FlowTransaction {
 mod tests {
 	use reifydb_core::{
 		CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-		interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+		interface::{CommandTransaction, Engine, QueryTransaction},
 		value::encoded::EncodedValues,
 	};
 

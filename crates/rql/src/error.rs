@@ -9,7 +9,7 @@ use reifydb_type::diagnostic::catalog::table_not_found;
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SourceNotFound(SourceNotFoundError),
+	SourceNotFound(PrimitiveNotFoundError),
 	ColumnNotFound {
 		column: String,
 	},
@@ -94,13 +94,13 @@ impl fmt::Display for SchemaNotFoundError {
 
 /// Source (table/view) not found error
 #[derive(Debug, Clone)]
-pub struct SourceNotFoundError {
+pub struct PrimitiveNotFoundError {
 	pub namespace: String,
 	pub name: String,
 	pub fragment: reifydb_type::Fragment,
 }
 
-impl fmt::Display for SourceNotFoundError {
+impl fmt::Display for PrimitiveNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
@@ -110,7 +110,7 @@ impl fmt::Display for SourceNotFoundError {
 	}
 }
 
-impl SourceNotFoundError {
+impl PrimitiveNotFoundError {
 	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(
 		namespace: String,
@@ -188,15 +188,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_source_not_found_display() {
-		let err = SourceNotFoundError {
+	fn test_primitive_not_found_display() {
+		let err = PrimitiveNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
 			fragment: reifydb_type::Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
-		let err = SourceNotFoundError {
+		let err = PrimitiveNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
 			fragment: reifydb_type::Fragment::None,

@@ -9,8 +9,8 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
-		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable,
+		CommandTransaction, EncodableKey, IndexEntryKey, IndexId, Params, QueryTransaction, ResolvedColumn,
+		ResolvedNamespace, ResolvedPrimitive, ResolvedTable,
 	},
 	return_error,
 	value::{
@@ -79,7 +79,7 @@ impl Executor {
 
 		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-		let resolved_source = Some(ResolvedSource::Table(resolved_table));
+		let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
 
 		let execution_context = Arc::new(ExecutionContext {
 			executor: self.clone(),

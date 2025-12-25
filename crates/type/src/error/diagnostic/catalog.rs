@@ -4,7 +4,6 @@
 use crate::{Fragment, error::diagnostic::Diagnostic};
 
 pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_001".to_string(),
 		statement: None,
@@ -19,7 +18,6 @@ pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnost
 }
 
 pub fn namespace_not_found(fragment: Fragment, namespace: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_002".to_string(),
 		statement: None,
@@ -34,7 +32,6 @@ pub fn namespace_not_found(fragment: Fragment, namespace: &str) -> Diagnostic {
 }
 
 pub fn table_already_exists(fragment: Fragment, namespace: &str, table: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
@@ -50,7 +47,6 @@ pub fn table_already_exists(fragment: Fragment, namespace: &str, table: &str) ->
 }
 
 pub fn flow_already_exists(fragment: Fragment, namespace: &str, flow: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_030".to_string(),
 		statement: None,
@@ -66,7 +62,6 @@ pub fn flow_already_exists(fragment: Fragment, namespace: &str, flow: &str) -> D
 }
 
 pub fn flow_not_found(fragment: Fragment, namespace: &str, flow: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_031".to_string(),
 		statement: None,
@@ -81,7 +76,6 @@ pub fn flow_not_found(fragment: Fragment, namespace: &str, flow: &str) -> Diagno
 }
 
 pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_003".to_string(),
 		statement: None,
@@ -97,7 +91,6 @@ pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> D
 }
 
 pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
@@ -112,7 +105,6 @@ pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diag
 }
 
 pub fn ringbuffer_already_exists(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
         code: "CA_005".to_string(),
         statement: None,
@@ -126,7 +118,6 @@ pub fn ringbuffer_already_exists(fragment: Fragment, namespace: &str, ringbuffer
 }
 
 pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -141,7 +132,6 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 }
 
 pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -156,7 +146,6 @@ pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary
 }
 
 pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_007".to_string(),
 		statement: None,
@@ -170,14 +159,13 @@ pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &st
 	}
 }
 
-pub fn dictionary_type_mismatch<'a>(
+pub fn dictionary_type_mismatch(
 	fragment: Fragment,
 	column: &str,
 	column_type: crate::Type,
 	dictionary: &str,
 	dictionary_value_type: crate::Type,
 ) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_008".to_string(),
 		statement: None,
@@ -197,8 +185,7 @@ pub fn dictionary_type_mismatch<'a>(
 	}
 }
 
-pub fn table_column_already_exists<'a>(fragment: Fragment, namespace: &str, table: &str, column: &str) -> Diagnostic {
-	let fragment = fragment;
+pub fn table_column_already_exists(fragment: Fragment, namespace: &str, table: &str, column: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
@@ -213,7 +200,6 @@ pub fn table_column_already_exists<'a>(fragment: Fragment, namespace: &str, tabl
 }
 
 pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_004".to_string(),
 		statement: None,
@@ -227,8 +213,7 @@ pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagno
 	}
 }
 
-pub fn view_column_already_exists<'a>(fragment: Fragment, namespace: &str, view: &str, column: &str) -> Diagnostic {
-	let fragment = fragment;
+pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &str, column: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_005".to_string(),
 		statement: None,
@@ -243,7 +228,6 @@ pub fn view_column_already_exists<'a>(fragment: Fragment, namespace: &str, view:
 }
 
 pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: crate::Type) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,
@@ -477,7 +461,6 @@ pub fn cannot_delete_already_deleted_view(namespace_name: Fragment, view_name: F
 }
 
 pub fn primary_key_empty(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_020".to_string(),
 		statement: None,
@@ -492,7 +475,6 @@ pub fn primary_key_empty(fragment: Fragment) -> Diagnostic {
 }
 
 pub fn primary_key_column_not_found(fragment: Fragment, column_id: u64) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "CA_021".to_string(),
 		statement: None,

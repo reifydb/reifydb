@@ -6,7 +6,7 @@ pub mod flow;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod primary_key;
-pub mod source_retention_policy;
+pub mod primitive_retention_policy;
 pub mod table;
 pub mod view;
 
@@ -15,8 +15,8 @@ pub(crate) use flow::load_flows;
 pub(crate) use namespace::load_namespaces;
 pub(crate) use operator_retention_policy::load_operator_retention_policies;
 pub(crate) use primary_key::load_primary_keys;
+pub(crate) use primitive_retention_policy::load_source_retention_policies;
 use reifydb_core::interface::QueryTransaction;
-pub(crate) use source_retention_policy::load_source_retention_policies;
 pub(crate) use table::load_tables;
 pub(crate) use view::load_views;
 

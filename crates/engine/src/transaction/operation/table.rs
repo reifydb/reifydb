@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, MultiVersionCommandTransaction, RowChange, RowKey, TableDef, TableRowInsertion,
+		CommandTransaction, EncodableKey, RowChange, RowKey, TableDef, TableRowInsertion,
 		interceptor::TableInterceptor,
 	},
 	value::encoded::EncodedValues,
@@ -36,7 +36,7 @@ impl TableOperations for StandardCommandTransaction {
 
 		self.set(
 			&RowKey {
-				source: table.id.into(),
+				primitive: table.id.into(),
 				row: row_number,
 			}
 			.encode(),
@@ -58,7 +58,7 @@ impl TableOperations for StandardCommandTransaction {
 
 	async fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
 		let key = RowKey {
-			source: table.id.into(),
+			primitive: table.id.into(),
 			row: id,
 		}
 		.encode();
@@ -86,7 +86,7 @@ impl TableOperations for StandardCommandTransaction {
 
 	async fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey {
-			source: table.id.into(),
+			primitive: table.id.into(),
 			row: id,
 		}
 		.encode();

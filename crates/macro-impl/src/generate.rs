@@ -127,9 +127,6 @@ pub fn extend(tokens: &mut Vec<TokenTree>, iter: impl IntoIterator<Item = TokenT
 
 /// Creates a compile_error!("message") invocation.
 pub fn compile_error(message: &str) -> TokenStream {
-	let mut tokens = Vec::new();
-	tokens.push(ident("compile_error"));
-	tokens.push(punct('!'));
-	tokens.push(parens([literal_str(message)]));
+	let tokens = vec![ident("compile_error"), punct('!'), parens([literal_str(message)])];
 	tokens.into_iter().collect()
 }

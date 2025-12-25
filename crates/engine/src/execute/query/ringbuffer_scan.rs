@@ -7,8 +7,7 @@ use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		DictionaryDef, EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey,
-		resolved::ResolvedRingBuffer,
+		DictionaryDef, EncodableKey, QueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer,
 	},
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
@@ -40,7 +39,7 @@ pub struct RingBufferScan {
 }
 
 impl RingBufferScan {
-	pub async fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
+	pub async fn new<Rx: QueryTransaction + reifydb_core::interface::QueryTransaction>(
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -158,7 +157,7 @@ impl QueryNode for RingBufferScan {
 
 			// Create the encoded key
 			let key = RowKey {
-				source: self.ringbuffer.def().id.into(),
+				primitive: self.ringbuffer.def().id.into(),
 				row: row_num,
 			};
 

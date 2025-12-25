@@ -2,22 +2,22 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, FlowNodeId, SourceId},
-	key::{OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
+	interface::{CommandTransaction, FlowNodeId, PrimitiveId},
+	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 
 use super::encode_retention_policy;
 
 /// Store a retention policy for a source (table, view, or ring buffer)
-pub(crate) async fn create_source_retention_policy(
+pub(crate) async fn create_primitive_retention_policy(
 	txn: &mut impl CommandTransaction,
-	source: SourceId,
+	source: PrimitiveId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
 	let value = encode_retention_policy(retention_policy);
 
-	txn.set(&SourceRetentionPolicyKey::encoded(source), value).await?;
+	txn.set(&PrimitiveRetentionPolicyKey::encoded(source), value).await?;
 	Ok(())
 }
 
@@ -45,20 +45,20 @@ mod tests {
 	use crate::CatalogStore;
 
 	#[tokio::test]
-	async fn test_create_source_retention_policy_for_table() {
+	async fn test_create_primitive_retention_policy_for_table() {
 		let mut txn = create_test_command_transaction().await;
 		let table_id = TableId(42);
-		let source = SourceId::Table(table_id);
+		let source = PrimitiveId::Table(table_id);
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
 			.await
 			.unwrap()
 			.expect("Policy should be stored");
@@ -67,17 +67,17 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_create_source_retention_policy_for_view() {
+	async fn test_create_primitive_retention_policy_for_view() {
 		let mut txn = create_test_command_transaction().await;
 		let view_id = ViewId(100);
-		let source = SourceId::View(view_id);
+		let source = PrimitiveId::View(view_id);
 
 		let policy = RetentionPolicy::KeepForever;
 
-		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
 			.await
 			.unwrap()
 			.expect("Policy should be stored");
@@ -86,20 +86,20 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_create_source_retention_policy_for_ringbuffer() {
+	async fn test_create_primitive_retention_policy_for_ringbuffer() {
 		let mut txn = create_test_command_transaction().await;
 		let ringbuffer_id = RingBufferId(200);
-		let source = SourceId::RingBuffer(ringbuffer_id);
+		let source = PrimitiveId::RingBuffer(ringbuffer_id);
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
 
-		create_source_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
 
 		// Verify the policy was stored
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
 			.await
 			.unwrap()
 			.expect("Policy should be stored");
@@ -129,24 +129,24 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_overwrite_source_retention_policy() {
+	async fn test_overwrite_primitive_retention_policy() {
 		let mut txn = create_test_command_transaction().await;
 		let table_id = TableId(42);
-		let source = SourceId::Table(table_id);
+		let source = PrimitiveId::Table(table_id);
 
 		// Create initial policy
 		let policy1 = RetentionPolicy::KeepForever;
-		create_source_retention_policy(&mut txn, source, &policy1).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy1).await.unwrap();
 
 		// Overwrite with new policy
 		let policy2 = RetentionPolicy::KeepVersions {
 			count: 20,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, source, &policy2).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy2).await.unwrap();
 
 		// Verify the latest policy is stored
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source)
+		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source)
 			.await
 			.unwrap()
 			.expect("Policy should be stored");
@@ -180,11 +180,11 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_get_nonexistent_source_retention_policy() {
+	async fn test_get_nonexistent_primitive_retention_policy() {
 		let mut txn = create_test_command_transaction().await;
-		let source = SourceId::Table(TableId(9999));
+		let source = PrimitiveId::Table(TableId(9999));
 
-		let retrieved_policy = CatalogStore::find_source_retention_policy(&mut txn, source).await.unwrap();
+		let retrieved_policy = CatalogStore::find_primitive_retention_policy(&mut txn, source).await.unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}

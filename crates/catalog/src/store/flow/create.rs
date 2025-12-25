@@ -78,9 +78,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		FlowId, FlowStatus, MultiVersionQueryTransaction, NamespaceFlowKey, NamespaceId,
-	};
+	use reifydb_core::interface::{FlowId, FlowStatus, NamespaceFlowKey, NamespaceId, QueryTransaction};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

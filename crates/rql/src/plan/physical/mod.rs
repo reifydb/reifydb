@@ -15,8 +15,8 @@ use reifydb_core::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
-			ResolvedSequence, ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
+			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 };
@@ -125,13 +125,13 @@ impl Compiler {
 						// Check if input is a scan node we can optimize
 						let source = match &input {
 							PhysicalPlan::TableScan(scan) => {
-								Some(ResolvedSource::Table(scan.source.clone()))
+								Some(ResolvedPrimitive::Table(scan.source.clone()))
 							}
 							PhysicalPlan::ViewScan(scan) => {
-								Some(ResolvedSource::View(scan.source.clone()))
+								Some(ResolvedPrimitive::View(scan.source.clone()))
 							}
 							PhysicalPlan::RingBufferScan(scan) => {
-								Some(ResolvedSource::RingBuffer(scan.source.clone()))
+								Some(ResolvedPrimitive::RingBuffer(scan.source.clone()))
 							}
 							_ => None,
 						};
@@ -642,7 +642,7 @@ impl Compiler {
 								table_def,
 							);
 
-							let resolved_source = ResolvedSource::Table(resolved_table);
+							let resolved_source = ResolvedPrimitive::Table(resolved_table);
 
 							let column_def = ColumnDef {
 								id: ColumnId(1),
@@ -689,13 +689,13 @@ impl Compiler {
 					}));
 				}
 
-				LogicalPlan::SourceScan(scan) => {
+				LogicalPlan::PrimitiveScan(scan) => {
 					// Use resolved source directly - no
 					// catalog lookup needed!
-					use reifydb_core::interface::resolved::ResolvedSource;
+					use reifydb_core::interface::resolved::ResolvedPrimitive;
 
 					match &scan.source {
-						ResolvedSource::Table(resolved_table) => {
+						ResolvedPrimitive::Table(resolved_table) => {
 							// Check if an index was specified
 							if let Some(index) = &scan.index {
 								stack.push(IndexScan(IndexScanNode {
@@ -711,7 +711,7 @@ impl Compiler {
 								}));
 							}
 						}
-						ResolvedSource::View(resolved_view) => {
+						ResolvedPrimitive::View(resolved_view) => {
 							// Views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
@@ -720,7 +720,7 @@ impl Compiler {
 								source: resolved_view.clone(),
 							}));
 						}
-						ResolvedSource::DeferredView(resolved_view) => {
+						ResolvedPrimitive::DeferredView(resolved_view) => {
 							// Deferred views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
@@ -736,7 +736,7 @@ impl Compiler {
 								source: view,
 							}));
 						}
-						ResolvedSource::TransactionalView(resolved_view) => {
+						ResolvedPrimitive::TransactionalView(resolved_view) => {
 							// Transactional views cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
@@ -754,7 +754,7 @@ impl Compiler {
 							}));
 						}
 
-						ResolvedSource::TableVirtual(resolved_virtual) => {
+						ResolvedPrimitive::TableVirtual(resolved_virtual) => {
 							// Virtual tables cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
@@ -769,7 +769,7 @@ impl Compiler {
 								},
 							));
 						}
-						ResolvedSource::RingBuffer(resolved_ringbuffer) => {
+						ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
 							// Ring buffers cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
@@ -780,7 +780,7 @@ impl Compiler {
 								source: resolved_ringbuffer.clone(),
 							}));
 						}
-						ResolvedSource::Flow(resolved_flow) => {
+						ResolvedPrimitive::Flow(resolved_flow) => {
 							// Flows cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("flows do not support indexes yet");
@@ -789,7 +789,7 @@ impl Compiler {
 								source: resolved_flow.clone(),
 							}));
 						}
-						ResolvedSource::Dictionary(resolved_dictionary) => {
+						ResolvedPrimitive::Dictionary(resolved_dictionary) => {
 							// Dictionaries cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!("dictionaries do not support indexes");
@@ -1387,7 +1387,7 @@ pub struct WindowNode {
 #[derive(Debug, Clone)]
 pub struct RowPointLookupNode {
 	/// The source to look up in (table, ring buffer, etc.)
-	pub source: ResolvedSource,
+	pub source: ResolvedPrimitive,
 	/// The row number to fetch
 	pub row_number: u64,
 }
@@ -1396,7 +1396,7 @@ pub struct RowPointLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowListLookupNode {
 	/// The source to look up in
-	pub source: ResolvedSource,
+	pub source: ResolvedPrimitive,
 	/// The row numbers to fetch
 	pub row_numbers: Vec<u64>,
 }
@@ -1405,7 +1405,7 @@ pub struct RowListLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowRangeScanNode {
 	/// The source to scan
-	pub source: ResolvedSource,
+	pub source: ResolvedPrimitive,
 	/// Start of the range (inclusive)
 	pub start: u64,
 	/// End of the range (inclusive)

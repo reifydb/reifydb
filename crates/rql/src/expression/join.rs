@@ -7,7 +7,7 @@ use reifydb_type::{Fragment, diagnostic::query::unsupported_source_qualification
 use crate::{
 	ast::{Ast, AstInfix, InfixOperator},
 	expression::{
-		AccessSourceExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
+		AccessPrimitiveExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
 		ExpressionCompiler, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
 		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
 		RemExpression, SubExpression, TupleExpression, XorExpression,
@@ -95,17 +95,17 @@ impl JoinConditionCompiler {
 			unimplemented!("Expected identifier on right side of column qualification");
 		};
 
-		use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+		use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
 
 		// Check if this is referencing the join alias
 		if let Some(ref alias) = self.alias {
 			if left.token.fragment.text() == alias.text() {
 				// This is a reference to the right side via alias
 				let column = ColumnIdentifier {
-					source: ColumnSource::Alias(alias.clone()),
+					primitive: ColumnPrimitive::Alias(alias.clone()),
 					name: right.token.fragment,
 				};
-				return Ok(Expression::AccessSource(AccessSourceExpression {
+				return Ok(Expression::AccessSource(AccessPrimitiveExpression {
 					column,
 				}));
 			}

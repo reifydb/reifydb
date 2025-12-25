@@ -5,7 +5,7 @@ use reifydb_catalog::{
 	CatalogStore, CatalogTableCommandOperations, CatalogTableQueryOperations, primary_key::PrimaryKeyToCreate,
 	table::TableToCreate,
 };
-use reifydb_core::{interface::SourceId, value::column::Columns};
+use reifydb_core::{interface::PrimitiveId, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 
@@ -64,7 +64,7 @@ impl Executor {
 			CatalogStore::create_primary_key(
 				txn,
 				PrimaryKeyToCreate {
-					source: SourceId::Table(table.id),
+					source: PrimitiveId::Table(table.id),
 					column_ids,
 				},
 			)

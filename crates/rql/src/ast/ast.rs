@@ -12,7 +12,7 @@ use crate::ast::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedSourceIdentifier,
+		UnresolvedPrimitiveIdentifier,
 	},
 	tokenize::{Literal, Token, TokenKind},
 };
@@ -1008,7 +1008,7 @@ pub struct AstFilter {
 pub enum AstFrom {
 	Source {
 		token: Token,
-		source: UnresolvedSourceIdentifier,
+		source: UnresolvedPrimitiveIdentifier,
 		index_name: Option<Fragment>,
 	},
 	Variable {
@@ -1154,19 +1154,19 @@ pub struct AstLet {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete {
 	pub token: Token,
-	pub target: Option<UnresolvedSourceIdentifier>,
+	pub target: Option<UnresolvedPrimitiveIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert {
 	pub token: Token,
-	pub target: Option<UnresolvedSourceIdentifier>,
+	pub target: Option<UnresolvedPrimitiveIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate {
 	pub token: Token,
-	pub target: Option<UnresolvedSourceIdentifier>,
+	pub target: Option<UnresolvedPrimitiveIdentifier>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

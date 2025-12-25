@@ -5,7 +5,7 @@
 
 use std::ops::AddAssign;
 
-use reifydb_core::interface::{FlowNodeId, SourceId};
+use reifydb_core::interface::{FlowNodeId, PrimitiveId};
 
 /// Identifies which storage tier data resides in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -217,7 +217,7 @@ impl AddAssign for TierStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectId {
 	/// Table, view, or flow source
-	Source(SourceId),
+	Source(PrimitiveId),
 	/// Flow operator node
 	FlowNode(FlowNodeId),
 	/// System metadata (sequences, versions, etc.)

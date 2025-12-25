@@ -4,7 +4,6 @@
 use crate::{Fragment, error::diagnostic::Diagnostic};
 
 pub fn column_not_found(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "QUERY_001".to_string(),
 		statement: None,
@@ -37,7 +36,6 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 }
 
 pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagnostic {
-	let fragment = fragment;
 	Diagnostic {
 		code: "QUERY_002".to_string(),
 		statement: None,

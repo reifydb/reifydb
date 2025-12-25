@@ -7,7 +7,7 @@ pub mod load;
 mod namespace;
 mod operator_retention_policy;
 mod primary_key;
-mod source_retention_policy;
+mod primitive_retention_policy;
 mod table;
 mod view;
 
@@ -17,7 +17,7 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
-		PrimaryKeyId, SourceId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+		PrimaryKeyId, PrimitiveId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -68,7 +68,7 @@ pub struct MaterializedCatalogInner {
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 
 	/// MultiVersion source retention policies indexed by source ID
-	pub(crate) source_retention_policies: SkipMap<SourceId, MultiVersionRetentionPolicy>,
+	pub(crate) source_retention_policies: SkipMap<PrimitiveId, MultiVersionRetentionPolicy>,
 
 	/// MultiVersion operator retention policies indexed by operator ID
 	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,

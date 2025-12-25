@@ -19,8 +19,8 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, MultiVersionQueryTransaction, SourceId, TableId,
+		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, CommandTransaction, EncodableKey,
+		Engine as EngineInterface, Key, PrimitiveId, QueryTransaction, TableId,
 	},
 	key::RowKey,
 	util::{CowVec, mock_time_set},
@@ -89,7 +89,7 @@ async fn test_event_processing() -> Result<()> {
 		} = &cdc.changes[0].change
 		{
 			if let Some(Row(table_row)) = Key::decode(key) {
-				assert_eq!(table_row.source, TableId(1));
+				assert_eq!(table_row.primitive, TableId(1));
 				assert_eq!(table_row.row, RowNumber((i + 1) as u64));
 			} else {
 				panic!("Expected Row key");
@@ -304,7 +304,7 @@ async fn test_non_table_events_filtered() -> Result<()> {
 	let mut txn = engine.begin_command().await.expect("Failed to begin transaction");
 
 	let table_key = RowKey {
-		source: SourceId::table(1),
+		primitive: PrimitiveId::table(1),
 		row: RowNumber(1),
 	};
 	txn.set(&table_key.encode(), EncodedValues(CowVec::new(b"table_value".to_vec())))
@@ -346,7 +346,7 @@ async fn test_non_table_events_filtered() -> Result<()> {
 	} = &table_change.change
 	{
 		if let Some(Row(table_row)) = Key::decode(key) {
-			assert_eq!(table_row.source, TableId(1));
+			assert_eq!(table_row.primitive, TableId(1));
 			assert_eq!(table_row.row, RowNumber(1));
 		} else {
 			panic!("Expected Row key");
@@ -704,7 +704,7 @@ async fn insert_test_events(engine: &StandardEngine, count: usize) -> Result<()>
 	for i in 0..count {
 		let mut txn = engine.begin_command().await?;
 		let key = RowKey {
-			source: SourceId::table(1),
+			primitive: PrimitiveId::table(1),
 			row: RowNumber((i + 1) as u64),
 		};
 		let value = format!("value_{}", i);

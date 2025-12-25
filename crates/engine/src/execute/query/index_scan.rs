@@ -74,7 +74,7 @@ impl QueryNode for IndexScanNode {
 		// let batch_size = ctx.batch_size;
 		//
 		// // Create range for scanning index entries
-		// let source_id: SourceId = self.table.id.into();
+		// let source_id: PrimitiveId = self.table.id.into();
 		// let base_range = IndexEntryKey::index_range(source_id, self.index_id);
 		//
 		// let range = if let Some(ref last_key) = self.last_key {
@@ -101,7 +101,7 @@ impl QueryNode for IndexScanNode {
 		//
 		// 	let row_number = row_number_layout.get_u64(&entry.encoded, 0);
 		//
-		// 	let source: SourceId = self.table.id.into();
+		// 	let source: PrimitiveId = self.table.id.into();
 		// 	let row_key = RowKey {
 		// 		source,
 		// 		encoded: RowNumber(row_number),

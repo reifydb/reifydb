@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{interface::SourceId, return_error, value::column::Columns};
+use reifydb_core::{interface::PrimitiveId, return_error, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewNode};
 use reifydb_type::Value;
 
@@ -75,7 +75,7 @@ impl Executor {
 					CatalogStore::create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
-							source: SourceId::View(view.id),
+							source: PrimitiveId::View(view.id),
 							column_ids,
 						},
 					)

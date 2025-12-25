@@ -11,13 +11,13 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{ColumnIdentifier, ColumnSource};
+use reifydb_core::interface::{ColumnIdentifier, ColumnPrimitive};
 use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 
 use super::{
-	AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
+	AccessPrimitiveExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
 	CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression, EqExpression,
 	Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression,
 	InExpression, LessThanEqExpression, LessThanExpression, MapExpression, MulExpression, NotEqExpression,
@@ -187,14 +187,14 @@ pub struct JsonElseIf {
 	pub then: Box<JsonExpression>,
 }
 
-// Helper to extract namespace and source from ColumnSource
-fn extract_source(source: &ColumnSource) -> (String, String) {
-	match source {
-		ColumnSource::Source {
+// Helper to extract namespace and primitive from ColumnPrimitive
+fn extract_primitive(cp: &ColumnPrimitive) -> (String, String) {
+	match cp {
+		ColumnPrimitive::Primitive {
 			namespace,
-			source,
-		} => (namespace.text().to_string(), source.text().to_string()),
-		ColumnSource::Alias(alias) => ("_alias".to_string(), alias.text().to_string()),
+			primitive,
+		} => (namespace.text().to_string(), primitive.text().to_string()),
+		ColumnPrimitive::Alias(alias) => ("_alias".to_string(), alias.text().to_string()),
 	}
 }
 
@@ -241,17 +241,17 @@ impl From<&Expression> for JsonExpression {
 
 			// Identifiers
 			Expression::Column(ColumnExpression(col)) => {
-				let (namespace, source) = extract_source(&col.source);
+				let (namespace, source) = extract_primitive(&col.primitive);
 				JsonExpression::Column {
 					namespace,
 					source,
 					name: col.name.text().to_string(),
 				}
 			}
-			Expression::AccessSource(AccessSourceExpression {
+			Expression::AccessSource(AccessPrimitiveExpression {
 				column,
 			}) => {
-				let (namespace, source) = extract_source(&column.source);
+				let (namespace, source) = extract_primitive(&column.primitive);
 				JsonExpression::AccessSource {
 					namespace,
 					source,
@@ -436,24 +436,24 @@ impl TryFrom<JsonExpression> for Expression {
 			// Identifiers
 			JsonExpression::Column {
 				namespace,
-				source,
+				source: primitive,
 				name,
 			} => Expression::Column(ColumnExpression(ColumnIdentifier {
-				source: ColumnSource::Source {
+				primitive: ColumnPrimitive::Primitive {
 					namespace: internal_fragment(&namespace),
-					source: internal_fragment(&source),
+					primitive: internal_fragment(&primitive),
 				},
 				name: internal_fragment(&name),
 			})),
 			JsonExpression::AccessSource {
 				namespace,
-				source,
+				source: primitive,
 				name,
-			} => Expression::AccessSource(AccessSourceExpression {
+			} => Expression::AccessSource(AccessPrimitiveExpression {
 				column: ColumnIdentifier {
-					source: ColumnSource::Source {
+					primitive: ColumnPrimitive::Primitive {
 						namespace: internal_fragment(&namespace),
-						source: internal_fragment(&source),
+						primitive: internal_fragment(&primitive),
 					},
 					name: internal_fragment(&name),
 				},
@@ -811,9 +811,9 @@ mod tests {
 	// Helper functions to create test expressions
 	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			source: ColumnSource::Source {
+			primitive: ColumnPrimitive::Primitive {
 				namespace: internal_fragment("_context"),
-				source: internal_fragment("_context"),
+				primitive: internal_fragment("_context"),
 			},
 			name: internal_fragment(name),
 		}))
@@ -1563,11 +1563,11 @@ mod tests {
 
 	#[test]
 	fn test_access_source() {
-		let expr = Expression::AccessSource(AccessSourceExpression {
+		let expr = Expression::AccessSource(AccessPrimitiveExpression {
 			column: ColumnIdentifier {
-				source: ColumnSource::Source {
+				primitive: ColumnPrimitive::Primitive {
 					namespace: internal_fragment("public"),
-					source: internal_fragment("users"),
+					primitive: internal_fragment("users"),
 				},
 				name: internal_fragment("email"),
 			},

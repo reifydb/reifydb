@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, SourceId, TableId},
+	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, PrimitiveId, TableId},
 	return_error,
 };
 use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
@@ -42,7 +42,7 @@ use crate::{
 pub struct ColumnToCreate {
 	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
-	pub table: TableId,     // FIXME refactor to source: SourceId
+	pub table: TableId,     // FIXME refactor to source: PrimitiveId
 	pub table_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
@@ -56,7 +56,7 @@ pub struct ColumnToCreate {
 impl CatalogStore {
 	pub(crate) async fn create_column(
 		txn: &mut impl CommandTransaction,
-		source: impl Into<SourceId>,
+		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {
 		let source = source.into();

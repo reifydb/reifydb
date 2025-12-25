@@ -510,16 +510,16 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 		PhysicalPlan::RowPointLookup(lookup) => {
 			let source_name = match &lookup.source {
-				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
 					t.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
 					v.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
 					rb.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
 					f.identifier().text().to_string()
 				}
 				_ => "unknown".to_string(),
@@ -534,16 +534,16 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 		PhysicalPlan::RowListLookup(lookup) => {
 			let source_name = match &lookup.source {
-				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
 					t.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
 					v.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
 					rb.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
 					f.identifier().text().to_string()
 				}
 				_ => "unknown".to_string(),
@@ -559,16 +559,16 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 		PhysicalPlan::RowRangeScan(scan) => {
 			let source_name = match &scan.source {
-				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Table(t) => {
 					t.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::View(v) => {
 					v.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::RingBuffer(rb) => {
 					rb.identifier().text().to_string()
 				}
-				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+				reifydb_core::interface::resolved::ResolvedPrimitive::Flow(f) => {
 					f.identifier().text().to_string()
 				}
 				_ => "unknown".to_string(),

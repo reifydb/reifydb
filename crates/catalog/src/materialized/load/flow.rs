@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionQueryTransaction, MultiVersionValues, NamespaceId,
+	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceId, QueryTransaction,
 };
 
 use crate::{
@@ -13,10 +13,7 @@ use crate::{
 	},
 };
 
-pub(crate) async fn load_flows(
-	qt: &mut impl MultiVersionQueryTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
+pub(crate) async fn load_flows(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = FlowKey::full_scan();
 	let batch = qt.range(range).await?;
 

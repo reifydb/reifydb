@@ -72,7 +72,6 @@ pub fn invalid_row_number_values() -> Diagnostic {
 
 /// Invalid parameter reference error
 pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_005".to_string(),
@@ -89,7 +88,6 @@ pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 
 /// Parameter not found error
 pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
-	let fragment = fragment;
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_006".to_string(),

@@ -1,7 +1,6 @@
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
 use std::{
-	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	slice::from_raw_parts,
@@ -13,6 +12,7 @@ use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
 use reifydb_flow_operator_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
+use tokio::sync::RwLock;
 
 use crate::{
 	Result,
@@ -36,7 +36,7 @@ pub struct FFIOperator {
 	operator_id: FlowNodeId,
 
 	/// Marshaller for type conversions
-	marshaller: RefCell<Marshaller>,
+	marshaller: RwLock<Marshaller>,
 }
 
 // SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
@@ -53,7 +53,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id,
-			marshaller: RefCell::new(Marshaller::new()),
+			marshaller: RwLock::new(Marshaller::new()),
 		}
 	}
 
@@ -85,7 +85,7 @@ impl Operator for FFIOperator {
 		_evaluator: &StandardRowEvaluator,
 	) -> Result<FlowChange> {
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.borrow_mut();
+		let mut marshaller = self.marshaller.write().await;
 
 		// Marshal the flow change
 		let ffi_input = marshaller.marshal_flow_change(&change);
@@ -127,7 +127,7 @@ impl Operator for FFIOperator {
 
 	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.borrow_mut();
+		let mut marshaller = self.marshaller.write().await;
 
 		// Convert row numbers to u64 array
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();

@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{EncodableKey, RowKey, catalog::SourceId, resolved::ResolvedSource},
+	interface::{EncodableKey, RowKey, catalog::PrimitiveId, resolved::ResolvedPrimitive},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
@@ -25,7 +25,7 @@ use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 /// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
-	source: ResolvedSource,
+	source: ResolvedPrimitive,
 	row_number: u64,
 	#[allow(dead_code)]
 	context: Option<Arc<ExecutionContext>>,
@@ -35,7 +35,7 @@ pub(crate) struct RowPointLookupNode {
 }
 
 impl<'a> RowPointLookupNode {
-	pub fn new(source: ResolvedSource, row_number: u64, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+	pub fn new(source: ResolvedPrimitive, row_number: u64, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let (headers, row_layout) = build_headers_and_layout(&source)?;
 
 		Ok(Self {
@@ -73,7 +73,7 @@ impl QueryNode for RowPointLookupNode {
 
 		let source_id = get_source_id(&self.source)?;
 		let row_key = RowKey {
-			source: source_id,
+			primitive: source_id,
 			row: RowNumber(self.row_number),
 		};
 		let encoded_key = row_key.encode();
@@ -103,7 +103,7 @@ impl QueryNode for RowPointLookupNode {
 
 /// O(k) list lookup by row numbers
 pub(crate) struct RowListLookupNode {
-	source: ResolvedSource,
+	source: ResolvedPrimitive,
 	row_numbers: Vec<u64>,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
@@ -113,7 +113,7 @@ pub(crate) struct RowListLookupNode {
 
 impl<'a> RowListLookupNode {
 	pub fn new(
-		source: ResolvedSource,
+		source: ResolvedPrimitive,
 		row_numbers: Vec<u64>,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
@@ -163,7 +163,7 @@ impl QueryNode for RowListLookupNode {
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
 			let row_key = RowKey {
-				source: source_id,
+				primitive: source_id,
 				row: RowNumber(row_num),
 			};
 			let encoded_key = row_key.encode();
@@ -201,7 +201,7 @@ impl QueryNode for RowListLookupNode {
 
 /// Range scan by row numbers (start..=end)
 pub(crate) struct RowRangeScanNode {
-	source: ResolvedSource,
+	source: ResolvedPrimitive,
 	#[allow(dead_code)]
 	start: u64,
 	end: u64,
@@ -214,7 +214,7 @@ pub(crate) struct RowRangeScanNode {
 
 impl<'a> RowRangeScanNode {
 	pub fn new(
-		source: ResolvedSource,
+		source: ResolvedPrimitive,
 		start: u64,
 		end: u64,
 		context: Arc<ExecutionContext>,
@@ -267,7 +267,7 @@ impl QueryNode for RowRangeScanNode {
 
 		for row_num in self.current_row..=batch_end {
 			let row_key = RowKey {
-				source: source_id,
+				primitive: source_id,
 				row: RowNumber(row_num),
 			};
 			let encoded_key = row_key.encode();
@@ -307,11 +307,11 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_layout<'a>(source: &ResolvedSource) -> crate::Result<(ColumnHeaders, EncodedValuesLayout)> {
+fn build_headers_and_layout<'a>(source: &ResolvedPrimitive) -> crate::Result<(ColumnHeaders, EncodedValuesLayout)> {
 	let columns = match source {
-		ResolvedSource::Table(table) => table.columns(),
-		ResolvedSource::View(view) => view.columns(),
-		ResolvedSource::RingBuffer(rb) => rb.columns(),
+		ResolvedPrimitive::Table(table) => table.columns(),
+		ResolvedPrimitive::View(view) => view.columns(),
+		ResolvedPrimitive::RingBuffer(rb) => rb.columns(),
 		_ => {
 			unreachable!("Row lookup not supported for this source type");
 		}
@@ -327,20 +327,20 @@ fn build_headers_and_layout<'a>(source: &ResolvedSource) -> crate::Result<(Colum
 	Ok((headers, row_layout))
 }
 
-fn get_source_id(source: &ResolvedSource) -> crate::Result<SourceId> {
+fn get_source_id(source: &ResolvedPrimitive) -> crate::Result<PrimitiveId> {
 	match source {
-		ResolvedSource::Table(table) => Ok(table.def().id.into()),
-		ResolvedSource::View(view) => Ok(view.def().id.into()),
-		ResolvedSource::RingBuffer(rb) => Ok(rb.def().id.into()),
+		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
+		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
+		ResolvedPrimitive::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => reifydb_type::internal_err!("Row lookup not supported for this source type"),
 	}
 }
 
-fn columns_from_source<'a>(source: &ResolvedSource) -> Columns {
+fn columns_from_source<'a>(source: &ResolvedPrimitive) -> Columns {
 	match source {
-		ResolvedSource::Table(table) => Columns::from_table(table),
-		ResolvedSource::View(view) => Columns::from_view(view),
-		ResolvedSource::RingBuffer(rb) => Columns::from_ringbuffer(rb),
+		ResolvedPrimitive::Table(table) => Columns::from_table(table),
+		ResolvedPrimitive::View(view) => Columns::from_view(view),
+		ResolvedPrimitive::RingBuffer(rb) => Columns::from_ringbuffer(rb),
 		_ => Columns::empty(),
 	}
 }

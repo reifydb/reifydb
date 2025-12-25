@@ -7,9 +7,8 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
-		MultiVersionCommandTransaction, MultiVersionQueryTransaction, Params, ResolvedNamespace,
-		ResolvedSource, ResolvedTable, RowKey, RowKeyRange,
+		CommandTransaction, EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
+		Params, QueryTransaction, ResolvedNamespace, ResolvedPrimitive, ResolvedTable, RowKey, RowKeyRange,
 	},
 	value::column::Columns,
 };
@@ -62,7 +61,7 @@ impl Executor {
 
 		let table_ident = Fragment::internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-		let resolved_source = Some(ResolvedSource::Table(resolved_table));
+		let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
 
 		let mut deleted_count = 0;
 
@@ -121,7 +120,7 @@ impl Executor {
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
 				let row_key = RowKey {
-					source: table.id.into(),
+					primitive: table.id.into(),
 					row: row_number,
 				}
 				.encode();
@@ -152,7 +151,7 @@ impl Executor {
 		} else {
 			// Delete entire table - scan all rows and delete them
 			let range = RowKeyRange {
-				source: table.id.into(),
+				primitive: table.id.into(),
 			};
 
 			// Get primary key info if table has one

@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use reifydb_catalog::{CatalogStore, store::sequence::flow::{next_flow_edge_id, next_flow_node_id}};
 use reifydb_core::interface::FlowId;
-use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowNodeDef};
+use reifydb_core::interface::{MultiVersionCommandTransaction, FlowEdgeDef, FlowNodeDef};
 use reifydb_type::Blob;
 
 use super::{
@@ -38,7 +38,7 @@ use super::{
 /// The FlowDef must already be created via `CatalogStore::create_flow()` before
 /// calling this function. This function only persists nodes and edges.
 pub fn persist_flow(
-	txn: &mut impl CommandTransaction,
+	txn: &mut impl MultiVersionCommandTransaction,
 	plan: CompiledFlowPlan,
 	flow_id: FlowId,
 ) -> crate::Result<Flow> {

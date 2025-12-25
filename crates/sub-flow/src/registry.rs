@@ -15,7 +15,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, Error, Result,
-	interface::{SourceId, WithEventBus, catalog::FlowId},
+	interface::{PrimitiveId, WithEventBus, catalog::FlowId},
 };
 use reifydb_engine::{StandardEngine, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::FlowChange;
@@ -41,7 +41,7 @@ pub struct FlowHandle {
 	pub task: JoinHandle<()>,
 
 	/// Sources this flow subscribes to.
-	pub sources: HashSet<SourceId>,
+	pub sources: HashSet<PrimitiveId>,
 }
 
 /// Registry of active flows and routing information.
@@ -50,7 +50,7 @@ pub struct FlowRegistry {
 	pub(crate) flows: RwLock<HashMap<FlowId, FlowHandle>>,
 
 	/// Reverse index: source ID → flow IDs that subscribe to it.
-	pub(crate) source_to_flows: RwLock<HashMap<SourceId, Vec<FlowId>>>,
+	pub(crate) source_to_flows: RwLock<HashMap<PrimitiveId, Vec<FlowId>>>,
 
 	/// Engine for database operations.
 	engine: StandardEngine,
@@ -86,7 +86,7 @@ impl FlowRegistry {
 	pub async fn register_with_backfill(
 		&self,
 		flow: Flow,
-		sources: HashSet<SourceId>,
+		sources: HashSet<PrimitiveId>,
 		backfill_version: CommitVersion,
 	) -> Result<()> {
 		let flow_id = flow.id;
@@ -168,7 +168,7 @@ impl FlowRegistry {
 	pub async fn register(
 		&self,
 		flow: Flow,
-		sources: HashSet<SourceId>,
+		sources: HashSet<PrimitiveId>,
 		persisted_version: CommitVersion,
 	) -> Result<()> {
 		let flow_id = flow.id;
