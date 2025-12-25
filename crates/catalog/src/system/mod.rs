@@ -10,6 +10,7 @@ mod column_policies;
 mod columns;
 mod dictionaries;
 mod flow_edges;
+mod flow_lags;
 mod flow_node_types;
 mod flow_nodes;
 mod flow_operator_inputs;
@@ -41,6 +42,7 @@ use column_policies::column_policies;
 use columns::columns;
 use dictionaries::dictionaries;
 use flow_edges::flow_edges;
+use flow_lags::flow_lags;
 use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
 use flow_operator_inputs::flow_operator_inputs;
@@ -319,6 +321,16 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
 		}
+
+		pub mod flow_lags {
+			use reifydb_core::interface::ColumnId;
+
+			pub const FLOW_ID: ColumnId = ColumnId(1);
+			pub const PRIMITIVE_ID: ColumnId = ColumnId(2);
+			pub const LAG: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
+		}
 	}
 
 	pub mod sequences {
@@ -370,8 +382,9 @@ pub mod ids {
 		pub const INDEX_STORAGE_STATS: TableVirtualId = TableVirtualId(28);
 		pub const RINGBUFFER_STORAGE_STATS: TableVirtualId = TableVirtualId(29);
 		pub const DICTIONARY_STORAGE_STATS: TableVirtualId = TableVirtualId(30);
+		pub const FLOW_LAGS: TableVirtualId = TableVirtualId(31);
 
-		pub const ALL: [TableVirtualId; 30] = [
+		pub const ALL: [TableVirtualId; 31] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -402,6 +415,7 @@ pub mod ids {
 			INDEX_STORAGE_STATS,
 			RINGBUFFER_STORAGE_STATS,
 			DICTIONARY_STORAGE_STATS,
+			FLOW_LAGS,
 		];
 	}
 }
@@ -451,6 +465,11 @@ impl SystemCatalog {
 	/// Get the flows virtual table definition
 	pub fn get_system_flows_table_def() -> Arc<TableVirtualDef> {
 		flows()
+	}
+
+	/// Get the flow_lags virtual table definition
+	pub fn get_system_flow_lags_table_def() -> Arc<TableVirtualDef> {
+		flow_lags()
 	}
 
 	/// Get the columns virtual table definition

@@ -3,7 +3,7 @@
 
 mod factory;
 
-use std::{any::Any, path::PathBuf, time::Duration};
+use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use factory::FlowSubsystemFactory;
@@ -11,7 +11,7 @@ use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		CdcConsumerId,
+		CdcConsumerId, FlowLagsProvider,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -47,6 +47,9 @@ impl FlowSubsystem {
 
 		let consumer =
 			IndependentFlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir).await?;
+
+		// Register the lags provider in IoC for lazy resolution by the virtual table
+		ioc.register_service::<Arc<dyn FlowLagsProvider>>(consumer.lags_provider());
 
 		Ok(Self {
 			consumer: PollConsumer::new(

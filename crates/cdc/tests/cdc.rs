@@ -22,6 +22,7 @@ use reifydb_core::{
 		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, CommandTransaction, EncodableKey,
 		Engine as EngineInterface, Key, PrimitiveId, QueryTransaction, TableId,
 	},
+	ioc::IocContainer,
 	key::RowKey,
 	util::{CowVec, mock_time_set},
 	value::encoded::EncodedValues,
@@ -630,6 +631,7 @@ async fn create_test_engine() -> Result<StandardEngine> {
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
 		None,
+		IocContainer::new(),
 	)
 	.await)
 }

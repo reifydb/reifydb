@@ -244,8 +244,8 @@ impl ConflictManager {
 		}
 
 		// Check range read-write conflicts using optimized algorithm
-		if !self.read_ranges.is_empty() {
-			return self.has_any_range_conflict(&other.write_keys);
+		if !self.read_ranges.is_empty() && self.has_any_range_conflict(&other.write_keys) {
+			return true;
 		}
 
 		false

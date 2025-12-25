@@ -43,8 +43,8 @@ use crate::{
 		TableVirtual, TableVirtualContext,
 		system::{
 			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges,
-			FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs,
-			FlowOperators, FlowStorageStats, Flows, IndexStorageStats, Namespaces,
+			FlowLags, FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs,
+			FlowOperatorOutputs, FlowOperators, FlowStorageStats, Flows, IndexStorageStats, Namespaces,
 			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, PrimitiveRetentionPolicies,
 			RingBufferStorageStats, RingBuffers, Sequences, TableStorageStats, Tables, TablesVirtual,
 			Types, Versions, ViewStorageStats, Views,
@@ -258,6 +258,7 @@ pub(crate) async fn compile<'a>(
 					"tables" => Box::new(Tables::new()),
 					"views" => Box::new(Views::new()),
 					"flows" => Box::new(Flows::new()),
+					"flow_lags" => Box::new(FlowLags::new(context.executor.ioc.clone())),
 					"flow_nodes" => Box::new(FlowNodes::new()),
 					"flow_edges" => Box::new(FlowEdges::new()),
 					"columns" => Box::new(ColumnsTable::new()),

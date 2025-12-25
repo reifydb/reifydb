@@ -193,6 +193,7 @@ impl DatabaseBuilder {
 			Box::new(self.interceptors.build()),
 			catalog.clone(),
 			functions,
+			self.ioc.clone(),
 		)
 		.await;
 

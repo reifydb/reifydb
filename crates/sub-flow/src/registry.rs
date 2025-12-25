@@ -42,6 +42,9 @@ pub struct FlowHandle {
 
 	/// Sources this flow subscribes to.
 	pub sources: HashSet<PrimitiveId>,
+
+	/// Current processed version (shared with coordinator task).
+	pub version: Arc<AtomicU64>,
 }
 
 /// Registry of active flows and routing information.
@@ -117,6 +120,7 @@ impl FlowRegistry {
 			tx,
 			task,
 			sources: sources.clone(),
+			version: version.clone(),
 		};
 
 		// Update flows map
@@ -200,6 +204,7 @@ impl FlowRegistry {
 			tx,
 			task,
 			sources: sources.clone(),
+			version: version.clone(),
 		};
 
 		// Update flows map
@@ -262,6 +267,18 @@ impl FlowRegistry {
 	pub async fn flow_ids(&self) -> Vec<FlowId> {
 		let flows = self.flows.read().await;
 		flows.keys().copied().collect()
+	}
+
+	/// Get all flow data for lag computation.
+	///
+	/// Returns tuples of (flow_id, current_version, sources).
+	pub async fn all_flow_data(&self) -> Vec<(FlowId, u64, HashSet<PrimitiveId>)> {
+		let flows = self.flows.read().await;
+		flows.iter()
+			.map(|(&flow_id, handle)| {
+				(flow_id, handle.version.load(Ordering::Acquire), handle.sources.clone())
+			})
+			.collect()
 	}
 }
 

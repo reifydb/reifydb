@@ -48,6 +48,11 @@ impl IocContainer {
 		self
 	}
 
+	/// Register a service from a reference (for late registration after construction)
+	pub fn register_service<T: Clone + Any + Send + Sync + 'static>(&self, service: T) {
+		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
+	}
+
 	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
 		self.dependencies
 			.read()

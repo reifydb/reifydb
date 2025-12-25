@@ -10,7 +10,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, Engine, PrimitiveId, WithEventBus},
+	interface::{Cdc, Engine, FlowLagsProvider, PrimitiveId, WithEventBus},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::{Flow, FlowNodeType, load_flow};
@@ -23,8 +23,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
 
 use crate::{
-	FlowEngine, builder::OperatorFactory, coordinator::get_flow_version, dispatcher::dispatcher,
-	registry::FlowRegistry,
+	FlowEngine, builder::OperatorFactory, coordinator::get_flow_version, dispatcher::dispatcher, lag::FlowLags,
+	registry::FlowRegistry, tracker::PrimitiveVersionTracker,
 };
 
 /// Independent flow consumer with per-flow task architecture.
@@ -40,6 +40,13 @@ pub struct IndependentFlowConsumer {
 
 	/// Registry of active flows.
 	registry: Arc<FlowRegistry>,
+
+	/// Tracks latest change version per primitive.
+	#[allow(dead_code)]
+	primitive_tracker: Arc<PrimitiveVersionTracker>,
+
+	/// Provides flow lag data for virtual table queries.
+	lags_provider: Arc<FlowLags>,
 
 	/// Dispatcher task handle.
 	#[allow(dead_code)]
@@ -65,6 +72,12 @@ impl IndependentFlowConsumer {
 		let (cdc_tx, cdc_rx) = mpsc::unbounded_channel();
 		let shutdown = CancellationToken::new();
 
+		// Create primitive version tracker
+		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
+
+		// Create lags provider for virtual table access
+		let lags_provider = Arc::new(FlowLags::new(registry.clone(), primitive_tracker.clone()));
+
 		// Load existing flows from catalog and register them
 		let existing_flows = load_all_flows(&engine).await?;
 		info!(flow_count = existing_flows.len(), "loading existing flows");
@@ -77,7 +90,13 @@ impl IndependentFlowConsumer {
 		}
 
 		// Spawn dispatcher task on the current runtime
-		let dispatcher_handle = tokio::spawn(dispatcher(cdc_rx, registry.clone(), engine, shutdown.clone()));
+		let dispatcher_handle = tokio::spawn(dispatcher(
+			cdc_rx,
+			registry.clone(),
+			engine,
+			shutdown.clone(),
+			primitive_tracker.clone(),
+		));
 
 		info!("independent flow consumer started");
 
@@ -85,6 +104,8 @@ impl IndependentFlowConsumer {
 			shutdown,
 			cdc_tx,
 			registry,
+			primitive_tracker,
+			lags_provider,
 			dispatcher_handle,
 		})
 	}
@@ -119,6 +140,14 @@ impl IndependentFlowConsumer {
 		}
 
 		info!("shutdown complete");
+	}
+
+	/// Get the lags provider for virtual table access.
+	///
+	/// This provider is used by the system.flow_lags virtual table to
+	/// compute per-source lag for each flow.
+	pub fn lags_provider(&self) -> Arc<dyn FlowLagsProvider> {
+		self.lags_provider.clone()
 	}
 }
 

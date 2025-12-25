@@ -26,6 +26,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{Engine, Identity},
+	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
@@ -47,6 +48,7 @@ pub async fn create_test_engine() -> StandardEngine {
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
 		None,
+		IocContainer::new(),
 	)
 	.await
 }

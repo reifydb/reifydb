@@ -9,6 +9,7 @@ pub mod test {
 		event::EventBus,
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
+		ioc::IocContainer,
 		util::CowVec,
 		value::encoded::{EncodedValues, EncodedValuesLayout},
 	};
@@ -39,6 +40,7 @@ pub mod test {
 			Box::new(StandardInterceptorFactory::default()),
 			MaterializedCatalog::new(),
 			None,
+			IocContainer::new(),
 		)
 		.await
 	}

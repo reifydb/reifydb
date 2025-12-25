@@ -32,6 +32,7 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
+	ioc::IocContainer,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -266,6 +267,7 @@ pub struct ExecutorInner {
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: TableVirtualUserRegistry,
 	pub stats_tracker: StorageTracker,
+	pub ioc: IocContainer,
 }
 
 impl Clone for Executor {
@@ -287,26 +289,14 @@ impl Executor {
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
 		stats_tracker: StorageTracker,
+		ioc: IocContainer,
 	) -> Self {
 		Self(Arc::new(ExecutorInner {
 			functions,
 			flow_operator_store,
 			virtual_table_registry: TableVirtualUserRegistry::new(),
 			stats_tracker,
-		}))
-	}
-
-	pub fn with_virtual_table_registry(
-		functions: Functions,
-		flow_operator_store: FlowOperatorStore,
-		virtual_table_registry: TableVirtualUserRegistry,
-		stats_tracker: StorageTracker,
-	) -> Self {
-		Self(Arc::new(ExecutorInner {
-			functions,
-			flow_operator_store,
-			virtual_table_registry,
-			stats_tracker,
+			ioc,
 		}))
 	}
 
@@ -325,6 +315,7 @@ impl Executor {
 				.build(),
 			FlowOperatorStore::new(),
 			StorageTracker::with_defaults(),
+			IocContainer::new(),
 		)
 	}
 }

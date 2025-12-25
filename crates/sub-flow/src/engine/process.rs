@@ -26,10 +26,15 @@ impl FlowEngine {
 				};
 
 				if let Some(node_registrations) = node_registrations {
-					for (flow_id, node_id) in node_registrations {
+					for (registered_flow_id, node_id) in node_registrations {
+						// Only process the flow that was passed as parameter
+						if registered_flow_id != flow_id {
+							continue;
+						}
+
 						let flow_and_node = {
 							let flows = self.inner.flows.read().await;
-							flows.get(&flow_id).and_then(|flow| {
+							flows.get(&registered_flow_id).and_then(|flow| {
 								flow.get_node(&node_id)
 									.map(|node| (flow.clone(), node.clone()))
 							})

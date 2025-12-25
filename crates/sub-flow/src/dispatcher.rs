@@ -17,20 +17,22 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, instrument, trace};
 
-use crate::{registry::FlowRegistry, routing::route_to_flows};
+use crate::{registry::FlowRegistry, routing::route_to_flows, tracker::PrimitiveVersionTracker};
 
 /// Main dispatcher task that routes CDC events to flows.
 ///
 /// This runs on the tokio runtime and handles:
 /// 1. Receiving CDC batches from the upstream channel
 /// 2. Detecting flow lifecycle changes (create/delete)
-/// 3. Routing data events to interested flows
-#[instrument(name = "dispatcher", level = "info", skip(cdc_rx, registry, engine, shutdown))]
+/// 3. Tracking per-primitive latest change versions
+/// 4. Routing data events to interested flows
+#[instrument(name = "dispatcher", level = "info", skip(cdc_rx, registry, engine, shutdown, primitive_tracker))]
 pub async fn dispatcher(
 	mut cdc_rx: mpsc::UnboundedReceiver<Cdc>,
 	registry: Arc<FlowRegistry>,
 	engine: StandardEngine,
 	shutdown: CancellationToken,
+	primitive_tracker: Arc<PrimitiveVersionTracker>,
 ) {
 	info!("dispatcher started");
 
@@ -64,7 +66,14 @@ pub async fn dispatcher(
 			panic!("failed to handle flow changes: {}", e);
 		}
 
-		// Step 2: Route data events to flows
+		// Step 2: Track per-primitive latest change versions
+		for change in &cdc.changes {
+			if let Some(Key::Row(row_key)) = Key::decode(change.key()) {
+				primitive_tracker.update(row_key.primitive, version).await;
+			}
+		}
+
+		// Step 3: Route data events to flows
 		if let Err(e) = route_to_flows(&registry, &engine, &cdc).await {
 			error!(version = version.0, error = %e, "failed to route events");
 			panic!("failed to route events: {}", e);

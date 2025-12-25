@@ -13,6 +13,7 @@ use reifydb_core::{
 		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
 		Identity, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
+	ioc::IocContainer,
 	stream::{SendableFrameStream, StreamError},
 };
 use reifydb_transaction::{
@@ -281,6 +282,7 @@ impl StandardEngine {
 		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
 		catalog: MaterializedCatalog,
 		custom_functions: Option<Functions>,
+		ioc: IocContainer,
 	) -> Self {
 		let functions = custom_functions.unwrap_or_else(|| {
 			Functions::builder()
@@ -307,7 +309,7 @@ impl StandardEngine {
 			single,
 			cdc,
 			event_bus,
-			executor: Executor::new(functions, flow_operator_store.clone(), stats_tracker),
+			executor: Executor::new(functions, flow_operator_store.clone(), stats_tracker, ioc),
 			interceptors,
 			catalog,
 			flow_operator_store,

@@ -7,6 +7,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{CdcConsumerId, Engine},
+	ioc::IocContainer,
 	util::mock_time_set,
 };
 use reifydb_engine::StandardEngine;
@@ -30,6 +31,7 @@ async fn create_test_engine() -> Result<StandardEngine> {
 		Box::new(StandardInterceptorFactory::default()),
 		MaterializedCatalog::new(),
 		None,
+		IocContainer::new(),
 	)
 	.await)
 }
