@@ -102,6 +102,8 @@ pub(crate) async fn find_keys_to_drop<S: PrimitiveStorage>(
 
 #[cfg(test)]
 mod tests {
+	use std::collections::HashMap;
+
 	use super::{
 		super::version_manager::{encode_versioned_key, extract_key},
 		*,
@@ -118,7 +120,7 @@ mod tests {
 			})
 			.collect();
 
-		storage.put(table, entries).await.unwrap();
+		storage.set(HashMap::from([(table, entries)])).await.unwrap();
 	}
 
 	/// Extract version numbers from the drop entries

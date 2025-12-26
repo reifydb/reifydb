@@ -376,7 +376,7 @@ impl StorageTracker {
 	/// Persist current stats to storage.
 	///
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
-	pub async fn checkpoint_async<S: PrimitiveStorage>(&self, storage: &S) -> Result<()> {
+	pub async fn checkpoint<S: PrimitiveStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
 		storage.ensure_table(TableId::Single).await?;
 
@@ -403,7 +403,7 @@ impl StorageTracker {
 		};
 
 		// Batch write all entries
-		storage.put(TableId::Single, entries).await?;
+		storage.set(HashMap::from([(TableId::Single, entries)])).await?;
 
 		// Reset checkpoint timer
 		{
@@ -704,7 +704,7 @@ mod tests {
 		tracker.record_write(Tier::Warm, &key1, key1_bytes, 75, None);
 
 		// Checkpoint
-		tracker.checkpoint_async(&storage).await.unwrap();
+		tracker.checkpoint(&storage).await.unwrap();
 
 		// Create a new tracker by restoring from storage
 		let restored = StorageTracker::restore_async(&storage, config).await.unwrap();
@@ -749,7 +749,7 @@ mod tests {
 		assert!(tracker.should_checkpoint());
 
 		// Checkpoint should reset the timer
-		tracker.checkpoint_async(&storage).await.unwrap();
+		tracker.checkpoint(&storage).await.unwrap();
 
 		// Immediately after checkpoint, should not need another one
 		assert!(!tracker.should_checkpoint());

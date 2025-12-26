@@ -466,6 +466,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(name = "transaction::command::done", level = "trace", skip(self), fields(txn_id = %self.id))]
 	fn done_query(&mut self) {
 		if !self.done_query {
 			self.done_query = true;
@@ -479,9 +480,7 @@ where
 
 	/// Discards a created transaction. This method is very important and
 	/// must be called. `commit*` methods calls this internally, however,
-	/// calling this multiple times doesn't cause any issues. So,
-	/// this can safely be called via a defer right when transaction is
-	/// created.
+	/// calling this multiple times doesn't cause any issues
 	#[instrument(name = "transaction::command::discard", level = "trace", skip(self), fields(txn_id = %self.id))]
 	pub fn discard(&mut self) {
 		if self.discarded {
@@ -492,7 +491,6 @@ where
 	}
 
 	/// Returns true if the transaction is discarded.
-
 	pub fn is_discard(&self) -> bool {
 		self.discarded
 	}

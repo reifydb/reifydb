@@ -6,7 +6,6 @@ mod connection;
 mod query;
 mod storage;
 mod tables;
-mod writer;
 
 pub use config::*;
 pub use storage::SqlitePrimitiveStorage;

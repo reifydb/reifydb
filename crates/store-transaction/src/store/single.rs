@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::BTreeMap, ops::Bound};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+};
 
 use async_trait::async_trait;
 use reifydb_core::{
@@ -122,7 +125,7 @@ impl SingleVersionCommit for StandardTransactionStore {
 			})
 			.collect();
 
-		storage.put(table, entries).await?;
+		storage.set(HashMap::from([(table, entries)])).await?;
 
 		Ok(())
 	}

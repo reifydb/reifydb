@@ -5,7 +5,7 @@
 //!
 //! Uses BTreeMap for ordered key-value storage with RwLock for thread safety.
 
-use std::{ops::Bound, sync::Arc};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use async_trait::async_trait;
 use reifydb_type::Result;
@@ -63,12 +63,14 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		}
 	}
 
-	#[instrument(name = "store::memory::put", level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
-	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()> {
+	#[instrument(name = "store::memory::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
+	async fn set(&self, batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		let mut guard = self.inner.tables.write().await;
-		let table_data = guard.get_table_mut(table);
-		for (key, value) in entries {
-			table_data.insert(key, value);
+		for (table, entries) in batches {
+			let table_data = guard.get_table_mut(table);
+			for (key, value) in entries {
+				table_data.insert(key, value);
+			}
 		}
 		Ok(())
 	}
@@ -198,7 +200,9 @@ mod tests {
 		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Put and get
-		storage.put(TableId::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+			.await
+			.unwrap();
 		let value = storage.get(TableId::Multi, b"key1").await.unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
@@ -207,7 +211,7 @@ mod tests {
 		assert!(!storage.contains(TableId::Multi, b"nonexistent").await.unwrap());
 
 		// Delete (tombstone)
-		storage.put(TableId::Multi, vec![(b"key1".to_vec(), None)]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
 		assert!(!storage.contains(TableId::Multi, b"key1").await.unwrap());
 	}
 
@@ -215,8 +219,12 @@ mod tests {
 	async fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))]).await.unwrap();
-		storage.put(TableId::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(TableId::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+			.await
+			.unwrap();
 
 		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
 		assert_eq!(storage.get(TableId::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
@@ -231,8 +239,18 @@ mod tests {
 		let source1 = PrimitiveId::Table(CoreTableId(1));
 		let source2 = PrimitiveId::Table(CoreTableId(2));
 
-		storage.put(TableId::Source(source1), vec![(b"key".to_vec(), Some(b"table1".to_vec()))]).await.unwrap();
-		storage.put(TableId::Source(source2), vec![(b"key".to_vec(), Some(b"table2".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(
+			TableId::Source(source1),
+			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
+		)]))
+		.await
+		.unwrap();
+		storage.set(HashMap::from([(
+			TableId::Source(source2),
+			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
+		)]))
+		.await
+		.unwrap();
 
 		assert_eq!(storage.get(TableId::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
 		assert_eq!(storage.get(TableId::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
@@ -242,9 +260,15 @@ mod tests {
 	async fn test_range_batch() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
@@ -259,9 +283,15 @@ mod tests {
 	async fn test_range_rev_batch() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let batch =
 			storage.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
@@ -279,7 +309,9 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))]).await.unwrap();
+			storage.set(HashMap::from([(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+				.await
+				.unwrap();
 		}
 
 		// First batch of 3
@@ -307,7 +339,9 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))]).await.unwrap();
+			storage.set(HashMap::from([(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+				.await
+				.unwrap();
 		}
 
 		// First batch of 3 (reverse)

@@ -77,12 +77,14 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 	}
 
+	/// Consume a batch of CDC events.
+	/// Returns the number of CDC transactions processed (0 if none available).
 	async fn consume_batch(
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
 		max_batch_size: Option<u64>,
-	) -> Result<Option<(CommitVersion, u64)>> {
+	) -> Result<usize> {
 		// Get current version and wait briefly for in-flight commits to complete.
 		// This ensures done_until catches up to avoid missing CDC events.
 		let current_version = engine.current_version().await?;
@@ -101,16 +103,17 @@ impl<C: CdcConsume> PollConsumer<C> {
 		// If safe_version <= checkpoint, there's nothing safe to fetch yet
 		if safe_version <= checkpoint {
 			transaction.rollback()?;
-			return Ok(None);
+			return Ok(0);
 		}
 
 		// Only fetch CDC events up to safe_version to avoid race conditions
 		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size).await?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
-			return Ok(None);
+			return Ok(0);
 		}
 
+		let count = transactions.len();
 		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 
 		// Filter transactions to only those with Row or Flow-related changes
@@ -152,11 +155,9 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version).await?;
-		let current_version = transaction.commit().await?;
+		transaction.commit().await?;
 
-		let lag = current_version.0.saturating_sub(latest_version.0);
-
-		Ok(Some((latest_version, lag)))
+		Ok(count)
 	}
 
 	async fn polling_loop(
@@ -169,11 +170,10 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		while state.running.load(Ordering::Acquire) {
 			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size).await {
-				Ok(Some((_processed_version, _lag))) => {
-					sleep(config.poll_interval).await;
+				Ok(count) if count > 0 => {
+					// More events likely available - poll again immediately
 				}
-				Ok(None) => {
-					// No events to process - sleep before retrying
+				Ok(_) => {
 					sleep(config.poll_interval).await;
 				}
 				Err(error) => {

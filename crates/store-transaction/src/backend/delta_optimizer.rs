@@ -5,7 +5,7 @@ use indexmap::{
 	IndexMap,
 	map::Entry::{Occupied, Vacant},
 };
-use reifydb_core::{EncodedKey, delta::Delta, value::encoded::EncodedValues};
+use reifydb_core::{CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
 
 /// Represents the optimized state of a key after all operations in a transaction
 #[derive(Debug, Clone)]
@@ -18,27 +18,18 @@ enum OptimizedDeltaState {
 	Remove,
 	/// Key operations cancelled out (Insert+Delete), skip entirely
 	Cancelled,
-	/// Key was deleted then re-inserted - treat as Insert even if key exists in storage
-	SetAfterDelete {
-		values: EncodedValues,
-	},
 }
 
 /// Optimize deltas by applying cancellation and coalescing logic at the delta level
 ///
 /// This function processes a sequence of deltas and returns an optimized list where:
-/// - Insert+Delete pairs are cancelled out completely
+/// - Insert+Delete pairs are canceled out completely
 /// - Multiple updates are coalesced into a single update
 /// - Only the final state for each key is returned
-///
-/// This optimization happens BEFORE database writes, reducing unnecessary I/O operations.
-pub(crate) fn optimize_deltas<F>(deltas: impl IntoIterator<Item = Delta>, mut key_exists_in_storage: F) -> Vec<Delta>
-where
-	F: FnMut(&EncodedKey) -> bool,
-{
+pub(crate) fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 	// Track the optimized state for each key
 	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
-	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
+	let mut key_states: IndexMap<Vec<u8>, (OptimizedDeltaState, usize)> = IndexMap::new();
 
 	// Drop operations are collected separately - they pass through without optimization
 	// because they are cleanup operations that work on versioned storage directly
@@ -57,7 +48,8 @@ where
 				values,
 			} => {
 				// Check if this key has been seen before in this transaction
-				let entry = key_states.entry(key.clone());
+				let key_bytes = key.as_ref().to_vec();
+				let entry = key_states.entry(key_bytes);
 				match entry {
 					Occupied(mut occ) => {
 						// Key was already modified in this transaction
@@ -70,32 +62,16 @@ where
 								*old_values = values;
 							}
 							OptimizedDeltaState::Remove => {
-								// Delete + Insert in same transaction
-								// Mark as SetAfterDelete so CDC knows to treat as
-								// Insert
-								let existed = key_exists_in_storage(&key);
-								if existed {
-									*state = OptimizedDeltaState::SetAfterDelete {
-										values,
-									};
-								} else {
-									*state = OptimizedDeltaState::Set {
-										values,
-									};
-								}
+								// Delete + Insert in same transaction = Set
+								*state = OptimizedDeltaState::Set {
+									values,
+								};
 							}
 							OptimizedDeltaState::Cancelled => {
 								// After complete cancellation, treat as new Insert
 								*state = OptimizedDeltaState::Set {
 									values,
 								};
-							}
-							OptimizedDeltaState::SetAfterDelete {
-								values: old_values,
-							} => {
-								// SetAfterDelete + Update = still SetAfterDelete with
-								// new value
-								*old_values = values;
 							}
 						}
 						// Keep the first index - don't update it
@@ -115,7 +91,8 @@ where
 				key,
 			} => {
 				// Check if this key has been seen before in this transaction
-				let entry = key_states.entry(key.clone());
+				let key_bytes = key.as_ref().to_vec();
+				let entry = key_states.entry(key_bytes);
 				match entry {
 					Occupied(mut occ) => {
 						// Key was already modified in this transaction
@@ -124,17 +101,8 @@ where
 							OptimizedDeltaState::Set {
 								..
 							} => {
-								// Check if this was an insert or update
-								let existed = key_exists_in_storage(&key);
-								if existed {
-									// Storage had this key, so Update+Delete =
-									// Delete
-									*state = OptimizedDeltaState::Remove;
-								} else {
-									// Key didn't exist in storage, so Insert+Delete
-									// = Cancel
-									*state = OptimizedDeltaState::Cancelled;
-								}
+								// Insert + Delete = Cancel
+								*state = OptimizedDeltaState::Cancelled;
 							}
 							OptimizedDeltaState::Remove => {
 								// Delete + Delete shouldn't happen, but keep the delete
@@ -142,12 +110,6 @@ where
 							}
 							OptimizedDeltaState::Cancelled => {
 								// After cancellation, a delete means remove it
-								*state = OptimizedDeltaState::Remove;
-							}
-							OptimizedDeltaState::SetAfterDelete {
-								..
-							} => {
-								// SetAfterDelete + Delete = just Delete
 								*state = OptimizedDeltaState::Remove;
 							}
 						}
@@ -168,7 +130,7 @@ where
 	// Add drop operations (they passed through without optimization)
 	result.extend(drop_operations);
 
-	for (key, (state, idx)) in key_states {
+	for (key_bytes, (state, idx)) in key_states {
 		match state {
 			OptimizedDeltaState::Set {
 				values,
@@ -176,26 +138,7 @@ where
 				result.push((
 					idx,
 					Delta::Set {
-						key,
-						values,
-					},
-				));
-			}
-			OptimizedDeltaState::SetAfterDelete {
-				values,
-			} => {
-				// Emit both Delete and Set for CDC to see the pattern
-				// This is still optimized (2 ops instead of many)
-				result.push((
-					idx,
-					Delta::Remove {
-						key: key.clone(),
-					},
-				));
-				result.push((
-					idx,
-					Delta::Set {
-						key,
+						key: EncodedKey(CowVec::new(key_bytes)),
 						values,
 					},
 				));
@@ -204,7 +147,7 @@ where
 				result.push((
 					idx,
 					Delta::Remove {
-						key,
+						key: EncodedKey(CowVec::new(key_bytes)),
 					},
 				));
 			}
@@ -223,8 +166,6 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{CowVec, value::encoded::EncodedValues};
-
 	use super::*;
 
 	fn make_key(s: &str) -> EncodedKey {
@@ -247,7 +188,7 @@ mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, |_| false);
+		let optimized = optimize_deltas(deltas);
 
 		// Insert + Delete should cancel out completely
 		assert_eq!(optimized.len(), 0);
@@ -270,7 +211,7 @@ mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, |_| true);
+		let optimized = optimize_deltas(deltas);
 
 		// Multiple updates should coalesce to single update
 		assert_eq!(optimized.len(), 1);
@@ -279,7 +220,7 @@ mod tests {
 				key,
 				values,
 			} => {
-				assert_eq!(key.0.as_slice(), b"key_a");
+				assert_eq!(key.as_ref(), b"key_a");
 				assert_eq!(values.0.as_slice(), b"value3");
 			}
 			_ => panic!("Expected Set delta"),
@@ -302,40 +243,10 @@ mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, |_| false);
+		let optimized = optimize_deltas(deltas);
 
-		// Insert + Update + Delete (when key doesn't exist) should cancel
+		// Insert + Update + Delete should cancel
 		assert_eq!(optimized.len(), 0);
-	}
-
-	#[test]
-	fn test_update_delete_existing_key() {
-		let deltas = vec![
-			Delta::Set {
-				key: make_key("key_a"),
-				values: make_values("value1"),
-			},
-			Delta::Set {
-				key: make_key("key_a"),
-				values: make_values("value2"),
-			},
-			Delta::Remove {
-				key: make_key("key_a"),
-			},
-		];
-
-		let optimized = optimize_deltas(deltas, |_| true); // Key exists in storage
-
-		// Update + Update + Delete should result in Delete
-		assert_eq!(optimized.len(), 1);
-		match &optimized[0] {
-			Delta::Remove {
-				key,
-			} => {
-				assert_eq!(key.0.as_slice(), b"key_a");
-			}
-			_ => panic!("Expected Remove delta"),
-		}
 	}
 
 	#[test]
@@ -358,7 +269,7 @@ mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, |_| false);
+		let optimized = optimize_deltas(deltas);
 
 		// key_a: Insert+Delete = cancel
 		// key_b: Insert = keep

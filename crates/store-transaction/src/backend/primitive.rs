@@ -6,7 +6,7 @@
 //! This module defines the minimal interface that storage backends must implement.
 //! All MVCC, CDC, and routing logic belongs in the store layer above.
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use async_trait::async_trait;
 use reifydb_core::interface::{FlowNodeId, PrimitiveId};
@@ -78,11 +78,11 @@ pub trait PrimitiveStorage: Send + Sync + Clone + 'static {
 		Ok(self.get(table, key).await?.is_some())
 	}
 
-	/// Store a batch of entries atomically.
+	/// Write entries to multiple tables atomically.
 	///
-	/// Each entry is (key, optional_value). None value = tombstone/deletion.
-	/// All entries go to the specified table.
-	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()>;
+	/// All entries across all tables are written in a single transaction.
+	/// This ensures durability and atomicity for multi-table commits.
+	async fn set(&self, batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
 	/// Fetch a batch of entries in key order (ascending).
 	///

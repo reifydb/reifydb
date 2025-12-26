@@ -67,30 +67,24 @@ impl CommandTransaction {
 		}
 
 		// Commit to storage with the correct commit version
-		let storage_result =
-			MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version).await;
+		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version).await?;
 
-		// Mark the commit as done in the oracle (whether storage succeeded or failed)
+		// Mark the commit as done in the oracle
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
-
-		// Check storage result
-		storage_result?;
 
 		// Emit event on success
 		let event_bus = self.engine.event_bus.clone();
 		let version = commit_version;
-		// Only spawn if there's a tokio runtime available
-		if let Ok(handle) = tokio::runtime::Handle::try_current() {
-			handle.spawn(async move {
-				event_bus
-					.emit(PostCommitEvent {
-						deltas,
-						version,
-					})
-					.await;
-			});
-		}
+
+		tokio::spawn(async move {
+			event_bus
+				.emit(PostCommitEvent {
+					deltas,
+					version,
+				})
+				.await;
+		});
 
 		Ok(commit_version)
 	}

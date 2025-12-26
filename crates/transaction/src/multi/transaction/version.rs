@@ -43,7 +43,7 @@ impl VersionBlock {
 	}
 
 	fn next(&self) -> Option<CommitVersion> {
-		let version = self.current.fetch_add(1, Ordering::Relaxed);
+		let version = self.current.fetch_add(1, Ordering::SeqCst);
 		if version < self.last {
 			Some(CommitVersion(version + 1))
 		} else {
@@ -52,7 +52,7 @@ impl VersionBlock {
 	}
 
 	fn current(&self) -> CommitVersion {
-		CommitVersion(self.current.load(Ordering::Relaxed))
+		CommitVersion(self.current.load(Ordering::SeqCst))
 	}
 }
 

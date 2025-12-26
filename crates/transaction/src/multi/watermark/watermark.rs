@@ -103,11 +103,11 @@ impl WaterMark {
 		});
 	}
 
-	/// Sets a single index as done.
-	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = index.0))]
-	pub fn done(&self, index: CommitVersion) {
+	/// Sets a single version as done.
+	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
+	pub fn done(&self, version: CommitVersion) {
 		let _ = self.tx.send(Mark {
-			version: index.0,
+			version: version.0,
 			waiter: None,
 			done: true,
 		});

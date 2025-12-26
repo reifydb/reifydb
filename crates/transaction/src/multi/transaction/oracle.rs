@@ -318,12 +318,12 @@ where
 		self.closer.signal_and_wait().await;
 	}
 
-	/// Mark a query as done (for compatibility with existing API)
+	/// Mark a query as done
 	pub(super) fn done_query(&self, version: CommitVersion) {
 		self.query.done(version);
 	}
 
-	/// Mark a commit as done (for compatibility with existing API)  
+	/// Mark a commit as done
 	pub(super) fn done_commit(&self, version: CommitVersion) {
 		self.command.done(version);
 	}

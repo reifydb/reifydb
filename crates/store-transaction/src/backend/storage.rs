@@ -6,7 +6,7 @@
 //! This module provides a single enum that dispatches to either
 //! Memory or SQLite primitive storage implementations.
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use async_trait::async_trait;
 use reifydb_type::Result;
@@ -66,10 +66,10 @@ impl PrimitiveStorage for BackendStorage {
 	}
 
 	#[inline]
-	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()> {
+	async fn set(&self, batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		match self {
-			Self::Memory(s) => s.put(table, entries).await,
-			Self::Sqlite(s) => s.put(table, entries).await,
+			Self::Memory(s) => s.set(batches).await,
+			Self::Sqlite(s) => s.set(batches).await,
 		}
 	}
 
@@ -128,7 +128,9 @@ mod tests {
 	async fn test_memory_backend() {
 		let storage = BackendStorage::memory().await;
 
-		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+			.await
+			.unwrap();
 		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
@@ -136,7 +138,9 @@ mod tests {
 	async fn test_sqlite_backend() {
 		let storage = BackendStorage::sqlite_in_memory().await;
 
-		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+			.await
+			.unwrap();
 		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
@@ -144,9 +148,16 @@ mod tests {
 	async fn test_range_batch_memory() {
 		let storage = BackendStorage::memory().await;
 
-		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(
+			TableId::Multi,
+			vec![
+				(b"a".to_vec(), Some(b"1".to_vec())),
+				(b"b".to_vec(), Some(b"2".to_vec())),
+				(b"c".to_vec(), Some(b"3".to_vec())),
+			],
+		)]))
+		.await
+		.unwrap();
 
 		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
@@ -158,9 +169,16 @@ mod tests {
 	async fn test_range_batch_sqlite() {
 		let storage = BackendStorage::sqlite_in_memory().await;
 
-		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
-		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
+		storage.set(HashMap::from([(
+			TableId::Multi,
+			vec![
+				(b"a".to_vec(), Some(b"1".to_vec())),
+				(b"b".to_vec(), Some(b"2".to_vec())),
+				(b"c".to_vec(), Some(b"3".to_vec())),
+			],
+		)]))
+		.await
+		.unwrap();
 
 		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, HashSet},
 	ops::{Bound, RangeBounds},
 };
 
@@ -115,19 +115,14 @@ impl MultiVersionCommit for StandardTransactionStore {
 			return Ok(());
 		};
 
-		// Helper to check if key exists in storage (sync check using cached data)
-		let key_exists = |_key: &EncodedKey| -> bool {
-			// For optimization purposes, we check synchronously if possible
-			// This is used during delta optimization and doesn't need to be perfectly accurate
-			false // Conservative: assume key doesn't exist, which is safe for optimization
-		};
-
 		// Optimize deltas first (cancel insert+delete pairs, coalesce updates)
-		let optimized_deltas = optimize_deltas(deltas.iter().cloned(), key_exists);
+		let optimized_deltas = optimize_deltas(deltas.iter().cloned());
 
 		// For flow state keys (single-version semantics), inject Drop deltas to clean up old versions.
-		let all_deltas: Vec<Delta> = {
+		// Track which keys have pending Set operations so Drop can account for the version being written.
+		let (all_deltas, pending_set_keys): (Vec<Delta>, HashSet<Vec<u8>>) = {
 			let mut result = Vec::with_capacity(optimized_deltas.len() * 2);
+			let mut pending_keys = HashSet::new();
 			for delta in optimized_deltas.iter() {
 				result.push(delta.clone());
 				if let Delta::Set {
@@ -136,6 +131,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 				} = delta
 				{
 					if is_single_version_semantics_key(key) {
+						pending_keys.insert(key.as_ref().to_vec());
 						result.push(Delta::Drop {
 							key: key.clone(),
 							up_to_version: None,
@@ -144,19 +140,18 @@ impl MultiVersionCommit for StandardTransactionStore {
 					}
 				}
 			}
-			result
+			(result, pending_keys)
 		};
 
-		// Collect previous versions for CDC classification
 		let previous_versions = self.collect_previous_versions(&optimized_deltas).await;
 
 		// Generate CDC changes from optimized deltas with proper version lookup
 		let cdc_changes = process_deltas_for_cdc(optimized_deltas.iter().cloned(), version, |key| {
-			// Look up the previous version from our collected map
 			previous_versions.get(key.as_ref()).copied()
 		})?;
 
 		// Track storage statistics
+		// TODO this should happen in the background
 		for delta in optimized_deltas.iter() {
 			let key = delta.key();
 			let key_bytes = key.as_ref();
@@ -226,14 +221,21 @@ impl MultiVersionCommit for StandardTransactionStore {
 					up_to_version,
 					keep_last_versions,
 				} => {
-					// Drop scans for versioned entries and deletes them based on constraints
+					// Drop scans for versioned entries and deletes them based on constraints.
+					// For single-version keys with a pending Set in this commit, pass the version
+					// so find_keys_to_drop knows about the new version being written.
+					let pending_version = if pending_set_keys.contains(key.as_ref()) {
+						Some(version)
+					} else {
+						None
+					};
 					let entries_to_drop = find_keys_to_drop(
 						storage,
 						table,
 						key.as_ref(),
 						*up_to_version,
 						*keep_last_versions,
-						None,
+						pending_version,
 					)
 					.await?;
 					for entry in entries_to_drop {
@@ -250,7 +252,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			}
 		}
 
-		// Add CDC to batches (fire-and-forget via spawn)
+		// Add CDC to batches
 		let cdc_data = if !cdc_changes.is_empty() {
 			let internal_cdc = InternalCdc {
 				version,
@@ -277,19 +279,15 @@ impl MultiVersionCommit for StandardTransactionStore {
 			None
 		};
 
-		// Write each batch to storage
-		for (table, entries) in batches {
-			storage.put(table, entries).await?;
+		if let Some((cdc_key, encoded)) = cdc_data {
+			batches.entry(TableId::Cdc).or_default().push((cdc_key, Some(encoded)));
 		}
 
-		// Write CDC to storage
-		if let Some((cdc_key, encoded)) = cdc_data {
-			storage.put(TableId::Cdc, vec![(cdc_key, Some(encoded))]).await?;
-		}
+		storage.set(batches).await?;
 
 		// Checkpoint stats if needed
 		if self.stats_tracker.should_checkpoint() {
-			self.stats_tracker.checkpoint_async(storage).await?;
+			self.stats_tracker.checkpoint(storage).await?;
 		}
 
 		Ok(())
