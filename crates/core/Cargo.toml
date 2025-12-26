@@ -21,6 +21,7 @@ num-traits = { workspace = true }
 async-trait = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 indexmap = { workspace = true }
 
 [dev-dependencies]

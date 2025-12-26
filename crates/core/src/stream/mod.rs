@@ -7,10 +7,12 @@
 //! collecting them into `Vec<Frame>`. The primary type is `SendableFrameStream`,
 //! which is a pinned, boxed, sendable stream of frames.
 
+mod channel;
 mod error;
 
 use std::pin::Pin;
 
+pub use channel::{ChannelFrameStream, FrameSender, StreamHandle, StreamId};
 pub use error::{StreamError, StreamResult};
 use futures_util::Stream;
 

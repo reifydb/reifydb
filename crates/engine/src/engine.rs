@@ -14,7 +14,7 @@ use reifydb_core::{
 		Identity, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
 	ioc::IocContainer,
-	stream::{SendableFrameStream, StreamError},
+	stream::{ChannelFrameStream, FrameSender, SendableFrameStream, StreamError},
 };
 use reifydb_transaction::{
 	cdc::TransactionCdc,
@@ -30,7 +30,6 @@ use crate::{
 	execute::Executor,
 	function::{Functions, generator, math},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
-	stream::{ChannelFrameStream, FrameSender},
 	table_virtual::{
 		IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUser, TableVirtualUserColumnDef,
 		TableVirtualUserIterator,

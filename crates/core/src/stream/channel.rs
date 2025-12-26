@@ -13,12 +13,11 @@ use std::{
 };
 
 use futures_util::Stream;
-use reifydb_core::{
-	Frame,
-	stream::{StreamError, StreamResult},
-};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+
+use super::{StreamError, StreamResult};
+use crate::Frame;
 
 /// Counter for generating unique stream IDs.
 static STREAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
