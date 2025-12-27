@@ -10,7 +10,14 @@ use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() {
-	let mut db = embedded::sqlite(SqliteConfig::in_memory()).await.unwrap().with_flow(|f| f).build().await.unwrap();
+	let mut db = embedded::sqlite(SqliteConfig::in_memory())
+		.await
+		.unwrap()
+		.with_flow(|f| f)
+		.with_tracing(|t| t.with_filter("debug"))
+		.build()
+		.await
+		.unwrap();
 
 	db.start().await.unwrap();
 
@@ -78,7 +85,7 @@ async fn main() {
 	.await
 	.unwrap();
 
-	sleep(Duration::from_millis(10)).await;
+	sleep(Duration::from_millis(5)).await;
 
 	for frame in db.query_as_root("from test.even_numbers take 10", Params::None).await.unwrap() {
 		println!("{}", frame);

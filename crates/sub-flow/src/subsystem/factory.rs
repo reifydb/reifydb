@@ -3,10 +3,9 @@
 
 use async_trait::async_trait;
 use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, util::ioc::IocContainer};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
-use super::FlowSubsystem;
 use crate::builder::FlowBuilder;
 
 /// Configuration function for the flow subsystem
@@ -52,12 +51,18 @@ impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
 	}
 
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let builder = if let Some(configurator) = self.configurator {
-			configurator(FlowBuilder::new())
+		use crate::rewrite::FlowSubsystemV2;
+
+		let engine = ioc.resolve::<StandardEngine>()?;
+
+		// Get operators_dir from config if configurator is present
+		let operators_dir = if let Some(configurator) = self.configurator {
+			let builder = configurator(FlowBuilder::new());
+			builder.build_config().operators_dir
 		} else {
-			FlowBuilder::default()
+			None
 		};
-		let config = builder.build_config();
-		Ok(Box::new(FlowSubsystem::new(config, ioc).await?))
+
+		Ok(Box::new(FlowSubsystemV2::new(engine, operators_dir, ioc)))
 	}
 }

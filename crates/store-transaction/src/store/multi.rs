@@ -145,11 +145,6 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 		let previous_versions = self.collect_previous_versions(&optimized_deltas).await;
 
-		// Generate CDC changes from optimized deltas with proper version lookup
-		let cdc_changes = process_deltas_for_cdc(optimized_deltas.iter().cloned(), version, |key| {
-			previous_versions.get(key.as_ref()).copied()
-		})?;
-
 		// Track storage statistics
 		// TODO this should happen in the background
 		for delta in optimized_deltas.iter() {
@@ -193,6 +188,10 @@ impl MultiVersionCommit for StandardTransactionStore {
 				}
 			}
 		}
+
+		let cdc_changes = process_deltas_for_cdc(optimized_deltas, version, |key| {
+			previous_versions.get(key.as_ref()).copied()
+		})?;
 
 		// Batch deltas by table for efficient storage writes
 		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();

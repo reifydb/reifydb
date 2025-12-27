@@ -16,6 +16,7 @@ pub(crate) mod lag;
 #[allow(dead_code, unused_variables)]
 pub(crate) mod operator;
 pub(crate) mod registry;
+pub mod rewrite;
 pub(crate) mod routing;
 pub mod subsystem;
 pub(crate) mod tracker;

@@ -138,7 +138,6 @@ fn generate_internal_cdc_change(
 			key,
 			values: _,
 		} => {
-			// operators and internal state do not generate cdc events
 			if let Some(kind) = Key::kind(&key) {
 				if should_exclude_from_cdc(kind) {
 					return None;
@@ -162,7 +161,6 @@ fn generate_internal_cdc_change(
 		Delta::Remove {
 			key,
 		} => {
-			// operators and internal state do not produce cdc events
 			if let Some(kind) = Key::kind(&key) {
 				if should_exclude_from_cdc(kind) {
 					return None;
@@ -190,8 +188,8 @@ fn generate_internal_cdc_change(
 ///
 /// NOTE: This function expects deltas that are ALREADY OPTIMIZED at the delta level.
 /// All cancellation (Insert+Delete) and coalescing (Update+Update) has already been done.
-/// This function converts each optimized delta to the appropriate CDC change, with one
-/// exception: it collapses Delete→Insert patterns in the same transaction into just Insert.
+/// This function simply converts each optimized delta to the appropriate CDC change
+/// without any additional optimization or collapsing.
 pub(crate) fn process_deltas_for_cdc<F>(
 	deltas: impl IntoIterator<Item = Delta>,
 	version: CommitVersion,
@@ -215,41 +213,6 @@ where
 
 		// Generate CDC change based on the optimized delta
 		if let Some(cdc_change) = generate_internal_cdc_change(delta, pre_version, version) {
-			// Check if this is an Insert or Update following a Delete in the same transaction
-			if let Some(last_change) = cdc_changes.last_mut() {
-				if let InternalCdcChange::Delete {
-					key: last_key,
-					pre_version: last_pre_version,
-				} = &last_change.change
-				{
-					if last_key == &key && *last_pre_version != version {
-						// Delete (from storage) + Insert/Update (new) in same transaction
-						// Convert to Insert (complete replacement)
-						match cdc_change {
-							InternalCdcChange::Insert {
-								..
-							} => {
-								last_change.change = cdc_change;
-								continue;
-							}
-							InternalCdcChange::Update {
-								key,
-								pre_version: _,
-								post_version,
-							} => {
-								// Convert Update to Insert
-								last_change.change = InternalCdcChange::Insert {
-									key,
-									post_version,
-								};
-								continue;
-							}
-							_ => {}
-						}
-					}
-				}
-			}
-
 			cdc_changes.push(InternalCdcSequencedChange {
 				sequence,
 				change: cdc_change,

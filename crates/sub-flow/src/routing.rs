@@ -107,7 +107,7 @@ pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cd
 }
 
 /// Convert CDC change format to FlowChange format.
-async fn convert_cdc_to_flow_change(
+pub(crate) async fn convert_cdc_to_flow_change(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
@@ -154,7 +154,7 @@ async fn convert_cdc_to_flow_change(
 }
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
-async fn create_row(
+pub(crate) async fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
