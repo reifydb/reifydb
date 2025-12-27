@@ -6,9 +6,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_abi::{ColumnsFFI, FFIOperatorDescriptor, FFIOperatorVTable};
 use reifydb_flow_operator_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
 use tokio::sync::RwLock;
@@ -23,10 +23,10 @@ use crate::{
 /// FFI operator that wraps an external operator implementation
 pub struct FFIOperator {
 	/// Operator descriptor from the FFI library
-	descriptor: FFIOperatorDescriptor,
+	descriptor: OperatorDescriptorFFI,
 
 	/// Virtual function table for calling FFI functions
-	vtable: FFIOperatorVTable,
+	vtable: OperatorVTableFFI,
 
 	/// Pointer to the FFI operator instance
 	instance: *mut c_void,
@@ -44,7 +44,7 @@ unsafe impl Sync for FFIOperator {}
 
 impl FFIOperator {
 	/// Create a new FFI operator
-	pub fn new(descriptor: FFIOperatorDescriptor, instance: *mut c_void, operator_id: FlowNodeId) -> Self {
+	pub fn new(descriptor: OperatorDescriptorFFI, instance: *mut c_void, operator_id: FlowNodeId) -> Self {
 		let vtable = descriptor.vtable;
 
 		Self {
@@ -57,7 +57,7 @@ impl FFIOperator {
 	}
 
 	/// Get the operator descriptor
-	pub(crate) fn descriptor(&self) -> &FFIOperatorDescriptor {
+	pub(crate) fn descriptor(&self) -> &OperatorDescriptorFFI {
 		&self.descriptor
 	}
 }
@@ -90,11 +90,11 @@ impl Operator for FFIOperator {
 		let ffi_input = marshaller.marshal_flow_change(&change);
 
 		// Create output holder
-		let mut ffi_output = reifydb_flow_operator_abi::FlowChangeFFI::empty();
+		let mut ffi_output = reifydb_abi::FlowChangeFFI::empty();
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_flow_operator_abi::FFIContext;
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_abi::ContextFFI;
 
 		let result = catch_unwind(AssertUnwindSafe(|| {
 			(self.vtable.apply)(self.instance, ffi_ctx_ptr, &ffi_input, &mut ffi_output)
@@ -136,7 +136,7 @@ impl Operator for FFIOperator {
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_flow_operator_abi::FFIContext;
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_abi::ContextFFI;
 
 		// Call FFI pull function
 		let result = catch_unwind(AssertUnwindSafe(|| {

@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
 
+use reifydb_abi::ContextFFI;
 use reifydb_core::{
 	CommitVersion,
 	interface::FlowNodeId,
@@ -11,7 +12,6 @@ use reifydb_core::{
 		encoded::{EncodedKey, EncodedValues},
 	},
 };
-use reifydb_flow_operator_abi::FFIContext;
 use reifydb_type::{RowNumber, Value};
 
 use super::{TestContext, TestStateStore, callbacks};
@@ -28,7 +28,7 @@ use crate::{FFIOperator, FFIOperatorMetadata, FlowChange, OperatorContext, Resul
 pub struct OperatorTestHarness<T: FFIOperator> {
 	operator: T,
 	context: Box<TestContext>, // Boxed for stable address (pointed to by ffi_context)
-	ffi_context: Box<FFIContext>,
+	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 }
@@ -132,7 +132,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	/// let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key)?;
 	/// ```
 	pub fn create_operator_context(&mut self) -> OperatorContext {
-		OperatorContext::new(&mut *self.ffi_context as *mut FFIContext)
+		OperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
 	}
 
 	/// Get a reference to the operator
@@ -222,7 +222,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 
 		// Create FFI context with test callbacks
 		// The txn_ptr points to the TestContext
-		let ffi_context = Box::new(FFIContext {
+		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			operator_id: self.node_id.0,
 			callbacks: callbacks::create_test_callbacks(),

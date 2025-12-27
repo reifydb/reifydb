@@ -7,7 +7,7 @@ use std::{
 	sync::Mutex,
 };
 
-use reifydb_flow_operator_abi::*;
+use reifydb_abi::*;
 use reifydb_type::RowNumber;
 use tracing::{Span, debug_span, instrument, warn};
 
@@ -46,7 +46,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 ))]
 pub extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	input: *const FlowChangeFFI,
 	output: *mut FlowChangeFFI,
 ) -> i32 {
@@ -118,7 +118,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 ))]
 pub extern "C" fn ffi_pull<O: FFIOperator>(
 	instance: *mut c_void,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	row_numbers: *const u64,
 	count: usize,
 	output: *mut ColumnsFFI,
@@ -191,8 +191,8 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 }
 
 /// Create the vtable for an operator type
-pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {
-	FFIOperatorVTable {
+pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
+	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
 		pull: ffi_pull::<O>,
 		destroy: ffi_destroy::<O>,

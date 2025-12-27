@@ -4,15 +4,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use reifydb_abi::{
+	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
+	has_capability,
+};
 use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
 	interface::TableVirtualDef,
 	value::column::{Column, ColumnData, Columns},
-};
-use reifydb_flow_operator_abi::{
-	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
-	has_capability,
 };
 use reifydb_type::Fragment;
 

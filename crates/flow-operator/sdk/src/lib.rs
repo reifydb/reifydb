@@ -122,7 +122,7 @@ pub trait FFIOperatorMetadata {
 	/// Output columns describing output row format
 	const OUTPUT_COLUMNS: &'static [OperatorColumnDef];
 	/// Capabilities bitflags describing supported operations
-	/// Use CAPABILITY_* constants from reifydb_flow_operator_abi
+	/// Use CAPABILITY_* constants from reifydb_abi
 	const CAPABILITIES: u32;
 }
 
@@ -146,6 +146,10 @@ impl<T> FFIOperatorWithMetadata for T where T: FFIOperator + FFIOperatorMetadata
 
 // Prelude module for convenient imports
 pub mod prelude {
+	pub use reifydb_abi::{
+		CAPABILITY_ALL_STANDARD, CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL,
+		CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
+	};
 	pub use reifydb_core::{
 		CowVec, Row,
 		key::EncodableKey,
@@ -153,10 +157,6 @@ pub mod prelude {
 			column::Columns,
 			encoded::{EncodedKey, EncodedValues},
 		},
-	};
-	pub use reifydb_flow_operator_abi::{
-		CAPABILITY_ALL_STANDARD, CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL,
-		CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 	};
 	pub use reifydb_type::{RowNumber, Type, TypeConstraint, Value};
 

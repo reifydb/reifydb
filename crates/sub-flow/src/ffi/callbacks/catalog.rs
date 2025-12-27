@@ -8,13 +8,13 @@
 
 use std::slice::from_raw_parts;
 
+use reifydb_abi::{
+	ContextFFI, FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
+	catalog::{ColumnDefFFI, NamespaceFFI, PrimaryKeyFFI, TableFFI},
+};
 use reifydb_core::{
 	CommitVersion,
 	interface::{NamespaceId, TableId},
-};
-use reifydb_flow_operator_abi::{
-	FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, FFIContext,
-	ffi::{FFIColumnDef, FFINamespaceDef, FFIPrimaryKeyDef, FFITableDef},
 };
 use reifydb_type::TypeConstraint;
 
@@ -24,10 +24,10 @@ use crate::ffi::context::get_transaction_mut;
 /// Find a namespace by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	namespace_id: u64,
 	version: u64,
-	output: *mut FFINamespaceDef,
+	output: *mut NamespaceFFI,
 ) -> i32 {
 	if ctx.is_null() || output.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -55,11 +55,11 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 /// Find a namespace by name at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace_by_name(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	name_ptr: *const u8,
 	name_len: usize,
 	version: u64,
-	output: *mut FFINamespaceDef,
+	output: *mut NamespaceFFI,
 ) -> i32 {
 	if ctx.is_null() || name_ptr.is_null() || output.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -94,10 +94,10 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 /// Find a table by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	table_id: u64,
 	version: u64,
-	output: *mut FFITableDef,
+	output: *mut TableFFI,
 ) -> i32 {
 	if ctx.is_null() || output.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -130,12 +130,12 @@ pub(super) extern "C" fn host_catalog_find_table(
 /// Find a table by name in a namespace at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table_by_name(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	namespace_id: u64,
 	name_ptr: *const u8,
 	name_len: usize,
 	version: u64,
-	output: *mut FFITableDef,
+	output: *mut TableFFI,
 ) -> i32 {
 	if ctx.is_null() || name_ptr.is_null() || output.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -174,7 +174,7 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 
 /// Free a namespace definition allocated by the host
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut FFINamespaceDef) {
+pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFFI) {
 	if namespace.is_null() {
 		return;
 	}
@@ -191,7 +191,7 @@ pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut FFINamespac
 
 /// Free a table definition allocated by the host
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_catalog_free_table(table: *mut FFITableDef) {
+pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	if table.is_null() {
 		return;
 	}
@@ -214,7 +214,7 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut FFITableDef) {
 				}
 			}
 			// Free columns array itself
-			host_free(tbl.columns as *mut u8, tbl.column_count * std::mem::size_of::<FFIColumnDef>());
+			host_free(tbl.columns as *mut u8, tbl.column_count * std::mem::size_of::<ColumnDefFFI>());
 		}
 
 		// Free primary key
@@ -225,13 +225,13 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut FFITableDef) {
 				host_free(pk.column_ids as *mut u8, pk.column_count * std::mem::size_of::<u64>());
 			}
 			// Free primary key struct itself
-			host_free(tbl.primary_key as *mut u8, std::mem::size_of::<FFIPrimaryKeyDef>());
+			host_free(tbl.primary_key as *mut u8, std::mem::size_of::<PrimaryKeyFFI>());
 		}
 	}
 }
 
 /// Marshal a NamespaceDef to FFI
-fn marshal_namespace(namespace: &reifydb_core::interface::NamespaceDef) -> FFINamespaceDef {
+fn marshal_namespace(namespace: &reifydb_core::interface::NamespaceDef) -> NamespaceFFI {
 	// Allocate and copy name
 	let name_bytes = namespace.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -241,9 +241,9 @@ fn marshal_namespace(namespace: &reifydb_core::interface::NamespaceDef) -> FFINa
 		}
 	}
 
-	FFINamespaceDef {
+	NamespaceFFI {
 		id: namespace.id.0,
-		name: reifydb_flow_operator_abi::BufferFFI {
+		name: reifydb_abi::BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -252,7 +252,7 @@ fn marshal_namespace(namespace: &reifydb_core::interface::NamespaceDef) -> FFINa
 }
 
 /// Marshal a TableDef to FFI
-fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<FFITableDef, &'static str> {
+fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<TableFFI, &'static str> {
 	// Allocate and copy table name
 	let name_bytes = table.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -266,8 +266,8 @@ fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<FFITableDe
 	// Allocate columns array
 	let columns_count = table.columns.len();
 	let columns_ptr = if columns_count > 0 {
-		let size = columns_count * std::mem::size_of::<FFIColumnDef>();
-		let ptr = host_alloc(size) as *mut FFIColumnDef;
+		let size = columns_count * std::mem::size_of::<ColumnDefFFI>();
+		let ptr = host_alloc(size) as *mut ColumnDefFFI;
 		if ptr.is_null() {
 			// Clean up name before returning error
 			host_free(name_ptr, name_bytes.len());
@@ -288,12 +288,12 @@ fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<FFITableDe
 
 	// Marshal primary key if present
 	let (has_pk, pk_ptr) = if let Some(pk) = &table.primary_key {
-		let pk_ptr = host_alloc(std::mem::size_of::<FFIPrimaryKeyDef>()) as *mut FFIPrimaryKeyDef;
+		let pk_ptr = host_alloc(std::mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
 			// Clean up before returning error
 			host_free(name_ptr, name_bytes.len());
 			if !columns_ptr.is_null() {
-				host_free(columns_ptr as *mut u8, columns_count * std::mem::size_of::<FFIColumnDef>());
+				host_free(columns_ptr as *mut u8, columns_count * std::mem::size_of::<ColumnDefFFI>());
 			}
 			return Err("Failed to allocate primary key");
 		}
@@ -307,10 +307,10 @@ fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<FFITableDe
 		(0, std::ptr::null_mut())
 	};
 
-	Ok(FFITableDef {
+	Ok(TableFFI {
 		id: table.id.0,
 		namespace_id: table.namespace.0,
-		name: reifydb_flow_operator_abi::BufferFFI {
+		name: reifydb_abi::BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -323,7 +323,7 @@ fn marshal_table(table: &reifydb_core::interface::TableDef) -> Result<FFITableDe
 }
 
 /// Marshal a ColumnDef to FFI
-fn marshal_column(column: &reifydb_core::interface::ColumnDef) -> Result<FFIColumnDef, &'static str> {
+fn marshal_column(column: &reifydb_core::interface::ColumnDef) -> Result<ColumnDefFFI, &'static str> {
 	// Allocate and copy column name
 	let name_bytes = column.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -337,9 +337,9 @@ fn marshal_column(column: &reifydb_core::interface::ColumnDef) -> Result<FFIColu
 	// Encode type constraint
 	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&column.constraint);
 
-	Ok(FFIColumnDef {
+	Ok(ColumnDefFFI {
 		id: column.id.0,
-		name: reifydb_flow_operator_abi::BufferFFI {
+		name: reifydb_abi::BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -358,7 +358,7 @@ fn marshal_column(column: &reifydb_core::interface::ColumnDef) -> Result<FFIColu
 }
 
 /// Marshal a PrimaryKeyDef to FFI
-fn marshal_primary_key(pk: &reifydb_core::interface::PrimaryKeyDef) -> Result<FFIPrimaryKeyDef, &'static str> {
+fn marshal_primary_key(pk: &reifydb_core::interface::PrimaryKeyDef) -> Result<PrimaryKeyFFI, &'static str> {
 	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {
@@ -380,7 +380,7 @@ fn marshal_primary_key(pk: &reifydb_core::interface::PrimaryKeyDef) -> Result<FF
 		std::ptr::null_mut()
 	};
 
-	Ok(FFIPrimaryKeyDef {
+	Ok(PrimaryKeyFFI {
 		id: pk.id.0,
 		column_count,
 		column_ids: column_ids_ptr,

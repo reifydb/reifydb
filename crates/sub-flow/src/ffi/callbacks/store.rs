@@ -14,11 +14,11 @@
 
 use std::{ops::Bound, slice::from_raw_parts};
 
-use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
-use reifydb_flow_operator_abi::{
-	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
-	FFI_OK, FFIContext, StoreIteratorFFI,
+use reifydb_abi::{
+	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
+	FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI,
 };
+use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
 use tokio::{runtime::Handle, task::block_in_place};
 
 use super::{
@@ -36,7 +36,7 @@ struct StoreIteratorInternal {
 /// Get a value from store by key
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_get(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	output: *mut BufferFFI,
@@ -80,7 +80,7 @@ pub(super) extern "C" fn host_store_get(
 /// Check if a key exists in store
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_contains_key(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	result: *mut u8,
@@ -115,7 +115,7 @@ pub(super) extern "C" fn host_store_contains_key(
 /// Create an iterator for store keys with a given prefix
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_prefix(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
 	iterator_out: *mut *mut StoreIteratorFFI,
@@ -177,7 +177,7 @@ const BOUND_EXCLUDED: u8 = 2;
 /// Create an iterator for store keys in a range
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_range(
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,

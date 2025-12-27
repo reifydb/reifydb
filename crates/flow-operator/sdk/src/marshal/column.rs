@@ -2,8 +2,8 @@
 
 use std::mem::size_of;
 
+use reifydb_abi::*;
 use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_flow_operator_abi::*;
 use reifydb_type::{
 	Date, DateTime, Decimal, Duration, Fragment, IdentityId, Int, IsNumber, RowNumber, Time, Uint, Uuid4, Uuid7,
 	Value,

@@ -17,12 +17,12 @@ use std::{
 	slice::from_raw_parts,
 };
 
-use reifydb_core::{CowVec, value::encoded::EncodedKey};
-use reifydb_flow_operator_abi::{
-	BufferFFI, CatalogCallbacks, FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, FFIContext,
+use reifydb_abi::{
+	BufferFFI, CatalogCallbacks, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
 	HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StateIteratorFFI, StoreCallbacks,
 	StoreIteratorFFI,
 };
+use reifydb_core::{CowVec, value::encoded::EncodedKey};
 
 use super::TestContext;
 
@@ -90,7 +90,7 @@ extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *m
 // ============================================================================
 
 /// Helper to get TestContext from FFI context
-unsafe fn get_test_context(ctx: *mut FFIContext) -> &'static TestContext {
+unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	unsafe {
 		let txn_ptr = (*ctx).txn_ptr;
 		&*(txn_ptr as *const TestContext)
@@ -101,7 +101,7 @@ unsafe fn get_test_context(ctx: *mut FFIContext) -> &'static TestContext {
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get(
 	_operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	output: *mut BufferFFI,
@@ -143,7 +143,7 @@ extern "C" fn test_state_get(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_set(
 	_operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	value_ptr: *const u8,
@@ -172,7 +172,7 @@ extern "C" fn test_state_set(
 
 /// Remove state value from TestContext
 #[unsafe(no_mangle)]
-extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut FFIContext, key_ptr: *const u8, key_len: usize) -> i32 {
+extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr: *const u8, key_len: usize) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
@@ -193,7 +193,7 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut FFIContext, key_ptr
 
 /// Clear all state in TestContext
 #[unsafe(no_mangle)]
-extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut FFIContext) -> i32 {
+extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
@@ -222,7 +222,7 @@ struct TestStateIterator {
 #[unsafe(no_mangle)]
 extern "C" fn test_state_prefix(
 	_operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
 	iterator_out: *mut *mut StateIteratorFFI,
@@ -350,13 +350,13 @@ extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const 
 // ============================================================================
 
 /// Store get - returns not found (store not available in tests)
-extern "C" fn test_store_get(_ctx: *mut FFIContext, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
+extern "C" fn test_store_get(_ctx: *mut ContextFFI, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
 	unimplemented!()
 }
 
 /// Store contains_key - returns false (store not available in tests)
 extern "C" fn test_store_contains_key(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_key: *const u8,
 	_key_len: usize,
 	_result: *mut u8,
@@ -366,7 +366,7 @@ extern "C" fn test_store_contains_key(
 
 /// Store prefix - returns empty iterator (store not available in tests)
 extern "C" fn test_store_prefix(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_prefix: *const u8,
 	_prefix_len: usize,
 	_iterator_out: *mut *mut StoreIteratorFFI,
@@ -376,7 +376,7 @@ extern "C" fn test_store_prefix(
 
 /// Store range - returns empty iterator (store not available in tests)
 extern "C" fn test_store_range(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_start: *const u8,
 	_start_len: usize,
 	_start_bound_type: u8,
@@ -406,58 +406,58 @@ extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 // Catalog Callbacks (stub implementations for testing)
 // ============================================================================
 
-use reifydb_flow_operator_abi::{FFINamespaceDef, FFITableDef};
+use reifydb_abi::{NamespaceFFI, TableFFI};
 
 /// Find namespace by ID - stub implementation
 extern "C" fn test_catalog_find_namespace(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_namespace_id: u64,
 	_version: u64,
-	_output: *mut FFINamespaceDef,
+	_output: *mut NamespaceFFI,
 ) -> i32 {
 	1 // Not found
 }
 
 /// Find namespace by name - stub implementation
 extern "C" fn test_catalog_find_namespace_by_name(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_name_ptr: *const u8,
 	_name_len: usize,
 	_version: u64,
-	_output: *mut FFINamespaceDef,
+	_output: *mut NamespaceFFI,
 ) -> i32 {
 	1 // Not found
 }
 
 /// Find table by ID - stub implementation
 extern "C" fn test_catalog_find_table(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_table_id: u64,
 	_version: u64,
-	_output: *mut FFITableDef,
+	_output: *mut TableFFI,
 ) -> i32 {
 	1 // Not found
 }
 
 /// Find table by name - stub implementation
 extern "C" fn test_catalog_find_table_by_name(
-	_ctx: *mut FFIContext,
+	_ctx: *mut ContextFFI,
 	_namespace_id: u64,
 	_name_ptr: *const u8,
 	_name_len: usize,
 	_version: u64,
-	_output: *mut FFITableDef,
+	_output: *mut TableFFI,
 ) -> i32 {
 	1 // Not found
 }
 
 /// Free namespace - stub implementation
-extern "C" fn test_catalog_free_namespace(_namespace: *mut FFINamespaceDef) {
+extern "C" fn test_catalog_free_namespace(_namespace: *mut NamespaceFFI) {
 	// No-op in test callbacks
 }
 
 /// Free table - stub implementation
-extern "C" fn test_catalog_free_table(_table: *mut FFITableDef) {
+extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {
 	// No-op in test callbacks
 }
 

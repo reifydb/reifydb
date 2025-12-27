@@ -2,10 +2,10 @@
 
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
-use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{
-	BufferFFI, CURRENT_API, FFIOperatorColumnDef, FFIOperatorColumnDefs, FFIOperatorDescriptor, OPERATOR_MAGIC,
+use reifydb_abi::{
+	BufferFFI, CURRENT_API, OPERATOR_MAGIC, OperatorColumnDefFFI, OperatorColumnDefsFFI, OperatorDescriptorFFI,
 };
+use reifydb_core::interface::FlowNodeId;
 use reifydb_type::Value;
 
 use crate::{
@@ -23,16 +23,16 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 }
 
 /// Convert operator column definitions to FFI representation
-fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> FFIOperatorColumnDefs {
+fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> OperatorColumnDefsFFI {
 	if columns.is_empty() {
-		return FFIOperatorColumnDefs::empty();
+		return OperatorColumnDefsFFI::empty();
 	}
 
-	let ffi_columns: Vec<FFIOperatorColumnDef> = columns
+	let ffi_columns: Vec<OperatorColumnDefFFI> = columns
 		.iter()
 		.map(|c| {
 			let ffi_type = c.field_type.to_ffi();
-			FFIOperatorColumnDef {
+			OperatorColumnDefFFI {
 				name: str_to_buffer(c.name),
 				base_type: ffi_type.base_type,
 				constraint_type: ffi_type.constraint_type,
@@ -46,14 +46,14 @@ fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> FFIOperatorColumnDef
 	let column_count = ffi_columns.len();
 	let columns_ptr = Box::leak(ffi_columns.into_boxed_slice()).as_ptr();
 
-	FFIOperatorColumnDefs {
+	OperatorColumnDefsFFI {
 		columns: columns_ptr,
 		column_count,
 	}
 }
 
-pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {
-	FFIOperatorDescriptor {
+pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI {
+	OperatorDescriptorFFI {
 		api: CURRENT_API,
 		operator: str_to_buffer(O::NAME),
 		version: str_to_buffer(O::VERSION),

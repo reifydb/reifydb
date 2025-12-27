@@ -74,7 +74,7 @@ pub const CAPABILITY_ALL_STANDARD: u32 = CAPABILITY_INSERT | CAPABILITY_UPDATE |
 ///
 /// # Example
 /// ```
-/// use reifydb_flow_operator_abi::*;
+/// use reifydb_abi::*;
 ///
 /// let caps = CAPABILITY_INSERT | CAPABILITY_UPDATE;
 /// assert!(has_capability(caps, CAPABILITY_INSERT));

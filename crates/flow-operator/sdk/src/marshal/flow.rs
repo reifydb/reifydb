@@ -2,11 +2,11 @@
 
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
+use reifydb_abi::*;
 use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
 };
-use reifydb_flow_operator_abi::*;
 
 use crate::{FlowChange, FlowChangeOrigin, FlowDiff, marshal::Marshaller};
 
@@ -43,32 +43,32 @@ impl Marshaller {
 	fn marshal_origin(origin: &FlowChangeOrigin) -> FlowOriginFFI {
 		match origin {
 			FlowChangeOrigin::Internal(node_id) => FlowOriginFFI {
-				origin_type: 0,
+				origin: 0,
 				id: node_id.0,
 			},
 			FlowChangeOrigin::External(source_id) => match source_id {
 				PrimitiveId::Table(id) => FlowOriginFFI {
-					origin_type: 1,
+					origin: 1,
 					id: id.0,
 				},
 				PrimitiveId::View(id) => FlowOriginFFI {
-					origin_type: 2,
+					origin: 2,
 					id: id.0,
 				},
 				PrimitiveId::TableVirtual(id) => FlowOriginFFI {
-					origin_type: 3,
+					origin: 3,
 					id: id.0,
 				},
 				PrimitiveId::RingBuffer(id) => FlowOriginFFI {
-					origin_type: 4,
+					origin: 4,
 					id: id.0,
 				},
 				&PrimitiveId::Flow(id) => FlowOriginFFI {
-					origin_type: 5,
+					origin: 5,
 					id: id.0,
 				},
 				PrimitiveId::Dictionary(id) => FlowOriginFFI {
-					origin_type: 6,
+					origin: 6,
 					id: id.0,
 				},
 			},
@@ -126,14 +126,14 @@ impl Marshaller {
 
 	/// Unmarshal a flow change origin from FFI representation
 	fn unmarshal_origin(ffi: &FlowOriginFFI) -> Result<FlowChangeOrigin, String> {
-		match ffi.origin_type {
+		match ffi.origin {
 			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
 			1 => Ok(FlowChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
 			2 => Ok(FlowChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
 			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(TableVirtualId(ffi.id)))),
 			4 => Ok(FlowChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
 			5 => Ok(FlowChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
-			_ => Err(format!("Invalid origin_type: {}", ffi.origin_type)),
+			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}
 
