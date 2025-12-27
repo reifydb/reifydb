@@ -9,7 +9,7 @@ use reifydb_core::{CommitVersion, CowVec, interface::Cdc, value::encoded::Encode
 use crate::{
 	CdcStore, StandardTransactionStore,
 	backend::{BackendStorage, PrimitiveStorage, TableId},
-	cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, InternalCdc, codec::decode_internal_cdc},
+	cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, InternalCdc, codec::decode_internal_cdc, converter::CdcConverter},
 };
 
 /// Encode a version as a key for CDC storage
@@ -27,8 +27,8 @@ fn key_to_version(key: &[u8]) -> Option<CommitVersion> {
 	}
 }
 
-/// Helper function to get InternalCdc from primitive storage (async)
-async fn get_internal_cdc_async<S: PrimitiveStorage>(
+/// Helper function to get InternalCdc from primitive storage
+async fn get_internal_cdc<S: PrimitiveStorage>(
 	storage: &S,
 	version: CommitVersion,
 ) -> reifydb_type::Result<Option<InternalCdc>> {
@@ -44,14 +44,7 @@ async fn get_internal_cdc_async<S: PrimitiveStorage>(
 	}
 }
 
-/// Helper function to convert InternalCdc to public Cdc (async)
-/// Note: This is a simplified version that doesn't resolve values from multi-version store
-async fn internal_to_public_cdc_async(
-	internal: InternalCdc,
-	store: &StandardTransactionStore,
-) -> reifydb_type::Result<Cdc> {
-	use crate::cdc::converter::CdcConverter;
-	// The store implements MultiVersionGet which CdcConverter uses
+async fn internal_to_public_cdc(internal: InternalCdc, store: &StandardTransactionStore) -> reifydb_type::Result<Cdc> {
 	store.convert(internal).await
 }
 
@@ -60,22 +53,22 @@ impl CdcGet for StandardTransactionStore {
 	async fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>> {
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			if let Some(internal) = get_internal_cdc_async(hot, version).await? {
-				return Ok(Some(internal_to_public_cdc_async(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(hot, version).await? {
+				return Ok(Some(internal_to_public_cdc(internal, self).await?));
 			}
 		}
 
 		// Try warm tier
 		if let Some(warm) = &self.warm {
-			if let Some(internal) = get_internal_cdc_async(warm, version).await? {
-				return Ok(Some(internal_to_public_cdc_async(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(warm, version).await? {
+				return Ok(Some(internal_to_public_cdc(internal, self).await?));
 			}
 		}
 
 		// Try cold tier
 		if let Some(cold) = &self.cold {
-			if let Some(internal) = get_internal_cdc_async(cold, version).await? {
-				return Ok(Some(internal_to_public_cdc_async(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(cold, version).await? {
+				return Ok(Some(internal_to_public_cdc(internal, self).await?));
 			}
 		}
 
@@ -136,8 +129,9 @@ impl CdcRange for StandardTransactionStore {
 		// Convert to public Cdc
 		let mut items: Vec<Cdc> = Vec::new();
 		for (_, internal) in all_entries.into_iter().take(batch_size as usize) {
-			if let Ok(cdc) = internal_to_public_cdc_async(internal, self).await {
-				items.push(cdc);
+			match internal_to_public_cdc(internal, self).await {
+				Ok(cdc) => items.push(cdc),
+				Err(err) => unreachable!("cdc conversion should never fail: {}", err),
 			}
 		}
 

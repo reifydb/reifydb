@@ -20,6 +20,7 @@ use reifydb_store_transaction::{
 	MultiVersionRangeRev,
 };
 use reifydb_type::{Error, util::hex};
+use tokio::spawn;
 use tracing::instrument;
 
 use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
@@ -45,7 +46,6 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub async fn commit(&mut self) -> Result<CommitVersion, Error> {
 		// For read-only transactions (no pending writes), skip conflict detection
-		// This matches the original behavior in commit_finalize
 		if self.tm.pending_writes().is_empty() {
 			self.tm.discard();
 			return Ok(CommitVersion(0));
@@ -66,18 +66,15 @@ impl CommandTransaction {
 			deltas.push(pending.delta.clone());
 		}
 
-		// Commit to storage with the correct commit version
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version).await?;
 
-		// Mark the commit as done in the oracle
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
 
-		// Emit event on success
 		let event_bus = self.engine.event_bus.clone();
 		let version = commit_version;
 
-		tokio::spawn(async move {
+		spawn(async move {
 			event_bus
 				.emit(PostCommitEvent {
 					deltas,

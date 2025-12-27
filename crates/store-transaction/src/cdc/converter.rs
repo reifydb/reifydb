@@ -11,6 +11,7 @@ use reifydb_core::{
 use crate::{
 	MultiVersionGet,
 	cdc::{InternalCdc, InternalCdcChange},
+	store::StandardTransactionStore,
 };
 
 /// Trait for converting internal CDC representation to public CDC by resolving values
@@ -22,7 +23,7 @@ pub trait CdcConverter {
 
 /// Implementation for StandardTransactionStore which uses MultiVersionGet
 #[async_trait]
-impl CdcConverter for crate::store::StandardTransactionStore {
+impl CdcConverter for StandardTransactionStore {
 	async fn convert(&self, internal: InternalCdc) -> Result<Cdc> {
 		let mut changes = Vec::with_capacity(internal.changes.len());
 

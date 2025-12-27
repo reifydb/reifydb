@@ -183,7 +183,9 @@ impl PrimitiveStorage for SqlitePrimitiveStorage {
 				}
 			}
 
-			tx.commit()
+			tx.commit()?;
+
+			Ok(())
 		})
 		.await
 		.map_err(|e| error!(internal(format!("Failed to write_all: {}", e))))

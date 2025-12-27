@@ -14,16 +14,10 @@ async fn main() {
 
 	db.start().await.unwrap();
 
-	// Create namespace
-	println!("=== Creating namespace ===");
 	db.command_as_root("create namespace test;", Params::None).await.unwrap();
 
-	// Create source table
-	println!("=== Creating source table ===");
 	db.command_as_root("create table test.source { id: int4, value: int4 }", Params::None).await.unwrap();
 
-	// Create deferred view with filter
-	println!("=== Creating deferred view ===");
 	db.command_as_root(
 		r#"create deferred view test.even_numbers { id: int4, value: int4 } as {
 			from test.source
@@ -34,8 +28,8 @@ async fn main() {
 	.await
 	.unwrap();
 
-	// Insert first batch (1-50)
-	println!("=== Inserting batch 1 (1-50) ===");
+	println!("start inserts");
+
 	db.command_as_root(
 		r#"from [
 			{id: 1, value: 1}, {id: 2, value: 2}, {id: 3, value: 3}, {id: 4, value: 4}, {id: 5, value: 5},
@@ -54,8 +48,6 @@ async fn main() {
 	.await
 	.unwrap();
 
-	// Insert second batch (51-100)
-	println!("=== Inserting batch 2 (51-100) ===");
 	db.command_as_root(
 		r#"from [
 			{id: 51, value: 51}, {id: 52, value: 52}, {id: 53, value: 53}, {id: 54, value: 54}, {id: 55, value: 55},
@@ -74,8 +66,6 @@ async fn main() {
 	.await
 	.unwrap();
 
-	// Insert third batch (101-120)
-	println!("=== Inserting batch 3 (101-120) ===");
 	db.command_as_root(
 		r#"from [
 			{id: 101, value: 101}, {id: 102, value: 102}, {id: 103, value: 103}, {id: 104, value: 104}, {id: 105, value: 105},
@@ -88,7 +78,7 @@ async fn main() {
 	.await
 	.unwrap();
 
-	sleep(Duration::from_millis(5)).await;
+	sleep(Duration::from_millis(10)).await;
 
 	for frame in db.query_as_root("from test.even_numbers take 10", Params::None).await.unwrap() {
 		println!("{}", frame);
@@ -101,16 +91,4 @@ async fn main() {
 	{
 		println!("{}", frame);
 	}
-
-	sleep(Duration::from_millis(1000)).await;
-
-	for frame in db
-		.query_as_root("from test.even_numbers aggregate { count: math::count(value) }", Params::None)
-		.await
-		.unwrap()
-	{
-		println!("{}", frame);
-	}
-
-	sleep(Duration::from_millis(100)).await;
 }

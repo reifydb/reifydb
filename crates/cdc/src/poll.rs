@@ -58,6 +58,36 @@ struct ConsumerState {
 	running: AtomicBool,
 }
 
+/// Wait for watermark to reach target version with exponential backoff.
+/// Returns Ok(safe_version) if watermark catches up, Err(()) on timeout.
+async fn wait_for_watermark_with_backoff(
+	engine: &StandardEngine,
+	target_version: CommitVersion,
+	total_timeout: Duration,
+) -> Option<CommitVersion> {
+	let start = std::time::Instant::now();
+	let mut backoff_ms = 5;
+	const MAX_BACKOFF_MS: u64 = 50;
+
+	loop {
+		// Check if watermark has reached target
+		let done_until = engine.done_until();
+		if done_until >= target_version {
+			return Some(done_until);
+		}
+
+		if start.elapsed() >= total_timeout {
+			return None;
+		}
+
+		// Sleep with current backoff
+		sleep(Duration::from_millis(backoff_ms)).await;
+
+		// Exponential backoff: 5ms -> 10ms -> 20ms -> 40ms -> 50ms (max)
+		backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
+	}
+}
+
 impl<C: CdcConsume> PollConsumer<C> {
 	pub fn new(config: PollConsumerConfig, engine: StandardEngine, consume: C) -> Self {
 		let consumer_key = CdcConsumerKey {
@@ -85,16 +115,20 @@ impl<C: CdcConsume> PollConsumer<C> {
 		consumer: &C,
 		max_batch_size: Option<u64>,
 	) -> Result<usize> {
-		// Get current version and wait briefly for in-flight commits to complete.
-		// This ensures done_until catches up to avoid missing CDC events.
+		// Get current version and wait for in-flight commits to complete.
+		// Uses adaptive polling with exponential backoff to handle burst writes.
 		let current_version = engine.current_version().await?;
 		let target_version = CommitVersion(current_version.0.saturating_sub(1));
 
-		// Wait up to 50ms for done_until to catch up (best effort, not required)
-		let _ = engine.try_wait_for_watermark(target_version, Duration::from_millis(50)).await;
-
-		// Get the safe version (might be higher after waiting)
-		let safe_version = engine.done_until();
+		let safe_version =
+			match wait_for_watermark_with_backoff(engine, target_version, Duration::from_millis(200)).await
+			{
+				Some(version) => version,
+				None => {
+					// Timeout - watermark hasn't caught up, skip this batch
+					return Ok(0);
+				}
+			};
 
 		let mut transaction = engine.begin_command().await?;
 
@@ -108,6 +142,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		// Only fetch CDC events up to safe_version to avoid race conditions
 		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size).await?;
+
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(0);
