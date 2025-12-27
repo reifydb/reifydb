@@ -3,13 +3,12 @@
 use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
-	slice::from_raw_parts,
 };
 
 use async_trait::async_trait;
-use reifydb_core::{Row, interface::FlowNodeId};
-use reifydb_engine::StandardRowEvaluator;
-use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
+use reifydb_core::{interface::FlowNodeId, value::column::Columns};
+use reifydb_engine::StandardColumnEvaluator;
+use reifydb_flow_operator_abi::{ColumnsFFI, FFIOperatorDescriptor, FFIOperatorVTable};
 use reifydb_flow_operator_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
 use tokio::sync::RwLock;
@@ -82,7 +81,7 @@ impl Operator for FFIOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> Result<FlowChange> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.write().await;
@@ -125,7 +124,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.write().await;
 
@@ -133,18 +132,15 @@ impl Operator for FFIOperator {
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
 		// Create output holder
-		let mut ffi_output = RowsFFI {
-			count: 0,
-			rows: std::ptr::null_mut(),
-		};
+		let mut ffi_output = ColumnsFFI::empty();
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_flow_operator_abi::FFIContext;
 
-		// Call FFI get_rows function
+		// Call FFI pull function
 		let result = catch_unwind(AssertUnwindSafe(|| {
-			(self.vtable.get_rows)(
+			(self.vtable.pull)(
 				self.instance,
 				ffi_ctx_ptr,
 				row_numbers.as_ptr(),
@@ -157,40 +153,23 @@ impl Operator for FFIOperator {
 		let result_code = match result {
 			Ok(code) => code,
 			Err(_) => {
-				return Err(FFIError::Other("FFI operator panicked during get_rows".to_string()).into());
+				return Err(FFIError::Other("FFI operator panicked during pull".to_string()).into());
 			}
 		};
 
 		// Check result code
 		if result_code != 0 {
-			return Err(FFIError::Other(format!(
-				"FFI operator get_rows failed with code: {}",
-				result_code
-			))
-			.into());
+			return Err(
+				FFIError::Other(format!("FFI operator pull failed with code: {}", result_code)).into()
+			);
 		}
 
-		// Unmarshal the rows
-		let mut result_rows = Vec::with_capacity(ffi_output.count);
-
-		if !ffi_output.rows.is_null() && ffi_output.count > 0 {
-			unsafe {
-				let rows_array = from_raw_parts(ffi_output.rows, ffi_output.count);
-
-				for &row_ptr in rows_array {
-					if row_ptr.is_null() {
-						result_rows.push(None);
-					} else {
-						let row = marshaller.unmarshal_row(&*row_ptr);
-						result_rows.push(Some(row));
-					}
-				}
-			}
-		}
+		// Unmarshal the columns
+		let columns = marshaller.unmarshal_columns(&ffi_output);
 
 		// Clear the marshaller's arena after operation
 		marshaller.clear();
 
-		Ok(result_rows)
+		Ok(columns)
 	}
 }

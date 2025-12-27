@@ -169,9 +169,10 @@ mod tests {
 	use std::collections::HashMap;
 
 	use reifydb_core::{
-		EncodedKey, Row,
+		EncodedKey,
 		interface::FlowNodeId,
 		key::{EncodableKey, FlowNodeInternalStateKey},
+		value::column::Columns,
 	};
 	use reifydb_type::{RowNumber, Value};
 
@@ -205,12 +206,8 @@ mod tests {
 			Ok(input)
 		}
 
-		fn get_rows(
-			&mut self,
-			_ctx: &mut OperatorContext,
-			_row_numbers: &[RowNumber],
-		) -> Result<Vec<Option<Row>>> {
-			Ok(vec![])
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
+			Ok(Columns::empty())
 		}
 	}
 

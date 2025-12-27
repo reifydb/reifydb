@@ -11,9 +11,12 @@ pub mod test {
 		interface::{Engine, FlowNodeId},
 		ioc::IocContainer,
 		util::CowVec,
-		value::encoded::{EncodedValues, EncodedValuesLayout},
+		value::{
+			column::Columns,
+			encoded::{EncodedValues, EncodedValuesLayout},
+		},
 	};
-	use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
+	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardEngine};
 	use reifydb_flow_operator_sdk::FlowChange;
 	use reifydb_store_transaction::TransactionStore;
 	use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
@@ -91,16 +94,12 @@ pub mod test {
 			&self,
 			txn: &mut FlowTransaction,
 			change: FlowChange,
-			evaluator: &StandardRowEvaluator,
+			evaluator: &StandardColumnEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
 			todo!()
 		}
 
-		async fn get_rows(
-			&self,
-			txn: &mut FlowTransaction,
-			rows: &[RowNumber],
-		) -> crate::Result<Vec<Option<Row>>> {
+		async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 			unimplemented!()
 		}
 	}

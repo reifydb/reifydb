@@ -3,10 +3,10 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
-	emit_joined_rows_right_to_left, emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
-	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
-	emit_update_joined_rows_right, remove_from_state_entry, update_row_in_entry,
+	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_multiple_left,
+	emit_joined_rows_multiple_right, emit_joined_rows_right_to_left, emit_remove_joined_rows_left,
+	emit_remove_joined_rows_multiple_left, emit_remove_joined_rows_multiple_right, emit_remove_joined_rows_right,
+	emit_update_joined_rows_left, emit_update_joined_rows_right, remove_from_state_entry, update_row_in_entry,
 };
 use crate::{
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
@@ -195,7 +195,7 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) async fn handle_insert_batch(
+	pub(crate) async fn handle_insert_multiple(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -223,7 +223,7 @@ impl InnerHashJoin {
 		// Then emit all joined rows in one batch
 		match side {
 			JoinSide::Left => {
-				emit_joined_rows_batch_left(
+				emit_joined_rows_multiple_left(
 					txn,
 					rows,
 					&state.right,
@@ -234,7 +234,7 @@ impl InnerHashJoin {
 				.await
 			}
 			JoinSide::Right => {
-				emit_joined_rows_batch_right(
+				emit_joined_rows_multiple_right(
 					txn,
 					rows,
 					&state.left,
@@ -247,7 +247,7 @@ impl InnerHashJoin {
 		}
 	}
 
-	pub(crate) async fn handle_remove_batch(
+	pub(crate) async fn handle_remove_multiple(
 		&self,
 		txn: &mut FlowTransaction,
 		rows: &[Row],
@@ -269,7 +269,7 @@ impl InnerHashJoin {
 					operator.cleanup_left_row_joins(txn, row.number.0).await?;
 				}
 
-				emit_remove_joined_rows_batch_left(
+				emit_remove_joined_rows_multiple_left(
 					txn,
 					rows,
 					&state.right,
@@ -280,7 +280,7 @@ impl InnerHashJoin {
 				.await?
 			}
 			JoinSide::Right => {
-				emit_remove_joined_rows_batch_right(
+				emit_remove_joined_rows_multiple_right(
 					txn,
 					rows,
 					&state.left,

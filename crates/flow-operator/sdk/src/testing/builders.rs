@@ -4,7 +4,10 @@
 use reifydb_core::{
 	CommitVersion, Row,
 	interface::{FlowNodeId, PrimitiveId, TableId},
-	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	},
 };
 use reifydb_type::{RowNumber, Type, Value};
 
@@ -130,7 +133,7 @@ impl TestFlowChangeBuilder {
 	/// Add an insert diff
 	pub fn insert(mut self, row: Row) -> Self {
 		self.diffs.push(FlowDiff::Insert {
-			post: row,
+			post: Columns::from_row(&row),
 		});
 		self
 	}
@@ -144,8 +147,8 @@ impl TestFlowChangeBuilder {
 	/// Add an update diff
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
 		self.diffs.push(FlowDiff::Update {
-			pre,
-			post,
+			pre: Columns::from_row(&pre),
+			post: Columns::from_row(&post),
 		});
 		self
 	}
@@ -166,7 +169,7 @@ impl TestFlowChangeBuilder {
 	/// Add a remove diff
 	pub fn remove(mut self, row: Row) -> Self {
 		self.diffs.push(FlowDiff::Remove {
-			pre: row,
+			pre: Columns::from_row(&row),
 		});
 		self
 	}

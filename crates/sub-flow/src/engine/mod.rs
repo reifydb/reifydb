@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	interface::{FlowId, FlowNodeId, PrimitiveId, TableId, ViewId},
 };
-use reifydb_engine::{StandardRowEvaluator, execute::Executor};
+use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
 use tokio::sync::RwLock;
@@ -33,7 +33,7 @@ use crate::{
 };
 
 pub(crate) struct FlowEngineInner {
-	pub(crate) evaluator: StandardRowEvaluator,
+	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
 	pub(crate) registry: TransformOperatorRegistry,
 	pub(crate) operators: RwLock<HashMap<FlowNodeId, Arc<Operators>>>,
@@ -60,7 +60,7 @@ impl Clone for FlowEngine {
 impl FlowEngine {
 	#[instrument(name = "flow::engine::new", level = "info", skip(evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
 	pub fn new(
-		evaluator: StandardRowEvaluator,
+		evaluator: StandardColumnEvaluator,
 		executor: Executor,
 		registry: TransformOperatorRegistry,
 		event_bus: EventBus,

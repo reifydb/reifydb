@@ -24,7 +24,8 @@ pub mod transaction;
 
 pub use engine::StandardEngine;
 pub use evaluate::{
-	ColumnEvaluationContext, RowEvaluationContext, column::StandardColumnEvaluator, row::StandardRowEvaluator,
+	ColumnEvaluationContext, RowEvaluationContext, TargetColumn,
+	column::{StandardColumnEvaluator, cast::cast_column_data},
 };
 pub use transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
 

@@ -83,8 +83,8 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 					dictionary_id: None,
 				},
 				ColumnDef {
-					id: CAP_GET_ROWS,
-					name: "cap_get_rows".to_string(),
+					id: CAP_PULL,
+					name: "cap_pull".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
 					policies: vec![],
 					index: ColumnIndex(7),

@@ -17,7 +17,7 @@ use reifydb_core::{
 	CommitVersion, Error, Result,
 	interface::{PrimitiveId, WithEventBus, catalog::FlowId},
 };
-use reifydb_engine::{StandardEngine, StandardRowEvaluator};
+use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::flow::Flow;
 use reifydb_type::diagnostic::flow::{flow_already_registered, flow_backfill_timeout};
@@ -298,7 +298,7 @@ fn create_flow_engine(
 	}
 
 	FlowEngine::new(
-		StandardRowEvaluator::default(),
+		StandardColumnEvaluator::default(),
 		engine.executor(),
 		registry,
 		engine.event_bus().clone(),

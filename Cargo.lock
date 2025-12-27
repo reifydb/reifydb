@@ -1849,7 +1849,9 @@ dependencies = [
  "reifydb-core",
  "reifydb-flow-operator-abi",
  "reifydb-type",
+ "serde",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

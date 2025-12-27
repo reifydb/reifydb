@@ -4,8 +4,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reifydb_core::{EncodedKey, Error, Row, interface::FlowNodeId, util::encoding::keycode::KeySerializer};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{
+	EncodedKey, Error, interface::FlowNodeId, util::encoding::keycode::KeySerializer, value::column::Columns,
+};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{RowNumber, internal};
 
@@ -88,7 +90,7 @@ impl Operator for MergeOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		// Determine which parent this change came from
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
@@ -102,61 +104,92 @@ impl Operator for MergeOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// Get or create stable row number for this source row
-					let composite_key = Self::make_composite_key(parent_index as u8, post.number);
-					let (output_row_number, _is_new) = self
-						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)
-						.await?;
+					// Process each row in the Columns
+					let row_count = post.row_count();
+					for row_idx in 0..row_count {
+						let single_row = post.extract_row(row_idx);
+						let source_row_number = single_row.number();
 
-					result_diffs.push(FlowDiff::Insert {
-						post: Row {
-							number: output_row_number,
-							encoded: post.encoded,
-							layout: post.layout,
-						},
-					});
+						// Get or create stable row number for this source row
+						let composite_key =
+							Self::make_composite_key(parent_index as u8, source_row_number);
+						let (output_row_number, _is_new) = self
+							.row_number_provider
+							.get_or_create_row_number(txn, &composite_key)
+							.await?;
+
+						// Create output Columns with the new row number
+						let output = Columns::with_row_numbers(
+							single_row.columns.as_ref().to_vec(),
+							vec![output_row_number],
+						);
+
+						result_diffs.push(FlowDiff::Insert {
+							post: output,
+						});
+					}
 				}
 				FlowDiff::Update {
 					pre,
 					post,
 				} => {
-					// Row number should already exist from insert
-					let composite_key = Self::make_composite_key(parent_index as u8, pre.number);
-					let (output_row_number, _) = self
-						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)
-						.await?;
+					// Process each row in the Columns
+					let row_count = post.row_count();
+					for row_idx in 0..row_count {
+						let pre_single = pre.extract_row(row_idx);
+						let post_single = post.extract_row(row_idx);
+						let source_row_number = pre_single.number();
 
-					result_diffs.push(FlowDiff::Update {
-						pre: Row {
-							number: output_row_number,
-							encoded: pre.encoded,
-							layout: pre.layout,
-						},
-						post: Row {
-							number: output_row_number,
-							encoded: post.encoded,
-							layout: post.layout,
-						},
-					});
+						// Row number should already exist from insert
+						let composite_key =
+							Self::make_composite_key(parent_index as u8, source_row_number);
+						let (output_row_number, _) = self
+							.row_number_provider
+							.get_or_create_row_number(txn, &composite_key)
+							.await?;
+
+						// Create output Columns with the new row number
+						let pre_output = Columns::with_row_numbers(
+							pre_single.columns.as_ref().to_vec(),
+							vec![output_row_number],
+						);
+						let post_output = Columns::with_row_numbers(
+							post_single.columns.as_ref().to_vec(),
+							vec![output_row_number],
+						);
+
+						result_diffs.push(FlowDiff::Update {
+							pre: pre_output,
+							post: post_output,
+						});
+					}
 				}
 				FlowDiff::Remove {
 					pre,
 				} => {
-					let composite_key = Self::make_composite_key(parent_index as u8, pre.number);
-					let (output_row_number, _) = self
-						.row_number_provider
-						.get_or_create_row_number(txn, &composite_key)
-						.await?;
+					// Process each row in the Columns
+					let row_count = pre.row_count();
+					for row_idx in 0..row_count {
+						let single_row = pre.extract_row(row_idx);
+						let source_row_number = single_row.number();
 
-					result_diffs.push(FlowDiff::Remove {
-						pre: Row {
-							number: output_row_number,
-							encoded: pre.encoded,
-							layout: pre.layout,
-						},
-					});
+						let composite_key =
+							Self::make_composite_key(parent_index as u8, source_row_number);
+						let (output_row_number, _) = self
+							.row_number_provider
+							.get_or_create_row_number(txn, &composite_key)
+							.await?;
+
+						// Create output Columns with the new row number
+						let output = Columns::with_row_numbers(
+							single_row.columns.as_ref().to_vec(),
+							vec![output_row_number],
+						);
+
+						result_diffs.push(FlowDiff::Remove {
+							pre: output,
+						});
+					}
 				}
 			}
 		}
@@ -164,40 +197,55 @@ impl Operator for MergeOperator {
 		Ok(FlowChange::internal(self.node, change.version, result_diffs))
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		let mut result = Vec::with_capacity(rows.len());
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {
 			// Reverse lookup: output row number -> composite key
 			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number).await? else {
-				result.push(None);
 				continue;
 			};
 
 			// Parse composite key to get parent index and source row number
 			let Some((parent_index, source_row_number)) = Self::parse_composite_key(key.as_ref()) else {
-				result.push(None);
 				continue;
 			};
 
 			// Validate parent index
 			if parent_index >= self.parents.len() {
-				result.push(None);
 				continue;
 			}
 
 			// Delegate to parent operator
-			let parent_rows = self.parents[parent_index].get_rows(txn, &[source_row_number]).await?;
+			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number]).await?;
 
-			if let Some(Some(mut row)) = parent_rows.into_iter().next() {
+			if !parent_cols.is_empty() {
 				// Replace row number with merge output row number
-				row.number = row_number;
-				result.push(Some(row));
-			} else {
-				result.push(None);
+				let updated = Columns::with_row_numbers(
+					parent_cols.columns.as_ref().to_vec(),
+					vec![row_number],
+				);
+				found_columns.push(updated);
 			}
 		}
 
-		Ok(result)
+		// Combine found rows
+		if found_columns.is_empty() {
+			// Get schema from first parent (returns empty Columns with schema)
+			self.parents[0].pull(txn, &[]).await
+		} else if found_columns.len() == 1 {
+			Ok(found_columns.remove(0))
+		} else {
+			let mut result = found_columns.remove(0);
+			for cols in found_columns {
+				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
+				for (i, col) in cols.columns.into_iter().enumerate() {
+					result.columns.make_mut()[i]
+						.extend(col)
+						.expect("schema mismatch in merge pull");
+				}
+			}
+			Ok(result)
+		}
 	}
 }

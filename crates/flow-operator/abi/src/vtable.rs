@@ -29,7 +29,7 @@ pub struct FFIOperatorVTable {
 		output: *mut FlowChangeFFI,
 	) -> i32,
 
-	/// Get specific rows by their row numbers
+	/// Pull specific rows by their row numbers
 	///
 	/// # Parameters
 	/// - `instance`: The operator instance pointer
@@ -40,12 +40,12 @@ pub struct FFIOperatorVTable {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub get_rows: extern "C" fn(
+	pub pull: extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut FFIContext,
 		row_numbers: *const u64,
 		count: usize,
-		output: *mut RowsFFI,
+		output: *mut ColumnsFFI,
 	) -> i32,
 
 	/// Destroy an operator instance and free its resources

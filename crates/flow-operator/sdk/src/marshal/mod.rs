@@ -2,6 +2,7 @@
 
 use crate::ffi::Arena;
 
+pub(crate) mod columns;
 pub(crate) mod flow;
 pub(crate) mod layout;
 pub(crate) mod row;

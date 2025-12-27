@@ -5,6 +5,7 @@ mod auth;
 pub mod catalog;
 mod cdc;
 mod engine;
+pub mod evaluate;
 mod execute;
 mod flow;
 pub mod identifier;

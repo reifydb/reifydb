@@ -11,7 +11,7 @@ mod access;
 mod alias;
 mod arith;
 mod call;
-pub(crate) mod cast;
+pub mod cast;
 mod column;
 mod compare;
 pub(crate) mod constant;

@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
-use tracing::{debug_span, instrument, warn};
+use tracing::{Span, debug_span, instrument, warn};
 
 use crate::{FFIOperator, context::OperatorContext, marshal::Marshaller};
 
@@ -69,7 +69,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			let _guard = unmarshal_span.enter();
 			let input_change = match marshaller.unmarshal_flow_change(&*input) {
 				Ok(change) => {
-					tracing::Span::current().record("input_diffs", change.diffs.len());
+					Span::current().record("input_diffs", change.diffs.len());
 					change
 				}
 				Err(e) => {
@@ -85,7 +85,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			let mut op_ctx = OperatorContext::new(ctx);
 			let output_change = match operator.apply(&mut op_ctx, input_change) {
 				Ok(change) => {
-					tracing::Span::current().record("output_diffs", change.diffs.len());
+					Span::current().record("output_diffs", change.diffs.len());
 					change
 				}
 				Err(e) => {
@@ -111,17 +111,17 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 	})
 }
 
-#[instrument(name = "flow::operator::ffi::get_rows", level = "debug", skip_all, fields(
+#[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
 	operator_type = std::any::type_name::<O>(),
 	row_count = count,
 	rows_returned
 ))]
-pub extern "C" fn ffi_get_rows<O: FFIOperator>(
+pub extern "C" fn ffi_pull<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut FFIContext,
 	row_numbers: *const u64,
 	count: usize,
-	output: *mut RowsFFI,
+	output: *mut ColumnsFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		unsafe {
@@ -151,25 +151,25 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			let mut op_ctx = OperatorContext::new(ctx);
 
 			// Call the operator
-			let rows = match operator.get_rows(&mut op_ctx, &numbers) {
-				Ok(rows) => {
-					tracing::Span::current().record("rows_returned", rows.len());
-					rows
+			let columns = match operator.pull(&mut op_ctx, &numbers) {
+				Ok(cols) => {
+					Span::current().record("rows_returned", cols.row_count());
+					cols
 				}
 				Err(e) => {
-					warn!(?e, "get_rows failed");
+					warn!(?e, "pull failed");
 					return -2;
 				}
 			};
 
-			*output = marshaller.marshal_rows(&rows);
+			*output = marshaller.marshal_columns(&columns);
 
 			0 // Success
 		}
 	}));
 
 	result.unwrap_or_else(|e| {
-		warn!(?e, "Panic in ffi_get_rows");
+		warn!(?e, "Panic in ffi_pull");
 		-99
 	})
 }
@@ -194,7 +194,7 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {
 	FFIOperatorVTable {
 		apply: ffi_apply::<O>,
-		get_rows: ffi_get_rows::<O>,
+		pull: ffi_pull::<O>,
 		destroy: ffi_destroy::<O>,
 	}
 }

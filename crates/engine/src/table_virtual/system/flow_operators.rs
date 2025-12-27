@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_flow_operator_abi::{
-	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_GET_ROWS, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE,
+	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
 	has_capability,
 };
 use reifydb_type::Fragment;
@@ -65,7 +65,7 @@ impl TableVirtual for FlowOperators {
 		let mut cap_inserts = ColumnData::bool_with_capacity(capacity);
 		let mut cap_updates = ColumnData::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnData::bool_with_capacity(capacity);
-		let mut cap_get_rows_list = ColumnData::bool_with_capacity(capacity);
+		let mut cap_pull_list = ColumnData::bool_with_capacity(capacity);
 		let mut cap_drops = ColumnData::bool_with_capacity(capacity);
 		let mut cap_ticks = ColumnData::bool_with_capacity(capacity);
 
@@ -78,7 +78,7 @@ impl TableVirtual for FlowOperators {
 			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
 			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
 			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));
-			cap_get_rows_list.push(has_capability(info.capabilities, CAPABILITY_GET_ROWS));
+			cap_pull_list.push(has_capability(info.capabilities, CAPABILITY_PULL));
 			cap_drops.push(has_capability(info.capabilities, CAPABILITY_DROP));
 			cap_ticks.push(has_capability(info.capabilities, CAPABILITY_TICK));
 		}
@@ -109,8 +109,8 @@ impl TableVirtual for FlowOperators {
 				data: cap_deletes,
 			},
 			Column {
-				name: Fragment::internal("cap_get_rows"),
-				data: cap_get_rows_list,
+				name: Fragment::internal("cap_pull"),
+				data: cap_pull_list,
 			},
 			Column {
 				name: Fragment::internal("cap_drop"),

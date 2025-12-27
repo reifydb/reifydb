@@ -5,8 +5,9 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	CommitVersion, Row,
+	CommitVersion,
 	interface::{FlowNodeId, PrimitiveId},
+	value::column::Columns,
 };
 use reifydb_type::{RowNumber, TypeConstraint, Value};
 
@@ -41,25 +42,25 @@ pub enum FlowChangeOrigin {
 	Internal(FlowNodeId),
 }
 
-/// Represents a single diff in a flow change
+/// Represents a single diff in a flow change (can contain 1 or more rows in columnar format)
 #[derive(Debug, Clone)]
 pub enum FlowDiff {
-	/// Insert a new row
+	/// Insert new row(s)
 	Insert {
-		/// The row to insert
-		post: Row,
+		/// The row(s) to insert (columnar format, row_numbers tracked in Columns)
+		post: Columns,
 	},
-	/// Update an existing row
+	/// Update existing row(s)
 	Update {
-		/// The previous value
-		pre: Row,
-		/// The new value
-		post: Row,
+		/// The previous value(s)
+		pre: Columns,
+		/// The new value(s)
+		post: Columns,
 	},
-	/// Remove an existing row
+	/// Remove existing row(s)
 	Remove {
-		/// The row to remove
-		pre: Row,
+		/// The row(s) to remove
+		pre: Columns,
 	},
 }
 
@@ -136,8 +137,8 @@ pub trait FFIOperator: Send + Sync + 'static {
 	/// Process a flow change (inserts, updates, removes)
 	fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange>;
 
-	/// Get specific rows by row number
-	fn get_rows(&mut self, ctx: &mut OperatorContext, row_numbers: &[RowNumber]) -> Result<Vec<Option<Row>>>;
+	/// Pull specific rows by row number (returns Columns containing found rows)
+	fn pull(&mut self, ctx: &mut OperatorContext, row_numbers: &[RowNumber]) -> Result<Columns>;
 }
 
 pub trait FFIOperatorWithMetadata: FFIOperator + FFIOperatorMetadata {}
@@ -148,10 +149,13 @@ pub mod prelude {
 	pub use reifydb_core::{
 		CowVec, Row,
 		key::EncodableKey,
-		value::encoded::{EncodedKey, EncodedValues},
+		value::{
+			column::Columns,
+			encoded::{EncodedKey, EncodedValues},
+		},
 	};
 	pub use reifydb_flow_operator_abi::{
-		CAPABILITY_ALL_STANDARD, CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_GET_ROWS, CAPABILITY_INSERT,
+		CAPABILITY_ALL_STANDARD, CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL,
 		CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 	};
 	pub use reifydb_type::{RowNumber, Type, TypeConstraint, Value};

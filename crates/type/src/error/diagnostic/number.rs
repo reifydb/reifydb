@@ -44,6 +44,7 @@ pub fn invalid_number_format(fragment: Fragment, target: Type) -> Diagnostic {
 	}
 }
 
+// TODO remove this
 pub struct NumberOfRangeColumnDescriptor<'a> {
 	pub namespace: Option<&'a str>,
 	pub table: Option<&'a str>,

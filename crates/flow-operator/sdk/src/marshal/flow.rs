@@ -1,9 +1,6 @@
 //! Flow change marshalling between Rust and FFI types
 
-use std::{
-	ptr::null,
-	slice::{from_raw_parts, from_raw_parts_mut},
-};
+use std::slice::{from_raw_parts, from_raw_parts_mut};
 
 use reifydb_core::{
 	CommitVersion,
@@ -78,30 +75,30 @@ impl Marshaller {
 		}
 	}
 
-	/// Marshal a single flow diff
+	/// Marshal a single flow diff using columnar format
 	fn marshal_flow_diff(&mut self, diff: &FlowDiff) -> FlowDiffFFI {
 		match diff {
 			FlowDiff::Insert {
 				post,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Insert,
-				pre_row: null(),
-				post_row: self.marshal_row(post),
+				pre: ColumnsFFI::empty(),
+				post: self.marshal_columns(post),
 			},
 			FlowDiff::Update {
 				pre,
 				post,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Update,
-				pre_row: self.marshal_row(pre),
-				post_row: self.marshal_row(post),
+				pre: self.marshal_columns(pre),
+				post: self.marshal_columns(post),
 			},
 			FlowDiff::Remove {
 				pre,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Remove,
-				pre_row: self.marshal_row(pre),
-				post_row: null(),
+				pre: self.marshal_columns(pre),
+				post: ColumnsFFI::empty(),
 			},
 		}
 	}
@@ -140,37 +137,37 @@ impl Marshaller {
 		}
 	}
 
-	/// Unmarshal a single flow diff
+	/// Unmarshal a single flow diff from columnar FFI format
 	fn unmarshal_flow_diff(&self, ffi: &FlowDiffFFI) -> Result<FlowDiff, String> {
 		match ffi.diff_type {
 			FlowDiffType::Insert => {
-				if ffi.post_row.is_null() {
-					return Err("Insert diff missing post row".to_string());
+				if ffi.post.is_empty() {
+					return Err("Insert diff missing post columns".to_string());
 				}
 
-				let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
+				let post = self.unmarshal_columns(&ffi.post);
 				Ok(FlowDiff::Insert {
 					post,
 				})
 			}
 			FlowDiffType::Update => {
-				if ffi.pre_row.is_null() || ffi.post_row.is_null() {
-					return Err("Update diff missing pre or post row".to_string());
+				if ffi.pre.is_empty() || ffi.post.is_empty() {
+					return Err("Update diff missing pre or post columns".to_string());
 				}
 
-				let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
-				let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
+				let pre = self.unmarshal_columns(&ffi.pre);
+				let post = self.unmarshal_columns(&ffi.post);
 				Ok(FlowDiff::Update {
 					pre,
 					post,
 				})
 			}
 			FlowDiffType::Remove => {
-				if ffi.pre_row.is_null() {
-					return Err("Remove diff missing pre row".to_string());
+				if ffi.pre.is_empty() {
+					return Err("Remove diff missing pre columns".to_string());
 				}
 
-				let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
+				let pre = self.unmarshal_columns(&ffi.pre);
 				Ok(FlowDiff::Remove {
 					pre,
 				})

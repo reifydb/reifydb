@@ -320,13 +320,6 @@ impl Column {
 		}
 	}
 
-	pub fn undefined(name: impl Into<Fragment>, row_count: usize) -> Self {
-		Column {
-			name: name.into(),
-			data: ColumnData::undefined(row_count),
-		}
-	}
-
 	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = reifydb_type::Uuid4>) -> Self {
 		Column {
 			name: name.into(),
@@ -360,6 +353,20 @@ impl Column {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid7_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn undefined(name: impl Into<Fragment>, row_count: usize) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::undefined(row_count),
+		}
+	}
+
+	pub fn undefined_typed(name: impl Into<Fragment>, ty: Type, row_count: usize) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::undefined_typed(ty, row_count),
 		}
 	}
 }

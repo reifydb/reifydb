@@ -12,6 +12,8 @@ reifydb-flow-operator-abi = { workspace = true }
 reifydb-core = { workspace = true}
 reifydb-type = { workspace = true }
 postcard = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]

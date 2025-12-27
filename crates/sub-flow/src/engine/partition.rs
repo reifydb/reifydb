@@ -151,7 +151,7 @@ mod tests {
 		util::CowVec,
 		value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 	};
-	use reifydb_engine::{StandardRowEvaluator, execute::Executor};
+	use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
 	use reifydb_flow_operator_sdk::{FlowChangeOrigin, FlowDiff};
 	use reifydb_rql::flow::FlowGraphAnalyzer;
 	use reifydb_type::{RowNumber, Type};
@@ -190,7 +190,7 @@ mod tests {
 	}
 
 	fn setup_test_engine(subscriptions: HashMap<PrimitiveId, Vec<FlowId>>) -> FlowEngine {
-		let evaluator = StandardRowEvaluator::default();
+		let evaluator = StandardColumnEvaluator::default();
 		let executor = Executor::testing();
 		let registry = TransformOperatorRegistry::new();
 

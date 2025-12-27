@@ -4,9 +4,12 @@
 use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
 
 use reifydb_core::{
-	CommitVersion, Row,
+	CommitVersion,
 	interface::FlowNodeId,
-	value::encoded::{EncodedKey, EncodedValues},
+	value::{
+		column::Columns,
+		encoded::{EncodedKey, EncodedValues},
+	},
 };
 use reifydb_flow_operator_abi::FFIContext;
 use reifydb_type::{RowNumber, Value};
@@ -21,7 +24,7 @@ use crate::{FFIOperator, FFIOperatorMetadata, FlowChange, OperatorContext, Resul
 /// - State management via TestContext
 /// - Version tracking
 /// - Log capture (to stderr for now)
-/// - Full support for apply() and get_rows()
+/// - Full support for apply() and pull()
 pub struct OperatorTestHarness<T: FFIOperator> {
 	operator: T,
 	context: Box<TestContext>, // Boxed for stable address (pointed to by ffi_context)
@@ -42,10 +45,10 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		self.operator.apply(&mut ctx, input)
 	}
 
-	/// Get rows by their row numbers
-	pub fn get_rows(&mut self, row_numbers: &[RowNumber]) -> Result<Vec<Option<Row>>> {
+	/// Pull rows by their row numbers
+	pub fn pull(&mut self, row_numbers: &[RowNumber]) -> Result<Columns> {
 		let mut ctx = self.create_operator_context();
-		self.operator.get_rows(&mut ctx, row_numbers)
+		self.operator.pull(&mut ctx, row_numbers)
 	}
 
 	/// Get the current version
@@ -119,7 +122,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	/// Create an operator context for direct access
 	///
 	/// This is useful for testing components that need an OperatorContext
-	/// without going through the apply() or get_rows() methods.
+	/// without going through the apply() or pull() methods.
 	///
 	/// # Example
 	///
@@ -307,12 +310,8 @@ mod tests {
 			Ok(input)
 		}
 
-		fn get_rows(
-			&mut self,
-			_ctx: &mut OperatorContext,
-			_row_numbers: &[RowNumber],
-		) -> Result<Vec<Option<Row>>> {
-			Ok(vec![])
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
+			Ok(Columns::empty())
 		}
 	}
 
@@ -351,7 +350,9 @@ mod tests {
 					} => unreachable!(),
 				};
 
-				if let Some(row) = post_row {
+				if let Some(columns) = post_row {
+					// Convert Columns to Row for processing
+					let row = columns.to_single_row();
 					let row_key = format!("row_{}", row.number.0);
 
 					let first_value = row.layout.get_value_by_idx(&row.encoded, 0);
@@ -368,12 +369,8 @@ mod tests {
 			Ok(input)
 		}
 
-		fn get_rows(
-			&mut self,
-			_ctx: &mut OperatorContext,
-			_row_numbers: &[RowNumber],
-		) -> Result<Vec<Option<Row>>> {
-			Ok(vec![])
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
+			Ok(Columns::empty())
 		}
 	}
 

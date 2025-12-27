@@ -50,7 +50,7 @@ impl StandardColumnEvaluator {
 	}
 }
 
-pub(crate) fn cast_column_data(
+pub fn cast_column_data(
 	ctx: &ColumnEvaluationContext,
 	data: &ColumnData,
 	target: Type,
