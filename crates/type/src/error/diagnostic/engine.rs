@@ -101,3 +101,18 @@ pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 		cause: None,
 	}
 }
+
+/// Parallel query execution error
+pub fn parallel_execution_error(details: String) -> Diagnostic {
+	Diagnostic {
+		code: "ENG_007".to_string(),
+		statement: None,
+		message: format!("Parallel query execution failed: {}", details),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Check individual statement errors or retry with sequential execution".to_string()),
+		notes: vec![],
+		cause: None,
+	}
+}

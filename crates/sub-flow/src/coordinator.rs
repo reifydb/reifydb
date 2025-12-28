@@ -148,7 +148,7 @@ impl CdcConsume for CoordinatorConsumer {
 											// backfill)
 											if let Err(e) = self
 												.flow_engine
-												.register_without_backfill(
+												.register(
 													txn,
 													flow.clone(),
 												)

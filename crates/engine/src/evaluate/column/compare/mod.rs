@@ -64,10 +64,6 @@ impl CompareOp for NotEqual {
 	fn compare_bool(l: bool, r: bool) -> Option<bool> {
 		Some(l != r)
 	}
-	#[inline]
-	fn undefined_result() -> bool {
-		true
-	}
 }
 
 impl CompareOp for GreaterThan {

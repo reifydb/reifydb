@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	transaction::CatalogFlowQueryOperations,
 };
 use reifydb_core::{
-	CommitVersion, Error,
+	Error,
 	interface::{FlowId, FlowNodeId, PrimitiveId},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -31,32 +31,8 @@ use crate::{
 };
 
 impl FlowEngine {
-	#[instrument(name = "flow::register::without_backfill", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub async fn register_without_backfill(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		flow: Flow,
-	) -> crate::Result<()> {
-		self.register(txn, flow, None).await
-	}
-
-	#[instrument(name = "flow::register::with_backfill", level = "info", skip(self, txn), fields(flow_id = ?flow.id, backfill_version = flow_creation_version.0))]
-	pub async fn register_with_backfill(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		flow: Flow,
-		flow_creation_version: CommitVersion,
-	) -> crate::Result<()> {
-		self.register(txn, flow, Some(flow_creation_version)).await
-	}
-
-	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id, has_backfill = flow_creation_version.is_some()))]
-	async fn register(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		flow: Flow,
-		flow_creation_version: Option<CommitVersion>,
-	) -> crate::Result<()> {
+	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
+	pub async fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
 		debug_assert!(!self.inner.flows.read().await.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -64,16 +40,6 @@ impl FlowEngine {
 			self.add(txn, &flow, node).await?;
 		}
 
-		if let Some(flow_creation_version) = flow_creation_version {
-			self.inner.flow_creation_versions.write().await.insert(flow.id, flow_creation_version);
-
-			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version).await {
-				self.inner.flow_creation_versions.write().await.remove(&flow.id);
-				return Err(e);
-			}
-		}
-
-		// Add flow to analyzer for dependency tracking
 		self.inner.analyzer.write().await.add(flow.clone());
 		self.inner.flows.write().await.insert(flow.id, flow);
 
