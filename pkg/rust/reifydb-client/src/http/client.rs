@@ -60,6 +60,20 @@ impl HttpClient {
 		})
 	}
 
+	/// Create a new HTTP client using an existing reqwest Client for connection pooling.
+	///
+	/// # Arguments
+	/// * `client` - Shared reqwest Client instance
+	/// * `url` - Base URL of the ReifyDB server
+	pub fn with_client(client: ReqwestClient, url: &str) -> Self {
+		let base_url = url.trim_end_matches('/').to_string();
+		Self {
+			inner: client,
+			base_url,
+			token: None,
+		}
+	}
+
 	/// Set the authentication token for subsequent requests.
 	///
 	/// # Arguments

@@ -34,6 +34,7 @@ members = [
     "bin/server",
     "bin/playground",
     "bin/testcontainer",
+    "bin/load-test",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -78,6 +79,7 @@ default-members = [
     "bin/server",
     "bin/playground",
     "bin/testcontainer",
+    "bin/load-test",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -215,3 +217,6 @@ criterion = { version = "0.8.1", features = ["html_reports"] }
 
 # proc-macro
 proc-macro2 = { version = "1.0" }
+
+# load-testing
+hdrhistogram = { version = "7.5" }

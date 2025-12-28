@@ -1,19 +1,30 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::{
-	WithSubsystem, server, sub_server_admin::AdminConfig, sub_server_http::HttpConfig, sub_server_ws::WsConfig,
-};
+use reifydb::{WithSubsystem, server, sub_server_http::HttpConfig, sub_server_ws::WsConfig};
 use tracing::{info, info_span};
 
-#[tokio::main]
-async fn main() {
+fn main() {
+	tokio::runtime::Builder::new_multi_thread()
+		.worker_threads(num_cpus::get())
+		.max_blocking_threads(128)
+		.thread_name("testcontainer")
+		.enable_all()
+		.build()
+		.unwrap()
+		.block_on(async_main());
+}
+
+async fn async_main() {
+	let http_config = HttpConfig::default();
+	let ws_config = WsConfig::default();
+
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
 		.await
 		.unwrap()
-		.with_http(HttpConfig::default())
-		.with_ws(WsConfig::default())
+		.with_http(http_config)
+		.with_ws(ws_config)
 		// .with_tracing_otel(
 		// 	OtelConfig::new()
 		// 		.service_name("testcontainer")
@@ -23,7 +34,7 @@ async fn main() {
 		// 	|t| t.with_filter("trace"),
 		// )
 		.with_flow(|flow| flow)
-		.with_admin(AdminConfig::default())
+		// .with_admin(AdminConfig::default())
 		.build()
 		.await
 		.unwrap();
@@ -37,9 +48,9 @@ async fn main() {
 
 	// Start the database and wait for signal
 	println!("Starting database...");
-	println!("HTTP server: http://localhost:8091");
-	println!("WebSocket server: ws://localhost:8090");
-	println!("Jaeger UI: http://localhost:16686 (if running)");
+	println!("HTTP server: http://0.0.0.0:8091");
+	println!("WebSocket server: ws://0.0.0.0:8090");
+	// println!("Jaeger UI: http://localhost:16686 (if running)");
 	println!();
 	println!("Press Ctrl+C to stop...");
 
