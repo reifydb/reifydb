@@ -3,7 +3,7 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{Client, QueryResult};
+use reifydb_client::{QueryResult, WsClient};
 use rustyline::{DefaultEditor, error::ReadlineError};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -16,15 +16,19 @@ enum DisplayMode {
 
 enum DotCommandResult {
 	Exit,
-	SessionReplaced(reifydb_client::WsBlockingSession),
+	Reauthenticate(String),
 	Continue,
 }
 
-pub fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
-	let client = Client::ws((host, port)).map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
+pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port))
+		.await
+		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 
-	let mut session =
-		client.blocking_session(token.clone()).map_err(|e| format!("Failed to create session: {}", e))?;
+	// Authenticate if token provided
+	if let Some(ref token) = token {
+		client.authenticate(token).await.map_err(|e| format!("Failed to authenticate: {}", e))?;
+	}
 
 	let mut current_token = token;
 	let mut display_mode = DisplayMode::Truncate; // Default to truncate
@@ -50,16 +54,21 @@ pub fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
 
 				// Handle dot-commands
 				if buffer.is_empty() && line.trim().starts_with('.') {
-					match handle_dot_command(
-						&line.trim(),
-						&mut current_token,
-						&client,
-						&mut session,
-						&mut display_mode,
-					) {
+					match handle_dot_command(&line.trim(), &mut current_token, &mut display_mode) {
 						DotCommandResult::Exit => break,
-						DotCommandResult::SessionReplaced(new_session) => {
-							session = new_session;
+						DotCommandResult::Reauthenticate(new_token) => {
+							match client.authenticate(&new_token).await {
+								Ok(()) => {
+									current_token = Some(new_token);
+									println!("Authentication token updated");
+								}
+								Err(e) => {
+									eprintln!(
+										"Failed to authenticate with new token: {}",
+										e
+									);
+								}
+							}
 						}
 						DotCommandResult::Continue => {}
 					}
@@ -77,7 +86,7 @@ pub fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
 					buffer.clear();
 
 					if !statement.is_empty() {
-						execute_query(&mut session, &statement, display_mode);
+						execute_query(&mut client, &statement, display_mode).await;
 					}
 				}
 			}
@@ -98,14 +107,15 @@ pub fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
 		}
 	}
 
+	// Close the connection
+	let _ = client.close().await;
+
 	Ok(())
 }
 
 fn handle_dot_command(
 	cmd: &str,
 	current_token: &mut Option<String>,
-	client: &reifydb_client::WsClient,
-	_session: &mut reifydb_client::WsBlockingSession,
 	display_mode: &mut DisplayMode,
 ) -> DotCommandResult {
 	// Parse command and arguments
@@ -170,22 +180,9 @@ fn handle_dot_command(
 				}
 				DotCommandResult::Continue
 			} else {
-				// Set new token
+				// Set new token - return it for async authentication
 				let new_token = parts[1..].join(" ");
-
-				// Drop old session (implicit)
-				// Create new session with new token
-				match client.blocking_session(Some(new_token.clone())) {
-					Ok(new_session) => {
-						*current_token = Some(new_token);
-						println!("✓ Authentication token updated");
-						DotCommandResult::SessionReplaced(new_session)
-					}
-					Err(e) => {
-						eprintln!("Failed to authenticate with new token: {}", e);
-						DotCommandResult::Continue
-					}
-				}
+				DotCommandResult::Reauthenticate(new_token)
 			}
 		}
 		_ => {
@@ -195,11 +192,11 @@ fn handle_dot_command(
 	}
 }
 
-fn execute_query(session: &mut reifydb_client::WsBlockingSession, statement: &str, display_mode: DisplayMode) {
+async fn execute_query(client: &mut WsClient, statement: &str, display_mode: DisplayMode) {
 	// Remove trailing semicolon for execution
 	let statement = statement.trim_end_matches(';').trim();
 
-	match session.query(statement, None) {
+	match client.query(statement, None).await {
 		Ok(result) => {
 			print_query_result(&result, display_mode);
 		}

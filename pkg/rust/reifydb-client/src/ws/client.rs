@@ -1,382 +1,277 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::{
-	io::{Read, Write},
-	net::{SocketAddr, TcpStream, ToSocketAddrs},
-	sync::{Arc, Mutex, mpsc},
-	thread::JoinHandle,
-};
+use std::{collections::HashMap, sync::Arc};
+
+use futures_util::{SinkExt, StreamExt};
+use reifydb_type::{Error, Params, diagnostic};
+use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-	Request, Response, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
-	ws::{
-		message::InternalMessage,
-		protocol::{
-			build_ws_frame, calculate_accept_key, calculate_frame_size, find_header_end,
-			generate_websocket_key, parse_ws_frame,
-		},
-		router::RequestRouter,
-		worker,
-	},
+	AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
+	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
+	utils::generate_request_id,
 };
 
-/// WebSocket client implementation
-#[derive(Clone)]
+type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
+
+/// Async WebSocket client for ReifyDB
 pub struct WsClient {
-	inner: Arc<ClientInner>,
+	request_tx: mpsc::Sender<(Request, oneshot::Sender<Response>)>,
+	shutdown_tx: Option<mpsc::Sender<()>>,
+	is_authenticated: bool,
 }
-
-pub(crate) struct ClientInner {
-	pub(crate) command_tx: mpsc::Sender<InternalMessage>,
-	worker_handle: Arc<Mutex<Option<JoinHandle<()>>>>,
-}
-
-// ============================================================================
-// WsClient Implementation
-// ============================================================================
 
 impl WsClient {
-	/// Create a new WebSocket client from URL string
-	pub fn from_url(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
-		// Parse the URL to get a socket address
-		let socket_addr = Self::parse_ws_url(url)?;
-
-		let (command_tx, command_rx) = mpsc::channel();
-		let router = Arc::new(Mutex::new(RequestRouter::new()));
-
-		// Verify connection by creating a test WebSocket client
-		let test_client = WebSocketClient::connect(socket_addr)?;
-		drop(test_client); // Close test connection
-
-		// Start the background worker thread
-		let router_clone = router.clone();
-		let socket_addr_clone = socket_addr;
-		let worker_handle = std::thread::spawn(move || {
-			worker::worker_thread_with_addr(socket_addr_clone, command_rx, router_clone);
-		});
-
-		Ok(Self {
-			inner: Arc::new(ClientInner {
-				command_tx,
-				worker_handle: Arc::new(Mutex::new(Some(worker_handle))),
-			}),
-		})
-	}
-
-	/// Parse a WebSocket URL to extract the socket address
-	fn parse_ws_url(url: &str) -> Result<SocketAddr, Box<dyn std::error::Error>> {
-		let addr_str = if url.starts_with("ws://") {
-			&url[5..] // Remove "ws://"
-		} else if url.starts_with("wss://") {
-			return Err("WSS (secure WebSocket) is not yet supported".into());
+	/// Create a new WebSocket client connected to the given URL.
+	///
+	/// # Arguments
+	/// * `url` - WebSocket URL of the ReifyDB server (e.g., "ws://localhost:8090")
+	///
+	/// # Example
+	/// ```no_run
+	/// use reifydb_client::WsClient;
+	///
+	/// #[tokio::main]
+	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// 	let client = WsClient::connect("ws://localhost:8090").await?;
+	/// 	Ok(())
+	/// }
+	/// ```
+	pub async fn connect(url: &str) -> Result<Self, Error> {
+		let url = if !url.starts_with("ws://") && !url.starts_with("wss://") {
+			format!("ws://{}", url)
 		} else {
-			url
+			url.to_string()
 		};
 
-		// Parse the address string to SocketAddr
-		// Handle different formats:
-		// - [::1]:8080 (already properly formatted)
-		// - ::1:8080 (needs brackets added)
-		// - localhost:8080 (hostname)
-		// - 127.0.0.1:8080 (IPv4)
+		let (ws_stream, _) = connect_async(&url)
+			.await
+			.map_err(|e| Error(diagnostic::internal(format!("Failed to connect to WebSocket: {}", e))))?;
 
-		if addr_str.starts_with('[') {
-			// Already has brackets, parse as-is
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
-		} else if addr_str.starts_with("::") {
-			// IPv6 address without brackets
-			// Find the last colon that's likely the port separator
-			// Count colons - if more than 2, it's IPv6
-			let colon_count = addr_str.matches(':').count();
-			if colon_count > 2 {
-				// Definitely IPv6, find the port
-				if let Some(port_start) = addr_str.rfind(':') {
-					// Check if what follows is a port
-					// number
-					if addr_str[port_start + 1..].chars().all(|c| c.is_ascii_digit()) {
-						let ipv6_part = &addr_str[..port_start];
-						let port_part = &addr_str[port_start + 1..];
-						let formatted = format!("[{}]:{}", ipv6_part, port_part);
-						return formatted
-							.to_socket_addrs()?
-							.next()
-							.ok_or_else(|| "Failed to resolve address".into());
-					}
-				}
-			}
-			// Try as-is
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
-		} else {
-			// Regular address (hostname or IPv4)
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
-		}
-	}
+		let (write, read) = ws_stream.split();
 
-	/// Create a new WebSocket client
-	pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Self, Box<dyn std::error::Error>> {
-		// Resolve the address to get the first valid SocketAddr
-		let socket_addr = addr.to_socket_addrs()?.next().ok_or("Failed to resolve address")?;
+		// Channel for sending requests
+		let (request_tx, request_rx) = mpsc::channel::<(Request, oneshot::Sender<Response>)>(32);
 
-		let (command_tx, command_rx) = mpsc::channel();
-		let router = Arc::new(Mutex::new(RequestRouter::new()));
+		// Channel for shutdown signal
+		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
 
-		// Verify connection by creating a test WebSocket client
-		let test_client = WebSocketClient::connect(socket_addr)?;
-		drop(test_client); // Close test connection
+		// Pending requests map
+		let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
-		// Start the background worker thread
-		let router_clone = router.clone();
-		let socket_addr_clone = socket_addr;
-		let worker_handle = std::thread::spawn(move || {
-			worker::worker_thread_with_addr(socket_addr_clone, command_rx, router_clone);
+		// Spawn the connection management task
+		let pending_clone = pending.clone();
+		tokio::spawn(async move {
+			Self::connection_loop(write, read, request_rx, shutdown_rx, pending_clone).await;
 		});
 
 		Ok(Self {
-			inner: Arc::new(ClientInner {
-				command_tx,
-				worker_handle: Arc::new(Mutex::new(Some(worker_handle))),
-			}),
+			request_tx,
+			shutdown_tx: Some(shutdown_tx),
+			is_authenticated: false,
 		})
 	}
 
-	/// Create a blocking session
-	pub fn blocking_session(&self, token: Option<String>) -> Result<WsBlockingSession, reifydb_type::Error> {
-		WsBlockingSession::new(self.inner.clone(), token)
-	}
+	/// Connection management loop
+	async fn connection_loop(
+		mut write: futures_util::stream::SplitSink<
+			tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+			Message,
+		>,
+		mut read: futures_util::stream::SplitStream<
+			tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+		>,
+		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<Response>)>,
+		mut shutdown_rx: mpsc::Receiver<()>,
+		pending: PendingRequests,
+	) {
+		loop {
+			tokio::select! {
+				// Handle incoming messages
+				Some(msg) = read.next() => {
+					match msg {
+						Ok(Message::Text(text)) => {
+							if let Ok(response) = serde_json::from_str::<Response>(&text) {
+								let mut pending_guard = pending.lock().await;
+								if let Some(tx) = pending_guard.remove(&response.id) {
+									let _ = tx.send(response);
+								}
+							}
+						}
+						Ok(Message::Ping(data)) => {
+							let _ = write.send(Message::Pong(data)).await;
+						}
+						Ok(Message::Close(_)) => {
+							break;
+						}
+						Err(_) => {
+							break;
+						}
+						_ => {}
+					}
+				}
 
-	/// Create a callback-based session
-	pub fn callback_session(&self, token: Option<String>) -> Result<WsCallbackSession, reifydb_type::Error> {
-		WsCallbackSession::new(self.inner.clone(), token)
-	}
+				// Handle outgoing requests
+				Some((request, response_tx)) = request_rx.recv() => {
+					let id = request.id.clone();
 
-	/// Create a channel-based session
-	pub fn channel_session(
-		&self,
-		token: Option<String>,
-	) -> Result<(WsChannelSession, mpsc::Receiver<ResponseMessage>), reifydb_type::Error> {
-		WsChannelSession::new(self.inner.clone(), token)
-	}
+					// Register pending request
+					{
+						let mut pending_guard = pending.lock().await;
+						pending_guard.insert(id, response_tx);
+					}
 
-	/// Close the client connection
-	pub fn close(self) -> Result<(), Box<dyn std::error::Error>> {
-		self.inner.command_tx.send(InternalMessage::Close)?;
+					// Send the request
+					if let Ok(json) = serde_json::to_string(&request) {
+						if write.send(Message::Text(json.into())).await.is_err() {
+							break;
+						}
+					}
+				}
 
-		// Wait for worker thread to finish
-		if let Ok(mut handle_guard) = self.inner.worker_handle.lock() {
-			if let Some(handle) = handle_guard.take() {
-				let _ = handle.join();
+				// Handle shutdown signal
+				_ = shutdown_rx.recv() => {
+					let _ = write.send(Message::Close(None)).await;
+					break;
+				}
 			}
 		}
+
+		// Clean up pending requests on disconnect
+		let mut pending_guard = pending.lock().await;
+		pending_guard.clear();
+	}
+
+	/// Authenticate with the server.
+	///
+	/// # Arguments
+	/// * `token` - Bearer token for authentication
+	pub async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Auth(AuthRequest {
+				token: Some(token.to_string()),
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+
+		match response.payload {
+			ResponsePayload::Auth(_) => {
+				self.is_authenticated = true;
+				Ok(())
+			}
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => Err(Error(diagnostic::internal("Unexpected response type for auth"))),
+		}
+	}
+
+	/// Execute a command (write) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL statement to execute
+	/// * `params` - Optional parameters for the statement
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Command(CommandRequest {
+				statements: vec![rql.to_string()],
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_command_response(response)
+	}
+
+	/// Execute a query (read) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL query to execute
+	/// * `params` - Optional parameters for the query
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Query(QueryRequest {
+				statements: vec![rql.to_string()],
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_query_response(response)
+	}
+
+	/// Execute multiple command statements in a batch.
+	pub async fn command_batch(
+		&self,
+		statements: Vec<&str>,
+		params: Option<Params>,
+	) -> Result<CommandResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Command(CommandRequest {
+				statements: statements.into_iter().map(String::from).collect(),
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_command_response(response)
+	}
+
+	/// Execute multiple query statements in a batch.
+	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Query(QueryRequest {
+				statements: statements.into_iter().map(String::from).collect(),
+				params,
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		parse_query_response(response)
+	}
+
+	/// Send a request and wait for the response.
+	async fn send_request(&self, request: Request) -> Result<Response, Error> {
+		let (tx, rx) = oneshot::channel();
+
+		self.request_tx
+			.send((request, tx))
+			.await
+			.map_err(|_| Error(diagnostic::internal("Connection closed")))?;
+
+		rx.await.map_err(|_| Error(diagnostic::internal("Response channel closed")))
+	}
+
+	/// Close the WebSocket connection gracefully.
+	pub async fn close(mut self) -> Result<(), Error> {
+		if let Some(tx) = self.shutdown_tx.take() {
+			let _ = tx.send(()).await;
+		}
 		Ok(())
+	}
+
+	/// Check if the client has authenticated.
+	pub fn is_authenticated(&self) -> bool {
+		self.is_authenticated
 	}
 }
 
 impl Drop for WsClient {
 	fn drop(&mut self) {
-		let _ = self.inner.command_tx.send(InternalMessage::Close);
-	}
-}
-
-/// WebSocket client implementation
-pub struct WebSocketClient {
-	pub(crate) stream: TcpStream,
-	read_buffer: Vec<u8>,
-	pub(crate) is_connected: bool,
-}
-
-impl WebSocketClient {
-	/// Create a new WebSocket client and connect to the specified address
-	pub fn connect(addr: SocketAddr) -> Result<Self, Box<dyn std::error::Error>> {
-		// Connect to the socket address
-		let stream = TcpStream::connect(addr)?;
-		stream.set_nonblocking(true)?;
-
-		let mut client = WebSocketClient {
-			stream,
-			read_buffer: Vec::with_capacity(4096),
-			is_connected: false,
-		};
-
-		// Perform WebSocket handshake
-		client.handshake()?;
-
-		Ok(client)
-	}
-
-	/// Perform WebSocket handshake
-	fn handshake(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-		// Generate WebSocket key
-		let key = generate_websocket_key();
-
-		// Build handshake request
-		let request = format!(
-			"GET / HTTP/1.1\r\n\
-Host: localhost\r\n\
-Upgrade: websocket\r\n\
-Connection: Upgrade\r\n\
-Sec-WebSocket-Key: {}\r\n\
-Sec-WebSocket-Version: 13\r\n\
-\r\n",
-			key
-		);
-
-		// Send handshake
-		self.stream.write_all(request.as_bytes())?;
-		self.stream.flush()?;
-
-		// Read response with timeout
-		let mut response = Vec::new();
-		let mut buffer = [0u8; 1024];
-		let start = std::time::Instant::now();
-		let timeout = std::time::Duration::from_secs(5);
-
-		loop {
-			match self.stream.read(&mut buffer) {
-				Ok(0) => return Err("Connection closed during handshake".into()),
-				Ok(n) => {
-					response.extend_from_slice(&buffer[..n]);
-
-					// Check if we have the complete HTTP
-					// response
-					if let Some(end_pos) = find_header_end(&response) {
-						response.truncate(end_pos);
-						break;
-					}
-				}
-				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-					// No data available yet
-					if start.elapsed() > timeout {
-						return Err("Handshake timeout".into());
-					}
-					std::thread::sleep(std::time::Duration::from_millis(10));
-					continue;
-				}
-				Err(e) => return Err(e.into()),
-			}
+		if let Some(tx) = self.shutdown_tx.take() {
+			// Best effort shutdown - ignore errors since we're dropping
+			let _ = tx.try_send(());
 		}
-
-		// Verify handshake response
-		let response_str = String::from_utf8_lossy(&response);
-		if !response_str.contains("HTTP/1.1 101") {
-			return Err(format!("Invalid handshake response: {}", response_str).into());
-		}
-
-		// Verify Sec-WebSocket-Accept (case-insensitive header search)
-		let expected_accept = calculate_accept_key(&key);
-		let response_lower = response_str.to_lowercase();
-		let accept_pattern = format!("sec-websocket-accept: {}", expected_accept).to_lowercase();
-		if !response_lower.contains(&accept_pattern) {
-			return Err(format!(
-				"Invalid Sec-WebSocket-Accept. Expected: {}, Response: {}",
-				expected_accept, response_str
-			)
-			.into());
-		}
-
-		self.is_connected = true;
-		Ok(())
-	}
-
-	/// Send a request over the WebSocket connection
-	pub(crate) fn send_request(&mut self, request: &Request) -> Result<(), Box<dyn std::error::Error>> {
-		if !self.is_connected {
-			return Err("Not connected".into());
-		}
-
-		// Serialize request to JSON
-		let json = serde_json::to_string(request)?;
-		let payload = json.as_bytes();
-
-		// Build WebSocket frame (text frame, opcode = 1)
-		let frame = build_ws_frame(0x01, payload, true);
-
-		// Send frame
-		self.stream.write_all(&frame)?;
-		self.stream.flush()?;
-
-		Ok(())
-	}
-
-	/// Receive a response from the WebSocket connection
-	pub fn receive(&mut self) -> Result<Option<Response>, Box<dyn std::error::Error>> {
-		if !self.is_connected {
-			return Err("Not connected".into());
-		}
-
-		// Read data into buffer
-		let mut buf = vec![0u8; 4096];
-		match self.stream.read(&mut buf) {
-			Ok(0) => {
-				self.is_connected = false;
-				return Err("Connection closed".into());
-			}
-			Ok(n) => {
-				self.read_buffer.extend_from_slice(&buf[..n]);
-			}
-			Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-				// No data available
-				return Ok(None);
-			}
-			Err(e) => return Err(e.into()),
-		}
-
-		// Try to parse WebSocket frame
-		if let Some((opcode, payload)) = parse_ws_frame(&self.read_buffer)? {
-			// Remove parsed frame from buffer
-			let frame_size = calculate_frame_size(&payload, false);
-			self.read_buffer.drain(..frame_size);
-
-			match opcode {
-				0x01 | 0x02 => {
-					// Text or binary frame
-					let response: Response = serde_json::from_slice(&payload)?;
-					return Ok(Some(response));
-				}
-				0x08 => {
-					// Close frame
-					self.is_connected = false;
-					return Err("Connection closed by server".into());
-				}
-				0x09 => {
-					// Ping frame - respond with pong
-					let pong = build_ws_frame(0x0A, &payload, true);
-					self.stream.write_all(&pong)?;
-					self.stream.flush()?;
-				}
-				0x0A => {
-					// Pong frame - ignore
-				}
-				_ => {
-					// Unknown opcode
-					return Err(format!("Unknown opcode: {}", opcode).into());
-				}
-			}
-		}
-
-		Ok(None)
-	}
-
-	/// Close the WebSocket connection
-	pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-		if self.is_connected {
-			// Send close frame
-			let close_frame = build_ws_frame(0x08, &[], true);
-			self.stream.write_all(&close_frame)?;
-			self.stream.flush()?;
-			self.is_connected = false;
-		}
-		Ok(())
-	}
-
-	/// Check if the client is connected
-	pub fn is_connected(&self) -> bool {
-		self.is_connected
-	}
-}
-
-impl Drop for WebSocketClient {
-	fn drop(&mut self) {
-		let _ = self.close();
 	}
 }

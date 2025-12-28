@@ -17,7 +17,6 @@ use reifydb_engine::{
 	EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
 	function::{Functions, FunctionsBuilder, generator, math},
 };
-use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
@@ -216,7 +215,6 @@ impl DatabaseBuilder {
 		all_versions.push(AuthVersion.version());
 		all_versions.push(RqlVersion.version());
 		all_versions.push(CdcVersion.version());
-		all_versions.push(NetworkVersion.version());
 
 		// Create subsystems from factories and collect their versions
 		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.

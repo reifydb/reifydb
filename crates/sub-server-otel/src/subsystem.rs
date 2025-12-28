@@ -20,8 +20,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::SharedRuntime;
-use tokio::{runtime::Handle, sync::Mutex};
+use tokio::sync::Mutex;
 
 use crate::config::OtelConfig;
 
@@ -59,10 +58,6 @@ use crate::config::OtelConfig;
 pub struct OtelSubsystem {
 	/// Configuration
 	config: OtelConfig,
-	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<SharedRuntime>,
-	/// Handle to the tokio runtime.
-	handle: Handle,
 	/// Flag indicating if the subsystem is running
 	running: Arc<AtomicBool>,
 	/// The tracer provider (held to prevent premature drop)
@@ -75,13 +70,9 @@ impl OtelSubsystem {
 	/// # Arguments
 	///
 	/// * `config` - OpenTelemetry configuration
-	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn new(config: OtelConfig, runtime: SharedRuntime) -> Self {
-		let handle = runtime.handle();
+	pub fn new(config: OtelConfig) -> Self {
 		Self {
 			config,
-			_runtime: Some(runtime),
-			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			tracer_provider: Arc::new(Mutex::new(None)),
 		}
@@ -178,8 +169,7 @@ impl Subsystem for OtelSubsystem {
 
 		#[cfg(feature = "otlp")]
 		let provider = {
-			// Enter runtime context for tonic/hyper - scope limited to provider building
-			let _guard = self.handle.enter();
+			// Already in async context, no need to enter runtime
 			self.build_otlp_tracer_provider().map_err(|e| error!(init_failed("OpenTelemetry", e)))?
 		};
 

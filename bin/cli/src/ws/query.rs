@@ -1,16 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_client::{Client, QueryResult};
+use reifydb_client::{QueryResult, WsClient};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-pub fn execute_query(host: &str, port: u16, token: Option<String>, statements: &str) -> Result<()> {
+pub async fn execute_query(host: &str, port: u16, token: Option<String>, statements: &str) -> Result<()> {
 	// 1. Connect to server
-	let client = Client::ws((host, port)).map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port))
+		.await
+		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 
-	// 2. Create authenticated session
-	let mut session = client.blocking_session(token).map_err(|e| format!("Failed to create session: {}", e))?;
+	// 2. Authenticate if token provided
+	if let Some(ref token) = token {
+		client.authenticate(token).await.map_err(|e| format!("Failed to authenticate: {}", e))?;
+	}
 
 	// 3. Split statements by semicolon
 	let stmts: Vec<&str> = statements.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -23,14 +27,18 @@ pub fn execute_query(host: &str, port: u16, token: Option<String>, statements: &
 		println!("{}\n", stmt);
 
 		// Execute statement
-		let result = session
+		let result = client
 			.query(stmt, None)
+			.await
 			.map_err(|e| format!("Failed to execute statement {}: {}", i + 1, e))?;
 
 		// Print frames
 		print_query_result(&result);
 		println!();
 	}
+
+	// 5. Close connection
+	client.close().await?;
 
 	Ok(())
 }

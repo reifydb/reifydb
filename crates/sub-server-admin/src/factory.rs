@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::SharedRuntime;
 
 use crate::{config::AdminConfig, state::AdminState, subsystem::AdminSubsystem};
 
@@ -30,9 +29,6 @@ impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
-
 		// Create admin state from config
 		let state = AdminState::new(
 			engine,
@@ -42,8 +38,7 @@ impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
 			self.config.auth_token.clone(),
 		);
 
-		// Create subsystem with runtime ownership
-		let subsystem = AdminSubsystem::new(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = AdminSubsystem::new(self.config.bind_addr.clone(), state);
 
 		Ok(Box::new(subsystem))
 	}

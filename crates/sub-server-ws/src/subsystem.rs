@@ -23,10 +23,9 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{AppState, SharedRuntime};
+use reifydb_sub_server::AppState;
 use tokio::{
 	net::TcpListener,
-	runtime::Handle,
 	spawn,
 	sync::{Semaphore, watch},
 	time::{Instant, sleep},
@@ -45,13 +44,11 @@ use crate::handler::handle_connection;
 /// # Example
 ///
 /// ```ignore
-/// let runtime = SharedRuntime::new(4);
 /// let state = AppState::new(engine, QueryConfig::default());
 ///
 /// let mut ws = WsSubsystem::new(
 ///     "0.0.0.0:8091".to_string(),
 ///     state,
-///     runtime.handle(),
 /// );
 ///
 /// ws.start()?;
@@ -67,10 +64,6 @@ pub struct WsSubsystem {
 	actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AppState,
-	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<SharedRuntime>,
-	/// Handle to the tokio runtime.
-	handle: Handle,
 	/// Flag indicating if the server is running.
 	running: Arc<AtomicBool>,
 	/// Count of active connections.
@@ -82,24 +75,18 @@ pub struct WsSubsystem {
 }
 
 impl WsSubsystem {
-	/// Create a new WebSocket subsystem with an owned runtime.
-	///
-	/// This variant keeps the runtime alive for the lifetime of the subsystem.
+	/// Create a new WebSocket subsystem.
 	///
 	/// # Arguments
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
 	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
+	pub fn new(bind_addr: String, state: AppState) -> Self {
 		let max_connections = state.max_connections();
-		let handle = runtime.handle();
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
-			_runtime: Some(runtime),
-			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
 			shutdown_tx: None,
@@ -164,7 +151,7 @@ impl Subsystem for WsSubsystem {
 		let active_connections = self.active_connections.clone();
 		let semaphore = self.connection_semaphore.clone();
 
-		self.handle.spawn(async move {
+		tokio::spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
 			loop {

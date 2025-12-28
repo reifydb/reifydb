@@ -1,15 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-mod client;
 pub mod http;
-pub mod session;
+mod session;
 mod utils;
 pub mod ws;
 
-pub use client::Client;
-pub use http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpClient, HttpResponseMessage};
+// Re-export client types
+pub use http::HttpClient;
+// Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
+// Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
 use reifydb_type::diagnostic::Diagnostic;
 pub use reifydb_type::{
@@ -17,10 +18,9 @@ pub use reifydb_type::{
 	OrderedF32, OrderedF64, Params, TryFromValue, TryFromValueCoerce, Type, Value,
 };
 use serde::{Deserialize, Serialize};
+// Re-export result types
 pub use session::{CommandResult, QueryResult};
-pub use ws::{
-	ChannelResponse, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession, client::WsClient,
-};
+pub use ws::WsClient;
 
 // ============================================================================
 // Request Types (matching server)

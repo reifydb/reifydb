@@ -9,8 +9,6 @@ use reifydb_engine::{StandardCommandTransaction, function::FunctionsBuilder};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
-#[cfg(feature = "sub_server_otel")]
-use reifydb_sub_server::SharedRuntime;
 #[cfg(feature = "sub_server_admin")]
 use reifydb_sub_server_admin::{AdminConfig, AdminSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
@@ -133,14 +131,13 @@ impl ServerBuilder {
 		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
 	{
 		use reifydb_sub_api::Subsystem;
+		use tokio::runtime::Handle;
 
 		// Step 1: Create and start the OtelSubsystem early
 		// Note: We need to start synchronously here to get the tracer for the tracing layer.
-		// This is one of the few places where blocking is unavoidable due to the sync builder pattern.
-		let runtime = otel_config.runtime.clone().unwrap_or_else(SharedRuntime::default);
-		let handle = runtime.handle();
-		let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime);
-		handle.block_on(otel_subsystem.start()).expect("Failed to start OpenTelemetry subsystem");
+		// This requires being called from within a tokio runtime context.
+		let mut otel_subsystem = OtelSubsystem::new(otel_config);
+		Handle::current().block_on(otel_subsystem.start()).expect("Failed to start OpenTelemetry subsystem");
 
 		// Step 2: Get the concrete tracer from the initialized provider
 		let tracer = otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");

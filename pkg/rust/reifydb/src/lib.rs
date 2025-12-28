@@ -32,7 +32,6 @@ pub use reifydb_core::{
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
-pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
 pub use reifydb_store_transaction::{backend::BackendStorage, sqlite::SqliteConfig};

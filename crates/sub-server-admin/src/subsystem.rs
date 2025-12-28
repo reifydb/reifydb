@@ -20,8 +20,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::SharedRuntime;
-use tokio::{net::TcpListener, runtime::Handle, sync::oneshot, time::timeout};
+use tokio::{net::TcpListener, sync::oneshot, time::timeout};
 
 use crate::state::AdminState;
 
@@ -30,7 +29,6 @@ use crate::state::AdminState;
 /// Manages an Axum-based admin HTTP server with support for:
 /// - Graceful startup and shutdown
 /// - Health monitoring
-/// - Integration with shared tokio runtime
 pub struct AdminSubsystem {
 	/// Address to bind the server to.
 	bind_addr: String,
@@ -38,10 +36,6 @@ pub struct AdminSubsystem {
 	actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AdminState,
-	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<SharedRuntime>,
-	/// Handle to the tokio runtime.
-	handle: Handle,
 	/// Flag indicating if the server is running.
 	running: Arc<AtomicBool>,
 	/// Channel to send shutdown signal.
@@ -51,23 +45,17 @@ pub struct AdminSubsystem {
 }
 
 impl AdminSubsystem {
-	/// Create a new admin subsystem with an owned runtime.
-	///
-	/// This variant keeps the runtime alive for the lifetime of the subsystem.
+	/// Create a new admin subsystem.
 	///
 	/// # Arguments
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
 	/// * `state` - Shared application state
-	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn new(bind_addr: String, state: AdminState, runtime: SharedRuntime) -> Self {
-		let handle = runtime.handle();
+	pub fn new(bind_addr: String, state: AdminState) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
-			_runtime: Some(runtime),
-			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
@@ -120,8 +108,7 @@ impl Subsystem for AdminSubsystem {
 
 		let actual_addr = std_listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 
-		// Enter the runtime context to convert std listener to tokio
-		let _guard = self.handle.enter();
+		// Convert std listener to tokio (we're already in async context)
 		let listener = TcpListener::from_std(std_listener).map_err(|e| error!(socket_config_failed(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("Admin server bound to {}", actual_addr);
@@ -132,7 +119,7 @@ impl Subsystem for AdminSubsystem {
 		let state = self.state.clone();
 		let running = self.running.clone();
 
-		self.handle.spawn(async move {
+		tokio::spawn(async move {
 			// Mark as running
 			running.store(true, Ordering::SeqCst);
 

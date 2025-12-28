@@ -23,8 +23,8 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{AppState, SharedRuntime};
-use tokio::{net::TcpListener, runtime::Handle, sync::oneshot, time::timeout};
+use reifydb_sub_server::AppState;
+use tokio::{net::TcpListener, sync::oneshot, time::timeout};
 
 use crate::routes::router;
 
@@ -33,18 +33,15 @@ use crate::routes::router;
 /// Manages an Axum-based HTTP server with support for:
 /// - Graceful startup and shutdown
 /// - Health monitoring
-/// - Integration with shared tokio runtime
 ///
 /// # Example
 ///
 /// ```ignore
-/// let runtime = SharedRuntime::new(4);
 /// let state = AppState::new(engine, QueryConfig::default());
 ///
 /// let mut http = HttpSubsystem::new(
 ///     "0.0.0.0:8090".to_string(),
 ///     state,
-///     runtime.handle(),
 /// );
 ///
 /// http.start()?;
@@ -60,10 +57,6 @@ pub struct HttpSubsystem {
 	actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AppState,
-	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<SharedRuntime>,
-	/// Handle to the tokio runtime.
-	handle: Handle,
 	/// Flag indicating if the server is running.
 	running: Arc<AtomicBool>,
 	/// Channel to send shutdown signal.
@@ -73,23 +66,17 @@ pub struct HttpSubsystem {
 }
 
 impl HttpSubsystem {
-	/// Create a new HTTP subsystem with an owned runtime.
-	///
-	/// This variant keeps the runtime alive for the lifetime of the subsystem.
+	/// Create a new HTTP subsystem.
 	///
 	/// # Arguments
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
 	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
-		let handle = runtime.handle();
+	pub fn new(bind_addr: String, state: AppState) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
-			_runtime: Some(runtime),
-			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
@@ -148,7 +135,7 @@ impl Subsystem for HttpSubsystem {
 		let state = self.state.clone();
 		let running = self.running.clone();
 
-		self.handle.spawn(async move {
+		tokio::spawn(async move {
 			// Mark as running
 			running.store(true, Ordering::SeqCst);
 

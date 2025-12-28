@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+[package]
+name = "load-test"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "reifydb-load-test"
+path = "src/main.rs"
+
+[dependencies]
+reifydb-client = { workspace = true }
+clap = { version = "4.5", features = ["derive", "env"] }
+tokio = { workspace = true }
+rand = { workspace = true }
+async-trait = { workspace = true }
+hdrhistogram = { workspace = true }
+num_cpus = { workspace = true }
+reqwest = { workspace = true }

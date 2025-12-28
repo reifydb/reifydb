@@ -121,24 +121,25 @@ struct ReplArgs {
 	token: Option<String>,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
 	let cli = Cli::parse();
 
 	match cli.protocol {
-		Protocol::Ws(ws_cmd) => handle_ws(ws_cmd),
+		Protocol::Ws(ws_cmd) => handle_ws(ws_cmd).await,
 	}
 }
 
-fn handle_ws(ws_cmd: WsCommand) -> Result<()> {
+async fn handle_ws(ws_cmd: WsCommand) -> Result<()> {
 	match ws_cmd.action {
 		WsAction::Query(args) => {
 			let statements = args.get_statements();
-			ws::query::execute_query(&args.host, args.port, args.token, &statements)
+			ws::query::execute_query(&args.host, args.port, args.token, &statements).await
 		}
 		WsAction::Command(args) => {
 			let statements = args.get_statements();
-			ws::command::execute_command(&args.host, args.port, args.token, &statements)
+			ws::command::execute_command(&args.host, args.port, args.token, &statements).await
 		}
-		WsAction::Repl(args) => ws::repl::start_repl(&args.host, args.port, args.token),
+		WsAction::Repl(args) => ws::repl::start_repl(&args.host, args.port, args.token).await,
 	}
 }
