@@ -9,12 +9,12 @@ use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
+use reifydb_sub_server::{AppState, QueryConfig};
 
 use crate::HttpSubsystem;
 
 /// Configuration for the HTTP server subsystem.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HttpConfig {
 	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8091").
 	pub bind_addr: String,
@@ -24,20 +24,6 @@ pub struct HttpConfig {
 	pub query_timeout: Duration,
 	/// Timeout for entire request lifecycle.
 	pub request_timeout: Duration,
-	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<SharedRuntime>,
-}
-
-impl std::fmt::Debug for HttpConfig {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("HttpConfig")
-			.field("bind_addr", &self.bind_addr)
-			.field("max_connections", &self.max_connections)
-			.field("query_timeout", &self.query_timeout)
-			.field("request_timeout", &self.request_timeout)
-			.field("runtime", &self.runtime.as_ref().map(|_| "SharedRuntime"))
-			.finish()
-	}
 }
 
 impl Default for HttpConfig {
@@ -47,7 +33,6 @@ impl Default for HttpConfig {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
-			runtime: None,
 		}
 	}
 }
@@ -81,12 +66,6 @@ impl HttpConfig {
 		self.request_timeout = timeout;
 		self
 	}
-
-	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
-		self
-	}
 }
 
 /// Factory for creating HTTP subsystem instances.
@@ -108,16 +87,13 @@ impl SubsystemFactory<StandardCommandTransaction> for HttpSubsystemFactory {
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
-
 		let query_config = QueryConfig::new()
 			.query_timeout(self.config.query_timeout)
 			.request_timeout(self.config.request_timeout)
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = HttpSubsystem::new(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = HttpSubsystem::new(self.config.bind_addr.clone(), state);
 
 		Ok(Box::new(subsystem))
 	}

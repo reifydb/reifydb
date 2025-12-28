@@ -5,8 +5,6 @@
 
 use std::time::Duration;
 
-use reifydb_sub_server::SharedRuntime;
-
 /// Configuration for the admin server subsystem.
 #[derive(Clone)]
 pub struct AdminConfig {
@@ -20,8 +18,6 @@ pub struct AdminConfig {
 	pub auth_required: bool,
 	/// Authentication token (if auth is required).
 	pub auth_token: Option<String>,
-	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<SharedRuntime>,
 }
 
 impl std::fmt::Debug for AdminConfig {
@@ -32,7 +28,6 @@ impl std::fmt::Debug for AdminConfig {
 			.field("request_timeout", &self.request_timeout)
 			.field("auth_required", &self.auth_required)
 			.field("auth_token", &self.auth_token.as_ref().map(|_| "****"))
-			.field("runtime", &self.runtime.as_ref().map(|_| "SharedRuntime"))
 			.finish()
 	}
 }
@@ -45,7 +40,6 @@ impl Default for AdminConfig {
 			request_timeout: Duration::from_secs(30),
 			auth_required: false,
 			auth_token: None,
-			runtime: None,
 		}
 	}
 }
@@ -78,12 +72,6 @@ impl AdminConfig {
 	pub fn with_auth(mut self, token: String) -> Self {
 		self.auth_required = true;
 		self.auth_token = Some(token);
-		self
-	}
-
-	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
 		self
 	}
 }

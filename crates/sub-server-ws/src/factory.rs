@@ -9,12 +9,12 @@ use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
+use reifydb_sub_server::{AppState, QueryConfig};
 
 use crate::WsSubsystem;
 
 /// Configuration for the WebSocket server subsystem.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WsConfig {
 	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
 	pub bind_addr: String,
@@ -24,20 +24,6 @@ pub struct WsConfig {
 	pub query_timeout: Duration,
 	/// Maximum WebSocket frame size in bytes.
 	pub max_frame_size: usize,
-	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<SharedRuntime>,
-}
-
-impl std::fmt::Debug for WsConfig {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("WsConfig")
-			.field("bind_addr", &self.bind_addr)
-			.field("max_connections", &self.max_connections)
-			.field("query_timeout", &self.query_timeout)
-			.field("max_frame_size", &self.max_frame_size)
-			.field("runtime", &self.runtime.as_ref().map(|_| "SharedRuntime"))
-			.finish()
-	}
 }
 
 impl Default for WsConfig {
@@ -47,7 +33,6 @@ impl Default for WsConfig {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			max_frame_size: 16 << 20, // 16MB
-			runtime: None,
 		}
 	}
 }
@@ -81,12 +66,6 @@ impl WsConfig {
 		self.max_frame_size = size;
 		self
 	}
-
-	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
-		self
-	}
 }
 
 /// Factory for creating WebSocket subsystem instances.
@@ -108,15 +87,12 @@ impl SubsystemFactory<StandardCommandTransaction> for WsSubsystemFactory {
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
-
 		let query_config = QueryConfig::new()
 			.query_timeout(self.config.query_timeout)
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state);
 
 		Ok(Box::new(subsystem))
 	}

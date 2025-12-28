@@ -13,7 +13,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
+use reifydb_sub_server::{AppState, QueryConfig};
 use reifydb_sub_server_http::HttpSubsystem;
 use reifydb_sub_server_ws::WsSubsystem;
 
@@ -28,8 +28,6 @@ pub struct ServerConfig {
 	pub ws_bind_addr: Option<String>,
 	/// Query configuration
 	pub query_config: QueryConfig,
-	/// Number of worker threads for the tokio runtime
-	pub worker_threads: usize,
 }
 
 impl Default for ServerConfig {
@@ -38,7 +36,6 @@ impl Default for ServerConfig {
 			http_bind_addr: Some("0.0.0.0:8090".to_string()),
 			ws_bind_addr: Some("0.0.0.0:8091".to_string()),
 			query_config: QueryConfig::default(),
-			worker_threads: num_cpus::get(),
 		}
 	}
 }
@@ -66,18 +63,11 @@ impl ServerConfig {
 		self.query_config = config;
 		self
 	}
-
-	/// Set the number of worker threads.
-	pub fn worker_threads(mut self, threads: usize) -> Self {
-		self.worker_threads = threads;
-		self
-	}
 }
 
 /// Server subsystem combining HTTP and WebSocket servers.
 ///
 /// This subsystem manages:
-/// - A shared tokio runtime
 /// - An HTTP server (always enabled)
 /// - An optional WebSocket server
 ///
@@ -85,7 +75,6 @@ impl ServerConfig {
 pub struct ServerSubsystem {
 	config: ServerConfig,
 	engine: StandardEngine,
-	runtime: Option<SharedRuntime>,
 	http_subsystem: Option<HttpSubsystem>,
 	ws_subsystem: Option<WsSubsystem>,
 }
@@ -101,7 +90,6 @@ impl ServerSubsystem {
 		Self {
 			config,
 			engine,
-			runtime: None,
 			http_subsystem: None,
 			ws_subsystem: None,
 		}
@@ -147,22 +135,18 @@ impl Subsystem for ServerSubsystem {
 
 	async fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
-		if self.runtime.is_some() {
+		if self.http_subsystem.is_some() || self.ws_subsystem.is_some() {
 			return Ok(());
 		}
 
 		tracing::info!("Starting server subsystem");
-
-		// Create the shared runtime
-		let runtime = SharedRuntime::new(self.config.worker_threads);
-		let handle = runtime.handle();
 
 		// Create shared application state
 		let state = AppState::new(self.engine.clone(), self.config.query_config.clone());
 
 		// Create and start HTTP subsystem if configured
 		let http = if let Some(ref http_addr) = self.config.http_bind_addr {
-			let mut http = HttpSubsystem::new(http_addr.clone(), state.clone(), handle.clone());
+			let mut http = HttpSubsystem::new(http_addr.clone(), state.clone());
 			http.start().await?;
 			tracing::info!("HTTP server started on {}", http_addr);
 			Some(http)
@@ -172,7 +156,7 @@ impl Subsystem for ServerSubsystem {
 
 		// Create and start WebSocket subsystem if configured
 		let ws = if let Some(ref ws_addr) = self.config.ws_bind_addr {
-			let mut ws = WsSubsystem::new(ws_addr.clone(), state, handle);
+			let mut ws = WsSubsystem::new(ws_addr.clone(), state);
 			ws.start().await?;
 			tracing::info!("WebSocket server started on {}", ws_addr);
 			Some(ws)
@@ -180,7 +164,6 @@ impl Subsystem for ServerSubsystem {
 			None
 		};
 
-		self.runtime = Some(runtime);
 		self.http_subsystem = http;
 		self.ws_subsystem = ws;
 
@@ -201,9 +184,6 @@ impl Subsystem for ServerSubsystem {
 			http.shutdown().await?;
 		}
 		self.http_subsystem = None;
-
-		// Drop the runtime last
-		self.runtime = None;
 
 		tracing::info!("Server subsystem shutdown complete");
 		Ok(())
@@ -298,12 +278,10 @@ mod tests {
 	fn test_config_builder() {
 		let config = ServerConfig::new()
 			.http_bind_addr(Some("127.0.0.1:9000"))
-			.ws_bind_addr(Some("127.0.0.1:9001"))
-			.worker_threads(4);
+			.ws_bind_addr(Some("127.0.0.1:9001"));
 
 		assert_eq!(config.http_bind_addr, Some("127.0.0.1:9000".to_string()));
 		assert_eq!(config.ws_bind_addr, Some("127.0.0.1:9001".to_string()));
-		assert_eq!(config.worker_threads, 4);
 	}
 
 	#[test]
