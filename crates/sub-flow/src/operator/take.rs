@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 

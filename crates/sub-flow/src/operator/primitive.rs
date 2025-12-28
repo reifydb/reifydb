@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::Columns,
 };
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::FlowChange;
+use reifydb_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
 use crate::{Operator, transaction::FlowTransaction};

@@ -41,7 +41,7 @@ static EMPTY_PARAMS: Params = Params::None;
 use std::sync::LazyLock;
 
 use reifydb_engine::stack::Stack;
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 

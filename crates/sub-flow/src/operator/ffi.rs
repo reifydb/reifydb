@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::{FFIError, FlowChange, marshal::Marshaller};
+use reifydb_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
 use tokio::sync::RwLock;
 

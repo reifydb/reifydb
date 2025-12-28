@@ -18,8 +18,8 @@ use reifydb_core::{
 	interface::{PrimitiveId, WithEventBus, catalog::FlowId},
 };
 use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
-use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::flow::Flow;
+use reifydb_sdk::FlowChange;
 use reifydb_type::diagnostic::flow::{flow_already_registered, flow_backfill_timeout};
 use tokio::{
 	sync::{RwLock, mpsc},

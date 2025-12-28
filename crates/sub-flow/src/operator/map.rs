@@ -9,8 +9,8 @@ use reifydb_core::{
 	value::column::{Column, Columns},
 };
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_rql::expression::Expression;
+use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Fragment, Params, RowNumber};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

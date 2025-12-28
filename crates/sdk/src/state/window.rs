@@ -6,7 +6,7 @@
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout};
 
 use super::{FFIRawStatefulOperator, utils};
-use crate::{context::OperatorContext, error::Result};
+use crate::{OperatorContext, error::Result};
 
 /// Window-based state management for time or count-based windowing
 ///

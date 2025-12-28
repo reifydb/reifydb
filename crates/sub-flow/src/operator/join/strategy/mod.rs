@@ -1,6 +1,6 @@
 use reifydb_core::{CommitVersion, JoinType, Row};
-use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
+use reifydb_sdk::FlowDiff;
 
 use crate::{
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},

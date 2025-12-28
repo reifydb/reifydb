@@ -5,7 +5,7 @@ use reifydb_core::{EncodedKey, interface::FlowNodeId};
 use reifydb_type::RowNumber;
 
 use crate::{
-	stateful::{RowNumberProvider, State},
+	state::{RowNumberProvider, State},
 	store::Store,
 };
 

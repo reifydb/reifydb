@@ -8,7 +8,7 @@ use reifydb_core::{
 	EncodedKey, Error, interface::FlowNodeId, util::encoding::keycode::KeySerializer, value::column::Columns,
 };
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{RowNumber, internal};
 
 use crate::{

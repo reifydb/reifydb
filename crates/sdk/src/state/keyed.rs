@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_type::{Type, Value};
 
 use super::{FFIRawStatefulOperator, utils};
-use crate::{context::OperatorContext, error::Result};
+use crate::{OperatorContext, error::Result};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 ///

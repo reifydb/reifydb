@@ -30,7 +30,7 @@ pub use join::JoinOperator;
 pub use map::MapOperator;
 pub use merge::MergeOperator;
 pub use primitive::{PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator};
-use reifydb_flow_operator_sdk::FlowChange;
+use reifydb_sdk::FlowChange;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;

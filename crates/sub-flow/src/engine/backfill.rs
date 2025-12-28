@@ -14,8 +14,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::StandardCommandTransaction;
-use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_rql::flow::{Flow, FlowNodeType};
+use reifydb_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{DictionaryEntryId, Value, internal};
 use tracing::{info, instrument};
 

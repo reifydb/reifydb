@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 use reifydb_core::{WindowSize, WindowSlide, WindowType, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::Hash128;
+use reifydb_sdk::{FlowChange, FlowDiff};
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;

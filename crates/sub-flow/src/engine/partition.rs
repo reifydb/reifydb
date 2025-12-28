@@ -8,7 +8,7 @@ use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, PrimitiveId},
 };
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 
 use crate::worker::{UnitOfWork, UnitsOfWork};
 
@@ -152,7 +152,7 @@ mod tests {
 		value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 	};
 	use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
-	use reifydb_flow_operator_sdk::{FlowChangeOrigin, FlowDiff};
+	use reifydb_sdk::{FlowChangeOrigin, FlowDiff};
 	use reifydb_rql::flow::FlowGraphAnalyzer;
 	use reifydb_type::{RowNumber, Type};
 	use tokio::sync::RwLock;

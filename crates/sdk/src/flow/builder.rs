@@ -2,7 +2,7 @@
 
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::column::Columns};
 
-use crate::{FlowChange, FlowDiff};
+use super::{FlowChange, FlowDiff};
 
 /// Builder for constructing FlowChange objects for internal flow operators
 pub struct FlowChangeBuilder {

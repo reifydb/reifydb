@@ -14,9 +14,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
+use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 

@@ -16,8 +16,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
-use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::flow::Flow;
+use reifydb_sdk::FlowChange;
 use reifydb_type::{CowVec, diagnostic::flow::flow_version_corrupted};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, trace};

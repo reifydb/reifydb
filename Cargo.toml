@@ -14,7 +14,7 @@ members = [
     "crates/macro-impl",
     "crates/network",
     "crates/abi",
-    "crates/flow-operator/sdk",
+    "crates/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -59,7 +59,7 @@ default-members = [
     "crates/macro-impl",
     "crates/network",
     "crates/abi",
-    "crates/flow-operator/sdk",
+    "crates/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -135,7 +135,7 @@ reifydb-engine = { version = "0.2.0", path = "crates/engine" }
 reifydb-hash = { version = "0.2.0", path = "crates/hash" }
 reifydb-network = { version = "0.2.0", path = "crates/network" }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
-reifydb-flow-operator-sdk = { version = "0.2.0", path = "crates/flow-operator/sdk" }
+reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
 reifydb-rql = { version = "0.2.0", path = "crates/rql" }
 reifydb-store-column = { version = "0.2.0", path = "crates/store-column" }
 reifydb-store-transaction = { version = "0.2.0", path = "crates/store-transaction" }

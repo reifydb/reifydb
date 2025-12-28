@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::StandardEngine;
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 use tracing::{trace, warn};
 
 use crate::{catalog::FlowCatalog, registry::FlowRegistry};

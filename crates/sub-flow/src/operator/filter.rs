@@ -3,8 +3,8 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_rql::expression::Expression;
+use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Params, RowNumber, Value, return_internal_error};
 
 use crate::{

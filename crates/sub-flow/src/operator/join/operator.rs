@@ -12,9 +12,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, execute::Executor, stack::Stack};
-use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
+use reifydb_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_type::{Fragment, Params, RowNumber, Type, Value, internal};
 use tracing::trace_span;
 

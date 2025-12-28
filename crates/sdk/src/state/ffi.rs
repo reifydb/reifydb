@@ -13,7 +13,7 @@ use reifydb_core::{
 use tracing::instrument;
 
 use crate::{
-	context::OperatorContext,
+	OperatorContext,
 	error::{FFIError, Result},
 };
 

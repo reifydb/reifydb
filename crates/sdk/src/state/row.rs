@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_type::RowNumber;
 
-use crate::{context::OperatorContext, error::Result};
+use crate::{OperatorContext, error::Result};
 
 /// Provides stable row numbers for keys with automatic Insert/Update detection
 ///
@@ -177,10 +177,9 @@ mod tests {
 	use reifydb_type::{RowNumber, Value};
 
 	use crate::{
-		FFIOperator, FFIOperatorMetadata, FlowChange,
-		context::OperatorContext,
+		FFIOperator, FFIOperatorMetadata, FlowChange, OperatorContext,
 		error::Result,
-		stateful::{FFIRawStatefulOperator, RowNumberProvider},
+		state::{FFIRawStatefulOperator, RowNumberProvider},
 		testing::{TestHarnessBuilder, helpers::encode_key},
 	};
 
