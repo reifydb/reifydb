@@ -52,18 +52,6 @@ impl Metrics {
 		*start = Some(Instant::now());
 	}
 
-	/// Record a successful request with its latency in microseconds
-	/// Note: For high-performance scenarios, use record_success_count_only()
-	/// with per-worker histograms and merge at the end.
-	pub fn record_success(&self, latency_us: u64) {
-		self.successful_requests.fetch_add(1, Ordering::Relaxed);
-		self.total_requests.fetch_add(1, Ordering::Relaxed);
-
-		// Record latency (clamp to valid range)
-		let latency = latency_us.clamp(1, 60_000_000);
-		self.latency_histogram.lock().unwrap().record(latency).ok();
-	}
-
 	/// Record only the success count (no latency) - for use with per-worker histograms
 	pub fn record_success_count_only(&self) {
 		self.successful_requests.fetch_add(1, Ordering::Relaxed);
