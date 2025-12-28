@@ -85,9 +85,9 @@ async fn main() {
 	.await
 	.unwrap();
 
-	sleep(Duration::from_millis(5)).await;
+	sleep(Duration::from_millis(10)).await;
 
-	for frame in db.query_as_root("from test.even_numbers take 10", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from test.even_numbers take 50", Params::None).await.unwrap() {
 		println!("{}", frame);
 	}
 

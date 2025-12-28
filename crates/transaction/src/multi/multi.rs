@@ -36,13 +36,13 @@ impl MultiVersionTransaction for TransactionMulti {
 
 use std::ops::Bound;
 
-use reifydb_core::interface::{Cdc, CdcBatch, SingleVersionValues};
+use reifydb_core::interface::{Cdc, CdcBatch, SingleVersionQueryTransaction, SingleVersionValues};
 
 /// Stub type for SingleVersionQuery - not available at this layer
 pub struct StubSingleVersionQuery;
 
 #[async_trait]
-impl reifydb_core::interface::SingleVersionQueryTransaction for StubSingleVersionQuery {
+impl SingleVersionQueryTransaction for StubSingleVersionQuery {
 	async fn get(&mut self, _key: &EncodedKey) -> reifydb_core::Result<Option<SingleVersionValues>> {
 		unimplemented!("SingleVersionQueryTransaction not available at transaction layer")
 	}
@@ -80,7 +80,7 @@ impl reifydb_core::interface::CdcQueryTransaction for StubCdcQuery {
 pub struct StubSingleVersionCommand;
 
 #[async_trait]
-impl reifydb_core::interface::SingleVersionQueryTransaction for StubSingleVersionCommand {
+impl SingleVersionQueryTransaction for StubSingleVersionCommand {
 	async fn get(&mut self, _key: &EncodedKey) -> reifydb_core::Result<Option<SingleVersionValues>> {
 		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
 	}

@@ -15,6 +15,7 @@ use std::{
 	sync::atomic::Ordering,
 };
 
+use mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, oneshot};
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
@@ -23,7 +24,7 @@ use crate::multi::watermark::{Closer, watermark::WatermarkInner};
 impl WatermarkInner {
 	pub(crate) async fn process(
 		&self,
-		mut rx: mpsc::UnboundedReceiver<super::watermark::Mark>,
+		mut rx: UnboundedReceiver<super::watermark::Mark>,
 		closer: Closer,
 		mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 	) {
@@ -76,17 +77,16 @@ impl WatermarkInner {
 			// first index, which isn't done.
 			let done_until = self.done_until.load(Ordering::SeqCst);
 
-			// Handle out-of-order processing gracefully
-			if done_until > idx {
-				// This version was already marked done, skip processing
-				// This can happen with concurrent operations
-				return;
-			}
+			// Marks can arrive out of order due to concurrent sends to the channel.
+			// If we skip late-arriving begin() marks, those versions will never be
+			// tracked and the watermark will incorrectly skip them.
+			// We must process ALL marks to ensure watermark advancement is correct.
 
 			let mut until = done_until;
 
 			while !indices.is_empty() {
 				let min = indices.peek().unwrap().0;
+
 				if let Some(done) = pending.get(&min) {
 					if done.gt(&0) {
 						break; // len(indices) will be > 0.
@@ -164,8 +164,7 @@ impl WatermarkInner {
 						}
 						None => {
 							// Channel closed
-							println!("watermark has been dropped.");
-							closer.done();
+								closer.done();
 							return;
 						}
 					}

@@ -20,7 +20,10 @@ use std::{
 };
 
 use reifydb_core::CommitVersion;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::{
+	spawn,
+	sync::{Mutex, mpsc, oneshot},
+};
 use tracing::instrument;
 
 use crate::multi::watermark::Closer;
@@ -65,8 +68,8 @@ impl Deref for WaterMark {
 
 impl WaterMark {
 	/// Create a new WaterMark with given name and closer.
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %task_name))]
-	pub async fn new(task_name: String, closer: Closer) -> Self {
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %_task_name))]
+	pub async fn new(_task_name: String, closer: Closer) -> Self {
 		let (tx, rx) = mpsc::unbounded_channel();
 
 		let inner = Arc::new(WatermarkInner {
@@ -80,7 +83,7 @@ impl WaterMark {
 		let shutdown_rx = closer.listen();
 
 		let processing_inner = inner.clone();
-		let task_handle = tokio::spawn(async move {
+		let task_handle = spawn(async move {
 			processing_inner.process(rx, closer, shutdown_rx).await;
 		});
 
@@ -230,7 +233,7 @@ mod tests {
 		// Spawn tasks that perform concurrent begin/done operations
 		for task_id in 0..NUM_TASKS {
 			let wm = watermark.clone();
-			let handle = tokio::spawn(async move {
+			let handle = spawn(async move {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
 					wm.begin(version);
@@ -270,7 +273,7 @@ mod tests {
 		for version in 1..=10 {
 			let wm = watermark.clone();
 			let counter = success_count.clone();
-			let handle = tokio::spawn(async move {
+			let handle = spawn(async move {
 				// Use timeout to avoid hanging if something goes wrong
 				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)).await {
 					counter.fetch_add(1, Ordering::Relaxed);

@@ -9,69 +9,85 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{CommitVersion, interface::TransactionId};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
+use reifydb_store_transaction::MultiVersionBatch;
 
-use crate::multi::transaction::{version::VersionProvider, *};
+use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
+use crate::multi::types::TransactionValue;
 
-pub enum TransactionKind {
-	Current(CommitVersion),
-	TimeTravel(CommitVersion),
+pub struct QueryTransaction {
+	pub(crate) engine: TransactionMulti,
+	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
-/// TransactionManagerRx is a read-only transaction manager.
-pub struct TransactionManagerQuery<L>
-where
-	L: VersionProvider,
-{
-	id: TransactionId,
-	engine: TransactionManager<L>,
-	transaction: TransactionKind,
+impl QueryTransaction {
+	pub async fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> crate::Result<Self> {
+		let tm = engine.tm.query(version).await?;
+		Ok(Self {
+			engine,
+			tm,
+		})
+	}
 }
 
-impl<L> TransactionManagerQuery<L>
-where
-	L: VersionProvider,
-{
-	pub fn new_current(id: TransactionId, engine: TransactionManager<L>, version: CommitVersion) -> Self {
-		Self {
-			id,
-			engine,
-			transaction: TransactionKind::Current(version),
-		}
-	}
-
-	pub fn new_time_travel(id: TransactionId, engine: TransactionManager<L>, version: CommitVersion) -> Self {
-		Self {
-			id,
-			engine,
-			transaction: TransactionKind::TimeTravel(version),
-		}
-	}
-
-	pub fn id(&self) -> TransactionId {
-		self.id
-	}
-
+impl QueryTransaction {
 	pub fn version(&self) -> CommitVersion {
-		match self.transaction {
-			TransactionKind::Current(version) => version,
-			TransactionKind::TimeTravel(version) => version,
-		}
+		self.tm.version()
 	}
 
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
-		self.transaction = TransactionKind::TimeTravel(version);
+		self.tm.read_as_of_version_exclusive(version);
 	}
-}
 
-impl<L> Drop for TransactionManagerQuery<L>
-where
-	L: VersionProvider,
-{
-	fn drop(&mut self) {
-		// time travel transaction have no effect on multi
-		if let TransactionKind::Current(version) = self.transaction {
-			self.engine.inner.done_query(version);
-		}
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) {
+		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
+	}
+
+	pub async fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
+		let version = self.tm.version();
+		Ok(self.engine.get(key, version).await?.map(Into::into))
+	}
+
+	pub async fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool> {
+		let version = self.tm.version();
+		Ok(self.engine.contains_key(key, version).await?)
+	}
+
+	pub async fn scan(&self) -> crate::Result<MultiVersionBatch> {
+		self.range(EncodedKeyRange::all()).await
+	}
+
+	pub async fn scan_rev(&self) -> crate::Result<MultiVersionBatch> {
+		self.range_rev(EncodedKeyRange::all()).await
+	}
+
+	pub async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
+		let version = self.tm.version();
+		Ok(self.engine.range_batch(range, version, batch_size).await?)
+	}
+
+	pub async fn range(&self, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
+		self.range_batch(range, 1024).await
+	}
+
+	pub async fn range_rev_batch(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<MultiVersionBatch> {
+		let version = self.tm.version();
+		Ok(self.engine.range_rev_batch(range, version, batch_size).await?)
+	}
+
+	pub async fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
+		self.range_rev_batch(range, 1024).await
+	}
+
+	pub async fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+		self.range(EncodedKeyRange::prefix(prefix)).await
+	}
+
+	pub async fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+		self.range_rev(EncodedKeyRange::prefix(prefix)).await
 	}
 }

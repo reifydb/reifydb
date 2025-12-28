@@ -30,6 +30,8 @@ impl Executor {
 		use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
 		use reifydb_core::interface::FlowStatus;
 
+		println!("[create_deferred_view_flow] Creating flow for view: {}", view.name);
+
 		let flow_def = CatalogStore::create_flow(
 			txn,
 			FlowToCreate {
@@ -41,8 +43,12 @@ impl Executor {
 		)
 		.await?;
 
+		println!("[create_deferred_view_flow] Created flow with ID: {}", flow_def.id.0);
+
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
 		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id).await?;
+
+		println!("[create_deferred_view_flow] Compiled flow successfully");
 		Ok(())
 	}
 }

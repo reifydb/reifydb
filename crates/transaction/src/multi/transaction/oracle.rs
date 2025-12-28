@@ -275,6 +275,9 @@ where
 			clock.next().await?
 		};
 
+		// This ensures watermark advancement respects transaction completion order
+		self.command.begin(commit_version);
+
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
 			let mut inner = self.inner.write().await;
@@ -291,7 +294,8 @@ where
 			super::oracle_cleanup::cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
 		}
 
-		self.command.done(commit_version);
+		// DO NOT call done() here - watermark should only advance AFTER storage write completes
+		// done_commit() will be called after MultiVersionCommit::commit() finishes
 
 		Ok(CreateCommitResult::Success(commit_version))
 	}

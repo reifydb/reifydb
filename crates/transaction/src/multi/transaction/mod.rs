@@ -12,7 +12,6 @@
 use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-pub use command::*;
 use oracle::*;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
 use reifydb_store_transaction::{
@@ -27,20 +26,21 @@ pub use crate::multi::types::*;
 use crate::single::{TransactionSingle, TransactionSvl};
 
 mod command;
-mod command_tx;
+pub mod manager;
 mod oracle;
 mod oracle_cleanup;
-pub mod query;
-mod query_tx;
+mod query;
 mod version;
 
-pub use command_tx::CommandTransaction;
+pub use command::CommandTransaction;
 pub use oracle::MAX_COMMITTED_TXNS;
-pub use query_tx::QueryTransaction;
+pub use query::QueryTransaction;
 
 use crate::multi::{
-	AwaitWatermarkError, conflict::ConflictManager, pending::PendingWrites,
-	transaction::query::TransactionManagerQuery,
+	AwaitWatermarkError,
+	conflict::ConflictManager,
+	pending::PendingWrites,
+	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
 };
 
 pub struct TransactionManager<L>
