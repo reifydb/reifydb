@@ -3,17 +3,24 @@
 
 use std::{
 	collections::HashMap,
+	hash::Hash,
 	ops::{Deref, Index, IndexMut},
 };
 
-use reifydb_type::{Fragment, RowNumber, Value};
+use indexmap::IndexMap;
+use reifydb_type::{Fragment, RowNumber, Type, Value};
 
 use crate::{
-	interface::resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
+	Row,
+	interface::{
+		TableDef, ViewDef,
+		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
+	},
 	util::CowVec,
 	value::{
 		column::{Column, ColumnData, headers::ColumnHeaders},
 		container::UndefinedContainer,
+		encoded::EncodedValuesNamedLayout,
 	},
 };
 
@@ -133,6 +140,16 @@ impl Columns {
 }
 
 impl Columns {
+	/// Get the row number (for single-row Columns). Panics if Columns has 0 or multiple rows.
+	pub fn number(&self) -> RowNumber {
+		assert_eq!(self.row_count(), 1, "number() requires exactly 1 row, got {}", self.row_count());
+		if self.row_numbers.is_empty() {
+			RowNumber(0)
+		} else {
+			self.row_numbers[0]
+		}
+	}
+
 	pub fn shape(&self) -> (usize, usize) {
 		let row_count = if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
@@ -229,6 +246,40 @@ impl Columns {
 		}
 	}
 
+	/// Create empty Columns (0 rows) with schema from a TableDef
+	pub fn from_table_def(table: &TableDef) -> Self {
+		let columns: Vec<Column> = table
+			.columns
+			.iter()
+			.map(|col| Column {
+				name: Fragment::internal(&col.name),
+				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+			})
+			.collect();
+
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
+	}
+
+	/// Create empty Columns (0 rows) with schema from a ViewDef
+	pub fn from_view_def(view: &ViewDef) -> Self {
+		let columns: Vec<Column> = view
+			.columns
+			.iter()
+			.map(|col| Column {
+				name: Fragment::internal(&col.name),
+				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+			})
+			.collect();
+
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
+	}
+
 	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer) -> Self {
 		let _source = ringbuffer.clone();
 
@@ -268,6 +319,124 @@ impl Columns {
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
+		}
+	}
+}
+
+impl Columns {
+	/// Extract a subset of rows by indices, returning a new Columns
+	pub fn extract_by_indices(&self, indices: &[usize]) -> Columns {
+		if indices.is_empty() {
+			return Columns::empty();
+		}
+
+		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.row_numbers[i]).collect()
+		};
+
+		let new_columns: Vec<Column> = self
+			.columns
+			.iter()
+			.map(|col| {
+				let mut new_data = ColumnData::with_capacity(col.data().get_type(), indices.len());
+				for &idx in indices {
+					new_data.push_value(col.data().get_value(idx));
+				}
+				Column {
+					name: col.name.clone(),
+					data: new_data,
+				}
+			})
+			.collect();
+
+		Columns::with_row_numbers(new_columns, new_row_numbers)
+	}
+
+	/// Extract a single row by index, returning a new Columns with 1 row
+	pub fn extract_row(&self, index: usize) -> Columns {
+		self.extract_by_indices(&[index])
+	}
+
+	/// Partition Columns into groups based on keys (one key per row).
+	/// Returns an IndexMap preserving insertion order of first occurrence.
+	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {
+		assert_eq!(keys.len(), self.row_count(), "keys length must match row count");
+
+		// Group indices by key
+		let mut key_to_indices: IndexMap<K, Vec<usize>> = IndexMap::new();
+		for (idx, key) in keys.iter().enumerate() {
+			key_to_indices.entry(key.clone()).or_default().push(idx);
+		}
+
+		// Convert to Columns
+		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
+	}
+
+	/// Create Columns from a Row by decoding its encoded values
+	pub fn from_row(row: &Row) -> Self {
+		let mut columns = Vec::new();
+
+		for (idx, field) in row.layout.fields().fields.iter().enumerate() {
+			let value = row.layout.get_value_by_idx(&row.encoded, idx);
+
+			// Use the field type for the column data, handling undefined values
+			let column_type = if value.get_type() == Type::Undefined {
+				field.r#type
+			} else {
+				value.get_type()
+			};
+
+			let mut data = if column_type == Type::Undefined {
+				ColumnData::undefined(0)
+			} else {
+				ColumnData::with_capacity(column_type, 1)
+			};
+			data.push_value(value);
+
+			let name = row.layout.get_name(idx).expect("EncodedRowNamedLayout missing name for field");
+
+			columns.push(Column {
+				name: Fragment::internal(name),
+				data,
+			});
+		}
+
+		Self {
+			row_numbers: CowVec::new(vec![row.number]),
+			columns: CowVec::new(columns),
+		}
+	}
+
+	/// Convert Columns back to a Row (assumes single row)
+	/// Panics if Columns contains more than 1 row
+	pub fn to_single_row(&self) -> Row {
+		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
+		assert_eq!(
+			self.row_numbers.len(),
+			1,
+			"to_row() requires exactly 1 row number, got {}",
+			self.row_numbers.len()
+		);
+
+		let row_number = self.row_numbers.first().unwrap().clone();
+
+		// Build names and types for the layout
+		let names_and_types: Vec<(String, Type)> =
+			self.columns.iter().map(|col| (col.name().text().to_string(), col.data().get_type())).collect();
+
+		let layout = EncodedValuesNamedLayout::new(names_and_types.into_iter());
+		let mut encoded = layout.allocate();
+
+		// Get values and set them
+		let values: Vec<Value> = self.columns.iter().map(|col| col.data().get_value(0)).collect();
+		layout.set_values(&mut encoded, &values);
+
+		Row {
+			number: row_number,
+			encoded,
+			layout,
 		}
 	}
 }

@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	Row,
-	value::encoded::{EncodedKey, EncodedValuesLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedKey, EncodedValuesLayout},
+	},
 };
 use reifydb_type::{RowNumber, Value};
 
@@ -73,7 +76,7 @@ impl<'a> FlowChangeAssertion<'a> {
 	}
 
 	/// Get all insert diffs
-	pub fn inserts(&self) -> Vec<&Row> {
+	pub fn inserts(&self) -> Vec<&Columns> {
 		self.change
 			.diffs
 			.iter()
@@ -87,7 +90,7 @@ impl<'a> FlowChangeAssertion<'a> {
 	}
 
 	/// Get all update diffs
-	pub fn updates(&self) -> Vec<(&Row, &Row)> {
+	pub fn updates(&self) -> Vec<(&Columns, &Columns)> {
 		self.change
 			.diffs
 			.iter()
@@ -102,7 +105,7 @@ impl<'a> FlowChangeAssertion<'a> {
 	}
 
 	/// Get all remove diffs
-	pub fn removes(&self) -> Vec<&Row> {
+	pub fn removes(&self) -> Vec<&Columns> {
 		self.change
 			.diffs
 			.iter()
@@ -150,7 +153,7 @@ impl<'a> DiffAssertion<'a> {
 	}
 
 	/// Assert this is an insert diff
-	pub fn is_insert(&self) -> &Row {
+	pub fn is_insert(&self) -> &Columns {
 		match self.diff {
 			FlowDiff::Insert {
 				post,
@@ -160,7 +163,7 @@ impl<'a> DiffAssertion<'a> {
 	}
 
 	/// Assert this is an update diff
-	pub fn is_update(&self) -> (&Row, &Row) {
+	pub fn is_update(&self) -> (&Columns, &Columns) {
 		match self.diff {
 			FlowDiff::Update {
 				pre,
@@ -171,7 +174,7 @@ impl<'a> DiffAssertion<'a> {
 	}
 
 	/// Assert this is a remove diff
-	pub fn is_remove(&self) -> &Row {
+	pub fn is_remove(&self) -> &Columns {
 		match self.diff {
 			FlowDiff::Remove {
 				pre,
@@ -363,7 +366,9 @@ mod tests {
 		// Need to keep assertion alive for lifetime
 		let change_assert = change.assert();
 		let diff_assert = change_assert.diff_at(0);
-		let insert_row = diff_assert.is_insert();
+		let insert_columns = diff_assert.is_insert();
+		// Convert to Row for assertion (Columns has to_row())
+		let insert_row = insert_columns.to_single_row();
 		insert_row.assert().has_number(1).has_values(&[Value::Int8(10i64)]);
 	}
 

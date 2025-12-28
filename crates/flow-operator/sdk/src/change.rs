@@ -1,6 +1,6 @@
 //! Builder for constructing FlowChange objects
 
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
+use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::column::Columns};
 
 use crate::{FlowChange, FlowDiff};
 
@@ -25,16 +25,24 @@ impl FlowChangeBuilder {
 		}
 	}
 
-	/// Add an insert diff
-	pub fn insert(mut self, row: Row) -> Self {
+	/// Add an insert diff with Columns
+	pub fn insert(mut self, post: Columns) -> Self {
 		self.diffs.push(FlowDiff::Insert {
-			post: row,
+			post,
 		});
 		self
 	}
 
-	/// Add an update diff
-	pub fn update(mut self, pre: Row, post: Row) -> Self {
+	/// Add an insert diff from a Row (converts to Columns)
+	pub fn insert_row(mut self, row: Row) -> Self {
+		self.diffs.push(FlowDiff::Insert {
+			post: Columns::from_row(&row),
+		});
+		self
+	}
+
+	/// Add an update diff with Columns
+	pub fn update(mut self, pre: Columns, post: Columns) -> Self {
 		self.diffs.push(FlowDiff::Update {
 			pre,
 			post,
@@ -42,10 +50,27 @@ impl FlowChangeBuilder {
 		self
 	}
 
-	/// Add a remove diff
-	pub fn remove(mut self, row: Row) -> Self {
+	/// Add an update diff from Rows (converts to Columns)
+	pub fn update_rows(mut self, pre: Row, post: Row) -> Self {
+		self.diffs.push(FlowDiff::Update {
+			pre: Columns::from_row(&pre),
+			post: Columns::from_row(&post),
+		});
+		self
+	}
+
+	/// Add a remove diff with Columns
+	pub fn remove(mut self, pre: Columns) -> Self {
 		self.diffs.push(FlowDiff::Remove {
-			pre: row,
+			pre,
+		});
+		self
+	}
+
+	/// Add a remove diff from a Row (converts to Columns)
+	pub fn remove_row(mut self, row: Row) -> Self {
+		self.diffs.push(FlowDiff::Remove {
+			pre: Columns::from_row(&row),
 		});
 		self
 	}

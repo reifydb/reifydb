@@ -8,6 +8,7 @@
 
 use std::{mem::MaybeUninit, slice::from_raw_parts};
 
+use reifydb_abi::{ColumnDefFFI, FFI_NOT_FOUND, FFI_OK, NamespaceFFI, PrimaryKeyFFI, TableFFI};
 use reifydb_core::{
 	CommitVersion,
 	interface::{
@@ -15,7 +16,6 @@ use reifydb_core::{
 		TableId,
 	},
 };
-use reifydb_flow_operator_abi::{FFI_NOT_FOUND, FFI_OK, FFIColumnDef, FFINamespaceDef, FFIPrimaryKeyDef, FFITableDef};
 use reifydb_type::{
 	Constraint, Type, TypeConstraint,
 	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -34,7 +34,7 @@ pub(super) fn raw_catalog_find_namespace(
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace;
 
 		// Allocate output buffer on stack
-		let mut output = MaybeUninit::<FFINamespaceDef>::uninit();
+		let mut output = MaybeUninit::<NamespaceFFI>::uninit();
 
 		// Call FFI callback
 		let result = callback(ctx.ctx, namespace_id.0, version.0, output.as_mut_ptr());
@@ -71,7 +71,7 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 		let name_bytes = name.as_bytes();
 
 		// Allocate output buffer on stack
-		let mut output = MaybeUninit::<FFINamespaceDef>::uninit();
+		let mut output = MaybeUninit::<NamespaceFFI>::uninit();
 
 		// Call FFI callback
 		let result = callback(ctx.ctx, name_bytes.as_ptr(), name_bytes.len(), version.0, output.as_mut_ptr());
@@ -105,7 +105,7 @@ pub(super) fn raw_catalog_find_table(
 		let callback = (*ctx.ctx).callbacks.catalog.find_table;
 
 		// Allocate output buffer on stack
-		let mut output = MaybeUninit::<FFITableDef>::uninit();
+		let mut output = MaybeUninit::<TableFFI>::uninit();
 
 		// Call FFI callback
 		let result = callback(ctx.ctx, table_id.0, version.0, output.as_mut_ptr());
@@ -143,7 +143,7 @@ pub(super) fn raw_catalog_find_table_by_name(
 		let name_bytes = name.as_bytes();
 
 		// Allocate output buffer on stack
-		let mut output = MaybeUninit::<FFITableDef>::uninit();
+		let mut output = MaybeUninit::<TableFFI>::uninit();
 
 		// Call FFI callback
 		let result = callback(
@@ -173,8 +173,8 @@ pub(super) fn raw_catalog_find_table_by_name(
 	}
 }
 
-/// Unmarshal FFINamespaceDef to NamespaceDef
-unsafe fn unmarshal_namespace(ffi_ns: &FFINamespaceDef) -> Result<NamespaceDef, FFIError> {
+/// Unmarshal NamespaceFFI to NamespaceDef
+unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<NamespaceDef, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_ns.name.ptr.is_null() && ffi_ns.name.len > 0 {
 		unsafe { from_raw_parts(ffi_ns.name.ptr, ffi_ns.name.len) }
@@ -192,8 +192,8 @@ unsafe fn unmarshal_namespace(ffi_ns: &FFINamespaceDef) -> Result<NamespaceDef, 
 	})
 }
 
-/// Unmarshal FFITableDef to TableDef
-unsafe fn unmarshal_table(ffi_table: &FFITableDef) -> Result<TableDef, FFIError> {
+/// Unmarshal TableFFI to TableDef
+unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<TableDef, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_table.name.ptr.is_null() && ffi_table.name.len > 0 {
 		unsafe { from_raw_parts(ffi_table.name.ptr, ffi_table.name.len) }
@@ -230,8 +230,8 @@ unsafe fn unmarshal_table(ffi_table: &FFITableDef) -> Result<TableDef, FFIError>
 	})
 }
 
-/// Unmarshal FFIColumnDef to ColumnDef
-unsafe fn unmarshal_column(ffi_col: &FFIColumnDef) -> Result<ColumnDef, FFIError> {
+/// Unmarshal ColumnDefFFI to ColumnDef
+unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDef, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
 		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
@@ -262,8 +262,8 @@ unsafe fn unmarshal_column(ffi_col: &FFIColumnDef) -> Result<ColumnDef, FFIError
 	})
 }
 
-/// Unmarshal FFIPrimaryKeyDef to PrimaryKeyDef
-unsafe fn unmarshal_primary_key(ffi_pk: &FFIPrimaryKeyDef) -> Result<PrimaryKeyDef, FFIError> {
+/// Unmarshal PrimaryKeyFFI to PrimaryKeyDef
+unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKeyDef, FFIError> {
 	// Get column IDs
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
 		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }

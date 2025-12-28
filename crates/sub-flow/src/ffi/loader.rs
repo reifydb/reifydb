@@ -7,11 +7,11 @@ use std::{
 };
 
 use libloading::{Library, Symbol};
-use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{
-	BufferFFI, CURRENT_API, FFIOperatorColumnDefs, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn,
-	OPERATOR_MAGIC,
+use reifydb_abi::{
+	BufferFFI, CURRENT_API, OPERATOR_MAGIC, OperatorColumnDefsFFI, OperatorCreateFnFFI, OperatorDescriptorFFI,
+	OperatorMagicFnFFI,
 };
+use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
 use crate::operator::FFIOperator;
@@ -71,7 +71,7 @@ impl FFIOperatorLoader {
 		let library = self.loaded_libraries.get(path).unwrap();
 
 		// Check for magic symbol
-		let magic_result: Result<Symbol<FFIOperatorMagicFn>, _> =
+		let magic_result: Result<Symbol<OperatorMagicFnFFI>, _> =
 			unsafe { library.get(b"ffi_operator_magic\0") };
 
 		match magic_result {
@@ -88,9 +88,9 @@ impl FFIOperatorLoader {
 	}
 
 	/// Get the operator descriptor from a loaded library
-	fn get_descriptor(&self, library: &Library) -> FFIResult<FFIOperatorDescriptor> {
+	fn get_descriptor(&self, library: &Library) -> FFIResult<OperatorDescriptorFFI> {
 		unsafe {
-			let get_descriptor: Symbol<extern "C" fn() -> *const FFIOperatorDescriptor> =
+			let get_descriptor: Symbol<extern "C" fn() -> *const OperatorDescriptorFFI> =
 				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
 					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
 				})?;
@@ -101,7 +101,7 @@ impl FFIOperatorLoader {
 			}
 
 			// Copy the descriptor fields
-			Ok(FFIOperatorDescriptor {
+			Ok(OperatorDescriptorFFI {
 				api: (*descriptor_ptr).api,
 				operator: (*descriptor_ptr).operator,
 				version: (*descriptor_ptr).version,
@@ -118,7 +118,7 @@ impl FFIOperatorLoader {
 	/// Returns the operator name and API version
 	fn validate_and_register(
 		&mut self,
-		descriptor: &FFIOperatorDescriptor,
+		descriptor: &OperatorDescriptorFFI,
 		path: &Path,
 	) -> FFIResult<(String, u32)> {
 		// Verify API version
@@ -207,8 +207,8 @@ impl FFIOperatorLoader {
 
 		// Get the create function and instantiate operator
 		let library = self.loaded_libraries.get(path).unwrap();
-		let create_fn: FFIOperatorCreateFn = unsafe {
-			let create_symbol: Symbol<FFIOperatorCreateFn> = library
+		let create_fn: OperatorCreateFnFFI = unsafe {
+			let create_symbol: Symbol<OperatorCreateFnFFI> = library
 				.get(b"ffi_operator_create\0")
 				.map_err(|e| FFIError::Other(format!("Failed to find ffi_operator_create: {}", e)))?;
 
@@ -292,7 +292,7 @@ impl FFIOperatorLoader {
 		for (path, library) in &self.loaded_libraries {
 			// Get the operator descriptor from the library
 			unsafe {
-				let get_descriptor: Result<Symbol<extern "C" fn() -> *const FFIOperatorDescriptor>, _> =
+				let get_descriptor: Result<Symbol<extern "C" fn() -> *const OperatorDescriptorFFI>, _> =
 					library.get(b"ffi_operator_get_descriptor\0");
 
 				if let Ok(get_descriptor) = get_descriptor {
@@ -340,11 +340,11 @@ pub struct ColumnDefInfo {
 	pub description: String,
 }
 
-/// Extract column definitions from an FFIOperatorColumnDefs
+/// Extract column definitions from an OperatorColumnDefsFFI
 ///
 /// # Safety
 /// The column_defs must have valid columns pointer for column_count elements
-unsafe fn extract_column_defs(column_defs: &FFIOperatorColumnDefs) -> Vec<ColumnDefInfo> {
+unsafe fn extract_column_defs(column_defs: &OperatorColumnDefsFFI) -> Vec<ColumnDefInfo> {
 	use reifydb_type::{FFITypeConstraint, TypeConstraint};
 
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {

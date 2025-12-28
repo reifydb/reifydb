@@ -1,24 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
-use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_core::{
+	interface::FlowNodeId,
+	value::column::{Column, Columns},
+};
+use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, RowNumber, Type};
+use reifydb_type::{Fragment, Params, RowNumber};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
-// Static empty params instance for use in RowEvaluationContext
+// Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
+static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 pub struct MapOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
+	column_evaluator: StandardColumnEvaluator,
 }
 
 impl MapOperator {
@@ -27,7 +32,58 @@ impl MapOperator {
 			parent,
 			node,
 			expressions,
+			column_evaluator: StandardColumnEvaluator::default(),
 		}
+	}
+
+	/// Project all rows in Columns using expressions
+	fn project(&self, columns: &Columns) -> crate::Result<Columns> {
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(Columns::empty());
+		}
+
+		let ctx = ColumnEvaluationContext {
+			target: None,
+			columns: columns.clone(),
+			row_count,
+			take: None,
+			params: &EMPTY_PARAMS,
+			stack: &EMPTY_STACK,
+			is_aggregate_context: false,
+		};
+
+		let mut result_columns = Vec::with_capacity(self.expressions.len());
+
+		for expr in &self.expressions {
+			// Evaluate the expression on the entire batch
+			let evaluated_col = self.column_evaluator.evaluate(&ctx, expr)?;
+
+			// Determine the column name from the expression
+			let field_name = match expr {
+				Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
+				Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
+				Expression::AccessSource(access_expr) => access_expr.column.name.text().to_string(),
+				_ => expr.full_fragment_owned().text().to_string(),
+			};
+
+			// Create a new column with the proper name
+			let named_column = Column {
+				name: Fragment::internal(field_name),
+				data: evaluated_col.data().clone(),
+			};
+
+			result_columns.push(named_column);
+		}
+
+		// Preserve row numbers from the input
+		let row_numbers = if columns.row_numbers.is_empty() {
+			Vec::new()
+		} else {
+			columns.row_numbers.iter().cloned().collect()
+		};
+
+		Ok(Columns::with_row_numbers(result_columns, row_numbers))
 	}
 }
 
@@ -41,7 +97,7 @@ impl Operator for MapOperator {
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
-		evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut result = Vec::new();
 
@@ -50,34 +106,42 @@ impl Operator for MapOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					let projected = match self.project_row(&post, evaluator) {
+					let projected = match self.project(&post) {
 						Ok(projected) => projected,
 						Err(err) => {
 							panic!("{:#?}", err)
 						}
 					};
 
-					result.push(FlowDiff::Insert {
-						post: projected,
-					});
+					if !projected.is_empty() {
+						result.push(FlowDiff::Insert {
+							post: projected,
+						});
+					}
 				}
 				FlowDiff::Update {
 					pre,
 					post,
 				} => {
-					let projected = self.project_row(&post, evaluator)?;
-					result.push(FlowDiff::Update {
-						pre,
-						post: projected,
-					});
+					let projected_post = self.project(&post)?;
+					let projected_pre = self.project(&pre)?;
+
+					if !projected_post.is_empty() {
+						result.push(FlowDiff::Update {
+							pre: projected_pre,
+							post: projected_post,
+						});
+					}
 				}
 				FlowDiff::Remove {
 					pre,
 				} => {
-					// pass through
-					result.push(FlowDiff::Remove {
-						pre,
-					});
+					let projected_pre = self.project(&pre)?;
+					if !projected_pre.is_empty() {
+						result.push(FlowDiff::Remove {
+							pre: projected_pre,
+						});
+					}
 				}
 			}
 		}
@@ -85,87 +149,7 @@ impl Operator for MapOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows).await
-	}
-}
-
-impl MapOperator {
-	fn project_row(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<Row> {
-		let ctx = RowEvaluationContext {
-			row: row.clone(),
-			target: None,
-			params: &EMPTY_PARAMS,
-		};
-
-		let mut values = Vec::with_capacity(self.expressions.len());
-		let mut field_names = Vec::with_capacity(self.expressions.len());
-		let mut field_types = Vec::with_capacity(self.expressions.len());
-
-		for (_i, expr) in self.expressions.iter().enumerate() {
-			// Try to evaluate the expression normally first
-			let value = match evaluator.evaluate(&ctx, expr) {
-				Ok(v) => v,
-				Err(e) => {
-					// If it's an AccessSource expression and evaluation failed,
-					// try to evaluate just the column name without the source
-					if let Expression::AccessSource(access_expr) = expr {
-						let col_name = access_expr.column.name.text();
-
-						// Get the column by name using the new API
-						if let Some(value) = row.layout.get_value(&row.encoded, col_name) {
-							value
-						} else {
-							return Err(e);
-						}
-					} else if let Expression::Alias(alias_expr) = expr {
-						// For alias expressions, try to handle the inner expression
-						if let Expression::AccessSource(access_expr) = &*alias_expr.expression {
-							let col_name = access_expr.column.name.text();
-
-							// Get the column by name using the new API
-							if let Some(value) =
-								row.layout.get_value(&row.encoded, col_name)
-							{
-								value
-							} else {
-								return Err(e);
-							}
-						} else {
-							return Err(e);
-						}
-					} else {
-						return Err(e);
-					}
-				}
-			};
-
-			values.push(value.clone());
-
-			let field_name = match expr {
-				Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
-				Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
-				Expression::AccessSource(access_expr) => access_expr.column.name.text().to_string(),
-				_ => expr.full_fragment_owned().text().to_string(),
-			};
-
-			let field_type = value.get_type();
-
-			field_names.push(field_name);
-			field_types.push(field_type);
-		}
-
-		let fields: Vec<(String, Type)> = field_names.into_iter().zip(field_types.into_iter()).collect();
-		let layout = EncodedValuesNamedLayout::new(fields);
-
-		// Allocate and populate the new encoded
-		let mut encoded_row = layout.allocate();
-		layout.set_values(&mut encoded_row, &values);
-
-		Ok(Row {
-			number: row.number,
-			encoded: encoded_row,
-			layout,
-		})
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows).await
 	}
 }

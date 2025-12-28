@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, Time, Uint, Uuid4, Uuid7};
+use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, Time, Type, Uint, Uuid4, Uuid7};
 
 use crate::{
 	BitVec,
@@ -1043,5 +1043,50 @@ impl ColumnData {
 
 	pub fn undefined(len: usize) -> Self {
 		ColumnData::Undefined(UndefinedContainer::new(len))
+	}
+
+	/// Create typed column data with all undefined values (bitvec all false).
+	pub fn undefined_typed(ty: Type, len: usize) -> Self {
+		match ty {
+			Type::Boolean => Self::bool_with_bitvec(vec![false; len], BitVec::repeat(len, false)),
+			Type::Float4 => Self::float4_with_bitvec(vec![0.0f32; len], BitVec::repeat(len, false)),
+			Type::Float8 => Self::float8_with_bitvec(vec![0.0f64; len], BitVec::repeat(len, false)),
+			Type::Int1 => Self::int1_with_bitvec(vec![0i8; len], BitVec::repeat(len, false)),
+			Type::Int2 => Self::int2_with_bitvec(vec![0i16; len], BitVec::repeat(len, false)),
+			Type::Int4 => Self::int4_with_bitvec(vec![0i32; len], BitVec::repeat(len, false)),
+			Type::Int8 => Self::int8_with_bitvec(vec![0i64; len], BitVec::repeat(len, false)),
+			Type::Int16 => Self::int16_with_bitvec(vec![0i128; len], BitVec::repeat(len, false)),
+			Type::Utf8 => Self::utf8_with_bitvec(vec![String::new(); len], BitVec::repeat(len, false)),
+			Type::Uint1 => Self::uint1_with_bitvec(vec![0u8; len], BitVec::repeat(len, false)),
+			Type::Uint2 => Self::uint2_with_bitvec(vec![0u16; len], BitVec::repeat(len, false)),
+			Type::Uint4 => Self::uint4_with_bitvec(vec![0u32; len], BitVec::repeat(len, false)),
+			Type::Uint8 => Self::uint8_with_bitvec(vec![0u64; len], BitVec::repeat(len, false)),
+			Type::Uint16 => Self::uint16_with_bitvec(vec![0u128; len], BitVec::repeat(len, false)),
+			Type::Date => Self::date_with_bitvec(vec![Date::default(); len], BitVec::repeat(len, false)),
+			Type::DateTime => {
+				Self::datetime_with_bitvec(vec![DateTime::default(); len], BitVec::repeat(len, false))
+			}
+			Type::Time => Self::time_with_bitvec(vec![Time::default(); len], BitVec::repeat(len, false)),
+			Type::Duration => {
+				Self::duration_with_bitvec(vec![Duration::default(); len], BitVec::repeat(len, false))
+			}
+			Type::Blob => Self::blob_with_bitvec(vec![Blob::new(vec![]); len], BitVec::repeat(len, false)),
+			Type::Uuid4 => Self::uuid4_with_bitvec(vec![Uuid4::default(); len], BitVec::repeat(len, false)),
+			Type::Uuid7 => Self::uuid7_with_bitvec(vec![Uuid7::default(); len], BitVec::repeat(len, false)),
+			Type::IdentityId => Self::identity_id_with_bitvec(
+				vec![IdentityId::default(); len],
+				BitVec::repeat(len, false),
+			),
+			Type::Int => Self::int_with_bitvec(vec![Int::default(); len], BitVec::repeat(len, false)),
+			Type::Uint => Self::uint_with_bitvec(vec![Uint::default(); len], BitVec::repeat(len, false)),
+			Type::Decimal {
+				..
+			} => Self::decimal_with_bitvec(vec![Decimal::from(0); len], BitVec::repeat(len, false)),
+			Type::Any => Self::any_with_bitvec(
+				vec![Box::new(reifydb_type::Value::Undefined); len],
+				BitVec::repeat(len, false),
+			),
+			Type::Undefined => Self::undefined(len),
+		}
 	}
 }

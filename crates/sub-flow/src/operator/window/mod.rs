@@ -13,7 +13,7 @@ use reifydb_core::{
 		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 	},
 };
-use reifydb_engine::{ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardRowEvaluator};
+use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
@@ -63,7 +63,7 @@ impl WindowEvent {
 
 		// Debug: Extract and log the actual values being stored
 		let mut stored_values = Vec::new();
-		for (i, _field) in row.layout.fields().fields.iter().enumerate() {
+		for (i, field) in row.layout.fields().fields.iter().enumerate() {
 			let value = row.layout.get_value_by_idx(&row.encoded, i);
 			stored_values.push(format!("{:?}", value));
 		}
@@ -170,27 +170,103 @@ impl WindowOperator {
 		clock::now_millis()
 	}
 
-	/// Compute the group key for a row (used for partitioning windows by group_by expressions)
-	pub fn compute_group_key(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<Hash128> {
-		if self.group_by.is_empty() {
-			// Single global window
-			return Ok(Hash128::from(0u128));
+	/// Compute group keys for all rows in Columns
+	pub fn compute_group_keys(&self, columns: &Columns) -> crate::Result<Vec<Hash128>> {
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
 		}
 
-		let ctx = RowEvaluationContext {
-			row: row.clone(),
+		if self.group_by.is_empty() {
+			// Single global window - all rows have the same hash
+			return Ok(vec![Hash128::from(0u128); row_count]);
+		}
+
+		let ctx = ColumnEvaluationContext {
 			target: None,
+			columns: columns.clone(),
+			row_count,
+			take: None,
 			params: &EMPTY_PARAMS,
+			stack: &EMPTY_STACK,
+			is_aggregate_context: false,
 		};
 
-		let mut data = Vec::new();
+		// Evaluate each group_by expression on the entire batch
+		let mut group_columns: Vec<Column> = Vec::new();
 		for expr in &self.group_by {
-			let value = evaluator.evaluate(&ctx, expr)?;
-			let value_str = value.to_string();
-			data.extend_from_slice(value_str.as_bytes());
+			let col = self.column_evaluator.evaluate(&ctx, expr)?;
+			group_columns.push(col);
 		}
 
-		Ok(xxh3_128(&data))
+		// Compute hash for each row based on group column values
+		let mut hashes = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let mut data = Vec::new();
+			for col in &group_columns {
+				let value = col.data().get_value(row_idx);
+				let value_str = value.to_string();
+				data.extend_from_slice(value_str.as_bytes());
+			}
+			hashes.push(xxh3_128(&data));
+		}
+
+		Ok(hashes)
+	}
+
+	/// Extract timestamps for all rows in Columns
+	pub fn extract_timestamps(&self, columns: &Columns) -> crate::Result<Vec<u64>> {
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
+		}
+
+		match &self.window_type {
+			WindowType::Time(time_mode) => match time_mode {
+				WindowTimeMode::Processing => {
+					// All rows get the current processing timestamp
+					let now = self.current_timestamp();
+					Ok(vec![now; row_count])
+				}
+				WindowTimeMode::EventTime(column_name) => {
+					// Find the timestamp column and extract all values
+					if let Some(col) = columns.column(column_name) {
+						let mut timestamps = Vec::with_capacity(row_count);
+						for row_idx in 0..row_count {
+							let value = col.data().get_value(row_idx);
+							// Convert value to u64 timestamp
+							let ts = match value {
+								reifydb_type::Value::Int8(v) => v as u64,
+								reifydb_type::Value::Uint8(v) => v,
+								reifydb_type::Value::Int4(v) => v as u64,
+								reifydb_type::Value::Uint4(v) => v as u64,
+								reifydb_type::Value::DateTime(dt) => {
+									dt.timestamp_millis() as u64
+								}
+								_ => {
+									return Err(Error(internal!(
+										"Cannot convert {:?} to timestamp",
+										value.get_type()
+									)));
+								}
+							};
+							timestamps.push(ts);
+						}
+						Ok(timestamps)
+					} else {
+						Err(Error(internal!(
+							"Event time column '{}' not found in columns",
+							column_name
+						)))
+					}
+				}
+			},
+			WindowType::Count => {
+				// For count-based windows, return current timestamp for all rows
+				let now = self.current_timestamp();
+				Ok(vec![now; row_count])
+			}
+		}
 	}
 
 	/// Create a window key for storage
@@ -232,36 +308,19 @@ impl WindowOperator {
 	}
 
 	/// Extract group values from window events (all events in a group have the same group values)
+	/// TODO: Refactor to use column-based evaluation when window operator is needed
 	pub fn extract_group_values(
 		&self,
 		events: &[WindowEvent],
-		row_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<(Vec<Value>, Vec<String>)> {
 		if events.is_empty() || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
 
-		// Take the first event since all events in a group have the same group values
-		let first_event = &events[0];
-		let first_row = first_event.to_row();
-
-		let ctx = RowEvaluationContext {
-			row: first_row,
-			target: None,
-			params: &EMPTY_PARAMS,
-		};
-
-		let mut group_values = Vec::new();
-		let mut group_names = Vec::new();
-
-		for group_expr in &self.group_by {
-			let value = row_evaluator.evaluate(&ctx, group_expr)?;
-			let name = column_name_from_expression(group_expr).text().to_string();
-			group_values.push(value);
-			group_names.push(name);
-		}
-
-		Ok((group_values, group_names))
+		// DISABLED: Window operator needs refactoring to use column-based evaluation
+		// For now, return empty group values since window operator is not in use
+		unimplemented!("Window operator extract_group_values needs refactoring to use column-based evaluation")
 	}
 
 	/// Convert window events to columnar format for aggregation
@@ -302,7 +361,7 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
-		row_evaluator: &StandardRowEvaluator,
+		row_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
@@ -502,7 +561,7 @@ impl Operator for WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		evaluator: &StandardRowEvaluator,
+		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		// For window operators, we need async operation but trait requires sync.
 		// We'll need to refactor the architecture to support this properly.
@@ -514,7 +573,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	async fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		todo!()
 	}
 }
@@ -554,9 +613,5 @@ impl WindowOperator {
 			}
 			_ => false,
 		}
-	}
-
-	fn get_rows(&self, _rows: &[reifydb_type::RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
 	}
 }

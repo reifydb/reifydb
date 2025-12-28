@@ -6,7 +6,10 @@
 use reifydb_core::{
 	CommitVersion, CowVec, Result, Row,
 	interface::{CdcChange, PrimitiveId},
-	value::encoded::{EncodedValues, EncodedValuesNamedLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValues, EncodedValuesNamedLayout},
+	},
 };
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::RowNumber;
@@ -29,7 +32,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 		} => {
 			let row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
 			let diff = FlowDiff::Insert {
-				post: row,
+				post: Columns::from_row(&row),
 			};
 			Ok(FlowChange::external(source_id, version, vec![diff]))
 		}
@@ -41,8 +44,8 @@ pub(crate) async fn convert_cdc_to_flow_change(
 			let pre_row = create_row(txn, catalog_cache, source_id, row_number, pre.to_vec()).await?;
 			let post_row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
 			let diff = FlowDiff::Update {
-				pre: pre_row,
-				post: post_row,
+				pre: Columns::from_row(&pre_row),
+				post: Columns::from_row(&post_row),
 			};
 			Ok(FlowChange::external(source_id, version, vec![diff]))
 		}
@@ -53,7 +56,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 			let pre_bytes = pre.as_ref().map(|v| v.to_vec()).unwrap_or_default();
 			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes).await?;
 			let diff = FlowDiff::Remove {
-				pre: row,
+				pre: Columns::from_row(&row),
 			};
 			Ok(FlowChange::external(source_id, version, vec![diff]))
 		}

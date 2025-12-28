@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-use reifydb_core::{WindowSize, WindowType};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{WindowSize, WindowType, value::column::Columns};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_hash::Hash128;
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;
@@ -66,12 +67,129 @@ impl WindowOperator {
 	}
 }
 
+/// Process inserts for tumbling windows
+async fn process_tumbling_insert(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	columns: &Columns,
+	evaluator: &StandardColumnEvaluator,
+) -> crate::Result<Vec<FlowDiff>> {
+	let mut result = Vec::new();
+	let row_count = columns.row_count();
+	if row_count == 0 {
+		return Ok(result);
+	}
+
+	// Batch compute group hashes for all rows
+	let group_hashes = operator.compute_group_keys(columns)?;
+
+	// Partition columns by group hash
+	let groups = columns.partition_by_keys(&group_hashes);
+
+	// Process each group
+	for (group_hash, group_columns) in groups {
+		let group_result =
+			process_tumbling_group_insert(operator, txn, &group_columns, group_hash, evaluator).await?;
+		result.extend(group_result);
+	}
+
+	Ok(result)
+}
+
+/// Process inserts for a single group in tumbling windows
+async fn process_tumbling_group_insert(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	columns: &Columns,
+	group_hash: Hash128,
+	evaluator: &StandardColumnEvaluator,
+) -> crate::Result<Vec<FlowDiff>> {
+	let mut result = Vec::new();
+	let row_count = columns.row_count();
+	if row_count == 0 {
+		return Ok(result);
+	}
+
+	// Extract timestamps for all rows in this group
+	let timestamps = operator.extract_timestamps(columns)?;
+
+	// For tumbling windows, process each row (they may go to different windows based on timestamp)
+	for row_idx in 0..row_count {
+		let timestamp = timestamps[row_idx];
+		let (event_timestamp, window_id) = match &operator.window_type {
+			WindowType::Time(_) => {
+				let window_id = operator.get_tumbling_window_id(timestamp);
+				(timestamp, window_id)
+			}
+			WindowType::Count => {
+				// For count-based windows, use current processing time and calculate
+				// window ID based on global event count
+				let event_timestamp = operator.current_timestamp();
+				let global_count = operator.get_and_increment_global_count(txn, group_hash).await?;
+				let window_size = if let WindowSize::Count(count) = &operator.size {
+					*count
+				} else {
+					3 // fallback
+				};
+				let window_id = global_count / window_size;
+				(event_timestamp, window_id)
+			}
+		};
+
+		let window_key = operator.create_window_key(group_hash, window_id);
+		let mut window_state = operator.load_window_state(txn, &window_key).await?;
+
+		// Extract this single row as Columns and convert to Row for WindowEvent storage
+		let single_row_columns = columns.extract_row(row_idx);
+		let row = single_row_columns.to_single_row();
+
+		// Add event to window
+		let event = WindowEvent::from_row(&row, event_timestamp);
+		window_state.events.push(event);
+		window_state.event_count += 1;
+
+		if window_state.window_start == 0 {
+			// Set window start aligned to window boundary for tumbling windows
+			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
+		}
+
+		// Always emit result for count-based windows - Insert for first, Update for subsequent
+		if let Some((aggregated_row, is_new)) =
+			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+		{
+			if is_new {
+				// First time we see this window - emit Insert
+				result.push(FlowDiff::Insert {
+					post: Columns::from_row(&aggregated_row),
+				});
+			} else {
+				// Window already exists - emit Update
+				// We need to compute the previous aggregation (without the current event)
+				let previous_events = &window_state.events[..window_state.events.len() - 1];
+				if let Some((previous_aggregated, _)) = operator
+					.apply_aggregations(txn, &window_key, previous_events, evaluator)
+					.await?
+				{
+					result.push(FlowDiff::Update {
+						pre: Columns::from_row(&previous_aggregated),
+						post: Columns::from_row(&aggregated_row),
+					});
+				}
+			}
+		}
+
+		operator.save_window_state(txn, &window_key, &window_state)?;
+	}
+
+	Ok(result)
+}
+
 /// Apply changes for tumbling windows
 pub async fn apply_tumbling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
-	evaluator: &StandardRowEvaluator,
+	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<FlowChange> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
@@ -80,83 +198,14 @@ pub async fn apply_tumbling_window(
 	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
 	result.extend(expired_diffs);
 
-	// Process each incoming change
+	// Process each incoming change (each diff may contain multiple rows)
 	for diff in change.diffs.iter() {
 		match diff {
 			FlowDiff::Insert {
 				post,
 			} => {
-				let group_hash = operator.compute_group_key(&post, evaluator)?;
-				let (timestamp, window_id) = match &operator.window_type {
-					WindowType::Time(_) => {
-						let event_timestamp = operator.extract_timestamp_from_row(&post)?;
-						let window_id = operator.get_tumbling_window_id(event_timestamp);
-						(event_timestamp, window_id)
-					}
-					WindowType::Count => {
-						// For count-based windows, use current processing time and calculate
-						// window ID based on global event count
-						let event_timestamp = operator.current_timestamp();
-						let global_count = operator
-							.get_and_increment_global_count(txn, group_hash)
-							.await?;
-						let window_size = if let WindowSize::Count(count) = &operator.size {
-							*count
-						} else {
-							3 // fallback
-						};
-						let window_id = global_count / window_size;
-						(event_timestamp, window_id)
-					}
-				};
-
-				let window_key = operator.create_window_key(group_hash, window_id);
-				let mut window_state = operator.load_window_state(txn, &window_key).await?;
-
-				// Add event to window
-				let event = WindowEvent::from_row(&post, timestamp);
-				window_state.events.push(event);
-				window_state.event_count += 1;
-
-				if window_state.window_start == 0 {
-					// Set window start aligned to window boundary for tumbling windows
-					window_state.window_start = operator.set_tumbling_window_start(timestamp);
-				}
-
-				// Always emit result for count-based windows - Insert for first, Update for subsequent
-				if let Some((aggregated_row, is_new)) = operator
-					.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
-					.await?
-				{
-					if is_new {
-						// First time we see this window - emit Insert
-						result.push(FlowDiff::Insert {
-							post: aggregated_row,
-						});
-					} else {
-						// Window already exists - emit Update
-						// We need to compute the previous aggregation (without the current
-						// event)
-						let previous_events =
-							&window_state.events[..window_state.events.len() - 1];
-						if let Some((previous_aggregated, _)) = operator
-							.apply_aggregations(
-								txn,
-								&window_key,
-								previous_events,
-								evaluator,
-							)
-							.await?
-						{
-							result.push(FlowDiff::Update {
-								pre: previous_aggregated,
-								post: aggregated_row,
-							});
-						}
-					}
-				}
-
-				operator.save_window_state(txn, &window_key, &window_state)?;
+				let insert_result = process_tumbling_insert(operator, txn, post, evaluator).await?;
+				result.extend(insert_result);
 			}
 			FlowDiff::Update {
 				pre: _,
@@ -164,75 +213,8 @@ pub async fn apply_tumbling_window(
 			} => {
 				// For windows, updates are treated as insert of new value
 				// Real implementation might need to handle retractions
-				let group_hash = operator.compute_group_key(&post, evaluator)?;
-				let (event_timestamp, window_id) = match &operator.window_type {
-					WindowType::Time(_) => {
-						let event_timestamp = operator.extract_timestamp_from_row(&post)?;
-						let window_id = operator.get_tumbling_window_id(event_timestamp);
-						(event_timestamp, window_id)
-					}
-					WindowType::Count => {
-						// For count-based windows, use current processing time and calculate
-						// window ID based on global event count
-						let event_timestamp = operator.current_timestamp();
-						let global_count = operator
-							.get_and_increment_global_count(txn, group_hash)
-							.await?;
-						let window_size = if let WindowSize::Count(count) = &operator.size {
-							*count
-						} else {
-							3 // fallback
-						};
-						let window_id = global_count / window_size;
-						(event_timestamp, window_id)
-					}
-				};
-
-				let window_key = operator.create_window_key(group_hash, window_id);
-				let mut window_state = operator.load_window_state(txn, &window_key).await?;
-
-				let event = WindowEvent::from_row(&post, event_timestamp);
-				window_state.events.push(event);
-				window_state.event_count += 1;
-
-				if window_state.window_start == 0 {
-					window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
-				}
-
-				// Always emit result for count-based windows - Insert for first, Update for subsequent
-				if let Some((aggregated_row, is_new)) = operator
-					.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
-					.await?
-				{
-					if is_new {
-						// First time we see this window - emit Insert
-						result.push(FlowDiff::Insert {
-							post: aggregated_row,
-						});
-					} else {
-						// Window already exists - emit Update
-						// We need to compute the previous aggregation (without the current
-						// event)
-						let previous_events =
-							&window_state.events[..window_state.events.len() - 1];
-						if let Some((previous_aggregated, _)) = operator
-							.apply_aggregations(
-								txn,
-								&window_key,
-								previous_events,
-								evaluator,
-							)
-							.await?
-						{
-							result.push(FlowDiff::Update {
-								pre: previous_aggregated,
-								post: aggregated_row,
-							});
-						}
-					}
-				}
-
-				operator.save_window_state(txn, &window_key, &window_state)?;
+				let update_result = process_tumbling_insert(operator, txn, post, evaluator).await?;
+				result.extend(update_result);
 			}
 			FlowDiff::Remove {
 				pre: _,

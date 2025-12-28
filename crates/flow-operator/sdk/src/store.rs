@@ -5,11 +5,11 @@
 
 use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};
 
+use reifydb_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI};
 use reifydb_core::{
 	CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use reifydb_flow_operator_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI};
 use tracing::instrument;
 
 use crate::{

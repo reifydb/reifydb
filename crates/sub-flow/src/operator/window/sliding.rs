@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-use reifydb_core::{WindowSize, WindowSlide, WindowType};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{WindowSize, WindowSlide, WindowType, value::column::Columns};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_hash::Hash128;
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;
@@ -129,12 +130,142 @@ impl WindowOperator {
 	}
 }
 
+/// Process inserts for sliding windows
+async fn process_sliding_insert(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	columns: &Columns,
+	evaluator: &StandardColumnEvaluator,
+) -> crate::Result<Vec<FlowDiff>> {
+	let mut result = Vec::new();
+	let row_count = columns.row_count();
+	if row_count == 0 {
+		return Ok(result);
+	}
+
+	// Batch compute group hashes for all rows
+	let group_hashes = operator.compute_group_keys(columns)?;
+
+	// Partition columns by group hash
+	let groups = columns.partition_by_keys(&group_hashes);
+
+	// Process each group
+	for (group_hash, group_columns) in groups {
+		let group_result =
+			process_sliding_group_insert(operator, txn, &group_columns, group_hash, evaluator).await?;
+		result.extend(group_result);
+	}
+
+	Ok(result)
+}
+
+/// Process inserts for a single group in sliding windows
+async fn process_sliding_group_insert(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	columns: &Columns,
+	group_hash: Hash128,
+	evaluator: &StandardColumnEvaluator,
+) -> crate::Result<Vec<FlowDiff>> {
+	let mut result = Vec::new();
+	let row_count = columns.row_count();
+	if row_count == 0 {
+		return Ok(result);
+	}
+
+	// Extract timestamps for all rows in this group
+	let timestamps = operator.extract_timestamps(columns)?;
+
+	// For sliding windows, process each row (it may go to multiple windows)
+	for row_idx in 0..row_count {
+		let timestamp = timestamps[row_idx];
+		let (event_timestamp, window_ids) = match &operator.window_type {
+			WindowType::Time(_) => {
+				let window_ids = operator.get_sliding_window_ids(timestamp);
+				(timestamp, window_ids)
+			}
+			WindowType::Count => {
+				// For count-based windows, use current processing time and calculate
+				// proper sliding window IDs based on event index
+				let event_timestamp = operator.current_timestamp();
+				let group_count = operator.get_and_increment_global_count(txn, group_hash).await?;
+				let window_ids = operator.get_sliding_window_ids(group_count);
+				(event_timestamp, window_ids)
+			}
+		};
+
+		// Extract this single row
+		let single_row_columns = columns.extract_row(row_idx);
+		let row = single_row_columns.to_single_row();
+
+		for window_id in window_ids {
+			let window_key = operator.create_window_key(group_hash, window_id);
+			let mut window_state = operator.load_window_state(txn, &window_key).await?;
+
+			// Calculate previous aggregation BEFORE adding the new event (for Update diff)
+			// Only calculate if previous state had enough events for aggregation
+			let previous_aggregation = if window_state.events.len() >= operator.min_events {
+				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+			} else {
+				None
+			};
+
+			// Add event to window
+			let event = WindowEvent::from_row(&row, event_timestamp);
+			window_state.events.push(event);
+			window_state.event_count += 1;
+
+			if window_state.window_start == 0 {
+				// Set window start using event timestamp for sliding windows
+				window_state.window_start =
+					operator.set_sliding_window_start(event_timestamp, window_id);
+			}
+
+			// Check if window should be triggered (get fresh timestamp for each check)
+			let trigger_check_time = operator.current_timestamp();
+			let should_trigger = operator.should_trigger_window(&window_state, trigger_check_time);
+
+			if should_trigger {
+				// Apply aggregations and emit result
+				if let Some((aggregated_row, is_new)) = operator
+					.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
+					.await?
+				{
+					if is_new {
+						// First time this window appears
+						result.push(FlowDiff::Insert {
+							post: Columns::from_row(&aggregated_row),
+						});
+					} else {
+						// Window exists, need to emit Update with previous state
+						if let Some((previous_row, _)) = previous_aggregation {
+							result.push(FlowDiff::Update {
+								pre: Columns::from_row(&previous_row),
+								post: Columns::from_row(&aggregated_row),
+							});
+						} else {
+							// Fallback to Insert if we can't get previous state
+							result.push(FlowDiff::Insert {
+								post: Columns::from_row(&aggregated_row),
+							});
+						}
+					}
+				}
+			}
+
+			operator.save_window_state(txn, &window_key, &window_state)?;
+		}
+	}
+
+	Ok(result)
+}
+
 /// Apply changes for sliding windows
 pub async fn apply_sliding_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
-	evaluator: &StandardRowEvaluator,
+	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<FlowChange> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
@@ -143,192 +274,22 @@ pub async fn apply_sliding_window(
 	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
 	result.extend(expired_diffs);
 
-	// Process each incoming change
-	for (_diff_idx, diff) in change.diffs.iter().enumerate() {
+	// Process each incoming change (each diff may contain multiple rows)
+	for diff in change.diffs.iter() {
 		match diff {
 			FlowDiff::Insert {
 				post,
 			} => {
-				let group_hash = operator.compute_group_key(&post, evaluator)?;
-				let (timestamp, window_ids) = match &operator.window_type {
-					WindowType::Time(_) => {
-						let event_timestamp = operator.extract_timestamp_from_row(&post)?;
-						let window_ids = operator.get_sliding_window_ids(event_timestamp);
-						(event_timestamp, window_ids)
-					}
-					WindowType::Count => {
-						// For count-based windows, use current processing time and calculate
-						// proper sliding window IDs based on event index
-						let event_timestamp = operator.current_timestamp();
-						let group_count = operator
-							.get_and_increment_global_count(txn, group_hash)
-							.await?;
-						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
-						(event_timestamp, window_ids)
-					}
-				};
-
-				for window_id in window_ids {
-					let window_key = operator.create_window_key(group_hash, window_id);
-					let mut window_state = operator.load_window_state(txn, &window_key).await?;
-
-					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
-					// Only calculate if previous state had enough events for aggregation
-					let previous_aggregation = if window_state.events.len() >= operator.min_events {
-						operator.apply_aggregations(
-							txn,
-							&window_key,
-							&window_state.events, // Current events before adding new one
-							evaluator,
-						)
-						.await?
-					} else {
-						None // Not enough events for previous aggregation
-					};
-
-					// Add event to window
-					let event = WindowEvent::from_row(&post, timestamp);
-					window_state.events.push(event);
-					window_state.event_count += 1;
-
-					if window_state.window_start == 0 {
-						// Set window start using event timestamp for sliding windows
-						window_state.window_start =
-							operator.set_sliding_window_start(timestamp, window_id);
-					}
-
-					// Check if window should be triggered (get fresh timestamp for each check)
-					let trigger_check_time = operator.current_timestamp();
-					let should_trigger =
-						operator.should_trigger_window(&window_state, trigger_check_time);
-
-					if should_trigger {
-						// Apply aggregations and emit result
-						if let Some((aggregated_row, is_new)) = operator
-							.apply_aggregations(
-								txn,
-								&window_key,
-								&window_state.events,
-								evaluator,
-							)
-							.await?
-						{
-							if is_new {
-								// First time this window appears
-								result.push(FlowDiff::Insert {
-									post: aggregated_row,
-								});
-							} else {
-								// Window exists, need to emit Update with previous
-								// state
-								if let Some((previous_row, _)) = previous_aggregation {
-									result.push(FlowDiff::Update {
-										pre: previous_row,
-										post: aggregated_row,
-									});
-								} else {
-									// Fallback to Insert if we can't get previous
-									// state
-									result.push(FlowDiff::Insert {
-										post: aggregated_row,
-									});
-								}
-							}
-						}
-					}
-
-					operator.save_window_state(txn, &window_key, &window_state)?;
-				}
+				let insert_result = process_sliding_insert(operator, txn, post, evaluator).await?;
+				result.extend(insert_result);
 			}
 			FlowDiff::Update {
 				pre: _,
 				post,
 			} => {
 				// For windows, updates are treated as insert of new value
-				// Real implementation might need to handle retractions
-				let group_hash = operator.compute_group_key(&post, evaluator)?;
-				let (event_timestamp, window_ids) = match &operator.window_type {
-					WindowType::Time(_) => {
-						let event_timestamp = operator.extract_timestamp_from_row(&post)?;
-						let window_ids = operator.get_sliding_window_ids(event_timestamp);
-						(event_timestamp, window_ids)
-					}
-					WindowType::Count => {
-						// For count-based windows, use current processing time and calculate
-						// proper sliding window IDs based on event index
-						let event_timestamp = operator.current_timestamp();
-						let group_count = operator
-							.get_and_increment_global_count(txn, group_hash)
-							.await?;
-						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
-						(event_timestamp, window_ids)
-					}
-				};
-
-				for window_id in window_ids {
-					let window_key = operator.create_window_key(group_hash, window_id);
-					let mut window_state = operator.load_window_state(txn, &window_key).await?;
-
-					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
-					// Only calculate if previous state had enough events for aggregation
-					let previous_aggregation = if window_state.events.len() >= operator.min_events {
-						operator.apply_aggregations(
-							txn,
-							&window_key,
-							&window_state.events, // Current events before adding new one
-							evaluator,
-						)
-						.await?
-					} else {
-						None // Not enough events for previous aggregation
-					};
-
-					let event = WindowEvent::from_row(&post, event_timestamp);
-					window_state.events.push(event);
-					window_state.event_count += 1;
-
-					if window_state.window_start == 0 {
-						window_state.window_start =
-							operator.set_sliding_window_start(event_timestamp, window_id);
-					}
-
-					let trigger_check_time = operator.current_timestamp();
-					if operator.should_trigger_window(&window_state, trigger_check_time) {
-						if let Some((aggregated_row, is_new)) = operator
-							.apply_aggregations(
-								txn,
-								&window_key,
-								&window_state.events,
-								evaluator,
-							)
-							.await?
-						{
-							if is_new {
-								// First time this window appears
-								result.push(FlowDiff::Insert {
-									post: aggregated_row,
-								});
-							} else {
-								// Window exists, need to emit Update with previous
-								// state
-								if let Some((previous_row, _)) = previous_aggregation {
-									result.push(FlowDiff::Update {
-										pre: previous_row,
-										post: aggregated_row,
-									});
-								} else {
-									// Fallback to Insert if we can't get previous
-									// state
-									result.push(FlowDiff::Insert {
-										post: aggregated_row,
-									});
-								}
-							}
-						}
-					}
-
-					operator.save_window_state(txn, &window_key, &window_state)?;
-				}
+				let update_result = process_sliding_insert(operator, txn, post, evaluator).await?;
+				result.extend(update_result);
 			}
 			FlowDiff::Remove {
 				pre: _,

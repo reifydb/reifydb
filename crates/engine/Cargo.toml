@@ -11,7 +11,7 @@ description = "Query execution and processing engine for ReifyDB"
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-flow-operator-abi = { workspace = true }
+reifydb-abi = { workspace = true }
 reifydb-hash = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-store-transaction = { workspace = true }

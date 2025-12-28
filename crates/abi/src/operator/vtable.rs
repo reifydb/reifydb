@@ -1,8 +1,6 @@
-//! Virtual table definitions for FFI operators
-
 use core::ffi::c_void;
 
-use crate::types::*;
+use crate::{context::ContextFFI, data::ColumnsFFI, flow::FlowChangeFFI};
 
 /// Virtual function table for FFI operators
 ///
@@ -11,7 +9,7 @@ use crate::types::*;
 /// call those methods. All function pointers must be valid (non-null).
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct FFIOperatorVTable {
+pub struct OperatorVTableFFI {
 	/// Apply the operator to a flow change
 	///
 	/// # Parameters
@@ -24,12 +22,12 @@ pub struct FFIOperatorVTable {
 	/// - 0 on success, negative error code on failure
 	pub apply: extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut FFIContext,
+		ctx: *mut ContextFFI,
 		input: *const FlowChangeFFI,
 		output: *mut FlowChangeFFI,
 	) -> i32,
 
-	/// Get specific rows by their row numbers
+	/// Pull specific rows by their row numbers
 	///
 	/// # Parameters
 	/// - `instance`: The operator instance pointer
@@ -40,12 +38,12 @@ pub struct FFIOperatorVTable {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub get_rows: extern "C" fn(
+	pub pull: extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut FFIContext,
+		ctx: *mut ContextFFI,
 		row_numbers: *const u64,
 		count: usize,
-		output: *mut RowsFFI,
+		output: *mut ColumnsFFI,
 	) -> i32,
 
 	/// Destroy an operator instance and free its resources
@@ -59,42 +57,3 @@ pub struct FFIOperatorVTable {
 	/// - This function must be called exactly once per instance
 	pub destroy: extern "C" fn(instance: *mut c_void),
 }
-
-/// Descriptor for an FFI operator
-///
-/// This structure describes an operator's capabilities and provides
-/// its virtual function table.
-#[repr(C)]
-pub struct FFIOperatorDescriptor {
-	/// API version (must match CURRENT_API)
-	pub api: u32,
-
-	/// Operator name (UTF-8 encoded)
-	pub operator: BufferFFI,
-
-	/// Semantic version (UTF-8 encoded, e.g., "1.0.0")
-	pub version: BufferFFI,
-
-	/// Description (UTF-8 encoded)
-	pub description: BufferFFI,
-
-	/// Input columns describing expected input row format (for documentation)
-	pub input_columns: FFIOperatorColumnDefs,
-
-	/// Output columns describing output row format (for documentation)
-	pub output_columns: FFIOperatorColumnDefs,
-
-	/// Capabilities bitflags (CAPABILITY_* constants)
-	pub capabilities: u32,
-
-	/// Virtual function table with all operator methods
-	pub vtable: FFIOperatorVTable,
-}
-
-// SAFETY: FFIOperatorDescriptor contains pointers to static strings and functions
-// which are safe to share across threads
-unsafe impl Send for FFIOperatorDescriptor {}
-unsafe impl Sync for FFIOperatorDescriptor {}
-
-/// Factory function type for creating operator instances
-pub type FFIOperatorCreateFn = extern "C" fn(config: *const u8, config_len: usize, operator_id: u64) -> *mut c_void;

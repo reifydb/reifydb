@@ -8,10 +8,12 @@ repository.workspace = true
 description = "SDK for building flow operators in ReifyDB"
 
 [dependencies]
-reifydb-flow-operator-abi = { workspace = true }
+reifydb-abi = { workspace = true }
 reifydb-core = { workspace = true}
 reifydb-type = { workspace = true }
 postcard = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]

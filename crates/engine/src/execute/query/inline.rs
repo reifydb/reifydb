@@ -326,10 +326,10 @@ impl<'a> InlineDataNode {
 		let mut columns = Vec::new();
 
 		for column_name in &headers.columns {
-			let mut column_data = ColumnData::undefined(0);
-
 			// Find the corresponding source column for policies
-			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap(); // Safe because headers came from source
+			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap();
+
+			let mut column_data = ColumnData::undefined_typed(table_column.constraint.get_type(), 0);
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_name.text()) {

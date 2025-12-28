@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reifydb_core::{Row, interface::FlowNodeId};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{interface::FlowNodeId, value::column::Columns};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::expression::Expression;
 use reifydb_type::RowNumber;
@@ -38,14 +38,14 @@ impl Operator for SortOperator {
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-encoded sort processing
 		// For now, just pass through all changes with updated from
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows).await
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows).await
 	}
 }

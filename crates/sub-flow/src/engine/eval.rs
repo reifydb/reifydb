@@ -1,14 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_core::{Row, interface::Params, value::encoded::EncodedValuesNamedLayout};
-use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_core::{interface::Params, value::column::Columns};
+use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::Value;
 
 use crate::Result;
+
+static EMPTY_PARAMS: Params = Params::None;
+static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 /// Evaluate a list of expressions into operator configuration
 ///
@@ -19,7 +22,7 @@ use crate::Result;
 ///
 /// # Arguments
 /// * `expressions` - The expressions to evaluate (typically from FlowNode::Apply)
-/// * `evaluator` - The StandardRowEvaluator to use for expression evaluation
+/// * `evaluator` - The StandardColumnEvaluator to use for expression evaluation
 ///
 /// # Returns
 /// HashMap<String, Value> where keys are alias names and values are evaluated results
@@ -28,25 +31,21 @@ use crate::Result;
 /// Returns error if expression evaluation fails
 pub fn evaluate_operator_config(
 	expressions: &[Expression],
-	evaluator: &StandardRowEvaluator,
+	evaluator: &StandardColumnEvaluator,
 ) -> Result<HashMap<String, Value>> {
 	let mut result = HashMap::new();
 
-	// Create a dummy layout with a single field since EncodedValuesLayout requires at least one type
-	// This is needed for constant expression evaluation even though the row data isn't accessed
-	let dummy_layout = EncodedValuesNamedLayout::new(vec![("_dummy".to_string(), reifydb_type::Type::Boolean)]);
-	let dummy_row = Row {
-		number: RowNumber(0),
-		layout: dummy_layout.clone(),
-		encoded: dummy_layout.layout().allocate(),
-	};
+	// Create an empty Columns for evaluating constant expressions
+	let empty_columns = Columns::empty();
 
-	let empty_params = Params::empty();
-
-	let eval_ctx = RowEvaluationContext {
-		row: dummy_row,
+	let eval_ctx = ColumnEvaluationContext {
 		target: None,
-		params: &empty_params,
+		columns: empty_columns,
+		row_count: 1, // Need at least 1 row to evaluate constants
+		take: None,
+		params: &EMPTY_PARAMS,
+		stack: &EMPTY_STACK,
+		is_aggregate_context: false,
 	};
 
 	// Process each expression
@@ -54,12 +53,17 @@ pub fn evaluate_operator_config(
 		match expr {
 			Expression::Alias(alias_expr) => {
 				let key = alias_expr.alias.name().to_string();
-				let value = evaluator.evaluate(&eval_ctx, &alias_expr.expression)?;
+				let column = evaluator.evaluate(&eval_ctx, &alias_expr.expression)?;
+				// Extract the single value from the column (constant expressions produce 1 value)
+				let value = if column.data().len() > 0 {
+					column.data().get_value(0)
+				} else {
+					Value::Undefined
+				};
 				result.insert(key, value);
 			}
 			_ => {
 				// Skip non-Alias expressions
-				// Could add logging here if needed
 			}
 		}
 	}
@@ -69,7 +73,7 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_engine::StandardRowEvaluator;
+	use reifydb_engine::StandardColumnEvaluator;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_type::{Fragment, Value};
 
@@ -109,7 +113,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_empty_expressions() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions: Vec<Expression> = vec![];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -119,7 +123,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_alias_string() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -130,7 +134,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_alias_number() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -141,7 +145,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_alias_bool() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -152,7 +156,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_alias_undefined() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -163,7 +167,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_multiple_aliases() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
 			create_alias_expression("key2", create_constant_number(100)),
@@ -182,7 +186,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_non_alias_expressions_skipped() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
 			create_constant_text("standalone"), // Non-alias, should be skipped
@@ -197,7 +201,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_only_non_alias_expressions() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions =
 			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
 
@@ -210,7 +214,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_all_basic_value_types() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("text_val", create_constant_text("hello")),
 			create_alias_expression("num_val", create_constant_number(-42)),
@@ -231,7 +235,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_duplicate_alias_names_last_wins() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key", create_constant_text("first")),
 			create_alias_expression("key", create_constant_text("second")),
@@ -246,7 +250,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_empty_string_value() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
 
 		let result = evaluate_operator_config(&expressions, &evaluator).unwrap();
@@ -257,7 +261,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_special_characters_in_alias_name() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key_with_underscore", create_constant_number(1)),
 			create_alias_expression("keyWithCamelCase", create_constant_number(2)),
@@ -274,7 +278,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_large_number_values() {
-		let evaluator = StandardRowEvaluator::new();
+		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("small", create_constant_number(0)),
 			create_alias_expression("large_positive", create_constant_number(i64::MAX)),

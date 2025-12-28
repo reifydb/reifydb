@@ -5,15 +5,15 @@
 
 use std::slice::from_raw_parts;
 
+use reifydb_abi::{
+	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
+	FFI_NOT_FOUND, FFI_OK, StateIteratorFFI,
+};
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::FlowNodeId,
 	util::CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
-};
-use reifydb_flow_operator_abi::{
-	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
-	FFI_OK, FFIContext, StateIteratorFFI,
 };
 
 use super::{
@@ -32,7 +32,7 @@ struct StateIteratorInternal {
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_get(
 	operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	output: *mut BufferFFI,
@@ -82,7 +82,7 @@ pub(super) extern "C" fn host_state_get(
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_set(
 	operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 	value_ptr: *const u8,
@@ -114,7 +114,7 @@ pub(super) extern "C" fn host_state_set(
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_remove(
 	operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -140,7 +140,7 @@ pub(super) extern "C" fn host_state_remove(
 
 /// Clear all state for a specific operator
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut FFIContext) -> i32 {
+pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
@@ -166,7 +166,7 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut FFIContext
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_prefix(
 	operator_id: u64,
-	ctx: *mut FFIContext,
+	ctx: *mut ContextFFI,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
 	iterator_out: *mut *mut StateIteratorFFI,

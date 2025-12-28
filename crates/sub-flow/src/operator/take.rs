@@ -1,8 +1,12 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
-use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{
+	Error,
+	interface::FlowNodeId,
+	value::{column::Columns, encoded::EncodedValuesLayout},
+};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
@@ -87,10 +91,10 @@ impl TakeOperator {
 				state.candidates.remove(&candidate_row);
 				state.active.insert(candidate_row, count);
 
-				let rows = self.parent.get_rows(txn, &[candidate_row]).await?;
-				if let Some(Some(row)) = rows.first() {
+				let cols = self.parent.pull(txn, &[candidate_row]).await?;
+				if !cols.is_empty() {
 					output_diffs.push(FlowDiff::Insert {
-						post: row.clone(),
+						post: cols,
 					});
 				}
 			}
@@ -112,10 +116,10 @@ impl TakeOperator {
 				state.active.remove(&evicted_row);
 				state.candidates.insert(evicted_row, count);
 
-				let rows = self.parent.get_rows(txn, &[evicted_row]).await?;
-				if let Some(Some(row)) = rows.first() {
+				let cols = self.parent.pull(txn, &[evicted_row]).await?;
+				if !cols.is_empty() {
 					output_diffs.push(FlowDiff::Remove {
-						pre: row.clone(),
+						pre: cols,
 					});
 				}
 			}
@@ -151,7 +155,7 @@ impl Operator for TakeOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut state = self.load_take_state(txn).await?;
 		let mut output_diffs = Vec::new();
@@ -162,7 +166,7 @@ impl Operator for TakeOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					let row_number = post.number;
+					let row_number = post.number();
 
 					if state.active.contains_key(&row_number) {
 						*state.active.get_mut(&row_number).unwrap() += 1;
@@ -187,13 +191,13 @@ impl Operator for TakeOperator {
 								if let Some(count) = state.active.remove(&smallest) {
 									state.candidates.insert(smallest, count);
 
-									let rows = self
+									let cols = self
 										.parent
-										.get_rows(txn, &[smallest])
+										.pull(txn, &[smallest])
 										.await?;
-									if let Some(Some(row)) = rows.first() {
+									if !cols.is_empty() {
 										output_diffs.push(FlowDiff::Remove {
-											pre: row.clone(),
+											pre: cols,
 										});
 									}
 								}
@@ -230,7 +234,7 @@ impl Operator for TakeOperator {
 					pre,
 					post,
 				} => {
-					let row_number = post.number;
+					let row_number = post.number();
 
 					if state.active.contains_key(&row_number) {
 						output_diffs.push(FlowDiff::Update {
@@ -242,7 +246,7 @@ impl Operator for TakeOperator {
 				FlowDiff::Remove {
 					pre,
 				} => {
-					let row_number = pre.number;
+					let row_number = pre.number();
 
 					if let Some(count) = state.active.get_mut(&row_number) {
 						if *count > 1 {
@@ -272,7 +276,7 @@ impl Operator for TakeOperator {
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows).await
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows).await
 	}
 }

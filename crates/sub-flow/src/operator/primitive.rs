@@ -6,8 +6,9 @@ use reifydb_core::{
 	Row,
 	interface::{FlowDef, FlowNodeId, PrimitiveId, TableDef, ViewDef},
 	key::{EncodableKey, RowKey},
+	value::column::Columns,
 };
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
@@ -37,26 +38,47 @@ impl Operator for PrimitiveTableOperator {
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		Ok(change)
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		let mut result = Vec::with_capacity(rows.len());
-		for row in rows {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		let mut found_rows: Vec<Row> = Vec::new();
+		for row_num in rows {
 			let key = RowKey {
 				primitive: PrimitiveId::table(self.table.id),
-				row: *row,
+				row: *row_num,
 			}
 			.encode();
-			result.push(txn.get(&key).await?.map(|values| Row {
-				number: *row,
-				encoded: values,
-				layout: (&self.table).into(),
-			}));
+			if let Some(values) = txn.get(&key).await? {
+				found_rows.push(Row {
+					number: *row_num,
+					encoded: values,
+					layout: (&self.table).into(),
+				});
+			}
 		}
-		Ok(result)
+		if found_rows.is_empty() {
+			Ok(Columns::from_table_def(&self.table))
+		} else if found_rows.len() == 1 {
+			Ok(Columns::from_row(&found_rows[0]))
+		} else {
+			// Combine multiple rows into single Columns
+			let mut result = Columns::from_row(&found_rows[0]);
+			for row in &found_rows[1..] {
+				let cols = Columns::from_row(row);
+				// Extend row numbers
+				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
+				// Extend each column
+				for (i, col) in cols.columns.into_iter().enumerate() {
+					result.columns.make_mut()[i]
+						.extend(col)
+						.expect("schema mismatch in primitive pull");
+				}
+			}
+			Ok(result)
+		}
 	}
 }
 
@@ -84,26 +106,44 @@ impl Operator for PrimitiveViewOperator {
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		Ok(change)
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		let mut result = Vec::with_capacity(rows.len());
-		for row in rows {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		let mut found_rows: Vec<Row> = Vec::new();
+		for row_num in rows {
 			let key = RowKey {
 				primitive: PrimitiveId::view(self.view.id),
-				row: *row,
+				row: *row_num,
 			}
 			.encode();
-			result.push(txn.get(&key).await?.map(|encoded| Row {
-				number: *row,
-				encoded,
-				layout: (&self.view).into(),
-			}));
+			if let Some(encoded) = txn.get(&key).await? {
+				found_rows.push(Row {
+					number: *row_num,
+					encoded,
+					layout: (&self.view).into(),
+				});
+			}
 		}
-		Ok(result)
+		if found_rows.is_empty() {
+			Ok(Columns::from_view_def(&self.view))
+		} else if found_rows.len() == 1 {
+			Ok(Columns::from_row(&found_rows[0]))
+		} else {
+			let mut result = Columns::from_row(&found_rows[0]);
+			for row in &found_rows[1..] {
+				let cols = Columns::from_row(row);
+				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
+				for (i, col) in cols.columns.into_iter().enumerate() {
+					result.columns.make_mut()[i]
+						.extend(col)
+						.expect("schema mismatch in primitive pull");
+				}
+			}
+			Ok(result)
+		}
 	}
 }
 
@@ -131,27 +171,13 @@ impl Operator for PrimitiveFlowOperator {
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		Ok(change)
 	}
 
-	async fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		// let mut result = Vec::with_capacity(rows.len());
-		// for row in rows {
-		// 	result.push(txn
-		// 		.get(&RowKey {
-		// 			primitive: PrimitiveId::flow(self.flow.id),
-		// 			row: *row,
-		// 		}
-		// 		.encode())?
-		// 		.map(|encoded| Row {
-		// 			number: *row,
-		// 			encoded,
-		// 			layout: (&self.flow).into(),
-		// 		}));
-		// }
-		// Ok(result)
+	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+		// TODO: Implement flow pull
 		unimplemented!()
 	}
 }

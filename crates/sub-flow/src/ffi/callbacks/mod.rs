@@ -18,9 +18,7 @@ pub mod store_iterator;
 
 // Re-export commonly used functions for arena management
 pub use memory::{clear_current_arena, set_current_arena};
-use reifydb_flow_operator_abi::{
-	CatalogCallbacks, HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StoreCallbacks,
-};
+use reifydb_abi::{CatalogCallbacks, HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StoreCallbacks};
 
 /// Create the complete host callbacks structure
 ///

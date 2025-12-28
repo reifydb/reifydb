@@ -1,16 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
 	interface::FlowNodeId,
-	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
+	},
 };
-use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
@@ -25,8 +28,8 @@ use crate::{
 	},
 	transaction::FlowTransaction,
 };
-
 static EMPTY_PARAMS: Params = Params::None;
+static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 /// Layout information shared across all rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +53,12 @@ impl SerializedRow {
 		}
 	}
 
+	fn from_columns(columns: &Columns) -> Self {
+		// For single-row Columns, extract the row for serialization
+		let row = columns.to_single_row();
+		Self::from_row(&row)
+	}
+
 	fn to_row(self, layout: &DistinctLayout) -> Row {
 		let fields: Vec<(String, Type)> =
 			layout.names.iter().cloned().zip(layout.types.iter().cloned()).collect();
@@ -63,6 +72,10 @@ impl SerializedRow {
 			layout,
 		}
 	}
+
+	fn to_columns(self, layout: &DistinctLayout) -> Columns {
+		Columns::from_row(&self.to_row(layout))
+	}
 }
 
 impl DistinctLayout {
@@ -73,28 +86,28 @@ impl DistinctLayout {
 		}
 	}
 
-	/// Update the layout with a new encoded, keeping the most defined types
-	fn update_from_row(&mut self, row: &Row) {
-		let names = row.layout.names();
-		let types: Vec<Type> = row.layout.fields().fields.iter().map(|f| f.r#type).collect();
+	/// Update the layout from Columns (uses first row if multiple)
+	fn update_from_columns(&mut self, columns: &Columns) {
+		if columns.is_empty() {
+			return;
+		}
+
+		let names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
+		let types: Vec<Type> = columns.iter().map(|c| c.data().get_type()).collect();
 
 		if self.names.is_empty() {
-			self.names = names.to_vec();
+			self.names = names;
 			self.types = types;
 			return;
 		}
 
 		// Update types to keep the most specific/defined type
-		// Never turn a defined type into undefined
 		for (i, new_type) in types.iter().enumerate() {
 			if i < self.types.len() {
-				// Keep the more defined type
-				// If current is Undefined and new is not, update to new type
 				if self.types[i] == Type::Undefined && *new_type != Type::Undefined {
 					self.types[i] = *new_type;
 				}
 			} else {
-				// New field
 				self.types.push(*new_type);
 				if i < names.len() {
 					self.names.push(names[i].clone());
@@ -109,7 +122,7 @@ impl DistinctLayout {
 struct DistinctEntry {
 	/// Number of times this distinct value appears
 	count: usize,
-	/// The first encoded that had this distinct value
+	/// The first row that had this distinct value
 	first_row: SerializedRow,
 }
 
@@ -137,6 +150,7 @@ pub struct DistinctOperator {
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	layout: EncodedValuesLayout,
+	column_evaluator: StandardColumnEvaluator,
 }
 
 impl DistinctOperator {
@@ -146,30 +160,61 @@ impl DistinctOperator {
 			node,
 			expressions,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
+			column_evaluator: StandardColumnEvaluator::default(),
 		}
 	}
 
-	fn compute_hash(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<Hash128> {
-		let ctx = RowEvaluationContext {
-			row: row.clone(),
-			target: None,
-			params: &EMPTY_PARAMS,
-		};
-
-		let mut data = Vec::new();
-
-		if self.expressions.is_empty() {
-			// Hash the entire encoded if no expressions
-			data.extend_from_slice(row.encoded.as_slice());
-		} else {
-			for expr in &self.expressions {
-				let value = evaluator.evaluate(&ctx, expr)?;
-				let value_str = value.to_string();
-				data.extend_from_slice(value_str.as_bytes());
-			}
+	/// Compute hashes for all rows in Columns
+	fn compute_hashes(&self, columns: &Columns) -> crate::Result<Vec<Hash128>> {
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
 		}
 
-		Ok(xxh3_128(&data))
+		if self.expressions.is_empty() {
+			// Hash the entire row data for each row
+			let mut hashes = Vec::with_capacity(row_count);
+			for row_idx in 0..row_count {
+				let mut data = Vec::new();
+				for col in columns.iter() {
+					let value = col.data().get_value(row_idx);
+					let value_str = value.to_string();
+					data.extend_from_slice(value_str.as_bytes());
+				}
+				hashes.push(xxh3_128(&data));
+			}
+			Ok(hashes)
+		} else {
+			let ctx = ColumnEvaluationContext {
+				target: None,
+				columns: columns.clone(),
+				row_count,
+				take: None,
+				params: &EMPTY_PARAMS,
+				stack: &EMPTY_STACK,
+				is_aggregate_context: false,
+			};
+
+			// Evaluate each expression on entire batch
+			let mut expr_columns = Vec::new();
+			for expr in &self.expressions {
+				let col = self.column_evaluator.evaluate(&ctx, expr)?;
+				expr_columns.push(col);
+			}
+
+			// Compute hash for each row
+			let mut hashes = Vec::with_capacity(row_count);
+			for row_idx in 0..row_count {
+				let mut data = Vec::new();
+				for col in &expr_columns {
+					let value = col.data().get_value(row_idx);
+					let value_str = value.to_string();
+					data.extend_from_slice(value_str.as_bytes());
+				}
+				hashes.push(xxh3_128(&data));
+			}
+			Ok(hashes)
+		}
 	}
 
 	async fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
@@ -198,6 +243,145 @@ impl DistinctOperator {
 
 		self.save_state(txn, state_row)
 	}
+
+	/// Process inserts
+	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> crate::Result<Vec<FlowDiff>> {
+		let mut result = Vec::new();
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(result);
+		}
+
+		state.layout.update_from_columns(columns);
+		let hashes = self.compute_hashes(columns)?;
+
+		for row_idx in 0..row_count {
+			let hash = hashes[row_idx];
+			let single_row = columns.extract_row(row_idx);
+
+			match state.entries.get_mut(&hash) {
+				Some(entry) => {
+					entry.count += 1;
+					// Already seen this distinct value - just increment count
+				}
+				None => {
+					state.entries.insert(
+						hash,
+						DistinctEntry {
+							count: 1,
+							first_row: SerializedRow::from_columns(&single_row),
+						},
+					);
+					result.push(FlowDiff::Insert {
+						post: single_row,
+					});
+				}
+			}
+		}
+
+		Ok(result)
+	}
+
+	/// Process updates
+	fn process_update(
+		&self,
+		state: &mut DistinctState,
+		pre_columns: &Columns,
+		post_columns: &Columns,
+	) -> crate::Result<Vec<FlowDiff>> {
+		let mut result = Vec::new();
+		let row_count = post_columns.row_count();
+		if row_count == 0 {
+			return Ok(result);
+		}
+
+		state.layout.update_from_columns(post_columns);
+		let pre_hashes = self.compute_hashes(pre_columns)?;
+		let post_hashes = self.compute_hashes(post_columns)?;
+
+		for row_idx in 0..row_count {
+			let pre_hash = pre_hashes[row_idx];
+			let post_hash = post_hashes[row_idx];
+			let pre_row = pre_columns.extract_row(row_idx);
+			let post_row = post_columns.extract_row(row_idx);
+
+			if pre_hash == post_hash {
+				// Distinct key didn't change - update the stored row
+				if let Some(entry) = state.entries.get_mut(&pre_hash) {
+					if entry.first_row.number == post_row.number() {
+						entry.first_row = SerializedRow::from_columns(&post_row);
+					}
+					result.push(FlowDiff::Update {
+						pre: pre_row,
+						post: post_row,
+					});
+				}
+			} else {
+				// Key changed - remove from old, add to new
+				if let Some(entry) = state.entries.get_mut(&pre_hash) {
+					if entry.count > 1 {
+						entry.count -= 1;
+					} else {
+						state.entries.shift_remove(&pre_hash);
+						result.push(FlowDiff::Remove {
+							pre: pre_row,
+						});
+					}
+				}
+
+				match state.entries.get_mut(&post_hash) {
+					Some(entry) => {
+						entry.count += 1;
+					}
+					None => {
+						state.entries.insert(
+							post_hash,
+							DistinctEntry {
+								count: 1,
+								first_row: SerializedRow::from_columns(&post_row),
+							},
+						);
+						result.push(FlowDiff::Insert {
+							post: post_row,
+						});
+					}
+				}
+			}
+		}
+
+		Ok(result)
+	}
+
+	/// Process removes
+	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> crate::Result<Vec<FlowDiff>> {
+		let mut result = Vec::new();
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(result);
+		}
+
+		let hashes = self.compute_hashes(columns)?;
+
+		for row_idx in 0..row_count {
+			let hash = hashes[row_idx];
+
+			if let Some(entry) = state.entries.get_mut(&hash) {
+				if entry.count > 1 {
+					entry.count -= 1;
+				} else {
+					let removed_entry = state.entries.shift_remove(&hash);
+					if let Some(entry) = removed_entry {
+						let stored_columns = entry.first_row.to_columns(&state.layout);
+						result.push(FlowDiff::Remove {
+							pre: stored_columns,
+						});
+					}
+				}
+			}
+		}
+
+		Ok(result)
+	}
 }
 
 impl TransformOperator for DistinctOperator {}
@@ -220,7 +404,7 @@ impl Operator for DistinctOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		evaluator: &StandardRowEvaluator,
+		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut state = self.load_distinct_state(txn).await?;
 		let mut result = Vec::new();
@@ -230,105 +414,21 @@ impl Operator for DistinctOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					state.layout.update_from_row(&post);
-
-					let hash = self.compute_hash(&post, evaluator)?;
-
-					match state.entries.get_mut(&hash) {
-						Some(entry) => {
-							entry.count += 1;
-							// Already seen this distinct value - just increment count
-							// Don't emit anything since it's a duplicate
-						}
-						None => {
-							state.entries.insert(
-								hash,
-								DistinctEntry {
-									count: 1,
-									first_row: SerializedRow::from_row(&post),
-								},
-							);
-							result.push(FlowDiff::Insert {
-								post,
-							});
-						}
-					}
+					let insert_result = self.process_insert(&mut state, &post)?;
+					result.extend(insert_result);
 				}
 				FlowDiff::Update {
 					pre,
 					post,
 				} => {
-					// Update layout with this encoded's types
-					state.layout.update_from_row(&post);
-
-					// Compute hashes for both old and new values
-					let pre_hash = self.compute_hash(&pre, evaluator)?;
-					let post_hash = self.compute_hash(&post, evaluator)?;
-
-					if pre_hash == post_hash {
-						// Distinct key didn't change - update the stored encoded
-						if let Some(entry) = state.entries.get_mut(&pre_hash) {
-							// Update to use the new encoded data
-							if entry.first_row.number == post.number {
-								entry.first_row = SerializedRow::from_row(&post);
-							}
-							result.push(FlowDiff::Update {
-								pre,
-								post,
-							});
-						}
-					} else {
-						if let Some(entry) = state.entries.get_mut(&pre_hash) {
-							if entry.count > 1 {
-								entry.count -= 1;
-							} else {
-								// Last instance - remove from state
-								state.entries.shift_remove(&pre_hash);
-								result.push(FlowDiff::Remove {
-									pre,
-								});
-							}
-						}
-
-						match state.entries.get_mut(&post_hash) {
-							Some(entry) => {
-								entry.count += 1;
-							}
-							None => {
-								state.entries.insert(
-									post_hash,
-									DistinctEntry {
-										count: 1,
-										first_row: SerializedRow::from_row(
-											&post,
-										),
-									},
-								);
-								result.push(FlowDiff::Insert {
-									post,
-								});
-							}
-						}
-					}
+					let update_result = self.process_update(&mut state, &pre, &post)?;
+					result.extend(update_result);
 				}
 				FlowDiff::Remove {
 					pre,
 				} => {
-					let hash = self.compute_hash(&pre, evaluator)?;
-
-					if let Some(entry) = state.entries.get_mut(&hash) {
-						if entry.count > 1 {
-							entry.count -= 1;
-						} else {
-							let removed_entry = state.entries.shift_remove(&hash);
-							if let Some(entry) = removed_entry {
-								let stored_row = entry.first_row.to_row(&state.layout);
-								result.push(FlowDiff::Remove {
-									pre: stored_row,
-								});
-							}
-						}
-					}
+					let remove_result = self.process_remove(&mut state, &pre)?;
+					result.extend(remove_result);
 				}
 			}
 		}
@@ -338,7 +438,7 @@ impl Operator for DistinctOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows).await
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows).await
 	}
 }

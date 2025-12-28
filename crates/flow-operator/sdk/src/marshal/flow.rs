@@ -1,15 +1,12 @@
 //! Flow change marshalling between Rust and FFI types
 
-use std::{
-	ptr::null,
-	slice::{from_raw_parts, from_raw_parts_mut},
-};
+use std::slice::{from_raw_parts, from_raw_parts_mut};
 
+use reifydb_abi::*;
 use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
 };
-use reifydb_flow_operator_abi::*;
 
 use crate::{FlowChange, FlowChangeOrigin, FlowDiff, marshal::Marshaller};
 
@@ -46,62 +43,62 @@ impl Marshaller {
 	fn marshal_origin(origin: &FlowChangeOrigin) -> FlowOriginFFI {
 		match origin {
 			FlowChangeOrigin::Internal(node_id) => FlowOriginFFI {
-				origin_type: 0,
+				origin: 0,
 				id: node_id.0,
 			},
 			FlowChangeOrigin::External(source_id) => match source_id {
 				PrimitiveId::Table(id) => FlowOriginFFI {
-					origin_type: 1,
+					origin: 1,
 					id: id.0,
 				},
 				PrimitiveId::View(id) => FlowOriginFFI {
-					origin_type: 2,
+					origin: 2,
 					id: id.0,
 				},
 				PrimitiveId::TableVirtual(id) => FlowOriginFFI {
-					origin_type: 3,
+					origin: 3,
 					id: id.0,
 				},
 				PrimitiveId::RingBuffer(id) => FlowOriginFFI {
-					origin_type: 4,
+					origin: 4,
 					id: id.0,
 				},
 				&PrimitiveId::Flow(id) => FlowOriginFFI {
-					origin_type: 5,
+					origin: 5,
 					id: id.0,
 				},
 				PrimitiveId::Dictionary(id) => FlowOriginFFI {
-					origin_type: 6,
+					origin: 6,
 					id: id.0,
 				},
 			},
 		}
 	}
 
-	/// Marshal a single flow diff
+	/// Marshal a single flow diff using columnar format
 	fn marshal_flow_diff(&mut self, diff: &FlowDiff) -> FlowDiffFFI {
 		match diff {
 			FlowDiff::Insert {
 				post,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Insert,
-				pre_row: null(),
-				post_row: self.marshal_row(post),
+				pre: ColumnsFFI::empty(),
+				post: self.marshal_columns(post),
 			},
 			FlowDiff::Update {
 				pre,
 				post,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Update,
-				pre_row: self.marshal_row(pre),
-				post_row: self.marshal_row(post),
+				pre: self.marshal_columns(pre),
+				post: self.marshal_columns(post),
 			},
 			FlowDiff::Remove {
 				pre,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Remove,
-				pre_row: self.marshal_row(pre),
-				post_row: null(),
+				pre: self.marshal_columns(pre),
+				post: ColumnsFFI::empty(),
 			},
 		}
 	}
@@ -129,48 +126,48 @@ impl Marshaller {
 
 	/// Unmarshal a flow change origin from FFI representation
 	fn unmarshal_origin(ffi: &FlowOriginFFI) -> Result<FlowChangeOrigin, String> {
-		match ffi.origin_type {
+		match ffi.origin {
 			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
 			1 => Ok(FlowChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
 			2 => Ok(FlowChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
 			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(TableVirtualId(ffi.id)))),
 			4 => Ok(FlowChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
 			5 => Ok(FlowChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
-			_ => Err(format!("Invalid origin_type: {}", ffi.origin_type)),
+			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}
 
-	/// Unmarshal a single flow diff
+	/// Unmarshal a single flow diff from columnar FFI format
 	fn unmarshal_flow_diff(&self, ffi: &FlowDiffFFI) -> Result<FlowDiff, String> {
 		match ffi.diff_type {
 			FlowDiffType::Insert => {
-				if ffi.post_row.is_null() {
-					return Err("Insert diff missing post row".to_string());
+				if ffi.post.is_empty() {
+					return Err("Insert diff missing post columns".to_string());
 				}
 
-				let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
+				let post = self.unmarshal_columns(&ffi.post);
 				Ok(FlowDiff::Insert {
 					post,
 				})
 			}
 			FlowDiffType::Update => {
-				if ffi.pre_row.is_null() || ffi.post_row.is_null() {
-					return Err("Update diff missing pre or post row".to_string());
+				if ffi.pre.is_empty() || ffi.post.is_empty() {
+					return Err("Update diff missing pre or post columns".to_string());
 				}
 
-				let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
-				let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
+				let pre = self.unmarshal_columns(&ffi.pre);
+				let post = self.unmarshal_columns(&ffi.post);
 				Ok(FlowDiff::Update {
 					pre,
 					post,
 				})
 			}
 			FlowDiffType::Remove => {
-				if ffi.pre_row.is_null() {
-					return Err("Remove diff missing pre row".to_string());
+				if ffi.pre.is_empty() {
+					return Err("Remove diff missing pre columns".to_string());
 				}
 
-				let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
+				let pre = self.unmarshal_columns(&ffi.pre);
 				Ok(FlowDiff::Remove {
 					pre,
 				})

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use reifydb_core::{Row, interface::FlowNodeId};
-use reifydb_engine::StandardRowEvaluator;
+use reifydb_core::{interface::FlowNodeId, value::column::Columns};
+use reifydb_engine::StandardColumnEvaluator;
 use reifydb_type::RowNumber;
 
 use crate::transaction::FlowTransaction;
@@ -44,10 +44,10 @@ pub trait Operator: Send + Sync {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		evaluator: &StandardRowEvaluator,
+		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange>;
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>>;
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator>;
@@ -74,7 +74,7 @@ impl Operators {
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
-		evaluator: &StandardRowEvaluator,
+		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		match self {
 			Operators::Filter(op) => op.apply(txn, change, evaluator).await,
@@ -94,22 +94,22 @@ impl Operators {
 		}
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		match self {
-			Operators::Filter(op) => op.get_rows(txn, rows).await,
-			Operators::Map(op) => op.get_rows(txn, rows).await,
-			Operators::Extend(op) => op.get_rows(txn, rows).await,
-			Operators::Join(op) => op.get_rows(txn, rows).await,
-			Operators::Sort(op) => op.get_rows(txn, rows).await,
-			Operators::Take(op) => op.get_rows(txn, rows).await,
-			Operators::Distinct(op) => op.get_rows(txn, rows).await,
-			Operators::Merge(op) => op.get_rows(txn, rows).await,
-			Operators::Apply(op) => op.get_rows(txn, rows).await,
-			Operators::SinkView(op) => op.get_rows(txn, rows).await,
-			Operators::Window(op) => op.get_rows(txn, rows).await,
-			Operators::SourceTable(op) => op.get_rows(txn, rows).await,
-			Operators::SourceView(op) => op.get_rows(txn, rows).await,
-			Operators::SourceFlow(op) => op.get_rows(txn, rows).await,
+			Operators::Filter(op) => op.pull(txn, rows).await,
+			Operators::Map(op) => op.pull(txn, rows).await,
+			Operators::Extend(op) => op.pull(txn, rows).await,
+			Operators::Join(op) => op.pull(txn, rows).await,
+			Operators::Sort(op) => op.pull(txn, rows).await,
+			Operators::Take(op) => op.pull(txn, rows).await,
+			Operators::Distinct(op) => op.pull(txn, rows).await,
+			Operators::Merge(op) => op.pull(txn, rows).await,
+			Operators::Apply(op) => op.pull(txn, rows).await,
+			Operators::SinkView(op) => op.pull(txn, rows).await,
+			Operators::Window(op) => op.pull(txn, rows).await,
+			Operators::SourceTable(op) => op.pull(txn, rows).await,
+			Operators::SourceView(op) => op.pull(txn, rows).await,
+			Operators::SourceFlow(op) => op.pull(txn, rows).await,
 		}
 	}
 }

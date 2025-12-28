@@ -1,7 +1,7 @@
 //! Operator context providing access to state and resources
 
+use reifydb_abi::ContextFFI;
 use reifydb_core::{EncodedKey, interface::FlowNodeId};
-use reifydb_flow_operator_abi::FFIContext;
 use reifydb_type::RowNumber;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {
-	pub(crate) ctx: *mut FFIContext,
+	pub(crate) ctx: *mut ContextFFI,
 }
 
 impl OperatorContext {
@@ -19,8 +19,8 @@ impl OperatorContext {
 	///
 	/// # Safety
 	/// The caller must ensure ctx is non-null and valid for the lifetime of this context
-	pub fn new(ctx: *mut FFIContext) -> Self {
-		assert!(!ctx.is_null(), "FFIContext pointer must not be null");
+	pub fn new(ctx: *mut ContextFFI) -> Self {
+		assert!(!ctx.is_null(), "ContextFFI pointer must not be null");
 		Self {
 			ctx,
 		}

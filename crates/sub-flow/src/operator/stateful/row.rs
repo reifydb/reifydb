@@ -37,10 +37,10 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Get or create RowNumbers for a batch of keys
+	/// Get or create RowNumbers for multiple keys
 	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
 	/// where is_new indicates if the row number was newly created
-	pub async fn get_or_create_row_numbers_batch<'a, I>(
+	pub async fn get_or_create_row_numbers<'a, I>(
 		&self,
 		txn: &mut FlowTransaction,
 		keys: I,
@@ -102,7 +102,7 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers_batch(txn, once(key)).await?.into_iter().next().unwrap())
+		Ok(self.get_or_create_row_numbers(txn, once(key)).await?.into_iter().next().unwrap())
 	}
 
 	/// Get the original key for a given row number (reverse lookup)
@@ -367,16 +367,16 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_mixed_existing_and_new_keys() {
+	async fn test_mixed_existing_and_new_keys() {
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers
-		let key1 = test_key("batch_key_1");
-		let key2 = test_key("batch_key_2");
-		let key3 = test_key("batch_key_3");
+		let key1 = test_key("key_1");
+		let key2 = test_key("key_2");
+		let key3 = test_key("key_3");
 
 		let (rn1, _) = provider.get_or_create_row_number(&mut txn, &key1).await.unwrap();
 		assert_eq!(rn1.0, 1);
@@ -388,13 +388,13 @@ mod tests {
 		assert_eq!(rn3.0, 3);
 
 		// Now test batch with mix of existing and new keys
-		let key4 = test_key("batch_key_4");
-		let key5 = test_key("batch_key_5");
+		let key4 = test_key("key_4");
+		let key5 = test_key("key_5");
 
 		// Batch: [existing key2, new key4, existing key1, new key5, existing key3]
-		let batch_keys = vec![&key2, &key4, &key1, &key5, &key3];
+		let keys = vec![&key2, &key4, &key1, &key5, &key3];
 
-		let results = provider.get_or_create_row_numbers_batch(&mut txn, batch_keys.into_iter()).await.unwrap();
+		let results = provider.get_or_create_row_numbers(&mut txn, keys.into_iter()).await.unwrap();
 
 		// Verify results are in correct order and have correct values
 		assert_eq!(results.len(), 5);
@@ -421,7 +421,7 @@ mod tests {
 
 		// Verify that counter was only incremented by 2 (for key4 and key5)
 		// by checking that the next new key gets row number 6
-		let key6 = test_key("batch_key_6");
+		let key6 = test_key("key_6");
 		let (rn6, is_new6) = provider.get_or_create_row_number(&mut txn, &key6).await.unwrap();
 		assert_eq!(rn6.0, 6);
 		assert!(is_new6);

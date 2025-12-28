@@ -2,9 +2,8 @@
 
 use crate::ffi::Arena;
 
+pub(crate) mod column;
 pub(crate) mod flow;
-pub(crate) mod layout;
-pub(crate) mod row;
 
 /// Marshaller for converting between Rust and FFI types
 pub struct Marshaller {

@@ -271,7 +271,7 @@ pub mod ids {
 			pub const CAP_UPDATE: ColumnId = ColumnId(5);
 			pub const CAP_DELETE: ColumnId = ColumnId(6);
 			pub const CAP_DROP: ColumnId = ColumnId(7);
-			pub const CAP_GET_ROWS: ColumnId = ColumnId(8);
+			pub const CAP_PULL: ColumnId = ColumnId(8);
 			pub const CAP_TICK: ColumnId = ColumnId(9);
 
 			pub const ALL: [ColumnId; 9] = [
@@ -281,7 +281,7 @@ pub mod ids {
 				CAP_INSERT,
 				CAP_UPDATE,
 				CAP_DELETE,
-				CAP_GET_ROWS,
+				CAP_PULL,
 				CAP_DROP,
 				CAP_TICK,
 			];

@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{StandardEngine, StandardRowEvaluator};
+use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{
@@ -38,7 +38,7 @@ impl FlowSubsystem {
 
 		// Create FlowEngine
 		let flow_engine = FlowEngine::new(
-			StandardRowEvaluator::default(),
+			StandardColumnEvaluator::default(),
 			engine.executor(),
 			operator_registry,
 			engine.event_bus().clone(),

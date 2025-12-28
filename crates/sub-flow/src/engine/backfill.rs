@@ -8,7 +8,10 @@ use reifydb_core::{
 		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, PrimitiveDef, PrimitiveId, QueryTransaction,
 		RowKey, RowKeyRange,
 	},
-	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
@@ -76,7 +79,7 @@ impl FlowEngine {
 			let diffs: Vec<FlowDiff> = rows
 				.into_iter()
 				.map(|row| FlowDiff::Insert {
-					post: row,
+					post: Columns::from_row(&row),
 				})
 				.collect();
 
