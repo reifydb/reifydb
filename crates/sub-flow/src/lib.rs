@@ -6,17 +6,14 @@
 pub mod builder;
 pub(crate) mod catalog;
 pub(crate) mod config;
-pub(crate) mod consumer;
 pub(crate) mod coordinator;
-pub(crate) mod dispatcher;
-#[allow(dead_code, unused_variables)]
 mod engine;
 pub mod ffi;
+pub(crate) mod flow;
 pub(crate) mod lag;
-#[allow(dead_code, unused_variables)]
-pub(crate) mod operator;
+#[allow(dead_code)]
+mod operator;
 pub(crate) mod registry;
-pub mod rewrite;
 pub(crate) mod routing;
 pub mod subsystem;
 pub(crate) mod tracker;
@@ -24,13 +21,13 @@ pub mod transaction;
 
 pub use builder::FlowBuilder;
 pub use config::FlowRuntimeConfig;
-pub use consumer::IndependentFlowConsumer;
 pub use engine::*;
-pub use lag::FlowLags;
+pub use lag::FlowLagsV2;
 pub use operator::{
 	Operator, stateful,
 	transform::{TransformOperator, TransformOperatorFactory, extract},
 };
+pub use registry::FlowConsumerRegistry;
 pub use reifydb_core::Result;
 // Re-export FlowLagRow and FlowLagsProvider trait from core for convenience
 pub use reifydb_core::interface::{FlowLagRow, FlowLagsProvider};

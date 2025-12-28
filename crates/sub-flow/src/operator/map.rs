@@ -102,7 +102,7 @@ impl MapOperator {
 		let mut field_names = Vec::with_capacity(self.expressions.len());
 		let mut field_types = Vec::with_capacity(self.expressions.len());
 
-		for (i, expr) in self.expressions.iter().enumerate() {
+		for (_i, expr) in self.expressions.iter().enumerate() {
 			// Try to evaluate the expression normally first
 			let value = match evaluator.evaluate(&ctx, expr) {
 				Ok(v) => v,

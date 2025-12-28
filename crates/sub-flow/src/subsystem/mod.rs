@@ -7,67 +7,59 @@ use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use factory::FlowSubsystemFactory;
-use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		CdcConsumerId, FlowLagsProvider,
+		FlowLagsProvider, WithEventBus,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	ioc::IocContainer,
+	util::ioc::IocContainer,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::{StandardEngine, StandardRowEvaluator};
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use tracing::instrument;
 
-use crate::{builder::OperatorFactory, consumer::IndependentFlowConsumer};
+use crate::{
+	FlowEngine, coordinator::Coordinator, lag::FlowLagsV2,
+	operator::transform::registry::TransformOperatorRegistry, registry::FlowConsumerRegistry,
+	tracker::PrimitiveVersionTracker,
+};
 
-pub struct FlowSubsystemConfig {
-	/// Unique identifier for this consumer
-	pub consumer_id: CdcConsumerId,
-	/// How often to poll for new CDC events
-	pub poll_interval: Duration,
-	/// Custom operator factories
-	pub operators: Vec<(String, OperatorFactory)>,
-	/// Maximum batch size for CDC polling (None = unbounded)
-	pub max_batch_size: Option<u64>,
-	/// Directory to scan for FFI operator shared libraries
-	pub operators_dir: Option<PathBuf>,
-}
-
+/// Flow subsystem - greenfield rewrite with independent per-flow consumers.
 pub struct FlowSubsystem {
-	consumer: PollConsumer<IndependentFlowConsumer>,
+	coordinator: Coordinator,
 	running: bool,
 }
 
 impl FlowSubsystem {
-	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
-	pub async fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
-		let engine = ioc.resolve::<StandardEngine>()?;
+	/// Create a new flow subsystem.
+	pub fn new(engine: StandardEngine, operators_dir: Option<PathBuf>, ioc: &IocContainer) -> Self {
+		// Create operator registry
+		let operator_registry = TransformOperatorRegistry::new();
 
-		let consumer =
-			IndependentFlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir).await?;
+		// Create FlowEngine
+		let flow_engine = FlowEngine::new(
+			StandardRowEvaluator::default(),
+			engine.executor(),
+			operator_registry,
+			engine.event_bus().clone(),
+			operators_dir,
+		);
 
-		// Register the lags provider in IoC for lazy resolution by the virtual table
-		ioc.register_service::<Arc<dyn FlowLagsProvider>>(consumer.lags_provider());
+		let registry = Arc::new(FlowConsumerRegistry::new());
+		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
-		Ok(Self {
-			consumer: PollConsumer::new(
-				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval, cfg.max_batch_size),
-				engine.clone(),
-				consumer,
-			),
+		// Create lag provider
+		let lags_provider =
+			Arc::new(FlowLagsV2::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
+
+		// Register in IoC for virtual table access
+		ioc.register_service::<Arc<dyn FlowLagsProvider>>(lags_provider);
+
+		let coordinator = Coordinator::new(engine, Arc::new(flow_engine), registry, primitive_tracker);
+
+		Self {
+			coordinator,
 			running: false,
-		})
-	}
-}
-
-impl Drop for FlowSubsystem {
-	fn drop(&mut self) {
-		// Perform synchronous cleanup - the async shutdown should be called explicitly
-		if self.running {
-			let _ = self.consumer.stop();
-			self.running = false;
 		}
 	}
 }
@@ -78,35 +70,33 @@ impl Subsystem for FlowSubsystem {
 		"sub-flow"
 	}
 
-	#[instrument(name = "flow::subsystem::start", level = "info", skip(self))]
 	async fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
 		}
 
-		self.consumer.start()?;
+		self.coordinator.start()?;
 		self.running = true;
-
 		Ok(())
 	}
 
-	#[instrument(name = "flow::subsystem::shutdown", level = "info", skip(self))]
 	async fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
 		}
 
-		self.consumer.stop()?;
+		// Use 30 second timeout for graceful shutdown
+		let timeout = Duration::from_secs(30);
+		self.coordinator.shutdown(timeout).await;
+
 		self.running = false;
 		Ok(())
 	}
 
-	#[instrument(name = "flow::subsystem::is_running", level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running
 	}
 
-	#[instrument(name = "flow::subsystem::health_status", level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy
@@ -131,6 +121,15 @@ impl HasVersion for FlowSubsystem {
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Data flow and stream processing subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
+		}
+	}
+}
+
+impl Drop for FlowSubsystem {
+	fn drop(&mut self) {
+		if self.running {
+			// Best effort - can't await in Drop
+			self.running = false;
 		}
 	}
 }

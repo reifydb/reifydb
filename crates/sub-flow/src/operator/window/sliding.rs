@@ -144,7 +144,7 @@ pub async fn apply_sliding_window(
 	result.extend(expired_diffs);
 
 	// Process each incoming change
-	for (diff_idx, diff) in change.diffs.iter().enumerate() {
+	for (_diff_idx, diff) in change.diffs.iter().enumerate() {
 		match diff {
 			FlowDiff::Insert {
 				post,

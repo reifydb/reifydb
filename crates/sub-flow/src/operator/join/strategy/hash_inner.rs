@@ -76,7 +76,7 @@ impl InnerHashJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
+		_version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 

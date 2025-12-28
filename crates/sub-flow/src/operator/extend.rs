@@ -15,6 +15,7 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 pub struct ExtendOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
+	#[allow(dead_code)]
 	expressions: Vec<Expression>,
 }
 

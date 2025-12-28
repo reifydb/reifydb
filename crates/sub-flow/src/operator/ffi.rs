@@ -24,6 +24,7 @@ use crate::{
 /// FFI operator that wraps an external operator implementation
 pub struct FFIOperator {
 	/// Operator descriptor from the FFI library
+	#[allow(dead_code)]
 	descriptor: FFIOperatorDescriptor,
 
 	/// Virtual function table for calling FFI functions
@@ -45,6 +46,7 @@ unsafe impl Sync for FFIOperator {}
 
 impl FFIOperator {
 	/// Create a new FFI operator
+	#[allow(dead_code)]
 	pub fn new(descriptor: FFIOperatorDescriptor, instance: *mut c_void, operator_id: FlowNodeId) -> Self {
 		let vtable = descriptor.vtable;
 

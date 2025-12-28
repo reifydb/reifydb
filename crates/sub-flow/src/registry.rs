@@ -1,307 +1,124 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Flow registry for tracking active flows and their tasks.
+//! In-memory registry for tracking spawned flow consumers.
 
 use std::{
 	collections::{HashMap, HashSet},
-	path::PathBuf,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-	time::{Duration, Instant},
+	time::Duration,
 };
 
-use reifydb_core::{
-	CommitVersion, Error, Result,
-	interface::{PrimitiveId, WithEventBus, catalog::FlowId},
-};
-use reifydb_engine::{StandardEngine, StandardRowEvaluator};
-use reifydb_flow_operator_sdk::FlowChange;
-use reifydb_rql::flow::Flow;
-use reifydb_type::diagnostic::flow::{flow_already_registered, flow_backfill_timeout};
+use reifydb_core::interface::{FlowId, PrimitiveId};
 use tokio::{
-	sync::{RwLock, mpsc},
-	task::JoinHandle,
-	time::sleep,
+	sync::{RwLock, RwLockReadGuard},
+	time::{Instant, timeout},
 };
+use tracing::{debug, error, warn};
 
-use crate::{
-	FlowEngine, builder::OperatorFactory, coordinator::coordinate_task,
-	operator::transform::registry::TransformOperatorRegistry,
-};
+use crate::flow::FlowConsumer;
 
-/// Handle to an active flow's task and communication channels.
-pub struct FlowHandle {
-	/// Sender for dispatching batches to this flow.
-	pub tx: mpsc::UnboundedSender<Vec<FlowChange>>,
-
-	/// Task handle for the flow coordinator.
-	pub task: JoinHandle<()>,
-
-	/// Sources this flow subscribes to.
-	pub sources: HashSet<PrimitiveId>,
-
-	/// Current processed version (shared with coordinator task).
-	pub version: Arc<AtomicU64>,
+/// Registry for tracking active flow consumers.
+pub struct FlowConsumerRegistry {
+	consumers: RwLock<HashMap<FlowId, FlowConsumerHandle>>,
 }
 
-/// Registry of active flows and routing information.
-pub struct FlowRegistry {
-	/// Map of flow ID to flow handle.
-	pub(crate) flows: RwLock<HashMap<FlowId, FlowHandle>>,
-
-	/// Reverse index: source ID → flow IDs that subscribe to it.
-	pub(crate) source_to_flows: RwLock<HashMap<PrimitiveId, Vec<FlowId>>>,
-
-	/// Engine for database operations.
-	engine: StandardEngine,
-
-	/// Shared FlowEngine for all tasks.
-	flow_engine: FlowEngine,
+pub(crate) struct FlowConsumerHandle {
+	pub(crate) flow_consumer: FlowConsumer,
 }
 
-impl FlowRegistry {
+impl FlowConsumerRegistry {
 	/// Create a new empty registry.
-	pub fn new(
-		engine: StandardEngine,
-		operators: Vec<(String, OperatorFactory)>,
-		operators_dir: Option<PathBuf>,
-	) -> Self {
-		// Create shared FlowEngine once
-		let flow_engine = create_flow_engine(&engine, &operators, operators_dir.as_ref());
-
+	pub fn new() -> Self {
 		Self {
-			flows: RwLock::new(HashMap::new()),
-			source_to_flows: RwLock::new(HashMap::new()),
-			engine,
-			flow_engine,
+			consumers: RwLock::new(HashMap::new()),
 		}
 	}
 
-	/// Register a new flow with backfill.
-	///
-	/// Called when a new flow is created. The flow will backfill from source
-	/// tables at the given version before processing incremental changes.
-	///
-	/// This function blocks until backfill completes, ensuring synchronous semantics.
-	pub async fn register_with_backfill(
-		&self,
-		flow: Flow,
-		sources: HashSet<PrimitiveId>,
-		backfill_version: CommitVersion,
-	) -> Result<()> {
-		let flow_id = flow.id;
-
-		// Guard against duplicate registration
-		{
-			let flows = self.flows.read().await;
-			if flows.contains_key(&flow_id) {
-				return Err(Error(flow_already_registered(flow_id.0)));
-			}
-		}
-
-		let (tx, rx) = mpsc::unbounded_channel();
-		let version = Arc::new(AtomicU64::new(0));
-
-		// Spawn the flow coordinator task
-		let task = tokio::spawn(coordinate_task(
-			flow_id,
-			rx,
-			flow,
-			self.engine.clone(),
-			version.clone(),
-			Some(backfill_version),
-			self.flow_engine.clone(),
-		));
-
-		let handle = FlowHandle {
-			tx,
-			task,
-			sources: sources.clone(),
-			version: version.clone(),
+	/// Register a flow consumer.
+	pub async fn register(&self, flow_id: FlowId, flow_consumer: FlowConsumer) {
+		let handle = FlowConsumerHandle {
+			flow_consumer,
 		};
 
-		// Update flows map
-		{
-			let mut flows = self.flows.write().await;
-			flows.insert(flow_id, handle);
-		}
-
-		// Update source→flow mapping
-		{
-			let mut source_map = self.source_to_flows.write().await;
-			for source in sources {
-				source_map.entry(source).or_default().push(flow_id);
-			}
-		}
-
-		// Wait for backfill to complete before returning.
-		// The task sets version to backfill_version when done.
-		let timeout = Duration::from_secs(300); // 5 minute timeout
-		let start = Instant::now();
-		let poll_interval = Duration::from_millis(10);
-
-		loop {
-			let current = version.load(Ordering::Acquire);
-			if current >= backfill_version.0 {
-				break;
-			}
-
-			if start.elapsed() >= timeout {
-				return Err(Error(flow_backfill_timeout(flow_id.0, 300)));
-			}
-
-			sleep(poll_interval).await;
-		}
-
-		tracing::info!(
-			flow_id = flow_id.0,
-			backfill_version = backfill_version.0,
-			"registered flow with backfill"
-		);
-
-		Ok(())
+		let mut consumers = self.consumers.write().await;
+		consumers.insert(flow_id, handle);
+		debug!(flow_id = flow_id.0, "flow consumer registered");
 	}
 
-	/// Register an existing flow (on startup).
-	///
-	/// Called for flows that already exist in catalog with persisted versions.
-	/// Does NOT trigger backfill - flow resumes from persisted_version.
-	pub async fn register(
-		&self,
-		flow: Flow,
-		sources: HashSet<PrimitiveId>,
-		persisted_version: CommitVersion,
-	) -> Result<()> {
-		let flow_id = flow.id;
-
-		// Guard against duplicate registration
-		{
-			let flows = self.flows.read().await;
-			if flows.contains_key(&flow_id) {
-				return Err(Error(flow_already_registered(flow_id.0)));
-			}
-		}
-
-		let (tx, rx) = mpsc::unbounded_channel();
-		// Initialize version from persisted value (not 0)
-		let version = Arc::new(AtomicU64::new(persisted_version.0));
-
-		// Spawn the flow coordinator task WITHOUT backfill
-		let task = tokio::spawn(coordinate_task(
-			flow_id,
-			rx,
-			flow,
-			self.engine.clone(),
-			version.clone(),
-			None, // No backfill - flow already has data
-			self.flow_engine.clone(),
-		));
-
-		let handle = FlowHandle {
-			tx,
-			task,
-			sources: sources.clone(),
-			version: version.clone(),
-		};
-
-		// Update flows map
-		{
-			let mut flows = self.flows.write().await;
-			flows.insert(flow_id, handle);
-		}
-
-		// Update source→flow mapping
-		{
-			let mut source_map = self.source_to_flows.write().await;
-			for source in sources {
-				source_map.entry(source).or_default().push(flow_id);
-			}
-		}
-
-		tracing::debug!(flow_id = flow_id.0, version = persisted_version.0, "registered existing flow");
-
-		Ok(())
+	/// Check if a flow is already registered.
+	pub async fn contains(&self, flow_id: FlowId) -> bool {
+		let consumers = self.consumers.read().await;
+		consumers.contains_key(&flow_id)
 	}
 
-	/// Deregister a flow and return its task handle.
+	/// Deregister a flow consumer and return it for shutdown.
+	pub async fn deregister(&self, flow_id: FlowId) -> Option<FlowConsumer> {
+		let mut consumers = self.consumers.write().await;
+		let handle = consumers.remove(&flow_id)?;
+		debug!(flow_id = flow_id.0, "flow consumer deregistered");
+		Some(handle.flow_consumer)
+	}
+
+	/// Get all registered flow IDs.
+	pub async fn flow_ids(&self) -> Vec<FlowId> {
+		let consumers = self.consumers.read().await;
+		consumers.keys().copied().collect()
+	}
+
+	/// Get data for all registered flows: (flow_id, sources).
 	///
-	/// Removes the flow from the registry. The channel sender is dropped,
-	/// which will cause the task to exit after processing remaining batches.
-	pub async fn deregister(&self, flow_id: FlowId) -> Option<JoinHandle<()>> {
-		// Remove from flows map
-		let handle = {
-			let mut flows = self.flows.write().await;
-			flows.remove(&flow_id)
-		};
+	/// This returns flow IDs and their source sets. Versions are retrieved
+	/// separately by querying each consumer's CDC checkpoint.
+	pub async fn all_flow_info(&self) -> Vec<(FlowId, HashSet<PrimitiveId>)> {
+		let consumers = self.consumers.read().await;
+		consumers
+			.values()
+			.map(|handle| {
+				let flow_id = handle.flow_consumer.flow_id();
+				let sources = handle.flow_consumer.sources().clone();
+				(flow_id, sources)
+			})
+			.collect()
+	}
 
-		let handle = handle?;
+	/// Get a reference to the consumers map for internal use.
+	///
+	/// Returns a read lock guard that allows read-only access to the consumers map.
+	pub(crate) async fn consumers_read(&self) -> RwLockReadGuard<'_, HashMap<FlowId, FlowConsumerHandle>> {
+		self.consumers.read().await
+	}
 
-		// Remove from source→flow mapping
-		{
-			let mut source_map = self.source_to_flows.write().await;
-			for source in &handle.sources {
-				if let Some(flow_ids) = source_map.get_mut(source) {
-					flow_ids.retain(|id| *id != flow_id);
-					if flow_ids.is_empty() {
-						source_map.remove(source);
+	/// Shutdown all flow consumers with a timeout.
+	pub async fn shutdown_all(&self, drain_timeout: Duration) {
+		let flow_ids = self.flow_ids().await;
+		let drain_deadline = Instant::now() + drain_timeout;
+
+		debug!(count = flow_ids.len(), "shutting down all flow consumers");
+
+		for flow_id in flow_ids {
+			if let Some(consumer) = self.deregister(flow_id).await {
+				let remaining = drain_deadline.saturating_duration_since(Instant::now());
+
+				match timeout(remaining, consumer.shutdown()).await {
+					Ok(Ok(())) => {
+						debug!(flow_id = flow_id.0, "flow consumer shutdown successfully");
+					}
+					Ok(Err(e)) => {
+						error!(flow_id = flow_id.0, error = %e, "flow consumer shutdown failed");
+					}
+					Err(_) => {
+						warn!(flow_id = flow_id.0, "flow consumer shutdown timed out");
 					}
 				}
 			}
 		}
 
-		tracing::info!(flow_id = flow_id.0, "deregistered flow");
-
-		Some(handle.task)
-	}
-
-	/// Check if a flow is registered.
-	pub async fn contains(&self, flow_id: FlowId) -> bool {
-		let flows = self.flows.read().await;
-		flows.contains_key(&flow_id)
-	}
-
-	/// Get all registered flow IDs.
-	pub async fn flow_ids(&self) -> Vec<FlowId> {
-		let flows = self.flows.read().await;
-		flows.keys().copied().collect()
-	}
-
-	/// Get all flow data for lag computation.
-	///
-	/// Returns tuples of (flow_id, current_version, sources).
-	pub async fn all_flow_data(&self) -> Vec<(FlowId, u64, HashSet<PrimitiveId>)> {
-		let flows = self.flows.read().await;
-		flows.iter()
-			.map(|(&flow_id, handle)| {
-				(flow_id, handle.version.load(Ordering::Acquire), handle.sources.clone())
-			})
-			.collect()
+		debug!("all flow consumers shutdown complete");
 	}
 }
 
-/// Create a FlowEngine instance.
-fn create_flow_engine(
-	engine: &StandardEngine,
-	operators: &[(String, OperatorFactory)],
-	operators_dir: Option<&PathBuf>,
-) -> FlowEngine {
-	let mut registry = TransformOperatorRegistry::new();
-
-	// Register custom operator factories
-	for (name, factory) in operators.iter() {
-		let factory = factory.clone();
-		let name = name.clone();
-		registry.register(name, move |node, exprs| factory(node, exprs));
+impl Default for FlowConsumerRegistry {
+	fn default() -> Self {
+		Self::new()
 	}
-
-	FlowEngine::new(
-		StandardRowEvaluator::default(),
-		engine.executor(),
-		registry,
-		engine.event_bus().clone(),
-		operators_dir.cloned(),
-	)
 }

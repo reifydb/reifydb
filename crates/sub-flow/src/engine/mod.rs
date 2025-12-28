@@ -41,6 +41,7 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sources: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) sinks: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
+	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: RwLock<HashMap<FlowId, CommitVersion>>,
 }

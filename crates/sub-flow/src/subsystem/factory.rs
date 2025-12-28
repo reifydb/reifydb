@@ -51,18 +51,17 @@ impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
 	}
 
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		use crate::rewrite::FlowSubsystemV2;
+		use super::FlowSubsystem;
 
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Get operators_dir from config if configurator is present
 		let operators_dir = if let Some(configurator) = self.configurator {
-			let builder = configurator(FlowBuilder::new());
-			builder.build_config().operators_dir
+			configurator(FlowBuilder::new()).build_config().operators_dir
 		} else {
 			None
 		};
 
-		Ok(Box::new(FlowSubsystemV2::new(engine, operators_dir, ioc)))
+		Ok(Box::new(FlowSubsystem::new(engine, operators_dir, ioc)))
 	}
 }

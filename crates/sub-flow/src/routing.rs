@@ -1,119 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! CDC event routing to flow tasks.
-
-use std::collections::HashMap;
+//! CDC event conversion utilities for flows.
 
 use reifydb_core::{
-	CowVec, Result, Row,
-	interface::{Cdc, CdcChange, Engine, PrimitiveId, catalog::FlowId},
-	key::Key,
+	CommitVersion, CowVec, Result, Row,
+	interface::{CdcChange, PrimitiveId},
 	value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 };
-use reifydb_engine::StandardEngine;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
-use tracing::{trace, warn};
+use reifydb_type::RowNumber;
 
-use crate::{catalog::FlowCatalog, registry::FlowRegistry};
-
-/// Route CDC data events to interested flows.
-///
-/// Groups events by flow and sends batches through their channels.
-pub async fn route_to_flows(registry: &FlowRegistry, engine: &StandardEngine, cdc: &Cdc) -> Result<()> {
-	let version = cdc.version;
-
-	// Get read locks
-	let source_map = registry.source_to_flows.read().await;
-	let flows = registry.flows.read().await;
-
-	// Group events by flow
-	let mut flow_batches: HashMap<FlowId, Vec<FlowChange>> = HashMap::new();
-
-	// Use catalog cache for row decoding
-	let catalog_cache = FlowCatalog::new();
-
-	// Create a single transaction for all row decoding (much faster than per-change txns)
-	let mut txn = engine.begin_query().await?;
-
-	for cdc_change in &cdc.changes {
-		// Only process row changes (data events)
-		let Some(decoded_key) = Key::decode(cdc_change.key()) else {
-			continue;
-		};
-
-		let Key::Row(row_key) = decoded_key else {
-			continue;
-		};
-
-		let source_id = row_key.primitive;
-		let row_number = row_key.row;
-
-		// Find flows that subscribe to this source
-		let Some(flow_ids) = source_map.get(&source_id) else {
-			continue;
-		};
-
-		// Convert CDC change to FlowChange
-		let flow_change = match convert_cdc_to_flow_change(
-			&mut txn,
-			&catalog_cache,
-			source_id,
-			row_number,
-			&cdc_change.change,
-			version,
-		)
-		.await
-		{
-			Ok(change) => change,
-			Err(e) => {
-				warn!(source = ?source_id, row = row_number.0, error = %e, "failed to decode row");
-				continue;
-			}
-		};
-
-		// Add to each interested flow's batch
-		for &flow_id in flow_ids {
-			flow_batches.entry(flow_id).or_default().push(flow_change.clone());
-		}
-	}
-
-	// Drop transaction before sending to channels
-	drop(txn);
-
-	// Send batches to flow channels
-	for (flow_id, changes) in flow_batches {
-		if changes.is_empty() {
-			continue;
-		}
-
-		let Some(handle) = flows.get(&flow_id) else {
-			// Flow was deleted between grouping and sending
-			trace!(flow_id = flow_id.0, "flow deleted, skipping batch");
-			continue;
-		};
-
-		// Send to flow's channel (unbounded, never blocks)
-		if handle.tx.send(changes).is_err() {
-			// Flow task has exited - this shouldn't happen in normal operation
-			panic!("flow {} channel closed unexpectedly", flow_id.0);
-		}
-	}
-
-	drop(flows);
-	drop(source_map);
-
-	Ok(())
-}
+use crate::catalog::FlowCatalog;
 
 /// Convert CDC change format to FlowChange format.
 pub(crate) async fn convert_cdc_to_flow_change(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
-	row_number: reifydb_type::RowNumber,
+	row_number: RowNumber,
 	cdc_change: &CdcChange,
-	version: reifydb_core::CommitVersion,
+	version: CommitVersion,
 ) -> Result<FlowChange> {
 	match cdc_change {
 		CdcChange::Insert {
@@ -158,7 +65,7 @@ pub(crate) async fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
-	row_number: reifydb_type::RowNumber,
+	row_number: RowNumber,
 	row_bytes: Vec<u8>,
 ) -> Result<Row> {
 	use reifydb_core::{

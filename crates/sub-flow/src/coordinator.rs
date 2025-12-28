@@ -1,180 +1,206 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Per-flow coordinator task implementation.
+//! Coordinator that monitors CDC for flow creation and spawns flow consumers.
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicU64, Ordering},
-};
+use std::{sync::Arc, time::Duration};
 
-use mpsc::UnboundedReceiver;
+use async_trait::async_trait;
+use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
-	CommitVersion, Result,
-	interface::{CommandTransaction, Engine, QueryTransaction, catalog::FlowId},
-	key::FlowVersionKey,
-	value::encoded::EncodedValues,
+	Result,
+	interface::{Cdc, CdcChange, CdcConsumerId},
+	key::{Key, KeyKind},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
-use reifydb_flow_operator_sdk::FlowChange;
-use reifydb_rql::flow::Flow;
-use reifydb_type::{CowVec, diagnostic::flow::flow_version_corrupted};
-use tokio::sync::mpsc;
-use tracing::{debug, error, info, instrument, trace};
+use reifydb_rql::flow::load_flow;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info};
 
-use crate::{FlowEngine, transaction::FlowTransaction};
+use crate::{FlowEngine, flow::FlowConsumer, registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
 
-/// Per-flow coordinator task.
-///
-/// This async function is the main loop for a single flow. It:
-/// 1. Performs optional backfill on startup
-/// 2. Receives batches from its channel
-/// 3. Skips already-processed versions (exactly-once)
-/// 4. Processes each batch through the flow's operator pipeline
-/// 5. Atomically persists version with output writes
-#[instrument(
-	name = "coordinate_task",
-	level = "info",
-	skip(rx, flow, engine, version, flow_engine),
-	fields(flow_id = flow_id.0, backfill = backfill_version.is_some())
-)]
-pub async fn coordinate_task(
-	flow_id: FlowId,
-	mut rx: UnboundedReceiver<Vec<FlowChange>>,
-	flow: Flow,
+/// Coordinator that monitors CDC for flow creation and manages flow consumers.
+pub struct Coordinator {
 	engine: StandardEngine,
-	version: Arc<AtomicU64>,
-	backfill_version: Option<CommitVersion>,
-	flow_engine: FlowEngine,
-) {
-	info!("flow task started");
+	flow_engine: Arc<FlowEngine>,
+	registry: Arc<FlowConsumerRegistry>,
+	primitive_tracker: Arc<PrimitiveVersionTracker>,
+	consumer: Option<PollConsumer<CoordinatorConsumer>>,
+	shutdown: CancellationToken,
+}
 
-	// Register this flow with the engine
-	{
-		let mut txn = match engine.begin_command().await {
-			Ok(txn) => txn,
-			Err(e) => {
-				error!("failed to begin transaction for flow registration: {}", e);
-				return;
-			}
+/// Implementation of CDC consume logic for the coordinator.
+struct CoordinatorConsumer {
+	engine: StandardEngine,
+	flow_engine: Arc<FlowEngine>,
+	registry: Arc<FlowConsumerRegistry>,
+	primitive_tracker: Arc<PrimitiveVersionTracker>,
+	shutdown: CancellationToken,
+}
+
+impl Coordinator {
+	/// Create a new coordinator.
+	pub fn new(
+		engine: StandardEngine,
+		flow_engine: Arc<FlowEngine>,
+		registry: Arc<FlowConsumerRegistry>,
+		primitive_tracker: Arc<PrimitiveVersionTracker>,
+	) -> Self {
+		let shutdown = CancellationToken::new();
+
+		Self {
+			engine,
+			flow_engine,
+			registry,
+			primitive_tracker,
+			consumer: None,
+			shutdown,
+		}
+	}
+
+	/// Start the coordinator.
+	pub fn start(&mut self) -> Result<()> {
+		info!("starting flow coordinator");
+
+		// Create consume implementation
+		let consume_impl = CoordinatorConsumer {
+			engine: self.engine.clone(),
+			flow_engine: self.flow_engine.clone(),
+			registry: self.registry.clone(),
+			primitive_tracker: self.primitive_tracker.clone(),
+			shutdown: self.shutdown.clone(),
 		};
 
-		// Perform backfill if requested (new flow)
-		if let Some(target_version) = backfill_version {
-			debug!(target_version = target_version.0, "performing backfill");
-			if let Err(e) = flow_engine.register_with_backfill(&mut txn, flow.clone(), target_version).await
-			{
-				error!("backfill failed: {}", e);
-				return;
-			}
+		// Configure consumer
+		let consumer_id = CdcConsumerId::new("flow-coordinator");
+		let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(1), None);
 
-			// Persist the backfill version
-			if let Err(e) = set_flow_version(&mut txn, flow_id, target_version).await {
-				error!("failed to persist backfill version: {}", e);
-				return;
-			}
+		// Create and start poll consumer
+		let mut consumer = PollConsumer::new(config, self.engine.clone(), consume_impl);
+		consumer.start()?;
 
-			if let Err(e) = txn.commit().await {
-				error!("failed to commit backfill: {}", e);
-				return;
-			}
+		self.consumer = Some(consumer);
 
-			// Update in-memory version
-			version.store(target_version.0, Ordering::Release);
-			info!(version = target_version.0, "backfill completed");
-		} else {
-			// Existing flow - register without backfill
-			if let Err(e) = flow_engine.register_without_backfill(&mut txn, flow.clone()).await {
-				error!("flow registration failed: {}", e);
-				return;
-			}
-
-			if let Err(e) = txn.commit().await {
-				error!("failed to commit flow registration: {}", e);
-				return;
-			}
-		}
+		info!("flow coordinator started");
+		Ok(())
 	}
 
-	// Main processing loop
-	while let Some(changes) = rx.recv().await {
-		// Extract version from first change (all changes have same version)
-		let batch_version = changes.first().expect("empty batch should not be sent").version;
-		let current_version = version.load(Ordering::Acquire);
+	/// Shutdown the coordinator gracefully.
+	pub async fn shutdown(&mut self, timeout: Duration) {
+		info!("shutting down flow coordinator");
 
-		// Skip already-processed versions (exactly-once semantics)
-		if batch_version.0 <= current_version {
-			trace!(
-				batch_version = batch_version.0,
-				current_version = current_version,
-				"skipping already-processed batch"
-			);
-			continue;
-		}
+		// Signal shutdown to all consumers
+		self.shutdown.cancel();
 
-		// Process in blocking context (operators may block)
-		let result = process_batch(&engine, &flow_engine, flow_id, &changes).await;
-
-		match result {
-			Ok(()) => {
-				// Update in-memory version after successful commit
-				version.store(batch_version.0, Ordering::Release);
-				trace!(version = batch_version.0, "batch processed");
-			}
-			Err(e) => {
-				// Fail-fast on any error
-				error!(version = batch_version.0, error = %e, "batch processing failed");
-				panic!("flow {} processing failed: {}", flow_id.0, e);
+		// Stop coordinator consumer
+		if let Some(mut consumer) = self.consumer.take() {
+			if let Err(e) = consumer.stop() {
+				error!(error = %e, "failed to stop coordinator consumer");
 			}
 		}
+
+		// Shutdown all flow consumers with timeout
+		self.registry.shutdown_all(timeout).await;
+
+		info!("flow coordinator shutdown complete");
 	}
-
-	info!("flow task exiting (channel closed)");
 }
 
-/// Process a single batch through the flow engine.
-async fn process_batch(
-	engine: &StandardEngine,
-	flow_engine: &FlowEngine,
-	flow_id: FlowId,
-	changes: &[FlowChange],
-) -> Result<()> {
-	let version = changes.first().expect("empty batch should not be sent").version;
+#[async_trait]
+impl CdcConsume for CoordinatorConsumer {
+	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		for cdc in cdcs {
+			let version = cdc.version;
 
-	let mut txn = engine.begin_command().await?;
+			// Track primitive versions from all CDC changes
+			for change in &cdc.changes {
+				if let Some(Key::Row(row_key)) = Key::decode(change.key()) {
+					self.primitive_tracker.update(row_key.primitive, version).await;
+				}
+			}
 
-	let mut flow_txn = FlowTransaction::new(&txn, version).await;
-	for change in changes {
-		flow_engine.process(&mut flow_txn, change.clone(), flow_id).await?;
-	}
+			// Process flow creation events
+			for change in &cdc.changes {
+				// Check key kind first (fast path)
+				if let Some(kind) = Key::kind(change.key()) {
+					if kind == KeyKind::Flow {
+						// Only process inserts (flow creation)
+						if let CdcChange::Insert {
+							key,
+							..
+						} = &change.change
+						{
+							// Decode to get FlowId
+							if let Some(Key::Flow(flow_key)) = Key::decode(key) {
+								let flow_id = flow_key.flow;
 
-	flow_txn.commit(&mut txn).await?;
-	set_flow_version(&mut txn, flow_id, version).await?;
+								// Check if not already spawned
+								if !self.registry.contains(flow_id).await {
+									debug!(
+										flow_id = flow_id.0,
+										"detected new flow"
+									);
 
-	txn.commit().await?;
-	Ok(())
-}
+									// Load flow from catalog
+									match load_flow(txn, flow_id).await {
+										Ok(flow) => {
+											// Register with flow engine (no
+											// backfill)
+											if let Err(e) = self
+												.flow_engine
+												.register_without_backfill(
+													txn,
+													flow.clone(),
+												)
+												.await
+											{
+												error!(
+													flow_id = flow_id.0,
+													error = %e,
+													"failed to register flow with engine"
+												);
+												continue;
+											}
 
-/// Persist the flow's processed version to catalog.
-async fn set_flow_version(txn: &mut StandardCommandTransaction, flow_id: FlowId, version: CommitVersion) -> Result<()> {
-	let key = FlowVersionKey::encoded(flow_id);
-	let value = EncodedValues(CowVec::new(version.0.to_le_bytes().to_vec()));
-	txn.set(&key, value).await
-}
-
-/// Read the flow's processed version from catalog.
-#[allow(dead_code)]
-pub async fn get_flow_version(engine: &StandardEngine, flow_id: FlowId) -> Result<Option<CommitVersion>> {
-	let mut txn = engine.begin_query().await?;
-	let key = FlowVersionKey::encoded(flow_id);
-
-	match txn.get(&key).await? {
-		Some(multi_values) => {
-			let arr: [u8; 8] = multi_values.values.as_slice().try_into().map_err(|_| {
-				reifydb_core::Error(flow_version_corrupted(flow_id.0, multi_values.values.len()))
-			})?;
-			Ok(Some(CommitVersion(u64::from_le_bytes(arr))))
+											// Spawn flow consumer
+											match FlowConsumer::spawn(
+												flow_id,
+												flow,
+												self.engine.clone(),
+												self.flow_engine
+													.clone(),
+												self.shutdown
+													.child_token(),
+											) {
+												Ok(consumer) => {
+													self.registry.register(flow_id, consumer).await;
+													info!(flow_id = flow_id.0, "spawned flow consumer");
+												}
+												Err(e) => {
+													error!(
+														flow_id = flow_id.0,
+														error = %e,
+														"failed to spawn flow consumer"
+													);
+												}
+											}
+										}
+										Err(e) => {
+											error!(
+												flow_id = flow_id.0,
+												error = %e,
+												"failed to load flow"
+											);
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
-		None => Ok(None),
+
+		Ok(())
 	}
 }

@@ -136,7 +136,7 @@ impl Operator for PrimitiveFlowOperator {
 		Ok(change)
 	}
 
-	async fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	async fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		// let mut result = Vec::with_capacity(rows.len());
 		// for row in rows {
 		// 	result.push(txn
