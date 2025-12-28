@@ -11,23 +11,24 @@ use reifydb_core::{
 	interceptor::InterceptorFactory,
 	interface::{
 		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		Identity, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
+		Identity, Params, Query, QueryTransaction, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
 	ioc::IocContainer,
 	stream::{SendableFrameStream, StreamError},
 };
+use reifydb_rql::ast;
 use reifydb_transaction::{
 	cdc::TransactionCdc,
 	multi::{AwaitWatermarkError, TransactionMultiVersion},
 	single::TransactionSingle,
 };
-use reifydb_type::{Fragment, TypeConstraint};
+use reifydb_type::{Error, Fragment, TypeConstraint, diagnostic::engine::parallel_execution_error};
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
-	execute::Executor,
+	execute::{Executor, parallel::can_parallelize},
 	function::{Functions, generator, math},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
 	stream::{ChannelFrameStream, FrameSender},
@@ -187,6 +188,32 @@ async fn execute_query(
 		return;
 	}
 
+	// Parse the RQL to check for parallel execution opportunity
+	let statements = match ast::parse_str(&rql) {
+		Ok(stmts) => stmts,
+		Err(e) => {
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e.into(), rql)));
+			return;
+		}
+	};
+
+	// Check if we can execute statements in parallel
+	if can_parallelize(&statements) {
+		execute_query_parallel(engine, rql, statements, params, sender, cancel_token).await;
+	} else {
+		execute_query_sequential(engine, identity, rql, params, sender, cancel_token).await;
+	}
+}
+
+/// Execute a query sequentially (original behavior).
+async fn execute_query_sequential(
+	engine: StandardEngine,
+	identity: Identity,
+	rql: String,
+	params: Params,
+	sender: FrameSender,
+	cancel_token: CancellationToken,
+) {
 	// Begin transaction
 	let txn_result = engine.begin_query().await;
 	let mut txn = match txn_result {
@@ -224,6 +251,98 @@ async fn execute_query(
 		}
 		Err(e) => {
 			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
+		}
+	}
+}
+
+/// Execute independent statements in parallel.
+///
+/// Each statement gets its own transaction at the same snapshot version,
+/// ensuring consistent reads across all parallel executions.
+async fn execute_query_parallel(
+	engine: StandardEngine,
+	rql: String,
+	statements: Vec<ast::AstStatement>,
+	params: Params,
+	sender: FrameSender,
+	cancel_token: CancellationToken,
+) {
+	// Begin initial transaction to get the snapshot version
+	let initial_txn = match engine.begin_query().await {
+		Ok(txn) => txn,
+		Err(e) => {
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
+			return;
+		}
+	};
+
+	// Capture the snapshot version - all parallel tasks will use this same version
+	let version = initial_txn.version();
+	drop(initial_txn);
+
+	let statement_count = statements.len();
+
+	// Spawn parallel tasks for each statement
+	let handles: Vec<_> = statements
+		.into_iter()
+		.enumerate()
+		.map(|(idx, statement)| {
+			let engine = engine.clone();
+			let params = params.clone();
+
+			spawn(async move {
+				// Create a new transaction at the same snapshot version
+				let mut txn = engine.begin_query_at_version(version).await?;
+
+				// Execute the single statement
+				let frame =
+					engine.executor.execute_single_statement(&mut txn, statement, params).await?;
+
+				Ok::<_, Error>((idx, frame))
+			})
+		})
+		.collect();
+
+	// Collect results, preserving order
+	let mut results: Vec<Option<Frame>> = vec![None; statement_count];
+	let mut first_error: Option<Error> = None;
+
+	for handle in handles {
+		match handle.await {
+			Ok(Ok((idx, frame))) => {
+				results[idx] = frame;
+			}
+			Ok(Err(e)) => {
+				// Track the first error
+				if first_error.is_none() {
+					first_error = Some(e);
+				}
+			}
+			Err(join_err) => {
+				// Task panicked
+				if first_error.is_none() {
+					first_error = Some(Error(parallel_execution_error(format!(
+						"Task panicked: {}",
+						join_err
+					))));
+				}
+			}
+		}
+	}
+
+	// If there was an error, report it
+	if let Some(error) = first_error {
+		let _ = sender.try_send(Err(StreamError::query_with_statement(error, rql)));
+		return;
+	}
+
+	// Send results in order
+	for frame in results.into_iter().flatten() {
+		if cancel_token.is_cancelled() {
+			return;
+		}
+		if sender.send(Ok(frame)).await.is_err() {
+			return; // Receiver dropped
 		}
 	}
 }
@@ -314,6 +433,20 @@ impl StandardEngine {
 			catalog,
 			flow_operator_store,
 		}))
+	}
+
+	/// Begin a query transaction at a specific version.
+	///
+	/// This is used for parallel query execution where multiple tasks need to
+	/// read from the same snapshot (same CommitVersion) for consistency.
+	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
+	pub async fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<StandardQueryTransaction> {
+		Ok(StandardQueryTransaction::new(
+			self.multi.begin_query_at_version(version).await?,
+			self.single.clone(),
+			self.cdc.clone(),
+			self.catalog.clone(),
+		))
 	}
 
 	#[inline]
@@ -445,10 +578,7 @@ impl StandardEngine {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					Fragment::None,
-					namespace,
-				))
+				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
 			})?;
 
 		// Allocate a new table ID
@@ -486,10 +616,7 @@ impl StandardEngine {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					Fragment::None,
-					namespace,
-				))
+				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
 			})?;
 
 		// Unregister from catalog
@@ -528,10 +655,7 @@ impl StandardEngine {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				reifydb_type::Error(reifydb_type::diagnostic::catalog::namespace_not_found(
-					Fragment::None,
-					namespace,
-				))
+				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
 			})?;
 
 		// Allocate a new table ID

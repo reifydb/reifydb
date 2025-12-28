@@ -240,6 +240,15 @@ impl TransactionMulti {
 	pub async fn begin_query(&self) -> crate::Result<QueryTransaction> {
 		QueryTransaction::new(self.clone(), None).await
 	}
+
+	/// Begin a query transaction at a specific version.
+	///
+	/// This is used for parallel query execution where multiple tasks need to
+	/// read from the same snapshot (same CommitVersion) for consistency.
+	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
+	pub async fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), Some(version)).await
+	}
 }
 
 impl TransactionMulti {

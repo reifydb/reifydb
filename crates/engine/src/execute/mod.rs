@@ -37,6 +37,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{
 	ast,
+	ast::AstStatement,
 	plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_transaction::StorageTracker;
@@ -51,6 +52,7 @@ use crate::{
 
 mod catalog;
 pub(crate) mod mutate;
+pub(crate) mod parallel;
 mod query;
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
@@ -415,6 +417,48 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 }
 
 impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
+
+impl Executor {
+	/// Execute a single statement without any scripting context.
+	///
+	/// This is used for parallel query execution where each statement
+	/// runs independently in its own task with its own transaction.
+	#[instrument(name = "executor::execute_single_statement", level = "debug", skip(self, txn, statement, params))]
+	pub(crate) async fn execute_single_statement(
+		&self,
+		txn: &mut StandardQueryTransaction,
+		statement: AstStatement,
+		params: Params,
+	) -> crate::Result<Option<Frame>> {
+		// Create an empty stack (no persistent variables for parallel execution)
+		let mut stack = Stack::new();
+
+		// Populate the stack with parameters
+		match &params {
+			Params::Positional(values) => {
+				for (index, value) in values.iter().enumerate() {
+					let param_name = (index + 1).to_string();
+					stack.set(param_name, Variable::Scalar(value.clone()), false)?;
+				}
+			}
+			Params::Named(map) => {
+				for (name, value) in map {
+					stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
+				}
+			}
+			Params::None => {}
+		}
+
+		// Plan and execute
+		if let Some(plan) = plan(txn, statement).await? {
+			if let Some(columns) = self.execute_query_plan(txn, plan, params, &mut stack).await? {
+				return Ok(Some(Frame::from(columns)));
+			}
+		}
+
+		Ok(None)
+	}
+}
 
 impl Executor {
 	#[instrument(name = "executor::plan::query", level = "debug", skip(self, rx, plan, params, stack))]
