@@ -333,6 +333,7 @@ dependencies = [
  "reifydb-client",
  "rustyline",
  "terminal_size",
+ "tokio",
 ]
 
 [[package]]
@@ -1672,7 +1673,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
- "reifydb-network",
  "reifydb-rql",
  "reifydb-store-transaction",
  "reifydb-sub-api",
@@ -1754,16 +1754,17 @@ dependencies = [
 name = "reifydb-client"
 version = "0.2.0"
 dependencies = [
- "num-bigint",
+ "futures-util",
  "reifydb",
  "reifydb-client-derive",
- "reifydb-hash",
  "reifydb-testing",
  "reifydb-type",
+ "reqwest",
  "serde",
  "serde_json",
  "test_each_file",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -1862,16 +1863,6 @@ name = "reifydb-macro-impl"
 version = "0.2.0"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "reifydb-network"
-version = "0.2.0"
-dependencies = [
- "httparse",
- "reifydb-core",
- "reifydb-hash",
- "reifydb-type",
 ]
 
 [[package]]

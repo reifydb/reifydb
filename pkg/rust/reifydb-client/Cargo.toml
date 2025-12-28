@@ -8,36 +8,35 @@ repository.workspace = true
 description = "Official Rust client library for ReifyDB"
 
 [[example]]
-name = "blocking_session"
-path = "examples/blocking_ws.rs"
+name = "http"
+path = "examples/http.rs"
 
 [[example]]
-name = "callback_session"
-path = "examples/callback_ws.rs"
-
-[[example]]
-name = "channel_session"
-path = "examples/channel_ws.rs"
-
-[[example]]
-name = "test_remote_sort"
-path = "examples/test_remote_sort.rs"
+name = "websocket"
+path = "examples/websocket.rs"
 
 [features]
 default = []
 
 [dependencies]
 reifydb-type = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-client-derive = { workspace = true }
 
-num-bigint = { version = "0.4.6", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# WebSocket client
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
 
 [dev-dependencies]
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws"] }
 reifydb-testing = { workspace = true }
 test_each_file = { version = "0.3.5" }
 tokio = { workspace = true }
-

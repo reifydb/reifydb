@@ -11,7 +11,7 @@ use reifydb::{
 	transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
-use reifydb_client::{Client, HttpBlockingSession, HttpClient};
+use reifydb_client::HttpClient;
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -19,7 +19,6 @@ use tokio::runtime::Runtime;
 pub struct HttpRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
-	session: Option<HttpBlockingSession>,
 	runtime: Arc<Runtime>,
 }
 
@@ -40,7 +39,6 @@ impl HttpRunner {
 		Self {
 			instance: Some(instance),
 			client: None,
-			session: None,
 			runtime,
 		}
 	}
@@ -50,7 +48,7 @@ impl testscript::Runner for HttpRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 
-		let session = self.session.as_mut().ok_or("No session available")?;
+		let client = self.client.as_ref().ok_or("No client available")?;
 
 		match command.name.as_str() {
 			"command" => {
@@ -58,7 +56,7 @@ impl testscript::Runner for HttpRunner {
 
 				println!("command: {rql}");
 
-				let result = session.command(&rql, None)?;
+				let result = self.runtime.block_on(client.command(&rql, None))?;
 				for frame in result.frames {
 					writeln!(output, "{}", frame).unwrap();
 				}
@@ -69,7 +67,7 @@ impl testscript::Runner for HttpRunner {
 
 				println!("query: {rql}");
 
-				let result = session.query(&rql, None)?;
+				let result = self.runtime.block_on(client.query(&rql, None))?;
 				for frame in result.frames {
 					writeln!(output, "{}", frame).unwrap();
 				}
@@ -88,26 +86,17 @@ impl testscript::Runner for HttpRunner {
 
 		let port = server.sub_server_http().unwrap().port().unwrap();
 
-		let client = Client::http_from_url(&format!("http://::1:{}", port))?;
-
-		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;
+		let mut client = self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port)))?;
+		client.authenticate("mysecrettoken");
 
 		self.client = Some(client);
-		self.session = Some(session);
 
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		// Drop the session first
-		if let Some(session) = self.session.take() {
-			drop(session);
-		}
-
-		// Close the client connection
-		if let Some(client) = self.client.take() {
-			let _ = client.close();
-		}
+		// Drop the client
+		self.client = None;
 
 		// Stop the server
 		if let Some(mut server) = self.instance.take() {

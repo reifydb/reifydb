@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
 use reifydb::{
 	Database, ServerBuilder,
@@ -10,7 +10,7 @@ use reifydb::{
 	sub_server_ws::WsConfig,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
-use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
+use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::Command;
 use tokio::runtime::Runtime;
 
@@ -41,16 +41,6 @@ pub fn start_server_and_get_ws_port(runtime: &Arc<Runtime>, server: &mut Databas
 pub fn start_server_and_get_http_port(runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	runtime.block_on(server.start())?;
 	Ok(server.sub_server_http().unwrap().port().unwrap())
-}
-
-#[allow(dead_code)]
-pub fn connect_ws<A: ToSocketAddrs>(addr: A) -> Result<WsClient, Box<dyn Error>> {
-	Client::ws(addr)
-}
-
-#[allow(dead_code)]
-pub fn connect_http<A: ToSocketAddrs>(addr: A) -> Result<HttpClient, Box<dyn Error>> {
-	Client::http(addr)
 }
 
 /// Parse RQL command from testscript Command
@@ -136,20 +126,6 @@ pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 		writeln!(output, "{}", frame).unwrap();
 	}
 	Ok(output)
-}
-
-#[allow(dead_code)]
-pub fn cleanup_ws_client(client: Option<WsClient>) {
-	if let Some(client) = client {
-		let _ = client.close();
-	}
-}
-
-#[allow(dead_code)]
-pub fn cleanup_http_client(client: Option<HttpClient>) {
-	// HTTP clients don't maintain persistent connections
-	// so no cleanup needed
-	drop(client);
 }
 
 /// Clean up server instance

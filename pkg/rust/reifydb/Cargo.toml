@@ -13,7 +13,6 @@ reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-network = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }

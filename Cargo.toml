@@ -12,7 +12,6 @@ members = [
     "crates/hash",
     "crates/macro",
     "crates/macro-impl",
-    "crates/network",
     "crates/abi",
     "crates/sdk",
     "crates/rql",
@@ -57,7 +56,6 @@ default-members = [
     "crates/hash",
     "crates/macro",
     "crates/macro-impl",
-    "crates/network",
     "crates/abi",
     "crates/sdk",
     "crates/rql",
@@ -133,7 +131,6 @@ reifydb-compression = { version = "0.2.0", path = "crates/compression" }
 reifydb-core = { version = "0.2.0", path = "crates/core" }
 reifydb-engine = { version = "0.2.0", path = "crates/engine" }
 reifydb-hash = { version = "0.2.0", path = "crates/hash" }
-reifydb-network = { version = "0.2.0", path = "crates/network" }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
 reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
 reifydb-rql = { version = "0.2.0", path = "crates/rql" }
@@ -194,6 +191,7 @@ tokio-rusqlite = { version = "0.7" }
 
 
 axum = { version = "0.8.7" }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tower = { version = "0.5.2", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.6", features = ["trace", "timeout"] }
 futures-util = { version = "0.3.31", features = ["sink"] }
