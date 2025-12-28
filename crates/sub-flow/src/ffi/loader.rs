@@ -12,7 +12,7 @@ use reifydb_abi::{
 	OperatorMagicFnFFI,
 };
 use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
+use reifydb_sdk::{FFIError, Result as FFIResult};
 
 use crate::operator::FFIOperator;
 

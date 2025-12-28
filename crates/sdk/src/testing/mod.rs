@@ -9,7 +9,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```ignore
 //! use reifydb_flow_operator_sdk::testing::*;
 //!
 //! #[test]

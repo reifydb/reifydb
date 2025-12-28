@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{CommitVersion, Row, value::column::Columns};
-use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
+use reifydb_sdk::FlowDiff;
 
 use crate::{
 	operator::{

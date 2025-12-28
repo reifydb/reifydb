@@ -41,7 +41,7 @@ static EMPTY_PARAMS: Params = Params::None;
 use std::sync::LazyLock;
 
 use reifydb_engine::stack::Stack;
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
@@ -63,7 +63,7 @@ impl WindowEvent {
 
 		// Debug: Extract and log the actual values being stored
 		let mut stored_values = Vec::new();
-		for (i, field) in row.layout.fields().fields.iter().enumerate() {
+		for (i, _field) in row.layout.fields().fields.iter().enumerate() {
 			let value = row.layout.get_value_by_idx(&row.encoded, i);
 			stored_values.push(format!("{:?}", value));
 		}

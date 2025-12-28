@@ -1,7 +1,7 @@
 //! State management utilities for operators
 
+mod ffi;
 pub mod keyed;
-mod raw;
 pub mod row;
 pub mod single;
 pub mod utils;
@@ -15,7 +15,7 @@ pub use single::FFISingleStateful;
 pub use utils::*;
 pub use window::FFIWindowStateful;
 
-use crate::{FFIOperator, context::OperatorContext, error::Result};
+use crate::{FFIOperator, OperatorContext, error::Result};
 
 /// State manager providing state operations with EncodedKey and EncodedValues
 pub struct State<'a> {
@@ -32,32 +32,32 @@ impl<'a> State<'a> {
 
 	/// Get a value from state by key
 	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
-		raw::raw_state_get(self.ctx, key)
+		ffi::raw_state_get(self.ctx, key)
 	}
 
 	/// Set a value in state by key
 	pub fn set(&mut self, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
-		raw::raw_state_set(self.ctx, key, value)
+		ffi::raw_state_set(self.ctx, key, value)
 	}
 
 	/// Remove a value from state by key
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		raw::raw_state_remove(self.ctx, key)
+		ffi::raw_state_remove(self.ctx, key)
 	}
 
 	/// Check if a key exists in state
 	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(raw::raw_state_get(self.ctx, key)?.is_some())
+		Ok(ffi::raw_state_get(self.ctx, key)?.is_some())
 	}
 
 	/// Clear all state for this operator
 	pub fn clear(&mut self) -> Result<()> {
-		raw::raw_state_clear(self.ctx)
+		ffi::raw_state_clear(self.ctx)
 	}
 
 	/// Scan state entries with a given key prefix
 	pub fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
-		raw::raw_state_prefix(self.ctx, prefix)
+		ffi::raw_state_prefix(self.ctx, prefix)
 	}
 
 	/// Get all keys with a given prefix

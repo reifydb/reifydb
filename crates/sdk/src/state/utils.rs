@@ -5,7 +5,7 @@
 
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout};
 
-use crate::{context::OperatorContext, error::Result};
+use crate::{OperatorContext, error::Result};
 
 /// Create an empty key for single-state operators
 ///

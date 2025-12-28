@@ -6,8 +6,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_rql::expression::Expression;
+use reifydb_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

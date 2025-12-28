@@ -1843,19 +1843,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-flow-operator-sdk"
-version = "0.2.0"
-dependencies = [
- "postcard",
- "reifydb-abi",
- "reifydb-core",
- "reifydb-type",
- "serde",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "reifydb-hash"
 version = "0.2.0"
 dependencies = [
@@ -1904,6 +1891,19 @@ dependencies = [
  "test_each_file",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-sdk"
+version = "0.2.0"
+dependencies = [
+ "postcard",
+ "reifydb-abi",
+ "reifydb-core",
+ "reifydb-type",
+ "serde",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1961,9 +1961,9 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-flow-operator-sdk",
  "reifydb-hash",
  "reifydb-rql",
+ "reifydb-sdk",
  "reifydb-store-transaction",
  "reifydb-sub-api",
  "reifydb-transaction",

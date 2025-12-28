@@ -4,8 +4,8 @@
 use std::{future::Future, pin::Pin};
 
 use reifydb_core::interface::FlowId;
-use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin};
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
+use reifydb_sdk::{FlowChange, FlowChangeOrigin};
 use tracing::{instrument, trace_span};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};

@@ -1,0 +1,23 @@
+[package]
+name = "reifydb-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "SDK for building ReifyDB operators"
+
+[dependencies]
+reifydb-abi.workspace = true
+reifydb-core.workspace = true
+reifydb-type.workspace = true
+postcard.workspace = true
+serde.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[features]
+default = []
+test-support = []
+

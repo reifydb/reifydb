@@ -6,7 +6,7 @@
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout};
 
 use super::{FFIRawStatefulOperator, utils};
-use crate::{context::OperatorContext, error::Result};
+use crate::{OperatorContext, error::Result};
 
 /// Operator with a single state value (like counters, running sums, etc.)
 ///

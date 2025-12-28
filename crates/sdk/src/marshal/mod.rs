@@ -2,7 +2,10 @@
 
 use crate::ffi::Arena;
 
-pub(crate) mod column;
+mod column;
+mod types;
+mod util;
+
 pub(crate) mod flow;
 
 /// Marshaller for converting between Rust and FFI types

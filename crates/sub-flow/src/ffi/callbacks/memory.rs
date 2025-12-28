@@ -7,7 +7,7 @@ use std::{
 	cell::RefCell,
 };
 
-use reifydb_flow_operator_sdk::ffi::Arena;
+use reifydb_sdk::ffi::Arena;
 
 // Thread-local storage for the current arena
 // All allocations during an FFI operation will use this arena

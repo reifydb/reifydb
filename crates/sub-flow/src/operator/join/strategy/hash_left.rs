@@ -1,6 +1,6 @@
 use reifydb_core::{CommitVersion, Row, value::column::Columns};
-use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
+use reifydb_sdk::FlowDiff;
 
 use super::hash::{
 	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_multiple_left,

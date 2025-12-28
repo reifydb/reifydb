@@ -1,7 +1,4 @@
-//! Store access for FFI operators
-//!
-//! Provides read-only access to the underlying store,
-//! allowing operators to query data beyond their own state.
+//! Raw FFI functions for store access
 
 use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};
 
@@ -13,71 +10,11 @@ use reifydb_core::{
 use tracing::instrument;
 
 use crate::{
-	context::OperatorContext,
+	OperatorContext,
 	error::{FFIError, Result},
 };
 
-/// Store accessor providing read-only access to the underlying store
-pub struct Store<'a> {
-	ctx: &'a mut OperatorContext,
-}
-
-impl<'a> Store<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
-		Self {
-			ctx,
-		}
-	}
-
-	#[instrument(name = "flow::operator::store::get", level = "trace", skip(self), fields(
-		key_len = key.as_bytes().len(),
-		found
-	))]
-	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
-		let result = raw_store_get(self.ctx, key)?;
-		tracing::Span::current().record("found", result.is_some());
-		Ok(result)
-	}
-
-	#[instrument(name = "flow::operator::store::contains_key", level = "trace", skip(self), fields(
-		key_len = key.as_bytes().len()
-	))]
-	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
-		raw_store_contains_key(self.ctx, key)
-	}
-
-	#[instrument(name = "flow::operator::store::prefix", level = "trace", skip(self), fields(
-		prefix_len = prefix.as_bytes().len(),
-		result_count
-	))]
-	pub fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
-		let results = raw_store_prefix(self.ctx, prefix)?;
-		tracing::Span::current().record("result_count", results.len());
-		Ok(results)
-	}
-
-	#[instrument(
-		name = "flow::operator::store::range",
-		level = "trace",
-		skip(self, start, end),
-		fields(result_count)
-	)]
-	pub fn range(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
-		let results = raw_store_range(self.ctx, start, end)?;
-		tracing::Span::current().record("result_count", results.len());
-		Ok(results)
-	}
-}
-
-/// Get a value from store by key
-#[instrument(name = "flow::operator::store::raw::get", level = "trace", skip(ctx), fields(
-	key_len = key.as_bytes().len()
-))]
-fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -112,7 +49,7 @@ fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Encod
 #[instrument(name = "flow::operator::store::raw::contains_key", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
-fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<bool> {
+pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<bool> {
 	let key_bytes = key.as_bytes();
 	let mut result_byte: u8 = 0;
 
@@ -136,7 +73,7 @@ fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<boo
 #[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
-fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
@@ -163,7 +100,7 @@ const BOUND_EXCLUDED: u8 = 2;
 
 /// Scan all keys within a range
 #[instrument(name = "flow::operator::store::raw::range", level = "trace", skip(ctx, start, end))]
-fn raw_store_range(
+pub(super) fn raw_store_range(
 	ctx: &OperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
@@ -213,7 +150,7 @@ fn raw_store_range(
 	skip(ctx, iterator),
 	fields(result_count)
 )]
-unsafe fn collect_iterator_results(
+pub(super) unsafe fn collect_iterator_results(
 	ctx: &OperatorContext,
 	iterator: *mut StoreIteratorFFI,
 ) -> Result<Vec<(EncodedKey, EncodedValues)>> {

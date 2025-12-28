@@ -11,7 +11,7 @@ use reifydb_core::{
 		encoded::{EncodedValues, EncodedValuesNamedLayout},
 	},
 };
-use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::RowNumber;
 
 use crate::catalog::FlowCatalog;

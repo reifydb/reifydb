@@ -11,7 +11,7 @@ use reifydb_abi::*;
 use reifydb_type::RowNumber;
 use tracing::{Span, debug_span, instrument, warn};
 
-use crate::{FFIOperator, context::OperatorContext, marshal::Marshaller};
+use crate::{FFIOperator, OperatorContext, marshal::Marshaller};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
