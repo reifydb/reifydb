@@ -1,13 +1,11 @@
-use reifydb_core::{CommitVersion, Row, value::column::Columns};
+use reifydb_core::{CommitVersion, value::column::Columns};
 use reifydb_hash::Hash128;
 use reifydb_sdk::FlowDiff;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_multiple_left,
-	emit_joined_rows_multiple_right, emit_joined_rows_right_to_left, emit_remove_joined_rows_left,
-	emit_remove_joined_rows_multiple_left, emit_remove_joined_rows_multiple_right, emit_remove_joined_rows_right,
-	emit_update_joined_rows_left, emit_update_joined_rows_right, is_first_right_row, pull_left_rows,
-	remove_from_state_entry, update_row_in_entry,
+	add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
+	emit_update_joined_columns, is_first_right_row, pull_left_columns, remove_from_state_entry,
+	update_row_in_entry,
 };
 use crate::{
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
@@ -17,305 +15,101 @@ use crate::{
 pub(crate) struct LeftHashJoin;
 
 impl LeftHashJoin {
+	/// Handle insert for rows with undefined join keys (emits unmatched left row)
+	pub(crate) async fn handle_insert_undefined(
+		&self,
+		txn: &mut FlowTransaction,
+		post: &Columns,
+		row_idx: usize,
+		side: JoinSide,
+		_state: &mut JoinState,
+		operator: &JoinOperator,
+	) -> crate::Result<Vec<FlowDiff>> {
+		match side {
+			JoinSide::Left => {
+				// Undefined key in left join still emits the row
+				let unmatched = operator.unmatched_left_columns(txn, post, row_idx).await?;
+				Ok(vec![FlowDiff::Insert {
+					post: unmatched,
+				}])
+			}
+			JoinSide::Right => {
+				// Right side inserts with undefined keys don't produce output
+				Ok(Vec::new())
+			}
+		}
+	}
+
+	/// Handle remove for rows with undefined join keys
+	pub(crate) async fn handle_remove_undefined(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		row_idx: usize,
+		side: JoinSide,
+		_state: &mut JoinState,
+		operator: &JoinOperator,
+		_version: CommitVersion,
+	) -> crate::Result<Vec<FlowDiff>> {
+		let row_number = pre.row_numbers[row_idx];
+
+		match side {
+			JoinSide::Left => {
+				// Undefined key - remove the unmatched row
+				let unmatched = operator.unmatched_left_columns(txn, pre, row_idx).await?;
+				operator.cleanup_left_row_joins(txn, *row_number).await?;
+				Ok(vec![FlowDiff::Remove {
+					pre: unmatched,
+				}])
+			}
+			JoinSide::Right => {
+				// Right side removes with undefined keys don't produce output
+				Ok(Vec::new())
+			}
+		}
+	}
+
+	/// Handle update for rows with undefined join keys
+	pub(crate) async fn handle_update_undefined(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		row_idx: usize,
+		side: JoinSide,
+		_state: &mut JoinState,
+		operator: &JoinOperator,
+		_version: CommitVersion,
+	) -> crate::Result<Vec<FlowDiff>> {
+		match side {
+			JoinSide::Left => {
+				// Both keys are undefined - update the row
+				let unmatched_pre = operator.unmatched_left_columns(txn, pre, row_idx).await?;
+				let unmatched_post = operator.unmatched_left_columns(txn, post, row_idx).await?;
+				Ok(vec![FlowDiff::Update {
+					pre: unmatched_pre,
+					post: unmatched_post,
+				}])
+			}
+			JoinSide::Right => {
+				// Right side updates with undefined keys don't produce output
+				Ok(Vec::new())
+			}
+		}
+	}
+
+	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
-		post: &Row,
-		side: JoinSide,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		let mut result = Vec::new();
-
-		match side {
-			JoinSide::Left => {
-				if let Some(key_hash) = key_hash {
-					// Add to left entries
-					add_to_state_entry(txn, &mut state.left, &key_hash, post).await?;
-
-					// Join with matching right rows
-					let joined_rows = emit_joined_rows_left_to_right(
-						txn,
-						post,
-						&state.right,
-						&key_hash,
-						operator,
-						&operator.right_parent,
-					)
-					.await?;
-
-					if !joined_rows.is_empty() {
-						result.extend(joined_rows);
-					} else {
-						// Left join: emit left encoded even without match
-						let unmatched_row = operator.unmatched_left_row(txn, post).await?;
-						result.push(FlowDiff::Insert {
-							post: Columns::from_row(&unmatched_row),
-						});
-					}
-				} else {
-					// Undefined key in left join still emits the encoded
-					let unmatched_row = operator.unmatched_left_row(txn, post).await?;
-					result.push(FlowDiff::Insert {
-						post: Columns::from_row(&unmatched_row),
-					});
-				}
-			}
-			JoinSide::Right => {
-				if let Some(key_hash) = key_hash {
-					let is_first = is_first_right_row(txn, &state.right, &key_hash).await?;
-
-					// Add to right entries
-					add_to_state_entry(txn, &mut state.right, &key_hash, post).await?;
-
-					// Join with matching left rows
-					if let Some(left_entry) = state.left.get(txn, &key_hash).await? {
-						// If first right encoded, remove previously emitted unmatched left rows
-						if is_first {
-							let left_columns = operator
-								.left_parent
-								.pull(txn, &left_entry.rows)
-								.await?;
-
-							for row_idx in 0..left_columns.row_count() {
-								let left_row = left_columns
-									.extract_row(row_idx)
-									.to_single_row();
-								let unmatched_row = operator
-									.unmatched_left_row(txn, &left_row)
-									.await?;
-								result.push(FlowDiff::Remove {
-									pre: Columns::from_row(&unmatched_row),
-								});
-							}
-						}
-
-						// Add properly joined rows
-						let joined_rows = emit_joined_rows_right_to_left(
-							txn,
-							post,
-							&state.left,
-							&key_hash,
-							operator,
-							&operator.left_parent,
-						)
-						.await?;
-						result.extend(joined_rows);
-					}
-				}
-				// Right side inserts with undefined keys don't produce output
-			}
-		}
-
-		Ok(result)
-	}
-
-	pub(crate) async fn handle_remove(
-		&self,
-		txn: &mut FlowTransaction,
-		pre: &Row,
-		side: JoinSide,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
-		let mut result = Vec::new();
-
-		match side {
-			JoinSide::Left => {
-				if let Some(key_hash) = key_hash {
-					// Check if left entry exists
-					if state.left.contains_key(txn, &key_hash).await? {
-						operator.cleanup_left_row_joins(txn, pre.number.0).await?;
-
-						// Remove all joins involving this encoded
-						let removed_joins = emit_remove_joined_rows_left(
-							txn,
-							pre,
-							&state.right,
-							&key_hash,
-							operator,
-							&operator.right_parent,
-						)
-						.await?;
-
-						if !removed_joins.is_empty() {
-							result.extend(removed_joins);
-						} else {
-							// Remove the unmatched left join encoded
-							let unmatched_row =
-								operator.unmatched_left_row(txn, pre).await?;
-							result.push(FlowDiff::Remove {
-								pre: Columns::from_row(&unmatched_row),
-							});
-						}
-
-						// Remove from left entries and clean up if empty
-						remove_from_state_entry(txn, &mut state.left, &key_hash, pre).await?;
-					}
-				} else {
-					// Undefined key - remove the unmatched encoded
-					let unmatched_row = operator.unmatched_left_row(txn, pre).await?;
-					result.push(FlowDiff::Remove {
-						pre: Columns::from_row(&unmatched_row),
-					});
-
-					operator.cleanup_left_row_joins(txn, pre.number.0).await?;
-				}
-			}
-			JoinSide::Right => {
-				if let Some(key_hash) = key_hash {
-					// Check if right entry exists
-					if state.right.contains_key(txn, &key_hash).await? {
-						// Remove all joins involving this encoded
-						let removed_joins = emit_remove_joined_rows_right(
-							txn,
-							pre,
-							&state.left,
-							&key_hash,
-							operator,
-							&operator.left_parent,
-						)
-						.await?;
-						result.extend(removed_joins);
-
-						// Remove from right entries
-						let became_empty =
-							remove_from_state_entry(txn, &mut state.right, &key_hash, pre)
-								.await?;
-
-						// If this was the last right encoded, re-emit left rows as unmatched
-						if became_empty {
-							let left_rows = pull_left_rows(
-								txn,
-								&state.left,
-								&key_hash,
-								&operator.left_parent,
-								version,
-							)
-							.await?;
-							for left_row in &left_rows {
-								let unmatched_row = operator
-									.unmatched_left_row(txn, &left_row)
-									.await?;
-								result.push(FlowDiff::Insert {
-									post: Columns::from_row(&unmatched_row),
-								});
-							}
-						}
-					}
-				}
-			}
-		}
-
-		Ok(result)
-	}
-
-	pub(crate) async fn handle_update(
-		&self,
-		txn: &mut FlowTransaction,
-		pre: &Row,
-		post: &Row,
-		side: JoinSide,
-		old_key: Option<Hash128>,
-		new_key: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
-		let mut result = Vec::new();
-
-		if old_key == new_key {
-			// Key didn't change, update in place
-			match side {
-				JoinSide::Left => {
-					if let Some(key) = old_key {
-						// Update the encoded in state
-						if update_row_in_entry(txn, &mut state.left, &key, pre, post).await? {
-							// Emit updates for all joined rows
-							let updates = emit_update_joined_rows_left(
-								txn,
-								pre,
-								post,
-								&state.right,
-								&key,
-								operator,
-								&operator.right_parent,
-								version,
-							)
-							.await?;
-
-							if !updates.is_empty() {
-								result.extend(updates);
-							} else {
-								// No matching right rows - update unmatched left
-								// encoded
-								let unmatched_pre =
-									operator.unmatched_left_row(txn, pre).await?;
-								let unmatched_post =
-									operator.unmatched_left_row(txn, post).await?;
-								result.push(FlowDiff::Update {
-									pre: Columns::from_row(&unmatched_pre),
-									post: Columns::from_row(&unmatched_post),
-								});
-							}
-						}
-					} else {
-						// Both keys are undefined - update the encoded
-						let unmatched_pre = operator.unmatched_left_row(txn, pre).await?;
-						let unmatched_post = operator.unmatched_left_row(txn, post).await?;
-						result.push(FlowDiff::Update {
-							pre: Columns::from_row(&unmatched_pre),
-							post: Columns::from_row(&unmatched_post),
-						});
-					}
-				}
-				JoinSide::Right => {
-					if let Some(key) = old_key {
-						// Update the encoded in state
-						if update_row_in_entry(txn, &mut state.right, &key, pre, post).await? {
-							// Emit updates for all joined rows
-							let updates = emit_update_joined_rows_right(
-								txn,
-								pre,
-								post,
-								&state.left,
-								&key,
-								operator,
-								&operator.left_parent,
-								version,
-							)
-							.await?;
-							result.extend(updates);
-						}
-					}
-				}
-			}
-		} else {
-			// Key changed - treat as remove + insert
-			let remove_diffs =
-				self.handle_remove(txn, pre, side, old_key, state, operator, version).await?;
-			result.extend(remove_diffs);
-
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator).await?;
-			result.extend(insert_diffs);
-		}
-
-		Ok(result)
-	}
-
-	pub(crate) async fn handle_insert_multiple(
-		&self,
-		txn: &mut FlowTransaction,
-		rows: &[Row],
+		post: &Columns,
+		indices: &[usize],
 		side: JoinSide,
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
-		if rows.is_empty() {
+		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
 
@@ -324,86 +118,86 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Add all rows to state first
-				for row in rows {
-					add_to_state_entry(txn, &mut state.left, key_hash, row).await?;
-				}
+				add_to_state_entry_batch(txn, &mut state.left, key_hash, post, indices).await?;
 
 				// Check if there are matching right rows
-				let joined_rows = emit_joined_rows_multiple_left(
+				if let Some(diff) = emit_joined_columns_batch(
 					txn,
-					rows,
+					post,
+					indices,
+					JoinSide::Left,
 					&state.right,
 					key_hash,
 					operator,
 					&operator.right_parent,
 				)
-				.await?;
-
-				if !joined_rows.is_empty() {
-					result.extend(joined_rows);
+				.await?
+				{
+					result.push(diff);
 				} else {
 					// No matches - emit unmatched left rows for all
-					for row in rows {
-						let unmatched_row = operator.unmatched_left_row(txn, row).await?;
-						result.push(FlowDiff::Insert {
-							post: Columns::from_row(&unmatched_row),
-						});
-					}
+					let unmatched =
+						operator.unmatched_left_columns_batch(txn, post, indices).await?;
+					result.push(FlowDiff::Insert {
+						post: unmatched,
+					});
 				}
 			}
 			JoinSide::Right => {
 				let is_first = is_first_right_row(txn, &state.right, key_hash).await?;
 
 				// Add all rows to state first
-				for row in rows {
-					add_to_state_entry(txn, &mut state.right, key_hash, row).await?;
-				}
+				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices).await?;
 
 				// If first right row(s), remove previously emitted unmatched left rows
 				if is_first {
 					if let Some(left_entry) = state.left.get(txn, key_hash).await? {
 						let left_columns =
 							operator.left_parent.pull(txn, &left_entry.rows).await?;
-						for row_idx in 0..left_columns.row_count() {
-							let left_row =
-								left_columns.extract_row(row_idx).to_single_row();
-							let unmatched_row =
-								operator.unmatched_left_row(txn, &left_row).await?;
-							result.push(FlowDiff::Remove {
-								pre: Columns::from_row(&unmatched_row),
-							});
-						}
+						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+						let unmatched = operator
+							.unmatched_left_columns_batch(txn, &left_columns, &left_indices)
+							.await?;
+						result.push(FlowDiff::Remove {
+							pre: unmatched,
+						});
 					}
 				}
 
 				// Emit all joined rows in one batch
-				let joined_rows = emit_joined_rows_multiple_right(
+				if let Some(diff) = emit_joined_columns_batch(
 					txn,
-					rows,
+					post,
+					indices,
+					JoinSide::Right,
 					&state.left,
 					key_hash,
 					operator,
 					&operator.left_parent,
 				)
-				.await?;
-				result.extend(joined_rows);
+				.await?
+				{
+					result.push(diff);
+				}
 			}
 		}
 
 		Ok(result)
 	}
 
-	pub(crate) async fn handle_remove_multiple(
+	/// Handle remove for rows with defined join keys (batched by key)
+	pub(crate) async fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
-		rows: &[Row],
+		pre: &Columns,
+		indices: &[usize],
 		side: JoinSide,
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
+		_version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
-		if rows.is_empty() {
+		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
 
@@ -412,81 +206,199 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Clean up row number mappings for all left rows
-				for row in rows {
-					operator.cleanup_left_row_joins(txn, row.number.0).await?;
+				for &idx in indices {
+					let row_number = pre.row_numbers[idx];
+					operator.cleanup_left_row_joins(txn, *row_number).await?;
 				}
 
 				// First emit all remove diffs in one batch
-				let removed_joins = emit_remove_joined_rows_multiple_left(
+				if let Some(diff) = emit_remove_joined_columns_batch(
 					txn,
-					rows,
+					pre,
+					indices,
+					JoinSide::Left,
 					&state.right,
 					key_hash,
 					operator,
 					&operator.right_parent,
 				)
-				.await?;
-
-				if !removed_joins.is_empty() {
-					result.extend(removed_joins);
+				.await?
+				{
+					result.push(diff);
 				} else {
 					// No joined rows to remove - remove unmatched left rows
-					for row in rows {
-						let unmatched_row = operator.unmatched_left_row(txn, row).await?;
-						result.push(FlowDiff::Remove {
-							pre: Columns::from_row(&unmatched_row),
-						});
-					}
+					let unmatched =
+						operator.unmatched_left_columns_batch(txn, pre, indices).await?;
+					result.push(FlowDiff::Remove {
+						pre: unmatched,
+					});
 				}
 
 				// Then remove all rows from state
-				for row in rows {
-					remove_from_state_entry(txn, &mut state.left, key_hash, row).await?;
+				for &idx in indices {
+					let row_number = pre.row_numbers[idx];
+					remove_from_state_entry(txn, &mut state.left, key_hash, row_number).await?;
 				}
 			}
 			JoinSide::Right => {
 				// First emit all remove diffs in one batch
-				let removed_joins = emit_remove_joined_rows_multiple_right(
+				if let Some(diff) = emit_remove_joined_columns_batch(
 					txn,
-					rows,
+					pre,
+					indices,
+					JoinSide::Right,
 					&state.left,
 					key_hash,
 					operator,
 					&operator.left_parent,
 				)
-				.await?;
-				result.extend(removed_joins);
+				.await?
+				{
+					result.push(diff);
+				}
 
 				// Check if this will make right entries empty
 				let will_become_empty = if let Some(entry) = state.right.get(txn, key_hash).await? {
-					entry.rows.len() <= rows.len()
+					entry.rows.len() <= indices.len()
 				} else {
 					false
 				};
 
 				// Remove all rows from state
-				for row in rows {
-					remove_from_state_entry(txn, &mut state.right, key_hash, row).await?;
+				for &idx in indices {
+					let row_number = pre.row_numbers[idx];
+					remove_from_state_entry(txn, &mut state.right, key_hash, row_number).await?;
 				}
 
 				// If right side became empty, re-emit left rows as unmatched
 				if will_become_empty && !state.right.contains_key(txn, key_hash).await? {
-					let left_rows = pull_left_rows(
-						txn,
-						&state.left,
-						key_hash,
-						&operator.left_parent,
-						version,
-					)
-					.await?;
-					for left_row in &left_rows {
-						let unmatched_row = operator.unmatched_left_row(txn, left_row).await?;
+					let left_columns =
+						pull_left_columns(txn, &state.left, key_hash, &operator.left_parent)
+							.await?;
+					if !left_columns.is_empty() {
+						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+						let unmatched = operator
+							.unmatched_left_columns_batch(txn, &left_columns, &left_indices)
+							.await?;
 						result.push(FlowDiff::Insert {
-							post: Columns::from_row(&unmatched_row),
+							post: unmatched,
 						});
 					}
 				}
 			}
+		}
+
+		Ok(result)
+	}
+
+	/// Handle update for rows with defined join keys (batched by key)
+	pub(crate) async fn handle_update(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		indices: &[usize],
+		side: JoinSide,
+		old_key: &Hash128,
+		new_key: &Hash128,
+		state: &mut JoinState,
+		operator: &JoinOperator,
+		version: CommitVersion,
+	) -> crate::Result<Vec<FlowDiff>> {
+		if indices.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let mut result = Vec::new();
+
+		if old_key == new_key {
+			// Key didn't change, update in place
+			for &row_idx in indices {
+				let old_row_number = pre.row_numbers[row_idx];
+				let new_row_number = post.row_numbers[row_idx];
+
+				match side {
+					JoinSide::Left => {
+						// Update the row number in state
+						if update_row_in_entry(
+							txn,
+							&mut state.left,
+							old_key,
+							old_row_number,
+							new_row_number,
+						)
+						.await?
+						{
+							// Emit updates for all joined rows
+							if let Some(diff) = emit_update_joined_columns(
+								txn,
+								pre,
+								post,
+								row_idx,
+								JoinSide::Left,
+								&state.right,
+								old_key,
+								operator,
+								&operator.right_parent,
+							)
+							.await?
+							{
+								result.push(diff);
+							} else {
+								// No matching right rows - update unmatched left row
+								let unmatched_pre = operator
+									.unmatched_left_columns(txn, pre, row_idx)
+									.await?;
+								let unmatched_post = operator
+									.unmatched_left_columns(txn, post, row_idx)
+									.await?;
+								result.push(FlowDiff::Update {
+									pre: unmatched_pre,
+									post: unmatched_post,
+								});
+							}
+						}
+					}
+					JoinSide::Right => {
+						// Update the row number in state
+						if update_row_in_entry(
+							txn,
+							&mut state.right,
+							old_key,
+							old_row_number,
+							new_row_number,
+						)
+						.await?
+						{
+							// Emit updates for all joined rows
+							if let Some(diff) = emit_update_joined_columns(
+								txn,
+								pre,
+								post,
+								row_idx,
+								JoinSide::Right,
+								&state.left,
+								old_key,
+								operator,
+								&operator.left_parent,
+							)
+							.await?
+							{
+								result.push(diff);
+							}
+						}
+					}
+				}
+			}
+		} else {
+			// Key changed - treat as remove + insert
+			let remove_diffs =
+				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version).await?;
+			result.extend(remove_diffs);
+
+			let insert_diffs =
+				self.handle_insert(txn, post, indices, side, new_key, state, operator).await?;
+			result.extend(insert_diffs);
 		}
 
 		Ok(result)

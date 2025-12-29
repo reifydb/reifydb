@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use reifydb_core::{CommitVersion, Row, value::column::Columns};
+use reifydb_core::value::column::Columns;
 use reifydb_hash::Hash128;
 use reifydb_sdk::FlowDiff;
+use reifydb_type::RowNumber;
 
 use crate::{
 	operator::{
@@ -13,18 +14,41 @@ use crate::{
 };
 
 /// Add a row to a state entry (left or right)
+/// Takes Columns + row index instead of Row to avoid allocation
 pub(crate) async fn add_to_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
-	row: &Row,
+	columns: &Columns,
+	row_idx: usize,
+) -> crate::Result<()> {
+	let row_number = columns.row_numbers[row_idx];
+	let mut entry = store
+		.get_or_insert_with(txn, key_hash, || JoinSideEntry {
+			rows: Vec::new(),
+		})
+		.await?;
+	entry.rows.push(row_number);
+	store.set(txn, key_hash, &entry)?;
+	Ok(())
+}
+
+/// Add multiple rows to a state entry
+pub(crate) async fn add_to_state_entry_batch(
+	txn: &mut FlowTransaction,
+	store: &mut Store,
+	key_hash: &Hash128,
+	columns: &Columns,
+	indices: &[usize],
 ) -> crate::Result<()> {
 	let mut entry = store
 		.get_or_insert_with(txn, key_hash, || JoinSideEntry {
 			rows: Vec::new(),
 		})
 		.await?;
-	entry.rows.push(row.number);
+	for &idx in indices {
+		entry.rows.push(columns.row_numbers[idx]);
+	}
 	store.set(txn, key_hash, &entry)?;
 	Ok(())
 }
@@ -34,10 +58,10 @@ pub(crate) async fn remove_from_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
-	row: &Row,
+	row_number: RowNumber,
 ) -> crate::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash).await? {
-		entry.rows.retain(|&r| r != row.number);
+		entry.rows.retain(|&r| r != row_number);
 
 		if entry.rows.is_empty() {
 			store.remove(txn, key_hash)?;
@@ -56,211 +80,19 @@ pub(crate) async fn update_row_in_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
-	old_row: &Row,
-	new_row: &Row,
+	old_row_number: RowNumber,
+	new_row_number: RowNumber,
 ) -> crate::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash).await? {
 		for row in &mut entry.rows {
-			if *row == old_row.number {
-				*row = new_row.number;
+			if *row == old_row_number {
+				*row = new_row_number;
 				store.set(txn, key_hash, &entry)?;
 				return Ok(true);
 			}
 		}
 	}
 	Ok(false)
-}
-
-/// Emit joined rows when inserting a row that has matches on the opposite side.
-/// Unified function that handles both left-to-right and right-to-left joins.
-pub(crate) async fn emit_joined_rows(
-	txn: &mut FlowTransaction,
-	primary_row: &Row,
-	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	let opposite_rows = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
-	if opposite_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let joined_rows = match primary_side {
-		JoinSide::Left => operator.join_rows_multiple_right(txn, primary_row, &opposite_rows).await?,
-		JoinSide::Right => operator.join_rows_multiple_left(txn, &opposite_rows, primary_row).await?,
-	};
-
-	Ok(joined_rows
-		.into_iter()
-		.map(|post| FlowDiff::Insert {
-			post: Columns::from_row(&post),
-		})
-		.collect())
-}
-
-/// Emit joined rows when inserting a left row that has right matches
-pub(crate) async fn emit_joined_rows_left_to_right(
-	txn: &mut FlowTransaction,
-	left_row: &Row,
-	right_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	right_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_joined_rows(txn, left_row, JoinSide::Left, right_store, key_hash, operator, right_parent).await
-}
-
-/// Emit joined rows when inserting a right row that has left matches
-pub(crate) async fn emit_joined_rows_right_to_left(
-	txn: &mut FlowTransaction,
-	right_row: &Row,
-	left_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	left_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_joined_rows(txn, right_row, JoinSide::Right, left_store, key_hash, operator, left_parent).await
-}
-
-/// Emit removal of all joined rows involving a row.
-/// Unified function that handles both left and right removals.
-pub(crate) async fn emit_remove_joined_rows(
-	txn: &mut FlowTransaction,
-	primary_row: &Row,
-	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	let opposite_rows = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
-	if opposite_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let joined_rows = match primary_side {
-		JoinSide::Left => operator.join_rows_multiple_right(txn, primary_row, &opposite_rows).await?,
-		JoinSide::Right => operator.join_rows_multiple_left(txn, &opposite_rows, primary_row).await?,
-	};
-
-	Ok(joined_rows
-		.into_iter()
-		.map(|pre| FlowDiff::Remove {
-			pre: Columns::from_row(&pre),
-		})
-		.collect())
-}
-
-/// Emit removal of all joined rows involving a left row
-pub(crate) async fn emit_remove_joined_rows_left(
-	txn: &mut FlowTransaction,
-	left_row: &Row,
-	right_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	right_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_remove_joined_rows(txn, left_row, JoinSide::Left, right_store, key_hash, operator, right_parent).await
-}
-
-/// Emit removal of all joined rows involving a right row
-pub(crate) async fn emit_remove_joined_rows_right(
-	txn: &mut FlowTransaction,
-	right_row: &Row,
-	left_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	left_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_remove_joined_rows(txn, right_row, JoinSide::Right, left_store, key_hash, operator, left_parent).await
-}
-
-/// Emit updates for all joined rows when a row is updated.
-/// Unified function that handles both left and right updates.
-pub(crate) async fn emit_update_joined_rows(
-	txn: &mut FlowTransaction,
-	old_row: &Row,
-	new_row: &Row,
-	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	let opposite_rows = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
-	if opposite_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let (pre_rows, post_rows) = match primary_side {
-		JoinSide::Left => (
-			operator.join_rows_multiple_right(txn, old_row, &opposite_rows).await?,
-			operator.join_rows_multiple_right(txn, new_row, &opposite_rows).await?,
-		),
-		JoinSide::Right => (
-			operator.join_rows_multiple_left(txn, &opposite_rows, old_row).await?,
-			operator.join_rows_multiple_left(txn, &opposite_rows, new_row).await?,
-		),
-	};
-
-	Ok(pre_rows
-		.into_iter()
-		.zip(post_rows)
-		.map(|(pre, post)| FlowDiff::Update {
-			pre: Columns::from_row(&pre),
-			post: Columns::from_row(&post),
-		})
-		.collect())
-}
-
-/// Emit updates for all joined rows when a left row is updated
-pub(crate) async fn emit_update_joined_rows_left(
-	txn: &mut FlowTransaction,
-	old_left_row: &Row,
-	new_left_row: &Row,
-	right_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	right_parent: &Arc<Operators>,
-	_version: CommitVersion,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_update_joined_rows(
-		txn,
-		old_left_row,
-		new_left_row,
-		JoinSide::Left,
-		right_store,
-		key_hash,
-		operator,
-		right_parent,
-	)
-	.await
-}
-
-/// Emit updates for all joined rows when a right row is updated
-pub(crate) async fn emit_update_joined_rows_right(
-	txn: &mut FlowTransaction,
-	old_right_row: &Row,
-	new_right_row: &Row,
-	left_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	left_parent: &Arc<Operators>,
-	_version: CommitVersion,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_update_joined_rows(
-		txn,
-		old_right_row,
-		new_right_row,
-		JoinSide::Right,
-		left_store,
-		key_hash,
-		operator,
-		left_parent,
-	)
-	.await
 }
 
 /// Check if a right side has any rows for a given key
@@ -281,162 +113,202 @@ pub(crate) async fn is_first_right_row(
 	Ok(!right_store.contains_key(txn, key_hash).await?)
 }
 
-/// Get all rows from a store for a given key (unified left/right helper)
+/// Get all rows from a store for a given key as Columns (no Row conversion)
 pub(crate) async fn pull_from_store(
 	txn: &mut FlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	parent: &Arc<Operators>,
-) -> crate::Result<Vec<Row>> {
+) -> crate::Result<Columns> {
 	if let Some(entry) = store.get(txn, key_hash).await? {
-		let columns = parent.pull(txn, &entry.rows).await?;
-		// Convert Columns to Vec<Row>
-		let mut rows = Vec::with_capacity(columns.row_count());
-		for row_idx in 0..columns.row_count() {
-			rows.push(columns.extract_row(row_idx).to_single_row());
-		}
-		Ok(rows)
+		parent.pull(txn, &entry.rows).await
 	} else {
-		Ok(Vec::new())
+		Ok(Columns::empty())
 	}
 }
 
-/// Get all left rows for a given key
-pub(crate) async fn pull_left_rows(
+/// Emit joined columns when inserting a row that has matches on the opposite side.
+/// Uses index-based access, no Row allocation.
+pub(crate) async fn emit_joined_columns(
+	txn: &mut FlowTransaction,
+	primary: &Columns,
+	primary_idx: usize,
+	primary_side: JoinSide,
+	opposite_store: &Store,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+	opposite_parent: &Arc<Operators>,
+) -> crate::Result<Option<FlowDiff>> {
+	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
+	if opposite.is_empty() {
+		return Ok(None);
+	}
+
+	let joined = match primary_side {
+		JoinSide::Left => operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite).await?,
+		JoinSide::Right => operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx).await?,
+	};
+
+	if joined.is_empty() {
+		Ok(None)
+	} else {
+		Ok(Some(FlowDiff::Insert {
+			post: joined,
+		}))
+	}
+}
+
+/// Emit removal of joined columns
+pub(crate) async fn emit_remove_joined_columns(
+	txn: &mut FlowTransaction,
+	primary: &Columns,
+	primary_idx: usize,
+	primary_side: JoinSide,
+	opposite_store: &Store,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+	opposite_parent: &Arc<Operators>,
+) -> crate::Result<Option<FlowDiff>> {
+	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
+	if opposite.is_empty() {
+		return Ok(None);
+	}
+
+	let joined = match primary_side {
+		JoinSide::Left => operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite).await?,
+		JoinSide::Right => operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx).await?,
+	};
+
+	if joined.is_empty() {
+		Ok(None)
+	} else {
+		Ok(Some(FlowDiff::Remove {
+			pre: joined,
+		}))
+	}
+}
+
+/// Emit updates for joined columns when a row is updated
+pub(crate) async fn emit_update_joined_columns(
+	txn: &mut FlowTransaction,
+	pre: &Columns,
+	post: &Columns,
+	row_idx: usize,
+	primary_side: JoinSide,
+	opposite_store: &Store,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+	opposite_parent: &Arc<Operators>,
+) -> crate::Result<Option<FlowDiff>> {
+	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
+	if opposite.is_empty() {
+		return Ok(None);
+	}
+
+	let (pre_joined, post_joined) = match primary_side {
+		JoinSide::Left => (
+			operator.join_columns_one_to_many(txn, pre, row_idx, &opposite).await?,
+			operator.join_columns_one_to_many(txn, post, row_idx, &opposite).await?,
+		),
+		JoinSide::Right => (
+			operator.join_columns_many_to_one(txn, &opposite, pre, row_idx).await?,
+			operator.join_columns_many_to_one(txn, &opposite, post, row_idx).await?,
+		),
+	};
+
+	if pre_joined.is_empty() || post_joined.is_empty() {
+		Ok(None)
+	} else {
+		Ok(Some(FlowDiff::Update {
+			pre: pre_joined,
+			post: post_joined,
+		}))
+	}
+}
+
+/// Emit joined columns for a batch of rows with the same key
+pub(crate) async fn emit_joined_columns_batch(
+	txn: &mut FlowTransaction,
+	primary: &Columns,
+	primary_indices: &[usize],
+	primary_side: JoinSide,
+	opposite_store: &Store,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+	opposite_parent: &Arc<Operators>,
+) -> crate::Result<Option<FlowDiff>> {
+	if primary_indices.is_empty() {
+		return Ok(None);
+	}
+
+	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
+	if opposite.is_empty() {
+		return Ok(None);
+	}
+
+	let joined = match primary_side {
+		JoinSide::Left => operator.join_columns_cartesian(txn, primary, primary_indices, &opposite).await?,
+		JoinSide::Right => {
+			// For right side, we need to swap: opposite (left) x primary (right)
+			// But cartesian takes (left, left_indices, right)
+			// So we need to join opposite with all rows, repeated for each primary index
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary).await?
+		}
+	};
+
+	if joined.is_empty() {
+		Ok(None)
+	} else {
+		Ok(Some(FlowDiff::Insert {
+			post: joined,
+		}))
+	}
+}
+
+/// Emit removal of joined columns for a batch
+pub(crate) async fn emit_remove_joined_columns_batch(
+	txn: &mut FlowTransaction,
+	primary: &Columns,
+	primary_indices: &[usize],
+	primary_side: JoinSide,
+	opposite_store: &Store,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+	opposite_parent: &Arc<Operators>,
+) -> crate::Result<Option<FlowDiff>> {
+	if primary_indices.is_empty() {
+		return Ok(None);
+	}
+
+	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
+	if opposite.is_empty() {
+		return Ok(None);
+	}
+
+	let joined = match primary_side {
+		JoinSide::Left => operator.join_columns_cartesian(txn, primary, primary_indices, &opposite).await?,
+		JoinSide::Right => {
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary).await?
+		}
+	};
+
+	if joined.is_empty() {
+		Ok(None)
+	} else {
+		Ok(Some(FlowDiff::Remove {
+			pre: joined,
+		}))
+	}
+}
+
+/// Get all left rows for a given key as Columns
+pub(crate) async fn pull_left_columns(
 	txn: &mut FlowTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
 	left_parent: &Arc<Operators>,
-	_version: CommitVersion,
-) -> crate::Result<Vec<Row>> {
+) -> crate::Result<Columns> {
 	pull_from_store(txn, left_store, key_hash, left_parent).await
-}
-
-/// Get all right rows for a given key
-pub(crate) async fn pull_right_rows(
-	txn: &mut FlowTransaction,
-	right_store: &Store,
-	key_hash: &Hash128,
-	right_parent: &Arc<Operators>,
-	_version: CommitVersion,
-) -> crate::Result<Vec<Row>> {
-	pull_from_store(txn, right_store, key_hash, right_parent).await
-}
-
-/// Batch emit joined rows for multiple inserts with the same key.
-/// Unified function that handles both left and right batch inserts.
-pub(crate) async fn emit_joined_rows_multiple(
-	txn: &mut FlowTransaction,
-	primary_rows: &[Row],
-	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	if primary_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let opposite_rows = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
-
-	if opposite_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	// join_rows_cartesian always takes (left_rows, right_rows) in that order
-	let joined_rows = match primary_side {
-		JoinSide::Left => operator.join_rows_cartesian(txn, primary_rows, &opposite_rows).await?,
-		JoinSide::Right => operator.join_rows_cartesian(txn, &opposite_rows, primary_rows).await?,
-	};
-
-	Ok(joined_rows
-		.into_iter()
-		.map(|post| FlowDiff::Insert {
-			post: Columns::from_row(&post),
-		})
-		.collect())
-}
-
-/// Batch emit joined rows for multiple left inserts with the same key
-pub(crate) async fn emit_joined_rows_multiple_left(
-	txn: &mut FlowTransaction,
-	left_rows: &[Row],
-	right_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	right_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_joined_rows_multiple(txn, left_rows, JoinSide::Left, right_store, key_hash, operator, right_parent).await
-}
-
-/// Batch emit joined rows for multiple right inserts with the same key
-pub(crate) async fn emit_joined_rows_multiple_right(
-	txn: &mut FlowTransaction,
-	right_rows: &[Row],
-	left_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	left_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_joined_rows_multiple(txn, right_rows, JoinSide::Right, left_store, key_hash, operator, left_parent).await
-}
-
-/// Batch emit removals for multiple removes with the same key.
-/// Unified function that handles both left and right batch removals.
-pub(crate) async fn emit_remove_joined_rows_multiple(
-	txn: &mut FlowTransaction,
-	primary_rows: &[Row],
-	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	if primary_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let opposite_rows = pull_from_store(txn, opposite_store, key_hash, opposite_parent).await?;
-	if opposite_rows.is_empty() {
-		return Ok(Vec::new());
-	}
-
-	let joined_rows = match primary_side {
-		JoinSide::Left => operator.join_rows_cartesian(txn, primary_rows, &opposite_rows).await?,
-		JoinSide::Right => operator.join_rows_cartesian(txn, &opposite_rows, primary_rows).await?,
-	};
-
-	Ok(joined_rows
-		.into_iter()
-		.map(|pre| FlowDiff::Remove {
-			pre: Columns::from_row(&pre),
-		})
-		.collect())
-}
-
-/// Batch emit removals for multiple left removes with the same key
-pub(crate) async fn emit_remove_joined_rows_multiple_left(
-	txn: &mut FlowTransaction,
-	left_rows: &[Row],
-	right_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	right_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_remove_joined_rows_multiple(txn, left_rows, JoinSide::Left, right_store, key_hash, operator, right_parent)
-		.await
-}
-
-/// Batch emit removals for multiple right removes with the same key
-pub(crate) async fn emit_remove_joined_rows_multiple_right(
-	txn: &mut FlowTransaction,
-	right_rows: &[Row],
-	left_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	left_parent: &Arc<Operators>,
-) -> crate::Result<Vec<FlowDiff>> {
-	emit_remove_joined_rows_multiple(txn, right_rows, JoinSide::Right, left_store, key_hash, operator, left_parent)
-		.await
 }

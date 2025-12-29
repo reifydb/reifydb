@@ -23,7 +23,7 @@ pub(crate) struct JoinSideEntry {
 	pub(crate) rows: Vec<RowNumber>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum JoinSide {
 	Left,
 	Right,

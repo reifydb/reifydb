@@ -1,5 +1,5 @@
 // Internal modules
-mod layout;
+mod column;
 mod operator;
 mod state;
 mod store;
