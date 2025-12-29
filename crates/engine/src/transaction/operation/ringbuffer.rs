@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		CommandTransaction, EncodableKey, QueryTransaction, RingBufferDef, RowKey,
-		interceptor::RingBufferInterceptor,
-	},
+	interface::{CommandTransaction, QueryTransaction, RingBufferDef, RowKey, interceptor::RingBufferInterceptor},
 	value::encoded::EncodedValues,
 };
 use reifydb_type::RowNumber;
@@ -56,11 +53,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		row_number: RowNumber,
 		row: EncodedValues,
 	) -> crate::Result<()> {
-		let key = RowKey {
-			primitive: ringbuffer.id.into(),
-			row: row_number,
-		}
-		.encode();
+		let key = RowKey::encoded(ringbuffer.id, row_number);
 
 		// Check if we're overwriting existing data (for ring buffer circular behavior)
 		let old_row = self.get(&key).await?.map(|v| v.values);
@@ -87,11 +80,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		id: RowNumber,
 		row: EncodedValues,
 	) -> crate::Result<()> {
-		let key = RowKey {
-			primitive: ringbuffer.id.into(),
-			row: id,
-		}
-		.encode();
+		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the current encoded before updating (for post-update interceptor)
 		let old_row = self.get(&key).await?.map(|v| v.values);
@@ -108,11 +97,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 	}
 
 	async fn remove_from_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber) -> crate::Result<()> {
-		let key = RowKey {
-			primitive: ringbuffer.id.into(),
-			row: id,
-		}
-		.encode();
+		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the encoded before removing (for post-delete interceptor)
 		let deleted_row = match self.get(&key).await? {

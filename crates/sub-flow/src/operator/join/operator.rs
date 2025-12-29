@@ -249,12 +249,9 @@ impl JoinOperator {
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key).await?;
 
-		// Extract single-row views for joining
-		let left_single = left.extract_row(left_idx);
-		let right_single = right.extract_row(right_idx);
-
-		let builder = JoinedColumnsBuilder::new(&left_single, &right_single, &self.alias);
-		Ok(builder.join_single(result_row_number, &left_single, &right_single))
+		// Join directly at indices without extracting rows
+		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
+		Ok(builder.join_at_indices(result_row_number, left, left_idx, right, right_idx))
 	}
 
 	/// Create a composite key for a join result from left and right row numbers.

@@ -119,11 +119,7 @@ impl Executor {
 
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
-				let row_key = RowKey {
-					primitive: table.id.into(),
-					row: row_number,
-				}
-				.encode();
+				let row_key = RowKey::encoded(table.id, row_number);
 
 				// Remove primary key index entry if table has
 				// one

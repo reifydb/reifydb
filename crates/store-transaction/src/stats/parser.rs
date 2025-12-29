@@ -106,11 +106,7 @@ mod tests {
 	#[test]
 	fn test_extract_object_id_row() {
 		let source = PrimitiveId::table(42);
-		let row_key = RowKey {
-			primitive: source,
-			row: RowNumber(100),
-		};
-		let encoded = row_key.encode();
+		let encoded = RowKey::encoded(source, RowNumber(100));
 
 		let object_id = extract_object_id(encoded.as_slice(), KeyKind::Row);
 		assert_eq!(object_id, ObjectId::Source(source));

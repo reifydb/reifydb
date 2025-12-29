@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{
-		EncodableKey, Params, QueryTransaction, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
-		RowKey,
-	},
+	interface::{Params, QueryTransaction, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer, RowKey},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
@@ -116,12 +113,9 @@ impl Executor {
 			// Iterate from head to tail-1 (the range of row numbers in the buffer)
 			for row_num_value in metadata.head..metadata.tail {
 				let row_num = reifydb_type::RowNumber(row_num_value);
-				let key = RowKey {
-					primitive: ringbuffer.id.into(),
-					row: row_num,
-				};
+				let key = RowKey::encoded(ringbuffer.id, row_num);
 
-				if txn.contains_key(&key.encode()).await? {
+				if txn.contains_key(&key).await? {
 					if row_numbers_to_delete.contains(&row_num) {
 						// Delete this row
 						txn.remove_from_ringbuffer(ringbuffer.clone(), row_num).await?;
@@ -152,11 +146,7 @@ impl Executor {
 			// Delete all entries in the row number range
 			for row_num_value in metadata.head..metadata.tail {
 				let row_number = reifydb_type::RowNumber(row_num_value);
-				let row_key = RowKey {
-					primitive: ringbuffer.id.into(),
-					row: row_number,
-				}
-				.encode();
+				let row_key = RowKey::encoded(ringbuffer.id, row_number);
 
 				// Only delete if the entry exists
 				if txn.contains_key(&row_key).await? {

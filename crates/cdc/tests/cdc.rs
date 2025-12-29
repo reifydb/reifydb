@@ -304,11 +304,8 @@ async fn test_non_table_events_filtered() -> Result<()> {
 
 	let mut txn = engine.begin_command().await.expect("Failed to begin transaction");
 
-	let table_key = RowKey {
-		primitive: PrimitiveId::table(1),
-		row: RowNumber(1),
-	};
-	txn.set(&table_key.encode(), EncodedValues(CowVec::new(b"table_value".to_vec())))
+	let table_key = RowKey::encoded(PrimitiveId::table(1), RowNumber(1));
+	txn.set(&table_key, EncodedValues(CowVec::new(b"table_value".to_vec())))
 		.await
 		.expect("Failed to set table encoded");
 
@@ -705,12 +702,9 @@ impl CdcConsume for TestConsumer {
 async fn insert_test_events(engine: &StandardEngine, count: usize) -> Result<()> {
 	for i in 0..count {
 		let mut txn = engine.begin_command().await?;
-		let key = RowKey {
-			primitive: PrimitiveId::table(1),
-			row: RowNumber((i + 1) as u64),
-		};
+		let key = RowKey::encoded(PrimitiveId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
-		txn.set(&key.encode(), EncodedValues(CowVec::new(value.into_bytes()))).await?;
+		txn.set(&key, EncodedValues(CowVec::new(value.into_bytes()))).await?;
 		txn.commit().await?;
 	}
 

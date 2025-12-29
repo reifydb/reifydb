@@ -6,9 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{
-		DictionaryDef, EncodableKey, QueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer,
-	},
+	interface::{DictionaryDef, QueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer},
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
@@ -156,13 +154,10 @@ impl QueryNode for RingBufferScan {
 			let row_num = RowNumber(self.current_position);
 
 			// Create the encoded key
-			let key = RowKey {
-				primitive: self.ringbuffer.def().id.into(),
-				row: row_num,
-			};
+			let key = RowKey::encoded(self.ringbuffer.def().id, row_num);
 
 			// Get the encoded from storage
-			if let Some(multi) = txn.get(&key.encode()).await? {
+			if let Some(multi) = txn.get(&key).await? {
 				let row_data = multi.values;
 				batch_rows.push(row_data);
 				row_numbers.push(row_num);

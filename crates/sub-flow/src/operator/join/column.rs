@@ -64,6 +64,45 @@ impl JoinedColumnsBuilder {
 		self.join_one_to_many(&[row_number], left, 0, right)
 	}
 
+	/// Join a single left row at left_idx with a single right row at right_idx.
+	/// Avoids extraction by accessing values directly at the specified indices.
+	pub(crate) fn join_at_indices(
+		&self,
+		row_number: RowNumber,
+		left: &Columns,
+		left_idx: usize,
+		right: &Columns,
+		right_idx: usize,
+	) -> Columns {
+		let total_columns = self.left_column_count + self.right_column_names.len();
+		let mut result_columns = Vec::with_capacity(total_columns);
+
+		// Add left columns - single value from left_idx
+		for left_col in left.columns.iter() {
+			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), 1);
+			col_data.push_value(left_col.data().get_value(left_idx));
+			result_columns.push(Column {
+				name: left_col.name.clone(),
+				data: col_data,
+			});
+		}
+
+		// Add right columns - single value from right_idx
+		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
+			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), 1);
+			col_data.push_value(right_col.data().get_value(right_idx));
+			result_columns.push(Column {
+				name: Fragment::internal(aliased_name),
+				data: col_data,
+			});
+		}
+
+		Columns {
+			row_numbers: CowVec::new(vec![row_number]),
+			columns: CowVec::new(result_columns),
+		}
+	}
+
 	/// Join one left row (at left_idx) with all right rows.
 	/// Produces right.row_count() output rows.
 	pub(crate) fn join_one_to_many(

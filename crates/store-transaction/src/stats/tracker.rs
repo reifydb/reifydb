@@ -490,14 +490,10 @@ mod tests {
 	use super::*;
 
 	fn make_row_key(source_id: u64, row: u64) -> Vec<u8> {
-		use reifydb_core::{interface::EncodableKey, key::RowKey};
+		use reifydb_core::key::RowKey;
 		use reifydb_type::RowNumber;
 
-		let key = RowKey {
-			primitive: PrimitiveId::table(source_id),
-			row: RowNumber(row),
-		};
-		key.encode().to_vec()
+		RowKey::encoded(PrimitiveId::table(source_id), RowNumber(row)).to_vec()
 	}
 
 	#[test]

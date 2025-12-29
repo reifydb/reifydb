@@ -104,92 +104,101 @@ impl Operator for MergeOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// Process each row in the Columns
 					let row_count = post.row_count();
-					for row_idx in 0..row_count {
-						let single_row = post.extract_row(row_idx);
-						let source_row_number = single_row.number();
+					if row_count == 0 {
+						continue;
+					}
 
-						// Get or create stable row number for this source row
+					// Collect output row numbers for all source rows
+					let mut output_row_numbers = Vec::with_capacity(row_count);
+					for row_idx in 0..row_count {
+						let source_row_number = post.row_numbers[row_idx];
 						let composite_key =
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _is_new) = self
 							.row_number_provider
 							.get_or_create_row_number(txn, &composite_key)
 							.await?;
-
-						// Create output Columns with the new row number
-						let output = Columns::with_row_numbers(
-							single_row.columns.as_ref().to_vec(),
-							vec![output_row_number],
-						);
-
-						result_diffs.push(FlowDiff::Insert {
-							post: output,
-						});
+						output_row_numbers.push(output_row_number);
 					}
+
+					// Create output Columns with the new row numbers - single batch
+					let output = Columns::with_row_numbers(
+						post.columns.as_ref().to_vec(),
+						output_row_numbers,
+					);
+
+					result_diffs.push(FlowDiff::Insert {
+						post: output,
+					});
 				}
 				FlowDiff::Update {
 					pre,
 					post,
 				} => {
-					// Process each row in the Columns
 					let row_count = post.row_count();
-					for row_idx in 0..row_count {
-						let pre_single = pre.extract_row(row_idx);
-						let post_single = post.extract_row(row_idx);
-						let source_row_number = pre_single.number();
+					if row_count == 0 {
+						continue;
+					}
 
-						// Row number should already exist from insert
+					// Collect output row numbers for all source rows
+					let mut output_row_numbers = Vec::with_capacity(row_count);
+					for row_idx in 0..row_count {
+						let source_row_number = pre.row_numbers[row_idx];
 						let composite_key =
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _) = self
 							.row_number_provider
 							.get_or_create_row_number(txn, &composite_key)
 							.await?;
-
-						// Create output Columns with the new row number
-						let pre_output = Columns::with_row_numbers(
-							pre_single.columns.as_ref().to_vec(),
-							vec![output_row_number],
-						);
-						let post_output = Columns::with_row_numbers(
-							post_single.columns.as_ref().to_vec(),
-							vec![output_row_number],
-						);
-
-						result_diffs.push(FlowDiff::Update {
-							pre: pre_output,
-							post: post_output,
-						});
+						output_row_numbers.push(output_row_number);
 					}
+
+					// Create output Columns with the new row numbers - single batch
+					let pre_output = Columns::with_row_numbers(
+						pre.columns.as_ref().to_vec(),
+						output_row_numbers.clone(),
+					);
+					let post_output = Columns::with_row_numbers(
+						post.columns.as_ref().to_vec(),
+						output_row_numbers,
+					);
+
+					result_diffs.push(FlowDiff::Update {
+						pre: pre_output,
+						post: post_output,
+					});
 				}
 				FlowDiff::Remove {
 					pre,
 				} => {
-					// Process each row in the Columns
 					let row_count = pre.row_count();
-					for row_idx in 0..row_count {
-						let single_row = pre.extract_row(row_idx);
-						let source_row_number = single_row.number();
+					if row_count == 0 {
+						continue;
+					}
 
+					// Collect output row numbers for all source rows
+					let mut output_row_numbers = Vec::with_capacity(row_count);
+					for row_idx in 0..row_count {
+						let source_row_number = pre.row_numbers[row_idx];
 						let composite_key =
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _) = self
 							.row_number_provider
 							.get_or_create_row_number(txn, &composite_key)
 							.await?;
-
-						// Create output Columns with the new row number
-						let output = Columns::with_row_numbers(
-							single_row.columns.as_ref().to_vec(),
-							vec![output_row_number],
-						);
-
-						result_diffs.push(FlowDiff::Remove {
-							pre: output,
-						});
+						output_row_numbers.push(output_row_number);
 					}
+
+					// Create output Columns with the new row numbers - single batch
+					let output = Columns::with_row_numbers(
+						pre.columns.as_ref().to_vec(),
+						output_row_numbers,
+					);
+
+					result_diffs.push(FlowDiff::Remove {
+						pre: output,
+					});
 				}
 			}
 		}

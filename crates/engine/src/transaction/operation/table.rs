@@ -3,8 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		CommandTransaction, EncodableKey, RowChange, RowKey, TableDef, TableRowInsertion,
-		interceptor::TableInterceptor,
+		CommandTransaction, RowChange, RowKey, TableDef, TableRowInsertion, interceptor::TableInterceptor,
 	},
 	value::encoded::EncodedValues,
 };
@@ -34,15 +33,7 @@ impl TableOperations for StandardCommandTransaction {
 	) -> crate::Result<()> {
 		TableInterceptor::pre_insert(self, &table, row_number, &row).await?;
 
-		self.set(
-			&RowKey {
-				primitive: table.id.into(),
-				row: row_number,
-			}
-			.encode(),
-			row.clone(),
-		)
-		.await?;
+		self.set(&RowKey::encoded(table.id, row_number), row.clone()).await?;
 
 		TableInterceptor::post_insert(self, &table, row_number, &row).await?;
 
@@ -57,11 +48,7 @@ impl TableOperations for StandardCommandTransaction {
 	}
 
 	async fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
-		let key = RowKey {
-			primitive: table.id.into(),
-			row: id,
-		}
-		.encode();
+		let key = RowKey::encoded(table.id, id);
 
 		// Get the current encoded before updating (for post-update
 		// interceptor) let old_row = self.get(&key).await?.map(|v|
@@ -85,11 +72,7 @@ impl TableOperations for StandardCommandTransaction {
 	}
 
 	async fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
-		let key = RowKey {
-			primitive: table.id.into(),
-			row: id,
-		}
-		.encode();
+		let key = RowKey::encoded(table.id, id);
 
 		// Get the encoded before removing (for post-delete interceptor)
 		// let deleted_row = self.get(&key).await?.map(|v| v.into_row());

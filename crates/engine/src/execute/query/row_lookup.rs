@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{EncodableKey, RowKey, catalog::PrimitiveId, resolved::ResolvedPrimitive},
+	interface::{RowKey, catalog::PrimitiveId, resolved::ResolvedPrimitive},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
@@ -72,11 +72,7 @@ impl QueryNode for RowPointLookupNode {
 		self.exhausted = true;
 
 		let source_id = get_source_id(&self.source)?;
-		let row_key = RowKey {
-			primitive: source_id,
-			row: RowNumber(self.row_number),
-		};
-		let encoded_key = row_key.encode();
+		let encoded_key = RowKey::encoded(source_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key).await? {
@@ -162,11 +158,7 @@ impl QueryNode for RowListLookupNode {
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
-			let row_key = RowKey {
-				primitive: source_id,
-				row: RowNumber(row_num),
-			};
-			let encoded_key = row_key.encode();
+			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
 			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key).await? {
@@ -266,11 +258,7 @@ impl QueryNode for RowRangeScanNode {
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
-			let row_key = RowKey {
-				primitive: source_id,
-				row: RowNumber(row_num),
-			};
-			let encoded_key = row_key.encode();
+			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key).await? {
 				batch_rows.push(multi_values.values);

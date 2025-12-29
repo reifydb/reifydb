@@ -6,18 +6,19 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use reifydb_core::{
-	CowVec, Error, Row,
+	Error,
 	interface::FlowNodeId,
+	util::CowVec,
 	value::{
-		column::Columns,
-		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
+		column::{Column, ColumnData, Columns},
+		encoded::EncodedValuesLayout,
 	},
 };
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Blob, Params, RowNumber, Type, internal};
+use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -38,43 +39,54 @@ struct DistinctLayout {
 	types: Vec<Type>,
 }
 
+/// Serialized row data - stores column values directly without Row conversion
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedRow {
 	number: RowNumber,
+	/// Column values serialized with postcard
 	#[serde(with = "serde_bytes")]
-	encoded_bytes: Vec<u8>,
+	values_bytes: Vec<u8>,
 }
 
 impl SerializedRow {
-	fn from_row(row: &Row) -> Self {
+	/// Create from Columns at a specific row index - no Row allocation
+	fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
+		let number = columns.row_numbers[row_idx];
+
+		// Collect values for this row directly from column data
+		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
+
+		// Serialize values directly with postcard
+		let values_bytes = postcard::to_stdvec(&values).expect("Failed to serialize column values");
+
 		Self {
-			number: row.number,
-			encoded_bytes: row.encoded.as_slice().to_vec(),
+			number,
+			values_bytes,
 		}
 	}
 
-	fn from_columns(columns: &Columns) -> Self {
-		// For single-row Columns, extract the row for serialization
-		let row = columns.to_single_row();
-		Self::from_row(&row)
-	}
+	/// Convert back to Columns - no Row allocation
+	fn to_columns(&self, layout: &DistinctLayout) -> Columns {
+		// Deserialize values
+		let values: Vec<Value> =
+			postcard::from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
-	fn to_row(self, layout: &DistinctLayout) -> Row {
-		let fields: Vec<(String, Type)> =
-			layout.names.iter().cloned().zip(layout.types.iter().cloned()).collect();
-
-		let layout = EncodedValuesNamedLayout::new(fields);
-		let encoded = EncodedValues(CowVec::new(self.encoded_bytes));
-
-		Row {
-			number: self.number,
-			encoded,
-			layout,
+		// Build columns directly
+		let mut columns_vec = Vec::with_capacity(layout.names.len());
+		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
+			let value = values.get(i).cloned().unwrap_or(Value::Undefined);
+			let mut col_data = ColumnData::with_capacity(*typ, 1);
+			col_data.push_value(value);
+			columns_vec.push(Column {
+				name: Fragment::internal(name),
+				data: col_data,
+			});
 		}
-	}
 
-	fn to_columns(self, layout: &DistinctLayout) -> Columns {
-		Columns::from_row(&self.to_row(layout))
+		Columns {
+			row_numbers: CowVec::new(vec![self.number]),
+			columns: CowVec::new(columns_vec),
+		}
 	}
 }
 
@@ -244,7 +256,7 @@ impl DistinctOperator {
 		self.save_state(txn, state_row)
 	}
 
-	/// Process inserts
+	/// Process inserts - operates directly on Columns without Row conversion
 	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
@@ -255,9 +267,11 @@ impl DistinctOperator {
 		state.layout.update_from_columns(columns);
 		let hashes = self.compute_hashes(columns)?;
 
+		// Track which rows are new distinct values for batch output
+		let mut new_distinct_indices: Vec<usize> = Vec::new();
+
 		for row_idx in 0..row_count {
 			let hash = hashes[row_idx];
-			let single_row = columns.extract_row(row_idx);
 
 			match state.entries.get_mut(&hash) {
 				Some(entry) => {
@@ -269,20 +283,28 @@ impl DistinctOperator {
 						hash,
 						DistinctEntry {
 							count: 1,
-							first_row: SerializedRow::from_columns(&single_row),
+							first_row: SerializedRow::from_columns_at_index(
+								columns, row_idx,
+							),
 						},
 					);
-					result.push(FlowDiff::Insert {
-						post: single_row,
-					});
+					new_distinct_indices.push(row_idx);
 				}
 			}
+		}
+
+		// Emit all new distinct rows in a single batch if possible
+		if !new_distinct_indices.is_empty() {
+			let output = columns.extract_by_indices(&new_distinct_indices);
+			result.push(FlowDiff::Insert {
+				post: output,
+			});
 		}
 
 		Ok(result)
 	}
 
-	/// Process updates
+	/// Process updates - operates directly on Columns without Row conversion
 	fn process_update(
 		&self,
 		state: &mut DistinctState,
@@ -299,22 +321,23 @@ impl DistinctOperator {
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
 
+		// Group updates by type for batch output
+		let mut same_key_update_indices: Vec<usize> = Vec::new();
+		let mut removed_indices: Vec<usize> = Vec::new();
+		let mut inserted_indices: Vec<usize> = Vec::new();
+
 		for row_idx in 0..row_count {
 			let pre_hash = pre_hashes[row_idx];
 			let post_hash = post_hashes[row_idx];
-			let pre_row = pre_columns.extract_row(row_idx);
-			let post_row = post_columns.extract_row(row_idx);
 
 			if pre_hash == post_hash {
 				// Distinct key didn't change - update the stored row
 				if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					if entry.first_row.number == post_row.number() {
-						entry.first_row = SerializedRow::from_columns(&post_row);
+					if entry.first_row.number == post_columns.row_numbers[row_idx] {
+						entry.first_row =
+							SerializedRow::from_columns_at_index(post_columns, row_idx);
 					}
-					result.push(FlowDiff::Update {
-						pre: pre_row,
-						post: post_row,
-					});
+					same_key_update_indices.push(row_idx);
 				}
 			} else {
 				// Key changed - remove from old, add to new
@@ -323,9 +346,7 @@ impl DistinctOperator {
 						entry.count -= 1;
 					} else {
 						state.entries.shift_remove(&pre_hash);
-						result.push(FlowDiff::Remove {
-							pre: pre_row,
-						});
+						removed_indices.push(row_idx);
 					}
 				}
 
@@ -338,21 +359,48 @@ impl DistinctOperator {
 							post_hash,
 							DistinctEntry {
 								count: 1,
-								first_row: SerializedRow::from_columns(&post_row),
+								first_row: SerializedRow::from_columns_at_index(
+									post_columns,
+									row_idx,
+								),
 							},
 						);
-						result.push(FlowDiff::Insert {
-							post: post_row,
-						});
+						inserted_indices.push(row_idx);
 					}
 				}
 			}
 		}
 
+		// Emit batched updates
+		if !same_key_update_indices.is_empty() {
+			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
+			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
+			result.push(FlowDiff::Update {
+				pre: pre_output,
+				post: post_output,
+			});
+		}
+
+		// Emit batched removes
+		if !removed_indices.is_empty() {
+			let output = pre_columns.extract_by_indices(&removed_indices);
+			result.push(FlowDiff::Remove {
+				pre: output,
+			});
+		}
+
+		// Emit batched inserts
+		if !inserted_indices.is_empty() {
+			let output = post_columns.extract_by_indices(&inserted_indices);
+			result.push(FlowDiff::Insert {
+				post: output,
+			});
+		}
+
 		Ok(result)
 	}
 
-	/// Process removes
+	/// Process removes - operates directly on Columns without Row conversion
 	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
@@ -362,6 +410,9 @@ impl DistinctOperator {
 
 		let hashes = self.compute_hashes(columns)?;
 
+		// Track hashes whose last occurrence was removed
+		let mut removed_hashes: Vec<Hash128> = Vec::new();
+
 		for row_idx in 0..row_count {
 			let hash = hashes[row_idx];
 
@@ -369,14 +420,18 @@ impl DistinctOperator {
 				if entry.count > 1 {
 					entry.count -= 1;
 				} else {
-					let removed_entry = state.entries.shift_remove(&hash);
-					if let Some(entry) = removed_entry {
-						let stored_columns = entry.first_row.to_columns(&state.layout);
-						result.push(FlowDiff::Remove {
-							pre: stored_columns,
-						});
-					}
+					removed_hashes.push(hash);
 				}
+			}
+		}
+
+		// Remove entries and emit removes for each (need stored row data)
+		for hash in removed_hashes {
+			if let Some(entry) = state.entries.shift_remove(&hash) {
+				let stored_columns = entry.first_row.to_columns(&state.layout);
+				result.push(FlowDiff::Remove {
+					pre: stored_columns,
+				});
 			}
 		}
 

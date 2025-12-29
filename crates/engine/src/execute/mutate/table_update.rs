@@ -207,11 +207,7 @@ impl Executor {
 
 					let row_number = row_numbers[row_numberx];
 
-					let row_key = RowKey {
-						primitive: table.id.into(),
-						row: row_number,
-					}
-					.encode();
+					let row_key = RowKey::encoded(table.id, row_number);
 
 					if let Some(pk_def) =
 						primary_key::get_primary_key(wrapped_txn.command_mut(), &table).await?
