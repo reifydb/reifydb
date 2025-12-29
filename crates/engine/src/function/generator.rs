@@ -3,10 +3,7 @@
 
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 
-use crate::{
-	StandardTransaction,
-	function::{GeneratorContext, GeneratorFunction},
-};
+use crate::function::{GeneratorContext, GeneratorFunction};
 
 pub struct GenerateSeries;
 
@@ -17,7 +14,7 @@ impl GenerateSeries {
 }
 
 impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(&self, _txn: &mut StandardTransaction<'a>, ctx: GeneratorContext) -> crate::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext) -> crate::Result<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 

@@ -72,10 +72,6 @@ impl QueryNode for VariableNode {
 
 				self.executed = true;
 
-				// Transmute the columns to extend their lifetime
-				// SAFETY: The columns are created here and genuinely have lifetime 'a
-				let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
-
 				Ok(Some(Batch {
 					columns,
 				}))
@@ -84,13 +80,8 @@ impl QueryNode for VariableNode {
 				// Return the frame directly
 				self.executed = true;
 
-				// Clone the columns and transmute to extend lifetime
-				// SAFETY: The columns come from the stack which has lifetime 'a
-				let columns = frame_columns.clone();
-				let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
-
 				Ok(Some(Batch {
-					columns,
+					columns: frame_columns.clone(),
 				}))
 			}
 			None => {

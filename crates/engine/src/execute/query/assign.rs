@@ -96,30 +96,21 @@ impl QueryNode for AssignNode {
 					Variable::scalar(first_value)
 				} else {
 					// Empty column -> store as frame
-					Variable::frame(unsafe {
-						std::mem::transmute::<Columns, Columns>(result_columns.clone())
-					})
+					Variable::frame(result_columns.clone())
 				}
 			} else {
 				// No columns -> store as frame
-				Variable::frame(unsafe {
-					std::mem::transmute::<Columns, Columns>(result_columns.clone())
-				})
+				Variable::frame(result_columns.clone())
 			}
 		} else {
 			// Multiple columns or rows -> store as frame
-			Variable::frame(unsafe { std::mem::transmute::<Columns, Columns>(result_columns.clone()) })
+			Variable::frame(result_columns.clone())
 		};
 
 		// Reassign the variable using the new reassign method
 		ctx.stack.reassign(self.name.clone(), variable)?;
 
 		self.executed = true;
-
-		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column
-		// so they genuinely have lifetime 'a through the query execution
-		let result_columns = unsafe { std::mem::transmute::<Columns, Columns>(result_columns) };
 
 		// Return the result as a single batch for debugging/inspection
 		Ok(Some(Batch {

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
-	value::column::{Column, Columns, headers::ColumnHeaders},
+	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::Fragment;
@@ -193,11 +193,6 @@ impl QueryNode for MapWithoutInputNode {
 
 			columns.push(column);
 		}
-
-		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column
-		// so they genuinely have lifetime 'a through the query execution
-		let columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(columns) };
 
 		let columns = Columns::new(columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));

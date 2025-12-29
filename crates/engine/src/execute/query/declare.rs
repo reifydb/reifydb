@@ -68,7 +68,7 @@ impl QueryNode for DeclareNode {
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		// Handle both expression and statement values
-		let result_columns = match &self.value {
+		let columns = match &self.value {
 			LetValue::Expression(expr) => {
 				// Evaluate the expression to get the value
 				let evaluation_context = ColumnEvaluationContext {
@@ -91,26 +91,22 @@ impl QueryNode for DeclareNode {
 		};
 
 		// Determine if this should be stored as a Scalar or Frame variable
-		let variable = if result_columns.len() == 1 && result_columns.row_count() == 1 {
+		let variable = if columns.len() == 1 && columns.row_count() == 1 {
 			// Single column, single row -> check if we should store as scalar
-			if let Some(first_column) = result_columns.iter().next() {
+			if let Some(first_column) = columns.iter().next() {
 				if let Some(first_value) = first_column.data().iter().next() {
 					Variable::scalar(first_value)
 				} else {
 					// Empty column -> store as frame
-					Variable::frame(unsafe {
-						std::mem::transmute::<Columns, Columns>(result_columns.clone())
-					})
+					Variable::frame(columns.clone())
 				}
 			} else {
 				// No columns -> store as frame
-				Variable::frame(unsafe {
-					std::mem::transmute::<Columns, Columns>(result_columns.clone())
-				})
+				Variable::frame(columns.clone())
 			}
 		} else {
 			// Multiple columns or rows -> store as frame
-			Variable::frame(unsafe { std::mem::transmute::<Columns, Columns>(result_columns.clone()) })
+			Variable::frame(columns.clone())
 		};
 
 		// Store the variable in the stack with mutable access
@@ -118,14 +114,8 @@ impl QueryNode for DeclareNode {
 
 		self.executed = true;
 
-		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from evaluate() which returns Column
-		// so they genuinely have lifetime 'a through the query execution
-		let result_columns = unsafe { std::mem::transmute::<Columns, Columns>(result_columns) };
-
-		// Return the result as a single batch for debugging/inspection
 		Ok(Some(Batch {
-			columns: result_columns,
+			columns,
 		}))
 	}
 

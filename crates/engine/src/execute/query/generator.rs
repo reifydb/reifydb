@@ -60,7 +60,7 @@ impl QueryNode for GeneratorNode {
 
 	async fn next<'a>(
 		&mut self,
-		txn: &mut StandardTransaction<'a>,
+		_txn: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
@@ -93,21 +93,13 @@ impl QueryNode for GeneratorNode {
 
 		let cloned_ctx = ctx.clone();
 
-		let columns = generator.generate(
-			txn,
-			GeneratorContext {
-				params: evaluated_params,
-				execution: cloned_ctx.clone(),
-				executor: cloned_ctx.executor.clone(),
-			},
-		)?;
+		let columns = generator.generate(GeneratorContext {
+			params: evaluated_params,
+			execution: cloned_ctx.clone(),
+			executor: cloned_ctx.executor.clone(),
+		})?;
 
 		self.exhausted = true;
-
-		// Transmute the columns to extend their lifetime
-		// SAFETY: The columns come from generator.generate() which returns Columns
-		// so they genuinely have lifetime 'a through the query execution
-		let columns = unsafe { std::mem::transmute::<Columns, Columns>(columns) };
 
 		Ok(Some(Batch {
 			columns,

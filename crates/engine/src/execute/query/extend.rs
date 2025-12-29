@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
-	value::column::{Column, Columns, headers::ColumnHeaders},
+	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::{Fragment, diagnostic::query::extend_duplicate_column, return_error};
@@ -109,12 +109,6 @@ impl QueryNode for ExtendNode {
 
 				new_columns.push(column);
 			}
-
-			// Transmute the vector to extend its lifetime
-			// SAFETY: The columns come from either the input (already transmuted to 'a)
-			// via into_iter() or from column() which returns Column, so all columns
-			// genuinely have lifetime 'a through the query execution
-			let new_columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(new_columns) };
 
 			// Create layout combining existing and new columns only
 			// once For extend, we preserve all input columns
@@ -241,12 +235,6 @@ impl QueryNode for ExtendWithoutInputNode {
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
 		});
-
-		// Transmute the vector to extend its lifetime
-		// SAFETY: The columns either come from the input (already transmuted to 'a)
-		// or from evaluate() which returns Column, so they all genuinely have
-		// lifetime 'a through the query execution
-		let new_columns = unsafe { std::mem::transmute::<Vec<Column>, Vec<Column>>(new_columns) };
 
 		Ok(Some(Batch {
 			columns: Columns::new(new_columns),

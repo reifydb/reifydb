@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, GroupKey};
 
-use crate::{StandardTransaction, execute::ExecutionContext};
+use crate::execute::ExecutionContext;
 
 pub mod blob;
 pub mod flow_node_type;
@@ -43,5 +43,5 @@ pub struct GeneratorContext {
 }
 
 pub trait GeneratorFunction: Send + Sync {
-	fn generate<'a>(&self, txn: &mut StandardTransaction<'a>, ctx: GeneratorContext) -> crate::Result<Columns>;
+	fn generate<'a>(&self, ctx: GeneratorContext) -> crate::Result<Columns>;
 }
