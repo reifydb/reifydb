@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use reifydb_core::{CommitVersion, EncodedKey};
 use tracing::{debug, instrument};
 
+use super::CommittedWindow;
+
 /// Maximum number of windows to keep
 const MAX_WINDOWS: usize = 50;
 
@@ -21,7 +23,7 @@ const MAX_WINDOWS: usize = 50;
 /// index accordingly.
 #[instrument(name = "transaction::oracle::cleanup", level = "debug", skip(time_windows, key_to_windows), fields(window_count = time_windows.len()))]
 pub(super) fn cleanup_old_windows(
-	time_windows: &mut BTreeMap<CommitVersion, super::CommittedWindow>,
+	time_windows: &mut BTreeMap<CommitVersion, CommittedWindow>,
 	key_to_windows: &mut HashMap<EncodedKey, BTreeSet<CommitVersion>>,
 ) {
 	if time_windows.len() <= MAX_WINDOWS {

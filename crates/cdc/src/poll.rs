@@ -115,20 +115,21 @@ impl<C: CdcConsume> PollConsumer<C> {
 		consumer: &C,
 		max_batch_size: Option<u64>,
 	) -> Result<usize> {
-		// Get current version and wait for in-flight commits to complete.
-		// Uses adaptive polling with exponential backoff to handle burst writes.
 		let current_version = engine.current_version().await?;
-		let target_version = CommitVersion(current_version.0.saturating_sub(1));
 
-		let safe_version =
-			match wait_for_watermark_with_backoff(engine, target_version, Duration::from_millis(200)).await
-			{
-				Some(version) => version,
-				None => {
-					// Timeout - watermark hasn't caught up, skip this batch
-					return Ok(0);
-				}
-			};
+		let safe_version = match wait_for_watermark_with_backoff(
+			engine,
+			current_version,
+			Duration::from_millis(200),
+		)
+		.await
+		{
+			Some(version) => version,
+			None => {
+				// Timeout - watermark hasn't caught up, skip this batch
+				return Ok(0);
+			}
+		};
 
 		let mut transaction = engine.begin_command().await?;
 

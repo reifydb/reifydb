@@ -5,7 +5,10 @@ use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
 };
+#[cfg(test)]
+use std::{future::Future, pin::Pin, sync::OnceLock};
 
+use cleanup::cleanup_old_windows;
 use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
 use tokio::sync::{Mutex, RwLock};
 use tracing::instrument;
@@ -16,6 +19,31 @@ use crate::multi::{
 	watermark::{Closer, WaterMark},
 };
 
+mod cleanup;
+#[cfg(test)]
+mod test_regression;
+#[cfg(test)]
+pub mod testing;
+
+// =============================================================================
+// Test Hook Infrastructure (debug builds only)
+// =============================================================================
+//
+// This hook allows tests to inject behavior between version allocation and
+// the begin() call in new_commit(). This is used to reliably trigger the
+// watermark race condition for regression testing.
+
+#[cfg(test)]
+type TestHookFn = Box<dyn Fn(CommitVersion) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+
+#[cfg(test)]
+static ORACLE_TEST_HOOK: OnceLock<Mutex<Option<TestHookFn>>> = OnceLock::new();
+
+#[cfg(test)]
+fn get_oracle_test_hook() -> &'static Mutex<Option<TestHookFn>> {
+	ORACLE_TEST_HOOK.get_or_init(|| Mutex::new(None))
+}
+
 /// Configuration for the efficient oracle
 const DEFAULT_WINDOW_SIZE: u64 = 1000;
 const MAX_WINDOWS: usize = 50;
@@ -23,14 +51,14 @@ const CLEANUP_THRESHOLD: usize = 40;
 pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
 
 /// Time window containing committed transactions
-pub(super) struct CommittedWindow {
+pub(crate) struct CommittedWindow {
 	/// All transactions committed in this window
 	transactions: Vec<CommittedTxn>,
 	/// Set of all keys modified in this window for quick filtering
 	modified_keys: HashSet<EncodedKey>,
 	/// Bloom filter for fast negative checks
 	bloom: BloomFilter,
-	/// Maximum version in this window  
+	/// Maximum version in this window
 	max_version: CommitVersion,
 	/// Per-window lock for fine-grained synchronization
 	lock: RwLock<()>,
@@ -72,13 +100,13 @@ impl CommittedWindow {
 	}
 
 	/// Get the modified keys for cleanup purposes
-	pub(super) fn get_modified_keys(&self) -> &HashSet<EncodedKey> {
+	pub(crate) fn get_modified_keys(&self) -> &HashSet<EncodedKey> {
 		&self.modified_keys
 	}
 }
 
 /// Oracle implementation with time-window based conflict detection
-pub(super) struct OracleInner<L>
+pub(crate) struct OracleInner<L>
 where
 	L: VersionProvider,
 {
@@ -97,32 +125,32 @@ where
 }
 
 #[derive(Debug)]
-pub(super) struct CommittedTxn {
+pub(crate) struct CommittedTxn {
 	version: CommitVersion,
 	conflict_manager: Option<ConflictManager>,
 }
 
-pub(super) enum CreateCommitResult {
+pub(crate) enum CreateCommitResult {
 	Success(CommitVersion),
 	Conflict(ConflictManager),
 }
 
 /// Oracle with time-window based conflict detection
-pub(super) struct Oracle<L>
+pub(crate) struct Oracle<L>
 where
 	L: VersionProvider,
 {
 	// Using RwLock allows multiple concurrent readers during conflict detection
-	pub(super) inner: RwLock<OracleInner<L>>,
+	pub(crate) inner: RwLock<OracleInner<L>>,
 
 	/// Version provider lock for serializing version generation only
-	pub(super) version_lock: Mutex<()>,
+	pub(crate) version_lock: Mutex<()>,
 
 	/// Used by DB
-	pub(super) query: WaterMark,
+	pub(crate) query: WaterMark,
 	/// Used to block new transaction, so all previous commits are visible
 	/// to a new query.
-	pub(super) command: WaterMark,
+	pub(crate) command: WaterMark,
 
 	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
@@ -158,7 +186,7 @@ where
 
 	/// Efficient conflict detection using time windows and key indexing
 	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(%version))]
-	pub(super) async fn new_commit(
+	pub(crate) async fn new_commit(
 		&self,
 		done_read: &mut bool,
 		version: CommitVersion,
@@ -272,18 +300,32 @@ where
 				inner.clock.clone()
 			};
 
-			clock.next().await?
-		};
+			let version = clock.next().await?;
 
-		// This ensures watermark advancement respects transaction completion order
-		self.command.begin(commit_version);
+			// TEST HOOK: Inject behavior between version allocation and begin()
+			// This runs INSIDE the version_lock, so with the fix applied, other
+			// transactions cannot interleave. If the fix is reverted (begin moved
+			// outside lock), this hook would also move outside, allowing races.
+			#[cfg(test)]
+			{
+				let hook_guard = get_oracle_test_hook().lock().await;
+				if let Some(ref hook_fn) = *hook_guard {
+					let future = hook_fn(version);
+					drop(hook_guard); // Release hook lock before await
+					future.await;
+				}
+			}
+
+			// This ensures watermark advancement respects transaction completion order
+			self.command.begin(version);
+
+			version
+		};
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
 			let mut inner = self.inner.write().await;
-
 			inner.add_committed_transaction(commit_version, conflicts);
-
 			// Check if cleanup is needed
 			inner.time_windows.len() > CLEANUP_THRESHOLD
 		};
@@ -291,7 +333,7 @@ where
 		if needs_cleanup {
 			let mut inner = self.inner.write().await;
 			let inner = &mut *inner;
-			super::oracle_cleanup::cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
+			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
 		}
 
 		// DO NOT call done() here - watermark should only advance AFTER storage write completes
@@ -300,7 +342,7 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
-	pub(super) async fn version(&self) -> crate::Result<CommitVersion> {
+	pub(crate) async fn version(&self) -> crate::Result<CommitVersion> {
 		let clock = {
 			let inner = self.inner.read().await;
 			inner.clock.clone()
@@ -308,7 +350,7 @@ where
 		clock.current().await
 	}
 
-	pub(super) fn discard_at_or_below(&self) -> CommitVersion {
+	pub(crate) fn discard_at_or_below(&self) -> CommitVersion {
 		self.command.done_until()
 	}
 
@@ -323,12 +365,12 @@ where
 	}
 
 	/// Mark a query as done
-	pub(super) fn done_query(&self, version: CommitVersion) {
+	pub(crate) fn done_query(&self, version: CommitVersion) {
 		self.query.done(version);
 	}
 
 	/// Mark a commit as done
-	pub(super) fn done_commit(&self, version: CommitVersion) {
+	pub(crate) fn done_commit(&self, version: CommitVersion) {
 		self.command.done(version);
 	}
 }
@@ -814,5 +856,163 @@ mod tests {
 		let mut done_read3 = false;
 		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).await.unwrap();
 		assert!(matches!(result3, CreateCommitResult::Success(_)));
+	}
+
+	/// Regression test for watermark ordering race condition.
+	///
+	/// This test verifies that concurrent commits don't cause the watermark
+	/// to skip versions. The fix ensures `begin(version)` is called inside
+	/// the version_lock, guaranteeing versions are registered in order.
+	#[tokio::test]
+	async fn test_concurrent_commits_dont_skip_watermark_versions() {
+		use std::sync::Arc;
+
+		use tokio::time::{Duration, sleep};
+
+		const NUM_CONCURRENT: usize = 100;
+		const ITERATIONS: usize = 10;
+
+		for iteration in 0..ITERATIONS {
+			// Create fresh oracle for each iteration to avoid conflicts
+			let clock = MockVersionProvider::new(0);
+			let oracle = Arc::new(Oracle::<_>::new(clock).await);
+			let mut handles = vec![];
+
+			for i in 0..NUM_CONCURRENT {
+				let oracle_clone = oracle.clone();
+				// Use unique keys per iteration to avoid conflicts
+				let key = create_test_key(&format!("key_{}_{}", iteration, i));
+
+				let handle = tokio::spawn(async move {
+					let mut conflicts = ConflictManager::new();
+					conflicts.mark_write(&key);
+
+					let mut done_read = false;
+					let result = oracle_clone
+						.new_commit(&mut done_read, CommitVersion(1), conflicts)
+						.await
+						.unwrap();
+
+					match result {
+						CreateCommitResult::Success(version) => {
+							// Simulate storage write with variable delay
+							if i % 3 == 0 {
+								sleep(Duration::from_micros(100)).await;
+							}
+							// Mark commit as done
+							oracle_clone.done_commit(version);
+							Some(version)
+						}
+						CreateCommitResult::Conflict(_) => None,
+					}
+				});
+				handles.push(handle);
+			}
+
+			// Wait for all commits
+			let mut max_version = CommitVersion(0);
+			let mut success_count = 0;
+			for handle in handles {
+				if let Some(v) = handle.await.unwrap() {
+					max_version = max_version.max(v);
+					success_count += 1;
+				}
+			}
+
+			// All should succeed since keys are unique
+			assert_eq!(
+				success_count, NUM_CONCURRENT,
+				"Expected {} successful commits, got {}",
+				NUM_CONCURRENT, success_count
+			);
+
+			// Give watermark processor time to catch up
+			sleep(Duration::from_millis(100)).await;
+
+			// KEY ASSERTION: The watermark should have advanced to max_version
+			// If any version was skipped due to the race condition, done_until
+			// would be less than max_version (stuck at the skipped version - 1)
+			let done_until = oracle.command.done_until();
+			assert_eq!(
+				done_until, max_version,
+				"Watermark race condition detected! done_until={} but max_version={}. \
+				 Some version was skipped.",
+				done_until.0, max_version.0
+			);
+		}
+	}
+
+	/// Test that verifies versions are registered with watermark in order
+	#[tokio::test]
+	async fn test_version_begin_ordering() {
+		use std::sync::Arc;
+
+		use tokio::{sync::Barrier, time::Duration};
+
+		let clock = MockVersionProvider::new(0);
+		let oracle = Arc::new(Oracle::<_>::new(clock).await);
+		let barrier = Arc::new(Barrier::new(10));
+
+		let mut handles = vec![];
+
+		// Spawn 10 concurrent commits that all start at the same time
+		for i in 0..10 {
+			let oracle_clone = oracle.clone();
+			let barrier_clone = barrier.clone();
+			let key = create_test_key(&format!("order_key_{}", i));
+
+			let handle = tokio::spawn(async move {
+				// Wait for all tasks to be ready
+				barrier_clone.wait().await;
+
+				let mut conflicts = ConflictManager::new();
+				conflicts.mark_write(&key);
+
+				let mut done_read = false;
+				let result = oracle_clone
+					.new_commit(&mut done_read, CommitVersion(1), conflicts)
+					.await
+					.unwrap();
+
+				if let CreateCommitResult::Success(version) = result {
+					oracle_clone.done_commit(version);
+					version
+				} else {
+					CommitVersion(0)
+				}
+			});
+			handles.push(handle);
+		}
+
+		let mut versions: Vec<u64> = vec![];
+		for handle in handles {
+			let v = handle.await.unwrap();
+			if v.0 > 0 {
+				versions.push(v.0);
+			}
+		}
+
+		// Give watermark time to process
+		tokio::time::sleep(Duration::from_millis(50)).await;
+
+		// All versions should be contiguous (no gaps)
+		versions.sort();
+		for i in 1..versions.len() {
+			assert_eq!(
+				versions[i],
+				versions[i - 1] + 1,
+				"Version gap detected: {} -> {}. Versions should be contiguous.",
+				versions[i - 1],
+				versions[i]
+			);
+		}
+
+		// Watermark should be at the highest version
+		let done_until = oracle.command.done_until();
+		assert_eq!(
+			done_until.0,
+			*versions.last().unwrap_or(&0),
+			"Watermark should be at highest committed version"
+		);
 	}
 }

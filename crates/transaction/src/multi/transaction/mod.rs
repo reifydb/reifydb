@@ -12,7 +12,6 @@
 use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use oracle::*;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
 use reifydb_store_transaction::{
 	MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
@@ -23,19 +22,20 @@ use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
 pub use crate::multi::types::*;
-use crate::single::{TransactionSingle, TransactionSvl};
+use crate::{
+	multi::oracle::*,
+	single::{TransactionSingle, TransactionSvl},
+};
 
 mod command;
 pub mod manager;
-mod oracle;
-mod oracle_cleanup;
 mod query;
-mod version;
+pub(crate) mod version;
 
 pub use command::CommandTransaction;
-pub use oracle::MAX_COMMITTED_TXNS;
 pub use query::QueryTransaction;
 
+pub use crate::multi::oracle::MAX_COMMITTED_TXNS;
 use crate::multi::{
 	AwaitWatermarkError,
 	conflict::ConflictManager,

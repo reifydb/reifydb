@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicU64, Ordering},
-};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
@@ -31,28 +28,28 @@ pub trait VersionProvider: Send + Sync + Clone {
 #[derive(Debug)]
 struct VersionBlock {
 	last: u64,
-	current: AtomicU64,
+	current: u64,
 }
 
 impl VersionBlock {
 	fn new(start: u64) -> Self {
 		Self {
 			last: start + BLOCK_SIZE,
-			current: AtomicU64::new(start),
+			current: start,
 		}
 	}
 
-	fn next(&self) -> Option<CommitVersion> {
-		let version = self.current.fetch_add(1, Ordering::SeqCst);
-		if version < self.last {
-			Some(CommitVersion(version + 1))
+	fn next(&mut self) -> Option<CommitVersion> {
+		if self.current < self.last {
+			self.current += 1;
+			Some(CommitVersion(self.current))
 		} else {
 			None
 		}
 	}
 
 	fn current(&self) -> CommitVersion {
-		CommitVersion(self.current.load(Ordering::SeqCst))
+		CommitVersion(self.current)
 	}
 }
 
@@ -255,7 +252,7 @@ mod tests {
 
 	#[test]
 	fn test_version_block_behavior() {
-		let block = VersionBlock::new(100);
+		let mut block = VersionBlock::new(100);
 
 		// Should start at the given version
 		assert_eq!(block.current(), 100);
@@ -270,7 +267,7 @@ mod tests {
 
 	#[test]
 	fn test_version_block_exhaustion() {
-		let block = VersionBlock::new(0);
+		let mut block = VersionBlock::new(0);
 
 		for _ in 0..BLOCK_SIZE - 2 {
 			block.next();

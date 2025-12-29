@@ -10,6 +10,7 @@ pub use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transa
 pub mod conflict;
 pub mod marker;
 pub mod multi;
+pub(crate) mod oracle;
 pub mod pending;
 pub mod transaction;
 pub mod types;
