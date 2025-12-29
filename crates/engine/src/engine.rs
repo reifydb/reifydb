@@ -4,6 +4,7 @@
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use reifydb_builtin::{Functions, generator, math};
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
 	CommitVersion, Frame,
@@ -29,7 +30,6 @@ use tracing::instrument;
 
 use crate::{
 	execute::{Executor, parallel::can_parallelize},
-	function::{Functions, generator, math},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
 	table_virtual::{
 		IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUser, TableVirtualUserColumnDef,

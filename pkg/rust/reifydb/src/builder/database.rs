@@ -4,6 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
+use reifydb_builtin::{Functions, FunctionsBuilder, generator, math};
 use reifydb_catalog::{CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
@@ -13,10 +14,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
 };
-use reifydb_engine::{
-	EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
-	function::{Functions, FunctionsBuilder, generator, math},
-};
+use reifydb_engine::{EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction};
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;

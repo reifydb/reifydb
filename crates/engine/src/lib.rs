@@ -13,8 +13,6 @@ pub mod environment;
 mod evaluate;
 pub mod execute;
 pub mod flow;
-#[allow(dead_code)]
-pub mod function;
 pub(crate) mod interceptor;
 pub mod stack;
 pub mod table_virtual;

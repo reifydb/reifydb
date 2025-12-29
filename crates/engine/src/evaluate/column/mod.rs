@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_builtin::{Functions, blob, flow_node_type, math, text};
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::Expression;
 
 pub(crate) use crate::evaluate::ColumnEvaluationContext;
-use crate::function::{Functions, blob, flow_node_type, math, text};
 
 mod access;
 mod alias;

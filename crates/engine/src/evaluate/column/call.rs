@@ -3,15 +3,13 @@
 
 use reifydb_core::{
 	error,
+	interface::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext},
 	value::column::{Column, ColumnData, Columns, GroupByView},
 };
 use reifydb_rql::expression::{CallExpression, Expression};
 use reifydb_type::{Fragment, Value, diagnostic::function};
 
-use crate::{
-	evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator},
-	function::{AggregateFunctionContext, ScalarFunctionContext},
-};
+use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn call<'a>(&self, ctx: &ColumnEvaluationContext, call: &CallExpression) -> crate::Result<Column> {
@@ -46,7 +44,7 @@ impl StandardColumnEvaluator {
 		&self,
 		ctx: &ColumnEvaluationContext,
 		call: &CallExpression,
-		mut aggregate_fn: Box<dyn crate::function::AggregateFunction>,
+		mut aggregate_fn: Box<dyn AggregateFunction>,
 	) -> crate::Result<Column> {
 		// Create a single group containing all row indices for aggregation
 		let mut group_view = GroupByView::new();

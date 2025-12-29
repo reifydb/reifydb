@@ -1753,6 +1753,7 @@ dependencies = [
  "libc",
  "opentelemetry",
  "reifydb-auth",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
@@ -1800,6 +1801,19 @@ dependencies = [
  "reifydb-testing",
  "reifydb-transaction",
  "tokio",
+]
+
+[[package]]
+name = "reifydb-builtin"
+version = "0.2.0"
+dependencies = [
+ "indexmap 2.12.0",
+ "postcard",
+ "reifydb-core",
+ "reifydb-rql",
+ "reifydb-type",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1913,6 +1927,7 @@ dependencies = [
  "postcard",
  "reifydb-abi",
  "reifydb-auth",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-hash",

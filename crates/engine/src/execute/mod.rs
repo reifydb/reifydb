@@ -29,6 +29,7 @@ use query::{
 	variable::VariableNode,
 	view_scan::ViewScanNode,
 };
+use reifydb_builtin::{Functions, generator, math};
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
@@ -45,7 +46,6 @@ use tracing::instrument;
 
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
-	function::{Functions, generator, math},
 	stack::{Stack, Variable},
 	table_virtual::{TableVirtualUserRegistry, system::FlowOperatorStore},
 };
