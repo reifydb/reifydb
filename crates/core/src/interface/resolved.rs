@@ -7,8 +7,7 @@ use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfR
 use serde::{Deserialize, Serialize};
 
 use super::{
-	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef,
-	ViewDef,
+	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, TableDef, VTableDef, ViewDef,
 };
 
 /// Resolved namespace with both identifier and definition
@@ -126,11 +125,11 @@ pub struct ResolvedTableVirtual(Arc<ResolvedTableVirtualInner>);
 struct ResolvedTableVirtualInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: TableVirtualDef,
+	pub def: VTableDef,
 }
 
 impl ResolvedTableVirtual {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: TableVirtualDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: VTableDef) -> Self {
 		Self(Arc::new(ResolvedTableVirtualInner {
 			identifier,
 			namespace,
@@ -142,7 +141,7 @@ impl ResolvedTableVirtual {
 		&self.0.def.name
 	}
 
-	pub fn def(&self) -> &TableVirtualDef {
+	pub fn def(&self) -> &VTableDef {
 		&self.0.def
 	}
 

@@ -8,7 +8,14 @@ use crate::{
 	interface::{
 		CommandTransaction, Identity, Params, QueryTransaction, WithEventBus, interceptor::WithInterceptors,
 	},
+	value::column::Columns,
 };
+
+/// A batch of columnar data returned from query execution
+#[derive(Debug)]
+pub struct Batch {
+	pub columns: Columns,
+}
 
 #[derive(Debug)]
 pub struct Command<'a> {

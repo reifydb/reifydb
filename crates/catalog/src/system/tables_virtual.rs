@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::virtual_tables::*, table_virtual::VIRTUAL_TABLES};
+use super::ids::{columns::virtual_tables::*, vtable::VIRTUAL_TABLES};
 
 /// Returns the static definition for the system.virtual_tables virtual table
 /// This table exposes information about all virtual tables (both system and user-defined)
-pub fn virtual_tables() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn virtual_tables() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: VIRTUAL_TABLES,
 			namespace: NamespaceId(1), // system namespace
 			name: "virtual_tables".to_string(),

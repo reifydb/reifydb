@@ -1,0 +1,93 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use reifydb_core::{
+	interface::{Batch, QueryTransaction, VTableDef},
+	value::column::{Column, ColumnData, Columns},
+};
+use reifydb_type::Fragment;
+
+use crate::{
+	system::SystemCatalog,
+	vtable::{VTable, VTableContext},
+};
+
+/// Virtual table that exposes all FlowNodeType variants
+pub struct FlowNodeTypes {
+	pub(crate) definition: Arc<VTableDef>,
+	exhausted: bool,
+}
+
+impl FlowNodeTypes {
+	pub fn new() -> Self {
+		Self {
+			definition: SystemCatalog::get_system_flow_node_types_table_def().clone(),
+			exhausted: false,
+		}
+	}
+}
+
+/// FlowNodeType variant names in order of their discriminator values
+const FLOW_NODE_TYPE_NAMES: [&str; 16] = [
+	"source_inline_data",
+	"source_table",
+	"source_view",
+	"source_flow",
+	"filter",
+	"map",
+	"extend",
+	"join",
+	"aggregate",
+	"merge",
+	"sort",
+	"take",
+	"distinct",
+	"apply",
+	"sink_view",
+	"window",
+];
+
+#[async_trait]
+impl<T: QueryTransaction> VTable<T> for FlowNodeTypes {
+	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+		self.exhausted = false;
+		Ok(())
+	}
+
+	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
+		let mut ids = ColumnData::uint1_with_capacity(FLOW_NODE_TYPE_NAMES.len());
+		let mut names = ColumnData::utf8_with_capacity(FLOW_NODE_TYPE_NAMES.len());
+
+		for (i, name) in FLOW_NODE_TYPE_NAMES.iter().enumerate() {
+			ids.push(i as u8);
+			names.push(*name);
+		}
+
+		let columns = vec![
+			Column {
+				name: Fragment::internal("id"),
+				data: ids,
+			},
+			Column {
+				name: Fragment::internal("name"),
+				data: names,
+			},
+		];
+
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
+	}
+
+	fn definition(&self) -> &VTableDef {
+		&self.definition
+	}
+}

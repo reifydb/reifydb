@@ -5,14 +5,20 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use reifydb_builtin::{Functions, generator, math};
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::{
+	MaterializedCatalog,
+	vtable::{
+		UserVTable, UserVTableColumnDef, UserVTableDataFunction, UserVTableEntry,
+		system::{FlowOperatorEventListener, FlowOperatorStore},
+	},
+};
 use reifydb_core::{
 	CommitVersion, Frame,
 	event::{Event, EventBus},
 	interceptor::InterceptorFactory,
 	interface::{
 		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		Identity, Params, Query, QueryTransaction, TableVirtualDef, TableVirtualId, WithEventBus,
+		Identity, Params, Query, QueryTransaction, VTableDef, VTableId, WithEventBus,
 	},
 	ioc::IocContainer,
 	stream::{ChannelFrameStream, FrameSender, SendableFrameStream, StreamError},
@@ -31,11 +37,6 @@ use tracing::instrument;
 use crate::{
 	execute::{Executor, parallel::can_parallelize},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
-	table_virtual::{
-		IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUser, TableVirtualUserColumnDef,
-		TableVirtualUserIterator,
-		system::{FlowOperatorEventListener, FlowOperatorStore},
-	},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
@@ -545,35 +546,36 @@ impl StandardEngine {
 	///
 	/// # Returns
 	///
-	/// The assigned `TableVirtualId` on success.
+	/// The assigned `VTableId` on success.
 	///
 	/// # Example
 	///
 	/// ```ignore
-	/// use reifydb_engine::table_virtual::{TableVirtualUser, TableVirtualUserColumnDef};
+	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumnDef};
 	/// use reifydb_type::Type;
-	/// use reifydb_core::value::Value;
+	/// use reifydb_core::value::Columns;
 	///
 	/// #[derive(Clone)]
 	/// struct MyTable;
 	///
-	/// impl TableVirtualUser for MyTable {
-	///     fn columns(&self) -> Vec<TableVirtualUserColumnDef> {
-	///         vec![TableVirtualUserColumnDef::new("id", Type::Uint8)]
+	/// impl UserVTable for MyTable {
+	///     fn definition(&self) -> Vec<UserVTableColumnDef> {
+	///         vec![UserVTableColumnDef::new("id", Type::Uint8)]
 	///     }
-	///     fn rows(&self) -> Vec<Vec<Value>> {
-	///         vec![vec![Value::Uint8(1)], vec![Value::Uint8(2)]]
+	///     fn get(&self) -> Columns {
+	///         // Return column-oriented data
+	///         Columns::empty()
 	///     }
 	/// }
 	///
 	/// let id = engine.register_virtual_table("default", "my_table", MyTable)?;
 	/// ```
-	pub fn register_virtual_table<T: TableVirtualUser + Clone>(
+	pub fn register_virtual_table<T: UserVTable + Clone + 'static>(
 		&self,
 		namespace: &str,
 		name: &str,
 		table: T,
-	) -> crate::Result<TableVirtualId> {
+	) -> crate::Result<VTableId> {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def =
 			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
@@ -583,12 +585,12 @@ impl StandardEngine {
 		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 
-		// Convert user columns to internal column definitions
-		let table_columns = table.columns();
-		let columns = convert_table_virtual_user_columns_to_column_defs(&table_columns);
+		// Convert user column definitions to internal column definitions
+		let table_columns = table.definition();
+		let columns = convert_vtable_user_columns_to_column_defs(&table_columns);
 
 		// Create the table definition
-		let def = Arc::new(TableVirtualDef {
+		let def = Arc::new(VTableDef {
 			id: table_id,
 			namespace: ns_def.id,
 			name: name.to_string(),
@@ -596,11 +598,17 @@ impl StandardEngine {
 		});
 
 		// Register in catalog (for resolver lookups)
-		self.catalog.register_table_virtual_user(def.clone())?;
+		self.catalog.register_vtable_user(def.clone())?;
 
-		// Create and register the factory (for runtime instantiation)
-		let factory = Arc::new(SimpleVirtualTableFactory::new(table, def.clone()));
-		self.executor.virtual_table_registry.register(ns_def.id, name.to_string(), factory);
+		// Create the data function from the UserVTable trait
+		let data_fn: UserVTableDataFunction = Arc::new(move |_params| table.get());
+
+		// Create and register the entry
+		let entry = UserVTableEntry {
+			def: def.clone(),
+			data_fn,
+		};
+		self.executor.virtual_table_registry.register(ns_def.id, name.to_string(), entry);
 
 		Ok(table_id)
 	}
@@ -619,68 +627,12 @@ impl StandardEngine {
 			})?;
 
 		// Unregister from catalog
-		self.catalog.unregister_table_virtual_user(ns_def.id, name)?;
+		self.catalog.unregister_vtable_user(ns_def.id, name)?;
 
 		// Unregister from executor registry
 		self.executor.virtual_table_registry.unregister(ns_def.id, name);
 
 		Ok(())
-	}
-
-	/// Register a user-defined virtual table using an iterator-based implementation.
-	///
-	/// This method is for tables that stream data in batches, which is more efficient
-	/// for large datasets. The creator function is called once per query to create
-	/// a fresh iterator instance.
-	///
-	/// # Arguments
-	///
-	/// * `namespace` - The namespace to register the table in
-	/// * `name` - The table name
-	/// * `creator` - A function that creates a new iterator instance for each query
-	///
-	/// # Returns
-	///
-	/// The ID of the registered virtual table
-	pub fn register_virtual_table_iterator<F>(
-		&self,
-		namespace: &str,
-		name: &str,
-		creator: F,
-	) -> crate::Result<TableVirtualId>
-	where
-		F: Fn() -> Box<dyn TableVirtualUserIterator> + Send + Sync + 'static,
-	{
-		// Look up namespace by name (use max u64 to get latest version)
-		let ns_def =
-			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
-			})?;
-
-		// Allocate a new table ID
-		let table_id = self.executor.virtual_table_registry.allocate_id();
-
-		// Get columns from a temporary instance
-		let temp_iter = creator();
-		let table_columns = temp_iter.columns();
-		let columns = convert_table_virtual_user_columns_to_column_defs(&table_columns);
-
-		// Create the table definition
-		let def = Arc::new(TableVirtualDef {
-			id: table_id,
-			namespace: ns_def.id,
-			name: name.to_string(),
-			columns,
-		});
-
-		// Register in catalog (for resolver lookups)
-		self.catalog.register_table_virtual_user(def.clone())?;
-
-		// Create and register the factory (for runtime instantiation)
-		let factory = Arc::new(IteratorVirtualTableFactory::new(creator, def.clone()));
-		self.executor.virtual_table_registry.register(ns_def.id, name.to_string(), factory);
-
-		Ok(table_id)
 	}
 
 	/// Start a bulk insert operation with full validation.
@@ -725,7 +677,7 @@ impl StandardEngine {
 }
 
 /// Convert user column definitions to internal ColumnDef format.
-fn convert_table_virtual_user_columns_to_column_defs(columns: &[TableVirtualUserColumnDef]) -> Vec<ColumnDef> {
+fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -> Vec<ColumnDef> {
 	columns.iter()
 		.enumerate()
 		.map(|(idx, col)| {

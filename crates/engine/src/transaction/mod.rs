@@ -269,3 +269,14 @@ impl<'a> QueryTransaction for StandardTransaction<'a> {
 		}
 	}
 }
+
+use reifydb_catalog::transaction::MaterializedCatalogTransaction;
+
+impl<'a> MaterializedCatalogTransaction for StandardTransaction<'a> {
+	fn catalog(&self) -> &MaterializedCatalog {
+		match self {
+			StandardTransaction::Command(txn) => &txn.catalog,
+			StandardTransaction::Query(txn) => &txn.catalog,
+		}
+	}
+}

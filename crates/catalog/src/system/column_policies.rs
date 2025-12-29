@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::column_policies::*, table_virtual::COLUMN_POLICIES};
+use super::ids::{columns::column_policies::*, vtable::COLUMN_POLICIES};
 
 /// Returns the static definition for the system.column_policies virtual table
 /// This table exposes information about all column policies
-pub fn column_policies() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn column_policies() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: COLUMN_POLICIES,
 			namespace: NamespaceId(1), // system namespace
 			name: "column_policies".to_string(),

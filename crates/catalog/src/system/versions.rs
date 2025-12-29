@@ -3,16 +3,16 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::versions::*, table_virtual::VERSIONS};
+use super::ids::{columns::versions::*, vtable::VERSIONS};
 
-pub fn versions() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn versions() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: VERSIONS,
 			namespace: NamespaceId(1), // system namespace
 			name: "versions".to_string(),

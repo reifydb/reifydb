@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::ringbuffers::*, table_virtual::RINGBUFFERS};
+use super::ids::{columns::ringbuffers::*, vtable::RINGBUFFERS};
 
 /// Returns the static definition for the system.ringbuffers virtual table
 /// This table exposes information about all ring buffers in the database
-pub fn ringbuffers() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn ringbuffers() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: RINGBUFFERS,
 			namespace: NamespaceId(1), // system namespace
 			name: "ringbuffers".to_string(),

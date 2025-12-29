@@ -85,8 +85,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_window_key_encoding() {
-		let operator = TestOperator::simple(FlowNodeId(1));
-
 		// Test different window IDs
 		let key1 = test_window_key(1);
 		let key2 = test_window_key(2);

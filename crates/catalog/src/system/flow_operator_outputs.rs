@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::flow_operator_outputs::*, table_virtual::FLOW_OPERATOR_OUTPUTS};
+use super::ids::{columns::flow_operator_outputs::*, vtable::FLOW_OPERATOR_OUTPUTS};
 
 /// Returns the static definition for the system.flow_operator_outputs virtual table
 /// This table exposes output column definitions for FFI operators
-pub fn flow_operator_outputs() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn flow_operator_outputs() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: FLOW_OPERATOR_OUTPUTS,
 			namespace: NamespaceId(1), // system namespace
 			name: "flow_operator_outputs".to_string(),

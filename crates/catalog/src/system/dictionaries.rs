@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::dictionaries::*, table_virtual::DICTIONARIES};
+use super::ids::{columns::dictionaries::*, vtable::DICTIONARIES};
 
 /// Returns the static definition for the system.dictionaries virtual table
 /// This table exposes information about all dictionaries in the database
-pub fn dictionaries() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn dictionaries() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: DICTIONARIES,
 			namespace: NamespaceId(1), // system namespace
 			name: "dictionaries".to_string(),

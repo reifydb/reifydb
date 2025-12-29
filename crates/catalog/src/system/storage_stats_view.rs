@@ -3,17 +3,17 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::table_virtual::VIEW_STORAGE_STATS;
+use super::ids::vtable::VIEW_STORAGE_STATS;
 
 /// Returns the static definition for the system.view_storage_stats virtual table
-pub fn view_storage_stats() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn view_storage_stats() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: VIEW_STORAGE_STATS,
 			namespace: NamespaceId(1), // system namespace
 			name: "view_storage_stats".to_string(),

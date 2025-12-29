@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{
 	Result,
 	interface::{
-		TableVirtualDef, ViewKind,
+		VTableDef, ViewKind,
 		resolved::{
 			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
 			ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
@@ -45,7 +45,7 @@ pub async fn resolve_unresolved_source(
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	// Check for user-defined virtual tables first (in any namespace)
-	if let Some(virtual_def) = tx.find_table_virtual_user_by_name(ns_def.id, name_str) {
+	if let Some(virtual_def) = tx.find_vtable_user_by_name(ns_def.id, name_str) {
 		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
@@ -56,9 +56,9 @@ pub async fn resolve_unresolved_source(
 	// Check if it's a system table (namespace = "system")
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		use reifydb_core::interface::{NamespaceId, TableVirtualId};
-		let def = TableVirtualDef {
-			id: TableVirtualId(0),     // Placeholder ID - compile.rs handles actual lookup
+		use reifydb_core::interface::{NamespaceId, VTableId};
+		let def = VTableDef {
+			id: VTableId(0),           // Placeholder ID - compile.rs handles actual lookup
 			namespace: NamespaceId(1), // System namespace ID
 			name: name_str.to_string(),
 			columns: vec![], // Columns are populated at execution time

@@ -11,8 +11,8 @@ mod namespace;
 mod primitive;
 mod ringbuffer;
 mod table;
-mod table_virtual_user;
 mod view;
+mod vtable_user;
 
 pub trait MaterializedCatalogTransaction {
 	fn catalog(&self) -> &MaterializedCatalog;
@@ -79,7 +79,7 @@ pub use ringbuffer::{
 	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations, CatalogTrackRingBufferChangeOperations,
 };
 pub use table::{CatalogTableCommandOperations, CatalogTableQueryOperations, CatalogTrackTableChangeOperations};
-pub use table_virtual_user::CatalogTableVirtualUserQueryOperations;
 pub use view::{CatalogTrackViewChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations};
+pub use vtable_user::CatalogTableVirtualUserQueryOperations;
 
 use crate::MaterializedCatalog;

@@ -4,7 +4,7 @@
 use reifydb_type::return_internal_error;
 
 use crate::interface::{
-	DictionaryId, FlowId, IndexId, PrimaryKeyId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId,
+	DictionaryId, FlowId, IndexId, PrimaryKeyId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId,
 };
 
 /// Serialize a PrimitiveId for use in database keys
@@ -21,7 +21,7 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 			result.push(0x02);
 			result.extend(&super::serialize(id));
 		}
-		PrimitiveId::TableVirtual(TableVirtualId(id)) => {
+		PrimitiveId::TableVirtual(VTableId(id)) => {
 			result.push(0x03);
 			result.extend(&super::serialize(id));
 		}
@@ -55,7 +55,7 @@ pub fn deserialize_primitive_id(bytes: &[u8]) -> crate::Result<PrimitiveId> {
 	match type_byte {
 		0x01 => Ok(PrimitiveId::Table(TableId(id))),
 		0x02 => Ok(PrimitiveId::View(ViewId(id))),
-		0x03 => Ok(PrimitiveId::TableVirtual(TableVirtualId(id))),
+		0x03 => Ok(PrimitiveId::TableVirtual(VTableId(id))),
 		0x04 => Ok(PrimitiveId::RingBuffer(RingBufferId(id))),
 		0x05 => Ok(PrimitiveId::Flow(FlowId(id))),
 		0x06 => Ok(PrimitiveId::Dictionary(DictionaryId(id))),
@@ -141,23 +141,23 @@ mod tests {
 		assert!(vbytes9 > vbytes10, "view(9) should be > view(10) in bytes");
 
 		// Test with virtual tables
-		let virtual10 = PrimitiveId::table_virtual(10);
+		let virtual10 = PrimitiveId::vtable(10);
 		let virtual9 = virtual10.prev();
 
 		let tvbytes10 = serialize_primitive_id(&virtual10);
 		let tvbytes9 = serialize_primitive_id(&virtual9);
 
-		// In descending order, table_virtual(9) > table_virtual(10)
-		assert!(tvbytes9 > tvbytes10, "table_virtual(9) should be > table_virtual(10) in bytes");
+		// In descending order, vtable(9) > vtable(10)
+		assert!(tvbytes9 > tvbytes10, "vtable(9) should be > vtable(10) in bytes");
 
-		// Check that view, table, and table_virtual with same ID encode
+		// Check that view, table, and vtable with same ID encode
 		// differently
 		assert_ne!(bytes10, vbytes10, "table(10) should != view(10)");
-		assert_ne!(bytes10, tvbytes10, "table(10) should != table_virtual(10)");
-		assert_ne!(vbytes10, tvbytes10, "view(10) should != table_virtual(10)");
+		assert_ne!(bytes10, tvbytes10, "table(10) should != vtable(10)");
+		assert_ne!(vbytes10, tvbytes10, "view(10) should != vtable(10)");
 		assert_eq!(bytes10[0], 0x01, "table type byte should be 0x01");
 		assert_eq!(vbytes10[0], 0x02, "view type byte should be 0x02");
-		assert_eq!(tvbytes10[0], 0x03, "table_virtual type byte should be 0x03");
+		assert_eq!(tvbytes10[0], 0x03, "vtable type byte should be 0x03");
 
 		// Simulate what happens with encoded keys
 		let row_key_10_100 = vec![0xFE, 0xFC]; // version, kind
@@ -180,11 +180,11 @@ mod tests {
 	}
 
 	#[test]
-	fn test_table_virtual_serialization() {
-		use crate::interface::TableVirtualId;
+	fn test_vtable_serialization() {
+		use crate::interface::VTableId;
 
 		// Test basic serialization/deserialization
-		let virtual_primitive = PrimitiveId::table_virtual(42);
+		let virtual_primitive = PrimitiveId::vtable(42);
 		let bytes = serialize_primitive_id(&virtual_primitive);
 		let deserialized = deserialize_primitive_id(&bytes).unwrap();
 		assert_eq!(virtual_primitive, deserialized);
@@ -192,21 +192,21 @@ mod tests {
 		// Test that type byte is 0x03
 		assert_eq!(bytes[0], 0x03);
 
-		// Test with TableVirtualId directly
-		let virtual_id = TableVirtualId(123);
+		// Test with VTableId directly
+		let virtual_id = VTableId(123);
 		let primitive_from_id = PrimitiveId::from(virtual_id);
 		let bytes_from_id = serialize_primitive_id(&primitive_from_id);
 		let deserialized_id = deserialize_primitive_id(&bytes_from_id).unwrap();
 		assert_eq!(primitive_from_id, deserialized_id);
 
 		// Test ordering
-		let virtual1 = PrimitiveId::table_virtual(1);
-		let virtual2 = PrimitiveId::table_virtual(2);
+		let virtual1 = PrimitiveId::vtable(1);
+		let virtual2 = PrimitiveId::vtable(2);
 		let bytes1 = serialize_primitive_id(&virtual1);
 		let bytes2 = serialize_primitive_id(&virtual2);
 		// In descending order, larger values should have smaller byte
 		// representations
-		assert!(bytes2 < bytes1, "table_virtual(2) should be < table_virtual(1) in bytes");
+		assert!(bytes2 < bytes1, "vtable(2) should be < vtable(1) in bytes");
 	}
 
 	#[test]

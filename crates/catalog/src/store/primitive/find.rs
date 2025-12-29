@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{PrimitiveDef, PrimitiveId, QueryTransaction};
 
-use crate::{CatalogStore, table_virtual::VirtualTableRegistry};
+use crate::{CatalogStore, vtable::VTableRegistry};
 
 impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
@@ -38,14 +38,11 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
-			PrimitiveId::TableVirtual(table_virtual_id) => {
-				if let Some(table_virtual) =
-					VirtualTableRegistry::find_table_virtual(rx, table_virtual_id)?
-				{
-					// Convert Arc<TableVirtualDef> to TableVirtualDef
-					let table_virtual_def =
-						Arc::try_unwrap(table_virtual).unwrap_or_else(|arc| (*arc).clone());
-					Ok(Some(PrimitiveDef::TableVirtual(table_virtual_def)))
+			PrimitiveId::TableVirtual(vtable_id) => {
+				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
+					// Convert Arc<VTableDef> to VTableDef
+					let vtable_def = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
+					Ok(Some(PrimitiveDef::TableVirtual(vtable_def)))
 				} else {
 					Ok(None)
 				}
@@ -68,7 +65,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{PrimitiveDef, PrimitiveId, TableId, TableVirtualId, ViewId};
+	use reifydb_core::interface::{PrimitiveDef, PrimitiveId, TableId, VTableId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -171,16 +168,16 @@ mod tests {
 		assert!(primitive.is_none());
 
 		// Non-existent virtual table
-		let primitive = CatalogStore::find_primitive(&mut txn, TableVirtualId(999)).await.unwrap();
+		let primitive = CatalogStore::find_primitive(&mut txn, VTableId(999)).await.unwrap();
 		assert!(primitive.is_none());
 	}
 
 	#[tokio::test]
-	async fn test_find_primitive_table_virtual() {
+	async fn test_find_primitive_vtable() {
 		let mut txn = create_test_command_transaction().await;
 
 		// Find the sequences virtual table
-		let sequences_id = crate::system::ids::table_virtual::SEQUENCES;
+		let sequences_id = crate::system::ids::vtable::SEQUENCES;
 		let primitive = CatalogStore::find_primitive(&mut txn, sequences_id)
 			.await
 			.unwrap()

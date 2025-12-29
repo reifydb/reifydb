@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::sequences::*, table_virtual::SEQUENCES};
+use super::ids::{columns::sequences::*, vtable::SEQUENCES};
 
 /// Returns the static definition for the system.sequences virtual table
 /// This table exposes information about all sequences in the database
-pub fn sequences() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn sequences() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: SEQUENCES,
 			namespace: NamespaceId(1), // system namespace
 			name: "sequences".to_string(),

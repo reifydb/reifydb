@@ -319,7 +319,6 @@ mod tests {
 	async fn test_counter_persistence() {
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
-		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some encoded numbers
@@ -342,7 +341,6 @@ mod tests {
 	async fn test_large_row_numbers() {
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
-		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create many encoded numbers
@@ -370,7 +368,6 @@ mod tests {
 	async fn test_mixed_existing_and_new_keys() {
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
-		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers

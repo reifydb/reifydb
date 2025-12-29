@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::operator_retention_policies::*, table_virtual::OPERATOR_RETENTION_POLICIES};
+use super::ids::{columns::operator_retention_policies::*, vtable::OPERATOR_RETENTION_POLICIES};
 
 /// Returns the static definition for the system.operator_retention_policies virtual table
 /// This table exposes retention policy information for flow operators
-pub fn operator_retention_policies() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn operator_retention_policies() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: OPERATOR_RETENTION_POLICIES,
 			namespace: NamespaceId(1), // system namespace
 			name: "operator_retention_policies".to_string(),

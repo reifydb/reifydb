@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{DictionaryId, FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
+	interface::{DictionaryId, FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId},
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
@@ -75,7 +75,7 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 		let primitive_id = match discriminator {
 			0x01 => PrimitiveId::Table(TableId(id)),
 			0x02 => PrimitiveId::View(ViewId(id)),
-			0x03 => PrimitiveId::TableVirtual(TableVirtualId(id)),
+			0x03 => PrimitiveId::TableVirtual(VTableId(id)),
 			0x04 => PrimitiveId::RingBuffer(RingBufferId(id)),
 			0x05 => PrimitiveId::Flow(FlowId(id)),
 			0x06 => PrimitiveId::Dictionary(DictionaryId(id)),

@@ -192,7 +192,7 @@ mod tests {
 
 		// Simulate a counter incrementing
 		for i in 1..=5 {
-			operator.update_state(&mut txn, |layout, row| {
+			operator.update_state(&mut txn, |_layout, row| {
 				// Assuming first field is an int8 counter
 				let current = row.as_ref()[0];
 				row.make_mut()[0] = current.wrapping_add(1);

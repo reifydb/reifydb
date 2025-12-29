@@ -1,0 +1,81 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use reifydb_core::{
+	interface::{Batch, QueryTransaction, VTableDef},
+	value::column::{Column, ColumnData, Columns},
+};
+use reifydb_type::Fragment;
+
+use crate::{
+	CatalogStore,
+	system::SystemCatalog,
+	vtable::{VTable, VTableContext},
+};
+
+/// Virtual table that exposes system primary key column relationships
+pub struct PrimaryKeyColumns {
+	pub(crate) definition: Arc<VTableDef>,
+	exhausted: bool,
+}
+
+impl PrimaryKeyColumns {
+	pub fn new() -> Self {
+		Self {
+			definition: SystemCatalog::get_system_primary_key_columns_table_def().clone(),
+			exhausted: false,
+		}
+	}
+}
+
+#[async_trait]
+impl<T: QueryTransaction> VTable<T> for PrimaryKeyColumns {
+	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+		self.exhausted = false;
+		Ok(())
+	}
+
+	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
+		let mut pk_ids = Vec::new();
+		let mut column_ids = Vec::new();
+		let mut positions = Vec::new();
+
+		let pk_columns = CatalogStore::list_primary_key_columns(txn).await?;
+		for (pk_id, column_id, position) in pk_columns {
+			pk_ids.push(pk_id);
+			column_ids.push(column_id);
+			positions.push(position as u16);
+		}
+
+		let columns = vec![
+			Column {
+				name: Fragment::internal("primary_key_id"),
+				data: ColumnData::uint8(pk_ids),
+			},
+			Column {
+				name: Fragment::internal("column_id"),
+				data: ColumnData::uint8(column_ids),
+			},
+			Column {
+				name: Fragment::internal("position"),
+				data: ColumnData::uint2(positions),
+			},
+		];
+
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
+	}
+
+	fn definition(&self) -> &VTableDef {
+		&self.definition
+	}
+}

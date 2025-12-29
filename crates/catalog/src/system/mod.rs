@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
+use reifydb_core::interface::{VTableDef, version::SystemVersion};
 
 mod cdc_consumers;
 mod column_policies;
@@ -349,42 +349,42 @@ pub mod ids {
 			[NAMESPACE, SOURCE, COLUMN, COLUMN_POLICY, FLOW, FLOW_NODE, FLOW_EDGE, PRIMARY_KEY];
 	}
 
-	pub mod table_virtual {
-		use reifydb_core::interface::TableVirtualId;
+	pub mod vtable {
+		use reifydb_core::interface::VTableId;
 
-		pub const SEQUENCES: TableVirtualId = TableVirtualId(1);
-		pub const NAMESPACES: TableVirtualId = TableVirtualId(2);
-		pub const TABLES: TableVirtualId = TableVirtualId(3);
-		pub const VIEWS: TableVirtualId = TableVirtualId(4);
-		pub const FLOWS: TableVirtualId = TableVirtualId(13);
-		pub const COLUMNS: TableVirtualId = TableVirtualId(5);
-		pub const COLUMN_POLICIES: TableVirtualId = TableVirtualId(6);
-		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
-		pub const PRIMARY_KEY_COLUMNS: TableVirtualId = TableVirtualId(8);
-		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
-		pub const PRIMITIVE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
-		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
-		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
-		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
-		pub const FLOW_NODES: TableVirtualId = TableVirtualId(15);
-		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
-		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
-		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
-		pub const TYPES: TableVirtualId = TableVirtualId(19);
-		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
-		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
-		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
-		pub const RINGBUFFERS: TableVirtualId = TableVirtualId(23);
-		pub const TABLE_STORAGE_STATS: TableVirtualId = TableVirtualId(24);
-		pub const VIEW_STORAGE_STATS: TableVirtualId = TableVirtualId(25);
-		pub const FLOW_STORAGE_STATS: TableVirtualId = TableVirtualId(26);
-		pub const FLOW_NODE_STORAGE_STATS: TableVirtualId = TableVirtualId(27);
-		pub const INDEX_STORAGE_STATS: TableVirtualId = TableVirtualId(28);
-		pub const RINGBUFFER_STORAGE_STATS: TableVirtualId = TableVirtualId(29);
-		pub const DICTIONARY_STORAGE_STATS: TableVirtualId = TableVirtualId(30);
-		pub const FLOW_LAGS: TableVirtualId = TableVirtualId(31);
+		pub const SEQUENCES: VTableId = VTableId(1);
+		pub const NAMESPACES: VTableId = VTableId(2);
+		pub const TABLES: VTableId = VTableId(3);
+		pub const VIEWS: VTableId = VTableId(4);
+		pub const FLOWS: VTableId = VTableId(13);
+		pub const COLUMNS: VTableId = VTableId(5);
+		pub const COLUMN_POLICIES: VTableId = VTableId(6);
+		pub const PRIMARY_KEYS: VTableId = VTableId(7);
+		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
+		pub const VERSIONS: VTableId = VTableId(9);
+		pub const PRIMITIVE_RETENTION_POLICIES: VTableId = VTableId(10);
+		pub const OPERATOR_RETENTION_POLICIES: VTableId = VTableId(11);
+		pub const CDC_CONSUMERS: VTableId = VTableId(12);
+		pub const FLOW_OPERATORS: VTableId = VTableId(14);
+		pub const FLOW_NODES: VTableId = VTableId(15);
+		pub const FLOW_EDGES: VTableId = VTableId(16);
+		pub const DICTIONARIES: VTableId = VTableId(17);
+		pub const VIRTUAL_TABLES: VTableId = VTableId(18);
+		pub const TYPES: VTableId = VTableId(19);
+		pub const FLOW_NODE_TYPES: VTableId = VTableId(20);
+		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(21);
+		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(22);
+		pub const RINGBUFFERS: VTableId = VTableId(23);
+		pub const TABLE_STORAGE_STATS: VTableId = VTableId(24);
+		pub const VIEW_STORAGE_STATS: VTableId = VTableId(25);
+		pub const FLOW_STORAGE_STATS: VTableId = VTableId(26);
+		pub const FLOW_NODE_STORAGE_STATS: VTableId = VTableId(27);
+		pub const INDEX_STORAGE_STATS: VTableId = VTableId(28);
+		pub const RINGBUFFER_STORAGE_STATS: VTableId = VTableId(29);
+		pub const DICTIONARY_STORAGE_STATS: VTableId = VTableId(30);
+		pub const FLOW_LAGS: VTableId = VTableId(31);
 
-		pub const ALL: [TableVirtualId; 31] = [
+		pub const ALL: [VTableId; 31] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -443,157 +443,157 @@ impl SystemCatalog {
 	}
 
 	/// Get the sequences virtual table definition
-	pub fn get_system_sequences_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_sequences_table_def() -> Arc<VTableDef> {
 		sequences()
 	}
 
 	/// Get the namespaces virtual table definition
-	pub fn get_system_namespaces_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_namespaces_table_def() -> Arc<VTableDef> {
 		namespaces()
 	}
 
 	/// Get the tables virtual table definition
-	pub fn get_system_tables_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_tables_table_def() -> Arc<VTableDef> {
 		tables()
 	}
 
 	/// Get the views virtual table definition
-	pub fn get_system_views_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_views_table_def() -> Arc<VTableDef> {
 		views()
 	}
 
 	/// Get the flows virtual table definition
-	pub fn get_system_flows_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flows_table_def() -> Arc<VTableDef> {
 		flows()
 	}
 
 	/// Get the flow_lags virtual table definition
-	pub fn get_system_flow_lags_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_lags_table_def() -> Arc<VTableDef> {
 		flow_lags()
 	}
 
 	/// Get the columns virtual table definition
-	pub fn get_system_columns_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_columns_table_def() -> Arc<VTableDef> {
 		columns()
 	}
 
 	/// Get the primary_keys virtual table definition
-	pub fn get_system_primary_keys_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_primary_keys_table_def() -> Arc<VTableDef> {
 		primary_keys()
 	}
 
 	/// Get the primary_key_columns virtual table definition
-	pub fn get_system_primary_key_columns_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_primary_key_columns_table_def() -> Arc<VTableDef> {
 		primary_key_columns()
 	}
 
 	/// Get the column_policies virtual table definition
-	pub fn get_system_column_policies_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_column_policies_table_def() -> Arc<VTableDef> {
 		column_policies()
 	}
 
 	/// Get the system versions virtual table definition
-	pub fn get_system_versions_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_versions_table_def() -> Arc<VTableDef> {
 		versions()
 	}
 
 	/// Get the primitive_retention_policies virtual table definition
-	pub fn get_system_primitive_retention_policies_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_primitive_retention_policies_table_def() -> Arc<VTableDef> {
 		primitive_retention_policies()
 	}
 
 	/// Get the operator_retention_policies virtual table definition
-	pub fn get_system_operator_retention_policies_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_operator_retention_policies_table_def() -> Arc<VTableDef> {
 		operator_retention_policies()
 	}
 
 	/// Get the cdc_consumers virtual table definition
-	pub fn get_system_cdc_consumers_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_cdc_consumers_table_def() -> Arc<VTableDef> {
 		cdc_consumers()
 	}
 
 	/// Get the flow_operators virtual table definition
-	pub fn get_system_flow_operators_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_operators_table_def() -> Arc<VTableDef> {
 		flow_operators()
 	}
 
 	/// Get the flow_nodes virtual table definition
-	pub fn get_system_flow_nodes_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_nodes_table_def() -> Arc<VTableDef> {
 		flow_nodes()
 	}
 
 	/// Get the flow_edges virtual table definition
-	pub fn get_system_flow_edges_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_edges_table_def() -> Arc<VTableDef> {
 		flow_edges()
 	}
 
 	/// Get the dictionaries virtual table definition
-	pub fn get_system_dictionaries_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_dictionaries_table_def() -> Arc<VTableDef> {
 		dictionaries()
 	}
 
 	/// Get the virtual_tables virtual table definition
-	pub fn get_system_virtual_tables_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_virtual_tables_table_def() -> Arc<VTableDef> {
 		virtual_tables()
 	}
 
 	/// Get the types virtual table definition
-	pub fn get_system_types_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_types_table_def() -> Arc<VTableDef> {
 		types()
 	}
 
 	/// Get the flow_node_types virtual table definition
-	pub fn get_system_flow_node_types_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_node_types_table_def() -> Arc<VTableDef> {
 		flow_node_types()
 	}
 
 	/// Get the flow_operator_inputs virtual table definition
-	pub fn get_system_flow_operator_inputs_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_operator_inputs_table_def() -> Arc<VTableDef> {
 		flow_operator_inputs()
 	}
 
 	/// Get the flow_operator_outputs virtual table definition
-	pub fn get_system_flow_operator_outputs_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_operator_outputs_table_def() -> Arc<VTableDef> {
 		flow_operator_outputs()
 	}
 
 	/// Get the ringbuffers virtual table definition
-	pub fn get_system_ringbuffers_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_ringbuffers_table_def() -> Arc<VTableDef> {
 		ringbuffers()
 	}
 
 	/// Get the table_storage_stats virtual table definition
-	pub fn get_system_table_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_table_storage_stats_table_def() -> Arc<VTableDef> {
 		table_storage_stats()
 	}
 
 	/// Get the view_storage_stats virtual table definition
-	pub fn get_system_view_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_view_storage_stats_table_def() -> Arc<VTableDef> {
 		view_storage_stats()
 	}
 
 	/// Get the flow_storage_stats virtual table definition
-	pub fn get_system_flow_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_storage_stats_table_def() -> Arc<VTableDef> {
 		flow_storage_stats()
 	}
 
 	/// Get the flow_node_storage_stats virtual table definition
-	pub fn get_system_flow_node_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_flow_node_storage_stats_table_def() -> Arc<VTableDef> {
 		flow_node_storage_stats()
 	}
 
 	/// Get the index_storage_stats virtual table definition
-	pub fn get_system_index_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_index_storage_stats_table_def() -> Arc<VTableDef> {
 		index_storage_stats()
 	}
 
 	/// Get the ringbuffer_storage_stats virtual table definition
-	pub fn get_system_ringbuffer_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_ringbuffer_storage_stats_table_def() -> Arc<VTableDef> {
 		ringbuffer_storage_stats()
 	}
 
 	/// Get the dictionary_storage_stats virtual table definition
-	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<TableVirtualDef> {
+	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<VTableDef> {
 		dictionary_storage_stats()
 	}
 }

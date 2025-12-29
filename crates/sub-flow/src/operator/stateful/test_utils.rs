@@ -92,14 +92,14 @@ pub mod test {
 
 		async fn apply(
 			&self,
-			txn: &mut FlowTransaction,
-			change: FlowChange,
-			evaluator: &StandardColumnEvaluator,
+			_txn: &mut FlowTransaction,
+			_change: FlowChange,
+			_evaluator: &StandardColumnEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
 			todo!()
 		}
 
-		async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 			unimplemented!()
 		}
 	}

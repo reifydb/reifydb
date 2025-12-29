@@ -1,0 +1,76 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use reifydb_core::{
+	interface::{Batch, QueryTransaction, VTableDef},
+	value::column::{Column, ColumnData, Columns},
+};
+use reifydb_type::{Fragment, Type};
+
+use crate::{
+	system::SystemCatalog,
+	vtable::{VTable, VTableContext},
+};
+
+/// Virtual table that exposes all type information
+pub struct Types {
+	pub(crate) definition: Arc<VTableDef>,
+	exhausted: bool,
+}
+
+impl Types {
+	pub fn new() -> Self {
+		Self {
+			definition: SystemCatalog::get_system_types_table_def().clone(),
+			exhausted: false,
+		}
+	}
+}
+
+#[async_trait]
+impl<T: QueryTransaction> VTable<T> for Types {
+	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+		self.exhausted = false;
+		Ok(())
+	}
+
+	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+		if self.exhausted {
+			return Ok(None);
+		}
+
+		const TYPE_COUNT: usize = 27;
+
+		let mut ids = ColumnData::uint1_with_capacity(TYPE_COUNT);
+		let mut names = ColumnData::utf8_with_capacity(TYPE_COUNT);
+
+		for i in 0..TYPE_COUNT as u8 {
+			let ty = Type::from_u8(i);
+			ids.push(i);
+			names.push(ty.to_string().to_lowercase().as_str());
+		}
+
+		let columns = vec![
+			Column {
+				name: Fragment::internal("id"),
+				data: ids,
+			},
+			Column {
+				name: Fragment::internal("name"),
+				data: names,
+			},
+		];
+
+		self.exhausted = true;
+		Ok(Some(Batch {
+			columns: Columns::new(columns),
+		}))
+	}
+
+	fn definition(&self) -> &VTableDef {
+		&self.definition
+	}
+}

@@ -5,8 +5,7 @@ use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::{
-	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef,
-	ViewId,
+	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, VTableDef, VTableId, ViewDef, ViewId,
 };
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
@@ -14,7 +13,7 @@ pub enum PrimitiveId {
 	Table(TableId),
 	View(ViewId),
 	Flow(FlowId),
-	TableVirtual(TableVirtualId),
+	TableVirtual(VTableId),
 	RingBuffer(RingBufferId),
 	Dictionary(DictionaryId),
 }
@@ -45,7 +44,7 @@ impl PrimitiveId {
 		Self::Flow(id.into())
 	}
 
-	pub fn table_virtual(id: impl Into<TableVirtualId>) -> Self {
+	pub fn vtable(id: impl Into<VTableId>) -> Self {
 		Self::TableVirtual(id.into())
 	}
 
@@ -76,8 +75,8 @@ impl From<FlowId> for PrimitiveId {
 	}
 }
 
-impl From<TableVirtualId> for PrimitiveId {
-	fn from(id: TableVirtualId) -> Self {
+impl From<VTableId> for PrimitiveId {
+	fn from(id: VTableId) -> Self {
 		PrimitiveId::TableVirtual(id)
 	}
 }
@@ -134,8 +133,8 @@ impl PartialEq<FlowId> for PrimitiveId {
 	}
 }
 
-impl PartialEq<TableVirtualId> for PrimitiveId {
-	fn eq(&self, other: &TableVirtualId) -> bool {
+impl PartialEq<VTableId> for PrimitiveId {
+	fn eq(&self, other: &VTableId) -> bool {
 		match self {
 			PrimitiveId::TableVirtual(id) => id.0 == other.0,
 			_ => false,
@@ -198,7 +197,7 @@ impl PrimitiveId {
 			PrimitiveId::Table(table) => PrimitiveId::table(table.0 + 1),
 			PrimitiveId::View(view) => PrimitiveId::view(view.0 + 1),
 			PrimitiveId::Flow(flow) => PrimitiveId::flow(flow.0 + 1),
-			PrimitiveId::TableVirtual(table_virtual) => PrimitiveId::table_virtual(table_virtual.0 + 1),
+			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0 + 1),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0 + 1),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0 + 1),
 		}
@@ -213,9 +212,7 @@ impl PrimitiveId {
 			PrimitiveId::Table(table) => PrimitiveId::table(table.0.wrapping_sub(1)),
 			PrimitiveId::View(view) => PrimitiveId::view(view.0.wrapping_sub(1)),
 			PrimitiveId::Flow(flow) => PrimitiveId::flow(flow.0.wrapping_sub(1)),
-			PrimitiveId::TableVirtual(table_virtual) => {
-				PrimitiveId::table_virtual(table_virtual.0.wrapping_sub(1))
-			}
+			PrimitiveId::TableVirtual(vtable) => PrimitiveId::vtable(vtable.0.wrapping_sub(1)),
 			PrimitiveId::RingBuffer(ringbuffer) => PrimitiveId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			PrimitiveId::Dictionary(dictionary) => PrimitiveId::dictionary(dictionary.0.wrapping_sub(1)),
 		}
@@ -260,9 +257,9 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_table_virtual_id(self) -> crate::Result<TableVirtualId> {
-		if let PrimitiveId::TableVirtual(table_virtual) = self {
-			Ok(table_virtual)
+	pub fn to_vtable_id(self) -> crate::Result<VTableId> {
+		if let PrimitiveId::TableVirtual(vtable) = self {
+			Ok(vtable)
 		} else {
 			return_internal_error!(
 				"Data inconsistency: Expected PrimitiveId::TableVirtual but found {:?}. \
@@ -305,7 +302,7 @@ pub enum PrimitiveDef {
 	Table(TableDef),
 	View(ViewDef),
 	Flow(FlowDef),
-	TableVirtual(TableVirtualDef),
+	TableVirtual(VTableDef),
 }
 
 impl PrimitiveDef {
@@ -314,7 +311,7 @@ impl PrimitiveDef {
 			PrimitiveDef::Table(table) => table.id.into(),
 			PrimitiveDef::View(view) => view.id.into(),
 			PrimitiveDef::Flow(flow) => flow.id.into(),
-			PrimitiveDef::TableVirtual(table_virtual) => table_virtual.id.into(),
+			PrimitiveDef::TableVirtual(vtable) => vtable.id.into(),
 		}
 	}
 
@@ -323,7 +320,7 @@ impl PrimitiveDef {
 			PrimitiveDef::Table(table) => PrimitiveId::Table(table.id),
 			PrimitiveDef::View(view) => PrimitiveId::View(view.id),
 			PrimitiveDef::Flow(flow) => PrimitiveId::Flow(flow.id),
-			PrimitiveDef::TableVirtual(table_virtual) => PrimitiveId::TableVirtual(table_virtual.id),
+			PrimitiveDef::TableVirtual(vtable) => PrimitiveId::TableVirtual(vtable.id),
 		}
 	}
 }

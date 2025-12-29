@@ -202,7 +202,7 @@ fn encode_source_id(source_id: PrimitiveId) -> [u8; 9] {
 }
 
 fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
-	use reifydb_core::interface::{DictionaryId, FlowId, RingBufferId, TableId, TableVirtualId, ViewId};
+	use reifydb_core::interface::{DictionaryId, FlowId, RingBufferId, TableId, VTableId, ViewId};
 
 	if bytes.len() < 9 {
 		return None;
@@ -214,7 +214,7 @@ fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
 		1 => Some(PrimitiveId::Table(TableId(id))),
 		2 => Some(PrimitiveId::View(ViewId(id))),
 		3 => Some(PrimitiveId::Flow(FlowId(id))),
-		4 => Some(PrimitiveId::TableVirtual(TableVirtualId(id))),
+		4 => Some(PrimitiveId::TableVirtual(VTableId(id))),
 		5 => Some(PrimitiveId::RingBuffer(RingBufferId(id))),
 		6 => Some(PrimitiveId::Dictionary(DictionaryId(id))),
 		_ => None,

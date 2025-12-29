@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::primitive_retention_policies::*, table_virtual::PRIMITIVE_RETENTION_POLICIES};
+use super::ids::{columns::primitive_retention_policies::*, vtable::PRIMITIVE_RETENTION_POLICIES};
 
 /// Returns the static definition for the system.primitive_retention_policies virtual table
 /// This table exposes retention policy information for primitives (tables, views, ring buffers)
-pub fn primitive_retention_policies() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn primitive_retention_policies() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: PRIMITIVE_RETENTION_POLICIES,
 			namespace: NamespaceId(1), // system namespace
 			name: "primitive_retention_policies".to_string(),

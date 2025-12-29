@@ -3,18 +3,18 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
 use reifydb_type::{Type, TypeConstraint};
 
-use super::ids::{columns::primary_keys::*, table_virtual::PRIMARY_KEYS};
+use super::ids::{columns::primary_keys::*, vtable::PRIMARY_KEYS};
 
 /// Returns the static definition for the system.primary_keys virtual table
 /// This table exposes information about all primary keys in the database
-pub fn primary_keys() -> Arc<TableVirtualDef> {
-	static INSTANCE: OnceLock<Arc<TableVirtualDef>> = OnceLock::new();
+pub fn primary_keys() -> Arc<VTableDef> {
+	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(TableVirtualDef {
+		Arc::new(VTableDef {
 			id: PRIMARY_KEYS,
 			namespace: NamespaceId(1), // system namespace
 			name: "primary_keys".to_string(),

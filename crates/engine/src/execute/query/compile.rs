@@ -4,6 +4,16 @@
 use std::sync::Arc;
 
 use async_recursion::async_recursion;
+use reifydb_catalog::vtable::{
+	VTableContext, VTables,
+	system::{
+		CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges, FlowLags,
+		FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs, FlowOperators,
+		FlowStorageStats, Flows, IndexStorageStats, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns,
+		PrimaryKeys, PrimitiveRetentionPolicies, RingBufferStorageStats, RingBuffers, Sequences,
+		TableStorageStats, Tables, TablesVirtual, Types, Versions, ViewStorageStats, Views,
+	},
+};
 use reifydb_core::interface::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 use reifydb_type::Fragment;
@@ -32,22 +42,11 @@ use crate::{
 			scalarize::ScalarizeNode,
 			sort::SortNode,
 			table_scan::TableScanNode,
-			table_virtual_scan::VirtualScanNode,
 			take::TakeNode,
 			top_k::TopKNode,
 			variable::VariableNode,
 			view_scan::ViewScanNode,
-		},
-	},
-	table_virtual::{
-		TableVirtual, TableVirtualContext,
-		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges,
-			FlowLags, FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs,
-			FlowOperatorOutputs, FlowOperators, FlowStorageStats, Flows, IndexStorageStats, Namespaces,
-			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, PrimitiveRetentionPolicies,
-			RingBufferStorageStats, RingBuffers, Sequences, TableStorageStats, Tables, TablesVirtual,
-			Types, Versions, ViewStorageStats, Views,
+			vtable_scan::VirtualScanNode,
 		},
 	},
 };
@@ -245,65 +244,69 @@ pub(crate) async fn compile<'a>(
 			let table = node.source.def();
 
 			// First check user-defined virtual tables
-			let virtual_table_impl: Box<dyn TableVirtual> = if let Some(factory) =
+			let virtual_table_impl: VTables = if let Some(user_table) =
 				context.executor.virtual_table_registry.find_by_name(namespace.id, &table.name)
 			{
-				// User-defined virtual table
-				factory.create_boxed()
+				// User-defined virtual table - registry returns VTableImpl directly
+				user_table
 			} else if namespace.id == NamespaceId(1) {
 				// Built-in system virtual tables
 				match table.name.as_str() {
-					"sequences" => Box::new(Sequences::new()),
-					"namespaces" => Box::new(Namespaces::new()),
-					"tables" => Box::new(Tables::new()),
-					"views" => Box::new(Views::new()),
-					"flows" => Box::new(Flows::new()),
-					"flow_lags" => Box::new(FlowLags::new(context.executor.ioc.clone())),
-					"flow_nodes" => Box::new(FlowNodes::new()),
-					"flow_edges" => Box::new(FlowEdges::new()),
-					"columns" => Box::new(ColumnsTable::new()),
-					"primary_keys" => Box::new(PrimaryKeys::new()),
-					"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
-					"column_policies" => Box::new(ColumnPolicies::new()),
-					"versions" => Box::new(Versions::new()),
-					"primitive_retention_policies" => Box::new(PrimitiveRetentionPolicies::new()),
-					"operator_retention_policies" => Box::new(OperatorRetentionPolicies::new()),
-					"cdc_consumers" => Box::new(CdcConsumers::new()),
-					"flow_operators" => Box::new(FlowOperators::new(
+					"sequences" => VTables::Sequences(Sequences::new()),
+					"namespaces" => VTables::Namespaces(Namespaces::new()),
+					"tables" => VTables::Tables(Tables::new()),
+					"views" => VTables::Views(Views::new()),
+					"flows" => VTables::Flows(Flows::new()),
+					"flow_lags" => VTables::FlowLags(FlowLags::new(context.executor.ioc.clone())),
+					"flow_nodes" => VTables::FlowNodes(FlowNodes::new()),
+					"flow_edges" => VTables::FlowEdges(FlowEdges::new()),
+					"columns" => VTables::Columns(ColumnsTable::new()),
+					"primary_keys" => VTables::PrimaryKeys(PrimaryKeys::new()),
+					"primary_key_columns" => VTables::PrimaryKeyColumns(PrimaryKeyColumns::new()),
+					"column_policies" => VTables::ColumnPolicies(ColumnPolicies::new()),
+					"versions" => VTables::Versions(Versions::new()),
+					"primitive_retention_policies" => {
+						VTables::PrimitiveRetentionPolicies(PrimitiveRetentionPolicies::new())
+					}
+					"operator_retention_policies" => {
+						VTables::OperatorRetentionPolicies(OperatorRetentionPolicies::new())
+					}
+					"cdc_consumers" => VTables::CdcConsumers(CdcConsumers::new()),
+					"flow_operators" => VTables::FlowOperators(FlowOperators::new(
 						context.executor.flow_operator_store.clone(),
 					)),
-					"dictionaries" => Box::new(Dictionaries::new()),
-					"virtual_tables" => Box::new(TablesVirtual::new()),
-					"types" => Box::new(Types::new()),
-					"flow_node_types" => Box::new(FlowNodeTypes::new()),
-					"flow_operator_inputs" => Box::new(FlowOperatorInputs::new(
+					"dictionaries" => VTables::Dictionaries(Dictionaries::new()),
+					"virtual_tables" => VTables::TablesVirtual(TablesVirtual::new()),
+					"types" => VTables::Types(Types::new()),
+					"flow_node_types" => VTables::FlowNodeTypes(FlowNodeTypes::new()),
+					"flow_operator_inputs" => VTables::FlowOperatorInputs(FlowOperatorInputs::new(
 						context.executor.flow_operator_store.clone(),
 					)),
-					"flow_operator_outputs" => Box::new(FlowOperatorOutputs::new(
-						context.executor.flow_operator_store.clone(),
-					)),
-					"ringbuffers" => Box::new(RingBuffers::new()),
-					"table_storage_stats" => {
-						Box::new(TableStorageStats::new(context.executor.stats_tracker.clone()))
-					}
-					"view_storage_stats" => {
-						Box::new(ViewStorageStats::new(context.executor.stats_tracker.clone()))
-					}
-					"flow_storage_stats" => {
-						Box::new(FlowStorageStats::new(context.executor.stats_tracker.clone()))
-					}
-					"flow_node_storage_stats" => Box::new(FlowNodeStorageStats::new(
+					"flow_operator_outputs" => VTables::FlowOperatorOutputs(
+						FlowOperatorOutputs::new(context.executor.flow_operator_store.clone()),
+					),
+					"ringbuffers" => VTables::RingBuffers(RingBuffers::new()),
+					"table_storage_stats" => VTables::TableStorageStats(TableStorageStats::new(
 						context.executor.stats_tracker.clone(),
 					)),
-					"index_storage_stats" => {
-						Box::new(IndexStorageStats::new(context.executor.stats_tracker.clone()))
-					}
-					"ringbuffer_storage_stats" => Box::new(RingBufferStorageStats::new(
+					"view_storage_stats" => VTables::ViewStorageStats(ViewStorageStats::new(
 						context.executor.stats_tracker.clone(),
 					)),
-					"dictionary_storage_stats" => Box::new(DictionaryStorageStats::new(
+					"flow_storage_stats" => VTables::FlowStorageStats(FlowStorageStats::new(
 						context.executor.stats_tracker.clone(),
 					)),
+					"flow_node_storage_stats" => VTables::FlowNodeStorageStats(
+						FlowNodeStorageStats::new(context.executor.stats_tracker.clone()),
+					),
+					"index_storage_stats" => VTables::IndexStorageStats(IndexStorageStats::new(
+						context.executor.stats_tracker.clone(),
+					)),
+					"ringbuffer_storage_stats" => VTables::RingBufferStorageStats(
+						RingBufferStorageStats::new(context.executor.stats_tracker.clone()),
+					),
+					"dictionary_storage_stats" => VTables::DictionaryStorageStats(
+						DictionaryStorageStats::new(context.executor.stats_tracker.clone()),
+					),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
@@ -312,14 +315,12 @@ pub(crate) async fn compile<'a>(
 
 			let virtual_context = node
 				.pushdown_context
-				.map(|ctx| TableVirtualContext::PushDown {
-					filters: ctx.filters,
-					projections: ctx.projections,
+				.map(|ctx| VTableContext::PushDown {
 					order_by: ctx.order_by,
 					limit: ctx.limit,
 					params: context.params.clone(),
 				})
-				.unwrap_or(TableVirtualContext::Basic {
+				.unwrap_or(VTableContext::Basic {
 					params: context.params.clone(),
 				});
 

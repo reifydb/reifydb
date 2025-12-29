@@ -10,9 +10,9 @@ mod materialized;
 pub mod resolve;
 pub mod store;
 pub mod system;
-pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
+pub mod vtable;
 
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 // Re-export moved modules for backward compatibility

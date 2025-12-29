@@ -15,9 +15,15 @@ pub mod execute;
 pub mod flow;
 pub(crate) mod interceptor;
 pub mod stack;
-pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
+
+// Re-export vtable types from catalog for backward compatibility
+pub mod vtable {
+	pub use reifydb_catalog::vtable::{
+		UserVTable, UserVTableBuilder, UserVTableColumnDef, UserVTableRegistry, VTableContext, VTables, system,
+	};
+}
 
 pub use engine::StandardEngine;
 pub use evaluate::{

@@ -54,7 +54,7 @@ mod tests {
 	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
-	use crate::function::ScalarFunctionContext;
+	use crate::ScalarFunctionContext;
 
 	#[tokio::test]
 	async fn test_blob_b64_valid_input() {

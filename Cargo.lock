@@ -1814,6 +1814,7 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -1823,6 +1824,7 @@ dependencies = [
  "async-trait",
  "crossbeam-skiplist",
  "once_cell",
+ "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-store-transaction",

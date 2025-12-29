@@ -17,7 +17,7 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
-		PrimaryKeyId, PrimitiveId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+		PrimaryKeyId, PrimitiveId, TableDef, TableId, VTableDef, VTableId, ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -80,9 +80,9 @@ pub struct MaterializedCatalogInner {
 	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
 
 	/// User-defined virtual table definitions indexed by ID
-	pub(crate) table_virtual_user: SkipMap<TableVirtualId, Arc<TableVirtualDef>>,
+	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
-	pub(crate) table_virtual_user_by_name: SkipMap<(NamespaceId, String), TableVirtualId>,
+	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 
 	/// System catalog with version information (None until initialized)
 	pub(crate) system_catalog: Option<SystemCatalog>,
@@ -129,8 +129,8 @@ impl MaterializedCatalog {
 			operator_retention_policies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
-			table_virtual_user: SkipMap::new(),
-			table_virtual_user_by_name: SkipMap::new(),
+			vtable_user: SkipMap::new(),
+			vtable_user_by_name: SkipMap::new(),
 			system_catalog: None,
 		}))
 	}
@@ -153,11 +153,11 @@ impl MaterializedCatalog {
 	/// Register a user-defined virtual table
 	///
 	/// Returns an error if a virtual table with the same name already exists in the namespace.
-	pub fn register_table_virtual_user(&self, def: Arc<TableVirtualDef>) -> crate::Result<()> {
+	pub fn register_vtable_user(&self, def: Arc<VTableDef>) -> crate::Result<()> {
 		let key = (def.namespace, def.name.clone());
 
 		// Check if already exists
-		if self.table_virtual_user_by_name.contains_key(&key) {
+		if self.vtable_user_by_name.contains_key(&key) {
 			// Get namespace name for error message
 			let ns_name = self
 				.namespaces
@@ -169,17 +169,17 @@ impl MaterializedCatalog {
 			));
 		}
 
-		self.table_virtual_user.insert(def.id, def.clone());
-		self.table_virtual_user_by_name.insert(key, def.id);
+		self.vtable_user.insert(def.id, def.clone());
+		self.vtable_user_by_name.insert(key, def.id);
 		Ok(())
 	}
 
 	/// Unregister a user-defined virtual table by namespace and name
-	pub fn unregister_table_virtual_user(&self, namespace: NamespaceId, name: &str) -> crate::Result<()> {
+	pub fn unregister_vtable_user(&self, namespace: NamespaceId, name: &str) -> crate::Result<()> {
 		let key = (namespace, name.to_string());
 
-		if let Some(entry) = self.table_virtual_user_by_name.remove(&key) {
-			self.table_virtual_user.remove(entry.value());
+		if let Some(entry) = self.vtable_user_by_name.remove(&key) {
+			self.vtable_user.remove(entry.value());
 			Ok(())
 		} else {
 			// Get namespace name for error message
@@ -195,25 +195,21 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a user-defined virtual table by namespace and name
-	pub fn find_table_virtual_user_by_name(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-	) -> Option<Arc<TableVirtualDef>> {
+	pub fn find_vtable_user_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Arc<VTableDef>> {
 		let key = (namespace, name.to_string());
-		self.table_virtual_user_by_name
+		self.vtable_user_by_name
 			.get(&key)
-			.and_then(|entry| self.table_virtual_user.get(entry.value()).map(|e| e.value().clone()))
+			.and_then(|entry| self.vtable_user.get(entry.value()).map(|e| e.value().clone()))
 	}
 
 	/// Find a user-defined virtual table by ID
-	pub fn find_table_virtual_user(&self, id: TableVirtualId) -> Option<Arc<TableVirtualDef>> {
-		self.table_virtual_user.get(&id).map(|e| e.value().clone())
+	pub fn find_vtable_user(&self, id: VTableId) -> Option<Arc<VTableDef>> {
+		self.vtable_user.get(&id).map(|e| e.value().clone())
 	}
 
 	/// List all user-defined virtual tables in a namespace
-	pub fn list_table_virtual_user_in_namespace(&self, namespace: NamespaceId) -> Vec<Arc<TableVirtualDef>> {
-		self.table_virtual_user
+	pub fn list_vtable_user_in_namespace(&self, namespace: NamespaceId) -> Vec<Arc<VTableDef>> {
+		self.vtable_user
 			.iter()
 			.filter(|e| e.value().namespace == namespace)
 			.map(|e| e.value().clone())
@@ -221,7 +217,7 @@ impl MaterializedCatalog {
 	}
 
 	/// List all user-defined virtual tables
-	pub fn list_table_virtual_user_all(&self) -> Vec<Arc<TableVirtualDef>> {
-		self.table_virtual_user.iter().map(|e| e.value().clone()).collect()
+	pub fn list_vtable_user_all(&self) -> Vec<Arc<VTableDef>> {
+		self.vtable_user.iter().map(|e| e.value().clone()).collect()
 	}
 }

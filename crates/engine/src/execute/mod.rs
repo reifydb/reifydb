@@ -23,13 +23,14 @@ use query::{
 	scalarize::ScalarizeNode,
 	sort::SortNode,
 	table_scan::TableScanNode,
-	table_virtual_scan::VirtualScanNode,
 	take::TakeNode,
 	top_k::TopKNode,
 	variable::VariableNode,
 	view_scan::ViewScanNode,
+	vtable_scan::VirtualScanNode,
 };
 use reifydb_builtin::{Functions, generator, math};
+use reifydb_catalog::vtable::{UserVTableRegistry, system::FlowOperatorStore};
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
@@ -47,7 +48,6 @@ use tracing::instrument;
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	stack::{Stack, Variable},
-	table_virtual::{TableVirtualUserRegistry, system::FlowOperatorStore},
 };
 
 mod catalog;
@@ -87,10 +87,8 @@ pub struct ExecutionContext {
 	pub stack: Stack,
 }
 
-#[derive(Debug)]
-pub struct Batch {
-	pub columns: Columns,
-}
+// Re-export Batch from core for convenience
+pub use reifydb_core::interface::Batch;
 
 pub(crate) enum ExecutionPlan {
 	Aggregate(AggregateNode),
@@ -267,7 +265,7 @@ pub struct Executor(Arc<ExecutorInner>);
 pub struct ExecutorInner {
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
-	pub virtual_table_registry: TableVirtualUserRegistry,
+	pub virtual_table_registry: UserVTableRegistry,
 	pub stats_tracker: StorageTracker,
 	pub ioc: IocContainer,
 }
@@ -296,7 +294,7 @@ impl Executor {
 		Self(Arc::new(ExecutorInner {
 			functions,
 			flow_operator_store,
-			virtual_table_registry: TableVirtualUserRegistry::new(),
+			virtual_table_registry: UserVTableRegistry::new(),
 			stats_tracker,
 			ioc,
 		}))

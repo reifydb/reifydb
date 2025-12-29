@@ -12,8 +12,8 @@ mod policy;
 mod primitive;
 mod ringbuffer;
 mod table;
-mod table_virtual;
 mod view;
+mod vtable;
 
 pub use column::*;
 pub use dictionary::*;
@@ -26,5 +26,5 @@ pub use policy::*;
 pub use primitive::*;
 pub use ringbuffer::*;
 pub use table::*;
-pub use table_virtual::*;
 pub use view::*;
+pub use vtable::*;

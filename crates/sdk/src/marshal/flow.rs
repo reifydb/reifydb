@@ -5,7 +5,7 @@ use std::slice::{from_raw_parts, from_raw_parts_mut};
 use reifydb_abi::*;
 use reifydb_core::{
 	CommitVersion,
-	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, TableVirtualId, ViewId},
+	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId},
 };
 
 use crate::{FlowChange, FlowChangeOrigin, FlowDiff, marshal::Marshaller};
@@ -130,7 +130,7 @@ impl Marshaller {
 			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
 			1 => Ok(FlowChangeOrigin::External(PrimitiveId::Table(TableId(ffi.id)))),
 			2 => Ok(FlowChangeOrigin::External(PrimitiveId::View(ViewId(ffi.id)))),
-			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(TableVirtualId(ffi.id)))),
+			3 => Ok(FlowChangeOrigin::External(PrimitiveId::TableVirtual(VTableId(ffi.id)))),
 			4 => Ok(FlowChangeOrigin::External(PrimitiveId::RingBuffer(RingBufferId(ffi.id)))),
 			5 => Ok(FlowChangeOrigin::External(PrimitiveId::Flow(FlowId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
