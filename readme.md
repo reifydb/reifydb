@@ -298,6 +298,14 @@ This supports the development of ReifyDB and ensures fair use.
 
 <p>This model keeps ReifyDB open, fair, and sustainable while making it easy for teams to build with confidence.</p>
 
+
+                                                                                                                                                                           
+## AI-Assisted Development                                                                                                                                                 
+                                                                                                                                                                           
+Parts of this codebase were written with AI assistance for rapid prototyping. These sections are intended to be rewritten as the project matures.                          
+                                                                                                                                                                           
+---
+
 ---
 ## Commercial Support
 ReifyDB is available as a managed service for enterprise users. If you're interested or need support, [contact](mailto:founder@reifydb.com) me for more information and deployment options.
