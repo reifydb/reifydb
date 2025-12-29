@@ -117,15 +117,17 @@ impl FlowConsumer {
 
 #[async_trait]
 impl CdcConsume for FlowConsumeImpl {
-	async fn consume(&self, _txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		let mut flow_txn: Option<FlowTransaction> = None;
+
 		for cdc in cdcs {
 			let version = cdc.version;
 
 			// Collect changes for this flow
 			let mut flow_changes = Vec::new();
 
-			// Create single query transaction for row decoding (performance optimization)
-			let mut query_txn = self.engine.begin_query().await?;
+			// Create query transaction for row decoding at the CDC event's version
+			let mut query_txn = self.engine.begin_query_at_version(version).await?;
 			let catalog_cache = FlowCatalog::new();
 
 			for cdc_change in &cdc.changes {
@@ -168,23 +170,29 @@ impl CdcConsume for FlowConsumeImpl {
 
 			// Process batch if we have any changes
 			if !flow_changes.is_empty() {
-				let mut cmd_txn = self.engine.begin_command().await?;
-				let mut flow_txn = FlowTransaction::new(&cmd_txn, version).await;
+				// Get or create flow transaction, update version for this batch
+				let ft = match &mut flow_txn {
+					Some(ft) => {
+						ft.update_version(version).await;
+						ft
+					}
+					None => {
+						flow_txn = Some(FlowTransaction::new(txn, version).await);
+						flow_txn.as_mut().unwrap()
+					}
+				};
 
 				for change in flow_changes {
-					self.flow_engine.process(&mut flow_txn, change, self.flow_id).await?;
+					self.flow_engine.process(ft, change, self.flow_id).await?;
 				}
-
-				// Commit flow transaction (merges pending writes)
-				flow_txn.commit(&mut cmd_txn).await?;
-
-				// Commit parent transaction
-				cmd_txn.commit().await?;
 
 				debug!(flow_id = self.flow_id.0, version = version.0, "processed flow changes");
 			}
 		}
 
+		if let Some(mut ft) = flow_txn {
+			ft.commit(txn).await?;
+		}
 		Ok(())
 	}
 }
