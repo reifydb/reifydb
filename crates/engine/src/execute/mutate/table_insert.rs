@@ -15,7 +15,7 @@ use reifydb_core::{
 	return_error,
 	value::{
 		column::Columns,
-		encoded::{EncodedValues, EncodedValuesLayout},
+		encoded::{EncodedValues, EncodedValuesLayout, encode_value},
 	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
@@ -29,7 +29,6 @@ use tracing::instrument;
 use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	encoding::encode_value,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,

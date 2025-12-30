@@ -6,7 +6,10 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
-	value::{column::Columns, encoded::EncodedValuesLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValuesLayout, encode_value},
+	},
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
@@ -18,7 +21,6 @@ use reifydb_type::{
 use super::coerce::coerce_value_to_column_type;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	encoding::encode_value,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
 	transaction::operation::DictionaryOperations,

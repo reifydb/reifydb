@@ -7,7 +7,6 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_type::Result;
 
 pub mod bulk_insert;
-mod encoding;
 mod engine;
 pub mod environment;
 mod evaluate;

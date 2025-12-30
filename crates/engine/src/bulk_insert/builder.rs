@@ -4,7 +4,10 @@
 use std::marker::PhantomData;
 
 use reifydb_catalog::{CatalogStore, sequence::RowSequence};
-use reifydb_core::interface::{CommandTransaction, Identity, QueryTransaction};
+use reifydb_core::{
+	interface::{CommandTransaction, Identity, QueryTransaction},
+	value::encoded::encode_value,
+};
 use reifydb_type::{Fragment, Value};
 
 use super::{
@@ -15,10 +18,7 @@ use super::{
 		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
 	},
 };
-use crate::{
-	StandardCommandTransaction, StandardEngine, encoding::encode_value,
-	transaction::operation::RingBufferOperations,
-};
+use crate::{StandardCommandTransaction, StandardEngine, transaction::operation::RingBufferOperations};
 
 /// Marker trait for validation mode (sealed)
 pub trait ValidationMode: sealed::Sealed + 'static {}

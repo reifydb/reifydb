@@ -5,6 +5,7 @@ pub use encoded::{EncodedValues, EncodedValuesIter, EncodedValuesIterator};
 pub use key::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange, IntoEncodedKey};
 pub use layout::{EncodedValuesLayout, EncodedValuesLayoutInner, Field};
 pub use named::EncodedValuesNamedLayout;
+pub use value::encode_value;
 mod blob;
 mod boolean;
 mod date;

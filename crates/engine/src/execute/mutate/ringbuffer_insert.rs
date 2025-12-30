@@ -7,7 +7,10 @@ use reifydb_catalog::{CatalogStore, sequence::RowSequence};
 use reifydb_core::{
 	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	return_error,
-	value::{column::Columns, encoded::EncodedValuesLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValuesLayout, encode_value},
+	},
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{Fragment, RowNumber, Type, Value, diagnostic::catalog::ringbuffer_not_found, internal_error};
@@ -16,7 +19,6 @@ use tracing::instrument;
 use super::coerce::coerce_value_to_column_type;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	encoding::encode_value,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
 	transaction::operation::DictionaryOperations,
