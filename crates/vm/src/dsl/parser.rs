@@ -679,14 +679,22 @@ impl Parser {
 		}))
 	}
 
-	/// Parse scan stage: "scan" IDENT
+	/// Parse scan stage: "scan" IDENT or "scan" IDENT.IDENT (qualified name)
 	fn parse_scan(&mut self) -> Result<StageAst, ParseError> {
 		let start = self.current().span;
 		self.expect(&TokenKind::Scan)?;
 
-		let name_token = self.expect_ident()?;
-		let table_name = name_token.text.clone();
-		let end = name_token.span;
+		let first_token = self.expect_ident()?;
+		let mut table_name = first_token.text.clone();
+		let mut end = first_token.span;
+
+		// Check for qualified name (namespace.table)
+		if self.check(&TokenKind::Dot) {
+			self.advance();
+			let second_token = self.expect_ident()?;
+			table_name = format!("{}.{}", table_name, second_token.text);
+			end = second_token.span;
+		}
 
 		Ok(StageAst::Scan(ScanAst {
 			table_name,

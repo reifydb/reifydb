@@ -3,12 +3,11 @@
 
 //! Bytecode interpreter.
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use reifydb_core::value::column::{ColumnData, Columns};
+use reifydb_core::{interface::NamespaceId, value::column::ColumnData};
+use reifydb_engine::StandardTransaction;
 
-#[cfg(feature = "trace")]
-use super::trace::{InstructionSnapshot, OperatorSnapshot, snapshot_dispatch_result, snapshot_state};
 use super::{
 	call_stack::CallFrame,
 	state::{OperandValue, VmState},
@@ -16,9 +15,10 @@ use super::{
 use crate::{
 	bytecode::{BytecodeReader, Opcode, OperatorKind},
 	error::{Result, VmError},
-	expr::{EvalContext, EvalValue, VmFunctionContext, VmFunctionExecutor},
+	expr::{EvalContext, EvalValue, VmFunctionExecutor},
 	operator::{FilterOp, ProjectOp, SelectOp, SortOp, TakeOp},
 	pipeline::Pipeline,
+	source::create_table_scan_pipeline,
 };
 
 /// Result of dispatching a single instruction.
@@ -133,9 +133,27 @@ enum DecodedInstruction {
 
 impl VmState {
 	/// Execute the program until halt or yield.
-	pub async fn execute(&mut self) -> Result<Option<Pipeline>> {
+	pub async fn execute<'a>(&mut self, rx: &mut StandardTransaction<'a>) -> Result<Option<Pipeline>> {
 		loop {
-			let result = self.step().await?;
+			let result = self.step(Some(rx)).await?;
+			match result {
+				DispatchResult::Continue => continue,
+				DispatchResult::Halt => break,
+				DispatchResult::Yield(pipeline) => return Ok(Some(pipeline)),
+			}
+		}
+
+		// Return top of pipeline stack if present
+		Ok(self.pipeline_stack.pop())
+	}
+
+	/// Execute the program using only in-memory sources (for testing).
+	///
+	/// This variant doesn't require a transaction and only works when
+	/// all sources are registered in the InMemorySourceRegistry.
+	pub async fn execute_memory(&mut self) -> Result<Option<Pipeline>> {
+		loop {
+			let result = self.step(None).await?;
 			match result {
 				DispatchResult::Continue => continue,
 				DispatchResult::Halt => break,
@@ -319,17 +337,10 @@ impl VmState {
 	}
 
 	/// Execute a single instruction.
-	pub async fn step(&mut self) -> Result<DispatchResult> {
-		#[cfg(feature = "trace")]
-		let ip_before = self.ip;
-
+	///
+	/// The transaction is optional - if None, only in-memory sources can be used.
+	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
 		let (instruction, next_ip) = self.decode()?;
-
-		#[cfg(feature = "trace")]
-		let bytecode = self.program.bytecode[ip_before..next_ip].to_vec();
-
-		#[cfg(feature = "trace")]
-		let instruction_snapshot = self.snapshot_instruction(&instruction);
 
 		match instruction {
 			// ─────────────────────────────────────────────────────────
@@ -477,14 +488,49 @@ impl VmState {
 						index: source_index,
 					},
 				)?;
-				let source = self.context.sources.get_source(&source_def.name).ok_or(
-					VmError::TableNotFound {
+
+				// Try to get pipeline from in-memory sources first (for testing)
+				if let Some(source) = self.context.sources.get_source(&source_def.name) {
+					let pipeline = source.scan();
+					self.push_pipeline(pipeline)?;
+					self.ip = next_ip;
+				} else if let Some(rx) = rx {
+					// Fallback to catalog lookup for real storage
+					let version = rx.version();
+					let (namespace_id, table_name) =
+						if let Some((ns, tbl)) = source_def.name.split_once('.') {
+							// Qualified name: look up namespace by name
+							let namespace_def = rx
+								.catalog()
+								.find_namespace_by_name(ns, version)
+								.ok_or_else(|| VmError::NamespaceNotFound {
+									name: ns.to_string(),
+								})?;
+							(namespace_def.id, tbl)
+						} else {
+							// Simple name: use default namespace ID = 1
+							(NamespaceId(1), source_def.name.as_str())
+						};
+
+					// Look up table from catalog via transaction
+					let table_def = rx
+						.catalog()
+						.find_table_by_name(namespace_id, table_name, version)
+						.ok_or_else(|| VmError::TableNotFound {
+							name: source_def.name.clone(),
+						})?;
+
+					// Create a pipeline that scans the table
+					let batch_size = self.context.config.batch_size;
+					let pipeline = create_table_scan_pipeline(&table_def, rx, batch_size).await?;
+					self.push_pipeline(pipeline)?;
+					self.ip = next_ip;
+				} else {
+					// No transaction and source not found in memory
+					return Err(VmError::TableNotFound {
 						name: source_def.name.clone(),
-					},
-				)?;
-				let pipeline = source.scan();
-				self.push_pipeline(pipeline)?;
-				self.ip = next_ip;
+					});
+				}
 			}
 
 			DecodedInstruction::Inline => {
@@ -847,36 +893,7 @@ impl VmState {
 			}
 
 			DecodedInstruction::Halt => {
-				#[cfg(feature = "trace")]
-				{
-					let state_snapshot = snapshot_state(self);
-					let result_snapshot = snapshot_dispatch_result(&DispatchResult::Halt);
-					if let Some(ref mut tracer) = self.tracer {
-						tracer.record(
-							ip_before,
-							bytecode,
-							instruction_snapshot,
-							state_snapshot,
-							result_snapshot,
-						);
-					}
-				}
 				return Ok(DispatchResult::Halt);
-			}
-		}
-
-		#[cfg(feature = "trace")]
-		{
-			let state_snapshot = snapshot_state(self);
-			let result_snapshot = snapshot_dispatch_result(&DispatchResult::Continue);
-			if let Some(ref mut tracer) = self.tracer {
-				tracer.record(
-					ip_before,
-					bytecode,
-					instruction_snapshot,
-					state_snapshot,
-					result_snapshot,
-				);
 			}
 		}
 
@@ -944,60 +961,56 @@ impl VmState {
 		// Build function executor from program's functions
 		let functions = self.build_function_executor();
 
-		EvalContext {
-			variables,
-			subquery_executor: self.context.subquery_executor.clone(),
-			current_row_values: None,
-			functions: Some(functions),
-		}
+		EvalContext::with_functions(variables, functions)
 	}
 
 	/// Build a VmFunctionExecutor from the program's bytecode functions.
 	///
-	/// Each bytecode function is wrapped to execute in a fresh VM context.
-	/// For functions that return scalar values, the result is broadcast to match row_count.
+	/// TODO: User-defined function execution needs to be refactored to work with transactions.
+	/// For now, this returns an empty executor - functions in expressions are not yet supported.
 	fn build_function_executor(&self) -> VmFunctionExecutor {
-		let mut executor = VmFunctionExecutor::new();
+		let executor = VmFunctionExecutor::new();
 
-		for func_def in &self.program.functions {
-			let func_name = func_def.name.clone();
-			let program = self.program.clone();
-			let func_index =
-				self.program.functions.iter().position(|f| f.name == func_name).unwrap() as u16;
-
-			// Create a wrapper that executes the bytecode function
-			let wrapper: crate::expr::VmScalarFn =
-				Arc::new(move |ctx: VmFunctionContext| -> Result<ColumnData> {
-					let func_def = &program.functions[func_index as usize];
-
-					// For functions with column arguments, we need columnar execution.
-					// For now, handle the simple case of no-arg functions that return constants.
-					if !func_def.parameters.is_empty() && !ctx.columns.is_empty() {
-						// TODO: Implement full columnar function execution
-						// For now, execute row-by-row for functions with arguments
-						return execute_function_columnar(&program, func_index, ctx);
-					}
-
-					// Execute the function in a fresh VM state
-					let result = execute_function_once(&program, func_index, ctx.columns)?;
-
-					// Broadcast scalar result to column
-					match result {
-						OperandValue::Scalar(v) => {
-							Ok(broadcast_scalar_to_column(&v, ctx.row_count))
-						}
-						OperandValue::Column(col) => Ok(col.data().clone()),
-						_ => Err(VmError::UnsupportedOperation {
-							operation: format!(
-								"function returned {:?}, expected scalar or column",
-								result
-							),
-						}),
-					}
-				});
-
-			executor.register(func_name, wrapper);
-		}
+		// TODO: Re-enable when function execution is refactored to work with transactions
+		// for func_def in &self.program.functions {
+		// 	let func_name = func_def.name.clone();
+		// 	let program = self.program.clone();
+		// 	let func_index =
+		// 		self.program.functions.iter().position(|f| f.name == func_name).unwrap() as u16;
+		//
+		// 	// Create a wrapper that executes the bytecode function
+		// 	let wrapper: crate::expr::VmScalarFn =
+		// 		Arc::new(move |ctx: VmFunctionContext| -> Result<ColumnData> {
+		// 			let func_def = &program.functions[func_index as usize];
+		//
+		// 			// For functions with column arguments, we need columnar execution.
+		// 			// For now, handle the simple case of no-arg functions that return constants.
+		// 			if !func_def.parameters.is_empty() && !ctx.columns.is_empty() {
+		// 				// TODO: Implement full columnar function execution
+		// 				// For now, execute row-by-row for functions with arguments
+		// 				return execute_function_columnar(&program, func_index, ctx);
+		// 			}
+		//
+		// 			// Execute the function in a fresh VM state
+		// 			let result = execute_function_once(&program, func_index, ctx.columns)?;
+		//
+		// 			// Broadcast scalar result to column
+		// 			match result {
+		// 				OperandValue::Scalar(v) => {
+		// 					Ok(broadcast_scalar_to_column(&v, ctx.row_count))
+		// 				}
+		// 				OperandValue::Column(col) => Ok(col.data().clone()),
+		// 				_ => Err(VmError::UnsupportedOperation {
+		// 					operation: format!(
+		// 						"function returned {:?}, expected scalar or column",
+		// 						result
+		// 					),
+		// 				}),
+		// 			}
+		// 		});
+		//
+		// 	executor.register(func_name, wrapper);
+		// }
 
 		executor
 	}
@@ -1041,6 +1054,7 @@ fn operand_to_eval_value(value: &OperandValue) -> Option<EvalValue> {
 }
 
 /// Broadcast a scalar value to a column with the given row count.
+#[allow(dead_code)]
 fn broadcast_scalar_to_column(value: &reifydb_type::Value, row_count: usize) -> ColumnData {
 	match value {
 		reifydb_type::Value::Boolean(b) => ColumnData::bool(vec![*b; row_count]),
@@ -1052,427 +1066,209 @@ fn broadcast_scalar_to_column(value: &reifydb_type::Value, row_count: usize) -> 
 	}
 }
 
-/// Simple blocking executor for futures that complete immediately.
-fn block_on_simple<F: std::future::Future>(fut: F) -> F::Output {
-	use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+// TODO: User-defined function execution needs to be refactored to work with transactions.
+// For now, function execution in expressions is not supported when functions contain
+// table access operations. Pure computation functions will need a different execution path.
 
-	fn noop_clone(_: *const ()) -> RawWaker {
-		noop_raw_waker()
-	}
-	fn noop(_: *const ()) {}
-	fn noop_raw_waker() -> RawWaker {
-		static VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop, noop, noop);
-		RawWaker::new(std::ptr::null(), &VTABLE)
-	}
-
-	let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
-	let mut cx = Context::from_waker(&waker);
-	let mut fut = std::pin::pin!(fut);
-
-	loop {
-		match fut.as_mut().poll(&mut cx) {
-			Poll::Ready(result) => return result,
-			Poll::Pending => {
-				// For pure computation, this should never happen
-				panic!("Function execution requires async operations which are not supported");
-			}
-		}
-	}
-}
-
-/// Execute a function once (for no-arg functions) and return the result.
-fn execute_function_once(program: &crate::bytecode::Program, func_index: u16, _args: &Columns) -> Result<OperandValue> {
-	use crate::vmcore::{VmContext, VmState};
-
-	let func_def = &program.functions[func_index as usize];
-
-	// Create a dummy source registry for pure function execution
-	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
-	let context = Arc::new(VmContext::new(sources));
-
-	// Create a mini VM to execute just this function
-	let mut vm = VmState::new(Arc::new(program.clone()), context);
-
-	// Set IP to function body
-	vm.ip = func_def.bytecode_offset;
-
-	// Execute until we hit a Return or reach end of function
-	let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
-
-	// Push a sentinel call frame so Return knows where to stop
-	// scope_depth = 1 because the VM starts with global scope
-	let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
-	vm.call_stack.push(frame);
-
-	// Execute instructions until return
-	loop {
-		if vm.ip >= end_offset {
-			break;
-		}
-
-		match block_on_simple(vm.step())? {
-			DispatchResult::Halt => break,
-			DispatchResult::Continue => {}
-			DispatchResult::Yield(_) => break,
-		}
-
-		if vm.call_stack.is_empty() {
-			break;
-		}
-	}
-
-	// Get result from operand stack
-	vm.pop_operand()
-}
-
-/// Execute a function with columnar arguments (row-by-row execution).
-fn execute_function_columnar(
-	program: &crate::bytecode::Program,
-	func_index: u16,
-	ctx: VmFunctionContext,
-) -> Result<ColumnData> {
-	use crate::vmcore::{VmContext, VmState};
-
-	let func_def = &program.functions[func_index as usize];
-	let row_count = ctx.row_count;
-
-	if row_count == 0 {
-		return Ok(ColumnData::int8(Vec::new()));
-	}
-
-	// Create a dummy source registry for pure function execution
-	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
-	let context = Arc::new(VmContext::new(sources));
-
-	// Execute the function for each row and collect results
-	let mut results: Vec<reifydb_type::Value> = Vec::with_capacity(row_count);
-
-	for row_idx in 0..row_count {
-		let mut vm = VmState::new(Arc::new(program.clone()), context.clone());
-
-		// Enter scope and bind parameters with scalar values from this row
-		vm.scopes.push();
-		for (param_idx, param) in func_def.parameters.iter().enumerate() {
-			if param_idx < ctx.columns.len() {
-				let col = &ctx.columns[param_idx];
-				let scalar_value = col.data().get_value(row_idx);
-				vm.scopes.set(param.name.clone(), OperandValue::Scalar(scalar_value));
-			}
-		}
-
-		vm.ip = func_def.bytecode_offset;
-		let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
-
-		let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
-		vm.call_stack.push(frame);
-
-		loop {
-			if vm.ip >= end_offset {
-				break;
-			}
-
-			match block_on_simple(vm.step())? {
-				DispatchResult::Halt => break,
-				DispatchResult::Continue => {}
-				DispatchResult::Yield(_) => break,
-			}
-
-			if vm.call_stack.is_empty() {
-				break;
-			}
-		}
-
-		let result = vm.pop_operand().unwrap_or(OperandValue::Scalar(reifydb_type::Value::Undefined));
-		match result {
-			OperandValue::Scalar(v) => results.push(v),
-			_ => results.push(reifydb_type::Value::Undefined),
-		}
-	}
-
-	// Convert results to column data
-	let first_typed = results.iter().find(|v| !matches!(v, reifydb_type::Value::Undefined));
-
-	match first_typed {
-		Some(reifydb_type::Value::Boolean(_)) => {
-			let bools: Vec<bool> = results
-				.into_iter()
-				.map(|v| match v {
-					reifydb_type::Value::Boolean(b) => b,
-					_ => false,
-				})
-				.collect();
-			Ok(ColumnData::bool(bools))
-		}
-		Some(reifydb_type::Value::Int8(_)) | None => {
-			let ints: Vec<i64> = results
-				.into_iter()
-				.map(|v| match v {
-					reifydb_type::Value::Int8(n) => n,
-					_ => 0,
-				})
-				.collect();
-			Ok(ColumnData::int8(ints))
-		}
-		Some(reifydb_type::Value::Float8(_)) => {
-			let floats: Vec<f64> = results
-				.into_iter()
-				.map(|v| match v {
-					reifydb_type::Value::Float8(f) => f.value(),
-					_ => 0.0,
-				})
-				.collect();
-			Ok(ColumnData::float8(floats))
-		}
-		Some(reifydb_type::Value::Utf8(_)) => {
-			let strings: Vec<String> = results
-				.into_iter()
-				.map(|v| match v {
-					reifydb_type::Value::Utf8(s) => s,
-					_ => String::new(),
-				})
-				.collect();
-			Ok(ColumnData::utf8(strings))
-		}
-		_ => {
-			let ints: Vec<i64> = results
-				.into_iter()
-				.map(|v| match v {
-					reifydb_type::Value::Int8(n) => n,
-					_ => 0,
-				})
-				.collect();
-			Ok(ColumnData::int8(ints))
-		}
-	}
-}
-
-/// Empty source registry for pure function execution (no table access).
-struct EmptySourceRegistry;
-
-impl crate::source::SourceRegistry for EmptySourceRegistry {
-	fn get_source(&self, _name: &str) -> Option<Box<dyn crate::source::TableSource>> {
-		None
-	}
-}
-
-#[cfg(feature = "trace")]
-impl VmState {
-	/// Create an InstructionSnapshot from a DecodedInstruction.
-	fn snapshot_instruction(&self, instruction: &DecodedInstruction) -> InstructionSnapshot {
-		match instruction {
-			DecodedInstruction::PushConst {
-				index,
-			} => {
-				let value = self
-					.program
-					.constants
-					.get(*index as usize)
-					.cloned()
-					.unwrap_or(reifydb_type::Value::Undefined);
-				InstructionSnapshot::PushConst {
-					index: *index,
-					value,
-				}
-			}
-			DecodedInstruction::PushExpr {
-				index,
-			} => InstructionSnapshot::PushExpr {
-				index: *index,
-			},
-			DecodedInstruction::PushColRef {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::PushColRef {
-					name,
-				}
-			}
-			DecodedInstruction::PushColList {
-				index,
-			} => {
-				let columns =
-					self.program.column_lists.get(*index as usize).cloned().unwrap_or_default();
-				InstructionSnapshot::PushColList {
-					columns,
-				}
-			}
-			DecodedInstruction::PushSortSpec {
-				index,
-			} => InstructionSnapshot::PushSortSpec {
-				index: *index,
-			},
-			DecodedInstruction::PushExtSpec {
-				index,
-			} => InstructionSnapshot::PushExtSpec {
-				index: *index,
-			},
-			DecodedInstruction::Pop => InstructionSnapshot::Pop,
-			DecodedInstruction::Dup => InstructionSnapshot::Dup,
-			DecodedInstruction::LoadVar {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::LoadVar {
-					name,
-				}
-			}
-			DecodedInstruction::StoreVar {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::StoreVar {
-					name,
-				}
-			}
-			DecodedInstruction::StorePipeline {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::StorePipeline {
-					name,
-				}
-			}
-			DecodedInstruction::LoadPipeline {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::LoadPipeline {
-					name,
-				}
-			}
-			DecodedInstruction::UpdateVar {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::UpdateVar {
-					name,
-				}
-			}
-			DecodedInstruction::Source {
-				source_index,
-			} => {
-				let name = self
-					.program
-					.sources
-					.get(*source_index as usize)
-					.map(|s| s.name.clone())
-					.unwrap_or_else(|| format!("?{}", source_index));
-				InstructionSnapshot::Source {
-					index: *source_index,
-					name,
-				}
-			}
-			DecodedInstruction::Inline => InstructionSnapshot::Inline,
-			DecodedInstruction::Apply {
-				op_kind,
-			} => {
-				let operator = match op_kind {
-					OperatorKind::Filter => OperatorSnapshot::Filter,
-					OperatorKind::Select => OperatorSnapshot::Select,
-					OperatorKind::Extend => OperatorSnapshot::Extend,
-					OperatorKind::Take => OperatorSnapshot::Take,
-					OperatorKind::Sort => OperatorSnapshot::Sort,
-				};
-				InstructionSnapshot::Apply {
-					operator,
-				}
-			}
-			DecodedInstruction::Collect => InstructionSnapshot::Collect,
-			DecodedInstruction::PopPipeline => InstructionSnapshot::PopPipeline,
-			DecodedInstruction::Merge => InstructionSnapshot::Merge,
-			DecodedInstruction::DupPipeline => InstructionSnapshot::DupPipeline,
-			DecodedInstruction::Jump {
-				offset,
-			} => {
-				// Calculate target address
-				let next_ip = self.ip + 3; // Jump is 3 bytes (opcode + i16)
-				let target = (next_ip as i32 + *offset as i32) as usize;
-				InstructionSnapshot::Jump {
-					offset: *offset,
-					target,
-				}
-			}
-			DecodedInstruction::JumpIf {
-				offset,
-			} => {
-				let next_ip = self.ip + 3;
-				let target = (next_ip as i32 + *offset as i32) as usize;
-				InstructionSnapshot::JumpIf {
-					offset: *offset,
-					target,
-				}
-			}
-			DecodedInstruction::JumpIfNot {
-				offset,
-			} => {
-				let next_ip = self.ip + 3;
-				let target = (next_ip as i32 + *offset as i32) as usize;
-				InstructionSnapshot::JumpIfNot {
-					offset: *offset,
-					target,
-				}
-			}
-			DecodedInstruction::Call {
-				func_index,
-			} => InstructionSnapshot::Call {
-				func_index: *func_index,
-			},
-			DecodedInstruction::Return => InstructionSnapshot::Return,
-			DecodedInstruction::CallBuiltin {
-				_builtin_id,
-				_arg_count,
-			} => InstructionSnapshot::CallBuiltin {
-				builtin_id: *_builtin_id,
-				arg_count: *_arg_count,
-			},
-			DecodedInstruction::EnterScope => InstructionSnapshot::EnterScope,
-			DecodedInstruction::ExitScope => InstructionSnapshot::ExitScope,
-			DecodedInstruction::FrameLen => InstructionSnapshot::FrameLen,
-			DecodedInstruction::FrameRow => InstructionSnapshot::FrameRow,
-			DecodedInstruction::GetField {
-				name_index,
-			} => {
-				let name = self
-					.get_constant_string(*name_index)
-					.unwrap_or_else(|_| format!("?{}", name_index));
-				InstructionSnapshot::GetField {
-					name,
-				}
-			}
-			DecodedInstruction::IntAdd => InstructionSnapshot::IntAdd,
-			DecodedInstruction::IntLt => InstructionSnapshot::IntLt,
-			DecodedInstruction::IntEq => InstructionSnapshot::IntEq,
-			DecodedInstruction::IntSub => InstructionSnapshot::IntSub,
-			DecodedInstruction::IntMul => InstructionSnapshot::IntMul,
-			DecodedInstruction::IntDiv => InstructionSnapshot::IntDiv,
-			DecodedInstruction::ColAdd => InstructionSnapshot::ColAdd,
-			DecodedInstruction::ColSub => InstructionSnapshot::ColSub,
-			DecodedInstruction::ColMul => InstructionSnapshot::ColMul,
-			DecodedInstruction::ColDiv => InstructionSnapshot::ColDiv,
-			DecodedInstruction::ColLt => InstructionSnapshot::ColLt,
-			DecodedInstruction::ColLe => InstructionSnapshot::ColLe,
-			DecodedInstruction::ColGt => InstructionSnapshot::ColGt,
-			DecodedInstruction::ColGe => InstructionSnapshot::ColGe,
-			DecodedInstruction::ColEq => InstructionSnapshot::ColEq,
-			DecodedInstruction::ColNe => InstructionSnapshot::ColNe,
-			DecodedInstruction::ColAnd => InstructionSnapshot::ColAnd,
-			DecodedInstruction::ColOr => InstructionSnapshot::ColOr,
-			DecodedInstruction::ColNot => InstructionSnapshot::ColNot,
-			DecodedInstruction::PrintOut => InstructionSnapshot::PrintOut,
-			DecodedInstruction::Nop => InstructionSnapshot::Nop,
-			DecodedInstruction::Halt => InstructionSnapshot::Halt,
-		}
-	}
-}
+// /// Simple blocking executor for futures that complete immediately.
+// fn block_on_simple<F: std::future::Future>(fut: F) -> F::Output {
+// 	use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+//
+// 	fn noop_clone(_: *const ()) -> RawWaker {
+// 		noop_raw_waker()
+// 	}
+// 	fn noop(_: *const ()) {}
+// 	fn noop_raw_waker() -> RawWaker {
+// 		static VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop, noop, noop);
+// 		RawWaker::new(std::ptr::null(), &VTABLE)
+// 	}
+//
+// 	let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
+// 	let mut cx = Context::from_waker(&waker);
+// 	let mut fut = std::pin::pin!(fut);
+//
+// 	loop {
+// 		match fut.as_mut().poll(&mut cx) {
+// 			Poll::Ready(result) => return result,
+// 			Poll::Pending => {
+// 				// For pure computation, this should never happen
+// 				panic!("Function execution requires async operations which are not supported");
+// 			}
+// 		}
+// 	}
+// }
+//
+// /// Execute a function once (for no-arg functions) and return the result.
+// fn execute_function_once(program: &crate::bytecode::Program, func_index: u16, _args: &Columns) ->
+// Result<OperandValue> { 	use crate::vmcore::{VmContext, VmState};
+//
+// 	let func_def = &program.functions[func_index as usize];
+//
+// 	// Create a dummy source registry for pure function execution
+// 	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
+// 	let context = Arc::new(VmContext::new(sources));
+//
+// 	// Create a mini VM to execute just this function
+// 	let mut vm = VmState::new(Arc::new(program.clone()), context);
+//
+// 	// Set IP to function body
+// 	vm.ip = func_def.bytecode_offset;
+//
+// 	// Execute until we hit a Return or reach end of function
+// 	let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
+//
+// 	// Push a sentinel call frame so Return knows where to stop
+// 	// scope_depth = 1 because the VM starts with global scope
+// 	let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
+// 	vm.call_stack.push(frame);
+//
+// 	// Execute instructions until return
+// 	loop {
+// 		if vm.ip >= end_offset {
+// 			break;
+// 		}
+//
+// 		match block_on_simple(vm.step(rx))? {
+// 			DispatchResult::Halt => break,
+// 			DispatchResult::Continue => {}
+// 			DispatchResult::Yield(_) => break,
+// 		}
+//
+// 		if vm.call_stack.is_empty() {
+// 			break;
+// 		}
+// 	}
+//
+// 	// Get result from operand stack
+// 	vm.pop_operand()
+// }
+//
+// /// Execute a function with columnar arguments (row-by-row execution).
+// fn execute_function_columnar(
+// 	program: &crate::bytecode::Program,
+// 	func_index: u16,
+// 	ctx: VmFunctionContext,
+// ) -> Result<ColumnData> {
+// 	use crate::vmcore::{VmContext, VmState};
+//
+// 	let func_def = &program.functions[func_index as usize];
+// 	let row_count = ctx.row_count;
+//
+// 	if row_count == 0 {
+// 		return Ok(ColumnData::int8(Vec::new()));
+// 	}
+//
+// 	// Create a dummy source registry for pure function execution
+// 	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
+// 	let context = Arc::new(VmContext::new(sources));
+//
+// 	// Execute the function for each row and collect results
+// 	let mut results: Vec<reifydb_type::Value> = Vec::with_capacity(row_count);
+//
+// 	for row_idx in 0..row_count {
+// 		let mut vm = VmState::new(Arc::new(program.clone()), context.clone());
+//
+// 		// Enter scope and bind parameters with scalar values from this row
+// 		vm.scopes.push();
+// 		for (param_idx, param) in func_def.parameters.iter().enumerate() {
+// 			if param_idx < ctx.columns.len() {
+// 				let col = &ctx.columns[param_idx];
+// 				let scalar_value = col.data().get_value(row_idx);
+// 				vm.scopes.set(param.name.clone(), OperandValue::Scalar(scalar_value));
+// 			}
+// 		}
+//
+// 		vm.ip = func_def.bytecode_offset;
+// 		let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
+//
+// 		let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
+// 		vm.call_stack.push(frame);
+//
+// 		loop {
+// 			if vm.ip >= end_offset {
+// 				break;
+// 			}
+//
+// 			match block_on_simple(vm.step(rx))? {
+// 				DispatchResult::Halt => break,
+// 				DispatchResult::Continue => {}
+// 				DispatchResult::Yield(_) => break,
+// 			}
+//
+// 			if vm.call_stack.is_empty() {
+// 				break;
+// 			}
+// 		}
+//
+// 		let result = vm.pop_operand().unwrap_or(OperandValue::Scalar(reifydb_type::Value::Undefined));
+// 		match result {
+// 			OperandValue::Scalar(v) => results.push(v),
+// 			_ => results.push(reifydb_type::Value::Undefined),
+// 		}
+// 	}
+//
+// 	// Convert results to column data
+// 	let first_typed = results.iter().find(|v| !matches!(v, reifydb_type::Value::Undefined));
+//
+// 	match first_typed {
+// 		Some(reifydb_type::Value::Boolean(_)) => {
+// 			let bools: Vec<bool> = results
+// 				.into_iter()
+// 				.map(|v| match v {
+// 					reifydb_type::Value::Boolean(b) => b,
+// 					_ => false,
+// 				})
+// 				.collect();
+// 			Ok(ColumnData::bool(bools))
+// 		}
+// 		Some(reifydb_type::Value::Int8(_)) | None => {
+// 			let ints: Vec<i64> = results
+// 				.into_iter()
+// 				.map(|v| match v {
+// 					reifydb_type::Value::Int8(n) => n,
+// 					_ => 0,
+// 				})
+// 				.collect();
+// 			Ok(ColumnData::int8(ints))
+// 		}
+// 		Some(reifydb_type::Value::Float8(_)) => {
+// 			let floats: Vec<f64> = results
+// 				.into_iter()
+// 				.map(|v| match v {
+// 					reifydb_type::Value::Float8(f) => f.value(),
+// 					_ => 0.0,
+// 				})
+// 				.collect();
+// 			Ok(ColumnData::float8(floats))
+// 		}
+// 		Some(reifydb_type::Value::Utf8(_)) => {
+// 			let strings: Vec<String> = results
+// 				.into_iter()
+// 				.map(|v| match v {
+// 					reifydb_type::Value::Utf8(s) => s,
+// 					_ => String::new(),
+// 				})
+// 				.collect();
+// 			Ok(ColumnData::utf8(strings))
+// 		}
+// 		_ => {
+// 			let ints: Vec<i64> = results
+// 				.into_iter()
+// 				.map(|v| match v {
+// 					reifydb_type::Value::Int8(n) => n,
+// 					_ => 0,
+// 				})
+// 				.collect();
+// 			Ok(ColumnData::int8(ints))
+// 		}
+// 	}
+// }
+//
+// /// Empty source registry for pure function execution (no table access).
+// struct EmptySourceRegistry;
+//
+// impl crate::source::SourceRegistry for EmptySourceRegistry {
+// 	fn get_source(&self, _name: &str) -> Option<Box<dyn crate::source::TableSource>> {
+// 		None
+// 	}
+// }

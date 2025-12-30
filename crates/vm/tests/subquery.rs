@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::Fragment;
-use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_script};
+use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_script_memory};
 
 /// Create test data with users, orders, and thresholds tables
 fn create_registry() -> InMemorySourceRegistry {
@@ -101,7 +101,7 @@ async fn test_scalar_subquery_in_filter() {
 	println!("Subqueries in program: {:?}", program.subqueries.len());
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== SCALAR SUBQUERY RESULT ===");
@@ -125,7 +125,7 @@ async fn test_scalar_subquery_empty_result() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	// Comparison with NULL should yield NULL, which filters out all rows
@@ -150,7 +150,7 @@ async fn test_exists_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== EXISTS RESULT ===");
@@ -176,7 +176,7 @@ async fn test_not_exists_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== NOT EXISTS RESULT ===");
@@ -200,7 +200,7 @@ async fn test_exists_empty_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	assert_eq!(result.row_count(), 0, "Expected 0 rows when EXISTS subquery is empty");
@@ -224,7 +224,7 @@ async fn test_in_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== IN SUBQUERY RESULT ===");
@@ -250,7 +250,7 @@ async fn test_not_in_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== NOT IN SUBQUERY RESULT ===");
@@ -274,7 +274,7 @@ async fn test_in_empty_subquery() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	assert_eq!(result.row_count(), 0, "Expected 0 rows when IN subquery is empty");
@@ -298,7 +298,7 @@ async fn test_in_inline_list_strings() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== IN INLINE LIST (STRINGS) RESULT ===");
@@ -324,7 +324,7 @@ async fn test_not_in_inline_list_integers() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	println!("=== NOT IN INLINE LIST (INTEGERS) RESULT ===");
@@ -348,7 +348,7 @@ async fn test_in_single_element_list() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	assert_eq!(result.row_count(), 1, "Expected 1 user with inactive status (Bob)");
@@ -371,7 +371,7 @@ async fn test_subquery_caching() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	// Orders with 100 < amount < 200: [150.0] = 1 row
@@ -395,7 +395,7 @@ async fn test_combined_exists_and_in() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	// active_users: [1, 3, 5]
@@ -417,7 +417,7 @@ async fn test_scalar_subquery_in_extend() {
     "#;
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await.expect("execute failed");
+	let pipeline = execute_script_memory(script, registry).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
 	assert_eq!(result.row_count(), 4, "Expected all 4 orders");

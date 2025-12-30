@@ -509,7 +509,7 @@ fn values_to_column(name: &str, values: Vec<Value>) -> Result<Column> {
 			let bitvec: Vec<bool> = values.iter().map(|v| !matches!(v, Value::Undefined)).collect();
 			ColumnData::int8_with_bitvec(ints, bitvec)
 		}
-		Some(Value::Float8(f)) => {
+		Some(Value::Float8(_)) => {
 			let floats: Vec<f64> = values
 				.iter()
 				.map(|v| match v {

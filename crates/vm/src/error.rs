@@ -131,6 +131,11 @@ pub enum VmError {
 		name: String,
 	},
 
+	#[error("namespace not found: {name}")]
+	NamespaceNotFound {
+		name: String,
+	},
+
 	// Function errors
 	#[error("return outside of function")]
 	ReturnOutsideFunction,

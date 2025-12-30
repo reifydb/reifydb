@@ -42,7 +42,7 @@ pub mod vmcore;
 pub use builder::PipelineBuilder;
 pub use bytecode::{BytecodeReader, BytecodeWriter, Opcode, OperatorKind, Program};
 pub use compile::BytecodeCompiler;
-pub use dsl::{DslError, SourceRegistry, compile_script, execute_script, parse_pipeline};
+pub use dsl::{DslError, SourceRegistry, compile_script, execute_script, execute_script_memory, parse_pipeline};
 pub use error::{Result, VmError};
 pub use expr::{ColumnSchema, Expr, ExprBuilder, col, lit};
 pub use pipeline::{Pipeline, collect};

@@ -45,7 +45,7 @@ async fn test_basic_trace() {
 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 
 	// Execute
-	let result = vm.execute().await;
+	let result = vm.execute_memory().await;
 	assert!(result.is_ok(), "Execution should succeed");
 
 	// Get trace
@@ -83,7 +83,7 @@ async fn test_trace_with_pipeline() {
 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 
 	// Execute
-	let result = vm.execute().await;
+	let result = vm.execute_memory().await;
 	assert!(result.is_ok(), "Execution should succeed");
 
 	// Get and print trace
@@ -119,7 +119,7 @@ async fn test_trace_format() {
 	let tracer = VmTracer::new();
 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 
-	let result = vm.execute().await;
+	let result = vm.execute_memory().await;
 	assert!(result.is_ok(), "Execution should succeed");
 
 	// Get tracer back and format

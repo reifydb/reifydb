@@ -159,6 +159,9 @@ pub struct VmConfig {
 
 	/// Maximum scope depth.
 	pub max_scope_depth: usize,
+
+	/// Batch size for table scans.
+	pub batch_size: u64,
 }
 
 impl Default for VmConfig {
@@ -168,6 +171,7 @@ impl Default for VmConfig {
 			max_pipeline_stack: 64,
 			max_call_depth: 256,
 			max_scope_depth: 256,
+			batch_size: 1000,
 		}
 	}
 }

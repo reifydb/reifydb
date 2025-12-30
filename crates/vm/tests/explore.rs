@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::Fragment;
-use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_script};
+use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_script_memory};
 
 /// Create test data - modify this to set up your exploration data
 fn create_registry() -> InMemorySourceRegistry {
@@ -98,7 +98,7 @@ async fn explore() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -166,7 +166,7 @@ async fn test_function_declaration_and_call() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -229,7 +229,7 @@ async fn test_dollar_variable_declaration() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -297,7 +297,7 @@ async fn test_if_else_if_else() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -360,7 +360,7 @@ async fn test_loop_break() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -424,7 +424,7 @@ async fn test_for_in_iteration() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -491,7 +491,7 @@ async fn test_loop_count_to_10() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let result = execute_script(script, registry).await;
+	let result = execute_script_memory(script, registry).await;
 	println!("\nExecution result: {:?}", result.as_ref().map(|o| o.is_some()));
 
 	// Should print "10" at the end
@@ -522,7 +522,7 @@ async fn test_for_in_field_access() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 }
 
@@ -579,7 +579,7 @@ async fn test_bare_literal_expression_in_filter() {
 
 	// Execute using bytecode VM
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
@@ -641,7 +641,7 @@ async fn test_arithmetic_expression_in_filter() {
 	println!("=================================\n");
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 
 	let result = match pipeline {
 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
@@ -673,7 +673,7 @@ async fn test_parenthesized_expression_in_filter() {
 	println!("====================================\n");
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 
 	let result = match pipeline {
 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
@@ -706,7 +706,7 @@ async fn test_variable_expression_in_filter() {
 	println!("===============================\n");
 
 	let registry = Arc::new(registry);
-	let pipeline = execute_script(script, registry).await;
+	let pipeline = execute_script_memory(script, registry).await;
 
 	let result = match pipeline {
 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),

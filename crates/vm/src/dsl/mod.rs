@@ -21,6 +21,7 @@ pub use ast::{DslAst, ExprAst, PipelineAst, StageAst};
 pub use compile::{CompileError, DslCompiler, SourceRegistry};
 pub use lexer::{LexError, Lexer};
 pub use parser::{ParseError, Parser};
+use reifydb_engine::StandardTransaction;
 use thiserror::Error;
 pub use token::{Span, Token, TokenKind};
 
@@ -108,10 +109,33 @@ pub fn compile_script(source: &str) -> Result<Program, DslError> {
 ///         let $adults = scan users | filter age >= 18
 ///         $adults | select [name, email] | take 10
 ///     "#,
-///     registry.clone()
+///     registry.clone(),
+///     &mut transaction
 /// ).await?;
 /// ```
-pub async fn execute_script(
+pub async fn execute_script<'a>(
+	source: &str,
+	sources: Arc<dyn crate::source::SourceRegistry + Send + Sync>,
+	rx: &mut StandardTransaction<'a>,
+) -> Result<Option<Pipeline>, DslError> {
+	let program = compile_script(source)?;
+	let program_arc = Arc::new(program);
+
+	// Create subquery executor for expression evaluation
+	let subquery_executor =
+		Arc::new(crate::expr::RuntimeSubqueryExecutor::new(program_arc.clone(), sources.clone()));
+
+	let context = Arc::new(VmContext::with_subquery_executor(sources, subquery_executor));
+	let mut vm = VmState::new(program_arc, context);
+	let result = vm.execute(rx).await?;
+	Ok(result)
+}
+
+/// Execute a DSL script using only in-memory sources (for testing).
+///
+/// This variant doesn't require a transaction and only works when
+/// all sources are registered in the InMemorySourceRegistry.
+pub async fn execute_script_memory(
 	source: &str,
 	sources: Arc<dyn crate::source::SourceRegistry + Send + Sync>,
 ) -> Result<Option<Pipeline>, DslError> {
@@ -124,6 +148,6 @@ pub async fn execute_script(
 
 	let context = Arc::new(VmContext::with_subquery_executor(sources, subquery_executor));
 	let mut vm = VmState::new(program_arc, context);
-	let result = vm.execute().await?;
+	let result = vm.execute_memory().await?;
 	Ok(result)
 }
