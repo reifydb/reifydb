@@ -1987,6 +1987,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-rqlv2"
+version = "0.2.0"
+
+[[package]]
 name = "reifydb-sdk"
 version = "0.2.0"
 dependencies = [
