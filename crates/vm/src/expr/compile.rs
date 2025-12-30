@@ -12,7 +12,7 @@ use reifydb_type::{BitVec, Fragment, Type, Value};
 use super::{
 	compiled::{CompiledExpr, CompiledFilter},
 	eval::EvalValue,
-	types::{BinaryOp, ColumnRef, Expr, Literal, UnaryOp},
+	types::{BinaryOp, ColumnRef, Expr, Literal, SubqueryKind, UnaryOp},
 };
 use crate::error::{Result, VmError};
 
@@ -38,7 +38,44 @@ pub fn compile_expr(expr: Expr) -> CompiledExpr {
 			object,
 			field,
 		} => compile_field_access(*object, field),
+		Expr::Subquery {
+			index,
+			kind,
+		} => compile_subquery(index, kind),
+		Expr::InSubquery {
+			expr,
+			subquery_index,
+			negated,
+		} => compile_in_subquery(*expr, subquery_index, negated),
+		Expr::InList {
+			expr,
+			values,
+			negated,
+		} => compile_in_list(*expr, values, negated),
+		Expr::Call {
+			function_name,
+			arguments,
+		} => compile_call(function_name, arguments),
 	}
+}
+
+fn compile_call(function_name: String, arguments: Vec<Expr>) -> CompiledExpr {
+	// Compile each argument expression
+	let compiled_args: Vec<CompiledExpr> = arguments.into_iter().map(compile_expr).collect();
+
+	CompiledExpr::new(move |columns, ctx| {
+		// Evaluate all argument expressions to columns
+		let arg_columns: Vec<Column> =
+			compiled_args.iter().map(|arg| arg.eval(columns, ctx)).collect::<Result<Vec<_>>>()?;
+
+		let row_count = columns.row_count();
+		let args = reifydb_core::value::column::Columns::new(arg_columns);
+
+		// Call function with columnar args
+		let result_data = ctx.call_function(&function_name, &args, row_count)?;
+
+		Ok(Column::new(Fragment::internal("_call"), result_data))
+	})
 }
 
 /// Compile an Expr AST into a CompiledFilter that returns BitVec directly.
@@ -61,12 +98,20 @@ fn compile_column_ref(col_ref: ColumnRef) -> CompiledExpr {
 	let name = col_ref.name.clone();
 	let index = col_ref.index;
 
-	CompiledExpr::new(move |columns, _ctx| {
+	CompiledExpr::new(move |columns, ctx| {
 		// Try name-based lookup first
 		if !name.is_empty() {
 			if let Some(col) = columns.iter().find(|c| c.name().text() == name) {
 				return Ok(col.clone());
 			}
+
+			// Check outer row values for correlated subqueries
+			if let Some(outer_values) = &ctx.current_row_values {
+				if let Some(value) = outer_values.get(&name) {
+					return broadcast_value(value, columns.row_count());
+				}
+			}
+
 			return Err(VmError::ColumnNotFound {
 				name: name.clone(),
 			});
@@ -143,6 +188,253 @@ fn compile_field_access(object: Expr, field: String) -> CompiledExpr {
 	}
 }
 
+fn compile_subquery(index: u16, kind: SubqueryKind) -> CompiledExpr {
+	CompiledExpr::new(move |columns, ctx| {
+		// Execute subquery using the executor from context
+		let executor = ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
+
+		// Check if this is a correlated subquery
+		let is_correlated = executor.is_correlated(index)?;
+
+		if is_correlated {
+			// Correlated subquery - must execute per-row
+			let row_count = columns.row_count();
+			let mut results = Vec::with_capacity(row_count);
+
+			for row_idx in 0..row_count {
+				// Build outer row values for this row
+				let mut outer_values = std::collections::HashMap::new();
+				for col in columns.iter() {
+					let value = col.data().get_value(row_idx);
+					outer_values.insert(col.name().text().to_string(), value);
+				}
+
+				// Create context with outer row values
+				let row_ctx = ctx.with_outer_row(outer_values);
+				let result = executor.execute(index, &row_ctx)?;
+
+				match kind {
+					SubqueryKind::Scalar => {
+						// Handle empty result first - if no rows, value is undefined
+						let value = if result.row_count() == 0 || result.is_empty() {
+							Value::Undefined
+						} else {
+							result[0].data().get_value(0)
+						};
+						results.push(value);
+					}
+					SubqueryKind::Exists => {
+						results.push(Value::Boolean(result.row_count() > 0));
+					}
+					SubqueryKind::NotExists => {
+						results.push(Value::Boolean(result.row_count() == 0));
+					}
+				}
+			}
+
+			// Build result column from collected values
+			match kind {
+				SubqueryKind::Scalar => {
+					// Determine type from first non-undefined value
+					values_to_column("_scalar", results)
+				}
+				SubqueryKind::Exists | SubqueryKind::NotExists => {
+					let bools: Vec<bool> = results
+						.into_iter()
+						.map(|v| matches!(v, Value::Boolean(true)))
+						.collect();
+					Ok(Column::new(
+						Fragment::internal(if matches!(kind, SubqueryKind::Exists) {
+							"_exists"
+						} else {
+							"_not_exists"
+						}),
+						ColumnData::bool(bools),
+					))
+				}
+			}
+		} else {
+			// Uncorrelated subquery - execute once and broadcast
+			let result = executor.execute(index, ctx)?;
+
+			match kind {
+				SubqueryKind::Scalar => {
+					// Handle empty result - if no rows or no columns, return NULL
+					if result.row_count() == 0 || result.is_empty() {
+						return Ok(Column::new(
+							Fragment::internal("_scalar"),
+							ColumnData::undefined(columns.row_count()),
+						));
+					}
+					// Get first value and broadcast
+					let col = &result[0];
+					let value = col.data().get_value(0);
+					broadcast_value(&value, columns.row_count())
+				}
+				SubqueryKind::Exists => {
+					// Return true if subquery has any rows
+					let exists = result.row_count() > 0;
+					Ok(Column::new(
+						Fragment::internal("_exists"),
+						ColumnData::bool(vec![exists; columns.row_count()]),
+					))
+				}
+				SubqueryKind::NotExists => {
+					// Return true if subquery has no rows
+					let not_exists = result.row_count() == 0;
+					Ok(Column::new(
+						Fragment::internal("_not_exists"),
+						ColumnData::bool(vec![not_exists; columns.row_count()]),
+					))
+				}
+			}
+		}
+	})
+}
+
+fn compile_in_subquery(expr: Expr, subquery_index: u16, negated: bool) -> CompiledExpr {
+	let expr_fn = compile_expr(expr);
+
+	CompiledExpr::new(move |columns, ctx| {
+		// Evaluate left expression
+		let left_col = expr_fn.eval(columns, ctx)?;
+
+		// Execute subquery
+		let executor = ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
+
+		let result = executor.execute(subquery_index, ctx)?;
+
+		// Build membership set from first column of result
+		let set = build_membership_set(&result)?;
+
+		// Check membership for each value in left column
+		check_membership(&left_col, &set, negated)
+	})
+}
+
+fn compile_in_list(expr: Expr, values: Vec<Expr>, negated: bool) -> CompiledExpr {
+	let expr_fn = compile_expr(expr);
+	let value_fns: Vec<_> = values.into_iter().map(compile_expr).collect();
+
+	CompiledExpr::new(move |columns, ctx| {
+		// Evaluate left expression
+		let left_col = expr_fn.eval(columns, ctx)?;
+
+		// Build membership set from evaluated values
+		let mut set = std::collections::HashSet::new();
+		for vfn in &value_fns {
+			let val_col = vfn.eval(columns, ctx)?;
+			// Add first value (assumed to be a scalar broadcast)
+			if val_col.data().len() > 0 {
+				let value = val_col.data().get_value(0);
+				set.insert(HashableValue(value));
+			}
+		}
+
+		// Check membership
+		check_membership_set(&left_col, &set, negated)
+	})
+}
+
+/// Wrapper to make Value hashable for set membership
+#[derive(Clone, Debug)]
+struct HashableValue(Value);
+
+impl PartialEq for HashableValue {
+	fn eq(&self, other: &Self) -> bool {
+		match (&self.0, &other.0) {
+			(Value::Int8(a), Value::Int8(b)) => a == b,
+			(Value::Float8(a), Value::Float8(b)) => a == b,
+			(Value::Boolean(a), Value::Boolean(b)) => a == b,
+			(Value::Utf8(a), Value::Utf8(b)) => a == b,
+			(Value::Undefined, Value::Undefined) => true,
+			_ => false,
+		}
+	}
+}
+
+impl Eq for HashableValue {}
+
+impl std::hash::Hash for HashableValue {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		match &self.0 {
+			Value::Int8(v) => {
+				0u8.hash(state);
+				v.hash(state);
+			}
+			Value::Float8(v) => {
+				1u8.hash(state);
+				v.value().to_bits().hash(state);
+			}
+			Value::Boolean(v) => {
+				2u8.hash(state);
+				v.hash(state);
+			}
+			Value::Utf8(v) => {
+				3u8.hash(state);
+				v.hash(state);
+			}
+			Value::Undefined => {
+				4u8.hash(state);
+			}
+			_ => {
+				255u8.hash(state);
+			}
+		}
+	}
+}
+
+/// Build a membership set from the first column of a Columns result.
+fn build_membership_set(
+	columns: &reifydb_core::value::column::Columns,
+) -> Result<std::collections::HashSet<HashableValue>> {
+	let mut set = std::collections::HashSet::new();
+	if columns.is_empty() {
+		return Ok(set);
+	}
+	let col = &columns[0];
+	for i in 0..col.data().len() {
+		let value = col.data().get_value(i);
+		set.insert(HashableValue(value));
+	}
+	Ok(set)
+}
+
+/// Check membership of left column values in set.
+fn check_membership(left: &Column, set: &std::collections::HashSet<HashableValue>, negated: bool) -> Result<Column> {
+	let row_count = left.data().len();
+	let mut result_data = Vec::with_capacity(row_count);
+
+	for i in 0..row_count {
+		let value = left.data().get_value(i);
+		let is_member = set.contains(&HashableValue(value));
+		let result = if negated {
+			!is_member
+		} else {
+			is_member
+		};
+		result_data.push(result);
+	}
+
+	Ok(Column::new(
+		Fragment::internal(if negated {
+			"_not_in"
+		} else {
+			"_in"
+		}),
+		ColumnData::bool(result_data),
+	))
+}
+
+/// Check membership using pre-built HashableValue set.
+fn check_membership_set(
+	left: &Column,
+	set: &std::collections::HashSet<HashableValue>,
+	negated: bool,
+) -> Result<Column> {
+	check_membership(left, set, negated)
+}
+
 fn compile_binary(op: BinaryOp, left: Expr, right: Expr) -> CompiledExpr {
 	let left_fn = compile_expr(left);
 	let right_fn = compile_expr(right);
@@ -194,6 +486,59 @@ fn broadcast_value(value: &Value, row_count: usize) -> Result<Column> {
 	};
 
 	Ok(Column::new(Fragment::internal("_var"), data))
+}
+
+/// Convert a vector of values to a column, inferring type from the first non-undefined value.
+fn values_to_column(name: &str, values: Vec<Value>) -> Result<Column> {
+	if values.is_empty() {
+		return Ok(Column::new(Fragment::internal(name), ColumnData::undefined(0)));
+	}
+
+	// Find the first non-undefined value to determine type
+	let first_defined = values.iter().find(|v| !matches!(v, Value::Undefined));
+
+	let data = match first_defined {
+		Some(Value::Int8(_)) => {
+			let ints: Vec<i64> = values
+				.iter()
+				.map(|v| match v {
+					Value::Int8(n) => *n,
+					_ => 0,
+				})
+				.collect();
+			let bitvec: Vec<bool> = values.iter().map(|v| !matches!(v, Value::Undefined)).collect();
+			ColumnData::int8_with_bitvec(ints, bitvec)
+		}
+		Some(Value::Float8(f)) => {
+			let floats: Vec<f64> = values
+				.iter()
+				.map(|v| match v {
+					Value::Float8(f) => f64::from(*f),
+					Value::Int8(n) => *n as f64,
+					_ => 0.0,
+				})
+				.collect();
+			let bitvec: Vec<bool> = values.iter().map(|v| !matches!(v, Value::Undefined)).collect();
+			ColumnData::float8_with_bitvec(floats, bitvec)
+		}
+		Some(Value::Utf8(_)) => {
+			let strings: Vec<String> = values
+				.iter()
+				.map(|v| match v {
+					Value::Utf8(s) => s.clone(),
+					_ => String::new(),
+				})
+				.collect();
+			ColumnData::utf8(strings)
+		}
+		Some(Value::Boolean(_)) => {
+			let bools: Vec<bool> = values.iter().map(|v| matches!(v, Value::Boolean(true))).collect();
+			ColumnData::bool(bools)
+		}
+		_ => ColumnData::undefined(values.len()),
+	};
+
+	Ok(Column::new(Fragment::internal(name), data))
 }
 
 fn column_to_mask(column: &Column) -> Result<BitVec> {
@@ -304,6 +649,18 @@ where
 						result_bitvec.push(false);
 					}
 				}
+			}
+		}
+		// Handle comparisons with Undefined - result is always Undefined (false in filter)
+		(ColumnData::Int8(_), ColumnData::Undefined(_))
+		| (ColumnData::Undefined(_), ColumnData::Int8(_))
+		| (ColumnData::Float8(_), ColumnData::Undefined(_))
+		| (ColumnData::Undefined(_), ColumnData::Float8(_))
+		| (ColumnData::Undefined(_), ColumnData::Undefined(_)) => {
+			// Comparison with NULL yields NULL - in filter context, this means false
+			for _ in 0..row_count {
+				result_data.push(false);
+				result_bitvec.push(false); // Mark as undefined
 			}
 		}
 		_ => {
@@ -541,6 +898,51 @@ where
 				match (l.get(i), r.get(i)) {
 					(Some(&lv), Some(&rv)) => {
 						result_data.push(op_float(lv, rv));
+						result_bitvec.push(true);
+					}
+					_ => {
+						result_data.push(0.0);
+						result_bitvec.push(false);
+					}
+				}
+			}
+
+			Ok(Column::new(
+				Fragment::internal(name),
+				ColumnData::float8_with_bitvec(result_data, result_bitvec),
+			))
+		}
+		// Mixed types: coerce to Float8
+		(ColumnData::Float8(l), ColumnData::Int8(r)) => {
+			let mut result_data = Vec::with_capacity(row_count);
+			let mut result_bitvec = Vec::with_capacity(row_count);
+
+			for i in 0..row_count {
+				match (l.get(i), r.get(i)) {
+					(Some(&lv), Some(&rv)) => {
+						result_data.push(op_float(lv, rv as f64));
+						result_bitvec.push(true);
+					}
+					_ => {
+						result_data.push(0.0);
+						result_bitvec.push(false);
+					}
+				}
+			}
+
+			Ok(Column::new(
+				Fragment::internal(name),
+				ColumnData::float8_with_bitvec(result_data, result_bitvec),
+			))
+		}
+		(ColumnData::Int8(l), ColumnData::Float8(r)) => {
+			let mut result_data = Vec::with_capacity(row_count);
+			let mut result_bitvec = Vec::with_capacity(row_count);
+
+			for i in 0..row_count {
+				match (l.get(i), r.get(i)) {
+					(Some(&lv), Some(&rv)) => {
+						result_data.push(op_float(lv as f64, rv));
 						result_bitvec.push(true);
 					}
 					_ => {

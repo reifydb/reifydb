@@ -93,8 +93,8 @@ pub enum TokenKind {
 	// Keywords (control flow and definitions)
 	/// let keyword.
 	Let,
-	/// def keyword.
-	Def,
+	/// fn keyword.
+	Fn,
 	/// if keyword.
 	If,
 	/// else keyword.
@@ -111,6 +111,8 @@ pub enum TokenKind {
 	For,
 	/// in keyword.
 	In,
+	/// exists keyword (for subquery EXISTS checks).
+	Exists,
 
 	// Operators - Comparison
 	/// ==
@@ -194,7 +196,7 @@ impl TokenKind {
 			"sort" => Some(TokenKind::Sort),
 			"extend" => Some(TokenKind::Extend),
 			"let" => Some(TokenKind::Let),
-			"def" => Some(TokenKind::Def),
+			"fn" => Some(TokenKind::Fn),
 			"if" => Some(TokenKind::If),
 			"else" => Some(TokenKind::Else),
 			"inline" => Some(TokenKind::Inline),
@@ -203,6 +205,7 @@ impl TokenKind {
 			"continue" => Some(TokenKind::Continue),
 			"for" => Some(TokenKind::For),
 			"in" => Some(TokenKind::In),
+			"exists" => Some(TokenKind::Exists),
 			"and" => Some(TokenKind::And),
 			"or" => Some(TokenKind::Or),
 			"not" => Some(TokenKind::Not),
@@ -262,7 +265,7 @@ impl std::fmt::Display for TokenKind {
 			TokenKind::Sort => write!(f, "sort"),
 			TokenKind::Extend => write!(f, "extend"),
 			TokenKind::Let => write!(f, "let"),
-			TokenKind::Def => write!(f, "def"),
+			TokenKind::Fn => write!(f, "fn"),
 			TokenKind::If => write!(f, "if"),
 			TokenKind::Else => write!(f, "else"),
 			TokenKind::Inline => write!(f, "inline"),
@@ -271,6 +274,7 @@ impl std::fmt::Display for TokenKind {
 			TokenKind::Continue => write!(f, "continue"),
 			TokenKind::For => write!(f, "for"),
 			TokenKind::In => write!(f, "in"),
+			TokenKind::Exists => write!(f, "exists"),
 			TokenKind::Eq => write!(f, "=="),
 			TokenKind::Ne => write!(f, "!="),
 			TokenKind::Lt => write!(f, "<"),

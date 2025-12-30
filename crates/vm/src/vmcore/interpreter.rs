@@ -3,7 +3,9 @@
 
 //! Bytecode interpreter.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+
+use reifydb_core::value::column::{ColumnData, Columns};
 
 #[cfg(feature = "trace")]
 use super::trace::{InstructionSnapshot, OperatorSnapshot, snapshot_dispatch_result, snapshot_state};
@@ -14,7 +16,7 @@ use super::{
 use crate::{
 	bytecode::{BytecodeReader, Opcode, OperatorKind},
 	error::{Result, VmError},
-	expr::{EvalContext, EvalValue},
+	expr::{EvalContext, EvalValue, VmFunctionContext, VmFunctionExecutor},
 	operator::{FilterOp, ProjectOp, SelectOp, SortOp, TakeOp},
 	pipeline::Pipeline,
 };
@@ -94,8 +96,8 @@ enum DecodedInstruction {
 	},
 	Return,
 	CallBuiltin {
-		builtin_id: u16,
-		arg_count: u8,
+		_builtin_id: u16,
+		_arg_count: u8,
 	},
 	EnterScope,
 	ExitScope,
@@ -107,6 +109,23 @@ enum DecodedInstruction {
 	IntAdd,
 	IntLt,
 	IntEq,
+	IntSub,
+	IntMul,
+	IntDiv,
+	// Columnar operations
+	ColAdd,
+	ColSub,
+	ColMul,
+	ColDiv,
+	ColLt,
+	ColLe,
+	ColGt,
+	ColGe,
+	ColEq,
+	ColNe,
+	ColAnd,
+	ColOr,
+	ColNot,
 	PrintOut,
 	Nop,
 	Halt,
@@ -257,8 +276,8 @@ impl VmState {
 				let builtin_id = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				let arg_count = reader.read_u8().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::CallBuiltin {
-					builtin_id,
-					arg_count,
+					_builtin_id: builtin_id,
+					_arg_count: arg_count,
 				}
 			}
 			Opcode::EnterScope => DecodedInstruction::EnterScope,
@@ -274,6 +293,23 @@ impl VmState {
 			Opcode::IntAdd => DecodedInstruction::IntAdd,
 			Opcode::IntLt => DecodedInstruction::IntLt,
 			Opcode::IntEq => DecodedInstruction::IntEq,
+			Opcode::IntSub => DecodedInstruction::IntSub,
+			Opcode::IntMul => DecodedInstruction::IntMul,
+			Opcode::IntDiv => DecodedInstruction::IntDiv,
+			// Columnar operations
+			Opcode::ColAdd => DecodedInstruction::ColAdd,
+			Opcode::ColSub => DecodedInstruction::ColSub,
+			Opcode::ColMul => DecodedInstruction::ColMul,
+			Opcode::ColDiv => DecodedInstruction::ColDiv,
+			Opcode::ColLt => DecodedInstruction::ColLt,
+			Opcode::ColLe => DecodedInstruction::ColLe,
+			Opcode::ColGt => DecodedInstruction::ColGt,
+			Opcode::ColGe => DecodedInstruction::ColGe,
+			Opcode::ColEq => DecodedInstruction::ColEq,
+			Opcode::ColNe => DecodedInstruction::ColNe,
+			Opcode::ColAnd => DecodedInstruction::ColAnd,
+			Opcode::ColOr => DecodedInstruction::ColOr,
+			Opcode::ColNot => DecodedInstruction::ColNot,
 			Opcode::PrintOut => DecodedInstruction::PrintOut,
 			Opcode::Nop => DecodedInstruction::Nop,
 			Opcode::Halt => DecodedInstruction::Halt,
@@ -472,7 +508,7 @@ impl VmState {
 			}
 
 			DecodedInstruction::PopPipeline => {
-				self.pop_pipeline()?;
+				let _ = self.pop_pipeline()?;
 				self.ip = next_ip;
 			}
 
@@ -715,6 +751,85 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
+			DecodedInstruction::IntSub => {
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a - b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Int8(result)))?;
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::IntMul => {
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a * b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Int8(result)))?;
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::IntDiv => {
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => {
+						if b == 0 {
+							return Err(VmError::DivisionByZero);
+						}
+						a / b
+					}
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Int8(result)))?;
+				self.ip = next_ip;
+			}
+
+			// ─────────────────────────────────────────────────────────
+			// Columnar Operations
+			// ─────────────────────────────────────────────────────────
+			DecodedInstruction::ColAdd
+			| DecodedInstruction::ColSub
+			| DecodedInstruction::ColMul
+			| DecodedInstruction::ColDiv
+			| DecodedInstruction::ColLt
+			| DecodedInstruction::ColLe
+			| DecodedInstruction::ColGt
+			| DecodedInstruction::ColGe
+			| DecodedInstruction::ColEq
+			| DecodedInstruction::ColNe
+			| DecodedInstruction::ColAnd
+			| DecodedInstruction::ColOr => {
+				return Err(VmError::UnsupportedOperation {
+					operation: "columnar binary operation (not yet implemented)".to_string(),
+				});
+			}
+
+			DecodedInstruction::ColNot => {
+				return Err(VmError::UnsupportedOperation {
+					operation: "columnar NOT operation (not yet implemented)".to_string(),
+				});
+			}
+
 			// ─────────────────────────────────────────────────────────
 			// I/O Operations
 			// ─────────────────────────────────────────────────────────
@@ -826,7 +941,65 @@ impl VmState {
 			}
 		}
 
-		EvalContext::with_variables(variables)
+		// Build function executor from program's functions
+		let functions = self.build_function_executor();
+
+		EvalContext {
+			variables,
+			subquery_executor: self.context.subquery_executor.clone(),
+			current_row_values: None,
+			functions: Some(functions),
+		}
+	}
+
+	/// Build a VmFunctionExecutor from the program's bytecode functions.
+	///
+	/// Each bytecode function is wrapped to execute in a fresh VM context.
+	/// For functions that return scalar values, the result is broadcast to match row_count.
+	fn build_function_executor(&self) -> VmFunctionExecutor {
+		let mut executor = VmFunctionExecutor::new();
+
+		for func_def in &self.program.functions {
+			let func_name = func_def.name.clone();
+			let program = self.program.clone();
+			let func_index =
+				self.program.functions.iter().position(|f| f.name == func_name).unwrap() as u16;
+
+			// Create a wrapper that executes the bytecode function
+			let wrapper: crate::expr::VmScalarFn =
+				Arc::new(move |ctx: VmFunctionContext| -> Result<ColumnData> {
+					let func_def = &program.functions[func_index as usize];
+
+					// For functions with column arguments, we need columnar execution.
+					// For now, handle the simple case of no-arg functions that return constants.
+					if !func_def.parameters.is_empty() && !ctx.columns.is_empty() {
+						// TODO: Implement full columnar function execution
+						// For now, execute row-by-row for functions with arguments
+						return execute_function_columnar(&program, func_index, ctx);
+					}
+
+					// Execute the function in a fresh VM state
+					let result = execute_function_once(&program, func_index, ctx.columns)?;
+
+					// Broadcast scalar result to column
+					match result {
+						OperandValue::Scalar(v) => {
+							Ok(broadcast_scalar_to_column(&v, ctx.row_count))
+						}
+						OperandValue::Column(col) => Ok(col.data().clone()),
+						_ => Err(VmError::UnsupportedOperation {
+							operation: format!(
+								"function returned {:?}, expected scalar or column",
+								result
+							),
+						}),
+					}
+				});
+
+			executor.register(func_name, wrapper);
+		}
+
+		executor
 	}
 
 	/// Print a value to stdout (for console::log).
@@ -864,6 +1037,221 @@ fn operand_to_eval_value(value: &OperandValue) -> Option<EvalValue> {
 		OperandValue::Scalar(v) => Some(EvalValue::Scalar(v.clone())),
 		OperandValue::Record(r) => Some(EvalValue::Record(r.clone())),
 		_ => None, // Other types cannot be used in expressions
+	}
+}
+
+/// Broadcast a scalar value to a column with the given row count.
+fn broadcast_scalar_to_column(value: &reifydb_type::Value, row_count: usize) -> ColumnData {
+	match value {
+		reifydb_type::Value::Boolean(b) => ColumnData::bool(vec![*b; row_count]),
+		reifydb_type::Value::Int8(n) => ColumnData::int8(vec![*n; row_count]),
+		reifydb_type::Value::Float8(f) => ColumnData::float8(vec![f.value(); row_count]),
+		reifydb_type::Value::Utf8(s) => ColumnData::utf8(vec![s.clone(); row_count]),
+		reifydb_type::Value::Undefined => ColumnData::int8(vec![0; row_count]),
+		_ => ColumnData::int8(vec![0; row_count]),
+	}
+}
+
+/// Simple blocking executor for futures that complete immediately.
+fn block_on_simple<F: std::future::Future>(fut: F) -> F::Output {
+	use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+	fn noop_clone(_: *const ()) -> RawWaker {
+		noop_raw_waker()
+	}
+	fn noop(_: *const ()) {}
+	fn noop_raw_waker() -> RawWaker {
+		static VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop, noop, noop);
+		RawWaker::new(std::ptr::null(), &VTABLE)
+	}
+
+	let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
+	let mut cx = Context::from_waker(&waker);
+	let mut fut = std::pin::pin!(fut);
+
+	loop {
+		match fut.as_mut().poll(&mut cx) {
+			Poll::Ready(result) => return result,
+			Poll::Pending => {
+				// For pure computation, this should never happen
+				panic!("Function execution requires async operations which are not supported");
+			}
+		}
+	}
+}
+
+/// Execute a function once (for no-arg functions) and return the result.
+fn execute_function_once(program: &crate::bytecode::Program, func_index: u16, _args: &Columns) -> Result<OperandValue> {
+	use crate::vmcore::{VmContext, VmState};
+
+	let func_def = &program.functions[func_index as usize];
+
+	// Create a dummy source registry for pure function execution
+	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
+	let context = Arc::new(VmContext::new(sources));
+
+	// Create a mini VM to execute just this function
+	let mut vm = VmState::new(Arc::new(program.clone()), context);
+
+	// Set IP to function body
+	vm.ip = func_def.bytecode_offset;
+
+	// Execute until we hit a Return or reach end of function
+	let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
+
+	// Push a sentinel call frame so Return knows where to stop
+	// scope_depth = 1 because the VM starts with global scope
+	let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
+	vm.call_stack.push(frame);
+
+	// Execute instructions until return
+	loop {
+		if vm.ip >= end_offset {
+			break;
+		}
+
+		match block_on_simple(vm.step())? {
+			DispatchResult::Halt => break,
+			DispatchResult::Continue => {}
+			DispatchResult::Yield(_) => break,
+		}
+
+		if vm.call_stack.is_empty() {
+			break;
+		}
+	}
+
+	// Get result from operand stack
+	vm.pop_operand()
+}
+
+/// Execute a function with columnar arguments (row-by-row execution).
+fn execute_function_columnar(
+	program: &crate::bytecode::Program,
+	func_index: u16,
+	ctx: VmFunctionContext,
+) -> Result<ColumnData> {
+	use crate::vmcore::{VmContext, VmState};
+
+	let func_def = &program.functions[func_index as usize];
+	let row_count = ctx.row_count;
+
+	if row_count == 0 {
+		return Ok(ColumnData::int8(Vec::new()));
+	}
+
+	// Create a dummy source registry for pure function execution
+	let sources: Arc<dyn crate::source::SourceRegistry> = Arc::new(EmptySourceRegistry);
+	let context = Arc::new(VmContext::new(sources));
+
+	// Execute the function for each row and collect results
+	let mut results: Vec<reifydb_type::Value> = Vec::with_capacity(row_count);
+
+	for row_idx in 0..row_count {
+		let mut vm = VmState::new(Arc::new(program.clone()), context.clone());
+
+		// Enter scope and bind parameters with scalar values from this row
+		vm.scopes.push();
+		for (param_idx, param) in func_def.parameters.iter().enumerate() {
+			if param_idx < ctx.columns.len() {
+				let col = &ctx.columns[param_idx];
+				let scalar_value = col.data().get_value(row_idx);
+				vm.scopes.set(param.name.clone(), OperandValue::Scalar(scalar_value));
+			}
+		}
+
+		vm.ip = func_def.bytecode_offset;
+		let end_offset = func_def.bytecode_offset + func_def.bytecode_len;
+
+		let frame = CallFrame::new(func_index, end_offset, 0, 0, 1);
+		vm.call_stack.push(frame);
+
+		loop {
+			if vm.ip >= end_offset {
+				break;
+			}
+
+			match block_on_simple(vm.step())? {
+				DispatchResult::Halt => break,
+				DispatchResult::Continue => {}
+				DispatchResult::Yield(_) => break,
+			}
+
+			if vm.call_stack.is_empty() {
+				break;
+			}
+		}
+
+		let result = vm.pop_operand().unwrap_or(OperandValue::Scalar(reifydb_type::Value::Undefined));
+		match result {
+			OperandValue::Scalar(v) => results.push(v),
+			_ => results.push(reifydb_type::Value::Undefined),
+		}
+	}
+
+	// Convert results to column data
+	let first_typed = results.iter().find(|v| !matches!(v, reifydb_type::Value::Undefined));
+
+	match first_typed {
+		Some(reifydb_type::Value::Boolean(_)) => {
+			let bools: Vec<bool> = results
+				.into_iter()
+				.map(|v| match v {
+					reifydb_type::Value::Boolean(b) => b,
+					_ => false,
+				})
+				.collect();
+			Ok(ColumnData::bool(bools))
+		}
+		Some(reifydb_type::Value::Int8(_)) | None => {
+			let ints: Vec<i64> = results
+				.into_iter()
+				.map(|v| match v {
+					reifydb_type::Value::Int8(n) => n,
+					_ => 0,
+				})
+				.collect();
+			Ok(ColumnData::int8(ints))
+		}
+		Some(reifydb_type::Value::Float8(_)) => {
+			let floats: Vec<f64> = results
+				.into_iter()
+				.map(|v| match v {
+					reifydb_type::Value::Float8(f) => f.value(),
+					_ => 0.0,
+				})
+				.collect();
+			Ok(ColumnData::float8(floats))
+		}
+		Some(reifydb_type::Value::Utf8(_)) => {
+			let strings: Vec<String> = results
+				.into_iter()
+				.map(|v| match v {
+					reifydb_type::Value::Utf8(s) => s,
+					_ => String::new(),
+				})
+				.collect();
+			Ok(ColumnData::utf8(strings))
+		}
+		_ => {
+			let ints: Vec<i64> = results
+				.into_iter()
+				.map(|v| match v {
+					reifydb_type::Value::Int8(n) => n,
+					_ => 0,
+				})
+				.collect();
+			Ok(ColumnData::int8(ints))
+		}
+	}
+}
+
+/// Empty source registry for pure function execution (no table access).
+struct EmptySourceRegistry;
+
+impl crate::source::SourceRegistry for EmptySourceRegistry {
+	fn get_source(&self, _name: &str) -> Option<Box<dyn crate::source::TableSource>> {
+		None
 	}
 }
 
@@ -1043,11 +1431,11 @@ impl VmState {
 			},
 			DecodedInstruction::Return => InstructionSnapshot::Return,
 			DecodedInstruction::CallBuiltin {
-				builtin_id,
-				arg_count,
+				_builtin_id,
+				_arg_count,
 			} => InstructionSnapshot::CallBuiltin {
-				builtin_id: *builtin_id,
-				arg_count: *arg_count,
+				builtin_id: *_builtin_id,
+				arg_count: *_arg_count,
 			},
 			DecodedInstruction::EnterScope => InstructionSnapshot::EnterScope,
 			DecodedInstruction::ExitScope => InstructionSnapshot::ExitScope,
@@ -1066,6 +1454,22 @@ impl VmState {
 			DecodedInstruction::IntAdd => InstructionSnapshot::IntAdd,
 			DecodedInstruction::IntLt => InstructionSnapshot::IntLt,
 			DecodedInstruction::IntEq => InstructionSnapshot::IntEq,
+			DecodedInstruction::IntSub => InstructionSnapshot::IntSub,
+			DecodedInstruction::IntMul => InstructionSnapshot::IntMul,
+			DecodedInstruction::IntDiv => InstructionSnapshot::IntDiv,
+			DecodedInstruction::ColAdd => InstructionSnapshot::ColAdd,
+			DecodedInstruction::ColSub => InstructionSnapshot::ColSub,
+			DecodedInstruction::ColMul => InstructionSnapshot::ColMul,
+			DecodedInstruction::ColDiv => InstructionSnapshot::ColDiv,
+			DecodedInstruction::ColLt => InstructionSnapshot::ColLt,
+			DecodedInstruction::ColLe => InstructionSnapshot::ColLe,
+			DecodedInstruction::ColGt => InstructionSnapshot::ColGt,
+			DecodedInstruction::ColGe => InstructionSnapshot::ColGe,
+			DecodedInstruction::ColEq => InstructionSnapshot::ColEq,
+			DecodedInstruction::ColNe => InstructionSnapshot::ColNe,
+			DecodedInstruction::ColAnd => InstructionSnapshot::ColAnd,
+			DecodedInstruction::ColOr => InstructionSnapshot::ColOr,
+			DecodedInstruction::ColNot => InstructionSnapshot::ColNot,
 			DecodedInstruction::PrintOut => InstructionSnapshot::PrintOut,
 			DecodedInstruction::Nop => InstructionSnapshot::Nop,
 			DecodedInstruction::Halt => InstructionSnapshot::Halt,

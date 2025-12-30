@@ -16,6 +16,7 @@ reifydb-core = { path = "../core" }
 reifydb-type = { path = "../type" }
 
 async-trait.workspace = true
+futures-executor = "0.3"
 futures-util.workspace = true
 pin-project = "1.0"
 thiserror = "2.0"

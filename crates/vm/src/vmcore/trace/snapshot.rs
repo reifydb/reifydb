@@ -43,6 +43,7 @@ fn snapshot_scopes(state: &VmState) -> Vec<ScopeSnapshot> {
 pub fn snapshot_operand(value: &OperandValue) -> OperandSnapshot {
 	match value {
 		OperandValue::Scalar(v) => OperandSnapshot::Scalar(v.clone()),
+		OperandValue::Column(col) => OperandSnapshot::Frame(snapshot_column(col)),
 		OperandValue::ExprRef(index) => OperandSnapshot::ExprRef(*index),
 		OperandValue::ColRef(name) => OperandSnapshot::ColRef(name.clone()),
 		OperandValue::ColList(cols) => OperandSnapshot::ColList(cols.clone()),
@@ -74,6 +75,24 @@ fn snapshot_frame(columns: &reifydb_core::value::column::Columns) -> FrameSnapsh
 	FrameSnapshot {
 		row_count,
 		columns: column_snapshots,
+		rows,
+	}
+}
+
+/// Snapshot a single column as a frame.
+fn snapshot_column(col: &reifydb_core::value::column::Column) -> FrameSnapshot {
+	let row_count = col.data().len();
+	let column_snapshot = ColumnSnapshot {
+		name: col.name().text().to_string(),
+		data_type: format!("{:?}", col.data().get_type()),
+	};
+
+	// Capture all values as single-element rows
+	let rows: Vec<Vec<reifydb_type::Value>> = (0..row_count).map(|i| vec![col.data().get_value(i)]).collect();
+
+	FrameSnapshot {
+		row_count,
+		columns: vec![column_snapshot],
 		rows,
 	}
 }
