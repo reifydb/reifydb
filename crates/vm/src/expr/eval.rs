@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::{BitVec, Fragment, Type, Value};
@@ -12,11 +12,27 @@ use crate::{
 	vmcore::state::Record,
 };
 
+/// Trait for executing subqueries during expression evaluation.
+pub trait SubqueryExecutor: Send + Sync {
+	/// Execute a subquery by its index and return the result columns.
+	fn execute(&self, index: u16, ctx: &EvalContext) -> Result<Columns>;
+
+	/// Check if a subquery is correlated (references outer columns).
+	fn is_correlated(&self, index: u16) -> Result<bool>;
+}
+
 /// Context for expression evaluation with captured scope variables.
-#[derive(Debug, Clone, Default)]
+#[derive(Default, Clone)]
 pub struct EvalContext {
 	/// Captured variable values from scope at filter creation time.
 	pub variables: HashMap<String, EvalValue>,
+
+	/// Optional subquery executor for evaluating subquery expressions.
+	pub subquery_executor: Option<Arc<dyn SubqueryExecutor>>,
+
+	/// Current row values for correlated subquery execution.
+	/// Maps column names to their values for the current outer row.
+	pub current_row_values: Option<HashMap<String, Value>>,
 }
 
 /// Value types that can be used in expression evaluation.
@@ -31,6 +47,8 @@ impl EvalContext {
 	pub fn new() -> Self {
 		Self {
 			variables: HashMap::new(),
+			subquery_executor: None,
+			current_row_values: None,
 		}
 	}
 
@@ -38,12 +56,37 @@ impl EvalContext {
 	pub fn with_variables(variables: HashMap<String, EvalValue>) -> Self {
 		Self {
 			variables,
+			subquery_executor: None,
+			current_row_values: None,
+		}
+	}
+
+	/// Create a context with a subquery executor.
+	pub fn with_subquery_executor(executor: Arc<dyn SubqueryExecutor>) -> Self {
+		Self {
+			variables: HashMap::new(),
+			subquery_executor: Some(executor),
+			current_row_values: None,
 		}
 	}
 
 	/// Get a variable value.
 	pub fn get_var(&self, name: &str) -> Option<&EvalValue> {
 		self.variables.get(name)
+	}
+
+	/// Get a value from current_row_values (for correlated subquery column lookup).
+	pub fn get_outer_column(&self, name: &str) -> Option<&Value> {
+		self.current_row_values.as_ref()?.get(name)
+	}
+
+	/// Create a new context with outer row values for correlated subquery execution.
+	pub fn with_outer_row(&self, outer_values: HashMap<String, Value>) -> Self {
+		Self {
+			variables: self.variables.clone(),
+			subquery_executor: self.subquery_executor.clone(),
+			current_row_values: Some(outer_values),
+		}
 	}
 }
 
@@ -93,6 +136,22 @@ impl Expr {
 				object,
 				field,
 			} => self.eval_field_access(object, field, columns, ctx),
+			Expr::Subquery {
+				..
+			}
+			| Expr::InSubquery {
+				..
+			}
+			| Expr::InList {
+				..
+			} => {
+				// Subquery expressions are handled by the compiled expression path
+				// (compile.rs) which has access to the SubqueryExecutor.
+				// Direct eval_to_column on Expr AST for subqueries is not supported.
+				Err(VmError::UnsupportedOperation {
+					operation: "subquery expressions must be compiled before evaluation".into(),
+				})
+			}
 		}
 	}
 

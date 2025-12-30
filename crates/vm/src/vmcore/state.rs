@@ -153,6 +153,9 @@ pub struct VmContext {
 
 	/// VM configuration.
 	pub config: VmConfig,
+
+	/// Optional subquery executor for expression evaluation.
+	pub subquery_executor: Option<Arc<dyn crate::expr::SubqueryExecutor>>,
 }
 
 impl VmContext {
@@ -161,6 +164,7 @@ impl VmContext {
 		Self {
 			sources,
 			config: VmConfig::default(),
+			subquery_executor: None,
 		}
 	}
 
@@ -169,6 +173,19 @@ impl VmContext {
 		Self {
 			sources,
 			config,
+			subquery_executor: None,
+		}
+	}
+
+	/// Create a new VM context with a subquery executor.
+	pub fn with_subquery_executor(
+		sources: Arc<dyn SourceRegistry>,
+		executor: Arc<dyn crate::expr::SubqueryExecutor>,
+	) -> Self {
+		Self {
+			sources,
+			config: VmConfig::default(),
+			subquery_executor: Some(executor),
 		}
 	}
 }

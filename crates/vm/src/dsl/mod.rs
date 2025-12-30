@@ -113,11 +113,17 @@ pub fn compile_script(source: &str) -> Result<Program, DslError> {
 /// ```
 pub async fn execute_script(
 	source: &str,
-	sources: Arc<dyn crate::source::SourceRegistry>,
+	sources: Arc<dyn crate::source::SourceRegistry + Send + Sync>,
 ) -> Result<Option<Pipeline>, DslError> {
 	let program = compile_script(source)?;
-	let context = Arc::new(VmContext::new(sources));
-	let mut vm = VmState::new(Arc::new(program), context);
+	let program_arc = Arc::new(program);
+
+	// Create subquery executor for expression evaluation
+	let subquery_executor =
+		Arc::new(crate::expr::RuntimeSubqueryExecutor::new(program_arc.clone(), sources.clone()));
+
+	let context = Arc::new(VmContext::with_subquery_executor(sources, subquery_executor));
+	let mut vm = VmState::new(program_arc, context);
 	let result = vm.execute().await?;
 	Ok(result)
 }

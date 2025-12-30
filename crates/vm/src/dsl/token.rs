@@ -111,6 +111,8 @@ pub enum TokenKind {
 	For,
 	/// in keyword.
 	In,
+	/// exists keyword (for subquery EXISTS checks).
+	Exists,
 
 	// Operators - Comparison
 	/// ==
@@ -203,6 +205,7 @@ impl TokenKind {
 			"continue" => Some(TokenKind::Continue),
 			"for" => Some(TokenKind::For),
 			"in" => Some(TokenKind::In),
+			"exists" => Some(TokenKind::Exists),
 			"and" => Some(TokenKind::And),
 			"or" => Some(TokenKind::Or),
 			"not" => Some(TokenKind::Not),
@@ -271,6 +274,7 @@ impl std::fmt::Display for TokenKind {
 			TokenKind::Continue => write!(f, "continue"),
 			TokenKind::For => write!(f, "for"),
 			TokenKind::In => write!(f, "in"),
+			TokenKind::Exists => write!(f, "exists"),
 			TokenKind::Eq => write!(f, "=="),
 			TokenKind::Ne => write!(f, "!="),
 			TokenKind::Lt => write!(f, "<"),

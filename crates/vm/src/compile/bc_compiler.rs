@@ -7,13 +7,14 @@ use reifydb_type::{OrderedF64, Value};
 
 use crate::{
 	bytecode::{
+		self,
 		instruction::BytecodeWriter,
 		opcode::{Opcode, OperatorKind},
 		program::{FunctionDef, ParameterDef, Program, SourceDef},
 	},
-	dsl::ast::*,
+	dsl::{self, ast::*},
 	error::{Result, VmError},
-	expr::{BinaryOp, ColumnRef, Expr, Literal, compile_expr, compile_filter},
+	expr::{self, BinaryOp, ColumnRef, Expr, Literal, compile_expr, compile_filter},
 	operator::sort::{SortOrder, SortSpec},
 };
 /// Context for tracking loop break/continue targets.
@@ -22,6 +23,71 @@ struct LoopContext {
 	continue_target: usize,
 	/// Positions of break jumps that need patching
 	break_patches: Vec<usize>,
+}
+
+/// Collect all column references from an expression AST.
+fn collect_column_refs(expr: &ExprAst, refs: &mut Vec<String>) {
+	match expr {
+		ExprAst::Column {
+			name,
+			..
+		} => {
+			if !refs.contains(name) {
+				refs.push(name.clone());
+			}
+		}
+		ExprAst::BinaryOp {
+			left,
+			right,
+			..
+		} => {
+			collect_column_refs(left, refs);
+			collect_column_refs(right, refs);
+		}
+		ExprAst::UnaryOp {
+			operand,
+			..
+		} => {
+			collect_column_refs(operand, refs);
+		}
+		ExprAst::Paren {
+			inner,
+			..
+		} => {
+			collect_column_refs(inner, refs);
+		}
+		ExprAst::Subquery {
+			pipeline,
+			..
+		} => {
+			// Don't look inside subqueries - they have their own scope
+			let _ = pipeline;
+		}
+		ExprAst::InSubquery {
+			expr,
+			..
+		} => {
+			collect_column_refs(expr, refs);
+		}
+		ExprAst::InList {
+			expr,
+			values,
+			..
+		} => {
+			collect_column_refs(expr, refs);
+			for v in values {
+				collect_column_refs(v, refs);
+			}
+		}
+		ExprAst::FieldAccess {
+			object,
+			..
+		} => {
+			collect_column_refs(object, refs);
+		}
+		// Literals and variables don't reference columns
+		_ => {}
+	}
 }
 /// Bytecode compiler that transforms a DSL AST into a Program.
 pub struct BytecodeCompiler {
@@ -528,7 +594,7 @@ impl BytecodeCompiler {
 		Ok(())
 	}
 	/// Convert AST expression to compiled Expr.
-	fn ast_to_expr(&self, ast: ExprAst) -> Result<Expr> {
+	fn ast_to_expr(&mut self, ast: ExprAst) -> Result<Expr> {
 		match ast {
 			ExprAst::Column {
 				name,
@@ -608,7 +674,103 @@ impl BytecodeCompiler {
 					field,
 				})
 			}
+			ExprAst::Subquery {
+				kind,
+				pipeline,
+				..
+			} => {
+				// Compile the subquery pipeline
+				let subquery_index = self.compile_subquery_pipeline(*pipeline)?;
+				let expr_kind = match kind {
+					dsl::ast::SubqueryKind::Scalar => expr::SubqueryKind::Scalar,
+					dsl::ast::SubqueryKind::Exists => expr::SubqueryKind::Exists,
+					dsl::ast::SubqueryKind::NotExists => expr::SubqueryKind::NotExists,
+				};
+				Ok(Expr::Subquery {
+					index: subquery_index,
+					kind: expr_kind,
+				})
+			}
+			ExprAst::InList {
+				expr,
+				values,
+				negated,
+				..
+			} => {
+				let compiled_expr = Box::new(self.ast_to_expr(*expr)?);
+				let compiled_values =
+					values.into_iter().map(|v| self.ast_to_expr(v)).collect::<Result<Vec<_>>>()?;
+				Ok(Expr::InList {
+					expr: compiled_expr,
+					values: compiled_values,
+					negated,
+				})
+			}
+			ExprAst::InSubquery {
+				expr,
+				pipeline,
+				negated,
+				..
+			} => {
+				let compiled_expr = Box::new(self.ast_to_expr(*expr)?);
+				let subquery_index = self.compile_subquery_pipeline(*pipeline)?;
+				Ok(Expr::InSubquery {
+					expr: compiled_expr,
+					subquery_index,
+					negated,
+				})
+			}
 		}
+	}
+
+	/// Compile a subquery pipeline and return its index in the subqueries pool.
+	fn compile_subquery_pipeline(&mut self, pipeline: dsl::ast::PipelineAst) -> Result<u16> {
+		// Extract information from the pipeline stages
+		let mut source_name = String::new();
+		let mut filter_expr_index = None;
+		let mut select_list_index = None;
+		let mut take_limit = None;
+		let mut filter_column_refs = Vec::new();
+
+		for stage in pipeline.stages {
+			match stage {
+				dsl::ast::StageAst::Scan(scan) => {
+					source_name = scan.table_name;
+				}
+				dsl::ast::StageAst::Filter(filter) => {
+					// Collect column references from filter expression
+					collect_column_refs(&filter.predicate, &mut filter_column_refs);
+					let expr = self.ast_to_expr(filter.predicate)?;
+					let compiled = expr::compile_filter(expr);
+					filter_expr_index = Some(self.program.add_compiled_filter(compiled));
+				}
+				dsl::ast::StageAst::Select(select) => {
+					select_list_index = Some(self.program.add_column_list(select.columns));
+				}
+				dsl::ast::StageAst::Take(take) => {
+					take_limit = Some(take.limit);
+				}
+				_ => {
+					// Other stages (extend, sort) not yet supported in subqueries
+					return Err(VmError::CompileError {
+						message: "unsupported stage type in subquery".to_string(),
+					});
+				}
+			}
+		}
+
+		// Determine outer references - column refs that don't match common subquery source columns
+		// We store all column refs and let the runtime determine which are outer refs
+		// by checking if they exist in the source data
+		let subquery_def = bytecode::program::SubqueryDef {
+			source_name,
+			filter_expr_index,
+			select_list_index,
+			take_limit,
+			outer_refs: filter_column_refs,
+		};
+
+		Ok(self.program.add_subquery(subquery_def))
 	}
 	/// Compile a condition expression (pushes boolean to operand stack).
 	fn compile_condition_expr(&mut self, expr: ExprAst) -> Result<()> {

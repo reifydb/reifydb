@@ -267,6 +267,17 @@ impl Default for SortOrder {
 	}
 }
 
+/// Subquery kind for EXISTS/NOT EXISTS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubqueryKind {
+	/// Scalar subquery: extracts a single value.
+	Scalar,
+	/// EXISTS: returns true if subquery has any rows.
+	Exists,
+	/// NOT EXISTS: returns true if subquery has no rows.
+	NotExists,
+}
+
 /// Expression AST (used in filter predicates and computed columns).
 #[derive(Debug, Clone)]
 pub enum ExprAst {
@@ -345,6 +356,29 @@ pub enum ExprAst {
 		field: String,
 		span: Span,
 	},
+
+	/// Subquery expression: (scan t | ...) or exists(...) or not exists(...)
+	Subquery {
+		kind: SubqueryKind,
+		pipeline: Box<PipelineAst>,
+		span: Span,
+	},
+
+	/// IN with inline list: expr in (val1, val2, ...)
+	InList {
+		expr: Box<ExprAst>,
+		values: Vec<ExprAst>,
+		negated: bool,
+		span: Span,
+	},
+
+	/// IN with subquery: expr in (scan t | select [col])
+	InSubquery {
+		expr: Box<ExprAst>,
+		pipeline: Box<PipelineAst>,
+		negated: bool,
+		span: Span,
+	},
 }
 
 impl ExprAst {
@@ -394,6 +428,18 @@ impl ExprAst {
 				..
 			} => *span,
 			ExprAst::FieldAccess {
+				span,
+				..
+			} => *span,
+			ExprAst::Subquery {
+				span,
+				..
+			} => *span,
+			ExprAst::InList {
+				span,
+				..
+			} => *span,
+			ExprAst::InSubquery {
 				span,
 				..
 			} => *span,

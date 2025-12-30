@@ -274,6 +274,11 @@ impl Parser {
 		matches!(self.tokens.get(pos + 2).map(|t| &t.kind), Some(TokenKind::Assign))
 	}
 
+	/// Check if the current token starts a pipeline (for subquery detection).
+	fn is_pipeline_start(&self) -> bool {
+		matches!(self.current().kind, TokenKind::Scan | TokenKind::Inline | TokenKind::Dollar)
+	}
+
 	/// Parse assignment: $var = expr
 	fn parse_assign(&mut self) -> Result<StatementAst, ParseError> {
 		let start = self.current().span;
@@ -804,7 +809,19 @@ impl Parser {
 	fn parse_expr_with_precedence(&mut self, min_prec: Precedence) -> Result<ExprAst, ParseError> {
 		let mut left = self.parse_unary()?;
 
-		while let Some(prec) = Precedence::for_binary_op(&self.current().kind) {
+		loop {
+			// Check for IN / NOT IN (at Compare precedence)
+			if min_prec <= Precedence::Compare {
+				if let Some(in_result) = self.try_parse_in_expr(left.clone())? {
+					left = in_result;
+					continue;
+				}
+			}
+
+			// Regular binary operators
+			let Some(prec) = Precedence::for_binary_op(&self.current().kind) else {
+				break;
+			};
 			if prec < min_prec {
 				break;
 			}
@@ -826,15 +843,85 @@ impl Parser {
 		Ok(left)
 	}
 
+	/// Try to parse an IN or NOT IN expression. Returns None if not an IN expression.
+	fn try_parse_in_expr(&mut self, left: ExprAst) -> Result<Option<ExprAst>, ParseError> {
+		let start = left.span();
+		let negated;
+
+		// Check for "in" or "not in"
+		if self.check(&TokenKind::In) {
+			negated = false;
+			self.advance();
+		} else if self.check(&TokenKind::Not) && self.peek_is(&TokenKind::In) {
+			negated = true;
+			self.advance(); // consume 'not'
+			self.advance(); // consume 'in'
+		} else {
+			return Ok(None);
+		}
+
+		// Expect (
+		self.expect(&TokenKind::LParen)?;
+
+		// Check if this is a subquery or inline list
+		if self.is_pipeline_start() {
+			// IN with subquery: expr in (scan t | ...)
+			let pipeline = self.parse_pipeline()?;
+			let end_token = self.expect(&TokenKind::RParen)?;
+			Ok(Some(ExprAst::InSubquery {
+				expr: Box::new(left),
+				pipeline: Box::new(pipeline),
+				negated,
+				span: start.merge(&end_token.span),
+			}))
+		} else {
+			// IN with inline list: expr in (val1, val2, ...)
+			let mut values = Vec::new();
+			if !self.check(&TokenKind::RParen) {
+				loop {
+					values.push(self.parse_expr()?);
+					if !self.check(&TokenKind::Comma) {
+						break;
+					}
+					self.advance();
+				}
+			}
+			let end_token = self.expect(&TokenKind::RParen)?;
+			Ok(Some(ExprAst::InList {
+				expr: Box::new(left),
+				values,
+				negated,
+				span: start.merge(&end_token.span),
+			}))
+		}
+	}
+
 	/// Parse a unary expression.
 	fn parse_unary(&mut self) -> Result<ExprAst, ParseError> {
 		let token = self.current().clone();
 
 		match &token.kind {
 			TokenKind::Not => {
+				let start = token.span;
 				self.advance();
+
+				// Check for "not exists(...)" or "not in"
+				if self.check(&TokenKind::Exists) {
+					// not exists(pipeline)
+					self.advance();
+					self.expect(&TokenKind::LParen)?;
+					let pipeline = self.parse_pipeline()?;
+					let end_token = self.expect(&TokenKind::RParen)?;
+					return Ok(ExprAst::Subquery {
+						kind: SubqueryKind::NotExists,
+						pipeline: Box::new(pipeline),
+						span: start.merge(&end_token.span),
+					});
+				}
+
+				// Regular unary not
 				let operand = self.parse_unary()?;
-				let span = token.span.merge(&operand.span());
+				let span = start.merge(&operand.span());
 				Ok(ExprAst::UnaryOp {
 					op: UnaryOp::Not,
 					operand: Box::new(operand),
@@ -929,10 +1016,37 @@ impl Parser {
 			TokenKind::LParen => {
 				let start = token.span;
 				self.advance();
-				let inner = self.parse_expr()?;
+
+				// Check if this is a scalar subquery: (scan ... | ...)
+				if self.is_pipeline_start() {
+					let pipeline = self.parse_pipeline()?;
+					let end_token = self.expect(&TokenKind::RParen)?;
+					Ok(ExprAst::Subquery {
+						kind: SubqueryKind::Scalar,
+						pipeline: Box::new(pipeline),
+						span: start.merge(&end_token.span),
+					})
+				} else {
+					// Regular parenthesized expression
+					let inner = self.parse_expr()?;
+					let end_token = self.expect(&TokenKind::RParen)?;
+					Ok(ExprAst::Paren {
+						inner: Box::new(inner),
+						span: start.merge(&end_token.span),
+					})
+				}
+			}
+
+			TokenKind::Exists => {
+				// exists(pipeline)
+				let start = token.span;
+				self.advance();
+				self.expect(&TokenKind::LParen)?;
+				let pipeline = self.parse_pipeline()?;
 				let end_token = self.expect(&TokenKind::RParen)?;
-				Ok(ExprAst::Paren {
-					inner: Box::new(inner),
+				Ok(ExprAst::Subquery {
+					kind: SubqueryKind::Exists,
+					pipeline: Box::new(pipeline),
 					span: start.merge(&end_token.span),
 				})
 			}

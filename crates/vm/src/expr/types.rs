@@ -3,6 +3,17 @@
 
 use reifydb_type::Type;
 
+/// Subquery kind for compiled expressions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubqueryKind {
+	/// Scalar subquery: extracts a single value.
+	Scalar,
+	/// EXISTS: returns true if subquery has any rows.
+	Exists,
+	/// NOT EXISTS: returns true if subquery has no rows.
+	NotExists,
+}
+
 /// Compiled expression with column indices resolved.
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -32,6 +43,26 @@ pub enum Expr {
 	FieldAccess {
 		object: Box<Expr>,
 		field: String,
+	},
+
+	/// Subquery expression (scalar, exists, not exists)
+	Subquery {
+		index: u16,
+		kind: SubqueryKind,
+	},
+
+	/// IN with subquery: expr in (subquery)
+	InSubquery {
+		expr: Box<Expr>,
+		subquery_index: u16,
+		negated: bool,
+	},
+
+	/// IN with inline list: expr in (val1, val2, ...)
+	InList {
+		expr: Box<Expr>,
+		values: Vec<Expr>,
+		negated: bool,
 	},
 }
 

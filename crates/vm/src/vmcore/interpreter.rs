@@ -786,7 +786,11 @@ impl VmState {
 			}
 		}
 
-		EvalContext::with_variables(variables)
+		EvalContext {
+			variables,
+			subquery_executor: self.context.subquery_executor.clone(),
+			current_row_values: None,
+		}
 	}
 
 	/// Print a value to stdout (for console::log).

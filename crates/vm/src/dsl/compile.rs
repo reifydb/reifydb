@@ -324,6 +324,30 @@ impl<'a> DslCompiler<'a> {
 				feature: "field access requires bytecode VM".to_string(),
 				span: *span,
 			}),
+
+			ExprAst::Subquery {
+				span,
+				..
+			} => Err(CompileError::NotSupported {
+				feature: "subqueries require bytecode VM".to_string(),
+				span: *span,
+			}),
+
+			ExprAst::InList {
+				span,
+				..
+			} => Err(CompileError::NotSupported {
+				feature: "IN expressions require bytecode VM".to_string(),
+				span: *span,
+			}),
+
+			ExprAst::InSubquery {
+				span,
+				..
+			} => Err(CompileError::NotSupported {
+				feature: "IN subqueries require bytecode VM".to_string(),
+				span: *span,
+			}),
 		}
 	}
 }

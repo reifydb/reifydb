@@ -207,6 +207,31 @@ pub enum VmError {
 	CompileError {
 		message: String,
 	},
+
+	// ─────────────────────────────────────────────────────────────
+	// Subquery Errors
+	// ─────────────────────────────────────────────────────────────
+	#[error("subquery executor not available")]
+	SubqueryExecutorNotAvailable,
+
+	#[error("invalid subquery index: {index}")]
+	InvalidSubqueryIndex {
+		index: u16,
+	},
+
+	#[error("subquery returned no columns")]
+	SubqueryNoColumns,
+
+	#[error("subquery returned {got} columns, expected {expected}")]
+	SubqueryWrongColumnCount {
+		expected: usize,
+		got: usize,
+	},
+
+	#[error("scalar subquery returned {count} rows (expected 0 or 1)")]
+	ScalarSubqueryTooManyRows {
+		count: usize,
+	},
 }
 
 pub type Result<T> = std::result::Result<T, VmError>;

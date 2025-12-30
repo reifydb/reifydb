@@ -43,6 +43,9 @@ pub struct Program {
 	/// Extension specifications (name, expr_index pairs).
 	pub extension_specs: Vec<Vec<(String, u16)>>,
 
+	/// Subquery definitions for IN/EXISTS expressions.
+	pub subqueries: Vec<SubqueryDef>,
+
 	/// Entry point offset.
 	pub entry_point: usize,
 }
@@ -61,6 +64,7 @@ impl Program {
 			column_lists: Vec::new(),
 			sort_specs: Vec::new(),
 			extension_specs: Vec::new(),
+			subqueries: Vec::new(),
 			entry_point: 0,
 		}
 	}
@@ -144,6 +148,13 @@ impl Program {
 	pub fn find_function(&self, name: &str) -> Option<(u16, &FunctionDef)> {
 		self.functions.iter().enumerate().find(|(_, f)| f.name == name).map(|(i, f)| (i as u16, f))
 	}
+
+	/// Add a subquery and return its index.
+	pub fn add_subquery(&mut self, subquery: SubqueryDef) -> u16 {
+		let index = self.subqueries.len();
+		self.subqueries.push(subquery);
+		index as u16
+	}
 }
 
 impl Default for Program {
@@ -183,4 +194,23 @@ pub struct ParameterDef {
 
 	/// Optional type annotation.
 	pub param_type: Option<String>,
+}
+
+/// Definition of a subquery for IN/EXISTS expressions.
+#[derive(Debug, Clone)]
+pub struct SubqueryDef {
+	/// Source table name (for the scan stage).
+	pub source_name: String,
+
+	/// Filter expression index (if any).
+	pub filter_expr_index: Option<u16>,
+
+	/// Select column list index (if any).
+	pub select_list_index: Option<u16>,
+
+	/// Take limit (if any).
+	pub take_limit: Option<u64>,
+
+	/// Column references from outer query (for future correlated subquery support).
+	pub outer_refs: Vec<String>,
 }
