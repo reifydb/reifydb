@@ -32,7 +32,7 @@ use query::{
 use reifydb_builtin::{Functions, generator, math};
 use reifydb_catalog::vtable::{UserVTableRegistry, system::FlowOperatorStore};
 use reifydb_core::{
-	Frame,
+	Frame, LazyBatch,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
 	ioc::IocContainer,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
@@ -73,6 +73,17 @@ pub(crate) trait QueryNode {
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>>;
+
+	/// Get the next batch as a LazyBatch for deferred materialization
+	/// Returns None if this node doesn't support lazy evaluation or is exhausted
+	/// Default implementation returns None (falls back to materialized evaluation)
+	async fn next_lazy<'a>(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<LazyBatch>> {
+		Ok(None)
+	}
 
 	/// Get the headers of columns this node produces
 	fn headers(&self) -> Option<ColumnHeaders>;
@@ -140,6 +151,14 @@ impl QueryNode for Box<ExecutionPlan> {
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		(**self).next(rx, ctx).await
+	}
+
+	async fn next_lazy<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<LazyBatch>> {
+		(**self).next_lazy(rx, ctx).await
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -222,6 +241,19 @@ impl QueryNode for ExecutionPlan {
 			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx).await,
 			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx).await,
 			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx).await,
+		}
+	}
+
+	async fn next_lazy<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<LazyBatch>> {
+		match self {
+			// Only TableScan supports lazy evaluation for now
+			ExecutionPlan::TableScan(node) => node.next_lazy(rx, ctx).await,
+			// All other nodes return None (use default materialized path)
+			_ => Ok(None),
 		}
 	}
 

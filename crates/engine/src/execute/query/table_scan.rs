@@ -6,7 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	EncodedKey,
+	EncodedKey, LazyBatch, LazyColumnMeta,
 	interface::{DictionaryDef, EncodableKey, QueryTransaction, RowKey, RowKeyRange, resolved::ResolvedTable},
 	util::CowVec,
 	value::{
@@ -169,6 +169,66 @@ impl QueryNode for TableScanNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "query::scan::table::next_lazy")]
+	async fn next_lazy<'a>(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext,
+	) -> crate::Result<Option<LazyBatch>> {
+		debug_assert!(self.context.is_some(), "TableScanNode::next_lazy() called before initialize()");
+		let stored_ctx = self.context.as_ref().unwrap();
+
+		if self.exhausted {
+			return Ok(None);
+		}
+
+		let batch_size = stored_ctx.batch_size;
+
+		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
+
+		let multi_rows: Vec<_> = {
+			let _span = debug_span!("range_batch", batch_size);
+			let batch = rx.range_batch(range, batch_size).await?;
+			drop(_span);
+			batch.items.into_iter().take(batch_size as usize).collect()
+		};
+
+		let mut encoded_rows = Vec::with_capacity(multi_rows.len());
+		let mut row_numbers = Vec::with_capacity(multi_rows.len());
+
+		for multi in multi_rows.into_iter() {
+			if let Some(key) = RowKey::decode(&multi.key) {
+				encoded_rows.push(multi.values);
+				row_numbers.push(key.row);
+				self.last_key = Some(multi.key);
+			}
+		}
+
+		if encoded_rows.is_empty() {
+			self.exhausted = true;
+			return Ok(None);
+		}
+
+		// Build column metas
+		let column_metas: Vec<LazyColumnMeta> = self
+			.table
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| {
+				let output_type = col.constraint.get_type();
+				LazyColumnMeta {
+					name: Fragment::internal(&col.name),
+					storage_type: self.storage_types[idx],
+					output_type,
+					dictionary: self.dictionaries[idx].clone(),
+				}
+			})
+			.collect();
+
+		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, self.row_layout.clone(), column_metas)))
 	}
 }
 
