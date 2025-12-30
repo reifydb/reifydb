@@ -15,6 +15,7 @@ pub fn connection_error(message: String) -> Diagnostic {
 		help: Some("Check network connectivity and server status".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn engine_error(message: String) -> Diagnostic {
 		help: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,6 +47,7 @@ pub fn transport_error(err: impl std::fmt::Display) -> Diagnostic {
 		help: Some("Check network connectivity".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -60,5 +63,6 @@ pub fn status_error(err: impl std::fmt::Display) -> Diagnostic {
 		help: Some("Check gRPC service status".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

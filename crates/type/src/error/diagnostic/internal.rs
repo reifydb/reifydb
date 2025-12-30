@@ -64,6 +64,7 @@ pub fn internal_with_context(
 			format!("Error tracking ID: {}", error_id),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -94,6 +95,7 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 			"Operations submitted during shutdown will be rejected".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 

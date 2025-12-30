@@ -689,6 +689,7 @@ impl CdcConsume for TestConsumer {
 				help: None,
 				notes: vec![],
 				cause: None,
+				operator_chain: None,
 			}));
 		}
 

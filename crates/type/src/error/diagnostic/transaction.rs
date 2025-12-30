@@ -15,6 +15,7 @@ pub fn transaction_conflict() -> Diagnostic {
 		help: Some("Retry the transaction".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn transaction_rolled_back() -> Diagnostic {
 		help: Some("Start a new transaction".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,6 +47,7 @@ pub fn transaction_too_large() -> Diagnostic {
 		help: Some("Split the transaction into smaller batches".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -60,6 +63,7 @@ pub fn commit_failed(reason: String) -> Diagnostic {
 		help: Some("Check transaction state and retry if appropriate".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -75,6 +79,7 @@ pub fn transaction_already_committed() -> Diagnostic {
 		help: Some("Cannot use a transaction after it has been committed".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -90,6 +95,7 @@ pub fn transaction_already_rolled_back() -> Diagnostic {
 		help: Some("Cannot use a transaction after it has been rolled back".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -106,5 +112,6 @@ pub fn key_out_of_scope(key: String) -> Diagnostic {
 			.to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

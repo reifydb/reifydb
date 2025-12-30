@@ -12,6 +12,7 @@ pub fn array_conversion_error(err: std::array::TryFromSliceError) -> Diagnostic 
 		help: Some("Check array size requirements".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -27,6 +28,7 @@ pub fn utf8_conversion_error(err: std::string::FromUtf8Error) -> Diagnostic {
 		help: Some("Check string encoding".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -42,5 +44,6 @@ pub fn integer_conversion_error(err: std::num::TryFromIntError) -> Diagnostic {
 		help: Some("Check integer range limits".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

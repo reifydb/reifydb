@@ -72,6 +72,24 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 		}
 
+		// Render operator chain if present
+		if let Some(chain) = &diagnostic.operator_chain {
+			if !chain.is_empty() {
+				let _ = writeln!(output, "OPERATOR CHAIN");
+				for (i, entry) in chain.iter().enumerate() {
+					let _ = writeln!(
+						output,
+						"  {}. {} (node_id={}, version={})",
+						i + 1,
+						entry.operator_name,
+						entry.node_id,
+						entry.operator_version
+					);
+				}
+				let _ = writeln!(output);
+			}
+		}
+
 		if let Some(help) = &diagnostic.help {
 			let _ = writeln!(output, "HELP");
 			let _ = writeln!(output, "  {}", help);

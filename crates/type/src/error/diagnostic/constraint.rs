@@ -18,6 +18,7 @@ pub fn utf8_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> 
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -35,6 +36,7 @@ pub fn blob_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> 
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -52,6 +54,7 @@ pub fn int_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> D
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -69,6 +72,7 @@ pub fn uint_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> 
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -86,6 +90,7 @@ pub fn decimal_exceeds_precision(fragment: Fragment, actual: u8, max: u8) -> Dia
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -106,5 +111,6 @@ pub fn decimal_exceeds_scale(fragment: Fragment, actual: u8, max: u8) -> Diagnos
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

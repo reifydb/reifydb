@@ -20,6 +20,7 @@ pub fn invalid_hex_string(fragment: Fragment) -> Diagnostic {
 		help: Some("Hex strings should only contain 0-9, a-f, A-F characters".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -36,6 +37,7 @@ pub fn invalid_base64_string(fragment: Fragment) -> Diagnostic {
 		help: Some("Base64 strings should only contain A-Z, a-z, 0-9, +, / and = padding".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -52,6 +54,7 @@ pub fn invalid_base64url_string(fragment: Fragment) -> Diagnostic {
 		help: Some("Base64url strings should only contain A-Z, a-z, 0-9, -, _ characters".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -68,6 +71,7 @@ pub fn invalid_base58_string(fragment: Fragment) -> Diagnostic {
 		help: Some("Base58 strings should only contain 1-9, A-H, J-N, P-Z, a-k, m-z characters".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -84,5 +88,6 @@ pub fn invalid_utf8_sequence(error: Utf8Error) -> Diagnostic {
 			.to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

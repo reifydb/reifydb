@@ -16,6 +16,7 @@ pub fn invalid_boolean_format(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid: true, TRUE".to_string(), "valid: false, FALSE".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -31,6 +32,7 @@ pub fn empty_boolean_value(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid: true".to_string(), "valid: false".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -51,5 +53,6 @@ pub fn invalid_number_boolean(fragment: Fragment) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }

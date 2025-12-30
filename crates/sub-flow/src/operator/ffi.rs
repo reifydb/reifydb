@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use crate::{
 	Result,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::Operator,
+	operator::{Operator, info::OperatorInfo},
 	transaction::FlowTransaction,
 };
 
@@ -68,6 +68,18 @@ impl Drop for FFIOperator {
 		if !self.instance.is_null() {
 			(self.vtable.destroy)(self.instance);
 		}
+	}
+}
+
+impl OperatorInfo for FFIOperator {
+	fn operator_name(&self) -> &'static str {
+		// FFI operators have dynamic names, but OperatorInfo requires &'static str
+		// We use a static placeholder; the actual name is in the descriptor
+		"FFI"
+	}
+
+	fn operator_id(&self) -> FlowNodeId {
+		self.operator_id
 	}
 }
 

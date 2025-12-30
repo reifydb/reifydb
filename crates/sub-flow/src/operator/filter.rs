@@ -5,10 +5,12 @@ use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Params, RowNumber, Value, return_internal_error};
+use reifydb_type::{Params, RowNumber, Value, flow_operator_err};
 
 use crate::{
-	operator::{Operator, Operators},
+	impl_operator_info,
+	operator::{Operator, Operators, capture_operator_chain},
+	operator_context_guard,
 	transaction::FlowTransaction,
 };
 
@@ -22,6 +24,8 @@ pub struct FilterOperator {
 	conditions: Vec<Expression>,
 	column_evaluator: StandardColumnEvaluator,
 }
+
+impl_operator_info!(FilterOperator, "Filter");
 
 impl FilterOperator {
 	pub fn new(parent: Arc<Operators>, node: FlowNodeId, conditions: Vec<Expression>) -> Self {
@@ -64,7 +68,8 @@ impl FilterOperator {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => mask[row_idx] = false,
 						result => {
-							return_internal_error!(
+							return flow_operator_err!(
+								capture_operator_chain(),
 								"Filter condition did not evaluate to boolean, got: {:?}",
 								result
 							);
@@ -114,6 +119,7 @@ impl Operator for FilterOperator {
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
+		let _guard = operator_context_guard!(self);
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -185,6 +191,7 @@ impl Operator for FilterOperator {
 	}
 
 	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		let _guard = operator_context_guard!(self);
 		self.parent.pull(txn, rows).await
 	}
 }

@@ -14,6 +14,7 @@ pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnost
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -28,6 +29,7 @@ pub fn namespace_not_found(fragment: Fragment, namespace: &str) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -43,6 +45,7 @@ pub fn table_already_exists(fragment: Fragment, namespace: &str, table: &str) ->
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -58,6 +61,7 @@ pub fn flow_already_exists(fragment: Fragment, namespace: &str, flow: &str) -> D
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -72,6 +76,7 @@ pub fn flow_not_found(fragment: Fragment, namespace: &str, flow: &str) -> Diagno
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -87,6 +92,7 @@ pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> D
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -101,20 +107,26 @@ pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diag
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
 pub fn ringbuffer_already_exists(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
 	Diagnostic {
-        code: "CA_005".to_string(),
-        statement: None,
-        message: format!("ring buffer `{}.{}` already exists", namespace, ringbuffer),
-        fragment,
-        label: Some("duplicate ring buffer definition".to_string()),
-        help: Some("choose a different name, drop the existing ring buffer or create ring buffer in a different namespace".to_string()),
-        column: None,
-        notes: vec![],
-        cause: None}
+		code: "CA_005".to_string(),
+		statement: None,
+		message: format!("ring buffer `{}.{}` already exists", namespace, ringbuffer),
+		fragment,
+		label: Some("duplicate ring buffer definition".to_string()),
+		help: Some(
+			"choose a different name, drop the existing ring buffer or create ring buffer in a different namespace"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &str) -> Diagnostic {
@@ -128,6 +140,7 @@ pub fn ringbuffer_not_found(fragment: Fragment, namespace: &str, ringbuffer: &st
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -142,6 +155,7 @@ pub fn dictionary_already_exists(fragment: Fragment, namespace: &str, dictionary
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -156,6 +170,7 @@ pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &st
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -182,6 +197,7 @@ pub fn dictionary_type_mismatch(
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -196,6 +212,7 @@ pub fn table_column_already_exists(fragment: Fragment, namespace: &str, table: &
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -210,6 +227,7 @@ pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagno
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -224,6 +242,7 @@ pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &st
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -241,6 +260,7 @@ pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: crate::
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -255,6 +275,7 @@ pub fn table_column_policy_already_exists(policy: &str, column: &str) -> Diagnos
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -269,6 +290,7 @@ pub fn index_variable_length_not_supported() -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -286,6 +308,7 @@ pub fn index_types_directions_mismatch(types_len: usize, directions_len: usize) 
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -305,6 +328,7 @@ pub fn namespace_already_pending_in_transaction(namespace_name: Fragment) -> Dia
 			"Consider reviewing the transaction logic for duplicate operations".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -326,6 +350,7 @@ pub fn table_already_pending_in_transaction(namespace_name: Fragment, table_name
 			"Consider reviewing the transaction logic for duplicate operations".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -347,6 +372,7 @@ pub fn view_already_pending_in_transaction(namespace_name: Fragment, view_name: 
 			"Consider reviewing the transaction logic for duplicate operations".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -363,6 +389,7 @@ pub fn cannot_update_deleted_namespace(namespace_name: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec!["A namespace marked for deletion cannot be updated in the same transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -384,6 +411,7 @@ pub fn cannot_update_deleted_table(namespace_name: Fragment, table_name: Fragmen
 		column: None,
 		notes: vec!["A table marked for deletion cannot be updated in the same transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -405,6 +433,7 @@ pub fn cannot_update_deleted_view(namespace_name: Fragment, view_name: Fragment)
 		column: None,
 		notes: vec!["A view marked for deletion cannot be updated in the same transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -421,6 +450,7 @@ pub fn cannot_delete_already_deleted_namespace(namespace_name: Fragment) -> Diag
 		column: None,
 		notes: vec!["A namespace can only be deleted once per transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -439,6 +469,7 @@ pub fn cannot_delete_already_deleted_table(namespace_name: Fragment, table_name:
 		column: None,
 		notes: vec!["A table can only be deleted once per transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -457,6 +488,7 @@ pub fn cannot_delete_already_deleted_view(namespace_name: Fragment, view_name: F
 		column: None,
 		notes: vec!["A view can only be deleted once per transaction".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -471,6 +503,7 @@ pub fn primary_key_empty(fragment: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -485,6 +518,7 @@ pub fn primary_key_column_not_found(fragment: Fragment, column_id: u64) -> Diagn
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -499,6 +533,7 @@ pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -513,5 +548,6 @@ pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

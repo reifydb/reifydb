@@ -14,6 +14,7 @@ pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -32,6 +33,7 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 			"Consider using MAP if you want to replace existing columns".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -52,5 +54,6 @@ pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagn
 				.to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }

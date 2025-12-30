@@ -15,6 +15,7 @@ pub fn serde_deserialize_error(msg: String) -> Diagnostic {
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn serde_serialize_error(msg: String) -> Diagnostic {
 		help: Some("Check data format and structure".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,5 +47,6 @@ pub fn serde_keycode_error(msg: String) -> Diagnostic {
 		help: Some("Check keycode data and format".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

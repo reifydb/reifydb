@@ -27,6 +27,7 @@ pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -58,5 +59,6 @@ pub fn unique_index_violation(
 		)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

@@ -1307,6 +1307,7 @@ impl ExpressionCompiler {
 							help: Some("Use an identifier or string literal for the alias name".to_string()),
 							notes: vec![],
 							cause: None,
+							operator_chain: None,
 						});
 					}
 				}

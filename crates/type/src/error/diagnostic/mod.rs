@@ -19,6 +19,7 @@ pub mod flow;
 pub mod function;
 pub mod index;
 pub mod internal;
+pub use flow::flow_operator_error;
 pub use internal::{internal, internal_with_context, shutdown};
 
 use crate::{Fragment, Type};
@@ -38,6 +39,14 @@ pub mod transaction;
 mod util;
 pub mod uuid;
 
+/// Entry in the operator call chain for flow operator errors
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OperatorChainEntry {
+	pub node_id: u64,
+	pub operator_name: String,
+	pub operator_version: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
@@ -49,6 +58,8 @@ pub struct Diagnostic {
 	pub help: Option<String>,
 	pub notes: Vec<String>,
 	pub cause: Option<Box<Diagnostic>>,
+	/// Operator call chain when error occurred (for flow operator errors)
+	pub operator_chain: Option<Vec<OperatorChainEntry>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,6 +80,7 @@ impl Default for Diagnostic {
 			help: None,
 			notes: Vec::new(),
 			cause: None,
+			operator_chain: None,
 		}
 	}
 }

@@ -19,6 +19,7 @@ pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 			"Valid examples: TAKE 10, TAKE 0, TAKE 100".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -37,7 +38,9 @@ pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 			"Use curly braces for multiple aggregations: AGGREGATE { expr1, expr2 } BY ...".to_string(),
 			"For global aggregations without grouping, use: AGGREGATE count(*) BY {}".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple aggregate map expressions without braces error
@@ -55,7 +58,9 @@ pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 			"Single aggregation expressions can be written without braces: AGGREGATE count(id) BY category".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple aggregate by expressions without braces error
@@ -73,7 +78,9 @@ pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 			"Single grouping columns can be written without braces: AGGREGATE ... BY category".to_string(),
 			"For global aggregations without grouping, use empty braces: AGGREGATE ... BY {}".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple SELECT expressions without braces error
@@ -91,7 +98,9 @@ pub fn select_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 			"Single expressions can be written without braces: SELECT name FROM users".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple DISTINCT columns without braces error
@@ -110,7 +119,9 @@ pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnosti
 			"No arguments means distinct on all columns: DISTINCT FROM events".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple MAP expressions without braces error
@@ -133,6 +144,7 @@ pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -151,7 +163,9 @@ pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 			"Single expressions can be written without braces: EXTEND total: price * quantity".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None}
+		cause: None,
+		operator_chain: None,
+	}
 }
 
 /// Multiple APPLY arguments without braces error
@@ -171,6 +185,7 @@ pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic
 			"No arguments should use empty braces: APPLY counter {}".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -190,6 +205,7 @@ pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 			"Example: WINDOW WITH { interval: \"10m\", slide: \"2m\" } creates 10-minute windows that advance every 2 minutes".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -214,6 +230,7 @@ pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_va
 			"Example: For 10-minute windows, use slide values like \"2m\", \"5m\", or \"1m\"".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -237,6 +254,7 @@ pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, s
 			"Example count window: WINDOW WITH { count: 100, slide: 20 }".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -259,6 +277,7 @@ pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 			"For overlapping windows, use sliding windows with both size and slide parameters".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -280,6 +299,7 @@ pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, si
 			"Example count window: WINDOW WITH { count: 1000 }".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -302,5 +322,6 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 			"Additional parameters like 'slide' can be added for sliding windows".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
