@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use futures_util::StreamExt;
 use reifydb_core::value::column::{Column, Columns};
 use reifydb_type::Fragment;
+use tokio_stream::StreamExt as TokioStreamExt;
 
 use crate::{
 	expr::{CompiledExpr, EvalContext},
@@ -54,8 +54,11 @@ impl ProjectOp {
 		let keep_input = self.keep_input;
 		let eval_ctx = self.eval_ctx.clone();
 
-		Box::pin(input.map(move |result| {
-			result.and_then(|batch| {
+		Box::pin(TokioStreamExt::then(input, move |result| {
+			let extensions = extensions.clone();
+			let eval_ctx = eval_ctx.clone();
+			async move {
+				let batch = result?;
 				let mut new_columns: Vec<Column> = Vec::new();
 
 				if keep_input {
@@ -65,14 +68,14 @@ impl ProjectOp {
 
 				// Add computed columns
 				for (name, compiled_expr) in &extensions {
-					let col = compiled_expr.eval(&batch, &eval_ctx)?;
+					let col = compiled_expr.eval(&batch, &eval_ctx).await?;
 					// Set the column name
 					let col = Column::new(Fragment::internal(name), col.data().clone());
 					new_columns.push(col);
 				}
 
 				Ok(Columns::with_row_numbers(new_columns, batch.row_numbers.to_vec()))
-			})
+			}
 		}))
 	}
 }

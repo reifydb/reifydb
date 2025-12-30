@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::{BitVec, Fragment, Type, Value};
 
@@ -16,9 +17,10 @@ use crate::{
 };
 
 /// Trait for executing subqueries during expression evaluation.
+#[async_trait]
 pub trait SubqueryExecutor: Send + Sync {
 	/// Execute a subquery by its index and return the result columns.
-	fn execute(&self, index: u16, ctx: &EvalContext) -> Result<Columns>;
+	async fn execute(&self, index: u16, ctx: &EvalContext) -> Result<Columns>;
 
 	/// Check if a subquery is correlated (references outer columns).
 	fn is_correlated(&self, index: u16) -> Result<bool>;

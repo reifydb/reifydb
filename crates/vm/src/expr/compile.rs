@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Compilation of Expr AST to CompiledExpr closures.
+//! Compilation of Expr AST to CompiledExpr async closures.
 //!
 //! This module converts the Expr enum (an AST) into nested closures that
-//! can be executed directly without enum dispatch.
+//! return futures and can be executed directly without enum dispatch.
+//! The async design supports subquery execution within expressions.
 
 use reifydb_core::value::column::{Column, ColumnData};
 use reifydb_type::{BitVec, Fragment, Type, Value};
@@ -64,17 +65,25 @@ fn compile_call(function_name: String, arguments: Vec<Expr>) -> CompiledExpr {
 	let compiled_args: Vec<CompiledExpr> = arguments.into_iter().map(compile_expr).collect();
 
 	CompiledExpr::new(move |columns, ctx| {
-		// Evaluate all argument expressions to columns
-		let arg_columns: Vec<Column> =
-			compiled_args.iter().map(|arg| arg.eval(columns, ctx)).collect::<Result<Vec<_>>>()?;
+		let compiled_args = compiled_args.clone();
+		let function_name = function_name.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			// Evaluate all argument expressions to columns
+			let mut arg_columns: Vec<Column> = Vec::with_capacity(compiled_args.len());
+			for arg in &compiled_args {
+				arg_columns.push(arg.eval(&columns, &ctx).await?);
+			}
 
-		let row_count = columns.row_count();
-		let args = reifydb_core::value::column::Columns::new(arg_columns);
+			let row_count = columns.row_count();
+			let args = reifydb_core::value::column::Columns::new(arg_columns);
 
-		// Call function with columnar args
-		let result_data = ctx.call_function(&function_name, &args, row_count)?;
+			// Call function with columnar args
+			let result_data = ctx.call_function(&function_name, &args, row_count)?;
 
-		Ok(Column::new(Fragment::internal("_call"), result_data))
+			Ok(Column::new(Fragment::internal("_call"), result_data))
+		})
 	})
 }
 
@@ -85,8 +94,13 @@ fn compile_call(function_name: String, arguments: Vec<Expr>) -> CompiledExpr {
 pub fn compile_filter(expr: Expr) -> CompiledFilter {
 	let compiled = compile_expr(expr);
 	CompiledFilter::new(move |columns, ctx| {
-		let column = compiled.eval(columns, ctx)?;
-		column_to_mask(&column)
+		let compiled = compiled.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			let column = compiled.eval(&columns, &ctx).await?;
+			column_to_mask(&column)
+		})
 	})
 }
 
@@ -99,53 +113,67 @@ fn compile_column_ref(col_ref: ColumnRef) -> CompiledExpr {
 	let index = col_ref.index;
 
 	CompiledExpr::new(move |columns, ctx| {
-		// Try name-based lookup first
-		if !name.is_empty() {
-			if let Some(col) = columns.iter().find(|c| c.name().text() == name) {
-				return Ok(col.clone());
-			}
-
-			// Check outer row values for correlated subqueries
-			if let Some(outer_values) = &ctx.current_row_values {
-				if let Some(value) = outer_values.get(&name) {
-					return broadcast_value(value, columns.row_count());
+		let name = name.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			// Try name-based lookup first
+			if !name.is_empty() {
+				if let Some(col) = columns.iter().find(|c| c.name().text() == name) {
+					return Ok(col.clone());
 				}
+
+				// Check outer row values for correlated subqueries
+				if let Some(outer_values) = &ctx.current_row_values {
+					if let Some(value) = outer_values.get(&name) {
+						return broadcast_value(value, columns.row_count());
+					}
+				}
+
+				return Err(VmError::ColumnNotFound {
+					name: name.clone(),
+				});
 			}
 
-			return Err(VmError::ColumnNotFound {
-				name: name.clone(),
-			});
-		}
-
-		// Fall back to index
-		if index >= columns.len() {
-			return Err(VmError::ColumnIndexOutOfBounds {
-				index,
-				count: columns.len(),
-			});
-		}
-		Ok(columns[index].clone())
+			// Fall back to index
+			if index >= columns.len() {
+				return Err(VmError::ColumnIndexOutOfBounds {
+					index,
+					count: columns.len(),
+				});
+			}
+			Ok(columns[index].clone())
+		})
 	})
 }
 
 fn compile_literal(lit: Literal) -> CompiledExpr {
-	CompiledExpr::new(move |columns, _ctx| broadcast_literal(&lit, columns.row_count()))
+	CompiledExpr::new(move |columns, _ctx| {
+		let lit = lit.clone();
+		let row_count = columns.row_count();
+		Box::pin(async move { broadcast_literal(&lit, row_count) })
+	})
 }
 
 fn compile_var_ref(name: String) -> CompiledExpr {
 	CompiledExpr::new(move |columns, ctx| {
-		let value = ctx.get_var(&name).ok_or_else(|| VmError::UndefinedVariable {
-			name: name.clone(),
-		})?;
+		let name = name.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			let value = ctx.get_var(&name).ok_or_else(|| VmError::UndefinedVariable {
+				name: name.clone(),
+			})?;
 
-		match value {
-			EvalValue::Scalar(v) => broadcast_value(v, columns.row_count()),
-			EvalValue::Record(_) => Err(VmError::TypeMismatch {
-				expected: Type::Int8,
-				found: Type::Undefined,
-				context: format!("variable '{}' is a record, not a scalar", name).into(),
-			}),
-		}
+			match value {
+				EvalValue::Scalar(v) => broadcast_value(v, columns.row_count()),
+				EvalValue::Record(_) => Err(VmError::TypeMismatch {
+					expected: Type::Int8,
+					found: Type::Undefined,
+					context: format!("variable '{}' is a record, not a scalar", name).into(),
+				}),
+			}
+		})
 	})
 }
 
@@ -153,36 +181,46 @@ fn compile_field_access(object: Expr, field: String) -> CompiledExpr {
 	// Optimize the common case: VarRef.field
 	if let Expr::VarRef(var_name) = object {
 		CompiledExpr::new(move |columns, ctx| {
-			let value = ctx.get_var(&var_name).ok_or_else(|| VmError::UndefinedVariable {
-				name: var_name.clone(),
-			})?;
+			let var_name = var_name.clone();
+			let field = field.clone();
+			let columns = columns.clone();
+			let ctx = ctx.clone();
+			Box::pin(async move {
+				let value = ctx.get_var(&var_name).ok_or_else(|| VmError::UndefinedVariable {
+					name: var_name.clone(),
+				})?;
 
-			match value {
-				EvalValue::Record(record) => {
-					let field_value = record.get(&field).ok_or_else(|| VmError::FieldNotFound {
-						field: field.clone(),
-						record: var_name.clone(),
-					})?;
-					broadcast_value(field_value, columns.row_count())
+				match value {
+					EvalValue::Record(record) => {
+						let field_value =
+							record.get(&field).ok_or_else(|| VmError::FieldNotFound {
+								field: field.clone(),
+								record: var_name.clone(),
+							})?;
+						broadcast_value(field_value, columns.row_count())
+					}
+					EvalValue::Scalar(_) => Err(VmError::TypeMismatch {
+						expected: Type::Undefined,
+						found: Type::Int8,
+						context: format!(
+							"cannot access field '{}' on scalar variable '{}'",
+							field, var_name
+						)
+						.into(),
+					}),
 				}
-				EvalValue::Scalar(_) => Err(VmError::TypeMismatch {
-					expected: Type::Undefined,
-					found: Type::Int8,
-					context: format!(
-						"cannot access field '{}' on scalar variable '{}'",
-						field, var_name
-					)
-					.into(),
-				}),
-			}
+			})
 		})
 	} else {
 		// General case: compile object expression, then access field
 		// For now, only VarRef is supported as the object
 		let _obj_fn = compile_expr(object);
 		CompiledExpr::new(move |_columns, _ctx| {
-			Err(VmError::UnsupportedOperation {
-				operation: format!("field access '{}' on non-variable expression", field),
+			let field = field.clone();
+			Box::pin(async move {
+				Err(VmError::UnsupportedOperation {
+					operation: format!("field access '{}' on non-variable expression", field),
+				})
 			})
 		})
 	}
@@ -190,105 +228,110 @@ fn compile_field_access(object: Expr, field: String) -> CompiledExpr {
 
 fn compile_subquery(index: u16, kind: SubqueryKind) -> CompiledExpr {
 	CompiledExpr::new(move |columns, ctx| {
-		// Execute subquery using the executor from context
-		let executor = ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			// Execute subquery using the executor from context
+			let executor =
+				ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
 
-		// Check if this is a correlated subquery
-		let is_correlated = executor.is_correlated(index)?;
+			// Check if this is a correlated subquery
+			let is_correlated = executor.is_correlated(index)?;
 
-		if is_correlated {
-			// Correlated subquery - must execute per-row
-			let row_count = columns.row_count();
-			let mut results = Vec::with_capacity(row_count);
+			if is_correlated {
+				// Correlated subquery - must execute per-row
+				let row_count = columns.row_count();
+				let mut results = Vec::with_capacity(row_count);
 
-			for row_idx in 0..row_count {
-				// Build outer row values for this row
-				let mut outer_values = std::collections::HashMap::new();
-				for col in columns.iter() {
-					let value = col.data().get_value(row_idx);
-					outer_values.insert(col.name().text().to_string(), value);
+				for row_idx in 0..row_count {
+					// Build outer row values for this row
+					let mut outer_values = std::collections::HashMap::new();
+					for col in columns.iter() {
+						let value = col.data().get_value(row_idx);
+						outer_values.insert(col.name().text().to_string(), value);
+					}
+
+					// Create context with outer row values
+					let row_ctx = ctx.with_outer_row(outer_values);
+					let result = executor.execute(index, &row_ctx).await?;
+
+					match kind {
+						SubqueryKind::Scalar => {
+							// Handle empty result first - if no rows, value is undefined
+							let value = if result.row_count() == 0 || result.is_empty() {
+								Value::Undefined
+							} else {
+								result[0].data().get_value(0)
+							};
+							results.push(value);
+						}
+						SubqueryKind::Exists => {
+							results.push(Value::Boolean(result.row_count() > 0));
+						}
+						SubqueryKind::NotExists => {
+							results.push(Value::Boolean(result.row_count() == 0));
+						}
+					}
 				}
 
-				// Create context with outer row values
-				let row_ctx = ctx.with_outer_row(outer_values);
-				let result = executor.execute(index, &row_ctx)?;
+				// Build result column from collected values
+				match kind {
+					SubqueryKind::Scalar => {
+						// Determine type from first non-undefined value
+						values_to_column("_scalar", results)
+					}
+					SubqueryKind::Exists | SubqueryKind::NotExists => {
+						let bools: Vec<bool> = results
+							.into_iter()
+							.map(|v| matches!(v, Value::Boolean(true)))
+							.collect();
+						Ok(Column::new(
+							Fragment::internal(if matches!(kind, SubqueryKind::Exists) {
+								"_exists"
+							} else {
+								"_not_exists"
+							}),
+							ColumnData::bool(bools),
+						))
+					}
+				}
+			} else {
+				// Uncorrelated subquery - execute once and broadcast
+				let result = executor.execute(index, &ctx).await?;
 
 				match kind {
 					SubqueryKind::Scalar => {
-						// Handle empty result first - if no rows, value is undefined
-						let value = if result.row_count() == 0 || result.is_empty() {
-							Value::Undefined
-						} else {
-							result[0].data().get_value(0)
-						};
-						results.push(value);
+						// Handle empty result - if no rows or no columns, return NULL
+						if result.row_count() == 0 || result.is_empty() {
+							return Ok(Column::new(
+								Fragment::internal("_scalar"),
+								ColumnData::undefined(columns.row_count()),
+							));
+						}
+						// Get first value and broadcast
+						let col = &result[0];
+						let value = col.data().get_value(0);
+						broadcast_value(&value, columns.row_count())
 					}
 					SubqueryKind::Exists => {
-						results.push(Value::Boolean(result.row_count() > 0));
+						// Return true if subquery has any rows
+						let exists = result.row_count() > 0;
+						Ok(Column::new(
+							Fragment::internal("_exists"),
+							ColumnData::bool(vec![exists; columns.row_count()]),
+						))
 					}
 					SubqueryKind::NotExists => {
-						results.push(Value::Boolean(result.row_count() == 0));
+						// Return true if subquery has no rows
+						let not_exists = result.row_count() == 0;
+						Ok(Column::new(
+							Fragment::internal("_not_exists"),
+							ColumnData::bool(vec![not_exists; columns.row_count()]),
+						))
 					}
 				}
 			}
-
-			// Build result column from collected values
-			match kind {
-				SubqueryKind::Scalar => {
-					// Determine type from first non-undefined value
-					values_to_column("_scalar", results)
-				}
-				SubqueryKind::Exists | SubqueryKind::NotExists => {
-					let bools: Vec<bool> = results
-						.into_iter()
-						.map(|v| matches!(v, Value::Boolean(true)))
-						.collect();
-					Ok(Column::new(
-						Fragment::internal(if matches!(kind, SubqueryKind::Exists) {
-							"_exists"
-						} else {
-							"_not_exists"
-						}),
-						ColumnData::bool(bools),
-					))
-				}
-			}
-		} else {
-			// Uncorrelated subquery - execute once and broadcast
-			let result = executor.execute(index, ctx)?;
-
-			match kind {
-				SubqueryKind::Scalar => {
-					// Handle empty result - if no rows or no columns, return NULL
-					if result.row_count() == 0 || result.is_empty() {
-						return Ok(Column::new(
-							Fragment::internal("_scalar"),
-							ColumnData::undefined(columns.row_count()),
-						));
-					}
-					// Get first value and broadcast
-					let col = &result[0];
-					let value = col.data().get_value(0);
-					broadcast_value(&value, columns.row_count())
-				}
-				SubqueryKind::Exists => {
-					// Return true if subquery has any rows
-					let exists = result.row_count() > 0;
-					Ok(Column::new(
-						Fragment::internal("_exists"),
-						ColumnData::bool(vec![exists; columns.row_count()]),
-					))
-				}
-				SubqueryKind::NotExists => {
-					// Return true if subquery has no rows
-					let not_exists = result.row_count() == 0;
-					Ok(Column::new(
-						Fragment::internal("_not_exists"),
-						ColumnData::bool(vec![not_exists; columns.row_count()]),
-					))
-				}
-			}
-		}
+		})
 	})
 }
 
@@ -296,19 +339,25 @@ fn compile_in_subquery(expr: Expr, subquery_index: u16, negated: bool) -> Compil
 	let expr_fn = compile_expr(expr);
 
 	CompiledExpr::new(move |columns, ctx| {
-		// Evaluate left expression
-		let left_col = expr_fn.eval(columns, ctx)?;
+		let expr_fn = expr_fn.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			// Evaluate left expression
+			let left_col = expr_fn.eval(&columns, &ctx).await?;
 
-		// Execute subquery
-		let executor = ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
+			// Execute subquery
+			let executor =
+				ctx.subquery_executor.as_ref().ok_or_else(|| VmError::SubqueryExecutorNotAvailable)?;
 
-		let result = executor.execute(subquery_index, ctx)?;
+			let result = executor.execute(subquery_index, &ctx).await?;
 
-		// Build membership set from first column of result
-		let set = build_membership_set(&result)?;
+			// Build membership set from first column of result
+			let set = build_membership_set(&result)?;
 
-		// Check membership for each value in left column
-		check_membership(&left_col, &set, negated)
+			// Check membership for each value in left column
+			check_membership(&left_col, &set, negated)
+		})
 	})
 }
 
@@ -317,22 +366,28 @@ fn compile_in_list(expr: Expr, values: Vec<Expr>, negated: bool) -> CompiledExpr
 	let value_fns: Vec<_> = values.into_iter().map(compile_expr).collect();
 
 	CompiledExpr::new(move |columns, ctx| {
-		// Evaluate left expression
-		let left_col = expr_fn.eval(columns, ctx)?;
+		let expr_fn = expr_fn.clone();
+		let value_fns = value_fns.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			// Evaluate left expression
+			let left_col = expr_fn.eval(&columns, &ctx).await?;
 
-		// Build membership set from evaluated values
-		let mut set = std::collections::HashSet::new();
-		for vfn in &value_fns {
-			let val_col = vfn.eval(columns, ctx)?;
-			// Add first value (assumed to be a scalar broadcast)
-			if val_col.data().len() > 0 {
-				let value = val_col.data().get_value(0);
-				set.insert(HashableValue(value));
+			// Build membership set from evaluated values
+			let mut set = std::collections::HashSet::new();
+			for vfn in &value_fns {
+				let val_col = vfn.eval(&columns, &ctx).await?;
+				// Add first value (assumed to be a scalar broadcast)
+				if val_col.data().len() > 0 {
+					let value = val_col.data().get_value(0);
+					set.insert(HashableValue(value));
+				}
 			}
-		}
 
-		// Check membership
-		check_membership_set(&left_col, &set, negated)
+			// Check membership
+			check_membership_set(&left_col, &set, negated)
+		})
 	})
 }
 
@@ -440,9 +495,15 @@ fn compile_binary(op: BinaryOp, left: Expr, right: Expr) -> CompiledExpr {
 	let right_fn = compile_expr(right);
 
 	CompiledExpr::new(move |columns, ctx| {
-		let left_col = left_fn.eval(columns, ctx)?;
-		let right_col = right_fn.eval(columns, ctx)?;
-		eval_binary(op, &left_col, &right_col)
+		let left_fn = left_fn.clone();
+		let right_fn = right_fn.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			let left_col = left_fn.eval(&columns, &ctx).await?;
+			let right_col = right_fn.eval(&columns, &ctx).await?;
+			eval_binary(op, &left_col, &right_col)
+		})
 	})
 }
 
@@ -450,8 +511,13 @@ fn compile_unary(op: UnaryOp, operand: Expr) -> CompiledExpr {
 	let operand_fn = compile_expr(operand);
 
 	CompiledExpr::new(move |columns, ctx| {
-		let col = operand_fn.eval(columns, ctx)?;
-		eval_unary(op, &col)
+		let operand_fn = operand_fn.clone();
+		let columns = columns.clone();
+		let ctx = ctx.clone();
+		Box::pin(async move {
+			let col = operand_fn.eval(&columns, &ctx).await?;
+			eval_unary(op, &col)
+		})
 	})
 }
 
@@ -1150,8 +1216,8 @@ mod tests {
 	use super::*;
 	use crate::expr::{EvalContext, EvalValue};
 
-	#[test]
-	fn test_compile_column_ref() {
+	#[tokio::test]
+	async fn test_compile_column_ref() {
 		let expr = Expr::ColumnRef(ColumnRef {
 			name: "age".to_string(),
 			index: 0,
@@ -1161,7 +1227,7 @@ mod tests {
 		let columns =
 			Columns::new(vec![Column::new(Fragment::from("age"), ColumnData::int8(vec![25, 30, 35]))]);
 
-		let result = compiled.eval(&columns, &EvalContext::new()).unwrap();
+		let result = compiled.eval(&columns, &EvalContext::new()).await.unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);
@@ -1171,14 +1237,14 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_compile_literal() {
+	#[tokio::test]
+	async fn test_compile_literal() {
 		let expr = Expr::Literal(Literal::Int8(42));
 		let compiled = compile_expr(expr);
 
 		let columns = Columns::new(vec![Column::new(Fragment::from("x"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let result = compiled.eval(&columns, &EvalContext::new()).unwrap();
+		let result = compiled.eval(&columns, &EvalContext::new()).await.unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);
@@ -1190,8 +1256,8 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_compile_binary_gt() {
+	#[tokio::test]
+	async fn test_compile_binary_gt() {
 		// age > 30
 		let expr = Expr::BinaryOp {
 			op: BinaryOp::Gt,
@@ -1206,7 +1272,7 @@ mod tests {
 		let columns =
 			Columns::new(vec![Column::new(Fragment::from("age"), ColumnData::int8(vec![25, 30, 35]))]);
 
-		let mask = compiled.eval(&columns, &EvalContext::new()).unwrap();
+		let mask = compiled.eval(&columns, &EvalContext::new()).await.unwrap();
 		assert_eq!(mask.len(), 3);
 		let bits: Vec<bool> = mask.iter().collect();
 		assert!(!bits[0]); // 25 > 30 = false
@@ -1214,8 +1280,8 @@ mod tests {
 		assert!(bits[2]); // 35 > 30 = true
 	}
 
-	#[test]
-	fn test_compile_var_ref() {
+	#[tokio::test]
+	async fn test_compile_var_ref() {
 		use std::collections::HashMap;
 
 		use reifydb_type::Value;
@@ -1229,7 +1295,7 @@ mod tests {
 
 		let columns = Columns::new(vec![Column::new(Fragment::from("y"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let result = compiled.eval(&columns, &ctx).unwrap();
+		let result = compiled.eval(&columns, &ctx).await.unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);

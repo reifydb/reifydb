@@ -8,6 +8,7 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
+use async_trait::async_trait;
 use reifydb_core::value::column::Columns;
 
 use super::{EvalContext, SubqueryExecutor};
@@ -41,8 +42,9 @@ impl RuntimeSubqueryExecutor {
 	}
 }
 
+#[async_trait]
 impl SubqueryExecutor for RuntimeSubqueryExecutor {
-	fn execute(&self, index: u16, ctx: &EvalContext) -> Result<Columns> {
+	async fn execute(&self, index: u16, ctx: &EvalContext) -> Result<Columns> {
 		// Get subquery definition
 		let subquery_def =
 			self.program.subqueries.get(index as usize).ok_or(VmError::InvalidSubqueryIndex {
@@ -97,8 +99,8 @@ impl SubqueryExecutor for RuntimeSubqueryExecutor {
 			pipeline_stream = TakeOp::new(limit as usize).apply(pipeline_stream);
 		}
 
-		// Execute pipeline (blocking - bridge async to sync)
-		let result = futures_executor::block_on(pipeline::collect(pipeline_stream))?;
+		// Execute pipeline - now fully async!
+		let result = pipeline::collect(pipeline_stream).await?;
 
 		// Cache result (for uncorrelated only)
 		if !is_correlated {

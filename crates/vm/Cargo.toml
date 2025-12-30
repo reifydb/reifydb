@@ -18,12 +18,11 @@ reifydb-engine = { path = "../engine" }
 reifydb-catalog = { path = "../catalog" }
 
 async-trait.workspace = true
-futures-executor = "0.3"
 futures-util.workspace = true
-pin-project = "1.0"
+tokio-stream.workspace = true
 thiserror = "2.0"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true }
 reifydb-store-transaction = { path = "../store-transaction" }
 reifydb-transaction = { path = "../transaction" }

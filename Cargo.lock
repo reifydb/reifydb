@@ -2220,9 +2220,7 @@ name = "reifydb-vm"
 version = "0.2.0"
 dependencies = [
  "async-trait",
- "futures-executor",
  "futures-util",
- "pin-project",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -2231,6 +2229,7 @@ dependencies = [
  "reifydb-type",
  "thiserror",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

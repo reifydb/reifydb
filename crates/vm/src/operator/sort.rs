@@ -1,14 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	cmp::Ordering,
-	pin::Pin,
-	task::{Context, Poll},
-};
+use std::cmp::Ordering;
 
-use futures_util::Stream;
-use pin_project::pin_project;
+use futures_util::{StreamExt, stream::unfold};
 use reifydb_core::value::column::{ColumnData, Columns};
 
 use crate::{
@@ -44,75 +39,33 @@ impl SortOp {
 	}
 
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
-		Box::pin(SortStream {
-			input,
-			specs: self.specs.clone(),
-			collected: None,
-			done: false,
-		})
-	}
-}
+		let specs = self.specs.clone();
 
-#[pin_project]
-struct SortStream {
-	#[pin]
-	input: Pipeline,
-	specs: Vec<SortSpec>,
-	collected: Option<Columns>,
-	done: bool,
-}
+		// State: Some((input, specs)) while collecting, None after emitting
+		Box::pin(unfold(Some((input, specs)), |state| async move {
+			let (mut input, specs) = state?;
 
-impl Stream for SortStream {
-	type Item = Result<Columns>;
+			// Collect all input batches
+			let mut collected: Option<Columns> = None;
 
-	fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-		let mut this = self.project();
-
-		// If we've already produced output, we're done
-		if *this.done {
-			return Poll::Ready(None);
-		}
-
-		// Collect all input first
-		loop {
-			match this.input.as_mut().poll_next(cx) {
-				Poll::Pending => return Poll::Pending,
-				Poll::Ready(None) => {
-					// Input exhausted, sort and return
-					*this.done = true;
-
-					if let Some(data) = this.collected.take() {
-						match sort_columns(&data, this.specs) {
-							Ok(sorted) => return Poll::Ready(Some(Ok(sorted))),
-							Err(e) => return Poll::Ready(Some(Err(e))),
-						}
-					} else {
-						return Poll::Ready(None);
-					}
-				}
-				Poll::Ready(Some(Err(e))) => {
-					*this.done = true;
-					return Poll::Ready(Some(Err(e)));
-				}
-				Poll::Ready(Some(Ok(batch))) => {
-					// Collect this batch
-					match this.collected.take() {
-						None => {
-							*this.collected = Some(batch);
-						}
-						Some(existing) => match merge_columns(&existing, batch) {
-							Ok(merged) => {
-								*this.collected = Some(merged);
-							}
-							Err(e) => {
-								*this.done = true;
-								return Poll::Ready(Some(Err(e)));
-							}
-						},
+			while let Some(result) = input.next().await {
+				match result {
+					Err(e) => return Some((Err(e), None)),
+					Ok(batch) => {
+						collected = Some(match collected {
+							None => batch,
+							Some(existing) => match merge_columns(&existing, batch) {
+								Ok(merged) => merged,
+								Err(e) => return Some((Err(e), None)),
+							},
+						});
 					}
 				}
 			}
-		}
+
+			// Sort and emit once, then return None to signal end
+			collected.map(|data| (sort_columns(&data, &specs), None))
+		}))
 	}
 }
 
