@@ -93,8 +93,8 @@ pub enum TokenKind {
 	// Keywords (control flow and definitions)
 	/// let keyword.
 	Let,
-	/// def keyword.
-	Def,
+	/// fn keyword.
+	Fn,
 	/// if keyword.
 	If,
 	/// else keyword.
@@ -196,7 +196,7 @@ impl TokenKind {
 			"sort" => Some(TokenKind::Sort),
 			"extend" => Some(TokenKind::Extend),
 			"let" => Some(TokenKind::Let),
-			"def" => Some(TokenKind::Def),
+			"fn" => Some(TokenKind::Fn),
 			"if" => Some(TokenKind::If),
 			"else" => Some(TokenKind::Else),
 			"inline" => Some(TokenKind::Inline),
@@ -265,7 +265,7 @@ impl std::fmt::Display for TokenKind {
 			TokenKind::Sort => write!(f, "sort"),
 			TokenKind::Extend => write!(f, "extend"),
 			TokenKind::Let => write!(f, "let"),
-			TokenKind::Def => write!(f, "def"),
+			TokenKind::Fn => write!(f, "fn"),
 			TokenKind::If => write!(f, "if"),
 			TokenKind::Else => write!(f, "else"),
 			TokenKind::Inline => write!(f, "inline"),

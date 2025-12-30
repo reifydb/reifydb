@@ -52,7 +52,30 @@ pub fn compile_expr(expr: Expr) -> CompiledExpr {
 			values,
 			negated,
 		} => compile_in_list(*expr, values, negated),
+		Expr::Call {
+			function_name,
+			arguments,
+		} => compile_call(function_name, arguments),
 	}
+}
+
+fn compile_call(function_name: String, arguments: Vec<Expr>) -> CompiledExpr {
+	// Compile each argument expression
+	let compiled_args: Vec<CompiledExpr> = arguments.into_iter().map(compile_expr).collect();
+
+	CompiledExpr::new(move |columns, ctx| {
+		// Evaluate all argument expressions to columns
+		let arg_columns: Vec<Column> =
+			compiled_args.iter().map(|arg| arg.eval(columns, ctx)).collect::<Result<Vec<_>>>()?;
+
+		let row_count = columns.row_count();
+		let args = reifydb_core::value::column::Columns::new(arg_columns);
+
+		// Call function with columnar args
+		let result_data = ctx.call_function(&function_name, &args, row_count)?;
+
+		Ok(Column::new(Fragment::internal("_call"), result_data))
+	})
 }
 
 /// Compile an Expr AST into a CompiledFilter that returns BitVec directly.

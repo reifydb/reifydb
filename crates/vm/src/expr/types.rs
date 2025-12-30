@@ -64,6 +64,12 @@ pub enum Expr {
 		values: Vec<Expr>,
 		negated: bool,
 	},
+
+	/// Function call
+	Call {
+		function_name: String,
+		arguments: Vec<Expr>,
+	},
 }
 
 #[derive(Debug, Clone)]

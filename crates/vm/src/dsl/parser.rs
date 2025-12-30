@@ -128,7 +128,7 @@ impl Parser {
 
 		match &token.kind {
 			TokenKind::Let => self.parse_let(),
-			TokenKind::Def => self.parse_def(),
+			TokenKind::Fn => self.parse_fn(),
 			TokenKind::If => self.parse_if(),
 			TokenKind::Loop => self.parse_loop(),
 			TokenKind::Break => self.parse_break(),
@@ -140,9 +140,16 @@ impl Parser {
 				Ok(StatementAst::Pipeline(pipeline))
 			}
 			TokenKind::Dollar => {
-				// Could be assignment ($var = expr) or pipeline ($var | ...)
+				// Could be assignment ($var = expr), expression ($var * 2), or pipeline ($var | ...)
 				if self.is_assignment_lookahead() {
 					self.parse_assign()
+				} else if self.is_variable_expression_lookahead() {
+					// Variable in expression context: $x * 2, $x.field, etc.
+					let expr = self.parse_expr()?;
+					Ok(StatementAst::Expression(ExpressionAst {
+						span: expr.span(),
+						expr,
+					}))
 				} else {
 					// Pipeline starting with a variable reference
 					let pipeline = self.parse_pipeline_from_variable()?;
@@ -162,6 +169,14 @@ impl Parser {
 				}
 			}
 			_ => {
+				// Check if this looks like a bare expression (literal, parenthesized)
+				if self.is_bare_expression_start() {
+					let expr = self.parse_expr()?;
+					return Ok(StatementAst::Expression(ExpressionAst {
+						span: expr.span(),
+						expr,
+					}));
+				}
 				// Try to parse as pipeline
 				let pipeline = self.parse_pipeline()?;
 				Ok(StatementAst::Pipeline(pipeline))
@@ -208,6 +223,24 @@ impl Parser {
 			value,
 			span: start.merge(&end_span),
 		}))
+	}
+
+	/// Check if current position starts a bare expression that can be a statement.
+	/// Returns true for literals and parenthesized expressions (not pipelines).
+	fn is_bare_expression_start(&self) -> bool {
+		match &self.current().kind {
+			// Literals are always expressions - can't be pipeline
+			TokenKind::Int(_)
+			| TokenKind::Float(_)
+			| TokenKind::String(_)
+			| TokenKind::Bool(_)
+			| TokenKind::Null => true,
+			// Parenthesized expression - can't be pipeline start
+			TokenKind::LParen => true,
+			// Unary operators
+			TokenKind::Minus | TokenKind::Not => true,
+			_ => false,
+		}
 	}
 
 	/// Check if current position starts an expression (not a pipeline).
@@ -300,10 +333,10 @@ impl Parser {
 		}))
 	}
 
-	/// Parse a function definition: "def" IDENT "(" params ")" "{" body "}"
-	fn parse_def(&mut self) -> Result<StatementAst, ParseError> {
+	/// Parse a function definition: "fn" IDENT "(" params ")" "{" body "}"
+	fn parse_fn(&mut self) -> Result<StatementAst, ParseError> {
 		let start = self.current().span;
-		self.expect(&TokenKind::Def)?;
+		self.expect(&TokenKind::Fn)?;
 
 		let name_token = self.expect_ident()?;
 		let name = name_token.text.clone();
@@ -967,11 +1000,38 @@ impl Parser {
 
 		match &token.kind {
 			TokenKind::Ident => {
+				let start = token.span;
+				let name = token.text.clone();
 				self.advance();
-				Ok(ExprAst::Column {
-					name: token.text.clone(),
-					span: token.span,
-				})
+
+				// Check if this is a function call (identifier followed by parentheses)
+				if self.check(&TokenKind::LParen) {
+					self.advance(); // consume (
+					let mut arguments = Vec::new();
+
+					if !self.check(&TokenKind::RParen) {
+						loop {
+							arguments.push(self.parse_expr()?);
+							if !self.check(&TokenKind::Comma) {
+								break;
+							}
+							self.advance();
+						}
+					}
+
+					let end_token = self.expect(&TokenKind::RParen)?;
+					Ok(ExprAst::Call {
+						function_name: name,
+						arguments,
+						span: start.merge(&end_token.span),
+					})
+				} else {
+					// Regular column reference
+					Ok(ExprAst::Column {
+						name,
+						span: start,
+					})
+				}
 			}
 
 			TokenKind::Int(n) => {

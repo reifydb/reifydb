@@ -14,7 +14,7 @@ use crate::{
 	},
 	dsl::{self, ast::*},
 	error::{Result, VmError},
-	expr::{self, BinaryOp, ColumnRef, Expr, Literal, compile_expr, compile_filter},
+	expr::{self, BinaryOp, ColumnRef, Expr, Literal, UnaryOp, compile_expr, compile_filter},
 	operator::sort::{SortOrder, SortSpec},
 };
 /// Context for tracking loop break/continue targets.
@@ -184,6 +184,10 @@ impl BytecodeCompiler {
 			}
 			StatementAst::Assign(assign) => {
 				self.compile_assign(assign)?;
+			}
+			StatementAst::Expression(expr_stmt) => {
+				// Compile expression and leave value on operand stack for implicit return
+				self.compile_expr_to_operand(expr_stmt.expr)?;
 			}
 		}
 		Ok(())
@@ -659,10 +663,17 @@ impl BytecodeCompiler {
 				..
 			} => self.ast_to_expr(*inner),
 			ExprAst::Call {
+				function_name,
+				arguments,
 				..
-			} => Err(VmError::CompileError {
-				message: "function calls in expressions not yet supported".to_string(),
-			}),
+			} => {
+				let args: Result<Vec<Expr>> =
+					arguments.into_iter().map(|a| self.ast_to_expr(a)).collect();
+				Ok(Expr::Call {
+					function_name,
+					arguments: args?,
+				})
+			}
 			ExprAst::FieldAccess {
 				object,
 				field,
@@ -914,6 +925,9 @@ impl BytecodeCompiler {
 				// Emit the appropriate opcode
 				match op {
 					BinaryOp::Add => self.writer.emit_opcode(Opcode::IntAdd),
+					BinaryOp::Sub => self.writer.emit_opcode(Opcode::IntSub),
+					BinaryOp::Mul => self.writer.emit_opcode(Opcode::IntMul),
+					BinaryOp::Div => self.writer.emit_opcode(Opcode::IntDiv),
 					BinaryOp::Eq => self.writer.emit_opcode(Opcode::IntEq),
 					BinaryOp::Lt => self.writer.emit_opcode(Opcode::IntLt),
 					_ => {
@@ -926,11 +940,61 @@ impl BytecodeCompiler {
 					}
 				}
 			}
-			_ => {
-				// For complex expressions, we'd need more sophisticated handling
+			ExprAst::Paren {
+				inner,
+				..
+			} => {
+				// Parenthesized expression - just compile the inner expression
+				self.compile_expr_to_operand(*inner)?;
+			}
+			ExprAst::Call {
+				function_name,
+				arguments,
+				..
+			} => {
+				// Look up function
+				let func_index = *self.functions.get(&function_name).ok_or_else(|| {
+					VmError::UndefinedFunction {
+						name: function_name.clone(),
+					}
+				})?;
+
+				// Compile and push each argument
+				for arg in arguments {
+					self.compile_expr_to_operand(arg)?;
+				}
+
+				// Emit call
+				self.writer.emit_opcode(Opcode::Call);
+				self.writer.emit_u16(func_index);
+			}
+			ExprAst::UnaryOp {
+				op,
+				operand,
+				..
+			} => {
+				// Compile the operand
+				self.compile_expr_to_operand(*operand)?;
+				// Emit the appropriate opcode
+				match op {
+					UnaryOp::Neg | UnaryOp::Not | UnaryOp::IsNull | UnaryOp::IsNotNull => {
+						return Err(VmError::CompileError {
+							message: format!("unary operator {:?} not yet supported", op),
+						});
+					}
+				}
+			}
+			ExprAst::Subquery {
+				..
+			}
+			| ExprAst::InList {
+				..
+			}
+			| ExprAst::InSubquery {
+				..
+			} => {
 				return Err(VmError::CompileError {
-					message: "complex expressions in function arguments not yet supported"
-						.to_string(),
+					message: "subqueries are not supported in scalar expressions (only in filter predicates)".to_string(),
 				});
 			}
 		}

@@ -5,7 +5,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::Columns;
+use reifydb_core::value::column::{Column, Columns};
 use reifydb_type::Value;
 
 use super::{call_stack::CallStack, scope::ScopeChain};
@@ -45,6 +45,9 @@ pub enum OperandValue {
 	/// Scalar value (literals, computed results).
 	Scalar(Value),
 
+	/// Single column (vectorized value for columnar operations).
+	Column(Column),
+
 	/// Reference to an expression in the program.
 	ExprRef(u16),
 
@@ -79,10 +82,31 @@ impl OperandValue {
 		matches!(self, OperandValue::Scalar(_))
 	}
 
+	/// Check if this is a column value.
+	pub fn is_column(&self) -> bool {
+		matches!(self, OperandValue::Column(_))
+	}
+
 	/// Try to get as a scalar value.
 	pub fn as_scalar(&self) -> Option<&Value> {
 		match self {
 			OperandValue::Scalar(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	/// Try to get as a column.
+	pub fn as_column(&self) -> Option<&Column> {
+		match self {
+			OperandValue::Column(c) => Some(c),
+			_ => None,
+		}
+	}
+
+	/// Try to take as a column (consumes self).
+	pub fn into_column(self) -> Option<Column> {
+		match self {
+			OperandValue::Column(c) => Some(c),
 			_ => None,
 		}
 	}
