@@ -145,7 +145,7 @@ pub enum Opcode {
 	GetField = 0x72,
 
 	// ─────────────────────────────────────────────────────────────
-	// Scalar Arithmetic and Comparison
+	// Scalar Arithmetic and Comparison (for control flow)
 	// ─────────────────────────────────────────────────────────────
 	/// Add two integers on operand stack
 	/// Pops two Int8 values, pushes Int8 result
@@ -158,6 +158,61 @@ pub enum Opcode {
 	/// Compare two integers: equal
 	/// Pops two Int8 values (b, a), pushes Boolean(a == b)
 	IntEq = 0x82,
+
+	/// Subtract two integers on operand stack
+	/// Pops two Int8 values (b, a), pushes Int8 result (a - b)
+	IntSub = 0x83,
+
+	/// Multiply two integers on operand stack
+	/// Pops two Int8 values, pushes Int8 result
+	IntMul = 0x84,
+
+	/// Divide two integers on operand stack
+	/// Pops two Int8 values (b, a), pushes Int8 result (a / b)
+	IntDiv = 0x85,
+
+	// ─────────────────────────────────────────────────────────────
+	// Columnar Arithmetic and Comparison (for expressions)
+	// ─────────────────────────────────────────────────────────────
+	/// Add two columns (or scalar+column with broadcast)
+	/// Pops two Column/Scalar values, pushes Column result
+	ColAdd = 0xA0,
+
+	/// Subtract two columns
+	ColSub = 0xA1,
+
+	/// Multiply two columns
+	ColMul = 0xA2,
+
+	/// Divide two columns
+	ColDiv = 0xA3,
+
+	/// Compare columns: less than
+	ColLt = 0xA4,
+
+	/// Compare columns: less than or equal
+	ColLe = 0xA5,
+
+	/// Compare columns: greater than
+	ColGt = 0xA6,
+
+	/// Compare columns: greater than or equal
+	ColGe = 0xA7,
+
+	/// Compare columns: equal
+	ColEq = 0xA8,
+
+	/// Compare columns: not equal
+	ColNe = 0xA9,
+
+	/// Logical AND on boolean columns
+	ColAnd = 0xAA,
+
+	/// Logical OR on boolean columns
+	ColOr = 0xAB,
+
+	/// Logical NOT on boolean column
+	ColNot = 0xAC,
 
 	// ─────────────────────────────────────────────────────────────
 	// I/O Operations
@@ -215,6 +270,22 @@ impl TryFrom<u8> for Opcode {
 			0x80 => Ok(Opcode::IntAdd),
 			0x81 => Ok(Opcode::IntLt),
 			0x82 => Ok(Opcode::IntEq),
+			0x83 => Ok(Opcode::IntSub),
+			0x84 => Ok(Opcode::IntMul),
+			0x85 => Ok(Opcode::IntDiv),
+			0xA0 => Ok(Opcode::ColAdd),
+			0xA1 => Ok(Opcode::ColSub),
+			0xA2 => Ok(Opcode::ColMul),
+			0xA3 => Ok(Opcode::ColDiv),
+			0xA4 => Ok(Opcode::ColLt),
+			0xA5 => Ok(Opcode::ColLe),
+			0xA6 => Ok(Opcode::ColGt),
+			0xA7 => Ok(Opcode::ColGe),
+			0xA8 => Ok(Opcode::ColEq),
+			0xA9 => Ok(Opcode::ColNe),
+			0xAA => Ok(Opcode::ColAnd),
+			0xAB => Ok(Opcode::ColOr),
+			0xAC => Ok(Opcode::ColNot),
 			0x90 => Ok(Opcode::PrintOut),
 			0xFE => Ok(Opcode::Nop),
 			0xFF => Ok(Opcode::Halt),

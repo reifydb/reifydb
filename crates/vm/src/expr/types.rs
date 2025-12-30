@@ -33,6 +33,12 @@ pub enum Expr {
 		object: Box<Expr>,
 		field: String,
 	},
+
+	/// Function call
+	Call {
+		function_name: String,
+		arguments: Vec<Expr>,
+	},
 }
 
 #[derive(Debug, Clone)]

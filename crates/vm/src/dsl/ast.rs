@@ -56,6 +56,9 @@ pub enum StatementAst {
 
 	/// Assignment: $var = expr (updates existing variable)
 	Assign(AssignAst),
+
+	/// Expression statement - leaves value on stack for implicit return
+	Expression(ExpressionAst),
 }
 
 impl StatementAst {
@@ -72,6 +75,7 @@ impl StatementAst {
 			StatementAst::For(f) => f.span,
 			StatementAst::ModuleCall(m) => m.span,
 			StatementAst::Assign(a) => a.span,
+			StatementAst::Expression(e) => e.span,
 		}
 	}
 }
@@ -107,6 +111,13 @@ pub struct LetAst {
 pub struct AssignAst {
 	pub name: String,
 	pub value: ExprAst,
+	pub span: Span,
+}
+
+/// Expression statement - leaves value on operand stack for implicit return.
+#[derive(Debug, Clone)]
+pub struct ExpressionAst {
+	pub expr: ExprAst,
 	pub span: Span,
 }
 

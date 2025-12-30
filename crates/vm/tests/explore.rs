@@ -144,11 +144,11 @@ async fn test_function_declaration_and_call() {
 	// Test function declarations and calls
 	// ============================================
 	let script = r#"
-        def get_adults() {
+        fn get_adults() {
             scan users | filter age >= 18
         }
 
-        def get_top_scorers() {
+        fn get_top_scorers() {
             scan users | sort score desc | take 3
         }
 
@@ -524,4 +524,196 @@ async fn test_for_in_field_access() {
 	let registry = Arc::new(registry);
 	let pipeline = execute_script(script, registry).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+}
+
+/// Test bare literal expression in function body - compilation only
+#[test]
+fn test_bare_literal_expression_compiles() {
+	// Function with bare literal as implicit return
+	let script = r#"
+        fn get_min_age() {
+            20
+        }
+
+        scan users | take 1
+    "#;
+
+	let program = compile_script(script).expect("compile failed");
+	println!("Functions: {:?}", program.functions);
+	println!("Constants: {:?}", program.constants);
+	println!("Bytecode: {:?}", program.bytecode);
+
+	// Decode bytecode manually
+	let func = &program.functions[0];
+	println!("\nFunction bytecode (offset {}, len {}):", func.bytecode_offset, func.bytecode_len);
+	for i in func.bytecode_offset..(func.bytecode_offset + func.bytecode_len) {
+		println!("  {}: 0x{:02x}", i, program.bytecode[i]);
+	}
+
+	assert_eq!(program.functions.len(), 1);
+	assert_eq!(program.functions[0].name, "get_min_age");
+}
+
+/// Test bare literal expression in function body used in filter
+#[tokio::test]
+async fn test_bare_literal_expression_in_filter() {
+	let registry = create_registry();
+
+	// Function with bare literal as implicit return, used in filter
+	let script = r#"
+        fn get_min_age() {
+            20
+        }
+
+        scan users | filter age > get_min_age() | select [name, age]
+    "#;
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script).expect("compile failed");
+	println!("\n=== BARE LITERAL IN FILTER TEST ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Functions: {:?}", program.functions);
+	println!("Expressions: {:?}", program.expressions);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+	println!("===================================\n");
+
+	// Execute using bytecode VM
+	let registry = Arc::new(registry);
+	let pipeline = execute_script(script, registry).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	let result = match pipeline {
+		Ok(Some(p)) => {
+			println!("Got pipeline, collecting...");
+			match collect(p).await {
+				Ok(cols) => {
+					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
+					cols
+				}
+				Err(e) => {
+					println!("Collect failed: {:?}", e);
+					Columns::empty()
+				}
+			}
+		}
+		Ok(None) => {
+			println!("No pipeline returned");
+			Columns::empty()
+		}
+		Err(e) => {
+			println!("Execute failed: {:?}", e);
+			Columns::empty()
+		}
+	};
+
+	// Print results
+	println!("\n=== BARE LITERAL IN FILTER RESULT ===");
+	println!("Columns: {}", result.len());
+	println!("Rows: {}", result.row_count());
+	for col in result.iter() {
+		println!("\n  Column: {}", col.name().text());
+		println!("  Data: {:?}", col.data());
+	}
+	println!("=====================================\n");
+
+	// Users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
+	assert_eq!(result.len(), 2, "Expected 2 columns (name, age)");
+}
+
+/// Test arithmetic expression in function body used in filter
+#[tokio::test]
+async fn test_arithmetic_expression_in_filter() {
+	let registry = create_registry();
+
+	// Function with arithmetic as implicit return
+	let script = r#"
+        fn calculate_threshold() {
+            10 + 15
+        }
+
+        scan users | filter age > calculate_threshold() | select [name, age]
+    "#;
+
+	let program = compile_script(script).expect("compile failed");
+	println!("\n=== ARITHMETIC IN FILTER TEST ===");
+	println!("Functions: {:?}", program.functions);
+	println!("=================================\n");
+
+	let registry = Arc::new(registry);
+	let pipeline = execute_script(script, registry).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// 10 + 15 = 25, users with age > 25: Charlie(35) = 1 row
+	assert_eq!(result.row_count(), 1, "Expected 1 user with age > 25");
+}
+
+/// Test parenthesized expression in function body used in filter
+#[tokio::test]
+async fn test_parenthesized_expression_in_filter() {
+	let registry = create_registry();
+
+	// Function with parenthesized expression
+	let script = r#"
+        fn compute_limit() {
+            (2 + 3) * 4
+        }
+
+        scan users | filter age > compute_limit() | select [name, age]
+    "#;
+
+	let program = compile_script(script).expect("compile failed");
+	println!("\n=== PARENTHESIZED IN FILTER TEST ===");
+	println!("Functions: {:?}", program.functions);
+	println!("====================================\n");
+
+	let registry = Arc::new(registry);
+	let pipeline = execute_script(script, registry).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// (2 + 3) * 4 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
+}
+
+/// Test variable expression in function body used in filter
+#[tokio::test]
+async fn test_variable_expression_in_filter() {
+	let registry = create_registry();
+
+	// Function with variable arithmetic
+	let script = r#"
+        fn double_base() {
+            let $base = 10
+            $base * 2
+        }
+
+        scan users | filter age > double_base() | select [name, age]
+    "#;
+
+	let program = compile_script(script).expect("compile failed");
+	println!("\n=== VARIABLE IN FILTER TEST ===");
+	println!("Functions: {:?}", program.functions);
+	println!("===============================\n");
+
+	let registry = Arc::new(registry);
+	let pipeline = execute_script(script, registry).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// 10 * 2 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
 }

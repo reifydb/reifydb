@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::{BitVec, Fragment, Type, Value};
 
-use super::types::{BinaryOp, ColumnRef, Expr, Literal, UnaryOp};
+use super::{
+	function::{VmFunctionContext, VmFunctionExecutor},
+	types::{BinaryOp, ColumnRef, Expr, Literal, UnaryOp},
+};
 use crate::{
 	error::{Result, VmError},
 	vmcore::state::Record,
@@ -17,6 +20,8 @@ use crate::{
 pub struct EvalContext {
 	/// Captured variable values from scope at filter creation time.
 	pub variables: HashMap<String, EvalValue>,
+	/// Function executor for calling user-defined functions.
+	pub functions: Option<VmFunctionExecutor>,
 }
 
 /// Value types that can be used in expression evaluation.
@@ -31,6 +36,7 @@ impl EvalContext {
 	pub fn new() -> Self {
 		Self {
 			variables: HashMap::new(),
+			functions: None,
 		}
 	}
 
@@ -38,12 +44,38 @@ impl EvalContext {
 	pub fn with_variables(variables: HashMap<String, EvalValue>) -> Self {
 		Self {
 			variables,
+			functions: None,
+		}
+	}
+
+	/// Create a context with variables and functions.
+	pub fn with_functions(variables: HashMap<String, EvalValue>, functions: VmFunctionExecutor) -> Self {
+		Self {
+			variables,
+			functions: Some(functions),
 		}
 	}
 
 	/// Get a variable value.
 	pub fn get_var(&self, name: &str) -> Option<&EvalValue> {
 		self.variables.get(name)
+	}
+
+	/// Call a function by name with the given arguments.
+	pub fn call_function(&self, name: &str, args: &Columns, row_count: usize) -> Result<ColumnData> {
+		let functions = self.functions.as_ref().ok_or_else(|| VmError::UndefinedFunction {
+			name: name.to_string(),
+		})?;
+		let ctx = VmFunctionContext {
+			columns: args,
+			row_count,
+		};
+		functions.call(name, ctx)
+	}
+
+	/// Check if a function is available.
+	pub fn has_function(&self, name: &str) -> bool {
+		self.functions.as_ref().map_or(false, |f| f.has_function(name))
 	}
 }
 
@@ -93,6 +125,22 @@ impl Expr {
 				object,
 				field,
 			} => self.eval_field_access(object, field, columns, ctx),
+			Expr::Call {
+				function_name,
+				arguments,
+			} => {
+				// Evaluate arguments to columns
+				let arg_cols: Vec<Column> = arguments
+					.iter()
+					.map(|arg| arg.eval_to_column(columns, ctx))
+					.collect::<Result<Vec<_>>>()?;
+
+				let args = Columns::new(arg_cols);
+				let row_count = columns.row_count();
+				let result_data = ctx.call_function(function_name, &args, row_count)?;
+
+				Ok(Column::new(Fragment::internal(&format!("_{}", function_name)), result_data))
+			}
 		}
 	}
 
