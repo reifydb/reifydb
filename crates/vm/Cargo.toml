@@ -1,0 +1,20 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+[package]
+name = "reifydb-vm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+reifydb-core = { path = "../core" }
+reifydb-type = { path = "../type" }
+
+async-trait.workspace = true
+futures-util.workspace = true
+pin-project = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

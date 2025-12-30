@@ -330,12 +330,6 @@ impl Columns {
 			return Columns::empty();
 		}
 
-		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
-			Vec::new()
-		} else {
-			indices.iter().map(|&i| self.row_numbers[i]).collect()
-		};
-
 		let new_columns: Vec<Column> = self
 			.columns
 			.iter()
@@ -351,7 +345,12 @@ impl Columns {
 			})
 			.collect();
 
-		Columns::with_row_numbers(new_columns, new_row_numbers)
+		if self.row_numbers.is_empty() {
+			Columns::new(new_columns)
+		} else {
+			let new_row_numbers: Vec<RowNumber> = indices.iter().map(|&i| self.row_numbers[i]).collect();
+			Columns::with_row_numbers(new_columns, new_row_numbers)
+		}
 	}
 
 	/// Extract a single row by index, returning a new Columns with 1 row

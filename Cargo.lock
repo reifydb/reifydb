@@ -2216,6 +2216,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-vm"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "pin-project",
+ "reifydb-core",
+ "reifydb-type",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.12.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
