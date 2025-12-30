@@ -47,4 +47,6 @@ pub use error::{Result, VmError};
 pub use expr::{ColumnSchema, Expr, ExprBuilder, col, lit};
 pub use pipeline::{Pipeline, collect};
 pub use source::{InMemorySource, InMemorySourceRegistry, TableSource, from_batches, from_columns};
+#[cfg(feature = "trace")]
+pub use vmcore::{TraceEntry, VmTracer};
 pub use vmcore::{VmConfig, VmContext, VmState};

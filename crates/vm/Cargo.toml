@@ -7,6 +7,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["trace"]
+trace = []
+
 [dependencies]
 reifydb-core = { path = "../core" }
 reifydb-type = { path = "../type" }

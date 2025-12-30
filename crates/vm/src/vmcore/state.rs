@@ -8,6 +8,8 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::value::column::Columns;
 use reifydb_type::Value;
 
+#[cfg(feature = "trace")]
+use super::trace::VmTracer;
 use super::{call_stack::CallStack, scope::ScopeChain};
 use crate::{
 	bytecode::Program,
@@ -199,6 +201,10 @@ pub struct VmState {
 	/// Pipeline registry (for pipeline handles).
 	pipeline_registry: HashMap<u64, Pipeline>,
 	next_pipeline_id: u64,
+
+	/// Optional tracer for recording execution.
+	#[cfg(feature = "trace")]
+	pub tracer: Option<VmTracer>,
 }
 
 impl VmState {
@@ -215,7 +221,22 @@ impl VmState {
 			context,
 			pipeline_registry: HashMap::new(),
 			next_pipeline_id: 0,
+			#[cfg(feature = "trace")]
+			tracer: None,
 		}
+	}
+
+	/// Enable tracing with the given tracer.
+	#[cfg(feature = "trace")]
+	pub fn with_tracer(mut self, tracer: VmTracer) -> Self {
+		self.tracer = Some(tracer);
+		self
+	}
+
+	/// Take the trace entries after execution.
+	#[cfg(feature = "trace")]
+	pub fn take_trace(&mut self) -> Option<Vec<super::trace::TraceEntry>> {
+		self.tracer.take().map(|t| t.take_entries())
 	}
 
 	/// Push a value onto the operand stack.

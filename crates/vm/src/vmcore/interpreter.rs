@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 
+#[cfg(feature = "trace")]
+use super::trace::{InstructionSnapshot, OperatorSnapshot, snapshot_dispatch_result, snapshot_state};
 use super::{
 	call_stack::CallFrame,
 	state::{OperandValue, VmState},
@@ -282,7 +284,16 @@ impl VmState {
 
 	/// Execute a single instruction.
 	pub async fn step(&mut self) -> Result<DispatchResult> {
+		#[cfg(feature = "trace")]
+		let ip_before = self.ip;
+
 		let (instruction, next_ip) = self.decode()?;
+
+		#[cfg(feature = "trace")]
+		let bytecode = self.program.bytecode[ip_before..next_ip].to_vec();
+
+		#[cfg(feature = "trace")]
+		let instruction_snapshot = self.snapshot_instruction(&instruction);
 
 		match instruction {
 			// ─────────────────────────────────────────────────────────
@@ -721,7 +732,36 @@ impl VmState {
 			}
 
 			DecodedInstruction::Halt => {
+				#[cfg(feature = "trace")]
+				{
+					let state_snapshot = snapshot_state(self);
+					let result_snapshot = snapshot_dispatch_result(&DispatchResult::Halt);
+					if let Some(ref mut tracer) = self.tracer {
+						tracer.record(
+							ip_before,
+							bytecode,
+							instruction_snapshot,
+							state_snapshot,
+							result_snapshot,
+						);
+					}
+				}
 				return Ok(DispatchResult::Halt);
+			}
+		}
+
+		#[cfg(feature = "trace")]
+		{
+			let state_snapshot = snapshot_state(self);
+			let result_snapshot = snapshot_dispatch_result(&DispatchResult::Continue);
+			if let Some(ref mut tracer) = self.tracer {
+				tracer.record(
+					ip_before,
+					bytecode,
+					instruction_snapshot,
+					state_snapshot,
+					result_snapshot,
+				);
 			}
 		}
 
@@ -824,5 +864,211 @@ fn operand_to_eval_value(value: &OperandValue) -> Option<EvalValue> {
 		OperandValue::Scalar(v) => Some(EvalValue::Scalar(v.clone())),
 		OperandValue::Record(r) => Some(EvalValue::Record(r.clone())),
 		_ => None, // Other types cannot be used in expressions
+	}
+}
+
+#[cfg(feature = "trace")]
+impl VmState {
+	/// Create an InstructionSnapshot from a DecodedInstruction.
+	fn snapshot_instruction(&self, instruction: &DecodedInstruction) -> InstructionSnapshot {
+		match instruction {
+			DecodedInstruction::PushConst {
+				index,
+			} => {
+				let value = self
+					.program
+					.constants
+					.get(*index as usize)
+					.cloned()
+					.unwrap_or(reifydb_type::Value::Undefined);
+				InstructionSnapshot::PushConst {
+					index: *index,
+					value,
+				}
+			}
+			DecodedInstruction::PushExpr {
+				index,
+			} => InstructionSnapshot::PushExpr {
+				index: *index,
+			},
+			DecodedInstruction::PushColRef {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::PushColRef {
+					name,
+				}
+			}
+			DecodedInstruction::PushColList {
+				index,
+			} => {
+				let columns =
+					self.program.column_lists.get(*index as usize).cloned().unwrap_or_default();
+				InstructionSnapshot::PushColList {
+					columns,
+				}
+			}
+			DecodedInstruction::PushSortSpec {
+				index,
+			} => InstructionSnapshot::PushSortSpec {
+				index: *index,
+			},
+			DecodedInstruction::PushExtSpec {
+				index,
+			} => InstructionSnapshot::PushExtSpec {
+				index: *index,
+			},
+			DecodedInstruction::Pop => InstructionSnapshot::Pop,
+			DecodedInstruction::Dup => InstructionSnapshot::Dup,
+			DecodedInstruction::LoadVar {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::LoadVar {
+					name,
+				}
+			}
+			DecodedInstruction::StoreVar {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::StoreVar {
+					name,
+				}
+			}
+			DecodedInstruction::StorePipeline {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::StorePipeline {
+					name,
+				}
+			}
+			DecodedInstruction::LoadPipeline {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::LoadPipeline {
+					name,
+				}
+			}
+			DecodedInstruction::UpdateVar {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::UpdateVar {
+					name,
+				}
+			}
+			DecodedInstruction::Source {
+				source_index,
+			} => {
+				let name = self
+					.program
+					.sources
+					.get(*source_index as usize)
+					.map(|s| s.name.clone())
+					.unwrap_or_else(|| format!("?{}", source_index));
+				InstructionSnapshot::Source {
+					index: *source_index,
+					name,
+				}
+			}
+			DecodedInstruction::Inline => InstructionSnapshot::Inline,
+			DecodedInstruction::Apply {
+				op_kind,
+			} => {
+				let operator = match op_kind {
+					OperatorKind::Filter => OperatorSnapshot::Filter,
+					OperatorKind::Select => OperatorSnapshot::Select,
+					OperatorKind::Extend => OperatorSnapshot::Extend,
+					OperatorKind::Take => OperatorSnapshot::Take,
+					OperatorKind::Sort => OperatorSnapshot::Sort,
+				};
+				InstructionSnapshot::Apply {
+					operator,
+				}
+			}
+			DecodedInstruction::Collect => InstructionSnapshot::Collect,
+			DecodedInstruction::PopPipeline => InstructionSnapshot::PopPipeline,
+			DecodedInstruction::Merge => InstructionSnapshot::Merge,
+			DecodedInstruction::DupPipeline => InstructionSnapshot::DupPipeline,
+			DecodedInstruction::Jump {
+				offset,
+			} => {
+				// Calculate target address
+				let next_ip = self.ip + 3; // Jump is 3 bytes (opcode + i16)
+				let target = (next_ip as i32 + *offset as i32) as usize;
+				InstructionSnapshot::Jump {
+					offset: *offset,
+					target,
+				}
+			}
+			DecodedInstruction::JumpIf {
+				offset,
+			} => {
+				let next_ip = self.ip + 3;
+				let target = (next_ip as i32 + *offset as i32) as usize;
+				InstructionSnapshot::JumpIf {
+					offset: *offset,
+					target,
+				}
+			}
+			DecodedInstruction::JumpIfNot {
+				offset,
+			} => {
+				let next_ip = self.ip + 3;
+				let target = (next_ip as i32 + *offset as i32) as usize;
+				InstructionSnapshot::JumpIfNot {
+					offset: *offset,
+					target,
+				}
+			}
+			DecodedInstruction::Call {
+				func_index,
+			} => InstructionSnapshot::Call {
+				func_index: *func_index,
+			},
+			DecodedInstruction::Return => InstructionSnapshot::Return,
+			DecodedInstruction::CallBuiltin {
+				builtin_id,
+				arg_count,
+			} => InstructionSnapshot::CallBuiltin {
+				builtin_id: *builtin_id,
+				arg_count: *arg_count,
+			},
+			DecodedInstruction::EnterScope => InstructionSnapshot::EnterScope,
+			DecodedInstruction::ExitScope => InstructionSnapshot::ExitScope,
+			DecodedInstruction::FrameLen => InstructionSnapshot::FrameLen,
+			DecodedInstruction::FrameRow => InstructionSnapshot::FrameRow,
+			DecodedInstruction::GetField {
+				name_index,
+			} => {
+				let name = self
+					.get_constant_string(*name_index)
+					.unwrap_or_else(|_| format!("?{}", name_index));
+				InstructionSnapshot::GetField {
+					name,
+				}
+			}
+			DecodedInstruction::IntAdd => InstructionSnapshot::IntAdd,
+			DecodedInstruction::IntLt => InstructionSnapshot::IntLt,
+			DecodedInstruction::IntEq => InstructionSnapshot::IntEq,
+			DecodedInstruction::PrintOut => InstructionSnapshot::PrintOut,
+			DecodedInstruction::Nop => InstructionSnapshot::Nop,
+			DecodedInstruction::Halt => InstructionSnapshot::Halt,
+		}
 	}
 }

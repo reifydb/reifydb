@@ -91,6 +91,11 @@ impl CallStack {
 	pub fn is_empty(&self) -> bool {
 		self.frames.is_empty()
 	}
+
+	/// Iterate over call frames from bottom to top.
+	pub fn iter(&self) -> impl Iterator<Item = &CallFrame> {
+		self.frames.iter()
+	}
 }
 
 impl Default for CallStack {
