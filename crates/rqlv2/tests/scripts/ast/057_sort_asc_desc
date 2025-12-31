@@ -6,7 +6,7 @@ parse 'FROM products | SORT { price: ASC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Sort
 >         `-- [0] SortColumn ASC
 >             `-- Identifier(price)
@@ -17,7 +17,7 @@ parse 'FROM products | SORT { price: DESC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Sort
 >         `-- [0] SortColumn DESC
 >             `-- Identifier(price)
@@ -28,7 +28,7 @@ parse 'FROM employees | SORT { salary: DESC, name }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(employees)
+>     +-- [0] From(default.employees)
 >     `-- [1] Sort
 >         +-- [0] SortColumn DESC
 >         |   `-- Identifier(salary)
@@ -41,7 +41,7 @@ parse 'FROM users | SORT { value: ASC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Sort
 >         `-- [0] SortColumn ASC
 >             `-- Identifier(value)

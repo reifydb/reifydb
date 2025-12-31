@@ -6,7 +6,7 @@ parse 'FROM users | DISTINCT { name, age }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Distinct
 >         +-- [0] Identifier(name)
 >         `-- [1] Identifier(age)
@@ -17,7 +17,7 @@ parse 'FROM employees | DISTINCT { department, role, level }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(employees)
+>     +-- [0] From(default.employees)
 >     `-- [1] Distinct
 >         +-- [0] Identifier(department)
 >         +-- [1] Identifier(role)
@@ -29,7 +29,7 @@ parse 'FROM products | DISTINCT { category, brand, }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Distinct
 >         +-- [0] Identifier(category)
 >         `-- [1] Identifier(brand)
@@ -40,7 +40,7 @@ parse 'FROM orders | FILTER active | DISTINCT { customer_id, product_id }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     +-- [1] Filter
 >     |   `-- Identifier(active)
 >     `-- [2] Distinct

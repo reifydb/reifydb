@@ -9,7 +9,7 @@ parse 'NATURAL JOIN { FROM orders } AS o'
 >     `-- Join(Natural)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         `-- alias: o
 >
 
@@ -21,7 +21,7 @@ parse 'NATURAL JOIN { FROM orders } AS ord'
 >     `-- Join(Natural)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         `-- alias: ord
 >
 
@@ -33,7 +33,7 @@ parse 'NATURAL LEFT JOIN { FROM orders } AS o'
 >     `-- Join(Natural)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         `-- alias: o
 >
 
@@ -45,6 +45,6 @@ parse 'NATURAL INNER JOIN { FROM orders } AS o'
 >     `-- Join(Natural)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         `-- alias: o
 >

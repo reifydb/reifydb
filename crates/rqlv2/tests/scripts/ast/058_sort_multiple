@@ -6,7 +6,7 @@ parse 'FROM users | SORT { name, age }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Sort
 >         +-- [0] SortColumn
 >         |   `-- Identifier(name)
@@ -19,7 +19,7 @@ parse 'FROM users | SORT { name: ASC, age: DESC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Sort
 >         +-- [0] SortColumn ASC
 >         |   `-- Identifier(name)
@@ -32,7 +32,7 @@ parse 'FROM orders | SORT { customer_id, order_date: DESC, total: ASC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Sort
 >         +-- [0] SortColumn
 >         |   `-- Identifier(customer_id)
@@ -47,7 +47,7 @@ parse 'FROM products | SORT { price: DESC, created_at: DESC }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Sort
 >         +-- [0] SortColumn DESC
 >         |   `-- Identifier(price)

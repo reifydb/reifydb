@@ -9,7 +9,7 @@ parse 'LEFT JOIN { FROM customers } AS c USING (id, c.customer_id)'
 >     `-- Join(Left)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(customers)
+>         |       `-- [0] From(default.customers)
 >         +-- alias: c
 >         `-- using:
 >             `-- [0] Pair
@@ -24,11 +24,11 @@ parse 'FROM orders | LEFT JOIN { FROM products } AS p USING (product_id, p.id) |
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     +-- [1] Join(Left)
 >     |   +-- subquery:
 >     |   |   `-- SubQuery
->     |   |       `-- [0] From(products)
+>     |   |       `-- [0] From(default.products)
 >     |   +-- alias: p
 >     |   `-- using:
 >     |       `-- [0] Pair
@@ -49,11 +49,11 @@ parse 'FROM orders | LEFT JOIN { FROM customers } AS c USING (customer_id, c.id)
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     +-- [1] Join(Left)
 >     |   +-- subquery:
 >     |   |   `-- SubQuery
->     |   |       `-- [0] From(customers)
+>     |   |       `-- [0] From(default.customers)
 >     |   +-- alias: c
 >     |   `-- using:
 >     |       `-- [0] Pair
@@ -64,7 +64,7 @@ parse 'FROM orders | LEFT JOIN { FROM customers } AS c USING (customer_id, c.id)
 >     `-- [2] Join(Left)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(products)
+>         |       `-- [0] From(default.products)
 >         +-- alias: p
 >         `-- using:
 >             `-- [0] Pair

@@ -7,7 +7,7 @@ parse 'let $users = FROM users | FILTER age > 20'
 > Program
 > `-- [0] Let($users)
 >     `-- Pipeline:
->         +-- [0] From(users)
+>         +-- [0] From(default.users)
 >         `-- [1] Filter
 >             `-- Binary(Gt)
 >                 +-- left: Identifier(age)
@@ -20,7 +20,7 @@ parse 'let $result = FROM orders | FILTER total > 100 | SORT { date } | TAKE 10'
 > Program
 > `-- [0] Let($result)
 >     `-- Pipeline:
->         +-- [0] From(orders)
+>         +-- [0] From(default.orders)
 >         +-- [1] Filter
 >         |   `-- Binary(Gt)
 >         |       +-- left: Identifier(total)
@@ -38,7 +38,7 @@ parse 'let $names = FROM people | SELECT { name, age }'
 > Program
 > `-- [0] Let($names)
 >     `-- Pipeline:
->         +-- [0] From(people)
+>         +-- [0] From(default.people)
 >         `-- [1] Map
 >             +-- [0] Identifier(name)
 >             `-- [1] Identifier(age)
@@ -50,7 +50,7 @@ parse 'let $computed = FROM data | EXTEND { total: price * quantity }'
 > Program
 > `-- [0] Let($computed)
 >     `-- Pipeline:
->         +-- [0] From(data)
+>         +-- [0] From(default.data)
 >         `-- [1] Extend
 >             `-- [0] Binary(KeyValue)
 >                 +-- left: Identifier(total)

@@ -6,7 +6,7 @@ parse 'FROM users | MAP { upper_name: upper(name) }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(upper_name)

@@ -6,7 +6,7 @@ parse 'FROM users | FILTER age BETWEEN 18 AND 65'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Filter
 >         `-- Between
 >             +-- value: Identifier(age)

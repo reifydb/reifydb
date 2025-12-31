@@ -6,7 +6,7 @@ parse 'FROM users | DISTINCT { name }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Distinct
 >         `-- [0] Identifier(name)
 >
@@ -16,7 +16,7 @@ parse 'FROM users | DISTINCT {}'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Distinct
 >
 
@@ -25,7 +25,7 @@ parse 'FROM users | DISTINCT { name, }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Distinct
 >         `-- [0] Identifier(name)
 >

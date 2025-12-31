@@ -162,32 +162,10 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			)));
 			Ok(JoinSource::SubQuery(subquery))
 		} else {
-			// Direct table reference: table or namespace.table
-			if !matches!(
-				self.current().kind,
-				TokenKind::Identifier | TokenKind::QuotedIdentifier | TokenKind::Keyword(_)
-			) {
-				return Err(self.error(ParseErrorKind::ExpectedIdentifier));
-			}
+			// Direct table reference: table, namespace.table, or ns1::ns2.table
+			let qualified = self.parse_qualified_name()?;
 
-			let name_token = self.advance();
-			let name = self.token_text(&name_token);
-			let mut end_span = name_token.span;
-
-			// Check for namespace qualification: namespace.table
-			let source = if self.check_operator(Operator::Dot) {
-				self.advance(); // consume .
-				if !matches!(self.current().kind, TokenKind::Identifier | TokenKind::QuotedIdentifier) {
-					return Err(self.error(ParseErrorKind::ExpectedIdentifier));
-				}
-				let table_token = self.advance();
-				let table_name = self.token_text(&table_token);
-				end_span = table_token.span;
-
-				SourceRef::new(table_name, name_token.span.merge(&end_span)).with_namespace(name)
-			} else {
-				SourceRef::new(name, name_token.span.merge(&end_span))
-			};
+			let source = SourceRef::new(qualified.name, qualified.span).with_namespace(qualified.namespace);
 
 			Ok(JoinSource::Primitive(JoinPrimitive {
 				source,

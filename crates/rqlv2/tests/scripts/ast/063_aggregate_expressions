@@ -6,7 +6,7 @@ parse 'FROM orders | AGGREGATE { total_value: sum(quantity * price) } BY { produ
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(product_id)
@@ -25,7 +25,7 @@ parse 'FROM logs | AGGREGATE { rounded_avg: round(avg(duration)) } BY { endpoint
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(logs)
+>     +-- [0] From(default.logs)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(endpoint)
@@ -44,7 +44,7 @@ parse 'FROM events | AGGREGATE { count: count(id) } BY { category }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(events)
+>     +-- [0] From(default.events)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(category)

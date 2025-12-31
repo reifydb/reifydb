@@ -6,7 +6,7 @@ parse 'FROM users | FILTER (a > 1 AND b < 2) OR c = 3'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Filter
 >         `-- Binary(Assign)
 >             +-- left: Binary(Or)

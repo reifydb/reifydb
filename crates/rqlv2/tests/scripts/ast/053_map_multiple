@@ -6,7 +6,7 @@ parse 'FROM data | MAP { 1 + 2, 4 * 3 }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Map
 >         +-- [0] Binary(Add)
 >         |   +-- left: Integer(1)
@@ -21,7 +21,7 @@ parse 'FROM orders | MAP { name, total: price * quantity, status }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Map
 >         +-- [0] Identifier(name)
 >         +-- [1] Binary(KeyValue)
@@ -37,7 +37,7 @@ parse 'FROM users | MAP { first: fname, last: lname, full: concat(fname, lname) 
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(first)
@@ -58,7 +58,7 @@ parse 'FROM products | MAP { id, name, price, stock, category }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Map
 >         +-- [0] Identifier(id)
 >         +-- [1] Identifier(name)

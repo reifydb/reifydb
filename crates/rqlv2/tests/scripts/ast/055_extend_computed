@@ -6,7 +6,7 @@ parse 'FROM data | EXTEND { sum_val: x + y }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(sum_val)
@@ -20,7 +20,7 @@ parse 'FROM data | EXTEND { diff: a - b }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(diff)
@@ -34,7 +34,7 @@ parse 'FROM orders | EXTEND { line_total: price * quantity }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(line_total)
@@ -48,7 +48,7 @@ parse 'FROM metrics | EXTEND { avg: total / count }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(metrics)
+>     +-- [0] From(default.metrics)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(avg)
@@ -62,7 +62,7 @@ parse 'FROM users | EXTEND { name_upper: upper(name) }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(name_upper)
@@ -76,7 +76,7 @@ parse 'FROM data | EXTEND { result: (a + b) * c }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(result)

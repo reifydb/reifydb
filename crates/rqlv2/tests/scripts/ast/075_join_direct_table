@@ -9,9 +9,9 @@ parse 'FROM users | LEFT JOIN orders AS o USING (id, o.user_id)'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Left)
->         +-- primitive: orders
+>         +-- primitive: default.orders
 >         +-- alias: o
 >         `-- using:
 >             `-- [0] Pair
@@ -26,7 +26,7 @@ parse 'FROM users | LEFT JOIN sales.orders AS o USING (id, o.user_id)'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Left)
 >         +-- primitive: sales.orders
 >         +-- alias: o
@@ -43,9 +43,9 @@ parse 'FROM users | INNER JOIN products AS p USING (id, p.user_id)'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Inner)
->         +-- primitive: products
+>         +-- primitive: default.products
 >         +-- alias: p
 >         `-- using:
 >             `-- [0] Pair
@@ -60,9 +60,9 @@ parse 'FROM users | JOIN items AS i USING (id, i.user_id)'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Inner)
->         +-- primitive: items
+>         +-- primitive: default.items
 >         +-- alias: i
 >         `-- using:
 >             `-- [0] Pair
@@ -77,9 +77,9 @@ parse 'FROM users | NATURAL JOIN categories AS c'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Natural)
->         +-- primitive: categories
+>         +-- primitive: default.categories
 >         `-- alias: c
 >
 
@@ -88,9 +88,9 @@ parse 'FROM users | NATURAL LEFT JOIN tags AS t'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Natural)
->         +-- primitive: tags
+>         +-- primitive: default.tags
 >         `-- alias: t
 >
 
@@ -99,9 +99,9 @@ parse 'FROM users | LEFT JOIN orders AS o USING (id, o.user_id) AND (tenant, o.t
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Left)
->         +-- primitive: orders
+>         +-- primitive: default.orders
 >         +-- alias: o
 >         `-- using:
 >             +-- [0] Pair
@@ -121,11 +121,11 @@ parse 'FROM users | LEFT JOIN { FROM orders | FILTER active = true } AS o USING 
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     +-- [1] Join(Left)
 >     |   +-- subquery:
 >     |   |   `-- SubQuery
->     |   |       +-- [0] From(orders)
+>     |   |       +-- [0] From(default.orders)
 >     |   |       `-- [1] Filter
 >     |   |           `-- Binary(Assign)
 >     |   |               +-- left: Identifier(active)
@@ -138,7 +138,7 @@ parse 'FROM users | LEFT JOIN { FROM orders | FILTER active = true } AS o USING 
 >     |               +-- left: Identifier(o)
 >     |               `-- right: Identifier(user_id)
 >     `-- [2] Join(Left)
->         +-- primitive: products
+>         +-- primitive: default.products
 >         +-- alias: p
 >         `-- using:
 >             `-- [0] Pair
@@ -148,4 +148,38 @@ parse 'FROM users | LEFT JOIN { FROM orders | FILTER active = true } AS o USING 
 >                 `-- right: Binary(Dot)
 >                     +-- left: Identifier(p)
 >                     `-- right: Identifier(id)
+>
+
+# Left join with nested namespace (two levels)
+parse 'FROM users | LEFT JOIN trading::orders.daily AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(default.users)
+>     `-- [1] Join(Left)
+>         +-- primitive: trading::orders.daily
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>
+
+# Left join with deeply nested namespace (three levels)
+parse 'FROM users | LEFT JOIN org::dept::team.metrics AS m USING (id, m.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(default.users)
+>     `-- [1] Join(Left)
+>         +-- primitive: org::dept::team.metrics
+>         +-- alias: m
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(m)
+>                     `-- right: Identifier(user_id)
 >

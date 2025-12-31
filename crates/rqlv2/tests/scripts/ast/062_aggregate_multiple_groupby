@@ -6,7 +6,7 @@ parse 'FROM sales | AGGREGATE { total: sum(amount) } BY { region, year }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(sales)
+>     +-- [0] From(default.sales)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   +-- [0] Identifier(region)
@@ -24,7 +24,7 @@ parse 'FROM orders | AGGREGATE { count: count(id) } BY { customer_id, product_id
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   +-- [0] Identifier(customer_id)
@@ -43,7 +43,7 @@ parse 'FROM transactions | AGGREGATE { min_amt: min(amount), max_amt: max(amount
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(transactions)
+>     +-- [0] From(default.transactions)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   +-- [0] Identifier(account_id)

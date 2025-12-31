@@ -6,7 +6,7 @@ parse 'FROM data | MAP { total: sum(abs(value)) }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(total)

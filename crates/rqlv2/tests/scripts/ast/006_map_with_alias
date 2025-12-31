@@ -6,7 +6,7 @@ parse 'FROM users | MAP { n: name, a: age }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(n)
@@ -21,7 +21,7 @@ parse 'FROM users | MAP { user_name: name }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(user_name)
@@ -33,7 +33,7 @@ parse 'FROM data | MAP { total: price * quantity }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(total)
@@ -47,7 +47,7 @@ parse 'FROM data | MAP { sum_val: a + b }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(sum_val)
@@ -61,7 +61,7 @@ parse 'FROM users | MAP { upper_name: upper(name) }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(upper_name)

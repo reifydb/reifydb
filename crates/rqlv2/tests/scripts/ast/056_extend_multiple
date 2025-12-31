@@ -6,7 +6,7 @@ parse 'FROM orders | EXTEND { total: price * quantity, tax: price * 0.1 }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Extend
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(total)
@@ -25,7 +25,7 @@ parse 'FROM data | EXTEND { sum_val: a + b, diff: a - b, prod: a * b }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(sum_val)
@@ -49,7 +49,7 @@ parse 'FROM users | EXTEND { upper_name: upper(name), lower_email: lower(email) 
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Extend
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(upper_name)
@@ -68,7 +68,7 @@ parse 'FROM orders | EXTEND { total: price * quantity } | MAP { id, total }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     +-- [1] Extend
 >     |   `-- [0] Binary(KeyValue)
 >     |       +-- left: Identifier(total)

@@ -1,10 +1,42 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test FROM with namespace qualification
+# Test FROM with single namespace qualification
 parse 'FROM test.users'
 ---
 > Program
 > `-- [0] Expression
 >     `-- From(test.users)
+>
+
+# Test FROM with nested namespace (two levels)
+parse 'FROM trading::analytics.prices'
+---
+> Program
+> `-- [0] Expression
+>     `-- From(trading::analytics.prices)
+>
+
+# Test FROM with deeply nested namespace (three levels)
+parse 'FROM org::dept::team.data'
+---
+> Program
+> `-- [0] Expression
+>     `-- From(org::dept::team.data)
+>
+
+# Test FROM with quoted identifier in namespace
+parse 'FROM `my-schema`.users'
+---
+> Program
+> `-- [0] Expression
+>     `-- From(my-schema.users)
+>
+
+# Test FROM with keyword as table name
+parse 'FROM schema.table'
+---
+> Program
+> `-- [0] Expression
+>     `-- From(schema.table)
 >

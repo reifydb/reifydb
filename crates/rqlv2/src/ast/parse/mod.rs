@@ -13,6 +13,7 @@ mod filter;
 mod from;
 mod join;
 mod map;
+mod namespace;
 mod pratt;
 mod primary;
 mod sort;

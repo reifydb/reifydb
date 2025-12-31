@@ -6,7 +6,7 @@ parse 'FROM users | TAKE 10'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Take
 >         `-- Integer(10)
 >

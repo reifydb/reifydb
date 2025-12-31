@@ -3,13 +3,10 @@
 
 //! FROM expression parsing.
 
-use super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
-};
+use super::{Parser, error::ParseError};
 use crate::{
 	ast::{Expr, expr::*},
-	token::{Operator, Punctuation, TokenKind},
+	token::{Punctuation, TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -44,33 +41,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			}
 		}
 
-		// Regular table reference (identifiers or keywords used as table names)
-		if !matches!(
-			self.current().kind,
-			TokenKind::Identifier | TokenKind::QuotedIdentifier | TokenKind::Keyword(_)
-		) {
-			return Err(self.error(ParseErrorKind::ExpectedIdentifier));
-		}
+		// Parse qualified name: namespace.table or ns1::ns2.table
+		let qualified = self.parse_qualified_name()?;
 
-		let name_token = self.advance();
-		let name = self.token_text(&name_token);
-		let mut end_span = name_token.span;
-
-		// Check for namespace qualification
-		if self.check_operator(Operator::Dot) {
-			self.advance();
-			if !matches!(self.current().kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
-				return Err(self.error(ParseErrorKind::ExpectedIdentifier));
-			}
-			let table_token = self.advance();
-			let table_name = self.token_text(&table_token);
-			end_span = table_token.span;
-
-			return Ok(self.alloc(Expr::From(FromExpr::Source(
-				SourceRef::new(table_name, start_span.merge(&end_span)).with_namespace(name),
-			))));
-		}
-
-		Ok(self.alloc(Expr::From(FromExpr::Source(SourceRef::new(name, start_span.merge(&end_span))))))
+		Ok(self.alloc(Expr::From(FromExpr::Source(
+			SourceRef::new(qualified.name, start_span.merge(&qualified.span))
+				.with_namespace(qualified.namespace),
+		))))
 	}
 }

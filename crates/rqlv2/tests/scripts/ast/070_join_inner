@@ -9,7 +9,7 @@ parse 'JOIN { FROM orders } AS o USING (id, o.user_id)'
 >     `-- Join(Inner)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             `-- [0] Pair
@@ -27,7 +27,7 @@ parse 'INNER JOIN { FROM orders } AS o USING (id, o.user_id)'
 >     `-- Join(Inner)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             `-- [0] Pair
@@ -42,11 +42,11 @@ parse 'FROM users | INNER JOIN { FROM orders } AS o USING (id, o.user_id)'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Join(Inner)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             `-- [0] Pair

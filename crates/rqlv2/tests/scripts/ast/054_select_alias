@@ -6,7 +6,7 @@ parse 'FROM users | SELECT { name }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Identifier(name)
 >
@@ -16,7 +16,7 @@ parse 'FROM users | SELECT { name, age }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         +-- [0] Identifier(name)
 >         `-- [1] Identifier(age)
@@ -27,7 +27,7 @@ parse 'FROM users | SELECT { * }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Wildcard
 >
@@ -37,7 +37,7 @@ parse 'FROM users | SELECT { n: name, a: age }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         +-- [0] Binary(KeyValue)
 >         |   +-- left: Identifier(n)
@@ -52,7 +52,7 @@ parse 'FROM data | SELECT { total: price * quantity }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Map
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(total)
@@ -66,7 +66,7 @@ parse 'FROM orders | SELECT { id, total: price * quantity, status }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Map
 >         +-- [0] Identifier(id)
 >         +-- [1] Binary(KeyValue)

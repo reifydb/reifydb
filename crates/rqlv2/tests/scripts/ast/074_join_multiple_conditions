@@ -9,7 +9,7 @@ parse 'LEFT JOIN { FROM orders } AS o USING (id, o.user_id) AND (tenant, o.tenan
 >     `-- Join(Left)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             +-- [0] Pair
@@ -32,7 +32,7 @@ parse 'LEFT JOIN { FROM orders } AS o USING (id, o.user_id) OR (tenant, o.tenant
 >     `-- Join(Left)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             +-- [0] Pair
@@ -55,7 +55,7 @@ parse 'LEFT JOIN { FROM orders } AS o USING (id, o.type) AND (category, 123)'
 >     `-- Join(Left)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(orders)
+>         |       `-- [0] From(default.orders)
 >         +-- alias: o
 >         `-- using:
 >             +-- [0] Pair
@@ -76,7 +76,7 @@ parse 'INNER JOIN { FROM products } AS p USING (product_id, p.id) AND (category_
 >     `-- Join(Inner)
 >         +-- subquery:
 >         |   `-- SubQuery
->         |       `-- [0] From(products)
+>         |       `-- [0] From(default.products)
 >         +-- alias: p
 >         `-- using:
 >             +-- [0] Pair

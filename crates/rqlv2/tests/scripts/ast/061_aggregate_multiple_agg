@@ -6,7 +6,7 @@ parse 'FROM orders | AGGREGATE { min(amount), max(amount), sum(amount) } BY { cu
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(orders)
+>     +-- [0] From(default.orders)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(customer_id)
@@ -27,7 +27,7 @@ parse 'FROM employees | AGGREGATE { youngest: min(age), oldest: max(age), avg_ag
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(employees)
+>     +-- [0] From(default.employees)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(department)
@@ -54,7 +54,7 @@ parse 'FROM users | AGGREGATE { total: count(id), unique: count_distinct(email) 
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Aggregate
 >         +-- group_by:
 >         |   `-- [0] Identifier(status)

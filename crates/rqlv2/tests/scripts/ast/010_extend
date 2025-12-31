@@ -6,7 +6,7 @@ parse 'FROM data | EXTEND { total: a + b }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(total)
@@ -20,7 +20,7 @@ parse 'FROM data | EXTEND { flag: 1 }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(flag)
@@ -32,7 +32,7 @@ parse 'FROM products | EXTEND { tax: price * 0.1 }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(products)
+>     +-- [0] From(default.products)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(tax)
@@ -46,7 +46,7 @@ parse 'FROM users | EXTEND { copy: original }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Extend
 >         `-- [0] Binary(KeyValue)
 >             +-- left: Identifier(copy)

@@ -6,7 +6,7 @@ parse 'FROM users | TAKE 10'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Take
 >         `-- Integer(10)
 >
@@ -16,7 +16,7 @@ parse 'FROM users | TAKE 0'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Take
 >         `-- Integer(0)
 >
@@ -26,7 +26,7 @@ parse 'FROM data | TAKE 1000'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(data)
+>     +-- [0] From(default.data)
 >     `-- [1] Take
 >         `-- Integer(1000)
 >
@@ -36,7 +36,7 @@ parse 'FROM users | FILTER age > 18 | TAKE 5'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     +-- [1] Filter
 >     |   `-- Binary(Gt)
 >     |       +-- left: Identifier(age)
@@ -50,7 +50,7 @@ parse 'FROM users | TAKE $limit'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Take
 >         `-- Variable($limit)
 >

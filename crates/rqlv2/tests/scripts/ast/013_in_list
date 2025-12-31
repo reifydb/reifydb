@@ -6,7 +6,7 @@ parse "FROM users | FILTER status IN ['active', 'pending']"
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Filter
 >         `-- In
 >             +-- value: Identifier(status)

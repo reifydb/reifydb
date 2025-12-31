@@ -6,7 +6,7 @@ parse 'FROM users | MAP { * }'
 ---
 > Program
 > `-- [0] Pipeline
->     +-- [0] From(users)
+>     +-- [0] From(default.users)
 >     `-- [1] Map
 >         `-- [0] Wildcard
 >
