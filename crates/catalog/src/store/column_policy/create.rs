@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::table_column_policy_already_exists,
-	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, CommandTransaction},
+	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind},
 	return_error,
 };
 use reifydb_transaction::StandardCommandTransaction;

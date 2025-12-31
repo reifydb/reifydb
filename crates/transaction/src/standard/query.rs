@@ -1,30 +1,29 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionBatch, MultiVersionTransaction,
-		MultiVersionValues, NamespaceDef, NamespaceId, QueryTransaction, RingBufferDef, RingBufferId, TableDef,
-		TableId, TransactionId, TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalTableChanges,
-		TransactionalViewChanges, ViewDef, ViewId,
+		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionValues, NamespaceDef, NamespaceId,
+		RingBufferDef, RingBufferId, TableDef, TableId, TransactionId, TransactionalChanges,
+		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalNamespaceChanges,
+		TransactionalRingBufferChanges, TransactionalTableChanges, TransactionalViewChanges, ViewDef, ViewId,
 	},
 };
+use reifydb_store_transaction::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
 	cdc::TransactionCdc,
-	multi::TransactionMultiVersion,
+	multi::QueryTransaction,
 	single::{SvlQueryTransaction, TransactionSingle},
 };
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
 pub struct StandardQueryTransaction {
-	pub(crate) multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
+	pub(crate) multi: QueryTransaction,
 	pub(crate) single: TransactionSingle,
 	pub(crate) cdc: TransactionCdc,
 }
@@ -32,16 +31,67 @@ pub struct StandardQueryTransaction {
 impl StandardQueryTransaction {
 	/// Creates a new active query transaction
 	#[instrument(name = "transaction::standard::query::new", level = "debug", skip_all)]
-	pub fn new(
-		multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
-		single: TransactionSingle,
-		cdc: TransactionCdc,
-	) -> Self {
+	pub fn new(multi: QueryTransaction, single: TransactionSingle, cdc: TransactionCdc) -> Self {
 		Self {
 			multi,
 			single,
 			cdc,
 		}
+	}
+
+	/// Get the transaction version
+	#[inline]
+	pub fn version(&self) -> CommitVersion {
+		self.multi.version()
+	}
+
+	/// Get the transaction ID
+	#[inline]
+	pub fn id(&self) -> TransactionId {
+		self.multi.tm.id()
+	}
+
+	/// Get a value by key
+	#[inline]
+	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+		Ok(self.multi.get(key).await?.map(|v| v.into_multi_version_values()))
+	}
+
+	/// Check if a key exists
+	#[inline]
+	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+		self.multi.contains_key(key).await
+	}
+
+	/// Get a range batch
+	#[inline]
+	pub async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
+		self.multi.range_batch(range, batch_size).await
+	}
+
+	/// Get a reverse range batch
+	#[inline]
+	pub async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
+		self.multi.range_rev_batch(range, batch_size).await
+	}
+
+	/// Get a prefix batch
+	#[inline]
+	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		self.multi.prefix(prefix).await
+	}
+
+	/// Get a reverse prefix batch
+	#[inline]
+	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		self.multi.prefix_rev(prefix).await
+	}
+
+	/// Read as of version exclusive
+	#[inline]
+	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+		self.multi.read_as_of_version_exclusive(version);
+		Ok(())
 	}
 
 	/// Execute a function with query access to the single transaction.
@@ -60,7 +110,7 @@ impl StandardQueryTransaction {
 	#[instrument(name = "transaction::standard::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
 	where
-		F: FnOnce(&mut <TransactionMultiVersion as MultiVersionTransaction>::Query) -> Result<R>,
+		F: FnOnce(&mut QueryTransaction) -> Result<R>,
 	{
 		f(&mut self.multi)
 	}
@@ -84,44 +134,6 @@ impl StandardQueryTransaction {
 	#[instrument(name = "transaction::standard::query::begin_cdc_query", level = "trace", skip(self))]
 	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		Ok(self.cdc.begin_query()?)
-	}
-}
-
-#[async_trait]
-impl QueryTransaction for StandardQueryTransaction {
-	#[inline]
-	fn version(&self) -> CommitVersion {
-		QueryTransaction::version(&self.multi)
-	}
-
-	#[inline]
-	fn id(&self) -> TransactionId {
-		QueryTransaction::id(&self.multi)
-	}
-
-	#[inline]
-	async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
-		QueryTransaction::get(&mut self.multi, key).await
-	}
-
-	#[inline]
-	async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		QueryTransaction::contains_key(&mut self.multi, key).await
-	}
-
-	#[inline]
-	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		QueryTransaction::range_batch(&mut self.multi, range, batch_size).await
-	}
-
-	#[inline]
-	async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		QueryTransaction::range_rev_batch(&mut self.multi, range, batch_size).await
-	}
-
-	#[inline]
-	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
-		QueryTransaction::read_as_of_version_exclusive(&mut self.multi, version).await
 	}
 }
 

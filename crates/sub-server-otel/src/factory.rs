@@ -5,7 +5,6 @@
 
 use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use crate::{config::OtelConfig, subsystem::OtelSubsystem};
@@ -36,7 +35,7 @@ impl OtelSubsystemFactory {
 }
 
 #[async_trait]
-impl SubsystemFactory<StandardCommandTransaction> for OtelSubsystemFactory {
+impl SubsystemFactory for OtelSubsystemFactory {
 	async fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		if let Some(subsystem) = self.subsystem {
 			// Subsystem already created and started

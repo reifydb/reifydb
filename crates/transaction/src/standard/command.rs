@@ -1,32 +1,37 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
 	event::EventBus,
-	interceptor,
-	interceptor::{
-		Chain, Interceptors, PostCommitInterceptor, PreCommitInterceptor, RingBufferPostDeleteInterceptor,
-		RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-		RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePreDeleteInterceptor, TablePreInsertInterceptor,
-		TablePreUpdateInterceptor,
-	},
 	interface::{
-		CommandTransaction, MultiVersionBatch, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
-		RowChange, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
-		interceptor::{TransactionInterceptor, WithInterceptors},
+		MultiVersionValues, RowChange, TransactionId, TransactionalChanges, TransactionalDefChanges,
+		WithEventBus,
 	},
 	return_error,
 	value::encoded::EncodedValues,
 };
+use reifydb_store_transaction::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
 	cdc::TransactionCdc,
+	interceptor::{
+		Chain, Interceptors, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitContext,
+		PostCommitInterceptor, PreCommitContext, PreCommitInterceptor, RingBufferDefPostCreateInterceptor,
+		RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteInterceptor,
+		RingBufferDefPreUpdateInterceptor, RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
+		RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor,
+		RingBufferPreUpdateInterceptor, TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
+		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
+		TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+		TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+		WithInterceptors,
+	},
 	multi::{TransactionMultiVersion, pending::PendingWrites},
 	single::{SvlCommandTransaction, SvlQueryTransaction, TransactionSingle},
 	standard::query::StandardQueryTransaction,
@@ -42,13 +47,13 @@ pub struct StandardCommandTransaction {
 	pub cdc: TransactionCdc,
 	state: TransactionState,
 
-	pub cmd: Option<<TransactionMultiVersion as MultiVersionTransaction>::Command>,
+	pub cmd: Option<crate::multi::CommandTransaction>,
 	pub event_bus: EventBus,
 	pub changes: TransactionalDefChanges,
 
 	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
-	pub(crate) interceptors: Interceptors<Self>,
+	pub(crate) interceptors: Interceptors,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -66,10 +71,10 @@ impl StandardCommandTransaction {
 		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
-		interceptors: Interceptors<Self>,
+		interceptors: Interceptors,
 	) -> Result<Self> {
 		let cmd = multi.begin_command().await?;
-		let txn_id = cmd.id();
+		let txn_id = cmd.tm.id();
 		Ok(Self {
 			cmd: Some(cmd),
 			multi,
@@ -109,17 +114,20 @@ impl StandardCommandTransaction {
 	pub async fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
-		TransactionInterceptor::pre_commit(self).await?;
+		self.interceptors.pre_commit.execute(PreCommitContext::new()).await?;
 
 		if let Some(mut multi) = self.cmd.take() {
-			let id = multi.id();
+			let id = multi.tm.id();
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
 			let row_changes = std::mem::take(&mut self.row_changes);
 
 			let version = multi.commit().await?;
-			TransactionInterceptor::post_commit(self, id, version, changes, row_changes).await?;
+			self.interceptors
+				.post_commit
+				.execute(PostCommitContext::new(id, version, changes, row_changes))
+				.await?;
 
 			Ok(version)
 		} else {
@@ -242,7 +250,7 @@ impl StandardCommandTransaction {
 			self.cdc.clone(),
 		);
 
-		query_txn.read_as_of_version_inclusive(version).await?;
+		query_txn.multi.read_as_of_version_inclusive(version);
 
 		f(&mut query_txn)
 	}
@@ -283,83 +291,87 @@ impl StandardCommandTransaction {
 	pub fn track_row_change(&mut self, change: RowChange) {
 		self.row_changes.push(change);
 	}
-}
 
-#[async_trait]
-impl QueryTransaction for StandardCommandTransaction {
+	/// Get the transaction version
 	#[inline]
-	fn version(&self) -> CommitVersion {
-		QueryTransaction::version(self.cmd.as_ref().unwrap())
+	pub fn version(&self) -> CommitVersion {
+		self.cmd.as_ref().unwrap().version()
 	}
 
+	/// Get the transaction ID
 	#[inline]
-	fn id(&self) -> TransactionId {
-		QueryTransaction::id(self.cmd.as_ref().unwrap())
+	pub fn id(&self) -> TransactionId {
+		self.cmd.as_ref().unwrap().tm.id()
 	}
 
+	/// Get a value by key
 	#[inline]
-	async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		QueryTransaction::get(self.cmd.as_mut().unwrap(), key).await
+		Ok(self.cmd.as_mut().unwrap().get(key).await?.map(|v| v.into_multi_version_values()))
 	}
 
+	/// Check if a key exists
 	#[inline]
-	async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
-		QueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key).await
+		self.cmd.as_mut().unwrap().contains_key(key).await
 	}
 
+	/// Get a range batch with default batch size (1000)
 	#[inline]
-	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		self.check_active()?;
-		QueryTransaction::range_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
+	pub async fn range(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
+		self.range_batch(range, 1000).await
 	}
 
+	/// Get a range batch
 	#[inline]
-	async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
+	pub async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		QueryTransaction::range_rev_batch(self.cmd.as_mut().unwrap(), range, batch_size).await
+		self.cmd.as_mut().unwrap().range_batch(range, batch_size).await
 	}
 
+	/// Get a reverse range batch
 	#[inline]
-	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		QueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version).await
-	}
-}
-
-#[async_trait]
-impl CommandTransaction for StandardCommandTransaction {
-	#[inline]
-	async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
-		self.check_active()?;
-		CommandTransaction::set(self.cmd.as_mut().unwrap(), key, row).await
+		self.cmd.as_mut().unwrap().range_rev_batch(range, batch_size).await
 	}
 
+	/// Get a prefix batch
 	#[inline]
-	async fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		CommandTransaction::remove(self.cmd.as_mut().unwrap(), key).await
+		self.cmd.as_mut().unwrap().prefix(prefix).await
 	}
 
+	/// Get a reverse prefix batch
 	#[inline]
-	async fn commit(&mut self) -> Result<CommitVersion> {
+	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		let result = CommandTransaction::commit(self.cmd.as_mut().unwrap()).await;
-		if result.is_ok() {
-			self.state = TransactionState::Committed;
-		}
-		result
+		self.cmd.as_mut().unwrap().prefix_rev(prefix).await
 	}
 
+	/// Read as of version exclusive
 	#[inline]
-	async fn rollback(&mut self) -> Result<()> {
+	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.check_active()?;
-		let result = CommandTransaction::rollback(self.cmd.as_mut().unwrap()).await;
-		if result.is_ok() {
-			self.state = TransactionState::RolledBack;
-		}
-		result
+		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
+		Ok(())
+	}
+
+	/// Set a key-value pair
+	#[inline]
+	pub async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().set(key, row)
+	}
+
+	/// Remove a key
+	#[inline]
+	pub async fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove(key)
 	}
 }
 
@@ -369,274 +381,156 @@ impl WithEventBus for StandardCommandTransaction {
 	}
 }
 
-impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction {
-	fn table_pre_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn TablePreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+impl WithInterceptors for StandardCommandTransaction {
+	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.table_pre_insert
 	}
 
-	fn table_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn TablePostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_post_insert_interceptors(&mut self) -> &mut Chain<dyn TablePostInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.table_post_insert
 	}
 
-	fn table_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn TablePreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.table_pre_update
 	}
 
-	fn table_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::TablePostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.table_post_update
 	}
 
-	fn table_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn TablePreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.table_pre_delete
 	}
 
-	fn table_post_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn TablePostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_post_delete_interceptors(&mut self) -> &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.table_post_delete
 	}
 
 	fn ringbuffer_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_pre_insert
 	}
 
 	fn ringbuffer_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_post_insert
 	}
 
 	fn ringbuffer_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_pre_update
 	}
 
 	fn ringbuffer_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_post_update
 	}
 
 	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_pre_delete
 	}
 
 	fn ringbuffer_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_post_delete
 	}
 
-	fn pre_commit_interceptors(
-		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PreCommitInterceptor<StandardCommandTransaction> + Send + Sync>
-	{
+	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
 		&mut self.interceptors.pre_commit
 	}
 
-	fn post_commit_interceptors(
-		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PostCommitInterceptor<StandardCommandTransaction> + Send + Sync>
-	{
+	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync> {
 		&mut self.interceptors.post_commit
 	}
 
-	// Namespace definition interceptors
 	fn namespace_def_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn NamespaceDefPostCreateInterceptor + Send + Sync> {
 		&mut self.interceptors.namespace_def_post_create
 	}
 
 	fn namespace_def_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn NamespaceDefPreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.namespace_def_pre_update
 	}
 
 	fn namespace_def_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn NamespaceDefPostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.namespace_def_post_update
 	}
 
 	fn namespace_def_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn NamespaceDefPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.namespace_def_pre_delete
 	}
 
-	// Table definition interceptors
 	fn table_def_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync> {
 		&mut self.interceptors.table_def_post_create
 	}
 
-	fn table_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.table_def_pre_update
 	}
 
 	fn table_def_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.table_def_post_update
 	}
 
-	fn table_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.table_def_pre_delete
 	}
 
-	// View definition interceptors
-	fn view_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
 		&mut self.interceptors.view_def_post_create
 	}
 
-	fn view_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.view_def_pre_update
 	}
 
-	fn view_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.view_def_post_update
 	}
 
-	fn view_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.view_def_pre_delete
 	}
 
-	// Ring buffer definition interceptors
 	fn ringbuffer_def_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_def_post_create
 	}
 
 	fn ringbuffer_def_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_def_pre_update
 	}
 
 	fn ringbuffer_def_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_def_post_update
 	}
 
 	fn ringbuffer_def_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<
-		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
-	> {
+	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.ringbuffer_def_pre_delete
 	}
 }

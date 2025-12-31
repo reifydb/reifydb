@@ -5,14 +5,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, QueryTransaction, VTableDef, version::SystemVersion},
+	interface::{VTableDef, version::SystemVersion},
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
 	system::SystemCatalog,
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes system version information
@@ -43,7 +44,7 @@ impl Versions {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for Versions {
+impl<T: IntoStandardTransaction> VTable<T> for Versions {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

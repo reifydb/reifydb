@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use async_trait::async_trait;
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, TransactionId,
-	interface::{MultiVersionBatch, MultiVersionValues, QueryTransaction},
-};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, TransactionId, interface::MultiVersionValues};
+use reifydb_store_transaction::MultiVersionBatch;
 use reifydb_type::Result;
 
 mod catalog;
@@ -26,8 +23,8 @@ impl<'a> StandardTransaction<'a> {
 	/// Get the transaction version
 	pub fn version(&self) -> CommitVersion {
 		match self {
-			Self::Command(txn) => QueryTransaction::version(*txn),
-			Self::Query(txn) => QueryTransaction::version(*txn),
+			Self::Command(txn) => txn.version(),
+			Self::Query(txn) => txn.version(),
 		}
 	}
 
@@ -111,8 +108,65 @@ impl<'a> From<&'a mut StandardQueryTransaction> for StandardTransaction<'a> {
 /// Trait for types that can be converted into a StandardTransaction.
 /// This allows functions to accept either StandardCommandTransaction or
 /// StandardQueryTransaction directly without requiring manual wrapping.
+#[allow(async_fn_in_trait)]
 pub trait IntoStandardTransaction: Send {
 	fn into_standard_transaction(&mut self) -> StandardTransaction<'_>;
+
+	/// Get a value by key (async method)
+	async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().get(key).await
+	}
+
+	/// Check if a key exists (async method)
+	async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().contains_key(key).await
+	}
+
+	/// Get a range batch (async method)
+	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().range_batch(range, batch_size).await
+	}
+
+	/// Get a range batch with default batch size (1000)
+	async fn range(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch>
+	where
+		Self: Sized,
+	{
+		self.range_batch(range, 1000).await
+	}
+
+	/// Get a reverse range batch (async method)
+	async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().range_rev_batch(range, batch_size).await
+	}
+
+	/// Get a prefix batch (async method)
+	async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().prefix(prefix).await
+	}
+
+	/// Get a reverse prefix batch (async method)
+	async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
+	where
+		Self: Sized,
+	{
+		self.into_standard_transaction().prefix_rev(prefix).await
+	}
 }
 
 impl IntoStandardTransaction for StandardCommandTransaction {
@@ -189,60 +243,6 @@ impl<'a> StandardTransaction<'a> {
 		match self {
 			StandardTransaction::Command(txn) => txn.begin_cdc_query().await,
 			StandardTransaction::Query(txn) => txn.begin_cdc_query().await,
-		}
-	}
-}
-
-// StandardTransaction already has MultiVersionQueryTransaction methods defined above,
-// but we need the trait implementation for trait bounds
-#[async_trait]
-impl<'a> QueryTransaction for StandardTransaction<'a> {
-	fn version(&self) -> CommitVersion {
-		match self {
-			Self::Command(txn) => QueryTransaction::version(*txn),
-			Self::Query(txn) => QueryTransaction::version(*txn),
-		}
-	}
-
-	fn id(&self) -> TransactionId {
-		match self {
-			Self::Command(txn) => txn.id(),
-			Self::Query(txn) => txn.id(),
-		}
-	}
-
-	async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
-		match self {
-			Self::Command(txn) => txn.get(key).await,
-			Self::Query(txn) => txn.get(key).await,
-		}
-	}
-
-	async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		match self {
-			Self::Command(txn) => txn.contains_key(key).await,
-			Self::Query(txn) => txn.contains_key(key).await,
-		}
-	}
-
-	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => txn.range_batch(range, batch_size).await,
-			Self::Query(txn) => txn.range_batch(range, batch_size).await,
-		}
-	}
-
-	async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => txn.range_rev_batch(range, batch_size).await,
-			Self::Query(txn) => txn.range_rev_batch(range, batch_size).await,
-		}
-	}
-
-	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
-		match self {
-			StandardTransaction::Command(txn) => txn.read_as_of_version_exclusive(version).await,
-			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
 		}
 	}
 }

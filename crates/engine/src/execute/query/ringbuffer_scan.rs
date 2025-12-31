@@ -6,12 +6,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{DictionaryDef, QueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer},
+	interface::{DictionaryDef, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer},
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{DictionaryEntryId, Fragment, RowNumber, Type};
 use tracing::instrument;
 
@@ -37,7 +38,7 @@ pub struct RingBufferScan {
 }
 
 impl RingBufferScan {
-	pub async fn new<Rx: QueryTransaction + reifydb_core::interface::QueryTransaction>(
+	pub async fn new<Rx: IntoStandardTransaction>(
 		ringbuffer: ResolvedRingBuffer,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,

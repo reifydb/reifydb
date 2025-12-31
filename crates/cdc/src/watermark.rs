@@ -7,8 +7,10 @@
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{CdcConsumerKeyRange, QueryTransaction},
+	interface::{CdcConsumerKeyRange, ConsumerState, EncodableKey},
+	key::CdcConsumerKey,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
 /// across all registered CDC consumers.
@@ -35,7 +37,7 @@ use reifydb_core::{
 /// let watermark = compute_watermark(&mut txn)?;
 /// // Now retention can safely cleanup versions < watermark
 /// ```
-pub async fn compute_watermark(txn: &mut impl QueryTransaction) -> reifydb_core::Result<CommitVersion> {
+pub async fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
 	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
@@ -57,4 +59,32 @@ pub async fn compute_watermark(txn: &mut impl QueryTransaction) -> reifydb_core:
 	// If no consumers exist, return CommitVersion(1) as safe default
 	// This prevents any cleanup when there are no consumers registered
 	Ok(min_version.unwrap_or(CommitVersion(1)))
+}
+
+/// Retrieves the state of all CDC consumers
+pub async fn get_all_consumer_states(
+	txn: &mut impl IntoStandardTransaction,
+) -> reifydb_core::Result<Vec<ConsumerState>> {
+	let mut states = Vec::new();
+
+	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
+	for multi in batch.items {
+		let key = match CdcConsumerKey::decode(&multi.key) {
+			Some(k) => k,
+			None => continue,
+		};
+
+		if multi.values.len() >= 8 {
+			let mut buffer = [0u8; 8];
+			buffer.copy_from_slice(&multi.values[0..8]);
+			let checkpoint = CommitVersion(u64::from_be_bytes(buffer));
+
+			states.push(ConsumerState {
+				consumer_id: key.consumer,
+				checkpoint,
+			});
+		}
+	}
+
+	Ok(states)
 }

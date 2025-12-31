@@ -3,8 +3,7 @@
 
 use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::interceptor::{PostCommitContext, PostCommitInterceptor};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::interceptor::{PostCommitContext, PostCommitInterceptor};
 
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,
@@ -19,7 +18,7 @@ impl MaterializedCatalogInterceptor {
 }
 
 #[async_trait]
-impl PostCommitInterceptor<StandardCommandTransaction> for MaterializedCatalogInterceptor {
+impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 	async fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 

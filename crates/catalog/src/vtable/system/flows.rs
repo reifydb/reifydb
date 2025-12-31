@@ -5,15 +5,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, FlowStatus, QueryTransaction, VTableDef},
+	interface::{FlowStatus, VTableDef},
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
 	CatalogStore,
 	system::SystemCatalog,
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes system flow information
@@ -32,7 +33,7 @@ impl Flows {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for Flows {
+impl<T: IntoStandardTransaction> VTable<T> for Flows {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

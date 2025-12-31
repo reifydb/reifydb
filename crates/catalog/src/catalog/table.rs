@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{NamespaceId, QueryTransaction, TableDef, TableId, TransactionalTableChanges};
+use reifydb_core::interface::{NamespaceId, TableDef, TableId, TransactionalTableChanges};
 use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
 use reifydb_type::{Fragment, diagnostic::catalog::table_not_found, error, internal};
 use tracing::{instrument, warn};
@@ -28,7 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table(id, QueryTransaction::version(cmd)) {
+				if let Some(table) = self.materialized.find_table(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
@@ -42,7 +42,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(table) = self.materialized.find_table(id, QueryTransaction::version(qry)) {
+				if let Some(table) = self.materialized.find_table(id, qry.version()) {
 					return Ok(Some(table));
 				}
 
@@ -78,11 +78,9 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table_by_name(
-					namespace,
-					name,
-					QueryTransaction::version(cmd),
-				) {
+				if let Some(table) =
+					self.materialized.find_table_by_name(namespace, name, cmd.version())
+				{
 					return Ok(Some(table));
 				}
 
@@ -99,11 +97,9 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(table) = self.materialized.find_table_by_name(
-					namespace,
-					name,
-					QueryTransaction::version(qry),
-				) {
+				if let Some(table) =
+					self.materialized.find_table_by_name(namespace, name, qry.version())
+				{
 					return Ok(Some(table));
 				}
 

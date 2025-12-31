@@ -1,17 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec,
-	interface::{CommandTransaction, QueryTransaction, ToConsumerKey},
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{CommitVersion, CowVec, interface::ToConsumerKey, value::encoded::EncodedValues};
+use reifydb_transaction::{IntoStandardTransaction, StandardCommandTransaction};
 
 pub struct CdcCheckpoint {}
 
 impl CdcCheckpoint {
 	pub async fn fetch<K: ToConsumerKey>(
-		txn: &mut impl QueryTransaction,
+		txn: &mut impl IntoStandardTransaction,
 		consumer: &K,
 	) -> reifydb_core::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
@@ -32,7 +29,7 @@ impl CdcCheckpoint {
 	}
 
 	pub async fn persist<K: ToConsumerKey>(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		consumer: &K,
 		version: CommitVersion,
 	) -> reifydb_core::Result<()> {

@@ -4,11 +4,8 @@
 use std::any::Any;
 
 use async_trait::async_trait;
-use reifydb_core::{
-	interceptor::StandardInterceptorBuilder,
-	interface::{CommandTransaction, version::HasVersion},
-	ioc::IocContainer,
-};
+use reifydb_core::{interface::version::HasVersion, ioc::IocContainer};
+use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 
 /// Uniform interface that all subsystems must implement
 ///
@@ -51,12 +48,12 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 
 /// Factory trait for creating subsystems with IoC support
 #[async_trait]
-pub trait SubsystemFactory<CT: CommandTransaction>: Send {
+pub trait SubsystemFactory: Send {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<CT>,
+		builder: StandardInterceptorBuilder,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<CT> {
+	) -> StandardInterceptorBuilder {
 		builder
 	}
 

@@ -14,7 +14,7 @@ use futures_util::TryStreamExt;
 use reifydb_core::{
 	Frame, Result,
 	event::lifecycle::OnStartEvent,
-	interface::{Engine as EngineInterface, Identity, Params, WithEventBus},
+	interface::{Identity, Params, WithEventBus},
 	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;

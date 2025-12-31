@@ -3,10 +3,8 @@
 
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{
-	CommitVersion, EncodedKey,
-	interface::{MultiVersionBatch, MultiVersionValues},
-};
+use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};
+use reifydb_store_transaction::MultiVersionBatch;
 
 use super::Pending;
 

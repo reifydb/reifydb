@@ -8,7 +8,7 @@ use futures_util::TryStreamExt;
 use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Engine as _, Identity, Params},
+	interface::{Identity, Params},
 	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
@@ -66,7 +66,7 @@ impl OnCreateContext {
 pub struct OnCreateEventListener<F, Fut>
 where
 	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
+	Fut: Future<Output = crate::Result<()>> + Send + 'static,
 {
 	pub callback: F,
 	pub engine: StandardEngine,
@@ -76,7 +76,7 @@ where
 impl<F, Fut> OnCreateEventListener<F, Fut>
 where
 	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
+	Fut: Future<Output = crate::Result<()>> + Send + 'static,
 {
 	pub fn new(engine: StandardEngine, callback: F) -> Self {
 		Self {
@@ -91,7 +91,7 @@ where
 impl<F, Fut> EventListener<OnCreateEvent> for OnCreateEventListener<F, Fut>
 where
 	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: std::future::Future<Output = crate::Result<()>> + Send + 'static,
+	Fut: Future<Output = crate::Result<()>> + Send + 'static,
 {
 	async fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());

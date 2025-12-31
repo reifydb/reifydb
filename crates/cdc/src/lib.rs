@@ -13,7 +13,7 @@ mod watermark;
 pub use checkpoint::CdcCheckpoint;
 pub use consumer::{CdcConsume, CdcConsumer};
 pub use poll::{PollConsumer, PollConsumerConfig};
-pub use watermark::compute_watermark;
+pub use watermark::{compute_watermark, get_all_consumer_states};
 
 pub struct CdcVersion;
 

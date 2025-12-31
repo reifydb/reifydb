@@ -3,10 +3,11 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{FlowNodeId, MultiVersionBatch},
+	interface::FlowNodeId,
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
+use reifydb_store_transaction::MultiVersionBatch;
 use tracing::instrument;
 
 use super::FlowTransaction;

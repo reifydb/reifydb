@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{NamespaceDef, NamespaceId, QueryTransaction, TransactionalNamespaceChanges};
+use reifydb_core::interface::{NamespaceDef, NamespaceId, TransactionalNamespaceChanges};
 use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
 use reifydb_type::{Fragment, diagnostic::catalog::namespace_not_found, error, internal};
 use tracing::{instrument, warn};
@@ -28,9 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(namespace) =
-					self.materialized.find_namespace(id, QueryTransaction::version(cmd))
-				{
+				if let Some(namespace) = self.materialized.find_namespace(id, cmd.version()) {
 					return Ok(Some(namespace));
 				}
 
@@ -47,9 +45,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(namespace) =
-					self.materialized.find_namespace(id, QueryTransaction::version(qry))
-				{
+				if let Some(namespace) = self.materialized.find_namespace(id, qry.version()) {
 					return Ok(Some(namespace));
 				}
 
@@ -88,9 +84,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(namespace) =
-					self.materialized.find_namespace_by_name(name, QueryTransaction::version(cmd))
-				{
+				if let Some(namespace) = self.materialized.find_namespace_by_name(name, cmd.version()) {
 					return Ok(Some(namespace));
 				}
 
@@ -104,9 +98,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(namespace) =
-					self.materialized.find_namespace_by_name(name, QueryTransaction::version(qry))
-				{
+				if let Some(namespace) = self.materialized.find_namespace_by_name(name, qry.version()) {
 					return Ok(Some(namespace));
 				}
 

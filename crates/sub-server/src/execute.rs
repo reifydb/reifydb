@@ -10,11 +10,7 @@
 use std::{sync::Arc, time::Duration};
 
 use futures_util::TryStreamExt;
-use reifydb_core::{
-	Frame,
-	interface::{Engine, Identity},
-	stream::StreamError,
-};
+use reifydb_core::{Frame, interface::Identity, stream::StreamError};
 use reifydb_engine::StandardEngine;
 use reifydb_type::{Params, diagnostic::Diagnostic};
 

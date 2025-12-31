@@ -473,3 +473,68 @@ where
 {
 	ClosureTablePostDeleteInterceptor::new(f)
 }
+
+/// Helper struct for executing table interceptors via static methods.
+pub struct TableInterceptor;
+
+impl TableInterceptor {
+	pub async fn pre_insert(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		rn: RowNumber,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePreInsertContext::new(table, rn, row);
+		txn.table_pre_insert_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_insert(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		id: RowNumber,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePostInsertContext::new(table, id, row);
+		txn.table_post_insert_interceptors().execute(ctx).await
+	}
+
+	pub async fn pre_update(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		id: RowNumber,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePreUpdateContext::new(table, id, row);
+		txn.table_pre_update_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_update(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		id: RowNumber,
+		row: &EncodedValues,
+		old_row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePostUpdateContext::new(table, id, row, old_row);
+		txn.table_post_update_interceptors().execute(ctx).await
+	}
+
+	pub async fn pre_delete(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		id: RowNumber,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePreDeleteContext::new(table, id);
+		txn.table_pre_delete_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_delete(
+		txn: &mut impl super::WithInterceptors,
+		table: &TableDef,
+		id: RowNumber,
+		deleted_row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = TablePostDeleteContext::new(table, id, deleted_row);
+		txn.table_post_delete_interceptors().execute(ctx).await
+	}
+}

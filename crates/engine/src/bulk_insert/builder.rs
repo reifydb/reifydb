@@ -4,10 +4,7 @@
 use std::marker::PhantomData;
 
 use reifydb_catalog::{CatalogStore, sequence::RowSequence};
-use reifydb_core::{
-	interface::{CommandTransaction, Identity, QueryTransaction},
-	value::encoded::encode_value,
-};
+use reifydb_core::{interface::Identity, value::encoded::encode_value};
 use reifydb_type::{Fragment, Value};
 
 use super::{
@@ -108,8 +105,6 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// Returns a summary of what was inserted. On error, the entire
 	/// transaction is rolled back (no partial inserts).
 	pub async fn execute(self) -> crate::Result<BulkInsertResult> {
-		use reifydb_core::interface::Engine;
-
 		let mut txn = self.engine.begin_command().await?;
 		let mut result = BulkInsertResult::default();
 

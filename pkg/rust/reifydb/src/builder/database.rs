@@ -10,11 +10,10 @@ use reifydb_cdc::CdcVersion;
 use reifydb_core::{
 	ComputePool, CoreVersion,
 	event::EventBus,
-	interceptor::StandardInterceptorBuilder,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction};
+use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
@@ -23,7 +22,8 @@ use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_transaction::{
-	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle,
+	TransactionVersion, cdc::TransactionCdc, interceptor::StandardInterceptorBuilder,
+	multi::TransactionMultiVersion, single::TransactionSingle,
 };
 use tracing::debug;
 
@@ -35,15 +35,15 @@ use crate::{
 
 pub struct DatabaseBuilder {
 	config: DatabaseConfig,
-	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
-	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	interceptors: StandardInterceptorBuilder,
+	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
-	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
-	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	flow_factory: Option<Box<dyn SubsystemFactory>>,
 }
 
 impl DatabaseBuilder {
@@ -118,15 +118,12 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
+	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory>) -> Self {
 		self.factories.push(factory);
 		self
 	}
 
-	pub fn with_interceptor_builder(
-		mut self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction>,
-	) -> Self {
+	pub fn with_interceptor_builder(mut self, builder: StandardInterceptorBuilder) -> Self {
 		self.interceptors = builder;
 		self
 	}

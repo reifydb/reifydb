@@ -1,18 +1,16 @@
 //! Integration tests for CDC consumer state retrieval functionality
 
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_cdc::CdcCheckpoint;
+use reifydb_cdc::{CdcCheckpoint, get_all_consumer_states};
 use reifydb_core::{
-	CommitVersion, Result,
-	event::EventBus,
-	interceptor::StandardInterceptorFactory,
-	interface::{CdcConsumerId, Engine, get_all_consumer_states},
-	ioc::IocContainer,
-	util::mock_time_set,
+	CommitVersion, Result, event::EventBus, interface::CdcConsumerId, ioc::IocContainer, util::mock_time_set,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
+use reifydb_transaction::{
+	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
+	single::TransactionSingle,
+};
 
 async fn create_test_engine() -> Result<StandardEngine> {
 	#[cfg(debug_assertions)]

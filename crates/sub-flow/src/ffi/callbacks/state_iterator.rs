@@ -5,10 +5,8 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
-use reifydb_core::{
-	interface::MultiVersionBatch,
-	key::{EncodableKey, FlowNodeStateKey},
-};
+use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
+use reifydb_store_transaction::MultiVersionBatch;
 
 /// Handle to a state iterator
 pub type StateIteratorHandle = u64;

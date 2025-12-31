@@ -5,16 +5,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, PrimitiveId, QueryTransaction, VTableDef},
+	interface::{PrimitiveId, VTableDef},
 	retention::{CleanupMode, RetentionPolicy},
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Fragment, Value};
 
 use crate::{
 	CatalogStore,
 	system::SystemCatalog,
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes primitive retention policy information
@@ -33,7 +34,7 @@ impl PrimitiveRetentionPolicies {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for PrimitiveRetentionPolicies {
+impl<T: IntoStandardTransaction> VTable<T> for PrimitiveRetentionPolicies {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

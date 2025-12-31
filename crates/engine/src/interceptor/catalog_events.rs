@@ -12,10 +12,9 @@ use reifydb_core::{
 			TableInsertedEvent, ViewCreatedEvent,
 		},
 	},
-	interceptor::{PostCommitContext, PostCommitInterceptor},
 	interface::{GetEncodedRowNamedLayout, OperationType, RowChange},
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::interceptor::{PostCommitContext, PostCommitInterceptor};
 
 pub(crate) struct CatalogEventInterceptor {
 	event_bus: EventBus,
@@ -32,7 +31,7 @@ impl CatalogEventInterceptor {
 }
 
 #[async_trait]
-impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventInterceptor {
+impl PostCommitInterceptor for CatalogEventInterceptor {
 	async fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		// Emit events for namespace changes
 		for change in &ctx.changes.namespace_def {

@@ -6,7 +6,7 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_store_transaction::MultiVersionBatch;
 
 /// Handle to a store iterator
 pub type StoreIteratorHandle = u64;

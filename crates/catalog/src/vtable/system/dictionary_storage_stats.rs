@@ -5,16 +5,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, PrimitiveId, QueryTransaction, VTableDef},
+	interface::{PrimitiveId, VTableDef},
 	value::column::{Column, ColumnData, Columns},
 };
-use reifydb_transaction::{ObjectId, StorageTracker, Tier};
+use reifydb_transaction::{IntoStandardTransaction, ObjectId, StorageTracker, Tier};
 use reifydb_type::Fragment;
 
 use crate::{
 	CatalogStore,
 	system::SystemCatalog,
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes storage statistics for dictionaries
@@ -43,7 +43,7 @@ fn tier_to_str(tier: Tier) -> &'static str {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for DictionaryStorageStats {
+impl<T: IntoStandardTransaction> VTable<T> for DictionaryStorageStats {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

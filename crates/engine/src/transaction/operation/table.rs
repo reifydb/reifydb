@@ -2,11 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		CommandTransaction, RowChange, RowKey, TableDef, TableRowInsertion, interceptor::TableInterceptor,
-	},
+	interface::{RowChange, RowKey, TableDef, TableRowInsertion},
 	value::encoded::EncodedValues,
 };
+use reifydb_transaction::interceptor::TableInterceptor;
 use reifydb_type::RowNumber;
 
 use crate::StandardCommandTransaction;

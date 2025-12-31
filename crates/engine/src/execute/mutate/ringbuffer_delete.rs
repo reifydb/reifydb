@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{Params, QueryTransaction, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer, RowKey},
+	interface::{Params, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer, RowKey},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;

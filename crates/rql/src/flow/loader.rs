@@ -4,16 +4,14 @@
 //! Loader module for reconstructing Flows from catalog nodes and edges
 
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	Error,
-	interface::{FlowId, QueryTransaction},
-};
+use reifydb_core::{Error, interface::FlowId};
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
 use super::{Flow, FlowEdge, FlowNode, FlowNodeType};
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub async fn load_flow(txn: &mut impl QueryTransaction, flow_id: FlowId) -> crate::Result<Flow> {
+pub async fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<Flow> {
 	// Load all nodes for this flow
 	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id).await?;
 

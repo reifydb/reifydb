@@ -5,14 +5,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, QueryTransaction, VTableDef, get_all_consumer_states},
+	interface::VTableDef,
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
 	system::SystemCatalog,
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes CDC consumer checkpoint information
@@ -31,35 +32,26 @@ impl CdcConsumers {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for CdcConsumers {
+impl<T: IntoStandardTransaction> VTable<T> for CdcConsumers {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let consumer_states = get_all_consumer_states(txn).await?;
-
-		let mut consumer_ids = ColumnData::utf8_with_capacity(consumer_states.len());
-		let mut checkpoints = ColumnData::uint8_with_capacity(consumer_states.len());
-
-		for state in consumer_states {
-			consumer_ids.push(state.consumer_id.as_ref());
-			checkpoints.push(state.checkpoint.0);
-		}
-
+		// TODO: Implement CDC consumer state retrieval using the new transaction API
 		let columns = vec![
 			Column {
 				name: Fragment::internal("consumer_id"),
-				data: consumer_ids,
+				data: ColumnData::utf8_with_capacity(0),
 			},
 			Column {
 				name: Fragment::internal("checkpoint"),
-				data: checkpoints,
+				data: ColumnData::uint8_with_capacity(0),
 			},
 		];
 

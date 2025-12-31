@@ -12,13 +12,11 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{
-		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		KeyKind,
-	},
+	interface::{Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, Key, KeyKind},
 	key::{CdcConsumerKey, EncodableKey},
 };
 use reifydb_engine::StandardEngine;
+use reifydb_transaction::StandardCommandTransaction;
 use tokio::{task::JoinHandle, time::sleep};
 use tracing::{debug, error};
 
@@ -263,7 +261,7 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 }
 
 async fn fetch_cdcs_until(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	since_version: CommitVersion,
 	until_version: CommitVersion,
 	max_batch_size: Option<u64>,

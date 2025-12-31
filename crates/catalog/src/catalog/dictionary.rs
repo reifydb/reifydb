@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	DictionaryDef, DictionaryId, NamespaceId, QueryTransaction, TransactionalDictionaryChanges,
-};
+use reifydb_core::interface::{DictionaryDef, DictionaryId, NamespaceId, TransactionalDictionaryChanges};
 use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
 use tracing::{instrument, warn};
 
@@ -29,9 +27,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(dict) =
-					self.materialized.find_dictionary(id, QueryTransaction::version(cmd))
-				{
+				if let Some(dict) = self.materialized.find_dictionary(id, cmd.version()) {
 					return Ok(Some(dict));
 				}
 
@@ -48,9 +44,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(dict) =
-					self.materialized.find_dictionary(id, QueryTransaction::version(qry))
-				{
+				if let Some(dict) = self.materialized.find_dictionary(id, qry.version()) {
 					return Ok(Some(dict));
 				}
 
@@ -90,11 +84,9 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary_by_name(
-					namespace,
-					name,
-					QueryTransaction::version(cmd),
-				) {
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name(namespace, name, cmd.version())
+				{
 					return Ok(Some(dict));
 				}
 
@@ -111,11 +103,9 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(dict) = self.materialized.find_dictionary_by_name(
-					namespace,
-					name,
-					QueryTransaction::version(qry),
-				) {
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name(namespace, name, qry.version())
+				{
 					return Ok(Some(dict));
 				}
 

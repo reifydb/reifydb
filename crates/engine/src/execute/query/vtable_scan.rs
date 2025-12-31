@@ -64,7 +64,12 @@ impl QueryNode for VirtualScanNode {
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
-		self.virtual_table.next(rx).await
+		match self.virtual_table.next(rx).await? {
+			Some(vtable_batch) => Ok(Some(Batch {
+				columns: vtable_batch.columns,
+			})),
+			None => Ok(None),
+		}
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

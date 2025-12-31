@@ -23,11 +23,7 @@ impl FlowTransaction {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey,
-		interface::{CommandTransaction, QueryTransaction},
-		value::encoded::EncodedValues,
-	};
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, value::encoded::EncodedValues};
 	use reifydb_engine::StandardCommandTransaction;
 
 	use super::*;
@@ -42,7 +38,7 @@ mod tests {
 	}
 
 	async fn get_values(parent: &mut StandardCommandTransaction, key: &EncodedKey) -> Option<EncodedValues> {
-		parent.get(key).await.unwrap().map(|m| m.values)
+		parent.get(key).await.unwrap().map(|m| m.values.clone())
 	}
 
 	#[tokio::test]

@@ -7,8 +7,7 @@ pub mod test {
 	use reifydb_core::{
 		EncodedKey,
 		event::EventBus,
-		interceptor::StandardInterceptorFactory,
-		interface::{Engine, FlowNodeId},
+		interface::FlowNodeId,
 		ioc::IocContainer,
 		util::CowVec,
 		value::{
@@ -19,7 +18,10 @@ pub mod test {
 	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardEngine};
 	use reifydb_sdk::FlowChange;
 	use reifydb_store_transaction::TransactionStore;
-	use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
+	use reifydb_transaction::{
+		cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
+		single::TransactionSingle,
+	};
 	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{

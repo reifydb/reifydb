@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use reifydb_cdc::{CdcCheckpoint, CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcConsumerId, Engine, FlowId, PrimitiveId},
+	interface::{Cdc, CdcConsumerId, FlowId, PrimitiveId},
 	key::Key,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};

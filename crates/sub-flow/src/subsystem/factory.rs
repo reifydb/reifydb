@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use async_trait::async_trait;
-use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, util::ioc::IocContainer};
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_core::{Result, util::ioc::IocContainer};
+use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
+use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 
 use crate::builder::FlowBuilder;
 
@@ -40,12 +41,12 @@ impl Default for FlowSubsystemFactory {
 }
 
 #[async_trait]
-impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
+impl SubsystemFactory for FlowSubsystemFactory {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction>,
+		builder: StandardInterceptorBuilder,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<StandardCommandTransaction> {
+	) -> StandardInterceptorBuilder {
 		// Independent flow consumer doesn't need interceptors
 		builder
 	}

@@ -27,7 +27,7 @@ pub use filter::InterceptFilter;
 // Re-export filtered interceptors
 pub use filtered::*;
 // Re-export interceptors container
-pub use interceptors::Interceptors;
+pub use interceptors::{Interceptors, RegisterInterceptor};
 // Re-export namespace_def interceptors
 pub use namespace_def::{
 	ClosureNamespaceDefPostCreateInterceptor, ClosureNamespaceDefPostUpdateInterceptor,
@@ -41,12 +41,13 @@ pub use namespace_def::{
 pub use ringbuffer::{
 	ClosureRingBufferPostDeleteInterceptor, ClosureRingBufferPostInsertInterceptor,
 	ClosureRingBufferPostUpdateInterceptor, ClosureRingBufferPreDeleteInterceptor,
-	ClosureRingBufferPreInsertInterceptor, ClosureRingBufferPreUpdateInterceptor, RingBufferPostDeleteContext,
-	RingBufferPostDeleteInterceptor, RingBufferPostInsertContext, RingBufferPostInsertInterceptor,
-	RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor, RingBufferPreDeleteContext,
-	RingBufferPreDeleteInterceptor, RingBufferPreInsertContext, RingBufferPreInsertInterceptor,
-	RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor, ringbuffer_post_delete, ringbuffer_post_insert,
-	ringbuffer_post_update, ringbuffer_pre_delete, ringbuffer_pre_insert, ringbuffer_pre_update,
+	ClosureRingBufferPreInsertInterceptor, ClosureRingBufferPreUpdateInterceptor, RingBufferInterceptor,
+	RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
+	RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
+	RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
+	RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
+	ringbuffer_post_delete, ringbuffer_post_insert, ringbuffer_post_update, ringbuffer_pre_delete,
+	ringbuffer_pre_insert, ringbuffer_pre_update,
 };
 // Re-export ringbuffer_def interceptors
 pub use ringbuffer_def::{
@@ -61,10 +62,11 @@ pub use ringbuffer_def::{
 pub use table::{
 	ClosureTablePostDeleteInterceptor, ClosureTablePostInsertInterceptor, ClosureTablePostUpdateInterceptor,
 	ClosureTablePreDeleteInterceptor, ClosureTablePreInsertInterceptor, ClosureTablePreUpdateInterceptor,
-	TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor,
-	TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext, TablePreDeleteInterceptor,
-	TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor,
-	table_post_delete, table_post_insert, table_post_update, table_pre_delete, table_pre_insert, table_pre_update,
+	TableInterceptor, TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext,
+	TablePostInsertInterceptor, TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext,
+	TablePreDeleteInterceptor, TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext,
+	TablePreUpdateInterceptor, table_post_delete, table_post_insert, table_post_update, table_pre_delete,
+	table_pre_insert, table_pre_update,
 };
 // Re-export table_def interceptors
 pub use table_def::{

@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
@@ -19,5 +18,5 @@ pub trait WithSubsystem: Sized {
 	where
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static;
 
-	fn with_subsystem(self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self;
+	fn with_subsystem(self, factory: Box<dyn SubsystemFactory>) -> Self;
 }

@@ -16,6 +16,7 @@ reifydb-hash = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-store-transaction = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = {workspace = true}
 reifydb-type = { workspace = true }
@@ -34,6 +35,4 @@ tokio-util = "0.7"
 tracing = { workspace = true }
 
 [dev-dependencies]
-reifydb-store-transaction = { workspace = true}
-reifydb-transaction = { workspace = true}
 rand = { workspace = true}

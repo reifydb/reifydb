@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
-	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, PrimitiveId},
+	interface::{ColumnId, PrimaryKeyId, PrimaryKeyKey, PrimitiveId},
 	return_error, return_internal_error,
 };
 use reifydb_transaction::StandardCommandTransaction;

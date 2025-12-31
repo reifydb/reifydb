@@ -101,6 +101,11 @@ impl Interceptors {
 	}
 }
 
+/// Trait for types that can register themselves with an interceptor container
+pub trait RegisterInterceptor: Send + Sync {
+	fn register(self, interceptors: &mut Interceptors);
+}
+
 impl Clone for Interceptors {
 	fn clone(&self) -> Self {
 		Self {

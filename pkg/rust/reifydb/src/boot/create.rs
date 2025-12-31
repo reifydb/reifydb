@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures_util::TryStreamExt;
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Engine as EngineInterface, Identity, Params},
+	interface::{Identity, Params},
 };
 use reifydb_engine::StandardEngine;
 use tracing::error;

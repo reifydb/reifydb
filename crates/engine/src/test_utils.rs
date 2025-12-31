@@ -8,11 +8,12 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_core::{event::EventBus, interceptor::Interceptors};
+use reifydb_core::event::EventBus;
 use reifydb_store_transaction::TransactionStore;
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
 	cdc::TransactionCdc,
+	interceptor::Interceptors,
 	single::{TransactionSingle, TransactionSvl},
 };
 use reifydb_type::{Type, TypeConstraint};

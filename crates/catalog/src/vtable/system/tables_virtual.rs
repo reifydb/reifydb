@@ -5,15 +5,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, QueryTransaction, VTableDef},
+	interface::VTableDef,
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
 	Catalog,
 	system::{SystemCatalog, ids::vtable},
-	vtable::{VTable, VTableContext},
+	vtable::{Batch, VTable, VTableContext},
 };
 
 /// Virtual table that exposes information about all virtual tables (system and user-defined)
@@ -34,7 +35,7 @@ impl TablesVirtual {
 }
 
 #[async_trait]
-impl<T: QueryTransaction> VTable<T> for TablesVirtual {
+impl<T: IntoStandardTransaction> VTable<T> for TablesVirtual {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())

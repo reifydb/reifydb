@@ -3,12 +3,8 @@
 
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
-use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::{Key, MultiVersionBatch, QueryTransaction},
-	key::KeyKind,
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Key, key::KeyKind, value::encoded::EncodedValues};
+use reifydb_store_transaction::MultiVersionBatch;
 
 use super::{FlowTransaction, iter_range::collect_batch};
 
@@ -32,7 +28,7 @@ impl FlowTransaction {
 		};
 
 		match query.get(key).await? {
-			Some(multi) => Ok(Some(multi.values)),
+			Some(multi) => Ok(Some(multi.values().clone())),
 			None => Ok(None),
 		}
 	}
@@ -135,11 +131,7 @@ impl FlowTransaction {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-		interface::{CommandTransaction, Engine, QueryTransaction},
-		value::encoded::EncodedValues,
-	};
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction};

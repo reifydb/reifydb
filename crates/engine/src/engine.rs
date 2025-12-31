@@ -15,11 +15,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	CommitVersion, Frame,
 	event::{Event, EventBus},
-	interceptor::InterceptorFactory,
-	interface::{
-		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		Identity, Params, Query, QueryTransaction, VTableDef, VTableId, WithEventBus,
-	},
+	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
 	ioc::IocContainer,
 	stream::{ChannelFrameStream, FrameSender, SendableFrameStream, StreamError},
 };
@@ -27,6 +23,7 @@ use reifydb_rql::ast;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction,
 	cdc::TransactionCdc,
+	interceptor::InterceptorFactory,
 	multi::{AwaitWatermarkError, TransactionMultiVersion},
 	single::TransactionSingle,
 };
@@ -36,7 +33,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
-	execute::{Executor, parallel::can_parallelize},
+	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query, parallel::can_parallelize},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
 };
 
@@ -48,13 +45,10 @@ impl WithEventBus for StandardEngine {
 	}
 }
 
-#[async_trait]
-impl EngineInterface for StandardEngine {
-	type Command = StandardCommandTransaction;
-	type Query = StandardQueryTransaction;
-
+// Engine methods (formerly from Engine trait in reifydb-core)
+impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	async fn begin_command(&self) -> crate::Result<Self::Command> {
+	pub async fn begin_command(&self) -> crate::Result<StandardCommandTransaction> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
@@ -73,7 +67,7 @@ impl EngineInterface for StandardEngine {
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	async fn begin_query(&self) -> crate::Result<Self::Query> {
+	pub async fn begin_query(&self) -> crate::Result<StandardQueryTransaction> {
 		Ok(StandardQueryTransaction::new(
 			self.multi.begin_query().await?,
 			self.single.clone(),
@@ -82,7 +76,7 @@ impl EngineInterface for StandardEngine {
 	}
 
 	#[instrument(name = "engine::command", level = "info", skip(self, params), fields(rql = %rql))]
-	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
+	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
 		let engine = self.clone();
 		let identity = identity.clone();
 		let rql = rql.to_string();
@@ -96,7 +90,7 @@ impl EngineInterface for StandardEngine {
 	}
 
 	#[instrument(name = "engine::query", level = "info", skip(self, params), fields(rql = %rql))]
-	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
+	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
 		let engine = self.clone();
 		let identity = identity.clone();
 		let rql = rql.to_string();
@@ -346,7 +340,7 @@ async fn execute_query_parallel(
 }
 
 #[async_trait]
-impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
+impl ExecuteCommand for StandardEngine {
 	#[inline]
 	async fn execute_command(
 		&self,
@@ -358,7 +352,7 @@ impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 }
 
 #[async_trait]
-impl ExecuteQuery<StandardQueryTransaction> for StandardEngine {
+impl ExecuteQuery for StandardEngine {
 	#[inline]
 	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry).await
@@ -385,7 +379,7 @@ pub struct EngineInner {
 	cdc: TransactionCdc,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
+	interceptors: Box<dyn InterceptorFactory>,
 	catalog: MaterializedCatalog,
 	flow_operator_store: FlowOperatorStore,
 }
@@ -396,7 +390,7 @@ impl StandardEngine {
 		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
-		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
+		interceptors: Box<dyn InterceptorFactory>,
 		catalog: MaterializedCatalog,
 		custom_functions: Option<Functions>,
 		ioc: IocContainer,

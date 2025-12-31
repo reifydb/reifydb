@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, FlowId, FlowKey, FlowStatus};
+use reifydb_core::interface::{FlowId, FlowKey, FlowStatus};
 use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::flow::layout::flow};

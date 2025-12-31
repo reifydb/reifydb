@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use crate::{config::AdminConfig, state::AdminState, subsystem::AdminSubsystem};
@@ -25,7 +25,7 @@ impl AdminSubsystemFactory {
 }
 
 #[async_trait]
-impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
+impl SubsystemFactory for AdminSubsystemFactory {
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 

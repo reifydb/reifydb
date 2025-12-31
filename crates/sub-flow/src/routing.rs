@@ -72,10 +72,7 @@ pub(crate) async fn create_row(
 	row_bytes: Vec<u8>,
 ) -> Result<Row> {
 	use reifydb_core::{
-		Error,
-		interface::{EncodableKey, QueryTransaction},
-		key::DictionaryEntryIndexKey,
-		value::encoded::EncodedValuesLayout,
+		Error, interface::EncodableKey, key::DictionaryEntryIndexKey, value::encoded::EncodedValuesLayout,
 	};
 	use reifydb_type::{DictionaryEntryId, Value, internal};
 

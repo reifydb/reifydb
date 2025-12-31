@@ -11,7 +11,7 @@ use std::any::Any;
 use async_trait::async_trait;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_core::ioc::IocContainer;
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_server::{AppState, QueryConfig};
 use reifydb_sub_server_http::HttpSubsystem;
@@ -255,7 +255,7 @@ impl ServerSubsystemFactory {
 }
 
 #[async_trait]
-impl SubsystemFactory<StandardCommandTransaction> for ServerSubsystemFactory {
+impl SubsystemFactory for ServerSubsystemFactory {
 	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let subsystem = ServerSubsystem::new(self.config, engine);

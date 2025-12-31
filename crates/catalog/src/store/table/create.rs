@@ -4,8 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, NamespaceTableKey, PrimitiveId,
-		TableDef, TableId, TableKey,
+		ColumnPolicyKind, DictionaryId, NamespaceId, NamespaceTableKey, PrimitiveId, TableDef, TableId,
+		TableKey,
 	},
 	retention::RetentionPolicy,
 	return_error,
@@ -140,7 +140,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{NamespaceId, NamespaceTableKey, QueryTransaction, TableId};
+	use reifydb_core::interface::{NamespaceId, NamespaceTableKey, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

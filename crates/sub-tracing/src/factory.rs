@@ -3,8 +3,8 @@
 
 use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
+use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 
 use super::TracingBuilder;
 
@@ -42,12 +42,12 @@ impl Default for TracingSubsystemFactory {
 }
 
 #[async_trait]
-impl SubsystemFactory<StandardCommandTransaction> for TracingSubsystemFactory {
+impl SubsystemFactory for TracingSubsystemFactory {
 	fn provide_interceptors(
 		&self,
-		builder: reifydb_core::interceptor::StandardInterceptorBuilder<StandardCommandTransaction>,
+		builder: StandardInterceptorBuilder,
 		_ioc: &IocContainer,
-	) -> reifydb_core::interceptor::StandardInterceptorBuilder<StandardCommandTransaction> {
+	) -> StandardInterceptorBuilder {
 		// Tracing subsystem doesn't need any special interceptors
 		builder
 	}

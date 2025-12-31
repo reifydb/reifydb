@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{interface::NamespaceId, value::column::ColumnData};
 use reifydb_engine::StandardTransaction;
 
@@ -496,26 +497,30 @@ impl VmState {
 					self.ip = next_ip;
 				} else if let Some(rx) = rx {
 					// Fallback to catalog lookup for real storage
-					let version = rx.version();
-					let (namespace_id, table_name) =
-						if let Some((ns, tbl)) = source_def.name.split_once('.') {
-							// Qualified name: look up namespace by name
-							let namespace_def = rx
-								.catalog()
-								.find_namespace_by_name(ns, version)
-								.ok_or_else(|| VmError::NamespaceNotFound {
-									name: ns.to_string(),
-								})?;
-							(namespace_def.id, tbl)
-						} else {
-							// Simple name: use default namespace ID = 1
-							(NamespaceId(1), source_def.name.as_str())
-						};
+					let (namespace_id, table_name) = if let Some((ns, tbl)) =
+						source_def.name.split_once('.')
+					{
+						// Qualified name: look up namespace by name
+						let namespace_def = CatalogStore::find_namespace_by_name(rx, ns)
+							.await
+							.map_err(|_| VmError::NamespaceNotFound {
+								name: ns.to_string(),
+							})?
+							.ok_or_else(|| VmError::NamespaceNotFound {
+								name: ns.to_string(),
+							})?;
+						(namespace_def.id, tbl)
+					} else {
+						// Simple name: use default namespace ID = 1
+						(NamespaceId(1), source_def.name.as_str())
+					};
 
 					// Look up table from catalog via transaction
-					let table_def = rx
-						.catalog()
-						.find_table_by_name(namespace_id, table_name, version)
+					let table_def = CatalogStore::find_table_by_name(rx, namespace_id, table_name)
+						.await
+						.map_err(|_| VmError::TableNotFound {
+							name: source_def.name.clone(),
+						})?
 						.ok_or_else(|| VmError::TableNotFound {
 							name: source_def.name.clone(),
 						})?;

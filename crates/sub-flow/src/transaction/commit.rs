@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use diagnostic::flow::flow_transaction_keyspace_overlap;
-use reifydb_core::interface::CommandTransaction;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{diagnostic, return_error, util::hex};
 use tracing::instrument;
@@ -125,8 +124,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_commit_removes() {
-		use reifydb_core::interface::Engine;
-
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;
@@ -164,8 +161,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_commit_mixed_writes_and_removes() {
-		use reifydb_core::interface::Engine;
-
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;
@@ -219,8 +214,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_commit_overwrites_storage_value() {
-		use reifydb_core::interface::Engine;
-
 		use crate::operator::stateful::test_utils::test::create_test_engine;
 
 		let engine = create_test_engine().await;

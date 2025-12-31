@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::dictionary_already_exists,
-	interface::{CommandTransaction, DictionaryDef, DictionaryId, NamespaceId},
+	interface::{DictionaryDef, DictionaryId, NamespaceId},
 	return_error,
 };
 use reifydb_transaction::StandardCommandTransaction;
@@ -114,7 +114,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{NamespaceDictionaryKey, QueryTransaction};
+	use reifydb_core::interface::NamespaceDictionaryKey;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
 

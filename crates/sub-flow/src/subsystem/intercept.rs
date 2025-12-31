@@ -13,7 +13,7 @@ use reifydb_core::{
 		TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
 	},
-	interface::CommandTransaction,
+	interface::
 	ioc::{IocContainer, LazyResolveArc},
 };
 use reifydb_engine::StandardEngine;

@@ -21,16 +21,13 @@ mod trusted;
 
 use futures_util::TryStreamExt;
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::{
-	Frame,
-	event::EventBus,
-	interceptor::StandardInterceptorFactory,
-	interface::{Engine, Identity},
-	ioc::IocContainer,
-};
+use reifydb_core::{Frame, event::EventBus, interface::Identity, ioc::IocContainer};
 use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
+use reifydb_transaction::{
+	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
+	single::TransactionSingle,
+};
 
 /// Create a test engine with in-memory storage.
 pub async fn create_test_engine() -> StandardEngine {

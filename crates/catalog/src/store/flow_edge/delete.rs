@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, FlowEdgeId},
+	interface::FlowEdgeId,
 	key::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::StandardCommandTransaction;

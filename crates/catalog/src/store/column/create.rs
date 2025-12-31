@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, PrimitiveId, TableId},
+	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, DictionaryId, PrimitiveId, TableId},
 	return_error,
 };
 use reifydb_transaction::StandardCommandTransaction;

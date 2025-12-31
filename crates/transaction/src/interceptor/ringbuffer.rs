@@ -476,3 +476,67 @@ where
 {
 	ClosureRingBufferPostDeleteInterceptor::new(f)
 }
+
+/// Helper struct for executing ring buffer interceptors via static methods.
+pub struct RingBufferInterceptor;
+
+impl RingBufferInterceptor {
+	pub async fn pre_insert(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPreInsertContext::new(ringbuffer, row);
+		txn.ringbuffer_pre_insert_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_insert(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		id: RowNumber,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPostInsertContext::new(ringbuffer, id, row);
+		txn.ringbuffer_post_insert_interceptors().execute(ctx).await
+	}
+
+	pub async fn pre_update(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		id: RowNumber,
+		row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPreUpdateContext::new(ringbuffer, id, row);
+		txn.ringbuffer_pre_update_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_update(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		id: RowNumber,
+		row: &EncodedValues,
+		old_row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPostUpdateContext::new(ringbuffer, id, row, old_row);
+		txn.ringbuffer_post_update_interceptors().execute(ctx).await
+	}
+
+	pub async fn pre_delete(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		id: RowNumber,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPreDeleteContext::new(ringbuffer, id);
+		txn.ringbuffer_pre_delete_interceptors().execute(ctx).await
+	}
+
+	pub async fn post_delete(
+		txn: &mut impl super::WithInterceptors,
+		ringbuffer: &RingBufferDef,
+		id: RowNumber,
+		deleted_row: &EncodedValues,
+	) -> reifydb_core::Result<()> {
+		let ctx = RingBufferPostDeleteContext::new(ringbuffer, id, deleted_row);
+		txn.ringbuffer_post_delete_interceptors().execute(ctx).await
+	}
+}

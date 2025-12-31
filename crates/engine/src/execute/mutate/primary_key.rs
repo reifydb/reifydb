@@ -4,12 +4,13 @@
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	SortDirection,
-	interface::{PrimaryKeyDef, QueryTransaction, TableDef},
+	interface::{PrimaryKeyDef, TableDef},
 	value::{
 		encoded::{EncodedValues, EncodedValuesLayout},
 		index::{EncodedIndexKey, EncodedIndexLayout},
 	},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
 /// Extract primary key values from a encoded and encode them as an index key
@@ -165,8 +166,8 @@ pub fn encode_primary_key(
 }
 
 /// Helper to load the primary key definition if the table has one
-pub async fn get_primary_key(
-	txn: &mut impl QueryTransaction,
+pub async fn get_primary_key<T: IntoStandardTransaction>(
+	txn: &mut T,
 	table: &TableDef,
 ) -> crate::Result<Option<PrimaryKeyDef>> {
 	if let Some(_pk_id) = CatalogStore::get_table_pk_id(txn, table.id).await? {

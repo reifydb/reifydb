@@ -5,8 +5,8 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		ColumnId, ColumnPolicyId, CommandTransaction, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId,
-		SystemSequenceKey, TableId, ViewId,
+		ColumnId, ColumnPolicyId, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, SystemSequenceKey,
+		TableId, ViewId,
 	},
 };
 use reifydb_transaction::StandardCommandTransaction;

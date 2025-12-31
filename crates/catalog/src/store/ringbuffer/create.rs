@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::ringbuffer_already_exists,
-	interface::{
-		ColumnIndex, ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, RingBufferDef,
-		RingBufferId, TableId,
-	},
+	interface::{ColumnIndex, ColumnPolicyKind, DictionaryId, NamespaceId, RingBufferDef, RingBufferId, TableId},
 	return_error,
 };
 use reifydb_transaction::StandardCommandTransaction;
@@ -175,7 +172,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{NamespaceRingBufferKey, QueryTransaction};
+	use reifydb_core::interface::NamespaceRingBufferKey;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 

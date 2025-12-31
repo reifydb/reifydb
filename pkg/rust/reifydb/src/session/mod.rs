@@ -16,7 +16,7 @@ use futures_util::TryStreamExt;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
-	interface::{Engine as EngineInterface, Identity, Params},
+	interface::{Identity, Params},
 	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;

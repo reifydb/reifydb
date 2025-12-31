@@ -17,11 +17,7 @@ use reifydb_core::{
 	EncodedKey, Result,
 	diagnostic::Diagnostic,
 	event::EventBus,
-	interceptor::StandardInterceptorFactory,
-	interface::{
-		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, CommandTransaction, EncodableKey,
-		Engine as EngineInterface, Key, PrimitiveId, QueryTransaction, TableId,
-	},
+	interface::{Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Key, PrimitiveId, TableId},
 	ioc::IocContainer,
 	key::RowKey,
 	util::{CowVec, mock_time_set},
@@ -29,7 +25,10 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMulti, single::TransactionSingle};
+use reifydb_transaction::{
+	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
+	single::TransactionSingle,
+};
 use reifydb_type::{Fragment, RowNumber};
 use tokio::time::sleep;
 

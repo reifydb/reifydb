@@ -9,12 +9,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{Batch, Params, QueryTransaction, VTableDef},
+	interface::{Params, VTableDef},
 	value::column::Columns,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use super::{
-	VTable, VTableContext,
+	Batch, VTable, VTableContext,
 	system::{
 		CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges, FlowLags,
 		FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs, FlowOperators,
@@ -119,7 +120,11 @@ impl VTables {
 	}
 
 	/// Initialize the virtual table iterator with context
-	pub async fn initialize<T: QueryTransaction>(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
+	pub async fn initialize<T: IntoStandardTransaction>(
+		&mut self,
+		txn: &mut T,
+		ctx: VTableContext,
+	) -> crate::Result<()> {
 		match self {
 			Self::Sequences(t) => t.initialize(txn, ctx).await,
 			Self::Namespaces(t) => t.initialize(txn, ctx).await,
@@ -174,7 +179,7 @@ impl VTables {
 	}
 
 	/// Get the next batch of results (volcano iterator pattern)
-	pub async fn next<T: QueryTransaction>(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	pub async fn next<T: IntoStandardTransaction>(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		match self {
 			Self::Sequences(t) => t.next(txn).await,
 			Self::Namespaces(t) => t.next(txn).await,

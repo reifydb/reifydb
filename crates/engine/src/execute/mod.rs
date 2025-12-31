@@ -36,10 +36,50 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	Frame, LazyBatch,
-	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
+	interface::{Identity, Params, ResolvedPrimitive},
 	ioc::IocContainer,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
+
+// Types moved from reifydb-core (formerly in interface/execute.rs)
+
+/// A batch of columnar data returned from query execution
+#[derive(Debug)]
+pub struct Batch {
+	pub columns: Columns,
+}
+
+/// Command execution request
+#[derive(Debug)]
+pub struct Command<'a> {
+	pub rql: &'a str,
+	pub params: Params,
+	pub identity: &'a Identity,
+}
+
+/// Query execution request
+#[derive(Debug)]
+pub struct Query<'a> {
+	pub rql: &'a str,
+	pub params: Params,
+	pub identity: &'a Identity,
+}
+
+/// Trait for executing commands (write operations)
+#[async_trait]
+pub trait ExecuteCommand {
+	async fn execute_command(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		cmd: Command<'_>,
+	) -> crate::Result<Vec<Frame>>;
+}
+
+/// Trait for executing queries (read operations)
+#[async_trait]
+pub trait ExecuteQuery {
+	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
+}
 use reifydb_rql::{
 	ast,
 	ast::AstStatement,
@@ -100,9 +140,6 @@ pub struct ExecutionContext {
 	pub params: Params,
 	pub stack: Stack,
 }
-
-// Re-export Batch from core for convenience
-pub use reifydb_core::interface::Batch;
 
 pub(crate) enum ExecutionPlan {
 	Aggregate(AggregateNode),
@@ -360,7 +397,7 @@ impl Executor {
 }
 
 #[async_trait]
-impl ExecuteCommand<StandardCommandTransaction> for Executor {
+impl ExecuteCommand for Executor {
 	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	async fn execute_command(
 		&self,
@@ -409,7 +446,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 }
 
 #[async_trait]
-impl ExecuteQuery<StandardQueryTransaction> for Executor {
+impl ExecuteQuery for Executor {
 	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
@@ -452,8 +489,6 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 		Ok(result)
 	}
 }
-
-impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
 
 impl Executor {
 	/// Execute a single statement without any scripting context.

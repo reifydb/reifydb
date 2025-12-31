@@ -27,7 +27,7 @@ pub use reifydb_core as core;
 pub use reifydb_core::{
 	ComputePool, Error, Result, compute,
 	event::EventBus,
-	interface::{Identity, MultiVersionTransaction, Params, SingleVersionTransaction},
+	interface::{Identity, Params},
 };
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;

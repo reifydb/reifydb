@@ -11,6 +11,7 @@ description = "Tracing subsystem for ReifyDB using tracing_subscriber"
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
 async-trait = {workspace = true}

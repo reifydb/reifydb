@@ -6,10 +6,18 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	SortKey,
-	interface::{Batch, Params, QueryTransaction, VTableDef, VTableId},
+	interface::{Params, VTableDef, VTableId},
+	value::column::Columns,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::system::SystemCatalog;
+
+/// A batch of columnar data returned from virtual table queries
+#[derive(Debug)]
+pub struct Batch {
+	pub columns: Columns,
+}
 
 pub mod system;
 mod tables;
@@ -43,7 +51,7 @@ pub enum VTableContext {
 
 /// Trait for virtual table instances that follow the volcano iterator pattern
 #[async_trait]
-pub trait VTable<T: QueryTransaction>: Send + Sync {
+pub trait VTable<T: IntoStandardTransaction>: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
 	async fn initialize(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()>;
@@ -61,7 +69,10 @@ pub struct VTableRegistry;
 impl VTableRegistry {
 	/// Find a virtual table by its ID
 	/// Returns None if the virtual table doesn't exist
-	pub fn find_vtable(_rx: &mut impl QueryTransaction, id: VTableId) -> crate::Result<Option<Arc<VTableDef>>> {
+	pub fn find_vtable<T: IntoStandardTransaction>(
+		_rx: &mut T,
+		id: VTableId,
+	) -> crate::Result<Option<Arc<VTableDef>>> {
 		use crate::system::ids::vtable::*;
 
 		Ok(match id {
@@ -89,7 +100,7 @@ impl VTableRegistry {
 	}
 
 	/// List all virtual tables
-	pub fn list_vtables(_rx: &mut impl QueryTransaction) -> crate::Result<Vec<Arc<VTableDef>>> {
+	pub fn list_vtables<T: IntoStandardTransaction>(_rx: &mut T) -> crate::Result<Vec<Arc<VTableDef>>> {
 		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table_def(),

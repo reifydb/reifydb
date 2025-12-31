@@ -7,13 +7,14 @@ use async_trait::async_trait;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey, LazyBatch, LazyColumnMeta,
-	interface::{DictionaryDef, EncodableKey, QueryTransaction, RowKey, RowKeyRange, resolved::ResolvedTable},
+	interface::{DictionaryDef, EncodableKey, RowKey, RowKeyRange, resolved::ResolvedTable},
 	util::CowVec,
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{DictionaryEntryId, Fragment, Type};
 use tracing::{debug_span, instrument};
 
@@ -36,7 +37,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub async fn new<Rx: QueryTransaction + QueryTransaction>(
+	pub async fn new<Rx: IntoStandardTransaction>(
 		table: ResolvedTable,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,

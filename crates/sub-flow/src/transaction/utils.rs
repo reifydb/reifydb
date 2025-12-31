@@ -20,7 +20,6 @@ pub mod test {
 		parent: &mut reifydb_engine::StandardCommandTransaction,
 		key: &EncodedKey,
 	) -> Option<EncodedValues> {
-		use reifydb_core::interface::QueryTransaction;
-		parent.get(key).await.unwrap().map(|m| m.values)
+		parent.get(key).await.unwrap().map(|m| m.values.clone())
 	}
 }

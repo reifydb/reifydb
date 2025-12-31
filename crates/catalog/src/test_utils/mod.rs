@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicyKind, CommandTransaction, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus,
-	NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
+	ColumnPolicyKind, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus, NamespaceDef,
+	RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
 };
 use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Blob, TypeConstraint};

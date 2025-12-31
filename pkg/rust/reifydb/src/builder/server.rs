@@ -2,12 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_builtin::FunctionsBuilder;
-use reifydb_core::{
-	ComputePool,
-	event::EventBus,
-	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_core::{ComputePool, event::EventBus};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
@@ -21,7 +16,12 @@ use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
 use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
+use reifydb_transaction::{
+	cdc::TransactionCdc,
+	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
+	multi::TransactionMultiVersion,
+	single::TransactionSingle,
+};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
@@ -31,8 +31,8 @@ pub struct ServerBuilder {
 	single: TransactionSingle,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
-	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
-	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	interceptors: StandardInterceptorBuilder,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
@@ -66,10 +66,10 @@ impl ServerBuilder {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<StandardCommandTransaction> + Send + Sync + Clone + 'static,
+		I: RegisterInterceptor + Clone + 'static,
 	{
 		self.interceptors = self.interceptors.add_factory(move |interceptors| {
-			interceptors.register(interceptor.clone());
+			interceptor.clone().register(interceptors);
 		});
 		self
 	}
@@ -225,14 +225,14 @@ impl WithSubsystem for ServerBuilder {
 		self
 	}
 
-	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
+	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory>) -> Self {
 		self.subsystem_factories.push(factory);
 		self
 	}
 }
 
 impl WithInterceptorBuilder for ServerBuilder {
-	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder<StandardCommandTransaction> {
+	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder {
 		&mut self.interceptors
 	}
 }

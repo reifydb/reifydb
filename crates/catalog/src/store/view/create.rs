@@ -5,8 +5,8 @@ use ViewKind::Deferred;
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		ColumnIndex, CommandTransaction, NamespaceId, NamespaceViewKey, TableId, ViewDef, ViewId, ViewKey,
-		ViewKind, ViewKind::Transactional,
+		ColumnIndex, NamespaceId, NamespaceViewKey, TableId, ViewDef, ViewId, ViewKey, ViewKind,
+		ViewKind::Transactional,
 	},
 	return_error,
 };
@@ -150,7 +150,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, QueryTransaction, ViewId};
+	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
