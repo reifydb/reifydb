@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {defineConfig} from 'vitest/config';
 import {resolve} from 'path';
 

@@ -1,9 +1,5 @@
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 

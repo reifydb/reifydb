@@ -1,9 +1,5 @@
-// File: /pkg/typescript/client/tests/integration/tap/params_positional.tap.ts
-// Generated from: params_positional.tap.md
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
  */
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';

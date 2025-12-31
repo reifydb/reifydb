@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
 set -e
 
 # update-version.sh - Updates version across all packages in the ReifyDB monorepo

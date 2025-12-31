@@ -1,9 +1,5 @@
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 import {Client} from "../../src";
 import {cleanup} from '@testing-library/react';
 import {afterEach} from 'vitest';

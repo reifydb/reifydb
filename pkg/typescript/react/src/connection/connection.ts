@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {Client, WsClient, type WsClientOptions} from '@reifydb/client';
 
 interface ConnectionState {

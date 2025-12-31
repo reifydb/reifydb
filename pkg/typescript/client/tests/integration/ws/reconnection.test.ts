@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Schema} from "@reifydb/core";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {useEffect, useMemo} from 'react';
 import {SchemaNode, InferSchema} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';

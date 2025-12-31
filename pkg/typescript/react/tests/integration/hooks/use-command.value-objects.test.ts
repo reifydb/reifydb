@@ -1,9 +1,5 @@
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
 import {useCommandOne, useCommandMany, getConnection, clearConnection, Schema} from '../../../src';

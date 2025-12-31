@@ -1,9 +1,5 @@
-/*
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
-import {
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
     decode,
     Value
 } from "@reifydb/core";

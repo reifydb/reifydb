@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
 set -e
 
 # check-version-exists.sh - Checks if a version already exists in git or package registries

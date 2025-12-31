@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {useContext, useEffect, useState} from 'react';
 import {ConnectionConfig} from '../connection/connection';
 import {getConnection} from '../connection/connection-pool';

@@ -1,9 +1,5 @@
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 export {BlobValue} from './blob';
 export {BooleanValue} from './boolean';
 export {DateValue} from './date';

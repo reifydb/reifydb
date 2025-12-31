@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {useState, useCallback, useRef} from 'react';
 import {Column, SchemaNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';

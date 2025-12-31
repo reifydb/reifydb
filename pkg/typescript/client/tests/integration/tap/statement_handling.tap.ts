@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 /**
  * Generated from: statement_handling.tap.md
  * TAP Test Specification for Statement Handling

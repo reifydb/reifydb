@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 import {useEffect, useState} from 'react';
 import {Schema, InferSchema} from '@reifydb/core';
 import {useQueryExecutor} from './use-query-executor';
