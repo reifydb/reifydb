@@ -23,6 +23,7 @@ futures-util = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 indexmap = { workspace = true }
+rayon = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = {workspace = true}

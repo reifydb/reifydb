@@ -15,6 +15,7 @@ pub fn authentication_failed(reason: String) -> Diagnostic {
 		help: Some("Check your credentials and try again".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn authorization_denied(resource: String) -> Diagnostic {
 		help: Some("Check your permissions for this resource".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,6 +47,7 @@ pub fn token_expired() -> Diagnostic {
 		help: Some("Refresh your authentication token".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -60,5 +63,6 @@ pub fn invalid_token() -> Diagnostic {
 		help: Some("Provide a valid authentication token".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

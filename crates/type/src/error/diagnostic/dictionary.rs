@@ -18,5 +18,6 @@ pub fn dictionary_entry_id_capacity_exceeded(id_type: Type, value: u128, max_val
 		),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

@@ -23,6 +23,7 @@ pub fn init_failed(subsystem: impl std::fmt::Display, reason: impl std::fmt::Dis
 		help: Some("Check subsystem configuration and dependencies".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -38,6 +39,7 @@ pub fn feature_disabled(feature: impl std::fmt::Display) -> Diagnostic {
 		help: Some("Enable the required feature in Cargo.toml".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -53,6 +55,7 @@ pub fn bind_failed(addr: impl std::fmt::Display, reason: impl std::fmt::Display)
 		help: Some("Try a different port or check firewall settings".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -68,6 +71,7 @@ pub fn shutdown_failed(subsystem: impl std::fmt::Display, reason: impl std::fmt:
 		help: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -83,6 +87,7 @@ pub fn address_unavailable(reason: impl std::fmt::Display) -> Diagnostic {
 		help: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -98,5 +103,6 @@ pub fn socket_config_failed(reason: impl std::fmt::Display) -> Diagnostic {
 		help: Some("Check socket options and system limits".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

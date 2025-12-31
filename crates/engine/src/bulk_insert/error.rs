@@ -21,6 +21,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 
@@ -39,6 +40,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 
@@ -54,6 +56,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 
@@ -69,6 +72,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 
@@ -84,6 +88,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 
@@ -99,6 +104,7 @@ impl BulkInsertError {
 			column: None,
 			notes: vec![],
 			cause: None,
+			operator_chain: None,
 		})
 	}
 }

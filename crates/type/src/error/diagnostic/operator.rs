@@ -17,7 +17,9 @@ pub fn not_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
             "For numeric negation, use the minus (-) operator instead".to_string(),
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn not_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
@@ -34,7 +36,9 @@ pub fn not_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "For string operations, use appropriate string functions instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn not_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
@@ -51,7 +55,9 @@ pub fn not_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn not_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
@@ -68,7 +74,9 @@ pub fn not_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn and_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
@@ -85,7 +93,9 @@ pub fn and_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise AND (&) operator instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn and_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
@@ -102,7 +112,9 @@ pub fn and_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
             "To convert text to boolean, use comparison operators like: text != ''".to_string(),
             "For text concatenation, use the string concatenation operator (||) instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn and_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
@@ -119,7 +131,9 @@ pub fn and_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn and_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
@@ -136,7 +150,9 @@ pub fn and_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn or_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
@@ -153,7 +169,9 @@ pub fn or_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise OR (|) operator instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn or_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
@@ -170,7 +188,9 @@ pub fn or_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "For text concatenation, use the string concatenation operator (+) instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn or_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
@@ -187,7 +207,9 @@ pub fn or_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn or_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
@@ -204,7 +226,9 @@ pub fn or_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn xor_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
@@ -221,7 +245,9 @@ pub fn xor_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
             "To convert numbers to boolean, use comparison operators like: value != 0".to_string(),
             "For bitwise operations on integers, use the bitwise XOR (^) operator instead".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn xor_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
@@ -238,7 +264,9 @@ pub fn xor_can_not_applied_to_text(fragment: Fragment) -> Diagnostic {
             "To convert text to boolean, use comparison operators like: text != '...'".to_string(),
             "XOR returns true when exactly one operand is true".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn xor_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
@@ -255,7 +283,9 @@ pub fn xor_can_not_applied_to_temporal(fragment: Fragment) -> Diagnostic {
             "To convert temporal values to boolean, use comparison operators like: date > '2023-01-01'".to_string(),
             "Temporal types include Date, DateTime, Time, and Duration".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn xor_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
@@ -272,7 +302,9 @@ pub fn xor_can_not_applied_to_uuid(fragment: Fragment) -> Diagnostic {
             "To convert UUIDs to boolean, use comparison operators like: uuid == '...' ".to_string(),
             "UUID types include Uuid4 and Uuid7".to_string()
         ],
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn add_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Type, right: Type) -> Diagnostic {
@@ -290,6 +322,7 @@ pub fn add_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Typ
 			"Consider converting operands to compatible numeric types first".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -308,6 +341,7 @@ pub fn sub_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Typ
 			"Consider converting operands to compatible numeric types first".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -326,6 +360,7 @@ pub fn mul_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Typ
 			"Consider converting operands to compatible numeric types first".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -344,6 +379,7 @@ pub fn div_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Typ
 			"Consider converting operands to compatible numeric types first".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -362,6 +398,7 @@ pub fn rem_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: Typ
 			"Consider converting operands to compatible numeric types first".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -380,6 +417,7 @@ pub fn equal_cannot_be_applied_to_incompatible_types(fragment: Fragment, left: T
 			"Equality comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -398,6 +436,7 @@ pub fn not_equal_cannot_be_applied_to_incompatible_types(fragment: Fragment, lef
 			"Inequality comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -416,6 +455,7 @@ pub fn less_than_cannot_be_applied_to_incompatible_types(fragment: Fragment, lef
 			"Less than comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -438,6 +478,7 @@ pub fn less_than_equal_cannot_be_applied_to_incompatible_types(
 			"Less than or equal comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -456,6 +497,7 @@ pub fn greater_than_cannot_be_applied_to_incompatible_types(fragment: Fragment, 
 			"Greater than comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -478,6 +520,7 @@ pub fn greater_than_equal_cannot_be_applied_to_incompatible_types(
 			"Greater than or equal comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -500,5 +543,6 @@ pub fn between_cannot_be_applied_to_incompatible_types(
 			"BETWEEN comparison is only supported between compatible types".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }

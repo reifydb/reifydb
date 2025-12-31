@@ -15,6 +15,7 @@ pub fn tokenize_error(message: String) -> Diagnostic {
 		help: Some("Check syntax and token format".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn unexpected_eof_error() -> Diagnostic {
 		help: Some("Complete the statement".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -48,6 +50,7 @@ pub fn expected_identifier_error(fragment: Fragment) -> Diagnostic {
 		help: Some("expected token of type `identifier`".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -67,6 +70,7 @@ pub fn invalid_policy_error(fragment: Fragment) -> Diagnostic {
 		help: Some("Expected a valid policy identifier".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -85,6 +89,7 @@ pub fn unexpected_token_error(expected: &str, fragment: Fragment) -> Diagnostic 
 		help: Some(format!("Use {} instead", expected)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -104,6 +109,7 @@ pub fn unsupported_token_error(fragment: Fragment) -> Diagnostic {
 		help: Some("This token is not supported in this context".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -120,6 +126,7 @@ pub fn multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -136,6 +143,7 @@ pub fn unrecognized_type(fragment: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -151,6 +159,7 @@ pub fn unsupported_ast_node(fragment: Fragment, node_type: &str) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -166,5 +175,6 @@ pub fn empty_pipeline_error() -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

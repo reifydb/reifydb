@@ -67,7 +67,8 @@ impl Compiler {
 								label: None,
 								help: None,
 								notes: vec![],
-								cause: None
+								cause: None,
+								operator_chain: None,
 							});
 						}
 					}

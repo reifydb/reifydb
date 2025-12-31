@@ -15,6 +15,7 @@ pub fn unknown_function(name: String) -> Diagnostic {
 		help: Some("Check the function name and available functions".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn arity_mismatch(function: String, expected: usize, actual: usize) -> Diagn
 		help: Some(format!("Provide exactly {} arguments to function {}", expected, function)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,6 +47,7 @@ pub fn too_many_arguments(function: String, max_args: usize, actual: usize) -> D
 		help: Some(format!("Provide at most {} arguments to function {}", max_args, function)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -68,6 +71,7 @@ pub fn invalid_argument_type(function: String, index: usize, expected_one_of: Ve
 		help: Some(format!("Provide an argument of type: {}", expected_types)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -83,6 +87,7 @@ pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 		help: Some("Provide a defined value for this argument".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -98,6 +103,7 @@ pub fn missing_input(function: String) -> Diagnostic {
 		help: Some("Provide input data to the function".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -113,6 +119,7 @@ pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 		help: Some("Check function arguments and data".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -128,6 +135,7 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 		help: Some("This is an internal error - please report this issue".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -144,5 +152,6 @@ pub fn generator_not_found(fragment: Fragment) -> Diagnostic {
 		help: Some("Check the generator function name and ensure it is registered".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

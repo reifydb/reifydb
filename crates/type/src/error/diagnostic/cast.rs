@@ -16,6 +16,7 @@ pub fn unsupported_cast(fragment: Fragment, from_type: Type, to_type: Type) -> D
 			.to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -31,6 +32,7 @@ pub fn invalid_number(fragment: Fragment, target: Type, cause: Diagnostic) -> Di
 		notes: vec![],
 		column: None,
 		cause: Some(Box::from(cause)),
+		operator_chain: None,
 	}
 }
 
@@ -46,6 +48,7 @@ pub fn invalid_temporal(fragment: Fragment, target: Type, cause: Diagnostic) -> 
 		notes: vec![],
 		column: None,
 		cause: Some(Box::from(cause)),
+		operator_chain: None,
 	}
 }
 
@@ -61,6 +64,7 @@ pub fn invalid_boolean(fragment: Fragment, cause: Diagnostic) -> Diagnostic {
 		notes: vec![],
 		column: None,
 		cause: Some(Box::from(cause)),
+		operator_chain: None,
 	}
 }
 
@@ -76,6 +80,7 @@ pub fn invalid_uuid(fragment: Fragment, target: Type, cause: Diagnostic) -> Diag
 		notes: vec![],
 		column: None,
 		cause: Some(Box::from(cause)),
+		operator_chain: None,
 	}
 }
 
@@ -92,5 +97,6 @@ pub fn invalid_blob_to_utf8(fragment: Fragment, cause: Diagnostic) -> Diagnostic
 		notes: vec![],
 		column: None,
 		cause: Some(Box::from(cause)),
+		operator_chain: None,
 	}
 }

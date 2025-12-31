@@ -17,6 +17,7 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -34,5 +35,6 @@ pub fn can_not_alter_not_auto_increment(fragment: Fragment) -> Diagnostic {
 		column: None,
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

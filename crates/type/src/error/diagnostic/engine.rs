@@ -15,6 +15,7 @@ pub fn frame_error(message: String) -> Diagnostic {
 		help: Some("Check frame data and operations".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -37,6 +38,7 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 		help: Some("Adjust column policy constraints".to_string()),
 		notes,
 		cause: Some(Box::new(diagnostic)),
+		operator_chain: None,
 	}
 }
 
@@ -52,6 +54,7 @@ pub fn missing_row_number_column() -> Diagnostic {
 		help: Some("Ensure the query includes the encoded ID in the result set".to_string()),
 		notes: vec!["UPDATE operations require encoded identifiers to locate existing rows".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -67,6 +70,7 @@ pub fn invalid_row_number_values() -> Diagnostic {
 		help: Some("Check that the input data contains valid encoded IDs".to_string()),
 		notes: vec!["RowNumber column must contain valid identifiers, not undefined values".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -83,6 +87,7 @@ pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 		help: Some("Use $1, $2 for positional parameters or $name for named parameters".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -99,6 +104,7 @@ pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 		help: Some("Ensure all referenced parameters are provided in the query call".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -114,5 +120,6 @@ pub fn parallel_execution_error(details: String) -> Diagnostic {
 		help: Some("Check individual statement errors or retry with sequential execution".to_string()),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }

@@ -23,6 +23,7 @@ pub fn invalid_uuid4_format(fragment: Fragment) -> Diagnostic {
 		notes,
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -46,5 +47,6 @@ pub fn invalid_uuid7_format(fragment: Fragment) -> Diagnostic {
 		notes,
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }

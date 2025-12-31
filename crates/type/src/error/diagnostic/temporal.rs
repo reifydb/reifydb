@@ -15,6 +15,7 @@ pub fn invalid_date_format(fragment: Fragment) -> Diagnostic {
 		notes: vec!["dates must have exactly 3 parts separated by hyphens".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -30,6 +31,7 @@ pub fn invalid_datetime_format(fragment: Fragment) -> Diagnostic {
 		notes: vec!["datetime must contain 'T' separator between date and time parts".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -45,6 +47,7 @@ pub fn invalid_time_format(fragment: Fragment) -> Diagnostic {
 		notes: vec!["time must have exactly 3 parts separated by colons".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -65,6 +68,7 @@ pub fn invalid_duration_format(fragment: Fragment) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -80,6 +84,7 @@ pub fn invalid_year(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 2024, 1999, 2000".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -95,6 +100,7 @@ pub fn invalid_month(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 01, 03, 12".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -110,6 +116,7 @@ pub fn invalid_day(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 01, 15, 31".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -128,6 +135,7 @@ pub fn invalid_hour(fragment: Fragment) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -143,6 +151,7 @@ pub fn invalid_minute(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 00, 30, 59".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -158,6 +167,7 @@ pub fn invalid_second(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 00, 30, 59".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -173,6 +183,7 @@ pub fn invalid_fractional_seconds(fragment: Fragment) -> Diagnostic {
 		notes: vec!["valid examples: 123, 999999, 000001".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -191,6 +202,7 @@ pub fn invalid_date_values(fragment: Fragment) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -206,6 +218,7 @@ pub fn invalid_time_values(fragment: Fragment) -> Diagnostic {
 		notes: vec!["use 24-hour format for hours".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -224,6 +237,7 @@ pub fn invalid_duration_character(fragment: Fragment) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -239,6 +253,7 @@ pub fn incomplete_duration_specification(fragment: Fragment) -> Diagnostic {
 		notes: vec!["example: P1D (not P1), PT2H (not PT2)".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -264,6 +279,7 @@ pub fn invalid_unit_in_context(fragment: Fragment, unit: char, in_time_part: boo
 		notes: vec!["date part (before T): Y, M, W, D".to_string(), "time part (after T): H, M, S".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -279,6 +295,7 @@ pub fn invalid_duration_component_value(fragment: Fragment, unit: char) -> Diagn
 		notes: vec![format!("valid examples: P1{}, P10{}", unit, unit)],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -298,7 +315,9 @@ pub fn unrecognized_temporal_pattern(fragment: Fragment) -> Diagnostic {
 			"duration: P1Y2M3DT4H5M6S".to_string(),
 		],
 		column: None,
-        cause: None}
+        cause: None,
+		operator_chain: None,
+	}
 }
 
 pub fn empty_date_component(fragment: Fragment) -> Diagnostic {
@@ -313,6 +332,7 @@ pub fn empty_date_component(fragment: Fragment) -> Diagnostic {
 		notes: vec!["date format: YYYY-MM-DD (e.g., 2024-03-15)".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -328,6 +348,7 @@ pub fn empty_time_component(fragment: Fragment) -> Diagnostic {
 		notes: vec!["time format: HH:MM:SS (e.g., 14:30:45)".to_string()],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 

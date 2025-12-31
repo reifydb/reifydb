@@ -41,6 +41,7 @@ pub fn invalid_number_format(fragment: Fragment, target: Type) -> Diagnostic {
 		notes,
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -144,6 +145,7 @@ pub fn number_out_of_range(
 		notes,
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -160,6 +162,7 @@ pub fn nan_not_allowed() -> Diagnostic {
 		notes: vec![],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -206,6 +209,7 @@ pub fn integer_precision_loss(fragment: Fragment, source_type: Type, target: Typ
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -233,6 +237,7 @@ pub fn decimal_scale_exceeds_precision(
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -252,5 +257,6 @@ pub fn decimal_precision_invalid(precision: u8) -> Diagnostic {
 		],
 		column: None,
 		cause: None,
+		operator_chain: None,
 	}
 }

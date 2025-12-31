@@ -15,6 +15,7 @@ pub fn variable_not_found(name: &str) -> Diagnostic {
 		help: Some(format!("Define the variable using 'let {} = <value>' before using it", name)),
 		notes: vec![],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -41,6 +42,7 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 			"Use first() to take the first value from the first column".to_string(),
 		],
 		cause: None,
+		operator_chain: None,
 	}
 }
 
@@ -56,5 +58,6 @@ pub fn variable_is_immutable(name: &str) -> Diagnostic {
 		help: Some("Use 'let mut $name := value' to declare a mutable variable".to_string()),
 		notes: vec!["Only mutable variables can be reassigned".to_string()],
 		cause: None,
+		operator_chain: None,
 	}
 }
