@@ -83,6 +83,7 @@ keyword! {
     Undefined  => "UNDEFINED",
 
     // Functions
+    Fn         => "FN",
     Define     => "DEFINE",
     Function   => "FUNCTION",
     Call       => "CALL",

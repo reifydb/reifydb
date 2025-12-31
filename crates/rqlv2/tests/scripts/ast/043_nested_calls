@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test nested function calls
+parse 'FROM data | MAP { total: sum(abs(value)) }'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("data"))
+>     [  1] Expr::Map
+>       [  0] Expr::Binary(KeyValue)
+>         left:
+>           Expr::Identifier("total")
+>         right:
+>           Expr::Call(sum)
+>             arguments:
+>               [  0] Expr::Call(abs)
+>                 arguments:
+>                   [  0] Expr::Identifier("value")
+>

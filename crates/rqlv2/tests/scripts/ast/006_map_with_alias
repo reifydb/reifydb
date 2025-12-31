@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test MAP with aliases using AS
+parse 'FROM users | MAP { name AS n, age AS a }'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Map
+>       [  0] Expr::Binary(As)
+>         left:
+>           Expr::Identifier("name")
+>         right:
+>           Expr::Identifier("n")
+>       [  1] Expr::Binary(As)
+>         left:
+>           Expr::Identifier("age")
+>         right:
+>           Expr::Identifier("a")
+>

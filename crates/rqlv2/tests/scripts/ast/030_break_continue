@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test break and continue
+parse 'break'
+---
+> Program:
+>   [  0] Statement::Break
+>

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test for-in loop
+parse 'for $item in $list { $item }'
+---
+> Program:
+>   [  0] Statement::For($item)
+>     iterable:
+>       Expr::Variable($list)
+>     body:
+>       [  0] Statement::Expression
+>         Expr::Variable($item)
+>

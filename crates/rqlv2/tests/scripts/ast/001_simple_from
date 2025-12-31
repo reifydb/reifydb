@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test simple FROM expression
+parse 'FROM users'
+---
+> Program:
+>   [  0] Statement::Expression
+>     Expr::From(Source("users"))
+>

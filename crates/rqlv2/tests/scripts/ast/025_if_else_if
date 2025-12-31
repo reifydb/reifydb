@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test if-else-if chain
+parse 'if $x > 0 { 1 } else if $x < 0 { -1 } else { 0 }'
+---
+> Program:
+>   [  0] Statement::If
+>     condition:
+>       Expr::Binary(Gt)
+>         left:
+>           Expr::Variable($x)
+>         right:
+>           Expr::Literal(Integer(0))
+>     then:
+>       [  0] Statement::Expression
+>         Expr::Literal(Integer(1))
+>     else_if[0]:
+>       condition:
+>         Expr::Binary(Lt)
+>           left:
+>             Expr::Variable($x)
+>           right:
+>             Expr::Literal(Integer(0))
+>       body:
+>         [  0] Statement::Expression
+>           Expr::Unary(Neg)
+>             Expr::Literal(Integer(1))
+>     else:
+>       [  0] Statement::Expression
+>         Expr::Literal(Integer(0))
+>

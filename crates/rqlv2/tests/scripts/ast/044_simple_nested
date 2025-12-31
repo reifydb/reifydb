@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test simple nested function call
+parse 'sum(abs(1))'
+---
+> Program:
+>   [  0] Statement::Expression
+>     Expr::Call(sum)
+>       arguments:
+>         [  0] Expr::Call(abs)
+>           arguments:
+>             [  0] Expr::Literal(Integer(1))
+>

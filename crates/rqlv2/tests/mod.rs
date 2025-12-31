@@ -3,11 +3,12 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_rqlv2::token::explain_tokenize;
+use reifydb_rqlv2::{ast::explain_ast, token::explain_tokenize};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/rqlv2/tests/scripts/token" as tokenize => run_test }
+test_each_path! { in "crates/rqlv2/tests/scripts/ast" as ast => run_test }
 
 fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")
@@ -24,6 +25,13 @@ impl testscript::Runner for Runner {
 				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 				let result = explain_tokenize(query)?;
+				writeln!(output, "{}", result)?;
+			}
+			"parse" => {
+				let mut args = command.consume_args();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
+				args.reject_rest()?;
+				let result = explain_ast(query)?;
 				writeln!(output, "{}", result)?;
 			}
 			_ => unimplemented!("unknown command: {}", command.name),

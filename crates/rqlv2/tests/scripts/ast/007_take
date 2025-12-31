@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test TAKE clause
+parse 'FROM users | TAKE 10'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Take
+>       Expr::Literal(Integer(10))
+>

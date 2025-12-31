@@ -7,6 +7,8 @@
 
 mod error;
 mod pratt;
+mod primary;
+mod query;
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 pub use error::{ParseError, ParseErrorKind};
@@ -199,7 +201,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 				self.current().kind,
 				TokenKind::Keyword(Keyword::Let)
 					| TokenKind::Keyword(Keyword::If) | TokenKind::Keyword(Keyword::For)
-					| TokenKind::Keyword(Keyword::Loop) | TokenKind::Keyword(Keyword::Define)
+					| TokenKind::Keyword(Keyword::Loop) | TokenKind::Keyword(Keyword::Fn)
 					| TokenKind::Keyword(Keyword::Return)
 					| TokenKind::Keyword(Keyword::Create)
 					| TokenKind::Keyword(Keyword::Alter)
@@ -258,7 +260,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			TokenKind::Keyword(Keyword::If) => self.parse_if_stmt(),
 			TokenKind::Keyword(Keyword::Loop) => self.parse_loop(),
 			TokenKind::Keyword(Keyword::For) => self.parse_for(),
-			TokenKind::Keyword(Keyword::Define) => self.parse_def(),
+			TokenKind::Keyword(Keyword::Fn) => self.parse_def(),
 			TokenKind::Keyword(Keyword::Return) => self.parse_return(),
 			TokenKind::Keyword(Keyword::Break) => self.parse_break(),
 			TokenKind::Keyword(Keyword::Continue) => self.parse_continue(),
@@ -423,7 +425,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 	/// Parse def statement.
 	fn parse_def(&mut self) -> Result<Statement<'bump>, ParseError> {
-		let start_span = self.expect_keyword(Keyword::Define)?;
+		let start_span = self.expect_keyword(Keyword::Fn)?;
 
 		// Expect function name
 		if !matches!(self.current().kind, TokenKind::Identifier) {
@@ -451,8 +453,8 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let mut params = BumpVec::new_in(self.bump);
 
 		while !self.check_punct(Punctuation::CloseParen) {
-			if !matches!(self.current().kind, TokenKind::Identifier) {
-				return Err(self.error(ParseErrorKind::ExpectedIdentifier));
+			if !matches!(self.current().kind, TokenKind::Variable) {
+				return Err(self.error(ParseErrorKind::ExpectedVariable));
 			}
 
 			let name_token = self.advance();

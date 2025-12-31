@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test IN expression
+parse "FROM users | FILTER status IN ['active', 'pending']"
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Filter
+>       Expr::In
+>         value:
+>           Expr::Identifier("status")
+>         list:
+>           Expr::List
+>             [  0] Expr::Literal(String("ctiv"))
+>             [  1] Expr::Literal(String("endin"))
+>

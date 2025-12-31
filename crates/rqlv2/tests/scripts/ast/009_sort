@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test SORT with ASC/DESC
+parse 'FROM users | SORT { age DESC, name ASC }'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Sort
+>       [  0] SortColumn DESC
+>         Expr::Identifier("age")
+>       [  1] SortColumn ASC
+>         Expr::Identifier("name")
+>

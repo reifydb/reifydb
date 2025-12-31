@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test FILTER with comparison
+parse 'FROM users | FILTER age > 18'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Filter
+>       Expr::Binary(Gt)
+>         left:
+>           Expr::Identifier("age")
+>         right:
+>           Expr::Literal(Integer(18))
+>

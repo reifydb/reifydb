@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test nested parentheses
+parse 'FROM users | FILTER (a > 1 AND b < 2) OR c = 3'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Filter
+>       Expr::Binary(Or)
+>         left:
+>           Expr::Paren
+>             Expr::Binary(And)
+>               left:
+>                 Expr::Binary(Gt)
+>                   left:
+>                     Expr::Identifier("a")
+>                   right:
+>                     Expr::Literal(Integer(1))
+>               right:
+>                 Expr::Binary(Lt)
+>                   left:
+>                     Expr::Identifier("b")
+>                   right:
+>                     Expr::Literal(Integer(2))
+>         right:
+>           Expr::Binary(Eq)
+>             left:
+>               Expr::Identifier("c")
+>             right:
+>               Expr::Literal(Integer(3))
+>

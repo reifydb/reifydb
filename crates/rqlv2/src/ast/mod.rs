@@ -9,10 +9,12 @@
 //! - DDL statements (CREATE, ALTER, DROP)
 //! - DML statements (INSERT, UPDATE, DELETE)
 
+pub mod explain;
 pub mod expr;
 pub mod parse;
 pub mod stmt;
 
+pub use explain::explain_ast;
 // Re-export core types
 pub use expr::Expr;
 pub use stmt::Statement;

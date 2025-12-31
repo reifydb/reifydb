@@ -35,9 +35,9 @@ pub enum BinaryOp {
 	Arrow,       // arrow: a -> b
 
 	// Assignment/binding
-	As,             // alias: expr AS name
-	Assign,         // assignment: $var = expr
-	TypeAscription, // type: name: Type
+	As,       // alias: expr AS name (used for join aliases)
+	Assign,   // assignment: $var := expr
+	KeyValue, // key-value: name: expr (in MAP, EXTEND, records)
 }
 
 impl BinaryOp {
@@ -63,7 +63,7 @@ impl BinaryOp {
 			BinaryOp::Arrow => "->",
 			BinaryOp::As => "AS",
 			BinaryOp::Assign => ":=",
-			BinaryOp::TypeAscription => ":",
+			BinaryOp::KeyValue => ":",
 		}
 	}
 }

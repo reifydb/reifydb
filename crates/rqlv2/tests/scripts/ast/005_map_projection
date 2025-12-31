@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test MAP with multiple columns
+parse 'FROM users | MAP { name, age }'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("users"))
+>     [  1] Expr::Map
+>       [  0] Expr::Identifier("name")
+>       [  1] Expr::Identifier("age")
+>

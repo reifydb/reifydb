@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test let with pipeline
+parse 'let $users := FROM users | FILTER age > 20'
+---
+> Program:
+>   [  0] Statement::Let($users)
+>     Pipeline:
+>       [  0] Expr::From(Source("users"))
+>       [  1] Expr::Filter
+>         Expr::Binary(Gt)
+>           left:
+>             Expr::Identifier("age")
+>           right:
+>             Expr::Literal(Integer(20))
+>

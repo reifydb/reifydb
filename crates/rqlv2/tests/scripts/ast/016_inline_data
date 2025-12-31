@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test inline data
+parse 'FROM [{ id: 1 }, { id: 2 }]'
+---
+> Program:
+>   [  0] Statement::Expression
+>     Expr::From(Inline)
+>       [  0] Expr::Inline
+>         [  0] Field("id")
+>           Expr::Literal(Integer(1))
+>       [  1] Expr::Inline
+>         [  0] Field("id")
+>           Expr::Literal(Integer(2))
+>

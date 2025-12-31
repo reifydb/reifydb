@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test function definition
+parse 'fn add($a, $b) { $a + $b }'
+---
+> Program:
+>   [  0] Statement::Def(add($a, $b))
+>     [  0] Statement::Expression
+>       Expr::Binary(Add)
+>         left:
+>           Expr::Variable($a)
+>         right:
+>           Expr::Variable($b)
+>

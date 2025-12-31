@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test arithmetic expressions
+parse 'FROM data | MAP { a + b AS sum, a * 2 AS double }'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Source("data"))
+>     [  1] Expr::Map
+>       [  0] Expr::Binary(As)
+>         left:
+>           Expr::Binary(Add)
+>             left:
+>               Expr::Identifier("a")
+>             right:
+>               Expr::Identifier("b")
+>         right:
+>           Expr::Identifier("sum")
+>       [  1] Expr::Binary(As)
+>         left:
+>           Expr::Binary(Mul)
+>             left:
+>               Expr::Identifier("a")
+>             right:
+>               Expr::Literal(Integer(2))
+>         right:
+>           Expr::Identifier("double")
+>

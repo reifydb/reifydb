@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test pipeline with variables
+parse 'FROM $users | FILTER id = $target'
+---
+> Program:
+>   [  0] Statement::Pipeline
+>     [  0] Expr::From(Variable($users)
+>     [  1] Expr::Filter
+>       Expr::Binary(Eq)
+>         left:
+>           Expr::Identifier("id")
+>         right:
+>           Expr::Variable($target)
+>
