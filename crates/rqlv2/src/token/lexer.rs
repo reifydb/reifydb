@@ -387,7 +387,7 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::tokenize::keyword::Keyword;
+	use crate::token::keyword::Keyword;
 
 	fn tokenize(source: &str) -> Result<Vec<Token>, LexError> {
 		let bump = Bump::new();

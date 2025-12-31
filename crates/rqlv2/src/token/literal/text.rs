@@ -4,7 +4,7 @@
 //! String literal scanner.
 
 use super::LiteralKind;
-use crate::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	error::LexError,
 	span::Span,
@@ -66,16 +66,16 @@ pub fn scan_string(
 mod tests {
 	use bumpalo::Bump;
 
-	use crate::tokenize::{LexError, Lexer, LiteralKind, TokenKind};
+	use crate::token::{LexError, Lexer, LiteralKind, TokenKind};
 
-	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::tokenize::Token>, String), LexError> {
+	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();
 		Ok((result.tokens.into_iter().collect(), source_copy))
 	}
 
-	fn tokenize(source: &str) -> Result<Vec<crate::tokenize::Token>, LexError> {
+	fn tokenize(source: &str) -> Result<Vec<crate::token::Token>, LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		Ok(result.tokens.into_iter().collect())

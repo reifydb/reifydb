@@ -22,7 +22,7 @@
 //     let query = args[3..].join(" ");
 //
 //     match flag.as_str() {
-//         "--tokenize" => explain::tokenize(&query),
+//         "--token" => explain::token(&query),
 //         "--ast" => explain::ast(&query),
 //         "--logical" => explain::logical_plan(&query),
 //         "--physical" => explain::physical_plan(&query),

@@ -4,7 +4,7 @@
 //! Temporal literal scanner (dates/times starting with @).
 
 use super::LiteralKind;
-use crate::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	error::LexError,
 	span::Span,
@@ -51,17 +51,15 @@ pub fn scan_temporal(cursor: &mut Cursor, start: usize, start_line: u32, start_c
 mod tests {
 	use bumpalo::Bump;
 
-	use crate::tokenize::{Lexer, LiteralKind, TokenKind};
+	use crate::token::{LexError, Lexer, LiteralKind, Token, TokenKind};
 
-	fn tokenize(source: &str) -> Result<Vec<crate::tokenize::Token>, crate::tokenize::LexError> {
+	fn tokenize(source: &str) -> Result<Vec<Token>, LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		Ok(result.tokens.into_iter().collect())
 	}
 
-	fn tokenize_with_text(
-		source: &str,
-	) -> Result<(Vec<crate::tokenize::Token>, String), crate::tokenize::LexError> {
+	fn tokenize_with_text(source: &str) -> Result<(Vec<Token>, String), LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();
@@ -121,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_temporal() {
-		use crate::tokenize::LexError;
+		use crate::token::LexError;
 
 		// Just @ without content should fail
 		let result = tokenize("@");

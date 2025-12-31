@@ -3,4 +3,4 @@
 
 //! ReifyDB Query Language v2 (RQL) parser and AST
 
-pub mod tokenize;
+pub mod token;

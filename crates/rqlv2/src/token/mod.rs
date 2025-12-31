@@ -32,7 +32,7 @@ pub use token::{Token, TokenKind};
 ///
 /// # Arguments
 ///
-/// * `source` - The RQL source code to tokenize
+/// * `source` - The RQL source code to token
 /// * `bump` - The bump allocator to use for token storage
 ///
 /// # Returns

@@ -11,7 +11,7 @@ use super::{LexError, LiteralKind, TokenKind, tokenize};
 ///
 /// # Arguments
 ///
-/// * `source` - The RQL source code to tokenize
+/// * `source` - The RQL source code to token
 ///
 /// # Returns
 ///

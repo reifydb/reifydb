@@ -3,11 +3,11 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_rqlv2::tokenize::explain_tokenize;
+use reifydb_rqlv2::token::explain_tokenize;
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/rqlv2/tests/scripts/tokenize" as tokenize => run_test }
+test_each_path! { in "crates/rqlv2/tests/scripts/token" as tokenize => run_test }
 
 fn run_test(path: &Path) {
 	testscript::run_path(&mut Runner {}, path).expect("test failed")

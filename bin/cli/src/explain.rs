@@ -7,7 +7,7 @@
 // };
 // use reifydb::transaction::test_utils::create_test_command_transaction;
 //
-// pub fn tokenize(query: &str) -> Result<(), Error> {
+// pub fn token(query: &str) -> Result<(), Error> {
 //     let text = explain_tokenize(query)?;
 //     println!("{}", text);
 //     Ok(())

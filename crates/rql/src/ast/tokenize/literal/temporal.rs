@@ -103,7 +103,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_temporal() {
-		// Just @ without content should fail to tokenize
+		// Just @ without content should fail to token
 		let result = tokenize("@");
 		assert!(result.is_err(), "@ alone should fail to tokenize");
 

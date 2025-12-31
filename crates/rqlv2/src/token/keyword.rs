@@ -152,17 +152,15 @@ mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::tokenize::{Lexer, TokenKind};
+	use crate::token::{Lexer, TokenKind};
 
-	fn tokenize(source: &str) -> Result<Vec<crate::tokenize::Token>, crate::tokenize::LexError> {
+	fn tokenize(source: &str) -> Result<Vec<crate::token::Token>, crate::token::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		Ok(result.tokens.into_iter().collect())
 	}
 
-	fn tokenize_with_text(
-		source: &str,
-	) -> Result<(Vec<crate::tokenize::Token>, String), crate::tokenize::LexError> {
+	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), crate::token::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();

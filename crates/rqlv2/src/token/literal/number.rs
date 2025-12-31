@@ -4,7 +4,7 @@
 //! Number literal scanner.
 
 use super::LiteralKind;
-use crate::tokenize::{
+use crate::token::{
 	cursor::Cursor,
 	error::LexError,
 	token::{Token, TokenKind},
@@ -88,11 +88,9 @@ pub fn scan_number(cursor: &mut Cursor, start: usize, start_line: u32, start_col
 mod tests {
 	use bumpalo::Bump;
 
-	use crate::tokenize::{Lexer, LiteralKind, TokenKind};
+	use crate::token::{Lexer, LiteralKind, TokenKind};
 
-	fn tokenize_with_text(
-		source: &str,
-	) -> Result<(Vec<crate::tokenize::Token>, String), crate::tokenize::LexError> {
+	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), crate::token::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();
@@ -181,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn test_number_with_trailing() {
-		// Numbers directly followed by letters tokenize as separate tokens
+		// Numbers directly followed by letters token as separate tokens
 		let (tokens, source) = tokenize_with_text("42abc").unwrap();
 		assert_eq!(tokens.len(), 3); // 42, abc, EOF
 		assert!(matches!(tokens[0].kind, TokenKind::Literal(LiteralKind::Integer)));

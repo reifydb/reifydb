@@ -235,7 +235,7 @@ mod tests {
 
 	#[test]
 	fn test_number_with_trailing() {
-		// Numbers directly followed by letters now tokenize as separate tokens
+		// Numbers directly followed by letters now token as separate tokens
 		// This enables hyphenated identifiers like "twap-10min"
 		let tokens = tokenize("42abc").unwrap();
 		assert_eq!(tokens.len(), 2);
