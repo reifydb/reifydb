@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackTableChangeOperations, Change, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	TableDef, TableId, TransactionalTableChanges,
-};
+use reifydb_core::interface::{CatalogTrackTableChangeOperations, NamespaceId, TableDef, TableId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalTableChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
 	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_core::Result<()> {

@@ -10,7 +10,6 @@ mod function;
 pub mod identifier;
 pub mod resolved;
 mod store;
-mod transaction;
 pub mod version;
 
 pub use auth::*;
@@ -22,7 +21,6 @@ pub use identifier::*;
 pub use reifydb_type::{Fragment, Params, StatementColumn, StatementLine};
 pub use resolved::*;
 pub use store::*;
-pub use transaction::*;
 
 use crate::event::EventBus;
 pub use crate::key::*;

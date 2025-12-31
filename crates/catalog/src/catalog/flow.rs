@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{FlowDef, FlowId, NamespaceId, TransactionalFlowChanges};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::interface::{FlowDef, FlowId, NamespaceId};
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalFlowChanges};
 use reifydb_type::{error, internal};
 use tracing::{instrument, warn};
 

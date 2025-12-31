@@ -12,9 +12,12 @@ use reifydb_core::{
 			TableInsertedEvent, ViewCreatedEvent,
 		},
 	},
-	interface::{GetEncodedRowNamedLayout, OperationType, RowChange},
+	interface::GetEncodedRowNamedLayout,
 };
-use reifydb_transaction::interceptor::{PostCommitContext, PostCommitInterceptor};
+use reifydb_transaction::{
+	change::{OperationType, RowChange},
+	interceptor::{PostCommitContext, PostCommitInterceptor},
+};
 
 pub(crate) struct CatalogEventInterceptor {
 	event_bus: EventBus,

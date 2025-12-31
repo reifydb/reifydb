@@ -5,9 +5,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionValues, NamespaceDef, NamespaceId,
-		RingBufferDef, RingBufferId, TableDef, TableId, TransactionId, TransactionalChanges,
-		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalNamespaceChanges,
-		TransactionalRingBufferChanges, TransactionalTableChanges, TransactionalViewChanges, ViewDef, ViewId,
+		RingBufferDef, RingBufferId, TableDef, TableId, ViewDef, ViewId,
 	},
 };
 use reifydb_store_transaction::MultiVersionBatch;
@@ -15,7 +13,13 @@ use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
+	TransactionId,
 	cdc::TransactionCdc,
+	change::{
+		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalTableChanges,
+		TransactionalViewChanges,
+	},
 	multi::QueryTransaction,
 	single::{SvlQueryTransaction, TransactionSingle},
 };

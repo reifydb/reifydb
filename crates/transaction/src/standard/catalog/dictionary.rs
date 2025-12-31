@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackDictionaryChangeOperations, Change, DictionaryDef, DictionaryId, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	TransactionalDictionaryChanges,
-};
+use reifydb_core::interface::{CatalogTrackDictionaryChangeOperations, DictionaryDef, DictionaryId, NamespaceId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalDictionaryChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
 	fn track_dictionary_def_created(&mut self, dictionary: DictionaryDef) -> reifydb_core::Result<()> {

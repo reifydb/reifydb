@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackNamespaceChangeOperations, Change, NamespaceDef, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	TransactionalNamespaceChanges,
-};
+use reifydb_core::interface::{CatalogTrackNamespaceChangeOperations, NamespaceDef, NamespaceId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalNamespaceChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
 	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {

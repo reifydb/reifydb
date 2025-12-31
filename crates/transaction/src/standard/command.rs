@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::mem::take;
+
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
 	event::EventBus,
-	interface::{
-		MultiVersionValues, RowChange, TransactionId, TransactionalChanges, TransactionalDefChanges,
-		WithEventBus,
-	},
+	interface::{MultiVersionValues, WithEventBus},
 	return_error,
 	value::encoded::EncodedValues,
 };
@@ -17,7 +16,9 @@ use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
+	TransactionId,
 	cdc::TransactionCdc,
+	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
 	interceptor::{
 		Chain, Interceptors, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
 		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitContext,
@@ -120,8 +121,8 @@ impl StandardCommandTransaction {
 			let id = multi.tm.id();
 			self.state = TransactionState::Committed;
 
-			let changes = std::mem::take(&mut self.changes);
-			let row_changes = std::mem::take(&mut self.row_changes);
+			let changes = take(&mut self.changes);
+			let row_changes = take(&mut self.row_changes);
 
 			let version = multi.commit().await?;
 			self.interceptors

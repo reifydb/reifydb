@@ -94,3 +94,27 @@ pub struct ConsumerState {
 	pub consumer_id: CdcConsumerId,
 	pub checkpoint: CommitVersion,
 }
+
+/// A batch of CDC entries with continuation info.
+#[derive(Debug, Clone)]
+pub struct CdcBatch {
+	/// The CDC entries in this batch.
+	pub items: Vec<Cdc>,
+	/// Whether there are more items after this batch.
+	pub has_more: bool,
+}
+
+impl CdcBatch {
+	/// Creates an empty batch with no more results.
+	pub fn empty() -> Self {
+		Self {
+			items: Vec::new(),
+			has_more: false,
+		}
+	}
+
+	/// Returns true if this batch contains no items.
+	pub fn is_empty(&self) -> bool {
+		self.items.is_empty()
+	}
+}

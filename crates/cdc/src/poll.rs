@@ -12,11 +12,11 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, Key, KeyKind},
+	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
 	key::{CdcConsumerKey, EncodableKey},
 };
 use reifydb_engine::StandardEngine;
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::{StandardCommandTransaction, cdc::CdcQueryTransaction};
 use tokio::{task::JoinHandle, time::sleep};
 use tracing::{debug, error};
 

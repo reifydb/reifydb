@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{DictionaryDef, DictionaryId, NamespaceId, TransactionalDictionaryChanges};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::interface::{DictionaryDef, DictionaryId, NamespaceId};
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalDictionaryChanges};
 use tracing::{instrument, warn};
 
 use crate::{Catalog, CatalogStore};

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	CommitVersion,
-	interface::{RowChange, TransactionId, TransactionalDefChanges},
-};
+use reifydb_core::CommitVersion;
 
-use crate::interceptor::InterceptorChain;
+use crate::{
+	TransactionId,
+	change::{RowChange, TransactionalDefChanges},
+	interceptor::InterceptorChain,
+};
 
 // ============================================================================
 // PRE COMMIT

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackFlowChangeOperations, Change, FlowDef, FlowId, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	TransactionalFlowChanges,
-};
+use reifydb_core::interface::{CatalogTrackFlowChangeOperations, FlowDef, FlowId, NamespaceId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalFlowChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 	fn track_flow_def_created(&mut self, flow: FlowDef) -> reifydb_core::Result<()> {

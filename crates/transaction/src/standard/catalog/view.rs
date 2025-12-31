@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackViewChangeOperations, Change, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	TransactionalViewChanges, ViewDef, ViewId,
-};
+use reifydb_core::interface::{CatalogTrackViewChangeOperations, NamespaceId, ViewDef, ViewId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalViewChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackViewChangeOperations for StandardCommandTransaction {
 	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_core::Result<()> {

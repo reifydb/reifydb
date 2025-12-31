@@ -6,9 +6,31 @@ use std::ops::Bound;
 use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcBatch, CdcQueryTransaction},
+	interface::{Cdc, CdcBatch},
 };
 use reifydb_store_transaction::{CdcCount, CdcGet, CdcRange, TransactionStore};
+
+#[async_trait]
+pub trait CdcQueryTransaction: Send + Sync + Clone + 'static {
+	async fn get(&self, version: CommitVersion) -> Result<Option<Cdc>>;
+
+	async fn range_batch(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: u64,
+	) -> Result<CdcBatch>;
+
+	async fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<CdcBatch> {
+		self.range_batch(start, end, 1024).await
+	}
+
+	async fn scan(&self, batch_size: u64) -> Result<CdcBatch> {
+		self.range_batch(Bound::Unbounded, Bound::Unbounded, batch_size).await
+	}
+
+	async fn count(&self, version: CommitVersion) -> Result<usize>;
+}
 
 #[derive(Clone)]
 pub struct TransactionCdc {

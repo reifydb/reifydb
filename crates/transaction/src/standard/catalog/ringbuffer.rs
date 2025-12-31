@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	CatalogTrackRingBufferChangeOperations, Change, NamespaceId,
-	OperationType::{Create, Delete, Update},
-	RingBufferDef, RingBufferId, TransactionalRingBufferChanges,
-};
+use reifydb_core::interface::{CatalogTrackRingBufferChangeOperations, NamespaceId, RingBufferDef, RingBufferId};
 
-use crate::standard::StandardCommandTransaction;
+use crate::{
+	change::{
+		Change,
+		OperationType::{Create, Delete, Update},
+		TransactionalRingBufferChanges,
+	},
+	standard::StandardCommandTransaction,
+};
 
 impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> reifydb_core::Result<()> {

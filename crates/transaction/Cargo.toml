@@ -16,12 +16,13 @@ reifydb-core = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
-crossbeam-skiplist = { workspace = true }
-indexmap = { workspace = true }
-tracing = { workspace = true }
 async-trait = { workspace = true }
+crossbeam-skiplist = { workspace = true }
 futures-util = { workspace = true }
+indexmap = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 
 [dev-dependencies]

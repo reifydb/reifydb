@@ -10,18 +10,20 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, interface::TransactionId, return_error,
-	value::encoded::EncodedValues,
+	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, return_error, value::encoded::EncodedValues,
 };
 use reifydb_type::util::hex;
 use tracing::instrument;
 
-use crate::multi::{
-	conflict::ConflictManager,
-	marker::Marker,
-	pending::PendingWrites,
-	transaction::{version::VersionProvider, *},
-	types::Pending,
+use crate::{
+	TransactionId,
+	multi::{
+		conflict::ConflictManager,
+		marker::Marker,
+		pending::PendingWrites,
+		transaction::{version::VersionProvider, *},
+		types::Pending,
+	},
 };
 
 pub enum TransactionKind {

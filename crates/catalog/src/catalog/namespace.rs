@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceDef, NamespaceId, TransactionalNamespaceChanges};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::interface::{NamespaceDef, NamespaceId};
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalNamespaceChanges};
 use reifydb_type::{Fragment, diagnostic::catalog::namespace_not_found, error, internal};
 use tracing::{instrument, warn};
 

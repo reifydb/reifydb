@@ -12,7 +12,7 @@
 use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus};
 use reifydb_store_transaction::{
 	MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
 	TransactionStore,
@@ -23,6 +23,7 @@ use version::{StandardVersionProvider, VersionProvider};
 
 pub use crate::multi::types::*;
 use crate::{
+	TransactionId,
 	multi::oracle::*,
 	single::{TransactionSingle, TransactionSvl},
 };

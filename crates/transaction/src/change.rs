@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::interface::{
-	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef,
-	RingBufferId, TableDef, TableId, TransactionId, ViewDef, ViewId,
+use OperationType::Delete;
+use reifydb_core::interface::{
+	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, RingBufferDef, RingBufferId, TableDef,
+	TableId, ViewDef, ViewId,
 };
+
+use crate::TransactionId;
 
 pub trait TransactionalChanges:
 	TransactionalDictionaryChanges
@@ -339,7 +342,7 @@ impl TransactionalDefChanges {
 pub struct TableRowInsertion {
 	pub table_id: TableId,
 	pub row_number: reifydb_type::RowNumber,
-	pub encoded: crate::value::encoded::EncodedValues,
+	pub encoded: reifydb_core::value::encoded::EncodedValues,
 }
 
 /// Tracks row changes across different entity types for post-commit event emission

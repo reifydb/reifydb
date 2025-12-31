@@ -2,10 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{RowChange, RowKey, TableDef, TableRowInsertion},
+	interface::{RowKey, TableDef},
 	value::encoded::EncodedValues,
 };
-use reifydb_transaction::interceptor::TableInterceptor;
+use reifydb_transaction::{
+	change::{RowChange, TableRowInsertion},
+	interceptor::TableInterceptor,
+};
 use reifydb_type::RowNumber;
 
 use crate::StandardCommandTransaction;

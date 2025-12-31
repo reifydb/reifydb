@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, TableDef, TableId, TransactionalTableChanges};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::interface::{NamespaceId, TableDef, TableId};
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalTableChanges};
 use reifydb_type::{Fragment, diagnostic::catalog::table_not_found, error, internal};
 use tracing::{instrument, warn};
 
