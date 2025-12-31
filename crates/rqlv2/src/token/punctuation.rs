@@ -34,6 +34,7 @@ punctuation! {
     // Separators
     Comma     => ",",
     Semicolon => ";",
+    Newline   => "\n",
 }
 
 #[cfg(test)]

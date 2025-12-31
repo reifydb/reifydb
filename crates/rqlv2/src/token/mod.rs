@@ -28,6 +28,17 @@ pub use punctuation::Punctuation;
 pub use span::{Span, Spanned};
 pub use token::{Token, TokenKind};
 
+/// Static EOF token for when we're past the end of input.
+pub const EOF_TOKEN: Token = Token {
+	kind: TokenKind::Eof,
+	span: Span {
+		start: 0,
+		end: 0,
+		line: 0,
+		column: 0,
+	},
+};
+
 /// Tokenize RQL input using the provided bump allocator.
 ///
 /// # Arguments
