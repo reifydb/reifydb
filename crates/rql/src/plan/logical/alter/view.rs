@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::SortDirection;
 use reifydb_type::Fragment;
 
@@ -35,10 +34,7 @@ pub struct AlterIndexColumn {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_view<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterView,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter_view(&self, ast: AstAlterView) -> crate::Result<LogicalPlan> {
 		// Use the view identifier directly from AST
 		let view = ast.view.clone();
 

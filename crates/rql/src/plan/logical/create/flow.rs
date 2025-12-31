@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	ast::AstCreateFlow,
@@ -9,7 +9,8 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_flow<T: CatalogQueryTransaction + Send>(
+	pub(crate) async fn compile_create_flow<T: IntoStandardTransaction>(
+		&self,
 		ast: AstCreateFlow,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -17,7 +18,7 @@ impl Compiler {
 		let flow = ast.flow;
 
 		// Compile the AS clause (required for flows)
-		let with = Compiler::compile(ast.as_clause, tx).await?;
+		let with = self.compile(ast.as_clause, tx).await?;
 
 		Ok(LogicalPlan::CreateFlow(CreateFlowNode {
 			flow,

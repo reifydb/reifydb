@@ -38,7 +38,7 @@ impl TableOperations for StandardCommandTransaction {
 		TableInterceptor::post_insert(self, &table, row_number, &row).await?;
 
 		// Track insertion for post-commit event emission
-		self.row_changes.push(RowChange::TableInsert(TableRowInsertion {
+		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
 			table_id: table.id,
 			row_number,
 			encoded: row,

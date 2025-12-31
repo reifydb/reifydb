@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later
-
 //! Common infrastructure for HTTP and WebSocket server subsystems.
 //!
 //! This crate provides shared types and utilities used by `sub-server-http` and

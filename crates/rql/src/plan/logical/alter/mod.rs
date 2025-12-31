@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	ast::AstAlter,
@@ -18,15 +18,16 @@ pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, Alter
 pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
 impl Compiler {
-	pub(crate) async fn compile_alter<T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_alter<T: IntoStandardTransaction>(
+		&self,
 		ast: AstAlter,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
 		match ast {
-			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, tx),
-			AstAlter::Table(node) => Self::compile_alter_table(node, tx),
-			AstAlter::View(node) => Self::compile_alter_view(node, tx),
-			AstAlter::Flow(node) => Self::compile_alter_flow(node, tx).await,
+			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
+			AstAlter::Table(node) => self.compile_alter_table(node),
+			AstAlter::View(node) => self.compile_alter_view(node),
+			AstAlter::Flow(node) => self.compile_alter_flow(node, tx).await,
 		}
 	}
 }

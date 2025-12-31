@@ -4,10 +4,6 @@
 use std::sync::Arc;
 
 use FlowNodeType::{Aggregate, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
-use reifydb_catalog::{
-	CatalogTableQueryOperations, CatalogViewQueryOperations, resolve::resolve_view,
-	transaction::CatalogFlowQueryOperations,
-};
 use reifydb_core::{
 	Error,
 	interface::{FlowId, FlowNodeId, PrimitiveId},
@@ -60,7 +56,7 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = txn.get_table(table).await?;
+				let table = self.inner.catalog.get_table(txn, table).await?;
 
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id)).await;
 				self.inner.operators.write().await.insert(
@@ -71,7 +67,7 @@ impl FlowEngine {
 			SourceView {
 				view,
 			} => {
-				let view = txn.get_view(view).await?;
+				let view = self.inner.catalog.get_view(txn, view).await?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id)).await;
 				self.inner.operators.write().await.insert(
 					node.id,
@@ -81,7 +77,7 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = txn.get_flow(source_flow).await?;
+				let source_flow_def = self.inner.catalog.get_flow(txn, source_flow).await?;
 				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id)).await;
 				self.inner.operators.write().await.insert(
 					node.id,
@@ -104,7 +100,7 @@ impl FlowEngine {
 					.clone();
 
 				self.add_sink(flow.id, node.id, PrimitiveId::view(*view)).await;
-				let resolved = resolve_view(txn, view).await?;
+				let resolved = self.inner.catalog.resolve_view(txn, view).await?;
 				self.inner.operators.write().await.insert(
 					node.id,
 					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),

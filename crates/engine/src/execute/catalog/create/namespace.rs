@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{
-	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, namespace::NamespaceToCreate,
-};
-use reifydb_core::value::column::Columns;
+use reifydb_catalog::{CatalogStore, namespace::NamespaceToCreate};
+use reifydb_core::{interface::CatalogTrackNamespaceChangeOperations, value::column::Columns};
 use reifydb_rql::plan::physical::CreateNamespaceNode;
 use reifydb_type::Value;
 
@@ -16,9 +14,8 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateNamespaceNode,
 	) -> crate::Result<Columns> {
-		// Check if namespace already exists using the transaction's
-		// catalog operations
-		if let Some(_) = txn.find_namespace_by_name(plan.namespace.text()).await? {
+		// Check if namespace already exists using the catalog
+		if let Some(_) = self.catalog.find_namespace_by_name(txn, plan.namespace.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.text().to_string())),
@@ -29,12 +26,15 @@ impl Executor {
 			// namespace exists
 		}
 
-		let result = txn
-			.create_namespace(NamespaceToCreate {
+		let result = CatalogStore::create_namespace(
+			txn,
+			NamespaceToCreate {
 				namespace_fragment: Some(plan.namespace.clone()),
 				name: plan.namespace.text().to_string(),
-			})
-			.await?;
+			},
+		)
+		.await?;
+		txn.track_namespace_def_created(result.clone())?;
 
 		Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
 	}

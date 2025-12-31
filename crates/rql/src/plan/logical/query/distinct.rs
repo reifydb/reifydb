@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
-
 use crate::{
 	ast::AstDistinct,
 	plan::logical::{Compiler, DistinctNode, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_distinct<'a, T: CatalogQueryTransaction>(
-		ast: AstDistinct,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_distinct(&self, ast: AstDistinct) -> crate::Result<LogicalPlan> {
 		// DISTINCT operates on the output columns of the query
 		// In a proper implementation, we would need to resolve these
 		// columns based on the SELECT clause and FROM sources in the

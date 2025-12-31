@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
-
 use crate::{Blob, Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, Time, Uuid4, Uuid7, Value};
 
 pub trait IntoValue {

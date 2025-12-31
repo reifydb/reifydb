@@ -65,7 +65,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_get_set() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
@@ -83,7 +83,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_remove() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
@@ -99,7 +99,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_scan() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Add multiple entries
@@ -118,7 +118,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(2));
 
 		// Add ordered entries
@@ -141,7 +141,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_simple_state_clear() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(3));
 
 		// Add multiple entries
@@ -172,7 +172,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_operator_isolation() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator1 = TestOperator::simple(FlowNodeId(10));
 		let operator2 = TestOperator::simple(FlowNodeId(20));
 		let shared_key = test_key("shared");
@@ -195,7 +195,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_empty_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(4));
 
 		// Add some entries
@@ -215,7 +215,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_overwrite_existing_key() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
 
@@ -236,7 +236,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_non_existent_key() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
 
@@ -250,7 +250,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_after_partial_removal() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let operator = TestOperator::simple(FlowNodeId(7));
 
 		// Add 5 entries
@@ -277,13 +277,15 @@ mod tests {
 
 		// Transaction 1: Write a value
 		let mut parent_txn1 = engine.begin_command().await.unwrap();
-		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1)).await;
+		let mut flow_txn1 =
+			FlowTransaction::new(&parent_txn1, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let value1 = EncodedValues(CowVec::new(vec![1]));
 		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
 
 		// Transaction 2: Should not see uncommitted value
 		let parent_txn2 = engine.begin_command().await.unwrap();
-		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2)).await;
+		let mut flow_txn2 =
+			FlowTransaction::new(&parent_txn2, CommitVersion(2), &MaterializedCatalog::new()).await;
 		assert!(operator.state_get(&mut flow_txn2, &key).await.unwrap().is_none());
 
 		// Commit transaction 1
@@ -292,7 +294,8 @@ mod tests {
 
 		// Transaction 3: Should now see the value
 		let parent_txn3 = engine.begin_command().await.unwrap();
-		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3)).await;
+		let mut flow_txn3 =
+			FlowTransaction::new(&parent_txn3, CommitVersion(3), &MaterializedCatalog::new()).await;
 		let result = operator.state_get(&mut flow_txn3, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value1);

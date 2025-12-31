@@ -494,15 +494,17 @@ impl VmState {
 					let pipeline = source.scan();
 					self.push_pipeline(pipeline)?;
 					self.ip = next_ip;
-				} else if let Some(rx) = rx {
+				} else if let (Some(catalog), Some(rx)) = (&self.context.catalog, rx) {
 					// Fallback to catalog lookup for real storage
-					let version = rx.version();
 					let (namespace_id, table_name) =
 						if let Some((ns, tbl)) = source_def.name.split_once('.') {
 							// Qualified name: look up namespace by name
-							let namespace_def = rx
-								.catalog()
-								.find_namespace_by_name(ns, version)
+							let namespace_def = catalog
+								.find_namespace_by_name(rx, ns)
+								.await
+								.map_err(|e| VmError::CatalogError {
+									message: e.to_string(),
+								})?
 								.ok_or_else(|| VmError::NamespaceNotFound {
 									name: ns.to_string(),
 								})?;
@@ -513,9 +515,12 @@ impl VmState {
 						};
 
 					// Look up table from catalog via transaction
-					let table_def = rx
-						.catalog()
-						.find_table_by_name(namespace_id, table_name, version)
+					let table_def = catalog
+						.find_table_by_name(rx, namespace_id, table_name)
+						.await
+						.map_err(|e| VmError::CatalogError {
+							message: e.to_string(),
+						})?
 						.ok_or_else(|| VmError::TableNotFound {
 							name: source_def.name.clone(),
 						})?;

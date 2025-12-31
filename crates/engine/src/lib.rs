@@ -29,7 +29,7 @@ pub use evaluate::{
 	ColumnEvaluationContext, RowEvaluationContext, TargetColumn,
 	column::{StandardColumnEvaluator, cast::cast_column_data},
 };
-pub use transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
+pub use reifydb_transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
 
 pub struct EngineVersion;
 

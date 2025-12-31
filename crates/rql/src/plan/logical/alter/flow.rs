@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -28,7 +28,8 @@ pub enum AlterFlowAction {
 }
 
 impl Compiler {
-	pub(crate) async fn compile_alter_flow<T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_alter_flow<T: IntoStandardTransaction>(
+		&self,
 		ast: AstAlterFlow,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -44,7 +45,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile the query statement to logical plan
-				let compiled_query = Compiler::compile(query, tx).await?;
+				let compiled_query = self.compile(query, tx).await?;
 				AlterFlowAction::SetQuery {
 					query: compiled_query,
 				}

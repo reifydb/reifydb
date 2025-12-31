@@ -15,8 +15,7 @@ use reifydb_core::{
 	interceptor::{PostCommitContext, PostCommitInterceptor},
 	interface::{GetEncodedRowNamedLayout, OperationType, RowChange},
 };
-
-use crate::transaction::StandardCommandTransaction;
+use reifydb_transaction::StandardCommandTransaction;
 
 pub(crate) struct CatalogEventInterceptor {
 	event_bus: EventBus,

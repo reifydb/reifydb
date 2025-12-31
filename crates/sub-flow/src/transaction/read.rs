@@ -142,7 +142,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use crate::operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction};
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -155,7 +155,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_from_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -187,7 +187,7 @@ mod tests {
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
-		let mut txn = FlowTransaction::new(&parent, version).await;
+		let mut txn = FlowTransaction::new(&parent, version, &MaterializedCatalog::new()).await;
 
 		// Should get value from query transaction
 		let result = txn.get(&key).await.unwrap();
@@ -202,7 +202,7 @@ mod tests {
 		parent.set(&key, make_value("old")).await.unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version).await;
+		let mut txn = FlowTransaction::new(&parent, version, &MaterializedCatalog::new()).await;
 
 		// Override with new value in pending
 		let new_value = make_value("new");
@@ -221,7 +221,7 @@ mod tests {
 		parent.set(&key, make_value("value1")).await.unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version).await;
+		let mut txn = FlowTransaction::new(&parent, version, &MaterializedCatalog::new()).await;
 
 		// Remove in pending
 		txn.remove(&key).unwrap();
@@ -234,7 +234,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_nonexistent_key() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let result = txn.get(&make_key("missing")).await.unwrap();
 		assert_eq!(result, None);
@@ -243,7 +243,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 
@@ -257,7 +257,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_contains_key_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -282,7 +282,7 @@ mod tests {
 		// Create new command transaction
 		let parent = engine.begin_command().await.unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, version).await;
+		let mut txn = FlowTransaction::new(&parent, version, &MaterializedCatalog::new()).await;
 
 		assert!(txn.contains_key(&key).await.unwrap());
 	}
@@ -295,7 +295,7 @@ mod tests {
 		parent.set(&key, make_value("value1")).await.unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::new(&parent, version).await;
+		let mut txn = FlowTransaction::new(&parent, version, &MaterializedCatalog::new()).await;
 		txn.remove(&key).unwrap();
 
 		assert!(!txn.contains_key(&key).await.unwrap());
@@ -304,7 +304,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_contains_key_nonexistent() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert!(!txn.contains_key(&make_key("missing")).await.unwrap());
 	}
@@ -312,7 +312,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_contains_key_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 
@@ -326,7 +326,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_empty() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
 		assert!(iter.items.into_iter().next().is_none());
@@ -335,7 +335,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_only_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("b"), make_value("2")).unwrap();
 		txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -354,7 +354,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_filters_removes() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.remove(&make_key("b")).unwrap();
@@ -372,7 +372,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_scan_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 		let _ = txn.range(EncodedKeyRange::all()).await.unwrap();
@@ -382,7 +382,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_range_empty() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
 		let iter = txn.range(range).await.unwrap();
@@ -392,7 +392,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_range_only_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("b"), make_value("2")).unwrap();
@@ -412,7 +412,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_range_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 
@@ -425,7 +425,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_range_batched_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 
@@ -438,7 +438,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_prefix_empty() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let prefix = make_key("test_");
 		let iter = txn.prefix(&prefix).await.unwrap();
@@ -448,7 +448,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_prefix_only_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("test_a"), make_value("1")).unwrap();
 		txn.set(&make_key("test_b"), make_value("2")).unwrap();
@@ -467,7 +467,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_prefix_increments_reads_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().reads, 0);
 
@@ -480,7 +480,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_multiple_read_operations_accumulate_metrics() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.get(&make_key("k1")).await.unwrap();
 		txn.contains_key(&make_key("k2")).await.unwrap();

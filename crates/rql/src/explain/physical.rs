@@ -3,8 +3,9 @@
 
 use std::fmt::Write;
 
-use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{JoinType, interface::QueryTransaction};
+use reifydb_catalog::Catalog;
+use reifydb_core::JoinType;
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	ast::parse_str,
@@ -15,16 +16,17 @@ use crate::{
 	},
 };
 
-pub async fn explain_physical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
-where
-	T: QueryTransaction + CatalogQueryTransaction,
-{
+pub async fn explain_physical_plan<T: IntoStandardTransaction>(
+	catalog: &Catalog,
+	rx: &mut T,
+	query: &str,
+) -> crate::Result<String> {
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let logical = compile_logical(rx, statement).await?;
-		plans.push(compile_physical(rx, logical).await?);
+		let logical = compile_logical(catalog, rx, statement).await?;
+		plans.push(compile_physical(catalog, rx, logical).await?);
 	}
 
 	let mut result = String::new();

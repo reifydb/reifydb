@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -14,10 +13,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterSequence,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter_sequence(&self, ast: AstAlterSequence) -> crate::Result<LogicalPlan> {
 		let (namespace, sequence_name) = {
 			// Use the resolve's resolve_maybe_sequence method if
 			// we add one For now, just use default namespace

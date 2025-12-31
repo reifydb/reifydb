@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	ast::{Ast, AstFrom, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedPrimitiveIdentifier},
@@ -14,7 +14,8 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_join<T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_join<T: IntoStandardTransaction>(
+		&self,
 		ast: AstJoin,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -44,8 +45,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -67,8 +72,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -102,8 +111,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -148,8 +161,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -171,8 +188,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -206,8 +227,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -253,8 +278,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -276,8 +305,12 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,
 							columns: None,
@@ -303,8 +336,12 @@ impl Compiler {
 							table.token.fragment.clone(),
 						);
 
-						let resolved_source =
-							resolver::resolve_unresolved_source(tx, &unresolved).await?;
+						let resolved_source = resolver::resolve_unresolved_source(
+							&self.catalog,
+							tx,
+							&unresolved,
+						)
+						.await?;
 
 						vec![PrimitiveScan(PrimitiveScanNode {
 							source: resolved_source,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{SortDirection, SortKey};
 
 use crate::{
@@ -10,10 +9,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_sort<'a, T: CatalogQueryTransaction>(
-		ast: AstSort,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_sort(&self, ast: AstSort) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns
 				.into_iter()

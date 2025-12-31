@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2025 ReifyDBmod common;
+// Copyright (c) 2025 ReifyDB
+
+mod common;
 
 use std::{error::Error, path::Path, sync::Arc};
 

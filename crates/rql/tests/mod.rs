@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_catalog::{CatalogStore, namespace::NamespaceToCreate, table::TableToCreate};
+use reifydb_catalog::{Catalog, CatalogStore, namespace::NamespaceToCreate, table::TableToCreate};
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{explain_ast, explain_logical_plan, explain_physical_plan, explain_tokenize};
 use reifydb_testing::{testscript, testscript::Command};
@@ -117,7 +117,10 @@ impl testscript::Runner for Runner {
 					.await
 					.unwrap();
 
-					explain_logical_plan(&mut dummy_tx, query).await.unwrap()
+					let catalog = Catalog::default();
+					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query)
+						.await
+						.unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
 			}
@@ -167,7 +170,8 @@ impl testscript::Runner for Runner {
 					.await
 					.unwrap();
 
-					explain_physical_plan(&mut dummy_tx, query).await.unwrap()
+					let catalog = Catalog::default();
+					explain_physical_plan(&catalog, &mut dummy_tx, query).await.unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
 			}

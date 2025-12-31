@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
-
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Fragment, diagnostic::Diagnostic, err};
 
 use crate::{
@@ -17,7 +14,8 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_from<T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_from<T: IntoStandardTransaction>(
+		&self,
 		ast: AstFrom,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -26,7 +24,8 @@ impl Compiler {
 				source,
 				..
 			} => {
-				let resolved_source = resolver::resolve_unresolved_source(tx, &source).await?;
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &source).await?;
 
 				Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{
-	CatalogStore, CatalogTableCommandOperations, CatalogTableQueryOperations, primary_key::PrimaryKeyToCreate,
-	table::TableToCreate,
+use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate, table::TableToCreate};
+use reifydb_core::{
+	interface::{CatalogTrackTableChangeOperations, PrimitiveId},
+	value::column::Columns,
 };
-use reifydb_core::{interface::PrimitiveId, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 
@@ -17,9 +17,10 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateTableNode,
 	) -> crate::Result<Columns> {
-		// Check if table already exists using the transaction's catalog
-		// operations
-		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.text()).await? {
+		// Check if table already exists using the catalog
+		if let Some(_) =
+			self.catalog.find_table_by_name(txn, plan.namespace.def().id, plan.table.text()).await?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -31,23 +32,22 @@ impl Executor {
 			// table exists
 		}
 
-		txn.create_table(TableToCreate {
-			fragment: Some(plan.table.clone()),
-			table: plan.table.text().to_string(),
-			namespace: plan.namespace.def().id,
-			columns: plan.columns,
-			retention_policy: None,
-		})
+		let table = CatalogStore::create_table(
+			txn,
+			TableToCreate {
+				fragment: Some(plan.table.clone()),
+				table: plan.table.text().to_string(),
+				namespace: plan.namespace.def().id,
+				columns: plan.columns,
+				retention_policy: None,
+			},
+		)
 		.await?;
+		txn.track_table_def_created(table.clone())?;
 
 		// If primary key is specified, create it immediately
 		if let Some(pk_def) = plan.primary_key {
-			// Get the created table to resolve column IDs
-			let table = txn
-				.find_table_by_name(plan.namespace.def().id, plan.table.text())
-				.await?
-				.expect("Table should exist after creation");
-
+			// Get the table columns to resolve column IDs
 			let table_columns = CatalogStore::list_columns(txn, table.id).await?;
 
 			// Resolve column names to IDs

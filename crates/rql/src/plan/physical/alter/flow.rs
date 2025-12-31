@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::QueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -31,8 +31,9 @@ pub enum AlterFlowAction {
 }
 
 impl Compiler {
-	pub(crate) async fn compile_alter_flow(
-		rx: &mut impl QueryTransaction,
+	pub(crate) async fn compile_alter_flow<T: IntoStandardTransaction>(
+		&self,
+		rx: &mut T,
 		alter: logical::alter::AlterFlowNode,
 	) -> crate::Result<PhysicalPlan> {
 		let action = match alter.action {
@@ -45,7 +46,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile logical plans to physical plans
-				let physical_query = Box::pin(Self::compile(rx, query)).await?.map(Box::new).unwrap();
+				let physical_query = Box::pin(self.compile(rx, query)).await?.map(Box::new).unwrap();
 				AlterFlowAction::SetQuery {
 					query: physical_query,
 				}

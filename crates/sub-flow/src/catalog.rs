@@ -8,15 +8,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_catalog::{
-	CatalogStore, CatalogViewQueryOperations,
-	resolve::{resolve_ringbuffer, resolve_table, resolve_view},
-	transaction::{CatalogNamespaceQueryOperations, CatalogRingBufferQueryOperations, CatalogTableQueryOperations},
-};
+use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result,
-	interface::{ColumnDef, DictionaryDef, PrimitiveId, QueryTransaction},
+	interface::{ColumnDef, DictionaryDef, PrimitiveId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 use tokio::sync::RwLock;
 
@@ -41,12 +38,14 @@ pub struct PrimitiveMetadata {
 /// - Read path: Multiple tasks can read cached metadata concurrently
 /// - Write path: Single writer for cache updates
 pub struct FlowCatalog {
+	catalog: Catalog,
 	sources: RwLock<HashMap<PrimitiveId, Arc<PrimitiveMetadata>>>,
 }
 
 impl FlowCatalog {
-	pub fn new() -> Self {
+	pub fn new(catalog: Catalog) -> Self {
 		Self {
+			catalog,
 			sources: RwLock::new(HashMap::new()),
 		}
 	}
@@ -56,14 +55,11 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub async fn get_or_load<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<Arc<PrimitiveMetadata>>
-	where
-		T: CatalogTableQueryOperations
-			+ CatalogNamespaceQueryOperations
-			+ CatalogRingBufferQueryOperations
-			+ CatalogViewQueryOperations
-			+ QueryTransaction,
-	{
+	pub async fn get_or_load<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		source: PrimitiveId,
+	) -> Result<Arc<PrimitiveMetadata>> {
 		// Fast path: read lock check
 		{
 			let cache = self.sources.read().await;
@@ -78,19 +74,22 @@ impl FlowCatalog {
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	async fn load_primitive_metadata<T>(&self, txn: &mut T, source: PrimitiveId) -> Result<PrimitiveMetadata>
-	where
-		T: CatalogTableQueryOperations
-			+ CatalogNamespaceQueryOperations
-			+ CatalogViewQueryOperations
-			+ CatalogRingBufferQueryOperations
-			+ QueryTransaction,
-	{
+	async fn load_primitive_metadata<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		source: PrimitiveId,
+	) -> Result<PrimitiveMetadata> {
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
-			PrimitiveId::Table(table_id) => resolve_table(txn, table_id).await?.def().columns.clone(),
-			PrimitiveId::View(view_id) => resolve_view(txn, view_id).await?.def().columns.clone(),
-			PrimitiveId::RingBuffer(rb_id) => resolve_ringbuffer(txn, rb_id).await?.def().columns.clone(),
+			PrimitiveId::Table(table_id) => {
+				self.catalog.resolve_table(txn, table_id).await?.def().columns.clone()
+			}
+			PrimitiveId::View(view_id) => {
+				self.catalog.resolve_view(txn, view_id).await?.def().columns.clone()
+			}
+			PrimitiveId::RingBuffer(rb_id) => {
+				self.catalog.resolve_ringbuffer(txn, rb_id).await?.def().columns.clone()
+			}
 			PrimitiveId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
 			PrimitiveId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
 			PrimitiveId::Dictionary(_) => unimplemented!("Dictionary sources not supported in flows"),
@@ -104,7 +103,7 @@ impl FlowCatalog {
 
 		for col in &columns {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id).await? {
+				if let Some(dict) = self.catalog.find_dictionary(txn, dict_id).await? {
 					storage_types.push(dict.id_type);
 					value_types.push((col.name.clone(), dict.value_type));
 					dictionaries.push(Some(dict));
@@ -133,7 +132,7 @@ impl FlowCatalog {
 
 impl Default for FlowCatalog {
 	fn default() -> Self {
-		Self::new()
+		Self::new(Catalog::default())
 	}
 }
 
@@ -150,14 +149,14 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_new_creates_empty_cache() {
-		let catalog = FlowCatalog::new();
-		assert!(catalog.sources.read().await.is_empty());
+		let flow_catalog = FlowCatalog::default();
+		assert!(flow_catalog.sources.read().await.is_empty());
 	}
 
 	#[tokio::test]
 	async fn test_default() {
-		let catalog = FlowCatalog::default();
-		assert!(catalog.sources.read().await.is_empty());
+		let flow_catalog = FlowCatalog::default();
+		assert!(flow_catalog.sources.read().await.is_empty());
 	}
 
 	#[tokio::test]
@@ -165,8 +164,8 @@ mod tests {
 		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
-		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
+		let flow_catalog = FlowCatalog::default();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -180,11 +179,11 @@ mod tests {
 		let mut txn = create_test_transaction().await;
 		let table = ensure_test_table(&mut txn).await;
 
-		let catalog = FlowCatalog::new();
+		let flow_catalog = FlowCatalog::default();
 		let source = PrimitiveId::Table(table.id);
 
-		let first = catalog.get_or_load(&mut txn, source).await.unwrap();
-		let second = catalog.get_or_load(&mut txn, source).await.unwrap();
+		let first = flow_catalog.get_or_load(&mut txn, source).await.unwrap();
+		let second = flow_catalog.get_or_load(&mut txn, source).await.unwrap();
 
 		// Should return the same Arc (cache hit)
 		assert!(Arc::ptr_eq(&first, &second));
@@ -196,8 +195,8 @@ mod tests {
 		ensure_test_namespace(&mut txn).await;
 		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
 
-		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
+		let flow_catalog = FlowCatalog::default();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
@@ -209,8 +208,8 @@ mod tests {
 		let mut txn = create_test_transaction().await;
 		let rb = ensure_test_ringbuffer(&mut txn).await;
 
-		let catalog = FlowCatalog::new();
-		let metadata = catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
+		let flow_catalog = FlowCatalog::default();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());

@@ -276,7 +276,9 @@ pub(crate) async fn compile<'a>(
 						context.executor.flow_operator_store.clone(),
 					)),
 					"dictionaries" => VTables::Dictionaries(Dictionaries::new()),
-					"virtual_tables" => VTables::TablesVirtual(TablesVirtual::new()),
+					"virtual_tables" => VTables::TablesVirtual(TablesVirtual::new(
+						context.executor.catalog.clone(),
+					)),
 					"types" => VTables::Types(Types::new()),
 					"flow_node_types" => VTables::FlowNodeTypes(FlowNodeTypes::new()),
 					"flow_operator_inputs" => VTables::FlowOperatorInputs(FlowOperatorInputs::new(

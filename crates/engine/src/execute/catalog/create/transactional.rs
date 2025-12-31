@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{return_error, value::column::Columns};
+use reifydb_core::{interface::CatalogTrackViewChangeOperations, return_error, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 
@@ -14,7 +14,7 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns> {
-		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
+		if let Some(view) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -36,6 +36,7 @@ impl Executor {
 			},
 		)
 		.await?;
+		txn.track_view_def_created(result.clone())?;
 
 		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 

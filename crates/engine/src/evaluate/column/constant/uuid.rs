@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
-
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::{Fragment, Type, diagnostic::cast, parse_uuid4, parse_uuid7, return_error};
 

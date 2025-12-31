@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{
-	CatalogStore, MaterializedCatalog,
+	CatalogStore,
 	store::{
 		namespace::NamespaceToCreate,
 		table::{TableColumnToCreate, TableToCreate},
@@ -28,9 +28,7 @@ pub async fn create_test_command_transaction() -> StandardCommandTransaction {
 	let cdc = TransactionCdc::new(store.clone());
 	let multi = TransactionMulti::new(store, single.clone(), event_bus.clone()).await.unwrap();
 
-	StandardCommandTransaction::new(multi, single, cdc, event_bus, MaterializedCatalog::new(), Interceptors::new())
-		.await
-		.unwrap()
+	StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).await.unwrap()
 }
 
 pub async fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
@@ -41,16 +39,8 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
 	let multi = TransactionMulti::new(store.clone(), single.clone(), event_bus.clone()).await.unwrap();
-	let mut result = StandardCommandTransaction::new(
-		multi,
-		single,
-		cdc,
-		event_bus,
-		MaterializedCatalog::new(),
-		Interceptors::new(),
-	)
-	.await
-	.unwrap();
+	let mut result =
+		StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).await.unwrap();
 
 	let namespace = CatalogStore::create_namespace(
 		&mut result,

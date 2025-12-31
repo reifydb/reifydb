@@ -139,7 +139,7 @@ mod tests {
 	use reifydb_type::Type;
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use crate::operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction};
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -152,7 +152,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_set() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -169,7 +169,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_nonexistent() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("missing");
@@ -181,7 +181,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_remove() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -198,7 +198,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_isolation_between_nodes() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -215,7 +215,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_scan() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 
@@ -232,7 +232,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_scan_only_own_node() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -253,7 +253,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_scan_empty() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 
@@ -264,7 +264,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_range() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 
@@ -286,7 +286,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_clear() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 
@@ -307,7 +307,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_clear_only_own_node() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -329,7 +329,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_clear_empty_node() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 
@@ -340,7 +340,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_existing() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -358,7 +358,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_new() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -374,7 +374,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_save_row() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -390,7 +390,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_operations_increment_metrics() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -422,7 +422,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_multiple_nodes() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -447,7 +447,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_increments_state_operations() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -464,7 +464,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_save_row_increments_state_operations() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");

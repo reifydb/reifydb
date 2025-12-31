@@ -4,8 +4,7 @@
 use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::interceptor::{PostCommitContext, PostCommitInterceptor};
-
-use crate::transaction::StandardCommandTransaction;
+use reifydb_transaction::StandardCommandTransaction;
 
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,

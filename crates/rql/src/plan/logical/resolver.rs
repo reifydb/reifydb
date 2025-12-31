@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
+use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result,
 	interface::{
@@ -12,6 +12,7 @@ use reifydb_core::{
 		},
 	},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
@@ -21,8 +22,9 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedPrimitive
 /// This is used when processing From clauses and joins
-pub async fn resolve_unresolved_source(
-	tx: &mut impl CatalogQueryTransaction,
+pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
+	catalog: &Catalog,
+	tx: &mut T,
 	unresolved: &UnresolvedPrimitiveIdentifier,
 ) -> Result<ResolvedPrimitive> {
 	let namespace_str = if let Some(ref ns) = unresolved.namespace {
@@ -34,9 +36,9 @@ pub async fn resolve_unresolved_source(
 
 	// Get namespace
 	let ns_def = if let Some(ref ns_fragment) = unresolved.namespace {
-		tx.get_namespace_by_name(ns_fragment.clone()).await?
+		catalog.get_namespace_by_name(tx, ns_fragment.clone()).await?
 	} else {
-		tx.get_namespace_by_name(DEFAULT_NAMESPACE).await?
+		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE).await?
 	};
 
 	let namespace_fragment = Fragment::internal(ns_def.name.clone());
@@ -45,7 +47,7 @@ pub async fn resolve_unresolved_source(
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	// Check for user-defined virtual tables first (in any namespace)
-	if let Some(virtual_def) = tx.find_vtable_user_by_name(ns_def.id, name_str) {
+	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id, name_str) {
 		return Ok(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
@@ -68,14 +70,14 @@ pub async fn resolve_unresolved_source(
 	}
 
 	// Try table first
-	if let Some(table) = tx.find_table_by_name(ns_def.id, name_str).await? {
+	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id, name_str).await? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::Table(ResolvedTable::new(name_fragment, namespace, table)));
 	}
 
 	// Try ring buffer
-	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str).await? {
+	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id, name_str).await? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
@@ -86,7 +88,7 @@ pub async fn resolve_unresolved_source(
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
-	if let Some(view) = tx.find_view_by_name(ns_def.id, name_str).await? {
+	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id, name_str).await? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
@@ -104,7 +106,7 @@ pub async fn resolve_unresolved_source(
 	}
 
 	// Try dictionaries
-	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str).await? {
+	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id, name_str).await? {
 		return Ok(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
@@ -113,7 +115,7 @@ pub async fn resolve_unresolved_source(
 	}
 
 	// Try flows (after views, since deferred views take precedence)
-	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str).await? {
+	if let Some(flow) = catalog.find_flow_by_name(tx, ns_def.id, name_str).await? {
 		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));

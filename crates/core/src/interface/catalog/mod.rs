@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+mod change;
 mod column;
 mod dictionary;
 mod flow;
@@ -15,6 +16,7 @@ mod table;
 mod view;
 mod vtable;
 
+pub use change::*;
 pub use column::*;
 pub use dictionary::*;
 pub use flow::*;

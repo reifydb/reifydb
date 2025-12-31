@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogQueryTransaction, store::ringbuffer::create::RingBufferColumnToCreate};
+use reifydb_catalog::store::ringbuffer::create::RingBufferColumnToCreate;
 use reifydb_core::{interface::ColumnPolicyKind, return_error};
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{
 	Fragment,
 	diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
@@ -15,7 +16,8 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_ringbuffer<T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_create_ringbuffer<T: IntoStandardTransaction>(
+		&self,
 		ast: AstCreateRingBuffer,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -57,7 +59,9 @@ impl Compiler {
 				let dict_name = dict_ident.name.text();
 
 				// Find the namespace
-				let Some(namespace) = tx.find_namespace_by_name(dict_namespace_name).await? else {
+				let Some(namespace) =
+					self.catalog.find_namespace_by_name(tx, dict_namespace_name).await?
+				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
 						dict_namespace_name,
@@ -66,7 +70,8 @@ impl Compiler {
 				};
 
 				// Find the dictionary
-				let Some(dictionary) = tx.find_dictionary_by_name(namespace.id, dict_name).await?
+				let Some(dictionary) =
+					self.catalog.find_dictionary_by_name(tx, namespace.id, dict_name).await?
 				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),

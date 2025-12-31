@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use OperationType::{Create, Update};
-use reifydb_catalog::transaction::CatalogTrackRingBufferChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId,
-	TransactionalRingBufferChanges,
+	CatalogTrackRingBufferChangeOperations, Change, NamespaceId,
+	OperationType::{Create, Delete, Update},
+	RingBufferDef, RingBufferId, TransactionalRingBufferChanges,
 };
 
-use crate::{StandardCommandTransaction, StandardQueryTransaction};
+use crate::standard::StandardCommandTransaction;
 
 impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> reifydb_core::Result<()> {
@@ -48,7 +47,6 @@ impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 
 impl TransactionalRingBufferChanges for StandardCommandTransaction {
 	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
-		// Find the last change for this ring buffer ID
 		for change in self.changes.ringbuffer_def.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
 				if ringbuffer.id == id {
@@ -57,7 +55,6 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 			}
 			if let Some(ringbuffer) = &change.pre {
 				if ringbuffer.id == id && change.op == Delete {
-					// Ring buffer was deleted
 					return None;
 				}
 			}
@@ -66,7 +63,6 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 	}
 
 	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBufferDef> {
-		// Find the last change for this ring buffer name
 		for change in self.changes.ringbuffer_def.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
 				if ringbuffer.namespace == namespace && ringbuffer.name == name {
@@ -75,7 +71,6 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 			}
 			if let Some(ringbuffer) = &change.pre {
 				if ringbuffer.namespace == namespace && ringbuffer.name == name && change.op == Delete {
-					// Ring buffer was deleted
 					return None;
 				}
 			}
@@ -84,7 +79,6 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 	}
 
 	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool {
-		// Check if this ring buffer was deleted in this transaction
 		self.changes
 			.ringbuffer_def
 			.iter()
@@ -92,7 +86,6 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 	}
 
 	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		// Check if this ring buffer was deleted in this transaction
 		self.changes.ringbuffer_def.iter().any(|change| {
 			change.op == Delete
 				&& change
@@ -101,23 +94,5 @@ impl TransactionalRingBufferChanges for StandardCommandTransaction {
 					.map(|rb| rb.namespace == namespace && rb.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl TransactionalRingBufferChanges for StandardQueryTransaction {
-	fn find_ringbuffer(&self, _id: RingBufferId) -> Option<&RingBufferDef> {
-		None
-	}
-
-	fn find_ringbuffer_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&RingBufferDef> {
-		None
-	}
-
-	fn is_ringbuffer_deleted(&self, _id: RingBufferId) -> bool {
-		false
-	}
-
-	fn is_ringbuffer_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
-		false
 	}
 }

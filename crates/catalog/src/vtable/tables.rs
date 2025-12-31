@@ -23,7 +23,6 @@ use super::{
 		TableStorageStats, Tables, TablesVirtual, Types, Versions, ViewStorageStats, Views,
 	},
 };
-use crate::transaction::MaterializedCatalogTransaction;
 
 /// Callback type for user-defined virtual tables.
 /// Returns column-oriented data directly.
@@ -120,11 +119,7 @@ impl VTables {
 	}
 
 	/// Initialize the virtual table iterator with context
-	pub async fn initialize<T: QueryTransaction + MaterializedCatalogTransaction>(
-		&mut self,
-		txn: &mut T,
-		ctx: VTableContext,
-	) -> crate::Result<()> {
+	pub async fn initialize<T: QueryTransaction>(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
 		match self {
 			Self::Sequences(t) => t.initialize(txn, ctx).await,
 			Self::Namespaces(t) => t.initialize(txn, ctx).await,
@@ -179,10 +174,7 @@ impl VTables {
 	}
 
 	/// Get the next batch of results (volcano iterator pattern)
-	pub async fn next<T: QueryTransaction + MaterializedCatalogTransaction>(
-		&mut self,
-		txn: &mut T,
-	) -> crate::Result<Option<Batch>> {
+	pub async fn next<T: QueryTransaction>(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		match self {
 			Self::Sequences(t) => t.next(txn).await,
 			Self::Namespaces(t) => t.next(txn).await,

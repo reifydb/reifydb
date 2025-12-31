@@ -74,14 +74,14 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::stateful::test_utils::test::create_test_transaction,
+		operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction},
 		transaction::utils::test::{from_store, make_key, make_value},
 	};
 
 	#[tokio::test]
 	async fn test_commit_empty_pending() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let metrics = txn.commit(&mut parent).await.unwrap();
 
@@ -94,7 +94,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_commit_single_write() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -109,7 +109,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_commit_multiple_writes() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -147,7 +147,7 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key2).await, Some(make_value("value2")));
 
 		// Create FlowTransaction and remove the keys
-		let mut txn = FlowTransaction::new(&parent, commit_version).await;
+		let mut txn = FlowTransaction::new(&parent, commit_version, &MaterializedCatalog::new()).await;
 		txn.remove(&key1).unwrap();
 		txn.remove(&key2).unwrap();
 
@@ -183,7 +183,7 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &existing_key).await, Some(make_value("old")));
 
 		// Create FlowTransaction
-		let mut txn = FlowTransaction::new(&parent, commit_version).await;
+		let mut txn = FlowTransaction::new(&parent, commit_version, &MaterializedCatalog::new()).await;
 
 		// Add a new key and remove the existing one
 		let new_key = make_key("new");
@@ -204,7 +204,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_commit_returns_metrics() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.get(&make_key("key2")).await.unwrap();
@@ -238,7 +238,7 @@ mod tests {
 		assert_eq!(from_store(&mut parent, &key).await, Some(make_value("old")));
 
 		// Create FlowTransaction and overwrite the value
-		let mut txn = FlowTransaction::new(&parent, commit_version).await;
+		let mut txn = FlowTransaction::new(&parent, commit_version, &MaterializedCatalog::new()).await;
 		txn.set(&key, make_value("new")).unwrap();
 		txn.commit(&mut parent).await.unwrap();
 
@@ -253,12 +253,12 @@ mod tests {
 		// First FlowTransaction writes to key1
 		// Note: FlowTransactions must operate on non-overlapping keyspaces
 		// This is enforced at the flow scheduler level, not the transaction level
-		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 		txn1.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn1.commit(&mut parent).await.unwrap();
 
 		// Second FlowTransaction writes to key2 (different keyspace)
-		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2)).await;
+		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2), &MaterializedCatalog::new()).await;
 		txn2.set(&make_key("key2"), make_value("value2")).unwrap();
 		txn2.commit(&mut parent).await.unwrap();
 
@@ -270,7 +270,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_same_key_multiple_overwrites() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 
@@ -303,8 +303,8 @@ mod tests {
 		let key = make_key("key1");
 
 		// Create both FlowTransactions before any commits
-		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1)).await;
-		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2)).await;
+		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2), &MaterializedCatalog::new()).await;
 
 		// Both try to write to the same key
 		txn1.set(&key, make_value("value1")).unwrap();
@@ -327,7 +327,7 @@ mod tests {
 	async fn test_double_commit_prevention() {
 		let mut parent = create_test_transaction().await;
 
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 
 		// First commit should succeed
@@ -346,13 +346,13 @@ mod tests {
 		let mut parent = create_test_transaction().await;
 
 		// First FlowTransaction writes to key1
-		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn1 = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 		txn1.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn1.commit(&mut parent).await.unwrap();
 
 		// Second FlowTransaction writes to key2 (different keyspace)
 		// This should succeed because keyspaces don't overlap
-		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2)).await;
+		let mut txn2 = FlowTransaction::new(&parent, CommitVersion(2), &MaterializedCatalog::new()).await;
 		txn2.set(&make_key("key2"), make_value("value2")).unwrap();
 		let result = txn2.commit(&mut parent).await;
 

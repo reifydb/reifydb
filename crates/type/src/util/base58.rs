@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
-
 //! Simple base58 encoding/decoding implementation
 
 const BASE58_CHARS: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

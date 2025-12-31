@@ -136,6 +136,11 @@ pub enum VmError {
 		name: String,
 	},
 
+	#[error("catalog error: {message}")]
+	CatalogError {
+		message: String,
+	},
+
 	// Function errors
 	#[error("return outside of function")]
 	ReturnOutsideFunction,

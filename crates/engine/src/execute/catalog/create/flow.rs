@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate, transaction::CatalogFlowQueryOperations};
-use reifydb_core::{interface::FlowStatus, value::column::Columns};
+use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
+use reifydb_core::{
+	interface::{CatalogTrackFlowChangeOperations, FlowStatus},
+	value::column::Columns,
+};
 use reifydb_rql::plan::physical::CreateFlowNode;
 use reifydb_type::Value;
 
@@ -14,7 +17,7 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateFlowNode,
 	) -> crate::Result<Columns> {
-		if let Some(_) = txn.find_flow_by_name(plan.namespace.id, plan.flow.text()).await? {
+		if let Some(_) = self.catalog.find_flow_by_name(txn, plan.namespace.id, plan.flow.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -35,6 +38,7 @@ impl Executor {
 			},
 		)
 		.await?;
+		txn.track_flow_def_created(flow_def.clone())?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
 		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id).await?;

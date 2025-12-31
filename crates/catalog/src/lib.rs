@@ -6,25 +6,18 @@
 pub use reifydb_core::Result;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+mod catalog;
 mod materialized;
-pub mod resolve;
 pub mod store;
 pub mod system;
 pub mod test_utils;
-pub mod transaction;
 pub mod vtable;
 
+pub use catalog::Catalog;
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 // Re-export moved modules for backward compatibility
 pub use store::column;
 pub use store::{column_policy, namespace, primary_key, primitive, ringbuffer, sequence, table, view};
-pub use transaction::{
-	CatalogCommandTransaction, CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations,
-	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogPrimitiveQueryOperations,
-	CatalogQueryTransaction, CatalogTableCommandOperations, CatalogTableQueryOperations,
-	CatalogTableVirtualUserQueryOperations, CatalogTrackChangeOperations, CatalogViewCommandOperations,
-	CatalogViewQueryOperations,
-};
 
 pub struct CatalogStore;
 

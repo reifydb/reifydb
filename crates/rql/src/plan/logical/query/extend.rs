@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogQueryTransaction;
-
 use crate::{
 	ast::AstExtend,
 	expression::ExpressionCompiler,
@@ -10,10 +8,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_extend<'a, T: CatalogQueryTransaction>(
-		ast: AstExtend,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_extend(&self, ast: AstExtend) -> crate::Result<LogicalPlan> {
 		Ok(LogicalPlan::Extend(ExtendNode {
 			extend: ast
 				.nodes
