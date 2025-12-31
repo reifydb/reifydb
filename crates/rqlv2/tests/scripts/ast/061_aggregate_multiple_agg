@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test AGGREGATE with multiple aggregations
+parse 'FROM orders | AGGREGATE { min(amount), max(amount), sum(amount) } BY { customer_id }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(customer_id)
+>         `-- aggregations:
+>             +-- [0] Call(min)
+>             |   `-- args:
+>             |       `-- [0] Identifier(amount)
+>             +-- [1] Call(max)
+>             |   `-- args:
+>             |       `-- [0] Identifier(amount)
+>             `-- [2] Call(sum)
+>                 `-- args:
+>                     `-- [0] Identifier(amount)
+>
+
+# Test multiple named aggregations with colon syntax
+parse 'FROM employees | AGGREGATE { youngest: min(age), oldest: max(age), avg_age: avg(age) } BY { department }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(employees)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(department)
+>         `-- aggregations:
+>             +-- [0] Binary(KeyValue)
+>             |   +-- left: Identifier(youngest)
+>             |   `-- right: Call(min)
+>             |       `-- args:
+>             |           `-- [0] Identifier(age)
+>             +-- [1] Binary(KeyValue)
+>             |   +-- left: Identifier(oldest)
+>             |   `-- right: Call(max)
+>             |       `-- args:
+>             |           `-- [0] Identifier(age)
+>             `-- [2] Binary(KeyValue)
+>                 +-- left: Identifier(avg_age)
+>                 `-- right: Call(avg)
+>                     `-- args:
+>                         `-- [0] Identifier(age)
+>
+
+# Test aggregations with count function
+parse 'FROM users | AGGREGATE { total: count(id), unique: count_distinct(email) } BY { status }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(status)
+>         `-- aggregations:
+>             +-- [0] Binary(KeyValue)
+>             |   +-- left: Identifier(total)
+>             |   `-- right: Call(count)
+>             |       `-- args:
+>             |           `-- [0] Identifier(id)
+>             `-- [1] Binary(KeyValue)
+>                 +-- left: Identifier(unique)
+>                 `-- right: Call(count_distinct)
+>                     `-- args:
+>                         `-- [0] Identifier(email)
+>

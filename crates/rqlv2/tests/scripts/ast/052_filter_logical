@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test FILTER with AND
+parse 'FROM users | FILTER age > 18 AND active = true'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(And)
+>             +-- left: Binary(Gt)
+>             |   +-- left: Identifier(age)
+>             |   `-- right: Integer(18)
+>             `-- right: Binary(Eq)
+>                 +-- left: Identifier(active)
+>                 `-- right: Bool(true)
+>
+
+# Test FILTER with OR
+parse 'FROM users | FILTER premium = true OR vip = true'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Or)
+>             +-- left: Binary(Eq)
+>             |   +-- left: Identifier(premium)
+>             |   `-- right: Bool(true)
+>             `-- right: Binary(Eq)
+>                 +-- left: Identifier(vip)
+>                 `-- right: Bool(true)
+>
+
+# Test FILTER with AND and OR chain (OR has lower precedence)
+parse 'FROM users | FILTER active = true AND price > 100 OR premium = true'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Or)
+>             +-- left: Binary(And)
+>             |   +-- left: Binary(Eq)
+>             |   |   +-- left: Identifier(active)
+>             |   |   `-- right: Bool(true)
+>             |   `-- right: Binary(Gt)
+>             |       +-- left: Identifier(price)
+>             |       `-- right: Integer(100)
+>             `-- right: Binary(Eq)
+>                 +-- left: Identifier(premium)
+>                 `-- right: Bool(true)
+>
+
+# Test FILTER with multiple AND conditions
+parse 'FROM data | FILTER a > 1 AND b > 2 AND c > 3'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Filter
+>         `-- Binary(And)
+>             +-- left: Binary(And)
+>             |   +-- left: Binary(Gt)
+>             |   |   +-- left: Identifier(a)
+>             |   |   `-- right: Integer(1)
+>             |   `-- right: Binary(Gt)
+>             |       +-- left: Identifier(b)
+>             |       `-- right: Integer(2)
+>             `-- right: Binary(Gt)
+>                 +-- left: Identifier(c)
+>                 `-- right: Integer(3)
+>
+
+# Test FILTER with XOR
+parse 'FROM users | FILTER admin = true XOR guest = true'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Xor)
+>             +-- left: Binary(Eq)
+>             |   +-- left: Identifier(admin)
+>             |   `-- right: Bool(true)
+>             `-- right: Binary(Eq)
+>                 +-- left: Identifier(guest)
+>                 `-- right: Bool(true)
+>

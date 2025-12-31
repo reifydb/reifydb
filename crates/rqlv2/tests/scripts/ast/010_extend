@@ -14,3 +14,41 @@ parse 'FROM data | EXTEND { total: a + b }'
 >                 +-- left: Identifier(a)
 >                 `-- right: Identifier(b)
 >
+
+# Test EXTEND with single constant
+parse 'FROM data | EXTEND { flag: 1 }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(flag)
+>             `-- right: Integer(1)
+>
+
+# Test EXTEND with multiplication expression
+parse 'FROM products | EXTEND { tax: price * 0.1 }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(tax)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(price)
+>                 `-- right: Float(0.1)
+>
+
+# Test EXTEND with identifier passthrough
+parse 'FROM users | EXTEND { copy: original }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(copy)
+>             `-- right: Identifier(original)
+>

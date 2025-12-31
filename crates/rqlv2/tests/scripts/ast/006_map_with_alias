@@ -15,3 +15,57 @@ parse 'FROM users | MAP { n: name, a: age }'
 >             +-- left: Identifier(a)
 >             `-- right: Identifier(age)
 >
+
+# Test MAP with single alias
+parse 'FROM users | MAP { user_name: name }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Map
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(user_name)
+>             `-- right: Identifier(name)
+>
+
+# Test MAP with computed expression alias
+parse 'FROM data | MAP { total: price * quantity }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Map
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(total)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(price)
+>                 `-- right: Identifier(quantity)
+>
+
+# Test MAP with addition expression alias
+parse 'FROM data | MAP { sum_val: a + b }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Map
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(sum_val)
+>             `-- right: Binary(Add)
+>                 +-- left: Identifier(a)
+>                 `-- right: Identifier(b)
+>
+
+# Test MAP with function call alias
+parse 'FROM users | MAP { upper_name: upper(name) }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Map
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(upper_name)
+>             `-- right: Call(upper)
+>                 `-- args:
+>                     `-- [0] Identifier(name)
+>

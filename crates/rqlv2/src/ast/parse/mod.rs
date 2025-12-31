@@ -5,10 +5,18 @@
 //!
 //! This module implements a Pratt parser that produces bump-allocated AST nodes.
 
+mod aggregate;
+mod distinct;
 mod error;
+mod extend;
+mod filter;
+mod from;
+mod join;
+mod map;
 mod pratt;
 mod primary;
-mod query;
+mod sort;
+mod take;
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 pub use error::{ParseError, ParseErrorKind};

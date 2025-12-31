@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test FILTER with greater than comparison
+parse 'FROM users | FILTER age > 18'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Gt)
+>             +-- left: Identifier(age)
+>             `-- right: Integer(18)
+>
+
+# Test FILTER with less than comparison
+parse 'FROM products | FILTER price < 100'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Filter
+>         `-- Binary(Lt)
+>             +-- left: Identifier(price)
+>             `-- right: Integer(100)
+>
+
+# Test FILTER with greater than or equal
+parse 'FROM orders | FILTER total >= 50'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Filter
+>         `-- Binary(Ge)
+>             +-- left: Identifier(total)
+>             `-- right: Integer(50)
+>
+
+# Test FILTER with less than or equal
+parse 'FROM items | FILTER quantity <= 10'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(items)
+>     `-- [1] Filter
+>         `-- Binary(Le)
+>             +-- left: Identifier(quantity)
+>             `-- right: Integer(10)
+>
+
+# Test FILTER with equality
+parse 'FROM users | FILTER status = 1'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Eq)
+>             +-- left: Identifier(status)
+>             `-- right: Integer(1)
+>
+
+# Test FILTER with not equal
+parse 'FROM users | FILTER role != 0'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Ne)
+>             +-- left: Identifier(role)
+>             `-- right: Integer(0)
+>
+
+# Test FILTER with nested expression
+parse 'FROM data | FILTER (price + fee) > 100'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Filter
+>         `-- Binary(Gt)
+>             +-- left: Paren
+>             |   `-- Binary(Add)
+>             |       +-- left: Identifier(price)
+>             |       `-- right: Identifier(fee)
+>             `-- right: Integer(100)
+>

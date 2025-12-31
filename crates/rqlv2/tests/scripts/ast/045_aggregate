@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test AGGREGATE with BY clause
+# Test AGGREGATE with BY clause - basic case
 parse 'FROM orders | AGGREGATE { total: sum(amount), num: count(id) } BY { customer_id }'
 ---
 > Program
@@ -21,4 +21,36 @@ parse 'FROM orders | AGGREGATE { total: sum(amount), num: count(id) } BY { custo
 >                 `-- right: Call(count)
 >                     `-- args:
 >                         `-- [0] Identifier(id)
+>
+
+# Test AGGREGATE single aggregation single group
+parse 'FROM employees | AGGREGATE { min(age) } BY { department }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(employees)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(department)
+>         `-- aggregations:
+>             `-- [0] Call(min)
+>                 `-- args:
+>                     `-- [0] Identifier(age)
+>
+
+# Test AGGREGATE with named aggregation using colon syntax
+parse 'FROM sales | AGGREGATE { revenue: sum(price) } BY { region }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(sales)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(region)
+>         `-- aggregations:
+>             `-- [0] Binary(KeyValue)
+>                 +-- left: Identifier(revenue)
+>                 `-- right: Call(sum)
+>                     `-- args:
+>                         `-- [0] Identifier(price)
 >

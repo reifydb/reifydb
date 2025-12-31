@@ -1,8 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test DISTINCT clause
+# Test DISTINCT with single column
 parse 'FROM users | DISTINCT { name }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Distinct
+>         `-- [0] Identifier(name)
+>
+
+# Test DISTINCT with empty braces (all columns)
+parse 'FROM users | DISTINCT {}'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Distinct
+>
+
+# Test DISTINCT with single column and trailing comma
+parse 'FROM users | DISTINCT { name, }'
 ---
 > Program
 > `-- [0] Pipeline

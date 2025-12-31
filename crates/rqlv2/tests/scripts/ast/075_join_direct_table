@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test JOIN with direct table reference (primitive storage)
+# Syntax: LEFT JOIN table AS alias USING (...)
+
+# Simple left join with direct table
+parse 'FROM users | LEFT JOIN orders AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Left)
+>         +-- primitive: orders
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>
+
+# Left join with namespace
+parse 'FROM users | LEFT JOIN sales.orders AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Left)
+>         +-- primitive: sales.orders
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>
+
+# Inner join with direct table
+parse 'FROM users | INNER JOIN products AS p USING (id, p.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Inner)
+>         +-- primitive: products
+>         +-- alias: p
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(p)
+>                     `-- right: Identifier(user_id)
+>
+
+# Implicit inner join with direct table
+parse 'FROM users | JOIN items AS i USING (id, i.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Inner)
+>         +-- primitive: items
+>         +-- alias: i
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(i)
+>                     `-- right: Identifier(user_id)
+>
+
+# Natural join with direct table
+parse 'FROM users | NATURAL JOIN categories AS c'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Natural)
+>         +-- primitive: categories
+>         `-- alias: c
+>
+
+# Natural left join with direct table
+parse 'FROM users | NATURAL LEFT JOIN tags AS t'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Natural)
+>         +-- primitive: tags
+>         `-- alias: t
+>
+
+# Multiple conditions with direct table
+parse 'FROM users | LEFT JOIN orders AS o USING (id, o.user_id) AND (tenant, o.tenant)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Left)
+>         +-- primitive: orders
+>         +-- alias: o
+>         `-- using:
+>             +-- [0] Pair
+>             |   +-- left: Identifier(id)
+>             |   `-- right: Binary(Dot)
+>             |       +-- left: Identifier(o)
+>             |       `-- right: Identifier(user_id)
+>             `-- [1] Pair
+>                 +-- left: Identifier(tenant)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(tenant)
+>
+
+# Mix: first join with subquery, second with direct table
+parse 'FROM users | LEFT JOIN { FROM orders | FILTER active = true } AS o USING (id, o.user_id) | LEFT JOIN products AS p USING (o.product_id, p.id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     +-- [1] Join(Left)
+>     |   +-- subquery:
+>     |   |   `-- SubQuery
+>     |   |       +-- [0] From(orders)
+>     |   |       `-- [1] Filter
+>     |   |           `-- Binary(Eq)
+>     |   |               +-- left: Identifier(active)
+>     |   |               `-- right: Bool(true)
+>     |   +-- alias: o
+>     |   `-- using:
+>     |       `-- [0] Pair
+>     |           +-- left: Identifier(id)
+>     |           `-- right: Binary(Dot)
+>     |               +-- left: Identifier(o)
+>     |               `-- right: Identifier(user_id)
+>     `-- [2] Join(Left)
+>         +-- primitive: products
+>         +-- alias: p
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Binary(Dot)
+>                 |   +-- left: Identifier(o)
+>                 |   `-- right: Identifier(product_id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(p)
+>                     `-- right: Identifier(id)
+>

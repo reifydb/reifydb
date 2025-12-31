@@ -260,6 +260,21 @@ pub enum JoinExpr<'bump> {
 	Natural(JoinNatural<'bump>),
 }
 
+/// Source for a JOIN operation.
+#[derive(Debug, Clone, Copy)]
+pub enum JoinSource<'bump> {
+	/// Subquery: { FROM ... | FILTER ... }
+	SubQuery(&'bump Expr<'bump>),
+	/// Direct table reference - reads from primitive storage
+	Primitive(JoinPrimitive<'bump>),
+}
+
+/// Direct table reference for JOIN - reads from primitive storage.
+#[derive(Debug, Clone, Copy)]
+pub struct JoinPrimitive<'bump> {
+	pub source: SourceRef<'bump>,
+}
+
 impl<'bump> JoinExpr<'bump> {
 	/// Get the span of this JOIN expression.
 	pub fn span(&self) -> Span {
@@ -274,7 +289,7 @@ impl<'bump> JoinExpr<'bump> {
 /// INNER JOIN
 #[derive(Debug, Clone, Copy)]
 pub struct JoinInner<'bump> {
-	pub subquery: &'bump Expr<'bump>,
+	pub source: JoinSource<'bump>,
 	pub using_clause: UsingClause<'bump>,
 	pub alias: &'bump str,
 	pub span: Span,
@@ -283,7 +298,7 @@ pub struct JoinInner<'bump> {
 /// LEFT JOIN
 #[derive(Debug, Clone, Copy)]
 pub struct JoinLeft<'bump> {
-	pub subquery: &'bump Expr<'bump>,
+	pub source: JoinSource<'bump>,
 	pub using_clause: UsingClause<'bump>,
 	pub alias: &'bump str,
 	pub span: Span,
@@ -292,7 +307,7 @@ pub struct JoinLeft<'bump> {
 /// NATURAL JOIN
 #[derive(Debug, Clone, Copy)]
 pub struct JoinNatural<'bump> {
-	pub subquery: &'bump Expr<'bump>,
+	pub source: JoinSource<'bump>,
 	pub alias: &'bump str,
 	pub span: Span,
 }

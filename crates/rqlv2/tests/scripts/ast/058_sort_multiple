@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test SORT with multiple columns, no directions (default)
+parse 'FROM users | SORT { name, age }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Sort
+>         +-- [0] SortColumn
+>         |   `-- Identifier(name)
+>         `-- [1] SortColumn
+>             `-- Identifier(age)
+>
+
+# Test SORT with multiple columns and mixed directions
+parse 'FROM users | SORT { name: ASC, age: DESC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Sort
+>         +-- [0] SortColumn ASC
+>         |   `-- Identifier(name)
+>         `-- [1] SortColumn DESC
+>             `-- Identifier(age)
+>
+
+# Test SORT with three columns
+parse 'FROM orders | SORT { customer_id, order_date: DESC, total: ASC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Sort
+>         +-- [0] SortColumn
+>         |   `-- Identifier(customer_id)
+>         +-- [1] SortColumn DESC
+>         |   `-- Identifier(order_date)
+>         `-- [2] SortColumn ASC
+>             `-- Identifier(total)
+>
+
+# Test SORT with multiple columns all DESC
+parse 'FROM products | SORT { price: DESC, created_at: DESC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Sort
+>         +-- [0] SortColumn DESC
+>         |   `-- Identifier(price)
+>         `-- [1] SortColumn DESC
+>             `-- Identifier(created_at)
+>

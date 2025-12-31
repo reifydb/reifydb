@@ -244,6 +244,11 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Keyword::Distinct => self.parse_distinct(),
 			Keyword::Aggregate => self.parse_aggregate(),
 			Keyword::If => self.parse_if_expr(),
+			// JOIN variants
+			Keyword::Join => self.parse_join(),
+			Keyword::Inner => self.parse_inner_join(),
+			Keyword::Left => self.parse_left_join(),
+			Keyword::Natural => self.parse_natural_join(),
 			Keyword::True => {
 				let span = self.advance().span;
 				Ok(self.alloc(Expr::Literal(Literal::bool(true, span))))

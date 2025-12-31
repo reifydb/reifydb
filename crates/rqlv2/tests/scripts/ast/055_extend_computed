@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test EXTEND with computed addition
+parse 'FROM data | EXTEND { sum_val: x + y }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(sum_val)
+>             `-- right: Binary(Add)
+>                 +-- left: Identifier(x)
+>                 `-- right: Identifier(y)
+>
+
+# Test EXTEND with computed subtraction
+parse 'FROM data | EXTEND { diff: a - b }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(diff)
+>             `-- right: Binary(Sub)
+>                 +-- left: Identifier(a)
+>                 `-- right: Identifier(b)
+>
+
+# Test EXTEND with computed multiplication
+parse 'FROM orders | EXTEND { line_total: price * quantity }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(line_total)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(price)
+>                 `-- right: Identifier(quantity)
+>
+
+# Test EXTEND with computed division
+parse 'FROM metrics | EXTEND { avg: total / count }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(metrics)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(avg)
+>             `-- right: Binary(Div)
+>                 +-- left: Identifier(total)
+>                 `-- right: Identifier(count)
+>
+
+# Test EXTEND with function call
+parse 'FROM users | EXTEND { name_upper: upper(name) }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(name_upper)
+>             `-- right: Call(upper)
+>                 `-- args:
+>                     `-- [0] Identifier(name)
+>
+
+# Test EXTEND with nested computation
+parse 'FROM data | EXTEND { result: (a + b) * c }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(result)
+>             `-- right: Binary(Mul)
+>                 +-- left: Paren
+>                 |   `-- Binary(Add)
+>                 |       +-- left: Identifier(a)
+>                 |       `-- right: Identifier(b)
+>                 `-- right: Identifier(c)
+>

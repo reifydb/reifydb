@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test SORT with explicit ASC direction
+parse 'FROM products | SORT { price: ASC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Sort
+>         `-- [0] SortColumn ASC
+>             `-- Identifier(price)
+>
+
+# Test SORT with explicit DESC direction
+parse 'FROM products | SORT { price: DESC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Sort
+>         `-- [0] SortColumn DESC
+>             `-- Identifier(price)
+>
+
+# Test SORT mixed ASC and default direction
+parse 'FROM employees | SORT { salary: DESC, name }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(employees)
+>     `-- [1] Sort
+>         +-- [0] SortColumn DESC
+>         |   `-- Identifier(salary)
+>         `-- [1] SortColumn
+>             `-- Identifier(name)
+>
+
+# Test SORT with reserved word column using lowercase asc/desc
+parse 'FROM users | SORT { value: ASC }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Sort
+>         `-- [0] SortColumn ASC
+>             `-- Identifier(value)
+>

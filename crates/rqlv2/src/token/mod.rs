@@ -28,7 +28,7 @@ pub use punctuation::Punctuation;
 pub use span::{Span, Spanned};
 pub use token::{Token, TokenKind};
 
-/// Static EOF token for when we're past the end of input.
+/// Static EOF token
 pub const EOF_TOKEN: Token = Token {
 	kind: TokenKind::Eof,
 	span: Span {

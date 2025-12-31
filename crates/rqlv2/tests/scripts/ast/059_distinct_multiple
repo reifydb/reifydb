@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test DISTINCT with two columns
+parse 'FROM users | DISTINCT { name, age }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Distinct
+>         +-- [0] Identifier(name)
+>         `-- [1] Identifier(age)
+>
+
+# Test DISTINCT with three columns
+parse 'FROM employees | DISTINCT { department, role, level }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(employees)
+>     `-- [1] Distinct
+>         +-- [0] Identifier(department)
+>         +-- [1] Identifier(role)
+>         `-- [2] Identifier(level)
+>
+
+# Test DISTINCT with multiple columns and trailing comma
+parse 'FROM products | DISTINCT { category, brand, }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Distinct
+>         +-- [0] Identifier(category)
+>         `-- [1] Identifier(brand)
+>
+
+# Test DISTINCT combined with other operators
+parse 'FROM orders | FILTER active | DISTINCT { customer_id, product_id }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     +-- [1] Filter
+>     |   `-- Identifier(active)
+>     `-- [2] Distinct
+>         +-- [0] Identifier(customer_id)
+>         `-- [1] Identifier(product_id)
+>

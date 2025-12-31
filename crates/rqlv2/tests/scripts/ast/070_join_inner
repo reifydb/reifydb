@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test implicit INNER JOIN (JOIN keyword alone)
+parse 'JOIN { FROM orders } AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Inner)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>
+
+# Test explicit INNER JOIN
+parse 'INNER JOIN { FROM orders } AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Inner)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>
+
+# Test INNER JOIN in a pipeline
+parse 'FROM users | INNER JOIN { FROM orders } AS o USING (id, o.user_id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Join(Inner)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(user_id)
+>

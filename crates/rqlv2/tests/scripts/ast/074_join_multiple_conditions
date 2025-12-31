@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test LEFT JOIN with multiple conditions using AND
+parse 'LEFT JOIN { FROM orders } AS o USING (id, o.user_id) AND (tenant, o.tenant)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             +-- [0] Pair
+>             |   +-- left: Identifier(id)
+>             |   `-- right: Binary(Dot)
+>             |       +-- left: Identifier(o)
+>             |       `-- right: Identifier(user_id)
+>             `-- [1] Pair
+>                 +-- left: Identifier(tenant)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(tenant)
+>
+
+# Test LEFT JOIN with multiple conditions using OR
+parse 'LEFT JOIN { FROM orders } AS o USING (id, o.user_id) OR (tenant, o.tenant)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             +-- [0] Pair
+>             |   +-- left: Identifier(id)
+>             |   `-- right: Binary(Dot)
+>             |       +-- left: Identifier(o)
+>             |       `-- right: Identifier(user_id)
+>             `-- [1] Pair
+>                 +-- left: Identifier(tenant)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(o)
+>                     `-- right: Identifier(tenant)
+>
+
+# Test USING with literal expression
+parse 'LEFT JOIN { FROM orders } AS o USING (id, o.type) AND (category, 123)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(orders)
+>         +-- alias: o
+>         `-- using:
+>             +-- [0] Pair
+>             |   +-- left: Identifier(id)
+>             |   `-- right: Binary(Dot)
+>             |       +-- left: Identifier(o)
+>             |       `-- right: Identifier(type)
+>             `-- [1] Pair
+>                 +-- left: Identifier(category)
+>                 `-- right: Integer(123)
+>
+
+# Test INNER JOIN with multiple conditions
+parse 'INNER JOIN { FROM products } AS p USING (product_id, p.id) AND (category_id, p.category_id)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Inner)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(products)
+>         +-- alias: p
+>         `-- using:
+>             +-- [0] Pair
+>             |   +-- left: Identifier(product_id)
+>             |   `-- right: Binary(Dot)
+>             |       +-- left: Identifier(p)
+>             |       `-- right: Identifier(id)
+>             `-- [1] Pair
+>                 +-- left: Identifier(category_id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(p)
+>                     `-- right: Identifier(category_id)
+>

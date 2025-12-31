@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test EXTEND with multiple computed columns
+parse 'FROM orders | EXTEND { total: price * quantity, tax: price * 0.1 }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Extend
+>         +-- [0] Binary(KeyValue)
+>         |   +-- left: Identifier(total)
+>         |   `-- right: Binary(Mul)
+>         |       +-- left: Identifier(price)
+>         |       `-- right: Identifier(quantity)
+>         `-- [1] Binary(KeyValue)
+>             +-- left: Identifier(tax)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(price)
+>                 `-- right: Float(0.1)
+>
+
+# Test EXTEND with three computed columns
+parse 'FROM data | EXTEND { sum_val: a + b, diff: a - b, prod: a * b }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         +-- [0] Binary(KeyValue)
+>         |   +-- left: Identifier(sum_val)
+>         |   `-- right: Binary(Add)
+>         |       +-- left: Identifier(a)
+>         |       `-- right: Identifier(b)
+>         +-- [1] Binary(KeyValue)
+>         |   +-- left: Identifier(diff)
+>         |   `-- right: Binary(Sub)
+>         |       +-- left: Identifier(a)
+>         |       `-- right: Identifier(b)
+>         `-- [2] Binary(KeyValue)
+>             +-- left: Identifier(prod)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(a)
+>                 `-- right: Identifier(b)
+>
+
+# Test EXTEND with function calls
+parse 'FROM users | EXTEND { upper_name: upper(name), lower_email: lower(email) }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Extend
+>         +-- [0] Binary(KeyValue)
+>         |   +-- left: Identifier(upper_name)
+>         |   `-- right: Call(upper)
+>         |       `-- args:
+>         |           `-- [0] Identifier(name)
+>         `-- [1] Binary(KeyValue)
+>             +-- left: Identifier(lower_email)
+>             `-- right: Call(lower)
+>                 `-- args:
+>                     `-- [0] Identifier(email)
+>
+
+# Test EXTEND in pipeline with MAP
+parse 'FROM orders | EXTEND { total: price * quantity } | MAP { id, total }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     +-- [1] Extend
+>     |   `-- [0] Binary(KeyValue)
+>     |       +-- left: Identifier(total)
+>     |       `-- right: Binary(Mul)
+>     |           +-- left: Identifier(price)
+>     |           `-- right: Identifier(quantity)
+>     `-- [2] Map
+>         +-- [0] Identifier(id)
+>         `-- [1] Identifier(total)
+>

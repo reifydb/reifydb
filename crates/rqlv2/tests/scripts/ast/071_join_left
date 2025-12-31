@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test LEFT JOIN with USING
+parse 'LEFT JOIN { FROM namespace.orders } AS orders USING (id, orders.user_id)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(namespace.orders)
+>         +-- alias: orders
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(orders)
+>                     `-- right: Identifier(user_id)
+>
+
+# Test LEFT JOIN with short alias
+parse 'LEFT JOIN { FROM test.customers } AS c USING (id, c.customer_id)'
+---
+> Program
+> `-- [0] Expression
+>     `-- Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(test.customers)
+>         +-- alias: c
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(c)
+>                     `-- right: Identifier(customer_id)
+>
+
+# Test LEFT JOIN in a complex query with aliases
+parse 'FROM test.orders | LEFT JOIN { FROM test.customers } AS c USING (customer_id, c.id)'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(test.orders)
+>     `-- [1] Join(Left)
+>         +-- subquery:
+>         |   `-- SubQuery
+>         |       `-- [0] From(test.customers)
+>         +-- alias: c
+>         `-- using:
+>             `-- [0] Pair
+>                 +-- left: Identifier(customer_id)
+>                 `-- right: Binary(Dot)
+>                     +-- left: Identifier(c)
+>                     `-- right: Identifier(id)
+>

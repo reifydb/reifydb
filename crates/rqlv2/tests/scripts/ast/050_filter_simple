@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test simple FILTER expression
+parse 'FROM users | FILTER active'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Identifier(active)
+>
+
+# Test FILTER with single identifier predicate
+parse 'FROM products | FILTER visible'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(products)
+>     `-- [1] Filter
+>         `-- Identifier(visible)
+>
+
+# Test FILTER with boolean literal
+parse 'FROM users | FILTER true'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Bool(true)
+>

@@ -534,8 +534,7 @@ impl<'a> AstFormatter<'a> {
 			Expr::Join(j) => match j {
 				JoinExpr::Inner(inner) => {
 					let has_using = !inner.using_clause.pairs.is_empty();
-					self.write_branch(false, "subquery:");
-					self.with_child(false, |f| f.format_expr(true, inner.subquery));
+					self.format_join_source(false, &inner.source);
 					self.write_branch(!has_using, &format!("alias: {}", inner.alias));
 					if has_using {
 						self.format_using_clause(true, &inner.using_clause);
@@ -543,16 +542,14 @@ impl<'a> AstFormatter<'a> {
 				}
 				JoinExpr::Left(left) => {
 					let has_using = !left.using_clause.pairs.is_empty();
-					self.write_branch(false, "subquery:");
-					self.with_child(false, |f| f.format_expr(true, left.subquery));
+					self.format_join_source(false, &left.source);
 					self.write_branch(!has_using, &format!("alias: {}", left.alias));
 					if has_using {
 						self.format_using_clause(true, &left.using_clause);
 					}
 				}
 				JoinExpr::Natural(nat) => {
-					self.write_branch(false, "subquery:");
-					self.with_child(false, |f| f.format_expr(true, nat.subquery));
+					self.format_join_source(false, &nat.source);
 					self.write_branch(true, &format!("alias: {}", nat.alias));
 				}
 			},
@@ -722,6 +719,23 @@ impl<'a> AstFormatter<'a> {
 			}
 			Expr::Paren(inner) => {
 				self.format_expr(true, inner);
+			}
+		}
+	}
+
+	fn format_join_source(&mut self, is_last: bool, source: &JoinSource) {
+		match source {
+			JoinSource::SubQuery(subquery) => {
+				self.write_branch(is_last, "subquery:");
+				self.with_child(is_last, |f| f.format_expr(true, subquery));
+			}
+			JoinSource::Primitive(prim) => {
+				let table = if let Some(ns) = prim.source.namespace {
+					format!("{}.{}", ns, prim.source.name)
+				} else {
+					prim.source.name.to_string()
+				};
+				self.write_branch(is_last, &format!("primitive: {}", table));
 			}
 		}
 	}
