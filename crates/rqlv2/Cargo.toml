@@ -8,5 +8,6 @@ repository.workspace = true
 description = "ReifyDB Query Language (RQL)"
 
 [dependencies]
+bumpalo = { workspace = true }
 
 [dev-dependencies]

@@ -1923,6 +1923,9 @@ dependencies = [
 [[package]]
 name = "reifydb-rqlv2"
 version = "0.2.0"
+dependencies = [
+ "bumpalo",
+]
 
 [[package]]
 name = "reifydb-sdk"
