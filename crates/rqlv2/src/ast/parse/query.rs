@@ -131,6 +131,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	}
 
 	/// Parse SORT expression.
+	/// Syntax: SORT { key: ASC, key2: DESC } or SORT { key } (defaults to ASC)
 	pub(super) fn parse_sort(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
 		let start_span = self.advance().span; // consume SORT
 
@@ -142,13 +143,17 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
 			let expr = self.parse_expr(Precedence::Comparison)?;
 
-			// Check for direction
-			let direction = if self.try_consume_keyword(Keyword::Asc) {
-				Some(SortDirection::Asc)
-			} else if self.try_consume_keyword(Keyword::Desc) {
-				Some(SortDirection::Desc)
+			// Check for colon followed by direction, or just use default
+			let direction = if self.try_consume_operator(Operator::Colon) {
+				if self.try_consume_keyword(Keyword::Asc) {
+					Some(SortDirection::Asc)
+				} else if self.try_consume_keyword(Keyword::Desc) {
+					Some(SortDirection::Desc)
+				} else {
+					return Err(self.error(ParseErrorKind::ExpectedKeyword(Keyword::Asc)));
+				}
 			} else {
-				None
+				None // Default direction
 			};
 
 			columns.push(SortColumn::new(expr, direction));
@@ -196,6 +201,52 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		Ok(self.alloc(Expr::Distinct(DistinctExpr::new(
 			columns.into_bump_slice(),
+			start_span.merge(&end_span),
+		))))
+	}
+
+	/// Parse AGGREGATE expression: AGGREGATE { expr, ... } BY { col, ... }
+	pub(super) fn parse_aggregate(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
+		let start_span = self.advance().span; // consume AGGREGATE
+
+		// Require opening brace for aggregations
+		self.expect_punct(Punctuation::OpenCurly)?;
+
+		let mut aggregations = BumpVec::new_in(self.bump);
+
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
+			let agg = self.parse_expr(Precedence::None)?;
+			aggregations.push(*agg);
+
+			if !self.try_consume_punct(Punctuation::Comma) {
+				break;
+			}
+		}
+
+		self.expect_punct(Punctuation::CloseCurly)?;
+
+		// Require BY keyword
+		self.expect_keyword(Keyword::By)?;
+
+		// Require opening brace for group-by columns
+		self.expect_punct(Punctuation::OpenCurly)?;
+
+		let mut group_by = BumpVec::new_in(self.bump);
+
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
+			let col = self.parse_expr(Precedence::Comparison)?;
+			group_by.push(*col);
+
+			if !self.try_consume_punct(Punctuation::Comma) {
+				break;
+			}
+		}
+
+		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
+
+		Ok(self.alloc(Expr::Aggregate(AggregateExpr::new(
+			group_by.into_bump_slice(),
+			aggregations.into_bump_slice(),
 			start_span.merge(&end_span),
 		))))
 	}

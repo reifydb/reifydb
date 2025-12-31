@@ -242,6 +242,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Keyword::Sort => self.parse_sort(),
 			Keyword::Take => self.parse_take(),
 			Keyword::Distinct => self.parse_distinct(),
+			Keyword::Aggregate => self.parse_aggregate(),
 			Keyword::If => self.parse_if_expr(),
 			Keyword::True => {
 				let span = self.advance().span;

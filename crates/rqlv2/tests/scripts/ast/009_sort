@@ -2,7 +2,7 @@
 # Copyright (c) 2025 ReifyDB
 
 # Test SORT with ASC/DESC
-parse 'FROM users | SORT { age DESC, name ASC }'
+parse 'FROM users | SORT { age: DESC, name: ASC }'
 ---
 > Program
 > `-- [0] Pipeline

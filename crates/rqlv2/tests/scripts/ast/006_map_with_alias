@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test MAP with aliases using AS
-parse 'FROM users | MAP { name AS n, age AS a }'
+# Test MAP with aliases using key: value syntax
+parse 'FROM users | MAP { n: name, a: age }'
 ---
 > Program
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Map
->         +-- [0] Binary(As)
->         |   +-- left: Identifier(name)
->         |   `-- right: Identifier(n)
->         `-- [1] Binary(As)
->             +-- left: Identifier(age)
->             `-- right: Identifier(a)
+>         +-- [0] Binary(KeyValue)
+>         |   +-- left: Identifier(n)
+>         |   `-- right: Identifier(name)
+>         `-- [1] Binary(KeyValue)
+>             +-- left: Identifier(a)
+>             `-- right: Identifier(age)
 >

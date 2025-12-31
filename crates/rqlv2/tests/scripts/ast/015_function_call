@@ -2,15 +2,15 @@
 # Copyright (c) 2025 ReifyDB
 
 # Test function call
-parse 'FROM users | MAP { upper(name) AS upper_name }'
+parse 'FROM users | MAP { upper_name: upper(name) }'
 ---
 > Program
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Map
->         `-- [0] Binary(As)
->             +-- left: Call(upper)
->             |   `-- args:
->             |       `-- [0] Identifier(name)
->             `-- right: Identifier(upper_name)
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(upper_name)
+>             `-- right: Call(upper)
+>                 `-- args:
+>                     `-- [0] Identifier(name)
 >

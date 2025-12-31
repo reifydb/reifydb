@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test AGGREGATE with BY clause
+parse 'FROM orders | AGGREGATE { total: sum(amount), num: count(id) } BY { customer_id }'
+---
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(orders)
+>     `-- [1] Aggregate
+>         +-- group_by:
+>         |   `-- [0] Identifier(customer_id)
+>         `-- aggregations:
+>             +-- [0] Binary(KeyValue)
+>             |   +-- left: Identifier(total)
+>             |   `-- right: Call(sum)
+>             |       `-- args:
+>             |           `-- [0] Identifier(amount)
+>             `-- [1] Binary(KeyValue)
+>                 +-- left: Identifier(num)
+>                 `-- right: Call(count)
+>                     `-- args:
+>                         `-- [0] Identifier(id)
+>

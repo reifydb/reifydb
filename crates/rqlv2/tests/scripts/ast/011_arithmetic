@@ -2,20 +2,20 @@
 # Copyright (c) 2025 ReifyDB
 
 # Test arithmetic expressions
-parse 'FROM data | MAP { a + b AS sum, a * 2 AS double }'
+parse 'FROM data | MAP { sum: a + b, double: a * 2 }'
 ---
 > Program
 > `-- [0] Pipeline
 >     +-- [0] From(data)
 >     `-- [1] Map
->         +-- [0] Binary(As)
->         |   +-- left: Binary(Add)
->         |   |   +-- left: Identifier(a)
->         |   |   `-- right: Identifier(b)
->         |   `-- right: Identifier(sum)
->         `-- [1] Binary(As)
->             +-- left: Binary(Mul)
->             |   +-- left: Identifier(a)
->             |   `-- right: Integer(2)
->             `-- right: Identifier(double)
+>         +-- [0] Binary(KeyValue)
+>         |   +-- left: Identifier(sum)
+>         |   `-- right: Binary(Add)
+>         |       +-- left: Identifier(a)
+>         |       `-- right: Identifier(b)
+>         `-- [1] Binary(KeyValue)
+>             +-- left: Identifier(double)
+>             `-- right: Binary(Mul)
+>                 +-- left: Identifier(a)
+>                 `-- right: Integer(2)
 >
