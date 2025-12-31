@@ -31,7 +31,7 @@ mod tests {
 	use reifydb_engine::StandardCommandTransaction;
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use crate::operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction};
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -48,7 +48,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -63,7 +63,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_set_increments_writes_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().writes, 0);
 
@@ -77,7 +77,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_set_multiple_keys() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -93,7 +93,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -109,7 +109,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -122,7 +122,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_increments_removes_metric() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		assert_eq!(txn.metrics().removes, 0);
 
@@ -136,7 +136,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_multiple_keys() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.remove(&make_key("key1")).unwrap();
 		txn.remove(&make_key("key2")).unwrap();
@@ -152,7 +152,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_set_then_remove() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -170,7 +170,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_remove_then_set() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -188,7 +188,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -212,7 +212,7 @@ mod tests {
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
-		let mut txn = FlowTransaction::new(&parent, parent_version).await;
+		let mut txn = FlowTransaction::new(&parent, parent_version, &MaterializedCatalog::new()).await;
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
@@ -222,7 +222,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1)).await;
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), &MaterializedCatalog::new()).await;
 
 		txn.set(&make_key("write1"), make_value("v1")).unwrap();
 		txn.remove(&make_key("remove1")).unwrap();

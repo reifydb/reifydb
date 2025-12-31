@@ -5,20 +5,21 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{Batch, QueryTransaction, VTableDef},
+	interface::{Batch, QueryTransaction, VTableDef, version::SystemVersion},
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_type::Fragment;
 
 use crate::{
 	system::SystemCatalog,
-	transaction::MaterializedCatalogTransaction,
 	vtable::{VTable, VTableContext},
 };
 
 /// Virtual table that exposes system version information
 pub struct Versions {
 	pub(crate) definition: Arc<VTableDef>,
+	/// Versions data is stored here since it's static and set once at system initialization
+	versions: Vec<SystemVersion>,
 	exhausted: bool,
 }
 
@@ -26,25 +27,35 @@ impl Versions {
 	pub fn new() -> Self {
 		Self {
 			definition: SystemCatalog::get_system_versions_table_def().clone(),
+			versions: Vec::new(),
+			exhausted: false,
+		}
+	}
+
+	/// Create a new Versions table with the provided version data
+	pub fn with_versions(versions: Vec<SystemVersion>) -> Self {
+		Self {
+			definition: SystemCatalog::get_system_versions_table_def().clone(),
+			versions,
 			exhausted: false,
 		}
 	}
 }
 
 #[async_trait]
-impl<T: QueryTransaction + MaterializedCatalogTransaction> VTable<T> for Versions {
+impl<T: QueryTransaction> VTable<T> for Versions {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		// Get versions from SystemCatalog via MaterializedCatalog
-		let versions = txn.catalog().system_catalog().map(|sc| sc.get_system_versions()).unwrap_or(&[]);
+		// Versions are stored in the struct since they're static
+		let versions = &self.versions;
 
 		let mut names_to_insert = ColumnData::utf8_with_capacity(versions.len());
 

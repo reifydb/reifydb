@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogQueryTransaction, store::view::ViewColumnToCreate};
+use reifydb_catalog::store::view::ViewColumnToCreate;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -11,7 +12,8 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_deferred_view<T: CatalogQueryTransaction + Send>(
+	pub(crate) async fn compile_deferred_view<T: IntoStandardTransaction>(
+		&self,
 		ast: AstCreateDeferredView,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
@@ -41,7 +43,7 @@ impl Compiler {
 		let view = ast.view;
 
 		let with = if let Some(as_statement) = ast.as_clause {
-			Compiler::compile(as_statement, tx).await?
+			self.compile(as_statement, tx).await?
 		} else {
 			vec![]
 		};

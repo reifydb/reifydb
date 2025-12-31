@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{
-	CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations,
-	store::dictionary::create::DictionaryToCreate,
-};
-use reifydb_core::value::column::Columns;
+use reifydb_catalog::{CatalogStore, store::dictionary::create::DictionaryToCreate};
+use reifydb_core::{interface::CatalogTrackDictionaryChangeOperations, value::column::Columns};
 use reifydb_rql::plan::physical::CreateDictionaryNode;
 use reifydb_type::Value;
 
@@ -17,7 +14,9 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDictionaryNode,
 	) -> crate::Result<Columns> {
-		if let Some(_) = txn.find_dictionary_by_name(plan.namespace.id, plan.dictionary.text()).await? {
+		if let Some(_) =
+			self.catalog.find_dictionary_by_name(txn, plan.namespace.id, plan.dictionary.text()).await?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.clone())),
@@ -25,18 +24,20 @@ impl Executor {
 					("created", Value::Boolean(false)),
 				]));
 			}
-			// The error will be returned by create_dictionary if the
-			// dictionary exists
 		}
 
-		txn.create_dictionary(DictionaryToCreate {
-			fragment: Some(plan.dictionary.clone()),
-			dictionary: plan.dictionary.text().to_string(),
-			namespace: plan.namespace.id,
-			value_type: plan.value_type,
-			id_type: plan.id_type,
-		})
+		let result = CatalogStore::create_dictionary(
+			txn,
+			DictionaryToCreate {
+				fragment: Some(plan.dictionary.clone()),
+				dictionary: plan.dictionary.text().to_string(),
+				namespace: plan.namespace.id,
+				value_type: plan.value_type,
+				id_type: plan.id_type,
+			},
+		)
 		.await?;
+		txn.track_dictionary_def_created(result)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.clone())),

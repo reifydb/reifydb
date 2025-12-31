@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::QueryTransaction;
+use reifydb_catalog::Catalog;
+use reifydb_transaction::IntoStandardTransaction;
 use tracing::instrument;
 
 use crate::{
@@ -19,12 +19,13 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression>;
 
-#[instrument(name = "rql::plan", level = "trace", skip(rx, statement))]
-pub async fn plan<'a, T>(rx: &mut T, statement: AstStatement) -> crate::Result<Option<PhysicalPlan>>
-where
-	T: QueryTransaction + CatalogQueryTransaction,
-{
-	let logical = compile_logical(rx, statement).await?;
-	let physical = compile_physical(rx, logical).await?;
+#[instrument(name = "rql::plan", level = "trace", skip(catalog, rx, statement))]
+pub async fn plan<T: IntoStandardTransaction>(
+	catalog: &Catalog,
+	rx: &mut T,
+	statement: AstStatement,
+) -> crate::Result<Option<PhysicalPlan>> {
+	let logical = compile_logical(catalog, rx, statement).await?;
+	let physical = compile_physical(catalog, rx, logical).await?;
 	Ok(physical)
 }

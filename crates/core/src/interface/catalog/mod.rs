@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod change;
 mod column;
 mod dictionary;
 mod flow;
@@ -15,6 +16,7 @@ mod table;
 mod view;
 mod vtable;
 
+pub use change::*;
 pub use column::*;
 pub use dictionary::*;
 pub use flow::*;

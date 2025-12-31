@@ -280,12 +280,7 @@ impl DatabaseBuilder {
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt = StandardQueryTransaction::new(
-			multi.begin_query().await?,
-			single.clone(),
-			cdc.clone(),
-			catalog.clone(),
-		);
+		let mut qt = StandardQueryTransaction::new(multi.begin_query().await?, single.clone(), cdc.clone());
 
 		debug!("Loading materialized catalog");
 		MaterializedCatalogLoader::load_all(&mut qt, catalog).await?;

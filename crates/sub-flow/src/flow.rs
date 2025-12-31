@@ -128,7 +128,7 @@ impl CdcConsume for FlowConsumeImpl {
 
 			// Create query transaction for row decoding at the CDC event's version
 			let mut query_txn = self.engine.begin_query_at_version(version).await?;
-			let catalog_cache = FlowCatalog::new();
+			let catalog_cache = FlowCatalog::new(self.flow_engine.inner.catalog.clone());
 
 			for cdc_change in &cdc.changes {
 				// Only process Row keys (data events)
@@ -177,7 +177,12 @@ impl CdcConsume for FlowConsumeImpl {
 						ft
 					}
 					None => {
-						flow_txn = Some(FlowTransaction::new(txn, version).await);
+						flow_txn = Some(FlowTransaction::new(
+							txn,
+							version,
+							self.engine.materialized_catalog(),
+						)
+						.await);
 						flow_txn.as_mut().unwrap()
 					}
 				};

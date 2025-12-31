@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{
-	ringbuffer::create::RingBufferToCreate,
-	transaction::{CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations},
-};
-use reifydb_core::value::column::Columns;
+use reifydb_catalog::{CatalogStore, ringbuffer::create::RingBufferToCreate};
+use reifydb_core::{interface::CatalogTrackRingBufferChangeOperations, value::column::Columns};
 use reifydb_rql::plan::physical::CreateRingBufferNode;
 use reifydb_type::Value;
 
@@ -17,9 +14,12 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateRingBufferNode,
 	) -> crate::Result<Columns> {
-		// Check if ring buffer already exists using the transaction's
-		// catalog operations
-		if let Some(_) = txn.find_ringbuffer_by_name(plan.namespace.def().id, plan.ringbuffer.text()).await? {
+		// Check if ring buffer already exists using the catalog
+		if let Some(_) = self
+			.catalog
+			.find_ringbuffer_by_name(txn, plan.namespace.def().id, plan.ringbuffer.text())
+			.await?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
@@ -31,14 +31,18 @@ impl Executor {
 			// the ring buffer exists
 		}
 
-		txn.create_ringbuffer(RingBufferToCreate {
-			fragment: Some(plan.ringbuffer.clone()),
-			ringbuffer: plan.ringbuffer.text().to_string(),
-			namespace: plan.namespace.def().id,
-			columns: plan.columns,
-			capacity: plan.capacity,
-		})
+		let result = CatalogStore::create_ringbuffer(
+			txn,
+			RingBufferToCreate {
+				fragment: Some(plan.ringbuffer.clone()),
+				ringbuffer: plan.ringbuffer.text().to_string(),
+				namespace: plan.namespace.def().id,
+				columns: plan.columns,
+				capacity: plan.capacity,
+			},
+		)
 		.await?;
+		txn.track_ringbuffer_def_created(result)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),

@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OperationType::{Create, Update};
-use reifydb_catalog::transaction::CatalogTrackDictionaryChangeOperations;
 use reifydb_core::interface::{
-	Change, DictionaryDef, DictionaryId, NamespaceId, OperationType, OperationType::Delete,
+	CatalogTrackDictionaryChangeOperations, Change, DictionaryDef, DictionaryId, NamespaceId,
+	OperationType::{Create, Delete, Update},
 	TransactionalDictionaryChanges,
 };
 
-use crate::{StandardCommandTransaction, StandardQueryTransaction};
+use crate::standard::StandardCommandTransaction;
 
 impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
 	fn track_dictionary_def_created(&mut self, dictionary: DictionaryDef) -> reifydb_core::Result<()> {
@@ -48,7 +47,6 @@ impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
 
 impl TransactionalDictionaryChanges for StandardCommandTransaction {
 	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef> {
-		// Find the last change for this dictionary ID
 		for change in self.changes.dictionary_def.iter().rev() {
 			if let Some(dictionary) = &change.post {
 				if dictionary.id == id {
@@ -56,7 +54,6 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 				}
 			} else if let Some(dictionary) = &change.pre {
 				if dictionary.id == id && change.op == Delete {
-					// Dictionary was deleted
 					return None;
 				}
 			}
@@ -89,23 +86,5 @@ impl TransactionalDictionaryChanges for StandardCommandTransaction {
 					.map(|d| d.namespace == namespace && d.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl TransactionalDictionaryChanges for StandardQueryTransaction {
-	fn find_dictionary(&self, _id: DictionaryId) -> Option<&DictionaryDef> {
-		None
-	}
-
-	fn find_dictionary_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&DictionaryDef> {
-		None
-	}
-
-	fn is_dictionary_deleted(&self, _id: DictionaryId) -> bool {
-		false
-	}
-
-	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
-		false
 	}
 }

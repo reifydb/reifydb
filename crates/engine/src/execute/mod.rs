@@ -30,7 +30,10 @@ use query::{
 	vtable_scan::VirtualScanNode,
 };
 use reifydb_builtin::{Functions, generator, math};
-use reifydb_catalog::vtable::{UserVTableRegistry, system::FlowOperatorStore};
+use reifydb_catalog::{
+	Catalog,
+	vtable::{UserVTableRegistry, system::FlowOperatorStore},
+};
 use reifydb_core::{
 	Frame, LazyBatch,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedPrimitive},
@@ -295,6 +298,7 @@ impl QueryNode for ExecutionPlan {
 pub struct Executor(Arc<ExecutorInner>);
 
 pub struct ExecutorInner {
+	pub catalog: Catalog,
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
@@ -318,12 +322,14 @@ impl std::ops::Deref for Executor {
 
 impl Executor {
 	pub fn new(
+		catalog: Catalog,
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
 		stats_tracker: StorageTracker,
 		ioc: IocContainer,
 	) -> Self {
 		Self(Arc::new(ExecutorInner {
+			catalog,
 			functions,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
@@ -335,6 +341,7 @@ impl Executor {
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
 		Self::new(
+			Catalog::new(reifydb_catalog::MaterializedCatalog::new()),
 			Functions::builder()
 				.register_aggregate("math::sum", math::aggregate::Sum::new)
 				.register_aggregate("math::min", math::aggregate::Min::new)
@@ -387,7 +394,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 		}
 
 		for statement in statements {
-			if let Some(plan) = plan(txn, statement).await? {
+			if let Some(plan) = plan(&self.catalog, txn, statement).await? {
 				if let Some(er) = self
 					.execute_command_plan(txn, plan, cmd.params.clone(), &mut persistent_stack)
 					.await?
@@ -432,7 +439,7 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 		}
 
 		for statement in statements {
-			if let Some(plan) = plan(txn, statement).await? {
+			if let Some(plan) = plan(&self.catalog, txn, statement).await? {
 				if let Some(er) = self
 					.execute_query_plan(txn, plan, qry.params.clone(), &mut persistent_stack)
 					.await?
@@ -480,7 +487,7 @@ impl Executor {
 		}
 
 		// Plan and execute
-		if let Some(plan) = plan(txn, statement).await? {
+		if let Some(plan) = plan(&self.catalog, txn, statement).await? {
 			if let Some(columns) = self.execute_query_plan(txn, plan, params, &mut stack).await? {
 				return Ok(Some(Frame::from(columns)));
 			}

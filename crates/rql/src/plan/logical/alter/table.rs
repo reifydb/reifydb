@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::SortDirection;
 use reifydb_type::Fragment;
 
@@ -35,10 +34,7 @@ pub struct AlterIndexColumn {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_table<'a, T: CatalogQueryTransaction>(
-		ast: AstAlterTable,
-		_tx: &mut T,
-	) -> crate::Result<LogicalPlan> {
+	pub(crate) fn compile_alter_table(&self, ast: AstAlterTable) -> crate::Result<LogicalPlan> {
 		// Use the table identifier directly from AST
 		let table = ast.table.clone();
 

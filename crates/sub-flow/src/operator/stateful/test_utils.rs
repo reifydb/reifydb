@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 pub mod test {
-	use reifydb_catalog::MaterializedCatalog;
+	pub use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
 		EncodedKey,
 		event::EventBus,

@@ -11,39 +11,41 @@ use reifydb_core::{
 use reifydb_type::Fragment;
 
 use crate::{
+	Catalog,
 	system::{SystemCatalog, ids::vtable},
-	transaction::MaterializedCatalogTransaction,
 	vtable::{VTable, VTableContext},
 };
 
 /// Virtual table that exposes information about all virtual tables (system and user-defined)
 pub struct TablesVirtual {
 	pub(crate) definition: Arc<VTableDef>,
+	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
 impl TablesVirtual {
-	pub fn new() -> Self {
+	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			definition: SystemCatalog::get_system_virtual_tables_table_def().clone(),
+			catalog,
 			exhausted: false,
 		}
 	}
 }
 
 #[async_trait]
-impl<T: QueryTransaction + MaterializedCatalogTransaction> VTable<T> for TablesVirtual {
+impl<T: QueryTransaction> VTable<T> for TablesVirtual {
 	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		// Collect all virtual tables (system + user-defined)
+		// Collect all virtual tables (system only - user-defined tables require catalog access)
 		let mut ids = Vec::new();
 		let mut namespaces = Vec::new();
 		let mut names = Vec::new();
@@ -78,14 +80,11 @@ impl<T: QueryTransaction + MaterializedCatalogTransaction> VTable<T> for TablesV
 			kinds.push("system".to_string());
 		}
 
-		// Add user-defined virtual tables
-		let catalog = txn.catalog();
-		let user_tables = catalog.list_vtable_user_all();
-
-		for table_def in user_tables {
-			ids.push(table_def.id.0);
-			namespaces.push(table_def.namespace.0);
-			names.push(table_def.name.clone());
+		// Add user-defined virtual tables from catalog
+		for def in self.catalog.list_user_vtables() {
+			ids.push(def.id.0);
+			namespaces.push(def.namespace.0);
+			names.push(def.name.clone());
 			kinds.push("user".to_string());
 		}
 

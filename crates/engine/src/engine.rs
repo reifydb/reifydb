@@ -25,6 +25,7 @@ use reifydb_core::{
 };
 use reifydb_rql::ast;
 use reifydb_transaction::{
+	StandardCommandTransaction, StandardQueryTransaction,
 	cdc::TransactionCdc,
 	multi::{AwaitWatermarkError, TransactionMultiVersion},
 	single::TransactionSingle,
@@ -37,7 +38,6 @@ use tracing::instrument;
 use crate::{
 	execute::{Executor, parallel::can_parallelize},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
-	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
 pub struct StandardEngine(Arc<EngineInner>);
@@ -67,7 +67,6 @@ impl EngineInterface for StandardEngine {
 			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
-			self.catalog.clone(),
 			interceptors,
 		)
 		.await
@@ -79,7 +78,6 @@ impl EngineInterface for StandardEngine {
 			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
-			self.catalog.clone(),
 		))
 	}
 
@@ -423,12 +421,20 @@ impl StandardEngine {
 
 		let stats_tracker = multi.store().stats_tracker().clone();
 
+		let catalog_wrapper = reifydb_catalog::Catalog::new(catalog.clone());
+
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
 			cdc,
 			event_bus,
-			executor: Executor::new(functions, flow_operator_store.clone(), stats_tracker, ioc),
+			executor: Executor::new(
+				catalog_wrapper,
+				functions,
+				flow_operator_store.clone(),
+				stats_tracker,
+				ioc,
+			),
 			interceptors,
 			catalog,
 			flow_operator_store,
@@ -445,7 +451,6 @@ impl StandardEngine {
 			self.multi.begin_query_at_version(version).await?,
 			self.single.clone(),
 			self.cdc.clone(),
-			self.catalog.clone(),
 		))
 	}
 
@@ -485,8 +490,16 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn catalog(&self) -> &MaterializedCatalog {
+	pub fn materialized_catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
+	}
+
+	/// Returns a `Catalog` instance for catalog lookups.
+	/// The Catalog provides three-tier lookup methods that check transactional changes,
+	/// then MaterializedCatalog, then fall back to storage.
+	#[inline]
+	pub fn catalog(&self) -> reifydb_catalog::Catalog {
+		reifydb_catalog::Catalog::new(self.catalog.clone())
 	}
 
 	#[inline]

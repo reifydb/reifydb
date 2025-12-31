@@ -6,13 +6,13 @@ mod create;
 
 pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
-	CatalogStore,
+	Catalog,
 	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
 	interface::{
-		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
+		ColumnDef, ColumnId, NamespaceDef, NamespaceId, TableDef, TableId,
 		catalog::ColumnIndex,
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
@@ -20,6 +20,7 @@ use reifydb_core::{
 		},
 	},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{
 	Fragment, Type, TypeConstraint,
 	diagnostic::{
@@ -42,19 +43,27 @@ use crate::{
 	},
 };
 
-struct Compiler {}
+pub(crate) struct Compiler {
+	pub catalog: Catalog,
+}
 
-#[instrument(name = "rql::compile::physical", level = "trace", skip(rx, logical))]
-pub async fn compile_physical(
-	rx: &mut impl QueryTransaction,
+#[instrument(name = "rql::compile::physical", level = "trace", skip(catalog, rx, logical))]
+pub async fn compile_physical<T: IntoStandardTransaction>(
+	catalog: &Catalog,
+	rx: &mut T,
 	logical: Vec<LogicalPlan>,
 ) -> crate::Result<Option<PhysicalPlan>> {
-	Compiler::compile(rx, logical).await
+	Compiler {
+		catalog: catalog.clone(),
+	}
+	.compile(rx, logical)
+	.await
 }
 
 impl Compiler {
-	async fn compile(
-		rx: &mut impl QueryTransaction,
+	pub async fn compile<T: IntoStandardTransaction>(
+		&self,
+		rx: &mut T,
 		logical: Vec<LogicalPlan>,
 	) -> crate::Result<Option<PhysicalPlan>> {
 		if logical.is_empty() {
@@ -74,47 +83,47 @@ impl Compiler {
 				}
 
 				LogicalPlan::CreateNamespace(create) => {
-					stack.push(Self::compile_create_namespace(rx, create)?);
+					stack.push(self.compile_create_namespace(rx, create)?);
 				}
 
 				LogicalPlan::CreateTable(create) => {
-					stack.push(Self::compile_create_table(rx, create).await?);
+					stack.push(self.compile_create_table(rx, create).await?);
 				}
 
 				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(Self::compile_create_ringbuffer(rx, create).await?);
+					stack.push(self.compile_create_ringbuffer(rx, create).await?);
 				}
 
 				LogicalPlan::CreateFlow(create) => {
-					stack.push(Box::pin(Self::compile_create_flow(rx, create)).await?);
+					stack.push(Box::pin(self.compile_create_flow(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateDeferredView(create) => {
-					stack.push(Box::pin(Self::compile_create_deferred(rx, create)).await?);
+					stack.push(Box::pin(self.compile_create_deferred(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateTransactionalView(create) => {
-					stack.push(Box::pin(Self::compile_create_transactional(rx, create)).await?);
+					stack.push(Box::pin(self.compile_create_transactional(rx, create)).await?);
 				}
 
 				LogicalPlan::CreateDictionary(create) => {
-					stack.push(Self::compile_create_dictionary(rx, create).await?);
+					stack.push(self.compile_create_dictionary(rx, create).await?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
-					stack.push(Self::compile_alter_sequence(rx, alter).await?);
+					stack.push(self.compile_alter_sequence(rx, alter).await?);
 				}
 
 				LogicalPlan::AlterTable(alter) => {
-					stack.push(Self::compile_alter_table(rx, alter)?);
+					stack.push(self.compile_alter_table(rx, alter)?);
 				}
 
 				LogicalPlan::AlterView(alter) => {
-					stack.push(Self::compile_alter_view(rx, alter)?);
+					stack.push(self.compile_alter_view(rx, alter)?);
 				}
 
 				LogicalPlan::AlterFlow(alter) => {
-					stack.push(Self::compile_alter_flow(rx, alter).await?);
+					stack.push(self.compile_alter_flow(rx, alter).await?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -198,7 +207,7 @@ impl Compiler {
 					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
-						let sub_plan = Box::pin(Self::compile(rx, vec![*delete_input]))
+						let sub_plan = Box::pin(self.compile(rx, vec![*delete_input]))
 							.await?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
@@ -208,7 +217,6 @@ impl Compiler {
 
 					// Resolve the table if we have a target
 					let target = if let Some(table_id) = delete.target {
-						use reifydb_catalog::CatalogStore;
 						use reifydb_core::interface::resolved::{
 							ResolvedNamespace, ResolvedTable,
 						};
@@ -218,16 +226,15 @@ impl Compiler {
 							.as_ref()
 							.map(|n| n.text())
 							.unwrap_or("default");
-						let namespace_def =
-							CatalogStore::find_namespace_by_name(rx, namespace_name)
-								.await?
-								.unwrap();
-						let Some(table_def) = CatalogStore::find_table_by_name(
-							rx,
-							namespace_def.id,
-							table_id.name.text(),
-						)
-						.await?
+						let namespace_def = self
+							.catalog
+							.find_namespace_by_name(rx, namespace_name)
+							.await?
+							.unwrap();
+						let Some(table_def) = self
+							.catalog
+							.find_table_by_name(rx, namespace_def.id, table_id.name.text())
+							.await?
 						else {
 							return_error!(table_not_found(
 								table_id.name.clone(),
@@ -262,7 +269,7 @@ impl Compiler {
 					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
 						// Recursively compile the input pipeline
-						let sub_plan = Box::pin(Self::compile(rx, vec![*delete_input]))
+						let sub_plan = Box::pin(self.compile(rx, vec![*delete_input]))
 							.await?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
@@ -278,15 +285,16 @@ impl Compiler {
 					let ringbuffer_id = delete.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, namespace_name).await?.unwrap();
+					let Some(ringbuffer_def) = self
+						.catalog
+						.find_ringbuffer_by_name(
+							rx,
+							namespace_def.id,
+							ringbuffer_id.name.text(),
+						)
 						.await?
-						.unwrap();
-					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
-						rx,
-						namespace_def.id,
-						ringbuffer_id.name.text(),
-					)
-					.await?
 					else {
 						return_error!(ringbuffer_not_found(
 							ringbuffer_id.name.clone(),
@@ -321,15 +329,12 @@ impl Compiler {
 					let table = insert.target.clone();
 					let namespace_name =
 						table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, namespace_name).await?.unwrap();
+					let Some(table_def) = self
+						.catalog
+						.find_table_by_name(rx, namespace_def.id, table.name.text())
 						.await?
-						.unwrap();
-					let Some(table_def) = CatalogStore::find_table_by_name(
-						rx,
-						namespace_def.id,
-						table.name.text(),
-					)
-					.await?
 					else {
 						return_error!(table_not_found(
 							table.name.clone(),
@@ -363,15 +368,16 @@ impl Compiler {
 					let ringbuffer_id = insert_rb.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, namespace_name).await?.unwrap();
+					let Some(ringbuffer_def) = self
+						.catalog
+						.find_ringbuffer_by_name(
+							rx,
+							namespace_def.id,
+							ringbuffer_id.name.text(),
+						)
 						.await?
-						.unwrap();
-					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
-						rx,
-						namespace_def.id,
-						ringbuffer_id.name.text(),
-					)
-					.await?
 					else {
 						return_error!(ringbuffer_not_found(
 							ringbuffer_id.name.clone(),
@@ -404,15 +410,16 @@ impl Compiler {
 					let dictionary_id = insert_dict.target.clone();
 					let namespace_name =
 						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, namespace_name).await?.unwrap();
+					let Some(dictionary_def) = self
+						.catalog
+						.find_dictionary_by_name(
+							rx,
+							namespace_def.id,
+							dictionary_id.name.text(),
+						)
 						.await?
-						.unwrap();
-					let Some(dictionary_def) = CatalogStore::find_dictionary_by_name(
-						rx,
-						namespace_def.id,
-						dictionary_id.name.text(),
-					)
-					.await?
 					else {
 						return_error!(dictionary_not_found(
 							dictionary_id.name.clone(),
@@ -445,7 +452,7 @@ impl Compiler {
 					let input = if let Some(update_input) = update.input {
 						// Recursively compile
 						// the input pipeline
-						let sub_plan = Box::pin(Self::compile(rx, vec![*update_input]))
+						let sub_plan = Box::pin(self.compile(rx, vec![*update_input]))
 							.await?
 							.expect("Update input must produce a plan");
 						Box::new(sub_plan)
@@ -464,16 +471,15 @@ impl Compiler {
 							.as_ref()
 							.map(|n| n.text())
 							.unwrap_or("default");
-						let namespace_def =
-							CatalogStore::find_namespace_by_name(rx, namespace_name)
-								.await?
-								.unwrap();
-						let Some(table_def) = CatalogStore::find_table_by_name(
-							rx,
-							namespace_def.id,
-							table_id.name.text(),
-						)
-						.await?
+						let namespace_def = self
+							.catalog
+							.find_namespace_by_name(rx, namespace_name)
+							.await?
+							.unwrap();
+						let Some(table_def) = self
+							.catalog
+							.find_table_by_name(rx, namespace_def.id, table_id.name.text())
+							.await?
 						else {
 							return_error!(table_not_found(
 								table_id.name.clone(),
@@ -510,7 +516,7 @@ impl Compiler {
 					let input = if let Some(update_input) = update_rb.input {
 						// Recursively compile
 						// the input pipeline
-						let sub_plan = Box::pin(Self::compile(rx, vec![*update_input]))
+						let sub_plan = Box::pin(self.compile(rx, vec![*update_input]))
 							.await?
 							.expect("UpdateRingBuffer input must produce a plan");
 						Box::new(sub_plan)
@@ -526,15 +532,16 @@ impl Compiler {
 					let ringbuffer_id = update_rb.target.clone();
 					let namespace_name =
 						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-					let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+					let namespace_def =
+						self.catalog.find_namespace_by_name(rx, namespace_name).await?.unwrap();
+					let Some(ringbuffer_def) = self
+						.catalog
+						.find_ringbuffer_by_name(
+							rx,
+							namespace_def.id,
+							ringbuffer_id.name.text(),
+						)
 						.await?
-						.unwrap();
-					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
-						rx,
-						namespace_def.id,
-						ringbuffer_id.name.text(),
-					)
-					.await?
 					else {
 						return_error!(ringbuffer_not_found(
 							ringbuffer_id.name.clone(),
@@ -562,7 +569,7 @@ impl Compiler {
 
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
+					let right = Box::pin(self.compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -573,7 +580,7 @@ impl Compiler {
 
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
+					let right = Box::pin(self.compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -584,7 +591,7 @@ impl Compiler {
 
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right = Box::pin(Self::compile(rx, join.with)).await?.unwrap();
+					let right = Box::pin(self.compile(rx, join.with)).await?.unwrap();
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -595,7 +602,7 @@ impl Compiler {
 
 				LogicalPlan::Merge(merge) => {
 					let left = stack.pop().unwrap();
-					let right = Box::pin(Self::compile(rx, merge.with)).await?.unwrap();
+					let right = Box::pin(self.compile(rx, merge.with)).await?.unwrap();
 					stack.push(PhysicalPlan::Merge(MergeNode {
 						left: Box::new(left),
 						right: Box::new(right),
@@ -828,7 +835,7 @@ impl Compiler {
 					// Compile the pipeline of operations
 					// This ensures they all share the same
 					// stack
-					let pipeline_result = Box::pin(Self::compile(rx, pipeline.steps)).await?;
+					let pipeline_result = Box::pin(self.compile(rx, pipeline.steps)).await?;
 					if let Some(result) = pipeline_result {
 						stack.push(result);
 					}
@@ -842,7 +849,7 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									Box::pin(Self::compile(rx, vec![logical_plan]))
+									Box::pin(self.compile(rx, vec![logical_plan]))
 										.await?
 								{
 									physical_plans.push(physical_plan);
@@ -867,7 +874,7 @@ impl Compiler {
 							let mut physical_plans = Vec::new();
 							for logical_plan in logical_plans {
 								if let Some(physical_plan) =
-									Box::pin(Self::compile(rx, vec![logical_plan]))
+									Box::pin(self.compile(rx, vec![logical_plan]))
 										.await?
 								{
 									physical_plans.push(physical_plan);
@@ -901,7 +908,7 @@ impl Compiler {
 				LogicalPlan::Conditional(conditional_node) => {
 					// Compile the then branch
 					let then_branch = if let Some(then_plan) =
-						Box::pin(Self::compile(rx, vec![*conditional_node.then_branch])).await?
+						Box::pin(self.compile(rx, vec![*conditional_node.then_branch])).await?
 					{
 						Box::new(then_plan)
 					} else {
@@ -916,7 +923,7 @@ impl Compiler {
 					for else_if in conditional_node.else_ifs {
 						let condition = else_if.condition;
 						let then_branch = if let Some(plan) =
-							Box::pin(Self::compile(rx, vec![*else_if.then_branch])).await?
+							Box::pin(self.compile(rx, vec![*else_if.then_branch])).await?
 						{
 							Box::new(plan)
 						} else {
@@ -935,7 +942,7 @@ impl Compiler {
 					// Compile optional else branch
 					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
 						if let Some(plan) =
-							Box::pin(Self::compile(rx, vec![*else_logical])).await?
+							Box::pin(self.compile(rx, vec![*else_logical])).await?
 						{
 							Some(Box::new(plan))
 						} else {
@@ -959,7 +966,7 @@ impl Compiler {
 				LogicalPlan::Scalarize(scalarize_node) => {
 					// Compile the input plan
 					let input_plan = if let Some(plan) =
-						Box::pin(Self::compile(rx, vec![*scalarize_node.input])).await?
+						Box::pin(self.compile(rx, vec![*scalarize_node.input])).await?
 					{
 						Box::new(plan)
 					} else {

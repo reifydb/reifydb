@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::transaction::MaterializedCatalogTransaction;
 use reifydb_core::CommitVersion;
 use reifydb_engine::StandardCommandTransaction;
 use tracing::instrument;
@@ -157,8 +156,13 @@ impl FlowTransaction {
 	/// # Parameters
 	/// * `parent` - The parent command transaction to derive from
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
-	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent), fields(version = version.0))]
-	pub async fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
+	/// * `catalog` - The materialized catalog for metadata access
+	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog), fields(version = version.0))]
+	pub async fn new(
+		parent: &StandardCommandTransaction,
+		version: CommitVersion,
+		catalog: &reifydb_catalog::MaterializedCatalog,
+	) -> Self {
 		let mut primitive_query = parent.multi.begin_query().await.unwrap();
 		primitive_query.read_as_of_version_inclusive(version);
 
@@ -169,7 +173,7 @@ impl FlowTransaction {
 			metrics: FlowTransactionMetrics::new(),
 			primitive_query,
 			state_query,
-			catalog: parent.catalog().clone(),
+			catalog: catalog.clone(),
 		}
 	}
 

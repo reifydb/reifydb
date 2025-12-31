@@ -38,6 +38,7 @@ impl FlowSubsystem {
 
 		// Create FlowEngine
 		let flow_engine = FlowEngine::new(
+			engine.catalog(),
 			StandardColumnEvaluator::default(),
 			engine.executor(),
 			operator_registry,

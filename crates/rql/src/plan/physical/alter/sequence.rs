@@ -1,13 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::{
-	QueryTransaction,
-	resolved::{
-		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
-	},
+use reifydb_core::interface::resolved::{
+	ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Fragment, diagnostic::catalog::table_not_found, return_error};
 
 use crate::plan::{
@@ -16,21 +13,24 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_alter_sequence(
-		rx: &mut impl QueryTransaction,
+	pub(crate) async fn compile_alter_sequence<T: IntoStandardTransaction>(
+		&self,
+		rx: &mut T,
 		alter: logical::AlterSequenceNode,
 	) -> crate::Result<PhysicalPlan> {
 		// Get the namespace name from the sequence identifier
 		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
 
 		// Query the catalog for the actual namespace
-		let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+		let namespace_def = self
+			.catalog
+			.find_namespace_by_name(rx, namespace_name)
 			.await?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name).await? else {
+		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace_def.id, table_name).await? else {
 			return_error!(table_not_found(alter.sequence.name.clone(), &namespace_def.name, table_name));
 		};
 

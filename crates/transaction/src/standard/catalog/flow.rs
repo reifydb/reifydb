@@ -1,13 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OperationType::{Create, Update};
-use reifydb_catalog::transaction::CatalogTrackFlowChangeOperations;
 use reifydb_core::interface::{
-	Change, FlowDef, FlowId, NamespaceId, OperationType, OperationType::Delete, TransactionalFlowChanges,
+	CatalogTrackFlowChangeOperations, Change, FlowDef, FlowId, NamespaceId,
+	OperationType::{Create, Delete, Update},
+	TransactionalFlowChanges,
 };
 
-use crate::{StandardCommandTransaction, StandardQueryTransaction};
+use crate::standard::StandardCommandTransaction;
 
 impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 	fn track_flow_def_created(&mut self, flow: FlowDef) -> reifydb_core::Result<()> {
@@ -43,7 +43,6 @@ impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 
 impl TransactionalFlowChanges for StandardCommandTransaction {
 	fn find_flow(&self, id: FlowId) -> Option<&FlowDef> {
-		// Find the last change for this flow ID
 		for change in self.changes.flow_def.iter().rev() {
 			if let Some(flow) = &change.post {
 				if flow.id == id {
@@ -52,7 +51,6 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 			}
 			if let Some(flow) = &change.pre {
 				if flow.id == id && change.op == Delete {
-					// Flow was deleted
 					return None;
 				}
 			}
@@ -61,7 +59,6 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 	}
 
 	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowDef> {
-		// Find the last change for this flow name
 		for change in self.changes.flow_def.iter().rev() {
 			if let Some(flow) = &change.post {
 				if flow.namespace == namespace && flow.name == name {
@@ -70,7 +67,6 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 			}
 			if let Some(flow) = &change.pre {
 				if flow.namespace == namespace && flow.name == name && change.op == Delete {
-					// Flow was deleted
 					return None;
 				}
 			}
@@ -79,7 +75,6 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 	}
 
 	fn is_flow_deleted(&self, id: FlowId) -> bool {
-		// Check if this flow was deleted in this transaction
 		self.changes
 			.flow_def
 			.iter()
@@ -87,7 +82,6 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 	}
 
 	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		// Check if this flow was deleted in this transaction
 		self.changes.flow_def.iter().any(|change| {
 			change.op == Delete
 				&& change
@@ -96,23 +90,5 @@ impl TransactionalFlowChanges for StandardCommandTransaction {
 					.map(|f| f.namespace == namespace && f.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl TransactionalFlowChanges for StandardQueryTransaction {
-	fn find_flow(&self, _id: FlowId) -> Option<&FlowDef> {
-		None
-	}
-
-	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&FlowDef> {
-		None
-	}
-
-	fn is_flow_deleted(&self, _id: FlowId) -> bool {
-		false
-	}
-
-	fn is_flow_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
-		false
 	}
 }

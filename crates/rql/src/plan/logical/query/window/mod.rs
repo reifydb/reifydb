@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
 use reifydb_type::{diagnostic::ast::unexpected_token_error, return_error};
 
@@ -50,10 +49,7 @@ pub struct WindowConfig {
 }
 
 impl Compiler {
-	pub(crate) fn compile_window<'a, T: CatalogQueryTransaction>(
-		ast: AstWindow,
-		_tx: &mut T,
-	) -> Result<LogicalPlan> {
+	pub(crate) fn compile_window(&self, ast: AstWindow) -> Result<LogicalPlan> {
 		let mut config = WindowConfig::default();
 		let mut group_by = Vec::new();
 

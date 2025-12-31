@@ -12,6 +12,7 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_catalog::Catalog;
 use reifydb_core::{
 	CommitVersion, Error,
 	event::{
@@ -32,6 +33,7 @@ use crate::{
 };
 
 pub(crate) struct FlowEngineInner {
+	pub(crate) catalog: Catalog,
 	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
 	pub(crate) registry: TransformOperatorRegistry,
@@ -58,8 +60,9 @@ impl Clone for FlowEngine {
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "info", skip(evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
+	#[instrument(name = "flow::engine::new", level = "info", skip(catalog, evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
 	pub fn new(
+		catalog: Catalog,
 		evaluator: StandardColumnEvaluator,
 		executor: Executor,
 		registry: TransformOperatorRegistry,
@@ -75,6 +78,7 @@ impl FlowEngine {
 
 		Self {
 			inner: Arc::new(FlowEngineInner {
+				catalog,
 				evaluator,
 				executor,
 				registry,

@@ -7,13 +7,13 @@ use reifydb_core::{
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Value, diagnostic::sequence::can_not_alter_not_auto_increment, return_error};
 
 use crate::{
 	evaluate::{ColumnEvaluationContext, TargetColumn, column::evaluate},
 	execute::Executor,
 	stack::Stack,
-	transaction::StandardCommandTransaction,
 };
 
 impl Executor {

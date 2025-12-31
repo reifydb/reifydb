@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{JoinType, interface::QueryTransaction};
+use reifydb_catalog::Catalog;
+use reifydb_core::JoinType;
+use reifydb_transaction::StandardTransaction;
 
 use crate::{
 	ast::parse_str,
@@ -11,19 +12,22 @@ use crate::{
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
 		OrderNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
 		alter::{AlterTableNode, AlterViewNode},
-		compile_logical,
 	},
 };
 
-pub async fn explain_logical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
-where
-	T: QueryTransaction + CatalogQueryTransaction,
-{
+pub async fn explain_logical_plan(
+	catalog: &Catalog,
+	rx: &mut StandardTransaction<'_>,
+	query: &str,
+) -> crate::Result<String> {
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(rx, statement).await?);
+		let compiler = crate::plan::logical::Compiler {
+			catalog: catalog.clone(),
+		};
+		plans.extend(compiler.compile(statement, rx).await?);
 	}
 
 	explain_logical_plans(&plans)

@@ -1912,6 +1912,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-testing",
+ "reifydb-transaction",
  "reifydb-type",
  "serde",
  "serde_json",

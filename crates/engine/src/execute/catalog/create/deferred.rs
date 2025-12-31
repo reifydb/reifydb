@@ -1,8 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::{CatalogViewCommandOperations, CatalogViewQueryOperations, view::ViewToCreate};
-use reifydb_core::value::column::Columns;
+use reifydb_catalog::{CatalogStore, view::ViewToCreate};
+use reifydb_core::{interface::CatalogTrackViewChangeOperations, value::column::Columns};
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_type::Value;
 
@@ -14,7 +14,7 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns> {
-		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.text()).await? {
+		if let Some(_) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -24,14 +24,17 @@ impl Executor {
 			}
 		}
 
-		let result = txn
-			.create_view(ViewToCreate {
+		let result = CatalogStore::create_deferred_view(
+			txn,
+			ViewToCreate {
 				fragment: Some(plan.view.clone()),
 				name: plan.view.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,
-			})
-			.await?;
+			},
+		)
+		.await?;
+		txn.track_view_def_created(result.clone())?;
 
 		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
 
