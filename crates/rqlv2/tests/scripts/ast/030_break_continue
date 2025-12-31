@@ -4,6 +4,6 @@
 # Test break and continue
 parse 'break'
 ---
-> Program:
->   [  0] Statement::Break
+> Program
+> `-- [0] Break
 >

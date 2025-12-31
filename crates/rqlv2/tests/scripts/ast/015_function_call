@@ -4,15 +4,13 @@
 # Test function call
 parse 'FROM users | MAP { upper(name) AS upper_name }'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Map
->       [  0] Expr::Binary(As)
->         left:
->           Expr::Call(upper)
->             arguments:
->               [  0] Expr::Identifier("name")
->         right:
->           Expr::Identifier("upper_name")
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Map
+>         `-- [0] Binary(As)
+>             +-- left: Call(upper)
+>             |   `-- args:
+>             |       `-- [0] Identifier(name)
+>             `-- right: Identifier(upper_name)
 >

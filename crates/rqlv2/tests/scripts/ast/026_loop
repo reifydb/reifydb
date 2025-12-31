@@ -4,7 +4,7 @@
 # Test loop expression
 parse 'loop { break }'
 ---
-> Program:
->   [  0] Statement::Loop
->     [  0] Statement::Break
+> Program
+> `-- [0] Loop
+>     `-- [0] Break
 >

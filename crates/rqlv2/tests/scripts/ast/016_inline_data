@@ -4,13 +4,13 @@
 # Test inline data
 parse 'FROM [{ id: 1 }, { id: 2 }]'
 ---
-> Program:
->   [  0] Statement::Expression
->     Expr::From(Inline)
->       [  0] Expr::Inline
->         [  0] Field("id")
->           Expr::Literal(Integer(1))
->       [  1] Expr::Inline
->         [  0] Field("id")
->           Expr::Literal(Integer(2))
+> Program
+> `-- [0] Expression
+>     `-- From(Inline)
+>         +-- [0] Inline
+>         |   `-- [0] Field(id)
+>         |       `-- Integer(1)
+>         `-- [1] Inline
+>             `-- [0] Field(id)
+>                 `-- Integer(2)
 >

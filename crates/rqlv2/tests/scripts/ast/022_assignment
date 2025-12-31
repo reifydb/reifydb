@@ -4,15 +4,11 @@
 # Test variable assignment
 parse '$x := $x + 1'
 ---
-> Program:
->   [  0] Statement::Expression
->     Expr::Binary(Assign)
->       left:
->         Expr::Variable($x)
->       right:
->         Expr::Binary(Add)
->           left:
->             Expr::Variable($x)
->           right:
->             Expr::Literal(Integer(1))
+> Program
+> `-- [0] Expression
+>     `-- Binary(Assign)
+>         +-- left: Variable($x)
+>         `-- right: Binary(Add)
+>             +-- left: Variable($x)
+>             `-- right: Integer(1)
 >

@@ -88,12 +88,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	pub(super) fn parse_map(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
 		let start_span = self.advance().span; // consume MAP or SELECT
 
+		// Require opening brace
+		self.expect_punct(Punctuation::OpenCurly)?;
+
 		let mut projections = BumpVec::new_in(self.bump);
 
-		// Optionally consume opening brace
-		let has_brace = self.try_consume_punct(Punctuation::OpenCurly);
-
-		loop {
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
 			let proj = self.parse_expr(Precedence::None)?; // Allow AS binding
 			projections.push(*proj);
 
@@ -102,13 +102,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			}
 		}
 
-		let end_span = if has_brace {
-			self.expect_punct(Punctuation::CloseCurly)?
-		} else if let Some(last) = projections.last() {
-			last.span()
-		} else {
-			start_span
-		};
+		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
 		Ok(self.alloc(Expr::Map(MapExpr::new(projections.into_bump_slice(), start_span.merge(&end_span)))))
 	}
@@ -117,12 +111,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	pub(super) fn parse_extend(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
 		let start_span = self.advance().span; // consume EXTEND
 
+		// Require opening brace
+		self.expect_punct(Punctuation::OpenCurly)?;
+
 		let mut extensions = BumpVec::new_in(self.bump);
 
-		// Optionally consume opening brace
-		let has_brace = self.try_consume_punct(Punctuation::OpenCurly);
-
-		loop {
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
 			let ext = self.parse_expr(Precedence::None)?;
 			extensions.push(*ext);
 
@@ -131,13 +125,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			}
 		}
 
-		let end_span = if has_brace {
-			self.expect_punct(Punctuation::CloseCurly)?
-		} else if let Some(last) = extensions.last() {
-			last.span()
-		} else {
-			start_span
-		};
+		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
 		Ok(self.alloc(Expr::Extend(ExtendExpr::new(extensions.into_bump_slice(), start_span.merge(&end_span)))))
 	}
@@ -146,12 +134,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	pub(super) fn parse_sort(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
 		let start_span = self.advance().span; // consume SORT
 
+		// Require opening brace
+		self.expect_punct(Punctuation::OpenCurly)?;
+
 		let mut columns = BumpVec::new_in(self.bump);
 
-		// Optionally consume opening brace
-		let has_brace = self.try_consume_punct(Punctuation::OpenCurly);
-
-		loop {
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
 			let expr = self.parse_expr(Precedence::Comparison)?;
 
 			// Check for direction
@@ -170,11 +158,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			}
 		}
 
-		let end_span = if has_brace {
-			self.expect_punct(Punctuation::CloseCurly)?
-		} else {
-			columns.last().map(|c| c.expr.span()).unwrap_or(start_span)
-		};
+		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
 		Ok(self.alloc(Expr::Sort(SortExpr::new(columns.into_bump_slice(), start_span.merge(&end_span)))))
 	}
@@ -193,33 +177,22 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	pub(super) fn parse_distinct(&mut self) -> Result<&'bump Expr<'bump>, ParseError> {
 		let start_span = self.advance().span; // consume DISTINCT
 
+		// Require opening brace
+		self.expect_punct(Punctuation::OpenCurly)?;
+
 		let mut columns = BumpVec::new_in(self.bump);
 
-		// Optionally consume opening brace
-		let has_brace = self.try_consume_punct(Punctuation::OpenCurly);
+		// Parse columns (can be empty for DISTINCT {} meaning all columns)
+		while !self.check_punct(Punctuation::CloseCurly) && !self.is_eof() {
+			let col = self.parse_expr(Precedence::Comparison)?;
+			columns.push(*col);
 
-		// Optional columns list
-		if has_brace || (!self.is_at_statement_end() && !self.check_operator(Operator::Pipe)) {
-			loop {
-				// Check for empty braces or closing brace
-				if has_brace && self.check_punct(Punctuation::CloseCurly) {
-					break;
-				}
-
-				let col = self.parse_expr(Precedence::Comparison)?;
-				columns.push(*col);
-
-				if !self.try_consume_punct(Punctuation::Comma) {
-					break;
-				}
+			if !self.try_consume_punct(Punctuation::Comma) {
+				break;
 			}
 		}
 
-		let end_span = if has_brace {
-			self.expect_punct(Punctuation::CloseCurly)?
-		} else {
-			columns.last().map(|c| c.span()).unwrap_or(start_span)
-		};
+		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
 		Ok(self.alloc(Expr::Distinct(DistinctExpr::new(
 			columns.into_bump_slice(),

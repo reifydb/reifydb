@@ -4,15 +4,13 @@
 # Test simple if expression
 parse 'if $x > 0 { true }'
 ---
-> Program:
->   [  0] Statement::If
->     condition:
->       Expr::Binary(Gt)
->         left:
->           Expr::Variable($x)
->         right:
->           Expr::Literal(Integer(0))
->     then:
->       [  0] Statement::Expression
->         Expr::Literal(Bool(true))
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Binary(Gt)
+>     |       +-- left: Variable($x)
+>     |       `-- right: Integer(0)
+>     `-- then:
+>         `-- [0] Expression
+>             `-- Bool(true)
 >

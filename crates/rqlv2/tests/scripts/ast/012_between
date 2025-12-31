@@ -4,15 +4,12 @@
 # Test BETWEEN expression
 parse 'FROM users | FILTER age BETWEEN 18 AND 65'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Filter
->       Expr::Between
->         value:
->           Expr::Identifier("age")
->         lower:
->           Expr::Literal(Integer(18))
->         upper:
->           Expr::Literal(Integer(65))
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Between
+>             +-- value: Identifier(age)
+>             +-- lower: Integer(18)
+>             `-- upper: Integer(65)
 >

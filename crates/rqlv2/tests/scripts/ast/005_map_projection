@@ -4,10 +4,10 @@
 # Test MAP with multiple columns
 parse 'FROM users | MAP { name, age }'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Map
->       [  0] Expr::Identifier("name")
->       [  1] Expr::Identifier("age")
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Map
+>         +-- [0] Identifier(name)
+>         `-- [1] Identifier(age)
 >

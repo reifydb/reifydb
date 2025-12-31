@@ -4,12 +4,10 @@
 # Test function definition
 parse 'fn add($a, $b) { $a + $b }'
 ---
-> Program:
->   [  0] Statement::Def(add($a, $b))
->     [  0] Statement::Expression
->       Expr::Binary(Add)
->         left:
->           Expr::Variable($a)
->         right:
->           Expr::Variable($b)
+> Program
+> `-- [0] Def(add($a, $b))
+>     `-- [0] Expression
+>         `-- Binary(Add)
+>             +-- left: Variable($a)
+>             `-- right: Variable($b)
 >

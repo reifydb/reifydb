@@ -4,11 +4,11 @@
 # Test simple nested function call
 parse 'sum(abs(1))'
 ---
-> Program:
->   [  0] Statement::Expression
->     Expr::Call(sum)
->       arguments:
->         [  0] Expr::Call(abs)
->           arguments:
->             [  0] Expr::Literal(Integer(1))
+> Program
+> `-- [0] Expression
+>     `-- Call(sum)
+>         `-- args:
+>             `-- [0] Call(abs)
+>                 `-- args:
+>                     `-- [0] Integer(1)
 >

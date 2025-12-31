@@ -4,21 +4,19 @@
 # Test multi-stage pipeline
 parse 'FROM users | FILTER age > 18 | MAP { name, age } | SORT { name } | TAKE 10'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Filter
->       Expr::Binary(Gt)
->         left:
->           Expr::Identifier("age")
->         right:
->           Expr::Literal(Integer(18))
->     [  2] Expr::Map
->       [  0] Expr::Identifier("name")
->       [  1] Expr::Identifier("age")
->     [  3] Expr::Sort
->       [  0] SortColumn
->         Expr::Identifier("name")
->     [  4] Expr::Take
->       Expr::Literal(Integer(10))
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     +-- [1] Filter
+>     |   `-- Binary(Gt)
+>     |       +-- left: Identifier(age)
+>     |       `-- right: Integer(18)
+>     +-- [2] Map
+>     |   +-- [0] Identifier(name)
+>     |   `-- [1] Identifier(age)
+>     +-- [3] Sort
+>     |   `-- [0] SortColumn
+>     |       `-- Identifier(name)
+>     `-- [4] Take
+>         `-- Integer(10)
 >

@@ -4,17 +4,13 @@
 # Test EXTEND with computed column using colon syntax
 parse 'FROM data | EXTEND { total: a + b }'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("data"))
->     [  1] Expr::Extend
->       [  0] Expr::Binary(KeyValue)
->         left:
->           Expr::Identifier("total")
->         right:
->           Expr::Binary(Add)
->             left:
->               Expr::Identifier("a")
->             right:
->               Expr::Identifier("b")
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Extend
+>         `-- [0] Binary(KeyValue)
+>             +-- left: Identifier(total)
+>             `-- right: Binary(Add)
+>                 +-- left: Identifier(a)
+>                 `-- right: Identifier(b)
 >

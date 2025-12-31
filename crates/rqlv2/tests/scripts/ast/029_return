@@ -4,7 +4,7 @@
 # Test return statement
 parse 'return $result'
 ---
-> Program:
->   [  0] Statement::Return
->     Expr::Variable($result)
+> Program
+> `-- [0] Return
+>     `-- Variable($result)
 >

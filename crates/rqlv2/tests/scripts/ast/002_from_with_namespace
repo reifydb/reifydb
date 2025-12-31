@@ -4,7 +4,7 @@
 # Test FROM with namespace qualification
 parse 'FROM test.users'
 ---
-> Program:
->   [  0] Statement::Expression
->     Expr::From(Source("test.users"))
+> Program
+> `-- [0] Expression
+>     `-- From(test.users)
 >

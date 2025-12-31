@@ -25,7 +25,7 @@ use crate::{
 ///
 /// # Returns
 ///
-/// A formatted string showing the AST structure with indentation,
+/// A formatted string showing the AST structure as an ASCII tree,
 /// or a `ParseError` if parsing fails.
 pub fn explain_ast(source: &str) -> Result<String, ParseError> {
 	let bump = Bump::new();
@@ -52,59 +52,79 @@ pub fn explain_ast(source: &str) -> Result<String, ParseError> {
 	Ok(output)
 }
 
-/// Formatter for AST nodes.
+/// Formatter for AST nodes using ASCII tree drawing.
 struct AstFormatter<'a> {
 	output: &'a mut String,
-	indent: usize,
+	/// Stack tracking whether each ancestor level has more siblings following.
+	/// `true` means the ancestor has more siblings (use `|`), `false` means it's the last (use space).
+	prefixes: Vec<bool>,
 }
 
 impl<'a> AstFormatter<'a> {
 	fn new(output: &'a mut String) -> Self {
 		Self {
 			output,
-			indent: 0,
+			prefixes: Vec::new(),
 		}
 	}
 
-	fn write_indent(&mut self) {
-		for _ in 0..self.indent {
-			self.output.push_str("  ");
+	/// Write the tree prefix for the current depth.
+	fn write_prefix(&mut self) {
+		for &has_more in &self.prefixes {
+			if has_more {
+				self.output.push_str("|   ");
+			} else {
+				self.output.push_str("    ");
+			}
 		}
 	}
 
-	fn write_line(&mut self, text: &str) {
-		self.write_indent();
+	/// Write a branch line with the given text.
+	fn write_branch(&mut self, is_last: bool, text: &str) {
+		self.write_prefix();
+		if is_last {
+			self.output.push_str("`-- ");
+		} else {
+			self.output.push_str("+-- ");
+		}
 		writeln!(self.output, "{}", text).unwrap();
 	}
 
-	fn write_indexed(&mut self, index: usize, text: &str) {
-		self.write_indent();
-		writeln!(self.output, "[{:>3}] {}", index, text).unwrap();
+	/// Write an indexed branch line: `[N] text`
+	fn write_indexed(&mut self, is_last: bool, index: usize, text: &str) {
+		self.write_prefix();
+		if is_last {
+			self.output.push_str("`-- ");
+		} else {
+			self.output.push_str("+-- ");
+		}
+		writeln!(self.output, "[{}] {}", index, text).unwrap();
 	}
 
-	fn indented<F>(&mut self, f: F)
+	/// Execute a closure with an additional prefix level.
+	fn with_child<F>(&mut self, is_last: bool, f: F)
 	where
 		F: FnOnce(&mut Self),
 	{
-		self.indent += 1;
+		self.prefixes.push(!is_last);
 		f(self);
-		self.indent -= 1;
+		self.prefixes.pop();
 	}
 
 	fn format_program(&mut self, program: &Program) {
-		self.write_line("Program:");
-		self.indented(|f| {
-			for (i, stmt) in program.statements.iter().enumerate() {
-				f.format_statement_indexed(i, stmt);
-			}
-		});
+		writeln!(self.output, "Program").unwrap();
+		let len = program.statements.len();
+		for (i, stmt) in program.statements.iter().enumerate() {
+			let is_last = i == len - 1;
+			self.format_statement_indexed(is_last, i, stmt);
+		}
 	}
 
-	fn format_statement_indexed(&mut self, index: usize, stmt: &Statement) {
+	fn format_statement_indexed(&mut self, is_last: bool, index: usize, stmt: &Statement) {
 		match stmt {
 			Statement::Pipeline(p) => {
-				self.write_indexed(index, "Statement::Pipeline");
-				self.indented(|f| f.format_pipeline(p));
+				self.write_indexed(is_last, index, "Pipeline");
+				self.with_child(is_last, |f| f.format_pipeline(p));
 			}
 			Statement::Let(l) => {
 				let mutability = if l.mutable {
@@ -112,140 +132,159 @@ impl<'a> AstFormatter<'a> {
 				} else {
 					""
 				};
-				self.write_indexed(index, &format!("Statement::Let({}${})", mutability, l.name));
-				self.indented(|f| f.format_let_value(&l.value));
+				self.write_indexed(is_last, index, &format!("Let({}${})", mutability, l.name));
+				self.with_child(is_last, |f| f.format_let_value(&l.value));
 			}
 			Statement::Assign(a) => {
-				self.write_indexed(index, &format!("Statement::Assign(${})", a.name));
-				self.indented(|f| f.format_expr(a.value));
+				self.write_indexed(is_last, index, &format!("Assign(${})", a.name));
+				self.with_child(is_last, |f| f.format_expr(true, a.value));
 			}
 			Statement::Def(d) => {
 				let params: Vec<_> = d.parameters.iter().map(|p| p.name).collect();
-				self.write_indexed(
-					index,
-					&format!("Statement::Def({}({}))", d.name, params.join(", ")),
-				);
-				self.indented(|f| {
+				self.write_indexed(is_last, index, &format!("Def({}({}))", d.name, params.join(", ")));
+				self.with_child(is_last, |f| {
+					let len = d.body.len();
 					for (i, stmt) in d.body.iter().enumerate() {
-						f.format_statement_indexed(i, stmt);
+						f.format_statement_indexed(i == len - 1, i, stmt);
 					}
 				});
 			}
 			Statement::If(i) => {
-				self.write_indexed(index, "Statement::If");
-				self.indented(|f| {
-					f.write_line("condition:");
-					f.indented(|f| f.format_expr(i.condition));
-					f.write_line("then:");
-					f.indented(|f| {
+				self.write_indexed(is_last, index, "If");
+				self.with_child(is_last, |f| {
+					let has_else_ifs = !i.else_ifs.is_empty();
+					let has_else = i.else_branch.is_some();
+
+					// condition
+					f.write_branch(false, "condition:");
+					f.with_child(false, |f| f.format_expr(true, i.condition));
+
+					// then
+					let then_is_last = !has_else_ifs && !has_else;
+					f.write_branch(then_is_last, "then:");
+					f.with_child(then_is_last, |f| {
+						let len = i.then_branch.len();
 						for (idx, stmt) in i.then_branch.iter().enumerate() {
-							f.format_statement_indexed(idx, stmt);
+							f.format_statement_indexed(idx == len - 1, idx, stmt);
 						}
 					});
+
+					// else_ifs
 					for (idx, else_if) in i.else_ifs.iter().enumerate() {
-						f.write_line(&format!("else_if[{}]:", idx));
-						f.indented(|f| {
-							f.write_line("condition:");
-							f.indented(|f| f.format_expr(else_if.condition));
-							f.write_line("body:");
-							f.indented(|f| {
+						let ei_is_last = idx == i.else_ifs.len() - 1 && !has_else;
+						f.write_branch(ei_is_last, &format!("else_if[{}]:", idx));
+						f.with_child(ei_is_last, |f| {
+							f.write_branch(false, "condition:");
+							f.with_child(false, |f| f.format_expr(true, else_if.condition));
+							f.write_branch(true, "body:");
+							f.with_child(true, |f| {
+								let len = else_if.body.len();
 								for (i, stmt) in else_if.body.iter().enumerate() {
-									f.format_statement_indexed(i, stmt);
+									f.format_statement_indexed(
+										i == len - 1,
+										i,
+										stmt,
+									);
 								}
 							});
 						});
 					}
+
+					// else
 					if let Some(else_branch) = i.else_branch {
-						f.write_line("else:");
-						f.indented(|f| {
+						f.write_branch(true, "else:");
+						f.with_child(true, |f| {
+							let len = else_branch.len();
 							for (i, stmt) in else_branch.iter().enumerate() {
-								f.format_statement_indexed(i, stmt);
+								f.format_statement_indexed(i == len - 1, i, stmt);
 							}
 						});
 					}
 				});
 			}
 			Statement::Loop(l) => {
-				self.write_indexed(index, "Statement::Loop");
-				self.indented(|f| {
+				self.write_indexed(is_last, index, "Loop");
+				self.with_child(is_last, |f| {
+					let len = l.body.len();
 					for (i, stmt) in l.body.iter().enumerate() {
-						f.format_statement_indexed(i, stmt);
+						f.format_statement_indexed(i == len - 1, i, stmt);
 					}
 				});
 			}
 			Statement::For(fr) => {
-				self.write_indexed(index, &format!("Statement::For(${})", fr.variable));
-				self.indented(|f| {
-					f.write_line("iterable:");
-					f.indented(|f| f.format_expr(fr.iterable));
-					f.write_line("body:");
-					f.indented(|f| {
+				self.write_indexed(is_last, index, &format!("For(${})", fr.variable));
+				self.with_child(is_last, |f| {
+					f.write_branch(false, "iterable:");
+					f.with_child(false, |f| f.format_expr(true, fr.iterable));
+					f.write_branch(true, "body:");
+					f.with_child(true, |f| {
+						let len = fr.body.len();
 						for (i, stmt) in fr.body.iter().enumerate() {
-							f.format_statement_indexed(i, stmt);
+							f.format_statement_indexed(i == len - 1, i, stmt);
 						}
 					});
 				});
 			}
 			Statement::Break(_) => {
-				self.write_indexed(index, "Statement::Break");
+				self.write_indexed(is_last, index, "Break");
 			}
 			Statement::Continue(_) => {
-				self.write_indexed(index, "Statement::Continue");
+				self.write_indexed(is_last, index, "Continue");
 			}
 			Statement::Return(r) => {
-				self.write_indexed(index, "Statement::Return");
+				self.write_indexed(is_last, index, "Return");
 				if let Some(value) = r.value {
-					self.indented(|f| f.format_expr(value));
+					self.with_child(is_last, |f| f.format_expr(true, value));
 				}
 			}
 			Statement::Create(c) => {
-				self.write_indexed(index, &format!("Statement::Create({:?})", c));
+				self.write_indexed(is_last, index, &format!("Create({:?})", c));
 			}
 			Statement::Alter(a) => {
-				self.write_indexed(index, &format!("Statement::Alter({:?})", a));
+				self.write_indexed(is_last, index, &format!("Alter({:?})", a));
 			}
 			Statement::Drop(d) => {
-				self.write_indexed(index, &format!("Statement::Drop({:?})", d));
+				self.write_indexed(is_last, index, &format!("Drop({:?})", d));
 			}
-			Statement::Insert(i) => {
-				let target = match i.namespace {
-					Some(ns) => format!("{}.{}", ns, i.table),
-					None => i.table.to_string(),
+			Statement::Insert(ins) => {
+				let target = match ins.namespace {
+					Some(ns) => format!("{}.{}", ns, ins.table),
+					None => ins.table.to_string(),
 				};
-				self.write_indexed(index, &format!("Statement::Insert({})", target));
-				self.indented(|f| {
-					f.write_line("source:");
-					match &i.source {
+				self.write_indexed(is_last, index, &format!("Insert({})", target));
+				self.with_child(is_last, |f| {
+					f.write_branch(true, "source:");
+					f.with_child(true, |f| match &ins.source {
 						InsertSource::Values(rows) => {
-							f.indented(|f| {
-								f.write_line("Values:");
-								f.indented(|f| {
-									for (i, row) in rows.iter().enumerate() {
-										f.write_indexed(i, "Row:");
-										f.indented(|f| {
-											for (j, val) in
-												row.iter().enumerate()
-											{
-												f.format_expr_indexed(
-													j, val,
-												);
-											}
-										});
-									}
-								});
+							f.write_branch(true, "Values:");
+							f.with_child(true, |f| {
+								let len = rows.len();
+								for (i, row) in rows.iter().enumerate() {
+									let row_is_last = i == len - 1;
+									f.write_indexed(row_is_last, i, "Row:");
+									f.with_child(row_is_last, |f| {
+										let rlen = row.len();
+										for (j, val) in row.iter().enumerate() {
+											f.format_expr_indexed(
+												j == rlen - 1,
+												j,
+												val,
+											);
+										}
+									});
+								}
 							});
 						}
 						InsertSource::Query(pipeline) => {
-							f.indented(|f| {
-								f.write_line("Query:");
-								f.indented(|f| {
-									for (i, stage) in pipeline.iter().enumerate() {
-										f.format_expr_indexed(i, stage);
-									}
-								});
+							f.write_branch(true, "Query:");
+							f.with_child(true, |f| {
+								let len = pipeline.len();
+								for (i, stage) in pipeline.iter().enumerate() {
+									f.format_expr_indexed(i == len - 1, i, stage);
+								}
 							});
 						}
-					}
+					});
 				});
 			}
 			Statement::Update(u) => {
@@ -253,16 +292,21 @@ impl<'a> AstFormatter<'a> {
 					Some(ns) => format!("{}.{}", ns, u.table),
 					None => u.table.to_string(),
 				};
-				self.write_indexed(index, &format!("Statement::Update({})", target));
-				self.indented(|f| {
-					f.write_line("assignments:");
-					for (i, assign) in u.assignments.iter().enumerate() {
-						f.write_indexed(i, &format!("{} := ...", assign.column));
-						f.indented(|f| f.format_expr(assign.value));
-					}
+				self.write_indexed(is_last, index, &format!("Update({})", target));
+				self.with_child(is_last, |f| {
+					let has_filter = u.filter.is_some();
+					f.write_branch(!has_filter, "assignments:");
+					f.with_child(!has_filter, |f| {
+						let len = u.assignments.len();
+						for (i, assign) in u.assignments.iter().enumerate() {
+							let a_is_last = i == len - 1;
+							f.write_indexed(a_is_last, i, &format!("{} :=", assign.column));
+							f.with_child(a_is_last, |f| f.format_expr(true, assign.value));
+						}
+					});
 					if let Some(filter) = u.filter {
-						f.write_line("filter:");
-						f.indented(|f| f.format_expr(filter));
+						f.write_branch(true, "filter:");
+						f.with_child(true, |f| f.format_expr(true, filter));
 					}
 				});
 			}
@@ -271,55 +315,57 @@ impl<'a> AstFormatter<'a> {
 					Some(ns) => format!("{}.{}", ns, d.table),
 					None => d.table.to_string(),
 				};
-				self.write_indexed(index, &format!("Statement::Delete({})", target));
+				self.write_indexed(is_last, index, &format!("Delete({})", target));
 				if let Some(filter) = d.filter {
-					self.indented(|f| {
-						f.write_line("filter:");
-						f.indented(|f| f.format_expr(filter));
+					self.with_child(is_last, |f| {
+						f.write_branch(true, "filter:");
+						f.with_child(true, |f| f.format_expr(true, filter));
 					});
 				}
 			}
 			Statement::Describe(d) => {
-				self.write_indexed(index, "Statement::Describe");
-				self.indented(|f| f.format_expr(d.target));
+				self.write_indexed(is_last, index, "Describe");
+				self.with_child(is_last, |f| f.format_expr(true, d.target));
 			}
 			Statement::Expression(e) => {
-				self.write_indexed(index, "Statement::Expression");
-				self.indented(|f| f.format_expr(e.expr));
+				self.write_indexed(is_last, index, "Expression");
+				self.with_child(is_last, |f| f.format_expr(true, e.expr));
 			}
 		}
 	}
 
 	fn format_pipeline(&mut self, pipeline: &Pipeline) {
+		let len = pipeline.stages.len();
 		for (i, stage) in pipeline.stages.iter().enumerate() {
-			self.format_expr_indexed(i, stage);
+			self.format_expr_indexed(i == len - 1, i, stage);
 		}
 	}
 
 	fn format_let_value(&mut self, value: &LetValue) {
 		match value {
-			LetValue::Expr(e) => self.format_expr(e),
+			LetValue::Expr(e) => self.format_expr(true, e),
 			LetValue::Pipeline(stages) => {
-				self.write_line("Pipeline:");
-				self.indented(|f| {
+				self.write_branch(true, "Pipeline:");
+				self.with_child(true, |f| {
+					let len = stages.len();
 					for (i, stage) in stages.iter().enumerate() {
-						f.format_expr_indexed(i, stage);
+						f.format_expr_indexed(i == len - 1, i, stage);
 					}
 				});
 			}
 		}
 	}
 
-	fn format_expr_indexed(&mut self, index: usize, expr: &Expr) {
+	fn format_expr_indexed(&mut self, is_last: bool, index: usize, expr: &Expr) {
 		let label = self.expr_label(expr);
-		self.write_indexed(index, &label);
-		self.indented(|f| f.format_expr_children(expr));
+		self.write_indexed(is_last, index, &label);
+		self.with_child(is_last, |f| f.format_expr_children(expr));
 	}
 
-	fn format_expr(&mut self, expr: &Expr) {
+	fn format_expr(&mut self, is_last: bool, expr: &Expr) {
 		let label = self.expr_label(expr);
-		self.write_line(&label);
-		self.indented(|f| f.format_expr_children(expr));
+		self.write_branch(is_last, &label);
+		self.with_child(is_last, |f| f.format_expr_children(expr));
 	}
 
 	fn expr_label(&self, expr: &Expr) -> String {
@@ -328,88 +374,88 @@ impl<'a> AstFormatter<'a> {
 				Literal::Integer {
 					value,
 					..
-				} => format!("Expr::Literal(Integer({}))", value),
+				} => format!("Integer({})", value),
 				Literal::Float {
 					value,
 					..
-				} => format!("Expr::Literal(Float({}))", value),
+				} => format!("Float({})", value),
 				Literal::String {
 					value,
 					..
-				} => format!("Expr::Literal(String(\"{}\"))", value),
+				} => format!("String(\"{}\")", value),
 				Literal::Bool {
 					value,
 					..
-				} => format!("Expr::Literal(Bool({}))", value),
+				} => format!("Bool({})", value),
 				Literal::Undefined {
 					..
-				} => "Expr::Literal(Undefined)".to_string(),
+				} => "Undefined".to_string(),
 				Literal::Temporal {
 					value,
 					..
-				} => format!("Expr::Literal(Temporal({}))", value),
+				} => format!("Temporal({})", value),
 			},
-			Expr::Identifier(id) => format!("Expr::Identifier(\"{}\")", id.name),
+			Expr::Identifier(id) => format!("Identifier({})", id.name),
 			Expr::QualifiedIdent(q) => {
 				let parts: Vec<_> = q.parts.iter().copied().collect();
-				format!("Expr::QualifiedIdent(\"{}\")", parts.join("."))
+				format!("QualifiedIdent({})", parts.join("."))
 			}
-			Expr::Variable(v) => format!("Expr::Variable(${})", v.name),
-			Expr::Wildcard(_) => "Expr::Wildcard".to_string(),
-			Expr::Rownum(_) => "Expr::Rownum".to_string(),
-			Expr::Environment(_) => "Expr::Environment($env)".to_string(),
-			Expr::Binary(b) => format!("Expr::Binary({:?})", b.op),
-			Expr::Unary(u) => format!("Expr::Unary({:?})", u.op),
+			Expr::Variable(v) => format!("Variable(${})", v.name),
+			Expr::Wildcard(_) => "Wildcard".to_string(),
+			Expr::Rownum(_) => "Rownum".to_string(),
+			Expr::Environment(_) => "Environment($env)".to_string(),
+			Expr::Binary(b) => format!("Binary({:?})", b.op),
+			Expr::Unary(u) => format!("Unary({:?})", u.op),
 			Expr::From(f) => match f {
 				FromExpr::Source(s) => {
 					if let Some(ns) = s.namespace {
-						format!("Expr::From(Source(\"{}.{}\"))", ns, s.name)
+						format!("From({}.{})", ns, s.name)
 					} else {
-						format!("Expr::From(Source(\"{}\"))", s.name)
+						format!("From({})", s.name)
 					}
 				}
-				FromExpr::Variable(v) => format!("Expr::From(Variable(${})", v.variable.name),
-				FromExpr::Inline(_) => "Expr::From(Inline)".to_string(),
-				FromExpr::Generator(g) => format!("Expr::From(Generator({}))", g.name),
-				FromExpr::Environment(_) => "Expr::From(Environment)".to_string(),
+				FromExpr::Variable(v) => format!("From(${})", v.variable.name),
+				FromExpr::Inline(_) => "From(Inline)".to_string(),
+				FromExpr::Generator(g) => format!("From(Generator({}))", g.name),
+				FromExpr::Environment(_) => "From(Environment)".to_string(),
 			},
-			Expr::Filter(_) => "Expr::Filter".to_string(),
-			Expr::Map(_) => "Expr::Map".to_string(),
-			Expr::Extend(_) => "Expr::Extend".to_string(),
-			Expr::Sort(_) => "Expr::Sort".to_string(),
-			Expr::Distinct(_) => "Expr::Distinct".to_string(),
-			Expr::Take(_) => "Expr::Take".to_string(),
+			Expr::Filter(_) => "Filter".to_string(),
+			Expr::Map(_) => "Map".to_string(),
+			Expr::Extend(_) => "Extend".to_string(),
+			Expr::Sort(_) => "Sort".to_string(),
+			Expr::Distinct(_) => "Distinct".to_string(),
+			Expr::Take(_) => "Take".to_string(),
 			Expr::Join(j) => match j {
-				JoinExpr::Inner(_) => "Expr::Join(Inner)".to_string(),
-				JoinExpr::Left(_) => "Expr::Join(Left)".to_string(),
-				JoinExpr::Natural(_) => "Expr::Join(Natural)".to_string(),
+				JoinExpr::Inner(_) => "Join(Inner)".to_string(),
+				JoinExpr::Left(_) => "Join(Left)".to_string(),
+				JoinExpr::Natural(_) => "Join(Natural)".to_string(),
 			},
-			Expr::Merge(_) => "Expr::Merge".to_string(),
-			Expr::Window(_) => "Expr::Window".to_string(),
-			Expr::Aggregate(_) => "Expr::Aggregate".to_string(),
-			Expr::List(_) => "Expr::List".to_string(),
-			Expr::Tuple(_) => "Expr::Tuple".to_string(),
-			Expr::Inline(_) => "Expr::Inline".to_string(),
+			Expr::Merge(_) => "Merge".to_string(),
+			Expr::Window(_) => "Window".to_string(),
+			Expr::Aggregate(_) => "Aggregate".to_string(),
+			Expr::List(_) => "List".to_string(),
+			Expr::Tuple(_) => "Tuple".to_string(),
+			Expr::Inline(_) => "Inline".to_string(),
 			Expr::Call(c) => {
 				if let Expr::Identifier(id) = c.function {
-					format!("Expr::Call({})", id.name)
+					format!("Call({})", id.name)
 				} else {
-					"Expr::Call".to_string()
+					"Call".to_string()
 				}
 			}
-			Expr::Apply(a) => format!("Expr::Apply({})", a.operator),
-			Expr::Between(_) => "Expr::Between".to_string(),
+			Expr::Apply(a) => format!("Apply({})", a.operator),
+			Expr::Between(_) => "Between".to_string(),
 			Expr::In(i) => {
 				if i.negated {
-					"Expr::NotIn".to_string()
+					"NotIn".to_string()
 				} else {
-					"Expr::In".to_string()
+					"In".to_string()
 				}
 			}
-			Expr::Cast(_) => "Expr::Cast".to_string(),
-			Expr::SubQuery(_) => "Expr::SubQuery".to_string(),
-			Expr::IfExpr(_) => "Expr::If".to_string(),
-			Expr::Paren(_) => "Expr::Paren".to_string(),
+			Expr::Cast(_) => "Cast".to_string(),
+			Expr::SubQuery(_) => "SubQuery".to_string(),
+			Expr::IfExpr(_) => "If".to_string(),
+			Expr::Paren(_) => "Paren".to_string(),
 		}
 	}
 
@@ -425,229 +471,275 @@ impl<'a> AstFormatter<'a> {
 				// No children
 			}
 			Expr::Binary(b) => {
-				self.write_line("left:");
-				self.indented(|f| f.format_expr(b.left));
-				self.write_line("right:");
-				self.indented(|f| f.format_expr(b.right));
+				self.write_branch(false, &format!("left: {}", self.expr_label(b.left)));
+				self.with_child(false, |f| f.format_expr_children(b.left));
+				self.write_branch(true, &format!("right: {}", self.expr_label(b.right)));
+				self.with_child(true, |f| f.format_expr_children(b.right));
 			}
 			Expr::Unary(u) => {
-				self.format_expr(u.operand);
+				self.format_expr(true, u.operand);
 			}
 			Expr::From(f) => match f {
 				FromExpr::Inline(i) => {
+					let len = i.rows.len();
 					for (idx, row) in i.rows.iter().enumerate() {
-						self.format_expr_indexed(idx, row);
+						self.format_expr_indexed(idx == len - 1, idx, row);
 					}
 				}
 				FromExpr::Generator(g) => {
+					let len = g.params.len();
 					for (idx, param) in g.params.iter().enumerate() {
-						self.format_expr_indexed(idx, param);
+						self.format_expr_indexed(idx == len - 1, idx, param);
 					}
 				}
 				_ => {}
 			},
 			Expr::Filter(f) => {
-				self.format_expr(f.predicate);
+				self.format_expr(true, f.predicate);
 			}
 			Expr::Map(m) => {
+				let len = m.projections.len();
 				for (i, proj) in m.projections.iter().enumerate() {
-					self.format_expr_indexed(i, proj);
+					self.format_expr_indexed(i == len - 1, i, proj);
 				}
 			}
 			Expr::Extend(e) => {
+				let len = e.extensions.len();
 				for (i, ext) in e.extensions.iter().enumerate() {
-					self.format_expr_indexed(i, ext);
+					self.format_expr_indexed(i == len - 1, i, ext);
 				}
 			}
 			Expr::Sort(s) => {
+				let len = s.columns.len();
 				for (i, col) in s.columns.iter().enumerate() {
 					let dir = match col.direction {
 						Some(SortDirection::Asc) => " ASC",
 						Some(SortDirection::Desc) => " DESC",
 						None => "",
 					};
-					self.write_indexed(i, &format!("SortColumn{}", dir));
-					self.indented(|f| f.format_expr(col.expr));
+					let col_is_last = i == len - 1;
+					self.write_indexed(col_is_last, i, &format!("SortColumn{}", dir));
+					self.with_child(col_is_last, |f| f.format_expr(true, col.expr));
 				}
 			}
 			Expr::Distinct(d) => {
+				let len = d.columns.len();
 				for (i, col) in d.columns.iter().enumerate() {
-					self.format_expr_indexed(i, col);
+					self.format_expr_indexed(i == len - 1, i, col);
 				}
 			}
 			Expr::Take(t) => {
-				self.format_expr(t.count);
+				self.format_expr(true, t.count);
 			}
 			Expr::Join(j) => match j {
 				JoinExpr::Inner(inner) => {
-					self.write_line("subquery:");
-					self.indented(|f| f.format_expr(inner.subquery));
-					self.write_line(&format!("alias: {}", inner.alias));
-					self.format_using_clause(&inner.using_clause);
+					let has_using = !inner.using_clause.pairs.is_empty();
+					self.write_branch(false, "subquery:");
+					self.with_child(false, |f| f.format_expr(true, inner.subquery));
+					self.write_branch(!has_using, &format!("alias: {}", inner.alias));
+					if has_using {
+						self.format_using_clause(true, &inner.using_clause);
+					}
 				}
 				JoinExpr::Left(left) => {
-					self.write_line("subquery:");
-					self.indented(|f| f.format_expr(left.subquery));
-					self.write_line(&format!("alias: {}", left.alias));
-					self.format_using_clause(&left.using_clause);
+					let has_using = !left.using_clause.pairs.is_empty();
+					self.write_branch(false, "subquery:");
+					self.with_child(false, |f| f.format_expr(true, left.subquery));
+					self.write_branch(!has_using, &format!("alias: {}", left.alias));
+					if has_using {
+						self.format_using_clause(true, &left.using_clause);
+					}
 				}
 				JoinExpr::Natural(nat) => {
-					self.write_line("subquery:");
-					self.indented(|f| f.format_expr(nat.subquery));
-					self.write_line(&format!("alias: {}", nat.alias));
+					self.write_branch(false, "subquery:");
+					self.with_child(false, |f| f.format_expr(true, nat.subquery));
+					self.write_branch(true, &format!("alias: {}", nat.alias));
 				}
 			},
 			Expr::Merge(m) => {
-				self.write_line("subquery:");
-				self.indented(|f| f.format_expr(m.subquery));
+				self.write_branch(true, "subquery:");
+				self.with_child(true, |f| f.format_expr(true, m.subquery));
 			}
 			Expr::Window(w) => {
-				if !w.config.is_empty() {
-					self.write_line("config:");
-					self.indented(|f| {
-						for cfg in w.config.iter() {
-							f.write_line(&format!("{}: ...", cfg.key));
-							f.indented(|f| f.format_expr(cfg.value));
+				let has_config = !w.config.is_empty();
+				let has_aggs = !w.aggregations.is_empty();
+				let has_group = !w.group_by.is_empty();
+
+				if has_config {
+					let config_is_last = !has_aggs && !has_group;
+					self.write_branch(config_is_last, "config:");
+					self.with_child(config_is_last, |f| {
+						let len = w.config.len();
+						for (i, cfg) in w.config.iter().enumerate() {
+							let cfg_is_last = i == len - 1;
+							f.write_branch(cfg_is_last, &format!("{}:", cfg.key));
+							f.with_child(cfg_is_last, |f| f.format_expr(true, cfg.value));
 						}
 					});
 				}
-				if !w.aggregations.is_empty() {
-					self.write_line("aggregations:");
-					self.indented(|f| {
+				if has_aggs {
+					let aggs_is_last = !has_group;
+					self.write_branch(aggs_is_last, "aggregations:");
+					self.with_child(aggs_is_last, |f| {
+						let len = w.aggregations.len();
 						for (i, agg) in w.aggregations.iter().enumerate() {
-							f.format_expr_indexed(i, agg);
+							f.format_expr_indexed(i == len - 1, i, agg);
 						}
 					});
 				}
-				if !w.group_by.is_empty() {
-					self.write_line("group_by:");
-					self.indented(|f| {
+				if has_group {
+					self.write_branch(true, "group_by:");
+					self.with_child(true, |f| {
+						let len = w.group_by.len();
 						for (i, g) in w.group_by.iter().enumerate() {
-							f.format_expr_indexed(i, g);
+							f.format_expr_indexed(i == len - 1, i, g);
 						}
 					});
 				}
 			}
 			Expr::Aggregate(a) => {
-				if !a.group_by.is_empty() {
-					self.write_line("group_by:");
-					self.indented(|f| {
+				let has_group = !a.group_by.is_empty();
+				let has_aggs = !a.aggregations.is_empty();
+
+				if has_group {
+					self.write_branch(!has_aggs, "group_by:");
+					self.with_child(!has_aggs, |f| {
+						let len = a.group_by.len();
 						for (i, g) in a.group_by.iter().enumerate() {
-							f.format_expr_indexed(i, g);
+							f.format_expr_indexed(i == len - 1, i, g);
 						}
 					});
 				}
-				if !a.aggregations.is_empty() {
-					self.write_line("aggregations:");
-					self.indented(|f| {
+				if has_aggs {
+					self.write_branch(true, "aggregations:");
+					self.with_child(true, |f| {
+						let len = a.aggregations.len();
 						for (i, agg) in a.aggregations.iter().enumerate() {
-							f.format_expr_indexed(i, agg);
+							f.format_expr_indexed(i == len - 1, i, agg);
 						}
 					});
 				}
 			}
 			Expr::List(l) => {
+				let len = l.elements.len();
 				for (i, elem) in l.elements.iter().enumerate() {
-					self.format_expr_indexed(i, elem);
+					self.format_expr_indexed(i == len - 1, i, elem);
 				}
 			}
 			Expr::Tuple(t) => {
+				let len = t.elements.len();
 				for (i, elem) in t.elements.iter().enumerate() {
-					self.format_expr_indexed(i, elem);
+					self.format_expr_indexed(i == len - 1, i, elem);
 				}
 			}
 			Expr::Inline(obj) => {
+				let len = obj.fields.len();
 				for (i, field) in obj.fields.iter().enumerate() {
-					self.write_indexed(i, &format!("Field(\"{}\")", field.key));
-					self.indented(|f| f.format_expr(field.value));
+					let f_is_last = i == len - 1;
+					self.write_indexed(f_is_last, i, &format!("Field({})", field.key));
+					self.with_child(f_is_last, |f| f.format_expr(true, field.value));
 				}
 			}
 			Expr::Call(c) => {
-				if !matches!(c.function, Expr::Identifier(_)) {
-					self.write_line("function:");
-					self.indented(|f| f.format_expr(c.function));
+				let has_fn = !matches!(c.function, Expr::Identifier(_));
+				let has_args = !c.arguments.is_empty();
+
+				if has_fn {
+					self.write_branch(!has_args, "function:");
+					self.with_child(!has_args, |f| f.format_expr(true, c.function));
 				}
-				if !c.arguments.is_empty() {
-					self.write_line("arguments:");
-					self.indented(|f| {
+				if has_args {
+					self.write_branch(true, "args:");
+					self.with_child(true, |f| {
+						let len = c.arguments.len();
 						for (i, arg) in c.arguments.iter().enumerate() {
-							f.format_expr_indexed(i, arg);
+							f.format_expr_indexed(i == len - 1, i, arg);
 						}
 					});
 				}
 			}
 			Expr::Apply(a) => {
-				self.write_line("expressions:");
-				self.indented(|f| {
+				self.write_branch(true, "expressions:");
+				self.with_child(true, |f| {
+					let len = a.expressions.len();
 					for (i, e) in a.expressions.iter().enumerate() {
-						f.format_expr_indexed(i, e);
+						f.format_expr_indexed(i == len - 1, i, e);
 					}
 				});
 			}
 			Expr::Between(b) => {
-				self.write_line("value:");
-				self.indented(|f| f.format_expr(b.value));
-				self.write_line("lower:");
-				self.indented(|f| f.format_expr(b.lower));
-				self.write_line("upper:");
-				self.indented(|f| f.format_expr(b.upper));
+				self.write_branch(false, &format!("value: {}", self.expr_label(b.value)));
+				self.with_child(false, |f| f.format_expr_children(b.value));
+				self.write_branch(false, &format!("lower: {}", self.expr_label(b.lower)));
+				self.with_child(false, |f| f.format_expr_children(b.lower));
+				self.write_branch(true, &format!("upper: {}", self.expr_label(b.upper)));
+				self.with_child(true, |f| f.format_expr_children(b.upper));
 			}
 			Expr::In(i) => {
-				self.write_line("value:");
-				self.indented(|f| f.format_expr(i.value));
-				self.write_line("list:");
-				self.indented(|f| f.format_expr(i.list));
+				self.write_branch(false, &format!("value: {}", self.expr_label(i.value)));
+				self.with_child(false, |f| f.format_expr_children(i.value));
+				self.write_branch(true, &format!("list: {}", self.expr_label(i.list)));
+				self.with_child(true, |f| f.format_expr_children(i.list));
 			}
 			Expr::Cast(c) => {
-				self.write_line("expr:");
-				self.indented(|f| f.format_expr(c.expr));
-				self.write_line("target_type:");
-				self.indented(|f| f.format_expr(c.target_type));
+				self.write_branch(false, "expr:");
+				self.with_child(false, |f| f.format_expr(true, c.expr));
+				self.write_branch(true, "target_type:");
+				self.with_child(true, |f| f.format_expr(true, c.target_type));
 			}
 			Expr::SubQuery(s) => {
+				let len = s.pipeline.len();
 				for (i, stage) in s.pipeline.iter().enumerate() {
-					self.format_expr_indexed(i, stage);
+					self.format_expr_indexed(i == len - 1, i, stage);
 				}
 			}
 			Expr::IfExpr(i) => {
-				self.write_line("condition:");
-				self.indented(|f| f.format_expr(i.condition));
-				self.write_line("then:");
-				self.indented(|f| f.format_expr(i.then_branch));
+				let has_else_ifs = !i.else_ifs.is_empty();
+				let has_else = i.else_branch.is_some();
+
+				self.write_branch(false, "condition:");
+				self.with_child(false, |f| f.format_expr(true, i.condition));
+
+				let then_is_last = !has_else_ifs && !has_else;
+				self.write_branch(then_is_last, "then:");
+				self.with_child(then_is_last, |f| f.format_expr(true, i.then_branch));
+
 				for (idx, else_if) in i.else_ifs.iter().enumerate() {
-					self.write_line(&format!("else_if[{}]:", idx));
-					self.indented(|f| {
-						f.write_line("condition:");
-						f.indented(|f| f.format_expr(else_if.condition));
-						f.write_line("then:");
-						f.indented(|f| f.format_expr(else_if.then_branch));
+					let ei_is_last = idx == i.else_ifs.len() - 1 && !has_else;
+					self.write_branch(ei_is_last, &format!("else_if[{}]:", idx));
+					self.with_child(ei_is_last, |f| {
+						f.write_branch(false, "condition:");
+						f.with_child(false, |f| f.format_expr(true, else_if.condition));
+						f.write_branch(true, "then:");
+						f.with_child(true, |f| f.format_expr(true, else_if.then_branch));
 					});
 				}
+
 				if let Some(else_branch) = i.else_branch {
-					self.write_line("else:");
-					self.indented(|f| f.format_expr(else_branch));
+					self.write_branch(true, "else:");
+					self.with_child(true, |f| f.format_expr(true, else_branch));
 				}
 			}
 			Expr::Paren(inner) => {
-				self.format_expr(inner);
+				self.format_expr(true, inner);
 			}
 		}
 	}
 
-	fn format_using_clause(&mut self, clause: &UsingClause) {
-		if !clause.pairs.is_empty() {
-			self.write_line("using:");
-			self.indented(|f| {
-				for (i, pair) in clause.pairs.iter().enumerate() {
-					f.write_indexed(i, "Pair:");
-					f.indented(|f| {
-						f.write_line("left:");
-						f.indented(|f| f.format_expr(pair.left));
-						f.write_line("right:");
-						f.indented(|f| f.format_expr(pair.right));
-					});
-				}
-			});
-		}
+	fn format_using_clause(&mut self, is_last: bool, clause: &UsingClause) {
+		self.write_branch(is_last, "using:");
+		self.with_child(is_last, |f| {
+			let len = clause.pairs.len();
+			for (i, pair) in clause.pairs.iter().enumerate() {
+				let p_is_last = i == len - 1;
+				f.write_indexed(p_is_last, i, "Pair");
+				f.with_child(p_is_last, |pf| {
+					pf.write_branch(false, &format!("left: {}", pf.expr_label(pair.left)));
+					pf.with_child(false, |f| f.format_expr_children(pair.left));
+					pf.write_branch(true, &format!("right: {}", pf.expr_label(pair.right)));
+					pf.with_child(true, |f| f.format_expr_children(pair.right));
+				});
+			}
+		});
 	}
 }

@@ -4,7 +4,7 @@
 # Test let binding
 parse 'let $x := 42'
 ---
-> Program:
->   [  0] Statement::Let($x)
->     Expr::Literal(Integer(42))
+> Program
+> `-- [0] Let($x)
+>     `-- Integer(42)
 >

@@ -4,13 +4,11 @@
 # Test FILTER with comparison
 parse 'FROM users | FILTER age > 18'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Filter
->       Expr::Binary(Gt)
->         left:
->           Expr::Identifier("age")
->         right:
->           Expr::Literal(Integer(18))
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Filter
+>         `-- Binary(Gt)
+>             +-- left: Identifier(age)
+>             `-- right: Integer(18)
 >

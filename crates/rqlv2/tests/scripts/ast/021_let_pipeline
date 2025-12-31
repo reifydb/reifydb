@@ -4,14 +4,12 @@
 # Test let with pipeline
 parse 'let $users := FROM users | FILTER age > 20'
 ---
-> Program:
->   [  0] Statement::Let($users)
->     Pipeline:
->       [  0] Expr::From(Source("users"))
->       [  1] Expr::Filter
->         Expr::Binary(Gt)
->           left:
->             Expr::Identifier("age")
->           right:
->             Expr::Literal(Integer(20))
+> Program
+> `-- [0] Let($users)
+>     `-- Pipeline:
+>         +-- [0] From(users)
+>         `-- [1] Filter
+>             `-- Binary(Gt)
+>                 +-- left: Identifier(age)
+>                 `-- right: Integer(20)
 >

@@ -4,7 +4,7 @@
 # Test simple FROM expression
 parse 'FROM users'
 ---
-> Program:
->   [  0] Statement::Expression
->     Expr::From(Source("users"))
+> Program
+> `-- [0] Expression
+>     `-- From(users)
 >

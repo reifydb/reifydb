@@ -4,11 +4,11 @@
 # Test for-in loop
 parse 'for $item in $list { $item }'
 ---
-> Program:
->   [  0] Statement::For($item)
->     iterable:
->       Expr::Variable($list)
->     body:
->       [  0] Statement::Expression
->         Expr::Variable($item)
+> Program
+> `-- [0] For($item)
+>     +-- iterable:
+>     |   `-- Variable($list)
+>     `-- body:
+>         `-- [0] Expression
+>             `-- Variable($item)
 >

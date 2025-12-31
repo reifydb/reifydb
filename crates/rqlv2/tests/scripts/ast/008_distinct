@@ -4,9 +4,9 @@
 # Test DISTINCT clause
 parse 'FROM users | DISTINCT { name }'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("users"))
->     [  1] Expr::Distinct
->       [  0] Expr::Identifier("name")
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(users)
+>     `-- [1] Distinct
+>         `-- [0] Identifier(name)
 >

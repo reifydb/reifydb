@@ -4,26 +4,18 @@
 # Test arithmetic expressions
 parse 'FROM data | MAP { a + b AS sum, a * 2 AS double }'
 ---
-> Program:
->   [  0] Statement::Pipeline
->     [  0] Expr::From(Source("data"))
->     [  1] Expr::Map
->       [  0] Expr::Binary(As)
->         left:
->           Expr::Binary(Add)
->             left:
->               Expr::Identifier("a")
->             right:
->               Expr::Identifier("b")
->         right:
->           Expr::Identifier("sum")
->       [  1] Expr::Binary(As)
->         left:
->           Expr::Binary(Mul)
->             left:
->               Expr::Identifier("a")
->             right:
->               Expr::Literal(Integer(2))
->         right:
->           Expr::Identifier("double")
+> Program
+> `-- [0] Pipeline
+>     +-- [0] From(data)
+>     `-- [1] Map
+>         +-- [0] Binary(As)
+>         |   +-- left: Binary(Add)
+>         |   |   +-- left: Identifier(a)
+>         |   |   `-- right: Identifier(b)
+>         |   `-- right: Identifier(sum)
+>         `-- [1] Binary(As)
+>             +-- left: Binary(Mul)
+>             |   +-- left: Identifier(a)
+>             |   `-- right: Integer(2)
+>             `-- right: Identifier(double)
 >
