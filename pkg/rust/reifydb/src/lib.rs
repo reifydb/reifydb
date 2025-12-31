@@ -25,7 +25,7 @@ pub use reifydb_cdc as cdc;
 // subsystems
 pub use reifydb_core as core;
 pub use reifydb_core::{
-	Error, Result,
+	ComputePool, Error, Result, compute,
 	event::EventBus,
 	interface::{Identity, MultiVersionTransaction, Params, SingleVersionTransaction},
 };

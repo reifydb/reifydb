@@ -1896,6 +1896,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "once_cell",
+ "rayon",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-engine",

@@ -3,6 +3,7 @@
 
 use reifydb_builtin::FunctionsBuilder;
 use reifydb_core::{
+	ComputePool,
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 };
@@ -33,6 +34,7 @@ pub struct ServerBuilder {
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
@@ -54,6 +56,7 @@ impl ServerBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
+			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
@@ -76,6 +79,11 @@ impl ServerBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
+		self.compute_pool = Some(pool);
 		self
 	}
 
@@ -171,6 +179,11 @@ impl ServerBuilder {
 		// Pass functions configurator if provided
 		if let Some(configurator) = self.functions_configurator {
 			database_builder = database_builder.with_functions_configurator(configurator);
+		}
+
+		// Pass compute pool if provided
+		if let Some(pool) = self.compute_pool {
+			database_builder = database_builder.with_compute_pool(pool);
 		}
 
 		// Add configured subsystems using the proper methods

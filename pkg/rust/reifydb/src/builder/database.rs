@@ -8,7 +8,7 @@ use reifydb_builtin::{Functions, FunctionsBuilder, generator, math};
 use reifydb_catalog::{CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
-	CoreVersion,
+	ComputePool, CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -39,6 +39,7 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
@@ -66,6 +67,7 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
+			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
@@ -90,6 +92,11 @@ impl DatabaseBuilder {
 
 	pub fn with_config(mut self, config: DatabaseConfig) -> Self {
 		self.config = config;
+		self
+	}
+
+	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
+		self.compute_pool = Some(pool);
 		self
 	}
 
@@ -156,6 +163,10 @@ impl DatabaseBuilder {
 
 		for factory in &self.factories {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
+		}
+
+		if let Some(pool) = self.compute_pool {
+			self.ioc = self.ioc.register(pool);
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;

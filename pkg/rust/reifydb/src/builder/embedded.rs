@@ -3,6 +3,7 @@
 
 use reifydb_builtin::FunctionsBuilder;
 use reifydb_core::{
+	ComputePool,
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 };
@@ -25,6 +26,7 @@ pub struct EmbeddedBuilder {
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
@@ -46,6 +48,7 @@ impl EmbeddedBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
+			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
@@ -71,6 +74,11 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
+		self.compute_pool = Some(pool);
+		self
+	}
+
 	pub async fn build(self) -> crate::Result<Database> {
 		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
@@ -78,6 +86,11 @@ impl EmbeddedBuilder {
 		// Pass functions configurator if provided
 		if let Some(configurator) = self.functions_configurator {
 			builder = builder.with_functions_configurator(configurator);
+		}
+
+		// Pass compute pool if provided
+		if let Some(pool) = self.compute_pool {
+			builder = builder.with_compute_pool(pool);
 		}
 
 		// Add configured subsystems using the proper methods

@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod common;
+pub mod compute;
 pub mod delta;
 pub mod event;
 pub mod interceptor;
@@ -17,6 +18,7 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
+pub use compute::ComputePool;
 pub use interface::TransactionId;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::{Error, Result, async_cow_vec, diagnostic, err, error, return_error, return_internal_error};
