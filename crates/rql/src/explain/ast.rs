@@ -239,12 +239,16 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		}
 		Ast::Join(AstJoin::LeftJoin {
 			with,
-			on,
+			using_clause,
 			..
 		}) => {
 			// Add the nodes from the subquery statement
 			children.extend(with.statement.nodes.clone());
-			children.extend(on);
+			// Add expressions from using clause pairs
+			for pair in &using_clause.pairs {
+				children.push((*pair.first).clone());
+				children.push((*pair.second).clone());
+			}
 		}
 		Ast::Map(s) => children.extend(s.nodes),
 		Ast::Generator(s) => children.extend(s.nodes),

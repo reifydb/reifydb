@@ -3,15 +3,74 @@
 
 use reifydb_core::JoinType;
 use reifydb_transaction::IntoStandardTransaction;
+use reifydb_type::Fragment;
 
 use crate::{
-	ast::{Ast, AstFrom, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedPrimitiveIdentifier},
-	expression::JoinConditionCompiler,
+	ast::{
+		Ast, AstFrom, AstInfix, AstJoin, AstUsingClause, InfixOperator, JoinConnector,
+		identifier::UnresolvedPrimitiveIdentifier,
+	},
+	expression::{AndExpression, EqExpression, Expression, JoinConditionCompiler, OrExpression},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::PrimitiveScan,
 		PrimitiveScanNode, resolver,
 	},
 };
+
+/// Build expression tree from using clause pairs.
+/// Each pair (expr1, expr2) becomes an equality condition expr1 == expr2.
+/// Pairs are combined using AND or OR based on their connectors.
+fn build_join_expressions(using: &AstUsingClause, alias: &Fragment) -> crate::Result<Vec<Expression>> {
+	let compiler = JoinConditionCompiler::new(Some(alias.clone()));
+	let fragment = using.token.fragment.clone();
+
+	// Build equality expressions for each pair
+	let mut eq_exprs: Vec<Expression> = Vec::new();
+	for pair in &using.pairs {
+		let left_expr = compiler.compile((*pair.first).clone())?;
+		let right_expr = compiler.compile((*pair.second).clone())?;
+		eq_exprs.push(Expression::Equal(EqExpression {
+			left: Box::new(left_expr),
+			right: Box::new(right_expr),
+			fragment: fragment.clone(),
+		}));
+	}
+
+	// If only one expression, return it directly
+	if eq_exprs.len() == 1 {
+		return Ok(eq_exprs);
+	}
+
+	// Check if any connector is OR (determines the overall combination strategy)
+	let use_or = using.pairs.iter().any(|p| matches!(p.connector, Some(JoinConnector::Or)));
+
+	// Build the combined expression
+	let combined = if use_or {
+		// OR all expressions together
+		eq_exprs.into_iter()
+			.reduce(|acc, expr| {
+				Expression::Or(OrExpression {
+					left: Box::new(acc),
+					right: Box::new(expr),
+					fragment: fragment.clone(),
+				})
+			})
+			.unwrap()
+	} else {
+		// AND all expressions together (default)
+		eq_exprs.into_iter()
+			.reduce(|acc, expr| {
+				Expression::And(AndExpression {
+					left: Box::new(acc),
+					right: Box::new(expr),
+					fragment: fragment.clone(),
+				})
+			})
+			.unwrap()
+	};
+
+	Ok(vec![combined])
+}
 
 impl Compiler {
 	pub(crate) async fn compile_join<T: IntoStandardTransaction>(
@@ -22,234 +81,36 @@ impl Compiler {
 		match ast {
 			AstJoin::InnerJoin {
 				with,
-				on,
+				using_clause,
 				alias,
 				..
 			} => {
-				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
-				let with = match with_ast {
-					Ast::From(AstFrom::Source {
-						source,
-						..
-					}) => {
-						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
+				let with = self.compile_join_subquery(&with, &alias, tx).await?;
 
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							source.namespace.clone(),
-							source.name.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
+				// Build equality expressions from using clause
+				let on = build_join_expressions(&using_clause, &alias)?;
 
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Identifier(identifier) => {
-						// Create unresolved source
-						// identifier
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							None,
-							identifier.token.fragment.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Infix(AstInfix {
-						left,
-						operator,
-						right,
-						..
-					}) => {
-						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = &**left else {
-							unreachable!()
-						};
-						let Ast::Identifier(table) = &**right else {
-							unreachable!()
-						};
-						// Create fully qualified
-						// SourceIdentifier
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							Some(namespace.token.fragment.clone()),
-							table.token.fragment.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					_ => unimplemented!(),
-				};
-
-				// Use JoinConditionCompiler for ON clause expressions
-				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
-					on: on.into_iter()
-						.map(|expr| join_compiler.compile(expr))
-						.collect::<crate::Result<Vec<_>>>()?,
-					alias,
+					on,
+					alias: Some(alias),
 				}))
 			}
 			AstJoin::LeftJoin {
 				with,
-				on,
+				using_clause,
 				alias,
 				..
 			} => {
-				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
-				let with = match with_ast {
-					Ast::From(AstFrom::Source {
-						source,
-						..
-					}) => {
-						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
+				let with = self.compile_join_subquery(&with, &alias, tx).await?;
 
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							source.namespace.clone(),
-							source.name.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
+				// Build equality expressions from using clause
+				let on = build_join_expressions(&using_clause, &alias)?;
 
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Identifier(identifier) => {
-						// Create unresolved source
-						// identifier
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							None,
-							identifier.token.fragment.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Infix(AstInfix {
-						left,
-						operator,
-						right,
-						..
-					}) => {
-						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = &**left else {
-							unreachable!()
-						};
-						let Ast::Identifier(table) = &**right else {
-							unreachable!()
-						};
-						// Create fully qualified
-						// SourceIdentifier
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							Some(namespace.token.fragment.clone()),
-							table.token.fragment.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					_ => unimplemented!(),
-				};
-
-				// Use JoinConditionCompiler for ON clause expressions
-				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
-					on: on.into_iter()
-						.map(|expr| join_compiler.compile(expr))
-						.collect::<crate::Result<Vec<_>>>()?,
-					alias,
+					on,
+					alias: Some(alias),
 				}))
 			}
 			AstJoin::NaturalJoin {
@@ -258,106 +119,156 @@ impl Compiler {
 				alias,
 				..
 			} => {
-				// Subqueries should always have at least one node
-				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
-				let with = match with_ast {
-					Ast::From(AstFrom::Source {
-						source,
-						..
-					}) => {
-						// Handle FROM clause directly
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							source.namespace.clone(),
-							source.name.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Identifier(identifier) => {
-						// Create unresolved source
-						// identifier
-						use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
-
-						let mut unresolved = UnresolvedPrimitiveIdentifier::new(
-							None,
-							identifier.token.fragment.clone(),
-						);
-						if let Some(a) = &alias {
-							unresolved = unresolved.with_alias(a.clone());
-						}
-
-						// Build resolved source from
-						// unresolved identifier
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					Ast::Infix(AstInfix {
-						left,
-						operator,
-						right,
-						..
-					}) => {
-						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = &**left else {
-							unreachable!()
-						};
-						let Ast::Identifier(table) = &**right else {
-							unreachable!()
-						};
-
-						let unresolved = UnresolvedPrimitiveIdentifier::new(
-							Some(namespace.token.fragment.clone()),
-							table.token.fragment.clone(),
-						);
-
-						let resolved_source = resolver::resolve_unresolved_source(
-							&self.catalog,
-							tx,
-							&unresolved,
-						)
-						.await?;
-
-						vec![PrimitiveScan(PrimitiveScanNode {
-							source: resolved_source,
-							columns: None,
-							index: None,
-						})]
-					}
-					_ => unimplemented!(),
-				};
+				let with = self.compile_natural_join_subquery(&with, &alias, tx).await?;
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
-					alias,
+					alias: Some(alias),
 				}))
 			}
+		}
+	}
+
+	async fn compile_join_subquery<T: IntoStandardTransaction>(
+		&self,
+		with: &crate::ast::AstSubQuery,
+		alias: &Fragment,
+		tx: &mut T,
+	) -> crate::Result<Vec<LogicalPlan>> {
+		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
+		match with_ast {
+			Ast::From(AstFrom::Source {
+				source,
+				..
+			}) => {
+				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
+					source.namespace.clone(),
+					source.name.clone(),
+				);
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			Ast::Identifier(identifier) => {
+				let mut unresolved =
+					UnresolvedPrimitiveIdentifier::new(None, identifier.token.fragment.clone());
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			Ast::Infix(AstInfix {
+				left,
+				operator,
+				right,
+				..
+			}) => {
+				assert!(matches!(operator, InfixOperator::AccessTable(_)));
+				let Ast::Identifier(namespace) = &**left else {
+					unreachable!()
+				};
+				let Ast::Identifier(table) = &**right else {
+					unreachable!()
+				};
+
+				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
+					Some(namespace.token.fragment.clone()),
+					table.token.fragment.clone(),
+				);
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			_ => unimplemented!(),
+		}
+	}
+
+	async fn compile_natural_join_subquery<T: IntoStandardTransaction>(
+		&self,
+		with: &crate::ast::AstSubQuery,
+		alias: &Fragment,
+		tx: &mut T,
+	) -> crate::Result<Vec<LogicalPlan>> {
+		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
+		match with_ast {
+			Ast::From(AstFrom::Source {
+				source,
+				..
+			}) => {
+				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
+					source.namespace.clone(),
+					source.name.clone(),
+				);
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			Ast::Identifier(identifier) => {
+				let mut unresolved =
+					UnresolvedPrimitiveIdentifier::new(None, identifier.token.fragment.clone());
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			Ast::Infix(AstInfix {
+				left,
+				operator,
+				right,
+				..
+			}) => {
+				assert!(matches!(operator, InfixOperator::AccessTable(_)));
+				let Ast::Identifier(namespace) = &**left else {
+					unreachable!()
+				};
+				let Ast::Identifier(table) = &**right else {
+					unreachable!()
+				};
+
+				let mut unresolved = UnresolvedPrimitiveIdentifier::new(
+					Some(namespace.token.fragment.clone()),
+					table.token.fragment.clone(),
+				);
+				unresolved = unresolved.with_alias(alias.clone());
+
+				let resolved_source =
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+				Ok(vec![PrimitiveScan(PrimitiveScanNode {
+					source: resolved_source,
+					columns: None,
+					index: None,
+				})])
+			}
+			_ => unimplemented!(),
 		}
 	}
 }

@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-physical 'from users left join { from orders } orders on id == orders.user_id filter orders_id > 10'
+physical 'from users left join { from orders } as orders using (id, orders.user_id) filter orders_id > 10'
 ---
 > └── Filter [(orders_id > Constant(10))]
 >     └── Join(Left) on: [(id == orders.user_id)]

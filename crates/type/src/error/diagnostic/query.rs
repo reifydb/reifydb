@@ -57,3 +57,21 @@ pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagn
 		operator_chain: None,
 	}
 }
+
+pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_003".to_string(),
+		statement: None,
+		message: format!("Join column alias error: {}", message),
+		fragment,
+		label: Some("invalid column qualification in using clause".to_string()),
+		help: Some("In each pair, exactly one expression should reference the join alias".to_string()),
+		column: None,
+		notes: vec![
+			"Example: using (id, orders.user_id) where 'orders' is the join alias".to_string(),
+			"Unqualified columns refer to the current dataframe".to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}

@@ -121,7 +121,7 @@ async fn main() {
 		r#"from company.employees
 inner join {
   from company.departments
-} departments on dept_id == departments.dept_id"#,
+} as departments using (dept_id, departments.dept_id)"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -129,7 +129,7 @@ inner join {
 			from company.employees
 			inner join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			"#,
 			Params::None,
 		)
@@ -146,7 +146,7 @@ inner join {
 		r#"from company.employees
 left join {
   from company.departments
-} departments on dept_id == departments.dept_id"#,
+} as departments using (dept_id, departments.dept_id)"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -154,7 +154,7 @@ left join {
 			from company.employees
 			left join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			"#,
 			Params::None,
 		)
@@ -168,13 +168,13 @@ left join {
 	info!("\nExample 3: Natural join (automatic on dept_id)");
 	log_query(
 		r#"from company.employees
-natural join { from company.departments }"#,
+natural join { from company.departments } as departments"#,
 	);
 	for frame in db
 		.query_as_root(
 			r#"
 			from company.employees
-			natural join { from company.departments }
+			natural join { from company.departments } as departments
 			"#,
 			Params::None,
 		)
@@ -190,7 +190,7 @@ natural join { from company.departments }"#,
 		r#"from company.employees
 inner join {
   from company.departments
-} departments on dept_id == departments.dept_id
+} as departments using (dept_id, departments.dept_id)
 filter location == "Building A""#,
 	);
 	for frame in db
@@ -199,7 +199,7 @@ filter location == "Building A""#,
 			from company.employees
 			inner join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			filter location == "Building A"
 			"#,
 			Params::None,
@@ -216,7 +216,7 @@ filter location == "Building A""#,
 		r#"from company.employees
 inner join {
   from company.departments
-} departments on dept_id == departments.dept_id
+} as departments using (dept_id, departments.dept_id)
 map { name, dept_name, salary }"#,
 	);
 	for frame in db
@@ -225,7 +225,7 @@ map { name, dept_name, salary }"#,
 			from company.employees
 			inner join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			map { name, departments_dept_name, salary }
 			"#,
 			Params::None,
@@ -242,10 +242,10 @@ map { name, dept_name, salary }"#,
 		r#"from company.employees
 inner join {
   from company.departments
-} departments on dept_id == departments.dept_id
+} as departments using (dept_id, departments.dept_id)
 inner join {
   from company.projects
-} projects on departments_dept_id == projects.dept_id"#,
+} as projects using (departments_dept_id, projects.dept_id)"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -253,10 +253,10 @@ inner join {
 			from company.employees
 			inner join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			inner join {
 				from company.projects
-			} projects on departments_dept_id == projects.dept_id
+			} as projects using (departments_dept_id, projects.dept_id)
 			"#,
 			Params::None,
 		)
@@ -272,7 +272,7 @@ inner join {
 		r#"from company.employees
 inner join {
   from company.departments
-} departments on dept_id == departments.dept_id
+} as departments using (dept_id, departments.dept_id)
 aggregate { avg(salary), count(emp_id) }
   by dept_name"#,
 	);
@@ -282,7 +282,7 @@ aggregate { avg(salary), count(emp_id) }
 			from company.employees
 			inner join {
 				from company.departments
-			} departments on dept_id == departments.dept_id
+			} as departments using (dept_id, departments.dept_id)
 			aggregate { math::avg(salary), math::count(emp_id) }
 				by departments_dept_name
 			"#,

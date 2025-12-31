@@ -77,15 +77,27 @@ fn ast_has_scripting(ast: &Ast) -> bool {
 		},
 		Ast::Join(join) => match join {
 			AstJoin::InnerJoin {
-				on,
+				using_clause,
 				with,
 				..
-			} => on.iter().any(ast_has_scripting) || has_scripting(&with.statement),
+			} => {
+				using_clause
+					.pairs
+					.iter()
+					.any(|p| ast_has_scripting(&p.first) || ast_has_scripting(&p.second))
+					|| has_scripting(&with.statement)
+			}
 			AstJoin::LeftJoin {
-				on,
+				using_clause,
 				with,
 				..
-			} => on.iter().any(ast_has_scripting) || has_scripting(&with.statement),
+			} => {
+				using_clause
+					.pairs
+					.iter()
+					.any(|p| ast_has_scripting(&p.first) || ast_has_scripting(&p.second))
+					|| has_scripting(&with.statement)
+			}
 			AstJoin::NaturalJoin {
 				with,
 				..
