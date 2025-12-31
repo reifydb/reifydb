@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test backtick-quoted identifiers
+tokenize '`select`'
+---
+> Line 1:
+>   [  0] QuotedIdentifier("select")
+>   [  1] EOF
+>
+>
+
+tokenize '`table-with-dashes`'
+---
+> Line 1:
+>   [  0] QuotedIdentifier("table-with-dashes")
+>   [  1] EOF
+>
+>
+
+tokenize '`column with spaces`'
+---
+> Line 1:
+>   [  0] QuotedIdentifier("column with spaces")
+>   [  1] EOF
+>
+>
+
+tokenize '`123numeric`'
+---
+> Line 1:
+>   [  0] QuotedIdentifier("123numeric")
+>   [  1] EOF
+>
+>
+
+tokenize 'FROM `my table`'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] QuotedIdentifier("my table")
+>   [  2] EOF
+>
+>

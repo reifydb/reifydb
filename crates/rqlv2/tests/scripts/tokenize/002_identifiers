@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test identifiers
+tokenize 'users'
+---
+> Line 1:
+>   [  0] Identifier("users")
+>   [  1] EOF
+>
+>
+
+tokenize 'user_name'
+---
+> Line 1:
+>   [  0] Identifier("user_name")
+>   [  1] EOF
+>
+>
+
+tokenize '_private'
+---
+> Line 1:
+>   [  0] Identifier("_private")
+>   [  1] EOF
+>
+>
+
+tokenize 'CamelCase'
+---
+> Line 1:
+>   [  0] Identifier("CamelCase")
+>   [  1] EOF
+>
+>
+
+tokenize 'table123'
+---
+> Line 1:
+>   [  0] Identifier("table123")
+>   [  1] EOF
+>
+>
+
+tokenize 'namespace.table'
+---
+> Line 1:
+>   [  0] Keyword(Namespace)
+>   [  1] Operator(Dot)
+>   [  2] Keyword(Table)
+>   [  3] EOF
+>
+>
+
+tokenize 'a.b.c'
+---
+> Line 1:
+>   [  0] Identifier("a")
+>   [  1] Operator(Dot)
+>   [  2] Identifier("b")
+>   [  3] Operator(Dot)
+>   [  4] Identifier("c")
+>   [  5] EOF
+>
+>

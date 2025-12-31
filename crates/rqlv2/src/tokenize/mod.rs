@@ -8,6 +8,7 @@
 
 mod cursor;
 mod error;
+mod explain;
 mod keyword;
 mod lexer;
 mod literal;
@@ -18,6 +19,7 @@ mod token;
 
 use bumpalo::Bump;
 pub use error::LexError;
+pub use explain::explain_tokenize;
 pub use keyword::Keyword;
 pub use lexer::{Lexer, TokenizeResult};
 pub use literal::LiteralKind;

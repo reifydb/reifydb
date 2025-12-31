@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test JOIN operations
+tokenize 'FROM users JOIN orders ON users.id = orders.user_id'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("users")
+>   [  2] Keyword(Join)
+>   [  3] Identifier("orders")
+>   [  4] Keyword(On)
+>   [  5] Identifier("users")
+>   [  6] Operator(Dot)
+>   [  7] Identifier("id")
+>   [  8] Operator(Equal)
+>   [  9] Identifier("orders")
+>   [ 10] Operator(Dot)
+>   [ 11] Identifier("user_id")
+>   [ 12] EOF
+>
+>
+
+tokenize 'LEFT JOIN'
+---
+> Line 1:
+>   [  0] Keyword(Left)
+>   [  1] Keyword(Join)
+>   [  2] EOF
+>
+>
+
+tokenize 'INNER JOIN'
+---
+> Line 1:
+>   [  0] Keyword(Inner)
+>   [  1] Keyword(Join)
+>   [  2] EOF
+>
+>
+
+tokenize 'NATURAL JOIN'
+---
+> Line 1:
+>   [  0] Keyword(Natural)
+>   [  1] Keyword(Join)
+>   [  2] EOF
+>
+>
+
+tokenize 'FROM a JOIN b USING (id)'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("a")
+>   [  2] Keyword(Join)
+>   [  3] Identifier("b")
+>   [  4] Keyword(Using)
+>   [  5] Punctuation(OpenParen)
+>   [  6] Identifier("id")
+>   [  7] Punctuation(CloseParen)
+>   [  8] EOF
+>
+>
+
+tokenize 'MERGE orders'
+---
+> Line 1:
+>   [  0] Keyword(Merge)
+>   [  1] Identifier("orders")
+>   [  2] EOF
+>
+>

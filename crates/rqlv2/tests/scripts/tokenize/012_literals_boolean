@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test boolean and undefined literals
+tokenize 'true'
+---
+> Line 1:
+>   [  0] Literal(True)
+>   [  1] EOF
+>
+>
+
+tokenize 'false'
+---
+> Line 1:
+>   [  0] Literal(False)
+>   [  1] EOF
+>
+>
+
+tokenize 'TRUE'
+---
+> Line 1:
+>   [  0] Literal(True)
+>   [  1] EOF
+>
+>
+
+tokenize 'FALSE'
+---
+> Line 1:
+>   [  0] Literal(False)
+>   [  1] EOF
+>
+>
+
+tokenize 'undefined'
+---
+> Line 1:
+>   [  0] Literal(Undefined)
+>   [  1] EOF
+>
+>
+
+tokenize 'UNDEFINED'
+---
+> Line 1:
+>   [  0] Literal(Undefined)
+>   [  1] EOF
+>
+>
+
+tokenize 'active = true'
+---
+> Line 1:
+>   [  0] Identifier("active")
+>   [  1] Operator(Equal)
+>   [  2] Literal(True)
+>   [  3] EOF
+>
+>

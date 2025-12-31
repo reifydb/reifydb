@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test SCAN | FILTER | MAP pipeline patterns
+tokenize 'SCAN users'
+---
+> Line 1:
+>   [  0] Keyword(Scan)
+>   [  1] Identifier("users")
+>   [  2] EOF
+>
+>
+
+tokenize 'SCAN users | FILTER age > 21'
+---
+> Line 1:
+>   [  0] Keyword(Scan)
+>   [  1] Identifier("users")
+>   [  2] Operator(Pipe)
+>   [  3] Keyword(Filter)
+>   [  4] Identifier("age")
+>   [  5] Operator(RightAngle)
+>   [  6] Literal(Integer(21))
+>   [  7] EOF
+>
+>
+
+tokenize 'SCAN users | FILTER active = true | MAP { name }'
+---
+> Line 1:
+>   [  0] Keyword(Scan)
+>   [  1] Identifier("users")
+>   [  2] Operator(Pipe)
+>   [  3] Keyword(Filter)
+>   [  4] Identifier("active")
+>   [  5] Operator(Equal)
+>   [  6] Literal(True)
+>   [  7] Operator(Pipe)
+>   [  8] Keyword(Map)
+>   [  9] Punctuation(OpenCurly)
+>   [ 10] Identifier("name")
+>   [ 11] Punctuation(CloseCurly)
+>   [ 12] EOF
+>
+>
+
+tokenize 'SCAN orders | FILTER total > 100 | TAKE 5'
+---
+> Line 1:
+>   [  0] Keyword(Scan)
+>   [  1] Identifier("orders")
+>   [  2] Operator(Pipe)
+>   [  3] Keyword(Filter)
+>   [  4] Identifier("total")
+>   [  5] Operator(RightAngle)
+>   [  6] Literal(Integer(100))
+>   [  7] Operator(Pipe)
+>   [  8] Keyword(Take)
+>   [  9] Literal(Integer(5))
+>   [ 10] EOF
+>
+>
