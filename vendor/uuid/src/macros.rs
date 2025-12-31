@@ -90,7 +90,7 @@ define_uuid_macro! {
 // Internal macros
 
 // These `transmute` macros are a stepping stone towards `zerocopy` integration.
-// When the `zerocopy` feature is enabled, which it is in CI, the transmutes are 
+// When the `zerocopy` feature is enabled, which it is in CI, the transmutes are
 // checked by it
 
 // SAFETY: Callers must ensure this call would be safe when handled by zerocopy

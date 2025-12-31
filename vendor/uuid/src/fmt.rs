@@ -11,7 +11,7 @@
 
 //! Adapters for alternative string formats.
 
-use core::{convert::TryInto as _, str::FromStr};
+use core::str::FromStr;
 
 use crate::{
     std::{borrow::Borrow, fmt, str},
@@ -67,17 +67,7 @@ impl fmt::UpperHex for Uuid {
 
 /// Format a [`Uuid`] as a hyphenated string, like
 /// `67e55044-10b1-426f-9247-bb680e5fe0c8`.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(
     all(uuid_unstable, feature = "zerocopy"),
     derive(
@@ -93,17 +83,7 @@ pub struct Hyphenated(Uuid);
 
 /// Format a [`Uuid`] as a simple string, like
 /// `67e5504410b1426f9247bb680e5fe0c8`.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(
     all(uuid_unstable, feature = "zerocopy"),
     derive(
@@ -119,17 +99,7 @@ pub struct Simple(Uuid);
 
 /// Format a [`Uuid`] as a URN string, like
 /// `urn:uuid:67e55044-10b1-426f-9247-bb680e5fe0c8`.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(
     all(uuid_unstable, feature = "zerocopy"),
     derive(
@@ -145,17 +115,7 @@ pub struct Urn(Uuid);
 
 /// Format a [`Uuid`] as a braced hyphenated string, like
 /// `{67e55044-10b1-426f-9247-bb680e5fe0c8}`.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    Eq,
-    Hash,
-    Ord,
-    PartialEq,
-    PartialOrd,
-)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(
     all(uuid_unstable, feature = "zerocopy"),
     derive(
@@ -292,10 +252,7 @@ fn encode_braced<'b>(src: &[u8; 16], buffer: &'b mut [u8], upper: bool) -> &'b m
     let buf = &mut buffer[..Hyphenated::LENGTH + 2];
     let buf: &mut [u8; Hyphenated::LENGTH + 2] = buf.try_into().unwrap();
 
-    #[cfg_attr(
-        all(uuid_unstable, feature = "zerocopy"),
-        derive(zerocopy::IntoBytes)
-    )]
+    #[cfg_attr(all(uuid_unstable, feature = "zerocopy"), derive(zerocopy::IntoBytes))]
     #[repr(C)]
     struct Braced {
         open_curly: u8,

@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2018"
+edition = "2021"
 rust-version = "1.63.0"
 name = "uuid"
-version = "1.18.1"
+version = "1.19.0"
 authors = [
     "Ashley Mannix<ashleymannix@live.com.au>",
     "Dylan DPC<dylan.dpc@gmail.com>",
@@ -124,6 +124,7 @@ rng-rand = [
     "uuid-rng-internal-lib",
     "uuid-rng-internal-lib/rand",
 ]
+serde = ["dep:serde_core"]
 sha1 = ["dep:sha1_smol"]
 std = [
     "wasm-bindgen?/std",
@@ -161,7 +162,7 @@ optional = true
 default-features = false
 
 [dependencies.bytemuck]
-version = "1.18.1"
+version = "1.19.0"
 features = ["derive"]
 optional = true
 
@@ -170,8 +171,8 @@ version = "0.10"
 optional = true
 default-features = false
 
-[dependencies.serde]
-version = "1.0.56"
+[dependencies.serde_core]
+version = "1.0.221"
 optional = true
 default-features = false
 
@@ -185,7 +186,7 @@ version = "2"
 optional = true
 
 [dependencies.uuid-macro-internal]
-version = "1.18.1"
+version = "1.19.0"
 optional = true
 
 [dependencies.zerocopy]
@@ -199,8 +200,11 @@ version = "1.0"
 [dev-dependencies.rustversion]
 version = "1"
 
+[dev-dependencies.serde]
+version = "1.0.221"
+
 [dev-dependencies.serde_derive]
-version = "1.0.79"
+version = "1.0.221"
 
 [dev-dependencies.serde_json]
 version = "1.0"
@@ -212,7 +216,7 @@ version = "1.0.56"
 version = "1.0.52"
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies.uuid-rng-internal-lib]
-version = "1.18.1"
+version = "1.19.0"
 optional = true
 package = "uuid-rng-internal"
 

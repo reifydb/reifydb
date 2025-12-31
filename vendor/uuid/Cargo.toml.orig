@@ -12,7 +12,7 @@ categories = [
 ]
 description = "A library to generate and parse UUIDs."
 documentation = "https://docs.rs/uuid"
-edition = "2018"
+edition = "2021"
 include = [
     "src",
     "README.md",
@@ -29,7 +29,7 @@ homepage = "https://github.com/uuid-rs/uuid"
 name = "uuid"
 readme = "README.md"
 repository = "https://github.com/uuid-rs/uuid"
-version = "1.18.1" # remember to update html_root_url in lib.rs
+version = "1.19.0" # remember to update html_root_url in lib.rs
 rust-version = "1.63.0"
 
 [package.metadata.docs.rs]
@@ -73,6 +73,7 @@ js = ["dep:wasm-bindgen", "dep:js-sys"]
 rng = ["dep:getrandom"]
 rng-getrandom = ["rng", "dep:getrandom", "uuid-rng-internal-lib", "uuid-rng-internal-lib/getrandom"]
 rng-rand = ["rng", "dep:rand", "uuid-rng-internal-lib", "uuid-rng-internal-lib/rand"]
+serde = ["dep:serde_core"]
 
 fast-rng = ["rng", "dep:rand"]
 
@@ -84,15 +85,15 @@ borsh = ["dep:borsh", "dep:borsh-derive"]
 
 # Public: Used in trait impls on `Uuid`
 [dependencies.bytemuck]
-version = "1.18.1"
+version = "1.19.0"
 optional = true
 features = ["derive"]
 
 # Public: Used in trait impls on `Uuid`
-[dependencies.serde]
+[dependencies.serde_core]
 default-features = false
 optional = true
-version = "1.0.56"
+version = "1.0.221"
 
 # Public: Used in trait impls on `Uuid`
 [dependencies.slog]
@@ -138,7 +139,7 @@ optional = true
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies.uuid-rng-internal-lib]
 # Work-around lack of support for both `dep:x` and `x/` in MSRV
 package = "uuid-rng-internal"
-version = "1.18.1"
+version = "1.19.0"
 path = "rng"
 optional = true
 
@@ -161,7 +162,7 @@ version = "1"
 
 # Public: Re-exported
 [dependencies.uuid-macro-internal]
-version = "1.18.1"
+version = "1.19.0"
 path = "macros"
 optional = true
 
@@ -187,8 +188,11 @@ optional = true
 [dev-dependencies.bincode]
 version = "1.0"
 
+[dev-dependencies.serde]
+version = "1.0.221"
+
 [dev-dependencies.serde_derive]
-version = "1.0.79"
+version = "1.0.221"
 
 [dev-dependencies.serde_json]
 version = "1.0"

@@ -1,7 +1,6 @@
 //! A wrapper type for nil UUIDs that provides a more memory-efficient
 //! `Option<NonNilUuid>` representation.
 
-use core::convert::TryFrom;
 use std::{fmt, num::NonZeroU128};
 
 use crate::{
@@ -90,7 +89,6 @@ impl From<NonNilUuid> for Uuid {
     ///
     /// # Examples
     /// ```
-    /// # use std::convert::TryFrom;
     /// # use uuid::{NonNilUuid, Uuid};
     /// let uuid = Uuid::from_u128(0x0123456789abcdef0123456789abcdef);
     /// let non_nil = NonNilUuid::try_from(uuid).unwrap();
@@ -110,7 +108,6 @@ impl TryFrom<Uuid> for NonNilUuid {
     ///
     /// # Examples
     /// ```
-    /// # use std::convert::TryFrom;
     /// # use uuid::{NonNilUuid, Uuid};
     /// let uuid = Uuid::from_u128(0x0123456789abcdef0123456789abcdef);
     /// let non_nil = NonNilUuid::try_from(uuid).unwrap();

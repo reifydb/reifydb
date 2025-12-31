@@ -1,7 +1,3 @@
-#[cfg(windows)]
-extern crate windows_sys;
-
-extern crate libloading;
 use libloading::{Library, Symbol};
 use std::os::raw::c_void;
 
@@ -20,6 +16,13 @@ fn lib_path() -> std::path::PathBuf {
 fn make_helpers() {
     static ONCE: ::std::sync::Once = ::std::sync::Once::new();
     ONCE.call_once(|| {
+        if std::env::var_os("PRECOMPILED_TEST_HELPER").is_some() {
+            //I can't be asked to make rustc work in wine.
+            //I can call it myself from my linux host and then just move the file here this allows me to skip this.
+            eprintln!("WILL NOT COMPILE TEST HELPERS, PROGRAM WILL ASSUME THAT {} EXISTS AND WAS EXTERNALLY PRE COMPILED", lib_path().display());
+            return;
+        }
+
         let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
         let mut cmd = ::std::process::Command::new(rustc);
         cmd.arg("src/test_helpers.rs").arg("-o").arg(lib_path());
@@ -35,7 +38,28 @@ fn make_helpers() {
     });
 }
 
+#[cfg(not(windows))]
+fn is_wine() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn is_wine() -> bool {
+    unsafe {
+        //This detects wine, the linux runtime for windows programs.
+        //Wine exposes the symbol wine_get_version in ntdll.dll; naturally, this symbol is absent on actual windows.
+        let lib = Library::new("ntdll.dll").expect("open library");
+        let wine: Result<Symbol<extern "C" fn() -> i32>, _> = lib.get("wine_get_version");
+        if wine.is_ok() {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[test]
+#[cfg(feature = "std")]
 fn test_id_u32() {
     make_helpers();
     unsafe {
@@ -45,7 +69,126 @@ fn test_id_u32() {
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
+fn test_as_filename_osstring() {
+    as_filename_test::<std::ffi::OsString>(lib_path().into_os_string(), "potato\0beetroot".into());
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_filename_osstr() {
+    let with_nulls = std::ffi::OsStr::new("hazelnut\0peanut");
+    as_filename_test::<&std::ffi::OsStr>(lib_path().as_os_str(), with_nulls);
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_filename_pathbuf() {
+    as_filename_test::<std::path::PathBuf>(lib_path(), "orange\0grape".into());
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_filename_path() {
+    as_filename_test::<&std::path::Path>(&*lib_path(), std::path::Path::new("peach\0mango"));
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_filename_str() {
+    let path = lib_path();
+    if let Some(p) = path.to_str() {
+        as_filename_test::<&str>(p, "kiwi\0peach\0");
+    }
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_filename_string() {
+    let path = lib_path();
+    if let Some(p) = path.to_str() {
+        as_filename_test::<String>(p.to_string(), "apple\0banana".to_string());
+    }
+}
+
+#[cfg(feature = "std")]
+fn as_filename_test<T: libloading::AsFilename>(path: T, with_interior_nulls: T) {
+    make_helpers();
+    unsafe {
+        assert!(matches!(
+            Library::new(with_interior_nulls).unwrap_err(),
+            libloading::Error::InteriorZeroElements,
+        ));
+        let lib = Library::new(path).unwrap();
+        let f: Symbol<unsafe extern "C" fn(u32) -> u32> = lib.get(b"test_identity_u32\0").unwrap();
+        assert_eq!(42, f(42));
+    }
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_symbol_name_string() {
+    as_symbol_name_test::<String>("test_identity_u32".to_string());
+    as_symbol_name_test::<String>("test_identity_u32\0".to_string());
+    as_symbol_name_test_interior_nulls::<String>("test_iden\0tity_u32".to_string());
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_symbol_name_str() {
+    as_symbol_name_test::<&str>("test_identity_u32");
+    as_symbol_name_test::<&str>("test_identity_u32\0");
+    as_symbol_name_test_interior_nulls::<&str>("test_iden\0tity_u32\0");
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_symbol_name_cstr() {
+    as_symbol_name_test::<&std::ffi::CStr>(c"test_identity_u32");
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_symbol_name_cstring() {
+    as_symbol_name_test::<std::ffi::CString>(c"test_identity_u32".to_owned());
+}
+
+#[cfg(feature = "std")]
+#[test]
+fn test_as_symbol_name_bytes() {
+    as_symbol_name_test::<&[u8]>(b"test_identity_u32");
+    as_symbol_name_test::<&[u8]>(b"test_identity_u32\0");
+    as_symbol_name_test::<&[u8; 18]>(b"test_identity_u32\0");
+    as_symbol_name_test_interior_nulls::<&[u8]>(b"test_identity\0_u32");
+    as_symbol_name_test_interior_nulls::<&[u8]>(b"test\0_identity_u32");
+    as_symbol_name_test_interior_nulls::<&[u8; 19]>(b"test_iden\0tity_u32\0");
+}
+
+#[cfg(feature = "std")]
+fn as_symbol_name_test<T: libloading::AsSymbolName>(symbol: T) {
+    make_helpers();
+    unsafe {
+        let lib = Library::new(lib_path()).unwrap();
+        let f: Symbol<unsafe extern "C" fn(u32) -> u32> = lib.get(symbol).unwrap();
+        assert_eq!(42, f(42));
+    }
+}
+
+#[cfg(feature = "std")]
+fn as_symbol_name_test_interior_nulls<T: libloading::AsSymbolName>(symbol: T) {
+    make_helpers();
+    unsafe {
+        let lib = Library::new(lib_path()).unwrap();
+        assert!(matches!(
+            lib.get::<unsafe extern "C" fn(u32) -> u32>(symbol),
+            Err(libloading::Error::InteriorZeroElements),
+        ));
+    }
+}
+
+#[test]
+#[cfg(feature = "std")]
 fn test_try_into_ptr() {
     make_helpers();
     unsafe {
@@ -68,6 +211,7 @@ struct S {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_id_struct() {
     make_helpers();
     unsafe {
@@ -91,12 +235,15 @@ fn test_id_struct() {
 }
 
 #[test]
+#[allow(unpredictable_function_pointer_comparisons)]
+#[cfg(feature = "std")]
 fn test_0_no_0() {
     make_helpers();
     unsafe {
         let lib = Library::new(lib_path()).unwrap();
         let f: Symbol<unsafe extern "C" fn(S) -> S> = lib.get(b"test_identity_struct\0").unwrap();
         let f2: Symbol<unsafe extern "C" fn(S) -> S> = lib.get(b"test_identity_struct").unwrap();
+
         assert_eq!(*f, *f2);
     }
 }
@@ -111,6 +258,7 @@ fn wrong_name_fails() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn missing_symbol_fails() {
     make_helpers();
     unsafe {
@@ -121,18 +269,22 @@ fn missing_symbol_fails() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn interior_null_fails() {
     make_helpers();
     unsafe {
         let lib = Library::new(lib_path()).unwrap();
         lib.get::<*mut ()>(b"test_does\0_not_exist").err().unwrap();
+        lib.get::<*mut ()>("test_does\0_not_exist").err().unwrap();
         lib.get::<*mut ()>(b"test\0_does_not_exist\0")
             .err()
             .unwrap();
+        lib.get::<*mut ()>("test_does\0_not_exist\0").err().unwrap();
     }
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_incompatible_type() {
     make_helpers();
     unsafe {
@@ -145,6 +297,7 @@ fn test_incompatible_type() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_incompatible_type_named_fn() {
     make_helpers();
     unsafe fn get<'a, T>(l: &'a Library, _: T) -> Result<Symbol<'a, T>, libloading::Error> {
@@ -160,6 +313,7 @@ fn test_incompatible_type_named_fn() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_static_u32() {
     make_helpers();
     unsafe {
@@ -173,6 +327,7 @@ fn test_static_u32() {
 }
 
 #[test]
+#[cfg(feature = "std")]
 fn test_static_ptr() {
     make_helpers();
     unsafe {
@@ -193,7 +348,15 @@ fn test_static_ptr() {
 #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
 // Cygwin returns errors on `close`.
 #[cfg(not(target_os = "cygwin"))]
+#[cfg(feature = "std")]
 fn manual_close_many_times() {
+    if is_wine() {
+        // The wine runtime to run windows programs under linux
+        // will run out of thread local storage indices and fail this test.
+        eprintln!("DETECTED WINE RUNTIME, WILL SKIP THIS TEST");
+        return;
+    }
+
     make_helpers();
     let join_handles: Vec<_> = (0..16)
         .map(|_| {
@@ -213,6 +376,7 @@ fn manual_close_many_times() {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "std")]
 #[test]
 fn library_this_get() {
     use libloading::os::unix::Library;
@@ -233,6 +397,7 @@ fn library_this_get() {
 }
 
 #[cfg(windows)]
+#[cfg(feature = "std")]
 #[test]
 fn library_this() {
     use libloading::os::windows::Library;

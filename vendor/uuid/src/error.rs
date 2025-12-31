@@ -166,7 +166,9 @@ impl fmt::Display for Error {
             ErrorKind::Nil => write!(f, "the UUID is nil"),
             ErrorKind::ParseOther => write!(f, "failed to parse a UUID"),
             #[cfg(feature = "std")]
-            ErrorKind::InvalidSystemTime(ref e) => write!(f, "the system timestamp is invalid: {e}"),
+            ErrorKind::InvalidSystemTime(ref e) => {
+                write!(f, "the system timestamp is invalid: {e}")
+            }
         }
     }
 }
@@ -176,5 +178,5 @@ mod std_support {
     use super::*;
     use crate::std::error;
 
-    impl error::Error for Error { }
+    impl error::Error for Error {}
 }

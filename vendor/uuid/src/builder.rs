@@ -570,7 +570,6 @@ impl Builder {
     /// Creating a UUID using the current system timestamp:
     ///
     /// ```
-    /// # use std::convert::TryInto;
     /// use std::time::{Duration, SystemTime};
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # use uuid::{Builder, Uuid, Variant, Version, Timestamp, NoContext};

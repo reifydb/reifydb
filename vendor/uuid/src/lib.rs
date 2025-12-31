@@ -38,7 +38,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.18.1"
+//! version = "1.19.0"
 //! # Lets you generate random UUIDs
 //! features = [
 //!     "v4",
@@ -139,7 +139,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.18.1"
+//! version = "1.19.0"
 //! features = [
 //!     "v4",
 //!     "v7",
@@ -154,7 +154,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.18.1"
+//! version = "1.19.0"
 //! default-features = false
 //! ```
 //!
@@ -212,7 +212,7 @@
 #![doc(
     html_logo_url = "https://www.rust-lang.org/logos/rust-logo-128x128-blk-v2.png",
     html_favicon_url = "https://www.rust-lang.org/favicon.ico",
-    html_root_url = "https://docs.rs/uuid/1.18.1"
+    html_root_url = "https://docs.rs/uuid/1.19.0"
 )]
 
 #[cfg(any(feature = "std", test))]
@@ -278,8 +278,6 @@ pub extern crate uuid_macro_internal;
 pub mod __macro_support {
     pub use crate::std::result::Result::{Err, Ok};
 }
-
-use crate::std::convert;
 
 pub use crate::{builder::Builder, error::Error, non_nil::NonNilUuid};
 
@@ -642,7 +640,7 @@ impl Uuid {
 
         let d3 = (bytes[6] as u16) << 8 | (bytes[7] as u16);
 
-        let d4: &[u8; 8] = convert::TryInto::try_into(&bytes[8..16]).unwrap();
+        let d4: &[u8; 8] = bytes[8..16].try_into().unwrap();
         (d1, d2, d3, d4)
     }
 
@@ -683,7 +681,7 @@ impl Uuid {
 
         let d3 = (self.as_bytes()[6] as u16) | (self.as_bytes()[7] as u16) << 8;
 
-        let d4: &[u8; 8] = convert::TryInto::try_into(&self.as_bytes()[8..16]).unwrap();
+        let d4: &[u8; 8] = self.as_bytes()[8..16].try_into().unwrap();
         (d1, d2, d3, d4)
     }
 
@@ -973,7 +971,7 @@ impl From<Uuid> for std::vec::Vec<u8> {
 }
 
 #[cfg(feature = "std")]
-impl std::convert::TryFrom<std::vec::Vec<u8>> for Uuid {
+impl TryFrom<std::vec::Vec<u8>> for Uuid {
     type Error = Error;
 
     fn try_from(value: std::vec::Vec<u8>) -> Result<Self, Self::Error> {
@@ -1067,7 +1065,7 @@ mod tests {
         assert_eq!(s, uuid.hyphenated().to_string());
 
         check!(buffer, "{}", uuid, 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
     }
 
@@ -1083,7 +1081,7 @@ mod tests {
         let uuid = new();
 
         check!(buffer, "{:x}", uuid, 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
     }
 
@@ -1095,7 +1093,7 @@ mod tests {
     )]
     fn test_uuid_operator_eq() {
         let uuid1 = new();
-        let uuid1_dup = uuid1.clone();
+        let uuid1_dup = uuid1;
         let uuid2 = new2();
 
         assert!(uuid1 == uuid1);
@@ -1123,7 +1121,7 @@ mod tests {
         assert_eq!(s.len(), 36);
 
         check!(buffer, "{}", s, 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
     }
 
@@ -1282,7 +1280,7 @@ mod tests {
         let s = uuid1.simple().to_string();
 
         assert_eq!(s.len(), 32);
-        assert!(s.chars().all(|c| c.is_digit(16)));
+        assert!(s.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -1295,7 +1293,7 @@ mod tests {
         let s = uuid1.hyphenated().to_string();
 
         assert_eq!(36, s.len());
-        assert!(s.chars().all(|c| c.is_digit(16) || c == '-'));
+        assert!(s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
     }
 
     #[test]
@@ -1319,39 +1317,39 @@ mod tests {
         }
 
         check!(buf, "{:x}", u, 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:X}", u, 36, |c| c.is_uppercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:#x}", u, 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:#X}", u, 36, |c| c.is_uppercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
 
         check!(buf, "{:X}", u.hyphenated(), 36, |c| c.is_uppercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:X}", u.simple(), 32, |c| c.is_uppercase()
-            || c.is_digit(10));
+            || c.is_ascii_digit());
         check!(buf, "{:#X}", u.hyphenated(), 36, |c| c.is_uppercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:#X}", u.simple(), 32, |c| c.is_uppercase()
-            || c.is_digit(10));
+            || c.is_ascii_digit());
 
         check!(buf, "{:x}", u.hyphenated(), 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:x}", u.simple(), 32, |c| c.is_lowercase()
-            || c.is_digit(10));
+            || c.is_ascii_digit());
         check!(buf, "{:#x}", u.hyphenated(), 36, |c| c.is_lowercase()
-            || c.is_digit(10)
+            || c.is_ascii_digit()
             || c == '-');
         check!(buf, "{:#x}", u.simple(), 32, |c| c.is_lowercase()
-            || c.is_digit(10));
+            || c.is_ascii_digit());
     }
 
     #[test]
@@ -1366,7 +1364,7 @@ mod tests {
 
         assert!(ss.starts_with("urn:uuid:"));
         assert_eq!(s.len(), 36);
-        assert!(s.chars().all(|c| c.is_digit(16) || c == '-'));
+        assert!(s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
     }
 
     #[test]
@@ -1675,12 +1673,10 @@ mod tests {
         wasm_bindgen_test
     )]
     fn test_convert_vec() {
-        use crate::std::{convert::TryInto, vec::Vec};
-
         let u = new();
         let ub: &[u8] = u.as_ref();
 
-        let v: Vec<u8> = u.into();
+        let v: std::vec::Vec<u8> = u.into();
 
         assert_eq!(&v, ub);
 
@@ -1736,7 +1732,7 @@ mod tests {
         let mut set = std::collections::HashSet::new();
         let id1 = new();
         let id2 = new2();
-        set.insert(id1.clone());
+        set.insert(id1);
 
         assert!(set.contains(&id1));
         assert!(!set.contains(&id2));

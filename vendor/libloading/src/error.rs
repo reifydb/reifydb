@@ -1,26 +1,50 @@
-use std::ffi::{CStr, CString};
+use alloc::ffi::CString;
+use core::ffi::CStr;
 
 /// A `dlerror` error.
-pub struct DlDescription(pub(crate) CString);
+pub struct DlError(pub(crate) CString);
 
-impl std::fmt::Debug for DlDescription {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.0, f)
+impl core::error::Error for DlError {}
+
+impl core::fmt::Debug for DlError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&self.0, f)
     }
 }
 
-impl From<&CStr> for DlDescription {
+impl core::fmt::Display for DlError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&self.0.to_string_lossy())
+    }
+}
+
+impl From<&CStr> for DlError {
     fn from(value: &CStr) -> Self {
         Self(value.into())
     }
 }
 
 /// A Windows API error.
-pub struct WindowsError(pub(crate) std::io::Error);
+#[derive(Copy, Clone)]
+pub struct WindowsError(pub(crate) i32);
 
-impl std::fmt::Debug for WindowsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.0, f)
+impl core::error::Error for WindowsError { }
+
+impl core::fmt::Debug for WindowsError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        core::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl core::fmt::Display for WindowsError {
+    #[cfg(feature = "std")]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let error = std::io::Error::from_raw_os_error(self.0);
+        core::fmt::Display::fmt(&error, f)
+    }
+    #[cfg(not(feature = "std"))]
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("OS error {}", self.0))
     }
 }
 
@@ -31,21 +55,21 @@ pub enum Error {
     /// The `dlopen` call failed.
     DlOpen {
         /// The source error.
-        desc: DlDescription,
+        source: DlError,
     },
     /// The `dlopen` call failed and system did not report an error.
     DlOpenUnknown,
     /// The `dlsym` call failed.
     DlSym {
         /// The source error.
-        desc: DlDescription,
+        source: DlError,
     },
     /// The `dlsym` call failed and system did not report an error.
     DlSymUnknown,
     /// The `dlclose` call failed.
     DlClose {
         /// The source error.
-        desc: DlDescription,
+        source: DlError,
     },
     /// The `dlclose` call failed and system did not report an error.
     DlCloseUnknown,
@@ -79,42 +103,41 @@ pub enum Error {
     FreeLibraryUnknown,
     /// The requested type cannot possibly work.
     IncompatibleSize,
-    /// Could not create a new CString.
-    CreateCString {
-        /// The source error.
-        source: std::ffi::NulError,
-    },
-    /// Could not create a new CString from bytes with trailing null.
-    CreateCStringWithTrailing {
-        /// The source error.
-        source: std::ffi::FromBytesWithNulError,
-    },
+    /// Input symbol of filename contains interior 0/null elements.
+    InteriorZeroElements,
 }
 
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         use Error::*;
-        match *self {
-            CreateCString { ref source } => Some(source),
-            CreateCStringWithTrailing { ref source } => Some(source),
-            LoadLibraryExW { ref source } => Some(&source.0),
-            GetModuleHandleExW { ref source } => Some(&source.0),
-            GetProcAddress { ref source } => Some(&source.0),
-            FreeLibrary { ref source } => Some(&source.0),
-            _ => None,
+        match self {
+            LoadLibraryExW { source }
+            | GetModuleHandleExW { source }
+            | GetProcAddress { source }
+            | FreeLibrary { source } => Some(source),
+            DlOpen { source } | DlSym { source } | DlClose { source } => Some(source),
+            DlOpenUnknown
+            | DlSymUnknown
+            | DlCloseUnknown
+            | LoadLibraryExWUnknown
+            | GetModuleHandleExWUnknown
+            | GetProcAddressUnknown
+            | FreeLibraryUnknown
+            | IncompatibleSize
+            | InteriorZeroElements => None,
         }
     }
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         use Error::*;
         match *self {
-            DlOpen { ref desc } => write!(f, "{}", desc.0.to_string_lossy()),
+            DlOpen { .. } => write!(f, "dlopen failed"),
             DlOpenUnknown => write!(f, "dlopen failed, but system did not report the error"),
-            DlSym { ref desc } => write!(f, "{}", desc.0.to_string_lossy()),
+            DlSym { .. } => write!(f, "dlsym failed"),
             DlSymUnknown => write!(f, "dlsym failed, but system did not report the error"),
-            DlClose { ref desc } => write!(f, "{}", desc.0.to_string_lossy()),
+            DlClose { .. } => write!(f, "dlclose failed"),
             DlCloseUnknown => write!(f, "dlclose failed, but system did not report the error"),
             LoadLibraryExW { .. } => write!(f, "LoadLibraryExW failed"),
             LoadLibraryExWUnknown => write!(
@@ -135,11 +158,7 @@ impl std::fmt::Display for Error {
             FreeLibraryUnknown => {
                 write!(f, "FreeLibrary failed, but system did not report the error")
             }
-            CreateCString { .. } => write!(f, "could not create a C string from bytes"),
-            CreateCStringWithTrailing { .. } => write!(
-                f,
-                "could not create a C string from bytes with trailing null"
-            ),
+            InteriorZeroElements => write!(f, "interior zero element in parameter"),
             IncompatibleSize => write!(f, "requested type cannot possibly work"),
         }
     }
