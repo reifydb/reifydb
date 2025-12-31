@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use reifydb_type::diagnostic::ast;
 
@@ -102,7 +102,7 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 		match token {
 			Some(tok) => tokens.push(tok),
 			None => {
-				// Unable to tokenize - report error with
+				// Unable to token - report error with
 				// current character
 				let ch = cursor.peek().unwrap_or('?');
 				return Err(Error(ast::tokenize_error(format!(

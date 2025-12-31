@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test basic RQL keywords
+tokenize 'FROM users'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("users")
+>   [  2] EOF
+>
+>
+
+tokenize 'MAP { * }'
+---
+> Line 1:
+>   [  0] Keyword(Map)
+>   [  1] Punctuation(OpenCurly)
+>   [  2] Operator(Asterisk)
+>   [  3] Punctuation(CloseCurly)
+>   [  4] EOF
+>
+>
+
+tokenize 'FILTER age > 18'
+---
+> Line 1:
+>   [  0] Keyword(Filter)
+>   [  1] Identifier("age")
+>   [  2] Operator(RightAngle)
+>   [  3] Literal(Integer(18))
+>   [  4] EOF
+>
+>
+
+tokenize 'EXTEND { total: price * qty }'
+---
+> Line 1:
+>   [  0] Keyword(Extend)
+>   [  1] Punctuation(OpenCurly)
+>   [  2] Identifier("total")
+>   [  3] Operator(Colon)
+>   [  4] Identifier("price")
+>   [  5] Operator(Asterisk)
+>   [  6] Identifier("qty")
+>   [  7] Punctuation(CloseCurly)
+>   [  8] EOF
+>
+>
+
+tokenize 'FILTER id == 1'
+---
+> Line 1:
+>   [  0] Keyword(Filter)
+>   [  1] Identifier("id")
+>   [  2] Operator(DoubleEqual)
+>   [  3] Literal(Integer(1))
+>   [  4] EOF
+>
+>
+
+tokenize 'AGGREGATE count(*)'
+---
+> Line 1:
+>   [  0] Keyword(Aggregate)
+>   [  1] Identifier("count")
+>   [  2] Punctuation(OpenParen)
+>   [  3] Operator(Asterisk)
+>   [  4] Punctuation(CloseParen)
+>   [  5] EOF
+>
+>
+
+tokenize 'SORT name'
+---
+> Line 1:
+>   [  0] Keyword(Sort)
+>   [  1] Identifier("name")
+>   [  2] EOF
+>
+>
+
+tokenize 'DISTINCT'
+---
+> Line 1:
+>   [  0] Keyword(Distinct)
+>   [  1] EOF
+>
+>
+
+tokenize 'TAKE 10'
+---
+> Line 1:
+>   [  0] Keyword(Take)
+>   [  1] Literal(Integer(10))
+>   [  2] EOF
+>
+>
+
+tokenize 'OFFSET 5'
+---
+> Line 1:
+>   [  0] Keyword(Offset)
+>   [  1] Literal(Integer(5))
+>   [  2] EOF
+>
+>

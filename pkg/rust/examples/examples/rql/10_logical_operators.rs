@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! # Logical Operators Example
 //!
 //! Demonstrates logical operators in ReifyDB's RQL:

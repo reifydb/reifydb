@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
 
@@ -235,7 +235,7 @@ mod tests {
 
 	#[test]
 	fn test_number_with_trailing() {
-		// Numbers directly followed by letters now tokenize as separate tokens
+		// Numbers directly followed by letters now token as separate tokens
 		// This enables hyphenated identifiers like "twap-10min"
 		let tokens = tokenize("42abc").unwrap();
 		assert_eq!(tokens.len(), 2);

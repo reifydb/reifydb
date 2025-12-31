@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 
 use crate::{Fragment, error::diagnostic::Diagnostic};
 
@@ -52,6 +52,24 @@ pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagn
 			"Source qualifications are not needed as columns are unambiguous in the dataframe".to_string(),
 			"Only join aliases can be used for qualification within ON clauses to disambiguate columns"
 				.to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_003".to_string(),
+		statement: None,
+		message: format!("Join column alias error: {}", message),
+		fragment,
+		label: Some("invalid column qualification in using clause".to_string()),
+		help: Some("In each pair, exactly one expression should reference the join alias".to_string()),
+		column: None,
+		notes: vec![
+			"Example: using (id, orders.user_id) where 'orders' is the join alias".to_string(),
+			"Unqualified columns refer to the current dataframe".to_string(),
 		],
 		cause: None,
 		operator_chain: None,

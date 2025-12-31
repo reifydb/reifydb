@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test integer literals (decimal, hex, binary, octal)
+tokenize '42'
+---
+> Line 1:
+>   [  0] Literal(Integer(42))
+>   [  1] EOF
+>
+>
+
+tokenize '0'
+---
+> Line 1:
+>   [  0] Literal(Integer(0))
+>   [  1] EOF
+>
+>
+
+tokenize '123456789'
+---
+> Line 1:
+>   [  0] Literal(Integer(123456789))
+>   [  1] EOF
+>
+>
+
+tokenize '0xFF'
+---
+> Line 1:
+>   [  0] Literal(Integer(0xFF))
+>   [  1] EOF
+>
+>
+
+tokenize '0xff'
+---
+> Line 1:
+>   [  0] Literal(Integer(0xff))
+>   [  1] EOF
+>
+>
+
+tokenize '0b1010'
+---
+> Line 1:
+>   [  0] Literal(Integer(0b1010))
+>   [  1] EOF
+>
+>
+
+tokenize '0o777'
+---
+> Line 1:
+>   [  0] Literal(Integer(0o777))
+>   [  1] EOF
+>
+>
+
+tokenize '0xDEADBEEF'
+---
+> Line 1:
+>   [  0] Literal(Integer(0xDEADBEEF))
+>   [  1] EOF
+>
+>

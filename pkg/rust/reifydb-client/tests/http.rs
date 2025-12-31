@@ -1,5 +1,6 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 mod common;
 
 use std::{error::Error, path::Path, sync::Arc};

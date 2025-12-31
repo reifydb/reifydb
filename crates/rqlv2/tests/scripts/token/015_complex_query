@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test complex queries with multiple clauses
+tokenize 'FROM users FILTER age > 18 AND status = "active" MAP { name, age } SORT name TAKE 10'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("users")
+>   [  2] Keyword(Filter)
+>   [  3] Identifier("age")
+>   [  4] Operator(RightAngle)
+>   [  5] Literal(Integer(18))
+>   [  6] Operator(And)
+>   [  7] Identifier("status")
+>   [  8] Operator(Equal)
+>   [  9] Literal(String("active"))
+>   [ 10] Keyword(Map)
+>   [ 11] Punctuation(OpenCurly)
+>   [ 12] Identifier("name")
+>   [ 13] Punctuation(Comma)
+>   [ 14] Identifier("age")
+>   [ 15] Punctuation(CloseCurly)
+>   [ 16] Keyword(Sort)
+>   [ 17] Identifier("name")
+>   [ 18] Keyword(Take)
+>   [ 19] Literal(Integer(10))
+>   [ 20] EOF
+>
+>
+
+tokenize 'FROM orders FILTER total > 100 AGGREGATE { sum(total), count(*) } BY customer_id'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("orders")
+>   [  2] Keyword(Filter)
+>   [  3] Identifier("total")
+>   [  4] Operator(RightAngle)
+>   [  5] Literal(Integer(100))
+>   [  6] Keyword(Aggregate)
+>   [  7] Punctuation(OpenCurly)
+>   [  8] Identifier("sum")
+>   [  9] Punctuation(OpenParen)
+>   [ 10] Identifier("total")
+>   [ 11] Punctuation(CloseParen)
+>   [ 12] Punctuation(Comma)
+>   [ 13] Identifier("count")
+>   [ 14] Punctuation(OpenParen)
+>   [ 15] Operator(Asterisk)
+>   [ 16] Punctuation(CloseParen)
+>   [ 17] Punctuation(CloseCurly)
+>   [ 18] Keyword(By)
+>   [ 19] Identifier("customer_id")
+>   [ 20] EOF
+>
+>
+
+tokenize 'FROM products FILTER price BETWEEN 10 AND 100 MAP { name, price } DISTINCT'
+---
+> Line 1:
+>   [  0] Keyword(From)
+>   [  1] Identifier("products")
+>   [  2] Keyword(Filter)
+>   [  3] Identifier("price")
+>   [  4] Keyword(Between)
+>   [  5] Literal(Integer(10))
+>   [  6] Operator(And)
+>   [  7] Literal(Integer(100))
+>   [  8] Keyword(Map)
+>   [  9] Punctuation(OpenCurly)
+>   [ 10] Identifier("name")
+>   [ 11] Punctuation(Comma)
+>   [ 12] Identifier("price")
+>   [ 13] Punctuation(CloseCurly)
+>   [ 14] Keyword(Distinct)
+>   [ 15] EOF
+>
+>

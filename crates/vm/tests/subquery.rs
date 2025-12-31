@@ -1,6 +1,6 @@
-// // Copyright (c) reifydb.com 2025
-// // This file is licensed under the AGPL-3.0-or-later, see license.md file
-//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 // //! Tests for subquery support in the VM DSL.
 // //!
 // //! This module tests the following subquery types:

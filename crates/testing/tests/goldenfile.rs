@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 // Test to demonstrate colored diff output and ensure goldenfile behavior
 use std::{fs, io::Write};
 

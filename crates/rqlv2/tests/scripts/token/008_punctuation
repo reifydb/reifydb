@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test punctuation characters
+tokenize '(a)'
+---
+> Line 1:
+>   [  0] Punctuation(OpenParen)
+>   [  1] Identifier("a")
+>   [  2] Punctuation(CloseParen)
+>   [  3] EOF
+>
+>
+
+tokenize '[a]'
+---
+> Line 1:
+>   [  0] Punctuation(OpenBracket)
+>   [  1] Identifier("a")
+>   [  2] Punctuation(CloseBracket)
+>   [  3] EOF
+>
+>
+
+tokenize '{a}'
+---
+> Line 1:
+>   [  0] Punctuation(OpenCurly)
+>   [  1] Identifier("a")
+>   [  2] Punctuation(CloseCurly)
+>   [  3] EOF
+>
+>
+
+tokenize 'a, b, c'
+---
+> Line 1:
+>   [  0] Identifier("a")
+>   [  1] Punctuation(Comma)
+>   [  2] Identifier("b")
+>   [  3] Punctuation(Comma)
+>   [  4] Identifier("c")
+>   [  5] EOF
+>
+>
+
+tokenize 'a; b'
+---
+> Line 1:
+>   [  0] Identifier("a")
+>   [  1] Punctuation(Semicolon)
+>   [  2] Identifier("b")
+>   [  3] EOF
+>
+>
+
+tokenize '((a + b) * c)'
+---
+> Line 1:
+>   [  0] Punctuation(OpenParen)
+>   [  1] Punctuation(OpenParen)
+>   [  2] Identifier("a")
+>   [  3] Operator(Plus)
+>   [  4] Identifier("b")
+>   [  5] Punctuation(CloseParen)
+>   [  6] Operator(Asterisk)
+>   [  7] Identifier("c")
+>   [  8] Punctuation(CloseParen)
+>   [  9] EOF
+>
+>
+
+tokenize 'MAP { name, age }'
+---
+> Line 1:
+>   [  0] Keyword(Map)
+>   [  1] Punctuation(OpenCurly)
+>   [  2] Identifier("name")
+>   [  3] Punctuation(Comma)
+>   [  4] Identifier("age")
+>   [  5] Punctuation(CloseCurly)
+>   [  6] EOF
+>
+>

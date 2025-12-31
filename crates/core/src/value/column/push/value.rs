@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 use reifydb_type::Value;
 
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
 use crate::value::column::data::ColumnData;
 
 impl ColumnData {

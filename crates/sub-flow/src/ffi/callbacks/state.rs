@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! State management callbacks for FFI operators
 //!
 //! Provides key-value state storage for operators, including get/set/remove/clear operations

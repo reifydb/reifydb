@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 //! Constants and version information for the FFI operator API
 
 /// Current API version

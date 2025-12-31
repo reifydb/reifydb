@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! # Comparison Operators Example
 //!
 //! Demonstrates comparison operators in ReifyDB's RQL:

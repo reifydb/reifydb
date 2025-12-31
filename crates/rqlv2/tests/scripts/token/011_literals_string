@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test string literals (single and double quoted)
+tokenize "'hello'"
+---
+> Line 1:
+>   [  0] Literal(String("hello"))
+>   [  1] EOF
+>
+>
+
+tokenize '"hello"'
+---
+> Line 1:
+>   [  0] Literal(String("hello"))
+>   [  1] EOF
+>
+>
+
+tokenize "'hello world'"
+---
+> Line 1:
+>   [  0] Literal(String("hello world"))
+>   [  1] EOF
+>
+>
+
+tokenize "'escape\\nsequence'"
+---
+> Line 1:
+>   [  0] Literal(String("escape\nsequence"))
+>   [  1] EOF
+>
+>
+
+tokenize "''"
+---
+> Line 1:
+>   [  0] Literal(String(""))
+>   [  1] EOF
+>
+>
+
+tokenize '""'
+---
+> Line 1:
+>   [  0] Literal(String(""))
+>   [  1] EOF
+>
+>
+
+tokenize "'unicode: café'"
+---
+> Line 1:
+>   [  0] Literal(String("unicode: café"))
+>   [  1] EOF
+>
+>

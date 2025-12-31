@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use std::{error::Error, fmt::Write, path::Path};
 
@@ -30,7 +30,7 @@ impl testscript::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
-			// tokenize QUERY
+			// token QUERY
 			"tokenize" => {
 				let mut args = command.consume_args();
 				let query = args.next_pos().ok_or("args not given")?.value.as_str();

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 use core::ptr::null;
 
 use crate::data::BufferFFI;

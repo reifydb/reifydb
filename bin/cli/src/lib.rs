@@ -1,6 +1,6 @@
-// // Copyright (c) reifydb.com 2025
-// // This file is licensed under the AGPL-3.0-or-later, see license.md file
-//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 // use reifydb::Error;
 //
 // mod explain;
@@ -19,14 +19,13 @@
 //     }
 //
 //     let flag = &args[2];
-//     let query = args[3..].join(" ");
+//     let query = &args[3];
 //
 //     match flag.as_str() {
-//         "--tokenize" => explain::tokenize(&query),
-//         "--ast" => explain::ast(&query),
-//         "--logical" => explain::logical_plan(&query),
-//         "--physical" => explain::physical_plan(&query),
-//         // _ => Err(format!("Unknown explain flag: {}", flag)),
-//         _ => unimplemented!(),
+//         "--token" => explain::token(query),
+//         "--ast" => explain::ast(query),
+//         "--logical" => explain::logical_plan(query),
+//         "--physical" => explain::physical_plan(query),
+//         _ => panic!() // Err("Invalid flag. Use --ast, --logical, or --physical".into()),
 //     }
 // }

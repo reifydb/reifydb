@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Store access for FFI operators
 //!
 //! Provides read-only access to the underlying store,

@@ -1,4 +1,8 @@
-// Copyright (c) reifydb.com 2025
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 // This file is licensed under the AGPL-3.0-or-later
 
 //! Server subsystem that combines HTTP and WebSocket servers.

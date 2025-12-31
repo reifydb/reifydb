@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 //! Derive macros for ReifyDB.
 //!

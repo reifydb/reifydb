@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 /// FFI-safe buffer representing a slice of bytes
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

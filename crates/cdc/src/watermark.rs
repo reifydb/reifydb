@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Consumer watermark tracking for CDC retention coordination
 //!
 //! This module provides functionality to compute the minimum checkpoint version

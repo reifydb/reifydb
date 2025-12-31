@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use operator::{not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid};
 use reifydb_core::{

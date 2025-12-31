@@ -1,10 +1,11 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 //! VM execution state.
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb_catalog::Catalog;
 use reifydb_core::value::column::{Column, Columns};
 use reifydb_type::Value;
 
@@ -186,6 +187,9 @@ pub struct VmContext {
 
 	/// Optional subquery executor for expression evaluation.
 	pub subquery_executor: Option<Arc<dyn crate::expr::SubqueryExecutor>>,
+
+	/// Optional catalog for real storage lookups.
+	pub catalog: Option<Catalog>,
 }
 
 impl VmContext {
@@ -195,6 +199,7 @@ impl VmContext {
 			sources,
 			config: VmConfig::default(),
 			subquery_executor: None,
+			catalog: None,
 		}
 	}
 
@@ -204,6 +209,7 @@ impl VmContext {
 			sources,
 			config,
 			subquery_executor: None,
+			catalog: None,
 		}
 	}
 
@@ -216,6 +222,17 @@ impl VmContext {
 			sources,
 			config: VmConfig::default(),
 			subquery_executor: Some(executor),
+			catalog: None,
+		}
+	}
+
+	/// Create a new VM context with a catalog.
+	pub fn with_catalog(sources: Arc<dyn SourceRegistry>, catalog: Catalog) -> Self {
+		Self {
+			sources,
+			config: VmConfig::default(),
+			subquery_executor: None,
+			catalog: Some(catalog),
 		}
 	}
 }

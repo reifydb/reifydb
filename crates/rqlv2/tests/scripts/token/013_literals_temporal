@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test temporal literals (@date, @time, @datetime)
+tokenize '@2024-01-15'
+---
+> Line 1:
+>   [  0] Literal(Temporal(2024-01-15))
+>   [  1] EOF
+>
+>
+
+tokenize '@10:30:00'
+---
+> Line 1:
+>   [  0] Literal(Temporal(10:30:00))
+>   [  1] EOF
+>
+>
+
+tokenize '@2024-01-15T10:30:00'
+---
+> Line 1:
+>   [  0] Literal(Temporal(2024-01-15T10:30:00))
+>   [  1] EOF
+>
+>
+
+tokenize '@2024-01-15T10:30:00+05:30'
+---
+> Line 1:
+>   [  0] Literal(Temporal(2024-01-15T10:30:00+05:30))
+>   [  1] EOF
+>
+>
+
+tokenize '@2024-12-31T23:59:59Z'
+---
+> Line 1:
+>   [  0] Literal(Temporal(2024-12-31T23:59:59Z))
+>   [  1] EOF
+>
+>
+
+tokenize 'created_at > @2024-01-01'
+---
+> Line 1:
+>   [  0] Identifier("created_at")
+>   [  1] Operator(RightAngle)
+>   [  2] Literal(Temporal(2024-01-01))
+>   [  3] EOF
+>
+>

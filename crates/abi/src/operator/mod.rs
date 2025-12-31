@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 //! Operator-specific types for registration, discovery, and vtables
 
 mod capabilities;

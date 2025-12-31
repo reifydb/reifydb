@@ -1,11 +1,10 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 //! Bytecode interpreter.
 
 use std::collections::HashMap;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{interface::NamespaceId, value::column::ColumnData};
 use reifydb_engine::StandardTransaction;
 
@@ -495,31 +494,32 @@ impl VmState {
 					let pipeline = source.scan();
 					self.push_pipeline(pipeline)?;
 					self.ip = next_ip;
-				} else if let Some(rx) = rx {
+				} else if let (Some(catalog), Some(rx)) = (&self.context.catalog, rx) {
 					// Fallback to catalog lookup for real storage
-					let (namespace_id, table_name) = if let Some((ns, tbl)) =
-						source_def.name.split_once('.')
-					{
-						// Qualified name: look up namespace by name
-						let namespace_def = CatalogStore::find_namespace_by_name(rx, ns)
-							.await
-							.map_err(|_| VmError::NamespaceNotFound {
-								name: ns.to_string(),
-							})?
-							.ok_or_else(|| VmError::NamespaceNotFound {
-								name: ns.to_string(),
-							})?;
-						(namespace_def.id, tbl)
-					} else {
-						// Simple name: use default namespace ID = 1
-						(NamespaceId(1), source_def.name.as_str())
-					};
+					let (namespace_id, table_name) =
+						if let Some((ns, tbl)) = source_def.name.split_once('.') {
+							// Qualified name: look up namespace by name
+							let namespace_def = catalog
+								.find_namespace_by_name(rx, ns)
+								.await
+								.map_err(|e| VmError::CatalogError {
+									message: e.to_string(),
+								})?
+								.ok_or_else(|| VmError::NamespaceNotFound {
+									name: ns.to_string(),
+								})?;
+							(namespace_def.id, tbl)
+						} else {
+							// Simple name: use default namespace ID = 1
+							(NamespaceId(1), source_def.name.as_str())
+						};
 
 					// Look up table from catalog via transaction
-					let table_def = CatalogStore::find_table_by_name(rx, namespace_id, table_name)
+					let table_def = catalog
+						.find_table_by_name(rx, namespace_id, table_name)
 						.await
-						.map_err(|_| VmError::TableNotFound {
-							name: source_def.name.clone(),
+						.map_err(|e| VmError::CatalogError {
+							message: e.to_string(),
 						})?
 						.ok_or_else(|| VmError::TableNotFound {
 							name: source_def.name.clone(),

@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use reifydb_type::Type;
 use thiserror::Error;
@@ -134,6 +134,11 @@ pub enum VmError {
 	#[error("namespace not found: {name}")]
 	NamespaceNotFound {
 		name: String,
+	},
+
+	#[error("catalog error: {message}")]
+	CatalogError {
+		message: String,
 	},
 
 	// Function errors

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
 	interface::{FlowEdgeId, FlowId, FlowNodeId, TableId, ViewId},

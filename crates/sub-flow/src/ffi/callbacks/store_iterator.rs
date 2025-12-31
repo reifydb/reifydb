@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Store iterator management for FFI operators
 //!
 //! Manages store iterators across the FFI boundary using a handle-based approach.

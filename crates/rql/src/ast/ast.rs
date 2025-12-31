@@ -1,5 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
 
 use std::ops::Index;
 
@@ -1169,25 +1169,48 @@ pub struct AstUpdate {
 	pub target: Option<UnresolvedPrimitiveIdentifier>,
 }
 
+/// Connector between join condition pairs
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum JoinConnector {
+	#[default]
+	And,
+	Or,
+}
+
+/// A pair of expressions in a join using clause: (expr1, expr2)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstJoinExpressionPair {
+	pub first: Box<Ast>,
+	pub second: Box<Ast>,
+	pub connector: Option<JoinConnector>, // None for last pair
+}
+
+/// The using clause: using (a, b) and|or (c, d)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstUsingClause {
+	pub token: Token,
+	pub pairs: Vec<AstJoinExpressionPair>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstJoin {
 	InnerJoin {
 		token: Token,
 		with: AstSubQuery,
-		on: Vec<Ast>,
-		alias: Option<Fragment>,
+		using_clause: AstUsingClause,
+		alias: Fragment,
 	},
 	LeftJoin {
 		token: Token,
 		with: AstSubQuery,
-		on: Vec<Ast>,
-		alias: Option<Fragment>,
+		using_clause: AstUsingClause,
+		alias: Fragment,
 	},
 	NaturalJoin {
 		token: Token,
 		with: AstSubQuery,
 		join_type: Option<JoinType>,
-		alias: Option<Fragment>,
+		alias: Fragment, // Required alias (no 'as' keyword)
 	},
 }
 

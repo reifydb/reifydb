@@ -1,13 +1,13 @@
-// // Copyright (c) reifydb.com 2025
-// // This file is licensed under the AGPL-3.0-or-later, see license.md file
-//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 // use reifydb::Error;
 // use reifydb::rql::explain::{
 //     explain_ast, explain_tokenize, explain_logical_plan, explain_physical_plan,
 // };
 // use reifydb::transaction::test_utils::create_test_command_transaction;
 //
-// pub fn tokenize(query: &str) -> Result<(), Error> {
+// pub fn token(query: &str) -> Result<(), Error> {
 //     let text = explain_tokenize(query)?;
 //     println!("{}", text);
 //     Ok(())

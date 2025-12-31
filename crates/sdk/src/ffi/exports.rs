@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 // Redesigned FFI exports that work with static metadata
 
 use std::{collections::HashMap, ffi::c_void, ptr, slice};

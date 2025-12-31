@@ -1,6 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 use reifydb_type::{
 	BitVec, Blob, Date, DateTime, Error, Fragment, Frame, FrameColumn, FrameColumnData, IdentityId, RowNumber,
 	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
