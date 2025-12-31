@@ -39,8 +39,8 @@ async fn main() {
 		.query_as_root(
 			r#"
 			map {
-				10 = 10 as equals_true,
-				10 = 5 as equals_false,
+				10 == 10 as equals_true,
+				10 == 5 as equals_false,
 				10 != 5 as not_equals_true,
 				10 < 20 as less_than,
 				10 <= 10 as less_equal,

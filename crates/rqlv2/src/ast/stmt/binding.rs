@@ -6,23 +6,21 @@
 use super::{Expr, Statement};
 use crate::token::Span;
 
-/// Let binding: let $name := expr or let mut $name := expr
+/// Let binding: let $name = expr
 #[derive(Debug, Clone, Copy)]
 pub struct LetStmt<'bump> {
 	/// Variable name (without $)
 	pub name: &'bump str,
 	pub value: LetValue<'bump>,
-	pub mutable: bool,
 	pub span: Span,
 }
 
 impl<'bump> LetStmt<'bump> {
 	/// Create a new let statement.
-	pub fn new(name: &'bump str, value: LetValue<'bump>, mutable: bool, span: Span) -> Self {
+	pub fn new(name: &'bump str, value: LetValue<'bump>, span: Span) -> Self {
 		Self {
 			name,
 			value,
-			mutable,
 			span,
 		}
 	}
@@ -53,7 +51,7 @@ impl<'bump> LetValue<'bump> {
 	}
 }
 
-/// Assignment to existing variable: $name := expr
+/// Assignment to existing variable: $name = expr
 #[derive(Debug, Clone, Copy)]
 pub struct AssignStmt<'bump> {
 	/// Variable name (without $)

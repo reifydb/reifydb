@@ -17,7 +17,6 @@ use crate::{
 pub(crate) struct DeclareNode {
 	name: String,
 	value: LetValue,
-	mutable: bool,
 	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
 }
@@ -35,7 +34,6 @@ impl DeclareNode {
 		Self {
 			name: clean_name,
 			value: physical_node.value,
-			mutable: physical_node.mutable,
 			context: None,
 			executed: false,
 		}
@@ -109,8 +107,8 @@ impl QueryNode for DeclareNode {
 			Variable::frame(columns.clone())
 		};
 
-		// Store the variable in the stack with mutable access
-		ctx.stack.set(self.name.clone(), variable, self.mutable)?;
+		// Store the variable in the stack (all variables are mutable)
+		ctx.stack.set(self.name.clone(), variable, true)?;
 
 		self.executed = true;
 

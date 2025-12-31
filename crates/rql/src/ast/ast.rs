@@ -1148,7 +1148,6 @@ pub struct AstLet {
 	pub token: Token,
 	pub name: UnqualifiedIdentifier,
 	pub value: LetValue,
-	pub mutable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

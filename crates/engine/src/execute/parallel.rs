@@ -160,7 +160,7 @@ mod tests {
 
 	#[test]
 	fn test_let_prevents_parallelization() {
-		let statements = parse_str("LET $x := 1; FROM users").unwrap();
+		let statements = parse_str("LET $x = 1; FROM users").unwrap();
 		assert!(!can_parallelize(&statements));
 	}
 

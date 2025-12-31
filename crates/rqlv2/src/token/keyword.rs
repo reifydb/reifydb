@@ -66,7 +66,6 @@ keyword! {
 
     // Control flow
     Let        => "LET",
-    Mut        => "MUT",
     If         => "IF",
     Then       => "THEN",
     Else       => "ELSE",
@@ -84,7 +83,6 @@ keyword! {
 
     // Functions
     Fn         => "FN",
-    Define     => "DEFINE",
     Function   => "FUNCTION",
     Call       => "CALL",
     Apply      => "APPLY",
@@ -271,7 +269,6 @@ mod tests {
 		test_keyword_set => (Set, "SET"),
 		test_keyword_delete => (Delete, "DELETE"),
 		test_keyword_let => (Let, "LET"),
-		test_keyword_mut => (Mut, "MUT"),
 		test_keyword_if => (If, "IF"),
 		test_keyword_then => (Then, "THEN"),
 		test_keyword_else => (Else, "ELSE"),
@@ -281,7 +278,6 @@ mod tests {
 		test_keyword_for => (For, "FOR"),
 		test_keyword_break => (Break, "BREAK"),
 		test_keyword_continue => (Continue, "CONTINUE"),
-		test_keyword_define => (Define, "DEFINE"),
 		test_keyword_function => (Function, "FUNCTION"),
 		test_keyword_call => (Call, "CALL"),
 		test_keyword_apply => (Apply, "APPLY"),
@@ -400,7 +396,6 @@ mod tests {
 		test_not_keyword_set => "set",
 		test_not_keyword_delete => "delete",
 		test_not_keyword_let => "let",
-		test_not_keyword_mut => "mut",
 		test_not_keyword_if => "if",
 		test_not_keyword_then => "then",
 		test_not_keyword_else => "else",
@@ -410,7 +405,6 @@ mod tests {
 		test_not_keyword_for => "for",
 		test_not_keyword_break => "break",
 		test_not_keyword_continue => "continue",
-		test_not_keyword_define => "define",
 		test_not_keyword_function => "function",
 		test_not_keyword_call => "call",
 		test_not_keyword_apply => "apply",

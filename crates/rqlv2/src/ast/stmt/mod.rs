@@ -24,9 +24,9 @@ pub enum Statement<'bump> {
 	Pipeline(Pipeline<'bump>),
 
 	// === Control Flow ===
-	/// Let binding: let $name := expr
+	/// Let binding: let $name = expr
 	Let(LetStmt<'bump>),
-	/// Assignment to existing variable: $name := expr
+	/// Assignment to existing variable: $name = expr
 	Assign(AssignStmt<'bump>),
 	/// Function definition: def name(params) { body }
 	Def(DefStmt<'bump>),

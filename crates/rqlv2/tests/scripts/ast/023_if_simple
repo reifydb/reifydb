@@ -14,3 +14,75 @@ parse 'if $x > 0 { true }'
 >         `-- [0] Expression
 >             `-- Bool(true)
 >
+
+# Test if with multiple statements in body
+parse 'if $flag { $x = 1; $y = 2 }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Variable($flag)
+>     `-- then:
+>         +-- [0] Expression
+>         |   `-- Binary(Assign)
+>         |       +-- left: Variable($x)
+>         |       `-- right: Integer(1)
+>         `-- [1] Expression
+>             `-- Binary(Assign)
+>                 +-- left: Variable($y)
+>                 `-- right: Integer(2)
+>
+
+# Test if with AND condition
+parse 'if $a > 0 AND $b > 0 { true }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Binary(And)
+>     |       +-- left: Binary(Gt)
+>     |       |   +-- left: Variable($a)
+>     |       |   `-- right: Integer(0)
+>     |       `-- right: Binary(Gt)
+>     |           +-- left: Variable($b)
+>     |           `-- right: Integer(0)
+>     `-- then:
+>         `-- [0] Expression
+>             `-- Bool(true)
+>
+
+# Test if with OR condition
+parse 'if $x < 0 OR $x > 100 { false }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Binary(Or)
+>     |       +-- left: Binary(Lt)
+>     |       |   +-- left: Variable($x)
+>     |       |   `-- right: Integer(0)
+>     |       `-- right: Binary(Gt)
+>     |           +-- left: Variable($x)
+>     |           `-- right: Integer(100)
+>     `-- then:
+>         `-- [0] Expression
+>             `-- Bool(false)
+>
+
+# Test if with equality check
+parse 'if $status = "active" { $count = $count + 1 }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Binary(Assign)
+>     |       +-- left: Variable($status)
+>     |       `-- right: String("ctiv")
+>     `-- then:
+>         `-- [0] Expression
+>             `-- Binary(Assign)
+>                 +-- left: Variable($count)
+>                 `-- right: Binary(Add)
+>                     +-- left: Variable($count)
+>                     `-- right: Integer(1)
+>

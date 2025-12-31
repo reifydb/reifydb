@@ -1,10 +1,50 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test loop expression
+# Test loop with break
 parse 'loop { break }'
 ---
 > Program
 > `-- [0] Loop
 >     `-- [0] Break
+>
+
+# Test loop with continue
+parse 'loop { continue }'
+---
+> Program
+> `-- [0] Loop
+>     `-- [0] Continue
+>
+
+# Test loop with conditional break
+parse 'loop { if $done { break } }'
+---
+> Program
+> `-- [0] Loop
+>     `-- [0] If
+>         +-- condition:
+>         |   `-- Variable($done)
+>         `-- then:
+>             `-- [0] Break
+>
+
+# Test loop with multiple statements
+parse 'loop { $x = $x + 1; if $x > 10 { break } }'
+---
+> Program
+> `-- [0] Loop
+>     +-- [0] Expression
+>     |   `-- Binary(Assign)
+>     |       +-- left: Variable($x)
+>     |       `-- right: Binary(Add)
+>     |           +-- left: Variable($x)
+>     |           `-- right: Integer(1)
+>     `-- [1] If
+>         +-- condition:
+>         |   `-- Binary(Gt)
+>         |       +-- left: Variable($x)
+>         |       `-- right: Integer(10)
+>         `-- then:
+>             `-- [0] Break
 >

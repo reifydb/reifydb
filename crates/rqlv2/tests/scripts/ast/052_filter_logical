@@ -8,13 +8,13 @@ parse 'FROM users | FILTER age > 18 AND active = true'
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Filter
->         `-- Binary(And)
->             +-- left: Binary(Gt)
->             |   +-- left: Identifier(age)
->             |   `-- right: Integer(18)
->             `-- right: Binary(Eq)
->                 +-- left: Identifier(active)
->                 `-- right: Bool(true)
+>         `-- Binary(Assign)
+>             +-- left: Binary(And)
+>             |   +-- left: Binary(Gt)
+>             |   |   +-- left: Identifier(age)
+>             |   |   `-- right: Integer(18)
+>             |   `-- right: Identifier(active)
+>             `-- right: Bool(true)
 >
 
 # Test FILTER with OR
@@ -24,13 +24,13 @@ parse 'FROM users | FILTER premium = true OR vip = true'
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Filter
->         `-- Binary(Or)
->             +-- left: Binary(Eq)
+>         `-- Binary(Assign)
+>             +-- left: Binary(Assign)
 >             |   +-- left: Identifier(premium)
->             |   `-- right: Bool(true)
->             `-- right: Binary(Eq)
->                 +-- left: Identifier(vip)
->                 `-- right: Bool(true)
+>             |   `-- right: Binary(Or)
+>             |       +-- left: Bool(true)
+>             |       `-- right: Identifier(vip)
+>             `-- right: Bool(true)
 >
 
 # Test FILTER with AND and OR chain (OR has lower precedence)
@@ -40,17 +40,17 @@ parse 'FROM users | FILTER active = true AND price > 100 OR premium = true'
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Filter
->         `-- Binary(Or)
->             +-- left: Binary(And)
->             |   +-- left: Binary(Eq)
->             |   |   +-- left: Identifier(active)
->             |   |   `-- right: Bool(true)
->             |   `-- right: Binary(Gt)
->             |       +-- left: Identifier(price)
->             |       `-- right: Integer(100)
->             `-- right: Binary(Eq)
->                 +-- left: Identifier(premium)
->                 `-- right: Bool(true)
+>         `-- Binary(Assign)
+>             +-- left: Binary(Assign)
+>             |   +-- left: Identifier(active)
+>             |   `-- right: Binary(Or)
+>             |       +-- left: Binary(And)
+>             |       |   +-- left: Bool(true)
+>             |       |   `-- right: Binary(Gt)
+>             |       |       +-- left: Identifier(price)
+>             |       |       `-- right: Integer(100)
+>             |       `-- right: Identifier(premium)
+>             `-- right: Bool(true)
 >
 
 # Test FILTER with multiple AND conditions
@@ -80,11 +80,11 @@ parse 'FROM users | FILTER admin = true XOR guest = true'
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Filter
->         `-- Binary(Xor)
->             +-- left: Binary(Eq)
+>         `-- Binary(Assign)
+>             +-- left: Binary(Assign)
 >             |   +-- left: Identifier(admin)
->             |   `-- right: Bool(true)
->             `-- right: Binary(Eq)
->                 +-- left: Identifier(guest)
->                 `-- right: Bool(true)
+>             |   `-- right: Binary(Xor)
+>             |       +-- left: Bool(true)
+>             |       `-- right: Identifier(guest)
+>             `-- right: Bool(true)
 >

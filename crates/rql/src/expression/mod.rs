@@ -1262,16 +1262,10 @@ impl ExpressionCompiler {
 			}
 
 			InfixOperator::Assign(token) => {
-				// Treat = as == for equality comparison in
-				// expressions
-				let left = Self::compile(*ast.left)?;
-				let right = Self::compile(*ast.right)?;
-
-				Ok(Expression::Equal(EqExpression {
-					left: Box::new(left),
-					right: Box::new(right),
-					fragment: token.fragment,
-				}))
+				// Assignment operator (=) is not valid in expression context
+				// Use == for equality comparison
+				use reifydb_core::diagnostic::ast as diag_ast;
+				reifydb_core::return_error!(diag_ast::unsupported_token_error(token.fragment))
 			}
 
 			InfixOperator::TypeAscription(token) => {

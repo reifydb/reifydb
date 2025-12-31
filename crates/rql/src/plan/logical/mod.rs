@@ -332,17 +332,10 @@ impl Compiler {
 			}
 			Ast::Infix(ref infix_node) => {
 				match infix_node.operator {
-					// Assignment operations - check if it's a valid variable assignment
-					InfixOperator::Assign(ref token) => {
-						// Only allow variable assignments with := operator, not = operator
-						if matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
-							// This is a valid variable assignment statement
-							Self::compile_infix(infix_node.clone())
-						} else {
-							// This is a = operator, treat as expression comparison
-							let map_node = Self::wrap_scalar_in_map(node);
-							self.compile_map(map_node)
-						}
+					// Assignment operations - variable assignment with = operator
+					InfixOperator::Assign(ref _token) => {
+						// This is a variable assignment statement
+						Self::compile_infix(infix_node.clone())
 					}
 					// Expression-like operations - wrap in MAP
 					InfixOperator::Add(_)
@@ -439,15 +432,7 @@ impl Compiler {
 
 	fn compile_infix(node: AstInfix) -> crate::Result<LogicalPlan> {
 		match node.operator {
-			InfixOperator::Assign(token) => {
-				// Only allow variable assignments with := operator, not = operator
-				if !matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
-					return_error!(unsupported_ast_node(
-						node.token.fragment,
-						"variable assignment must use := operator"
-					))
-				}
-
+			InfixOperator::Assign(_token) => {
 				// This is a variable assignment statement
 				// Extract the variable name from the left side
 				let variable = match *node.left {
@@ -598,7 +583,6 @@ impl std::fmt::Display for AssignValue {
 pub struct DeclareNode {
 	pub name: Fragment,
 	pub value: LetValue,
-	pub mutable: bool,
 }
 
 #[derive(Debug)]

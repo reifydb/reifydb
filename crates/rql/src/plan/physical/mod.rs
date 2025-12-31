@@ -862,7 +862,6 @@ impl Compiler {
 					stack.push(PhysicalPlan::Declare(DeclareNode {
 						name: declare_node.name,
 						value,
-						mutable: declare_node.mutable,
 					}));
 				}
 
@@ -1147,7 +1146,6 @@ impl std::fmt::Display for LetValue {
 pub struct DeclareNode {
 	pub name: Fragment,
 	pub value: LetValue,
-	pub mutable: bool,
 }
 
 #[derive(Debug, Clone)]

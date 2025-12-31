@@ -63,7 +63,6 @@ operator! {
     DoubleDot     => "..",
     Colon         => ":",
     DoubleColon   => "::",
-    ColonEqual    => ":=",
     Arrow         => "->",
     QuestionMark  => "?",
 

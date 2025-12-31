@@ -429,12 +429,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			}
 		}
 		PhysicalPlan::Declare(declare_node) => {
-			let label = format!(
-				"Declare {} = {} (mutable: {})",
-				declare_node.name.text(),
-				declare_node.value,
-				declare_node.mutable
-			);
+			let label = format!("Declare {} = {}", declare_node.name.text(), declare_node.value,);
 			write_node_header(output, prefix, is_last, &label);
 		}
 

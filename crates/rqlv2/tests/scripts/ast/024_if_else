@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test if-else expression
+# Test simple if-else
 parse 'if $x > 0 { true } else { false }'
 ---
 > Program
@@ -16,4 +16,72 @@ parse 'if $x > 0 { true } else { false }'
 >     `-- else:
 >         `-- [0] Expression
 >             `-- Bool(false)
+>
+
+# Test if-else with multiple statements
+parse 'if $flag { $a = 1; $b = 2 } else { $a = 0; $b = 0 }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Variable($flag)
+>     +-- then:
+>     |   +-- [0] Expression
+>     |   |   `-- Binary(Assign)
+>     |   |       +-- left: Variable($a)
+>     |   |       `-- right: Integer(1)
+>     |   `-- [1] Expression
+>     |       `-- Binary(Assign)
+>     |           +-- left: Variable($b)
+>     |           `-- right: Integer(2)
+>     `-- else:
+>         +-- [0] Expression
+>         |   `-- Binary(Assign)
+>         |       +-- left: Variable($a)
+>         |       `-- right: Integer(0)
+>         `-- [1] Expression
+>             `-- Binary(Assign)
+>                 +-- left: Variable($b)
+>                 `-- right: Integer(0)
+>
+
+# Test if-else with expressions
+parse 'if $cond { $x + 1 } else { $x - 1 }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Variable($cond)
+>     +-- then:
+>     |   `-- [0] Expression
+>     |       `-- Binary(Add)
+>     |           +-- left: Variable($x)
+>     |           `-- right: Integer(1)
+>     `-- else:
+>         `-- [0] Expression
+>             `-- Binary(Sub)
+>                 +-- left: Variable($x)
+>                 `-- right: Integer(1)
+>
+
+# Test nested if in else
+parse 'if $a { 1 } else { if $b { 2 } else { 3 } }'
+---
+> Program
+> `-- [0] If
+>     +-- condition:
+>     |   `-- Variable($a)
+>     +-- then:
+>     |   `-- [0] Expression
+>     |       `-- Integer(1)
+>     `-- else:
+>         `-- [0] If
+>             +-- condition:
+>             |   `-- Variable($b)
+>             +-- then:
+>             |   `-- [0] Expression
+>             |       `-- Integer(2)
+>             `-- else:
+>                 `-- [0] Expression
+>                     `-- Integer(3)
 >

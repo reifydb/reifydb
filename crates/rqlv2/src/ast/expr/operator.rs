@@ -36,7 +36,7 @@ pub enum BinaryOp {
 
 	// Assignment/binding
 	As,       // alias: expr AS name (used for join aliases)
-	Assign,   // assignment: $var := expr
+	Assign,   // assignment: $var = expr
 	KeyValue, // key-value: name: expr (in MAP, EXTEND, records)
 }
 
@@ -49,7 +49,7 @@ impl BinaryOp {
 			BinaryOp::Mul => "*",
 			BinaryOp::Div => "/",
 			BinaryOp::Rem => "%",
-			BinaryOp::Eq => "=",
+			BinaryOp::Eq => "==",
 			BinaryOp::Ne => "!=",
 			BinaryOp::Lt => "<",
 			BinaryOp::Le => "<=",
@@ -62,7 +62,7 @@ impl BinaryOp {
 			BinaryOp::DoubleColon => "::",
 			BinaryOp::Arrow => "->",
 			BinaryOp::As => "AS",
-			BinaryOp::Assign => ":=",
+			BinaryOp::Assign => "=",
 			BinaryOp::KeyValue => ":",
 		}
 	}

@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test let statement
+tokenize 'let $x = 42'
+---
+> Line 1:
+>   [  0] Keyword(Let)
+>   [  1] Variable("$x")
+>   [  2] Operator(Equal)
+>   [  3] Literal(Integer(42))
+>   [  4] EOF
+>
+>
+
+# Test if statement
+tokenize 'if $cond { true }'
+---
+> Line 1:
+>   [  0] Keyword(If)
+>   [  1] Variable("$cond")
+>   [  2] Punctuation(OpenCurly)
+>   [  3] Literal(True)
+>   [  4] Punctuation(CloseCurly)
+>   [  5] EOF
+>
+>
+
+# Test if-else statement
+tokenize 'if $x { 1 } else { 0 }'
+---
+> Line 1:
+>   [  0] Keyword(If)
+>   [  1] Variable("$x")
+>   [  2] Punctuation(OpenCurly)
+>   [  3] Literal(Integer(1))
+>   [  4] Punctuation(CloseCurly)
+>   [  5] Keyword(Else)
+>   [  6] Punctuation(OpenCurly)
+>   [  7] Literal(Integer(0))
+>   [  8] Punctuation(CloseCurly)
+>   [  9] EOF
+>
+>
+
+# Test for-in loop
+tokenize 'for $i in $list { $i }'
+---
+> Line 1:
+>   [  0] Keyword(For)
+>   [  1] Variable("$i")
+>   [  2] Keyword(In)
+>   [  3] Variable("$list")
+>   [  4] Punctuation(OpenCurly)
+>   [  5] Variable("$i")
+>   [  6] Punctuation(CloseCurly)
+>   [  7] EOF
+>
+>
+
+# Test loop statement
+tokenize 'loop { break }'
+---
+> Line 1:
+>   [  0] Keyword(Loop)
+>   [  1] Punctuation(OpenCurly)
+>   [  2] Keyword(Break)
+>   [  3] Punctuation(CloseCurly)
+>   [  4] EOF
+>
+>
+
+# Test function definition
+tokenize 'fn add($a, $b) { $a + $b }'
+---
+> Line 1:
+>   [  0] Keyword(Fn)
+>   [  1] Identifier("add")
+>   [  2] Punctuation(OpenParen)
+>   [  3] Variable("$a")
+>   [  4] Punctuation(Comma)
+>   [  5] Variable("$b")
+>   [  6] Punctuation(CloseParen)
+>   [  7] Punctuation(OpenCurly)
+>   [  8] Variable("$a")
+>   [  9] Operator(Plus)
+>   [ 10] Variable("$b")
+>   [ 11] Punctuation(CloseCurly)
+>   [ 12] EOF
+>
+>
+
+# Test return statement
+tokenize 'return $result'
+---
+> Line 1:
+>   [  0] Keyword(Return)
+>   [  1] Variable("$result")
+>   [  2] EOF
+>
+>
+
+# Test return without value
+tokenize 'return'
+---
+> Line 1:
+>   [  0] Keyword(Return)
+>   [  1] EOF
+>
+>
+
+# Test break statement
+tokenize 'break'
+---
+> Line 1:
+>   [  0] Keyword(Break)
+>   [  1] EOF
+>
+>
+
+# Test continue statement
+tokenize 'continue'
+---
+> Line 1:
+>   [  0] Keyword(Continue)
+>   [  1] EOF
+>
+>

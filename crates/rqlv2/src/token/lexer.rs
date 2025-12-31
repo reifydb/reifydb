@@ -260,8 +260,6 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 				self.cursor.advance();
 				if self.cursor.try_consume(":") {
 					Operator::DoubleColon
-				} else if self.cursor.try_consume("=") {
-					Operator::ColonEqual
 				} else {
 					Operator::Colon
 				}

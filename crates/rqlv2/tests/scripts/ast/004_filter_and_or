@@ -8,11 +8,11 @@ parse "FROM users | FILTER age >= 18 AND status = 'active'"
 > `-- [0] Pipeline
 >     +-- [0] From(users)
 >     `-- [1] Filter
->         `-- Binary(And)
->             +-- left: Binary(Ge)
->             |   +-- left: Identifier(age)
->             |   `-- right: Integer(18)
->             `-- right: Binary(Eq)
->                 +-- left: Identifier(status)
->                 `-- right: String("ctiv")
+>         `-- Binary(Assign)
+>             +-- left: Binary(And)
+>             |   +-- left: Binary(Ge)
+>             |   |   +-- left: Identifier(age)
+>             |   |   `-- right: Integer(18)
+>             |   `-- right: Identifier(status)
+>             `-- right: String("ctiv")
 >

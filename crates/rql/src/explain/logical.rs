@@ -677,12 +677,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		}
 		LogicalPlan::Declare(declare_node) => {
 			output.push_str(&format!(
-				"{}{} Declare {} = {} (mutable: {})\n",
+				"{}{} Declare {} = {}\n",
 				prefix,
 				branch,
 				declare_node.name.text(),
 				declare_node.value,
-				declare_node.mutable
 			));
 		}
 

@@ -106,12 +106,12 @@ insert company.employees"#,
 	}
 
 	// Query with filter - find active employees in Engineering
-	log_query(r#"from company.employees filter { is_active = true and department = "Engineering" }"#);
+	log_query(r#"from company.employees filter { is_active == true and department == "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"
 			from company.employees
-			filter { is_active = true and department = "Engineering" }
+			filter { is_active == true and department == "Engineering" }
 			"#,
 			Params::None,
 		)
@@ -126,7 +126,7 @@ insert company.employees"#,
 	info!("Giving Engineering department a 10% raise...");
 	log_query(
 		r#"from company.employees
-filter { department = "Engineering" }
+filter { department == "Engineering" }
 map {
     id: id,
     name: name,
@@ -140,7 +140,7 @@ update company.employees"#,
 	db.command_as_root(
 		r#"
 		from company.employees
-		filter { department = "Engineering" }
+		filter { department == "Engineering" }
 		map {
 			id: id,
 			name: name,
@@ -157,12 +157,12 @@ update company.employees"#,
 	.unwrap();
 
 	// Query to see the updated salaries
-	log_query(r#"from company.employees filter { department = "Engineering" }"#);
+	log_query(r#"from company.employees filter { department == "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"
 			from company.employees
-			filter { department = "Engineering" }
+			filter { department == "Engineering" }
 			"#,
 			Params::None,
 		)
@@ -177,13 +177,13 @@ update company.employees"#,
 	info!("Removing inactive employees...");
 	log_query(
 		r#"from company.employees
-filter { is_active = false }
+filter { is_active == false }
 delete company.employees"#,
 	);
 	db.command_as_root(
 		r#"
 		from company.employees
-		filter { is_active = false }
+		filter { is_active == false }
 		delete company.employees;
 		"#,
 		Params::None,

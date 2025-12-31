@@ -11,27 +11,16 @@ use crate::ast::{
 
 impl Parser {
 	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet> {
-		let mut is_mut = false;
 		let token = self.current()?.clone();
 
-		// Handle both `let` and `mut` keywords
-		if self.current()?.is_keyword(Keyword::Let) {
-			self.advance()?; // consume 'let'
-
-			// Check if the next token is 'mut'
-			if self.current()?.is_keyword(Keyword::Mut) {
-				is_mut = true;
-				self.advance()?; // consume 'mut'
-			}
-		} else if self.current()?.is_keyword(Keyword::Mut) {
-			is_mut = true;
-			self.advance()?; // consume 'mut'
-		} else {
+		// Expect 'let' keyword
+		if !self.current()?.is_keyword(Keyword::Let) {
 			return Err(reifydb_type::Error(unexpected_token_error(
-				"expected 'let' or 'mut'",
+				"expected 'let'",
 				self.current()?.fragment.clone(),
 			)));
-		};
+		}
+		self.advance()?; // consume 'let'
 
 		// Parse the variable name (must start with $)
 		let variable_token = self.current()?;
@@ -48,8 +37,8 @@ impl Parser {
 		// The UnqualifiedIdentifier will store the full token but we'll extract the name later
 		let name = crate::ast::identifier::UnqualifiedIdentifier::new(var_token);
 
-		// Consume the ':=' operator
-		self.consume_operator(Operator::ColonEqual)?;
+		// Consume the '=' operator
+		self.consume_operator(Operator::Equal)?;
 
 		// Check if the RHS is a statement or an expression
 		let value = if self.is_statement()? {
@@ -64,7 +53,6 @@ impl Parser {
 			token,
 			name,
 			value,
-			mutable: is_mut,
 		})
 	}
 

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test let with pipeline
-parse 'let $users := FROM users | FILTER age > 20'
+# Test let with simple pipeline
+parse 'let $users = FROM users | FILTER age > 20'
 ---
 > Program
 > `-- [0] Let($users)
@@ -12,4 +12,49 @@ parse 'let $users := FROM users | FILTER age > 20'
 >             `-- Binary(Gt)
 >                 +-- left: Identifier(age)
 >                 `-- right: Integer(20)
+>
+
+# Test let with multi-stage pipeline
+parse 'let $result = FROM orders | FILTER total > 100 | SORT { date } | TAKE 10'
+---
+> Program
+> `-- [0] Let($result)
+>     `-- Pipeline:
+>         +-- [0] From(orders)
+>         +-- [1] Filter
+>         |   `-- Binary(Gt)
+>         |       +-- left: Identifier(total)
+>         |       `-- right: Integer(100)
+>         +-- [2] Sort
+>         |   `-- [0] SortColumn
+>         |       `-- Identifier(date)
+>         `-- [3] Take
+>             `-- Integer(10)
+>
+
+# Test let with select pipeline
+parse 'let $names = FROM people | SELECT { name, age }'
+---
+> Program
+> `-- [0] Let($names)
+>     `-- Pipeline:
+>         +-- [0] From(people)
+>         `-- [1] Map
+>             +-- [0] Identifier(name)
+>             `-- [1] Identifier(age)
+>
+
+# Test let with extend pipeline
+parse 'let $computed = FROM data | EXTEND { total: price * quantity }'
+---
+> Program
+> `-- [0] Let($computed)
+>     `-- Pipeline:
+>         +-- [0] From(data)
+>         `-- [1] Extend
+>             `-- [0] Binary(KeyValue)
+>                 +-- left: Identifier(total)
+>                 `-- right: Binary(Mul)
+>                     +-- left: Identifier(price)
+>                     `-- right: Identifier(quantity)
 >

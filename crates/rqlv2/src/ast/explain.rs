@@ -127,12 +127,7 @@ impl<'a> AstFormatter<'a> {
 				self.with_child(is_last, |f| f.format_pipeline(p));
 			}
 			Statement::Let(l) => {
-				let mutability = if l.mutable {
-					"mut "
-				} else {
-					""
-				};
-				self.write_indexed(is_last, index, &format!("Let({}${})", mutability, l.name));
+				self.write_indexed(is_last, index, &format!("Let(${})", l.name));
 				self.with_child(is_last, |f| f.format_let_value(&l.value));
 			}
 			Statement::Assign(a) => {

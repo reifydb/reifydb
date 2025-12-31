@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test for-in loop
+# Test for-in loop over variable
 parse 'for $item in $list { $item }'
 ---
 > Program
@@ -11,4 +11,68 @@ parse 'for $item in $list { $item }'
 >     `-- body:
 >         `-- [0] Expression
 >             `-- Variable($item)
+>
+
+# Test for with multiple body statements
+parse 'for $x in $items { $sum = $sum + $x; $count = $count + 1 }'
+---
+> Program
+> `-- [0] For($x)
+>     +-- iterable:
+>     |   `-- Variable($items)
+>     `-- body:
+>         +-- [0] Expression
+>         |   `-- Binary(Assign)
+>         |       +-- left: Variable($sum)
+>         |       `-- right: Binary(Add)
+>         |           +-- left: Variable($sum)
+>         |           `-- right: Variable($x)
+>         `-- [1] Expression
+>             `-- Binary(Assign)
+>                 +-- left: Variable($count)
+>                 `-- right: Binary(Add)
+>                     +-- left: Variable($count)
+>                     `-- right: Integer(1)
+>
+
+# Test for with conditional break
+parse 'for $n in $numbers { if $n < 0 { break } }'
+---
+> Program
+> `-- [0] For($n)
+>     +-- iterable:
+>     |   `-- Variable($numbers)
+>     `-- body:
+>         `-- [0] If
+>             +-- condition:
+>             |   `-- Binary(Lt)
+>             |       +-- left: Variable($n)
+>             |       `-- right: Integer(0)
+>             `-- then:
+>                 `-- [0] Break
+>
+
+# Test for with continue
+parse 'for $i in $range { if $i = 0 { continue }; $result = $result + 1 / $i }'
+---
+> Program
+> `-- [0] For($i)
+>     +-- iterable:
+>     |   `-- Variable($range)
+>     `-- body:
+>         +-- [0] If
+>         |   +-- condition:
+>         |   |   `-- Binary(Assign)
+>         |   |       +-- left: Variable($i)
+>         |   |       `-- right: Integer(0)
+>         |   `-- then:
+>         |       `-- [0] Continue
+>         `-- [1] Expression
+>             `-- Binary(Assign)
+>                 +-- left: Variable($result)
+>                 `-- right: Binary(Add)
+>                     +-- left: Variable($result)
+>                     `-- right: Binary(Div)
+>                         +-- left: Integer(1)
+>                         `-- right: Variable($i)
 >

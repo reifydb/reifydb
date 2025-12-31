@@ -1,10 +1,74 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test let binding
-parse 'let $x := 42'
+# Test let with integer
+parse 'let $x = 42'
 ---
 > Program
 > `-- [0] Let($x)
 >     `-- Integer(42)
+>
+
+# Test let with string
+parse 'let $name = "hello"'
+---
+> Program
+> `-- [0] Let($name)
+>     `-- String("ell")
+>
+
+# Test let with boolean true
+parse 'let $flag = true'
+---
+> Program
+> `-- [0] Let($flag)
+>     `-- Bool(true)
+>
+
+# Test let with boolean false
+parse 'let $done = false'
+---
+> Program
+> `-- [0] Let($done)
+>     `-- Bool(false)
+>
+
+# Test let with arithmetic expression
+parse 'let $sum = 1 + 2 * 3'
+---
+> Program
+> `-- [0] Let($sum)
+>     `-- Binary(Add)
+>         +-- left: Integer(1)
+>         `-- right: Binary(Mul)
+>             +-- left: Integer(2)
+>             `-- right: Integer(3)
+>
+
+# Test let with function call
+parse 'let $result = count($items)'
+---
+> Program
+> `-- [0] Let($result)
+>     `-- Call(count)
+>         `-- args:
+>             `-- [0] Variable($items)
+>
+
+# Test let with variable reference
+parse 'let $copy = $original'
+---
+> Program
+> `-- [0] Let($copy)
+>     `-- Variable($original)
+>
+
+# Test let with comparison expression
+parse 'let $valid = $x > 0'
+---
+> Program
+> `-- [0] Let($valid)
+>     `-- Binary(Gt)
+>         +-- left: Variable($x)
+>         `-- right: Integer(0)
 >

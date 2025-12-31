@@ -16,10 +16,10 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
 	None = 0,
-	Assignment = 1, // :=, as, :
+	Assignment = 1, // =, as, :
 	LogicOr = 2,    // OR, XOR, ||
 	LogicAnd = 3,   // AND, &&
-	Comparison = 4, // =, !=, <, <=, >, >=, IN, BETWEEN
+	Comparison = 4, // ==, !=, <, <=, >, >=, IN, BETWEEN
 	Term = 5,       // +, -
 	Factor = 6,     // *, /, %
 	Prefix = 7,     // -, NOT, !
@@ -32,15 +32,14 @@ impl Precedence {
 	pub fn for_token(token: &Token) -> Self {
 		match token.kind {
 			TokenKind::Operator(op) => match op {
-				Operator::ColonEqual => Precedence::Assignment,
+				Operator::Equal => Precedence::Assignment,
 				Operator::As => Precedence::Assignment,
 				Operator::Colon => Precedence::Assignment,
 
 				Operator::Or | Operator::DoublePipe | Operator::Xor => Precedence::LogicOr,
 				Operator::And | Operator::DoubleAmpersand => Precedence::LogicAnd,
 
-				Operator::Equal
-				| Operator::DoubleEqual
+				Operator::DoubleEqual
 				| Operator::BangEqual
 				| Operator::LeftAngle
 				| Operator::LeftAngleEqual
@@ -164,7 +163,8 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Operator::Asterisk => BinaryOp::Mul,
 			Operator::Slash => BinaryOp::Div,
 			Operator::Percent => BinaryOp::Rem,
-			Operator::Equal | Operator::DoubleEqual => BinaryOp::Eq,
+			Operator::Equal => BinaryOp::Assign,
+			Operator::DoubleEqual => BinaryOp::Eq,
 			Operator::BangEqual => BinaryOp::Ne,
 			Operator::LeftAngle => BinaryOp::Lt,
 			Operator::LeftAngleEqual => BinaryOp::Le,
@@ -177,7 +177,6 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Operator::DoubleColon => BinaryOp::DoubleColon,
 			Operator::Arrow => BinaryOp::Arrow,
 			Operator::As => BinaryOp::As,
-			Operator::ColonEqual => BinaryOp::Assign,
 			Operator::Colon => BinaryOp::KeyValue,
 			_ => return Err(self.error(ParseErrorKind::UnexpectedToken)),
 		})

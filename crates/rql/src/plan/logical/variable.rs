@@ -33,7 +33,6 @@ impl Compiler {
 		Ok(LogicalPlan::Declare(DeclareNode {
 			name: Fragment::internal(ast.name.text().to_string()),
 			value,
-			mutable: ast.mutable,
 		}))
 	}
 

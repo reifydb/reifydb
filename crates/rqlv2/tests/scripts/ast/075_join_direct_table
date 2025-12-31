@@ -127,7 +127,7 @@ parse 'FROM users | LEFT JOIN { FROM orders | FILTER active = true } AS o USING 
 >     |   |   `-- SubQuery
 >     |   |       +-- [0] From(orders)
 >     |   |       `-- [1] Filter
->     |   |           `-- Binary(Eq)
+>     |   |           `-- Binary(Assign)
 >     |   |               +-- left: Identifier(active)
 >     |   |               `-- right: Bool(true)
 >     |   +-- alias: o

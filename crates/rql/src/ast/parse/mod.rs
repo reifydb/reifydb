@@ -68,10 +68,8 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 
 	match op {
 		As => Assignment,
-		ColonEqual => Assignment,
-		Equal | DoubleEqual | BangEqual | LeftAngle | LeftAngleEqual | RightAngle | RightAngleEqual => {
-			Comparison
-		}
+		Equal => Assignment,
+		DoubleEqual | BangEqual | LeftAngle | LeftAngleEqual | RightAngle | RightAngleEqual => Comparison,
 		Plus | Minus => Term,
 		Asterisk | Slash | Percent => Factor,
 		OpenParen => Call,
@@ -616,7 +614,7 @@ mod tests {
 	#[test]
 	fn test_semicolon_statement_separation() {
 		use crate::ast::tokenize::tokenize;
-		let tokens = tokenize("let $x := 1; FROM users").unwrap();
+		let tokens = tokenize("let $x = 1; FROM users").unwrap();
 		let mut parser = Parser::new(tokens);
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements");
@@ -636,7 +634,7 @@ mod tests {
 	fn test_variable_multiline_separation() {
 		use crate::ast::tokenize::tokenize;
 		let sql = r#"
-		let $user_data := FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21;
+		let $user_data = FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21;
 		FROM $user_data
 		"#;
 		let tokens = tokenize(sql).unwrap();

@@ -1,10 +1,45 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2025 ReifyDB
 
-# Test return statement
+# Test return with variable
 parse 'return $result'
 ---
 > Program
 > `-- [0] Return
 >     `-- Variable($result)
+>
+
+# Test return without value
+parse 'return'
+---
+> Program
+> `-- [0] Return
+>
+
+# Test return with expression
+parse 'return $a + $b'
+---
+> Program
+> `-- [0] Return
+>     `-- Binary(Add)
+>         +-- left: Variable($a)
+>         `-- right: Variable($b)
+>
+
+# Test return with literal
+parse 'return 42'
+---
+> Program
+> `-- [0] Return
+>     `-- Integer(42)
+>
+
+# Test return with function call
+parse 'return sum($values)'
+---
+> Program
+> `-- [0] Return
+>     `-- Call(sum)
+>         `-- args:
+>             `-- [0] Variable($values)
 >
