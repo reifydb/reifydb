@@ -6,10 +6,12 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod cdc;
+pub mod interceptor;
 pub mod multi;
 pub mod single;
 pub mod standard;
 
+pub use interceptor::WithInterceptors;
 pub use reifydb_store_transaction::{ObjectId, StorageStats, StorageTracker, Tier, TierStats, TransactionStore};
 pub use reifydb_type::Result;
 pub use standard::{

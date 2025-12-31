@@ -5,11 +5,15 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowEdgeDef},
 	key::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::store::flow_edge::layout::{flow_edge, flow_edge_by_flow};
 
 impl crate::CatalogStore {
-	pub async fn create_flow_edge(txn: &mut impl CommandTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
+	pub async fn create_flow_edge(
+		txn: &mut StandardCommandTransaction,
+		edge_def: &FlowEdgeDef,
+	) -> crate::Result<()> {
 		// Write to main flow_edge table
 		let mut row = flow_edge::LAYOUT.allocate();
 		flow_edge::LAYOUT.set_u64(&mut row, flow_edge::ID, edge_def.id);

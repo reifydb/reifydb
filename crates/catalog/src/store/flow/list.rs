@@ -1,15 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId, QueryTransaction};
+use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::flow::layout::flow};
 
 impl CatalogStore {
-	pub async fn list_flows_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<FlowDef>> {
+	pub async fn list_flows_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = rx.range(FlowKey::full_scan()).await?;
+		let batch = txn.range_batch(FlowKey::full_scan(), 1024).await?;
 
 		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {

@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{PrimitiveDef, PrimitiveId, QueryTransaction};
+use reifydb_core::interface::{PrimitiveDef, PrimitiveId};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, vtable::VTableRegistry};
 
@@ -11,35 +12,36 @@ impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
 	/// Returns None if the primitive doesn't exist
 	pub async fn find_primitive(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimitiveDef>> {
 		let primitive_id = primitive.into();
+		let mut txn = rx.into_standard_transaction();
 
 		match primitive_id {
 			PrimitiveId::Table(table_id) => {
-				if let Some(table) = Self::find_table(rx, table_id).await? {
+				if let Some(table) = Self::find_table(&mut txn, table_id).await? {
 					Ok(Some(PrimitiveDef::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::View(view_id) => {
-				if let Some(view) = Self::find_view(rx, view_id).await? {
+				if let Some(view) = Self::find_view(&mut txn, view_id).await? {
 					Ok(Some(PrimitiveDef::View(view)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::Flow(flow_id) => {
-				if let Some(flow) = Self::find_flow(rx, flow_id).await? {
+				if let Some(flow) = Self::find_flow(&mut txn, flow_id).await? {
 					Ok(Some(PrimitiveDef::Flow(flow)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::TableVirtual(vtable_id) => {
-				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
+				if let Some(vtable) = VTableRegistry::find_vtable(&mut txn, vtable_id)? {
 					// Convert Arc<VTableDef> to VTableDef
 					let vtable_def = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
 					Ok(Some(PrimitiveDef::TableVirtual(vtable_def)))

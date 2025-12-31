@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind, QueryTransaction};
+use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -10,10 +11,11 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn list_column_policies(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		let batch = rx.range(ColumnPolicyKey::full_scan(column)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(ColumnPolicyKey::full_scan(column), 1024).await?;
 		Ok(batch.items
 			.into_iter()
 			.map(|multi| {
@@ -35,15 +37,18 @@ impl CatalogStore {
 			.collect::<Vec<_>>())
 	}
 
-	pub async fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
+	pub async fn list_column_policies_all(
+		rx: &mut impl IntoStandardTransaction,
+	) -> crate::Result<Vec<ColumnPolicy>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
-		let columns = CatalogStore::list_columns_all(rx).await?;
+		let columns = CatalogStore::list_columns_all(&mut txn).await?;
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(rx, info.column.id).await?;
+			let policies = CatalogStore::list_column_policies(&mut txn, info.column.id).await?;
 			result.extend(policies);
 		}
 

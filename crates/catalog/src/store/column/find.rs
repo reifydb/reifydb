@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, PrimitiveId, QueryTransaction};
+use reifydb_core::interface::{ColumnKey, PrimitiveId};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -10,11 +11,12 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_column_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let batch = rx.range(ColumnKey::full_scan(source)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(ColumnKey::full_scan(source), 1024).await?;
 		let maybe_id = batch.items.into_iter().find_map(|multi| {
 			let row = multi.values;
 			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
@@ -28,7 +30,7 @@ impl CatalogStore {
 		});
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Self::get_column(rx, id).await?))
+			Ok(Some(Self::get_column(&mut txn, id).await?))
 		} else {
 			Ok(None)
 		}

@@ -2,13 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId, QueryTransaction},
+	interface::{FlowNodeId, PrimitiveId},
 	key::{
 		EncodableKey, OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, PrimitiveRetentionPolicyKey,
 		PrimitiveRetentionPolicyKeyRange,
 	},
 	retention::RetentionPolicy,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -30,11 +31,12 @@ pub struct OperatorRetentionPolicyEntry {
 impl CatalogStore {
 	/// List all retention policies for primitives (tables, views, ring buffers)
 	pub async fn list_primitive_retention_policies(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<PrimitiveRetentionPolicyEntry>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = rx.range(PrimitiveRetentionPolicyKeyRange::full_scan()).await?;
+		let batch = txn.range_batch(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024).await?;
 
 		for entry in batch.items {
 			if let Some(key) = PrimitiveRetentionPolicyKey::decode(&entry.key) {
@@ -52,11 +54,12 @@ impl CatalogStore {
 
 	/// List all retention policies for operators
 	pub async fn list_operator_retention_policies(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<OperatorRetentionPolicyEntry>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = rx.range(OperatorRetentionPolicyKeyRange::full_scan()).await?;
+		let batch = txn.range_batch(OperatorRetentionPolicyKeyRange::full_scan(), 1024).await?;
 
 		for entry in batch.items {
 			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key) {

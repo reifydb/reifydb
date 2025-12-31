@@ -34,86 +34,8 @@ impl MultiVersionTransaction for TransactionMulti {
 	}
 }
 
-use std::ops::Bound;
-
-use reifydb_core::interface::{Cdc, CdcBatch, SingleVersionQueryTransaction, SingleVersionValues};
-
-/// Stub type for SingleVersionQuery - not available at this layer
-pub struct StubSingleVersionQuery;
-
-#[async_trait]
-impl SingleVersionQueryTransaction for StubSingleVersionQuery {
-	async fn get(&mut self, _key: &EncodedKey) -> reifydb_core::Result<Option<SingleVersionValues>> {
-		unimplemented!("SingleVersionQueryTransaction not available at transaction layer")
-	}
-
-	async fn contains_key(&mut self, _key: &EncodedKey) -> reifydb_core::Result<bool> {
-		unimplemented!("SingleVersionQueryTransaction not available at transaction layer")
-	}
-}
-
-/// Stub type for CdcQuery - not available at this layer
-#[derive(Clone)]
-pub struct StubCdcQuery;
-
-#[async_trait]
-impl reifydb_core::interface::CdcQueryTransaction for StubCdcQuery {
-	async fn get(&self, _version: CommitVersion) -> reifydb_core::Result<Option<Cdc>> {
-		unimplemented!("CdcQueryTransaction not available at transaction layer")
-	}
-
-	async fn range_batch(
-		&self,
-		_start: Bound<CommitVersion>,
-		_end: Bound<CommitVersion>,
-		_batch_size: u64,
-	) -> reifydb_core::Result<CdcBatch> {
-		unimplemented!("CdcQueryTransaction not available at transaction layer")
-	}
-
-	async fn count(&self, _version: CommitVersion) -> reifydb_core::Result<usize> {
-		unimplemented!("CdcQueryTransaction not available at transaction layer")
-	}
-}
-
-/// Stub type for SingleVersionCommand - not available at this layer
-pub struct StubSingleVersionCommand;
-
-#[async_trait]
-impl SingleVersionQueryTransaction for StubSingleVersionCommand {
-	async fn get(&mut self, _key: &EncodedKey) -> reifydb_core::Result<Option<SingleVersionValues>> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-
-	async fn contains_key(&mut self, _key: &EncodedKey) -> reifydb_core::Result<bool> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-}
-
-#[async_trait]
-impl reifydb_core::interface::SingleVersionCommandTransaction for StubSingleVersionCommand {
-	fn set(&mut self, _key: &EncodedKey, _values: EncodedValues) -> reifydb_core::Result<()> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-
-	async fn remove(&mut self, _key: &EncodedKey) -> reifydb_core::Result<()> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-
-	async fn commit(&mut self) -> reifydb_core::Result<()> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-
-	async fn rollback(&mut self) -> reifydb_core::Result<()> {
-		unimplemented!("SingleVersionCommandTransaction not available at transaction layer")
-	}
-}
-
 #[async_trait]
 impl QueryTransactionInterface for QueryTransaction {
-	type SingleVersionQuery<'a> = StubSingleVersionQuery;
-	type CdcQuery<'a> = StubCdcQuery;
-
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -174,23 +96,10 @@ impl QueryTransactionInterface for QueryTransaction {
 		QueryTransaction::read_as_of_version_exclusive(self, version);
 		Ok(())
 	}
-
-	async fn begin_single_query<'a, I>(&self, _keys: I) -> Result<Self::SingleVersionQuery<'_>, Error>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		unimplemented!("begin_single_query not available at transaction layer")
-	}
-
-	async fn begin_cdc_query(&self) -> Result<Self::CdcQuery<'_>, Error> {
-		unimplemented!("begin_cdc_query not available at transaction layer")
-	}
 }
 
 #[async_trait]
 impl QueryTransactionInterface for CommandTransaction {
-	type SingleVersionQuery<'a> = StubSingleVersionQuery;
-	type CdcQuery<'a> = StubCdcQuery;
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -235,23 +144,10 @@ impl QueryTransactionInterface for CommandTransaction {
 		CommandTransaction::read_as_of_version_exclusive(self, version);
 		Ok(())
 	}
-
-	async fn begin_single_query<'a, I>(&self, _keys: I) -> Result<Self::SingleVersionQuery<'_>, Error>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		unimplemented!("begin_single_query not available at transaction layer")
-	}
-
-	async fn begin_cdc_query(&self) -> Result<Self::CdcQuery<'_>, Error> {
-		unimplemented!("begin_cdc_query not available at transaction layer")
-	}
 }
 
 #[async_trait]
 impl CommandTransactionInterface for CommandTransaction {
-	type SingleVersionCommand<'a> = StubSingleVersionCommand;
-
 	async fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
 		CommandTransaction::set(self, key, values)?;
 		Ok(())
@@ -270,12 +166,5 @@ impl CommandTransactionInterface for CommandTransaction {
 	async fn rollback(&mut self) -> Result<(), Error> {
 		CommandTransaction::rollback(self)?;
 		Ok(())
-	}
-
-	async fn begin_single_command<'a, I>(&self, _keys: I) -> Result<Self::SingleVersionCommand<'_>, Error>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		unimplemented!("begin_single_command not available at transaction layer")
 	}
 }

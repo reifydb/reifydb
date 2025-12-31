@@ -3,8 +3,9 @@
 
 use reifydb_core::{
 	Error,
-	interface::{ColumnsKey, DictionaryId, QueryTransaction},
+	interface::{ColumnsKey, DictionaryId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
 use crate::store::column::layout::column::LAYOUT;
@@ -41,8 +42,9 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let multi = rx.get(&ColumnsKey::encoded(column)).await?.ok_or_else(|| {
+	pub async fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
+		let mut txn = rx.into_standard_transaction();
+		let multi = txn.get(&ColumnsKey::encoded(column)).await?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
@@ -72,7 +74,7 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let policies = Self::list_column_policies(rx, id).await?;
+		let policies = Self::list_column_policies(&mut txn, id).await?;
 
 		Ok(ColumnDef {
 			id,

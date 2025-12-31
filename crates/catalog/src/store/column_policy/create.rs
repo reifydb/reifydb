@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, CommandTransaction},
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{
 	CatalogStore,
@@ -14,7 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) async fn create_column_policy(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {

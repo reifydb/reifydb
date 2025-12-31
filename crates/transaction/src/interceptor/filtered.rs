@@ -6,20 +6,14 @@
 //! These wrappers check the entity name against the filter before invoking the handler.
 //! Note: Namespace filtering requires namespace name resolution which is currently a TODO.
 
-use std::marker::PhantomData;
-
-use crate::{
-	interceptor::{
-		InterceptFilter, RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor,
-		RingBufferPostInsertContext, RingBufferPostInsertInterceptor, RingBufferPostUpdateContext,
-		RingBufferPostUpdateInterceptor, RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor,
-		RingBufferPreInsertContext, RingBufferPreInsertInterceptor, RingBufferPreUpdateContext,
-		RingBufferPreUpdateInterceptor, TablePostDeleteContext, TablePostDeleteInterceptor,
-		TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext, TablePostUpdateInterceptor,
-		TablePreDeleteContext, TablePreDeleteInterceptor, TablePreInsertContext, TablePreInsertInterceptor,
-		TablePreUpdateContext, TablePreUpdateInterceptor,
-	},
-	interface::CommandTransaction,
+use super::{
+	InterceptFilter, RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
+	RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
+	RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
+	RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
+	TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor,
+	TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext, TablePreDeleteInterceptor,
+	TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor,
 };
 
 /// Macro to generate filtered interceptor wrapper types.
@@ -31,48 +25,45 @@ macro_rules! define_filtered_interceptor {
 		$entity_field:ident
 	) => {
 		/// Filtered interceptor wrapper that checks entity name before executing.
-		pub struct $wrapper_name<T: CommandTransaction, F>
+		pub struct $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_core::Result<()> + Send + Sync,
 		{
 			filter: InterceptFilter,
 			handler: F,
-			_phantom: PhantomData<fn() -> T>,
 		}
 
-		impl<T: CommandTransaction, F> $wrapper_name<T, F>
+		impl<F> $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_core::Result<()> + Send + Sync,
 		{
 			/// Create a new filtered interceptor.
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
 				Self {
 					filter,
 					handler,
-					_phantom: PhantomData,
 				}
 			}
 		}
 
-		impl<T: CommandTransaction, F> Clone for $wrapper_name<T, F>
+		impl<F> Clone for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync + Clone,
+			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
 					filter: self.filter.clone(),
 					handler: self.handler.clone(),
-					_phantom: PhantomData,
 				}
 			}
 		}
 
 		#[async_trait::async_trait]
-		impl<T: CommandTransaction + Send, F> $trait_name<T> for $wrapper_name<T, F>
+		impl<F> $trait_name for $wrapper_name<F>
 		where
-			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
+			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_core::Result<()> + Send + Sync,
 		{
-			async fn intercept<'a>(&self, ctx: &mut $context_type<'a, T>) -> crate::Result<()> {
+			async fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> reifydb_core::Result<()> {
 				// TODO: Add namespace matching once we have namespace name resolution.
 				// For now, we only match by entity name if namespace is not specified in filter,
 				// or skip namespace check entirely.

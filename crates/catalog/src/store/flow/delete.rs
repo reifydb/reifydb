@@ -2,11 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, FlowId, FlowKey, NamespaceFlowKey};
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn delete_flow(txn: &mut impl CommandTransaction, flow_id: FlowId) -> crate::Result<()> {
+	pub async fn delete_flow(txn: &mut StandardCommandTransaction, flow_id: FlowId) -> crate::Result<()> {
 		// Get the flow to find namespace for index deletion
 		let flow_def = CatalogStore::find_flow(txn, flow_id).await?;
 

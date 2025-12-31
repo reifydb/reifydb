@@ -3,9 +3,8 @@
 
 use std::mem::take;
 
-use async_trait::async_trait;
 use indexmap::IndexMap;
-use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction};
+use reifydb_core::interface::SingleVersionValues;
 use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
 use tokio::sync::OwnedRwLockWriteGuard;
@@ -45,11 +44,8 @@ impl<'a> SvlCommandTransaction<'a> {
 			Err(error!(key_out_of_scope(hex::encode(&key))))
 		}
 	}
-}
 
-#[async_trait]
-impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
-	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	pub async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -76,7 +72,7 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 		SingleVersionGet::get(&store, key).instrument(debug_span!("svl_get_from_store")).await
 	}
 
-	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -97,11 +93,8 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 		let store = self.inner.store.read().await.clone();
 		SingleVersionContains::contains(&store, key).await
 	}
-}
 
-#[async_trait]
-impl SingleVersionCommandTransaction for SvlCommandTransaction<'_> {
-	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
@@ -112,7 +105,7 @@ impl SingleVersionCommandTransaction for SvlCommandTransaction<'_> {
 		Ok(())
 	}
 
-	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	pub async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -124,7 +117,7 @@ impl SingleVersionCommandTransaction for SvlCommandTransaction<'_> {
 		Ok(())
 	}
 
-	async fn commit(&mut self) -> crate::Result<()> {
+	pub async fn commit(&mut self) -> crate::Result<()> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
@@ -138,7 +131,7 @@ impl SingleVersionCommandTransaction for SvlCommandTransaction<'_> {
 		Ok(())
 	}
 
-	async fn rollback(&mut self) -> crate::Result<()> {
+	pub async fn rollback(&mut self) -> crate::Result<()> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

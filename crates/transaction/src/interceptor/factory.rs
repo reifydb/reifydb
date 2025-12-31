@@ -1,22 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::{interceptor::Interceptors, interface::CommandTransaction};
+use crate::interceptor::Interceptors;
 
 /// Factory trait for creating interceptor instances for each MultiVersionCommandTransaction
-pub trait InterceptorFactory<CT: CommandTransaction>: Send + Sync {
+pub trait InterceptorFactory: Send + Sync {
 	/// Create a new instance of interceptors for a MultiVersionCommandTransaction
-	fn create(&self) -> Interceptors<CT>;
+	fn create(&self) -> Interceptors;
 }
 
 /// Standard implementation of InterceptorFactory that stores factory functions
 /// This allows the factory to be Send+Sync while creating non-Send/Sync
 /// interceptors
-pub struct StandardInterceptorFactory<CT: CommandTransaction> {
-	pub(crate) factories: Vec<Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>>,
+pub struct StandardInterceptorFactory {
+	pub(crate) factories: Vec<Box<dyn Fn(&mut Interceptors) + Send + Sync>>,
 }
 
-impl<CT: CommandTransaction> Default for StandardInterceptorFactory<CT> {
+impl Default for StandardInterceptorFactory {
 	fn default() -> Self {
 		Self {
 			factories: Vec::new(),
@@ -24,15 +24,15 @@ impl<CT: CommandTransaction> Default for StandardInterceptorFactory<CT> {
 	}
 }
 
-impl<CT: CommandTransaction> StandardInterceptorFactory<CT> {
+impl StandardInterceptorFactory {
 	/// Add a custom factory that directly registers interceptors
-	pub fn add(&mut self, factory: Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>) {
+	pub fn add(&mut self, factory: Box<dyn Fn(&mut Interceptors) + Send + Sync>) {
 		self.factories.push(factory);
 	}
 }
 
-impl<CT: CommandTransaction> InterceptorFactory<CT> for StandardInterceptorFactory<CT> {
-	fn create(&self) -> Interceptors<CT> {
+impl InterceptorFactory for StandardInterceptorFactory {
+	fn create(&self) -> Interceptors {
 		let mut interceptors = Interceptors::new();
 
 		for factory in &self.factories {

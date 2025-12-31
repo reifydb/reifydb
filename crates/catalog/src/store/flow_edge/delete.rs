@@ -5,11 +5,12 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowEdgeId},
 	key::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn delete_flow_edge(txn: &mut impl CommandTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+	pub async fn delete_flow_edge(txn: &mut StandardCommandTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
 		// First, get the edge to find the flow ID for index deletion
 		let edge = CatalogStore::find_flow_edge(txn, edge_id).await?;
 

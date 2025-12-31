@@ -6,7 +6,7 @@ use std::ops::Bound;
 use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcBatch, CdcQueryTransaction, CdcTransaction},
+	interface::{Cdc, CdcBatch, CdcQueryTransaction},
 };
 use reifydb_store_transaction::{CdcCount, CdcGet, CdcRange, TransactionStore};
 
@@ -21,15 +21,8 @@ impl TransactionCdc {
 			store,
 		}
 	}
-}
 
-impl CdcTransaction for TransactionCdc {
-	type Query<'a>
-		= StandardCdcQueryTransaction
-	where
-		Self: 'a;
-
-	fn begin_query(&self) -> Result<Self::Query<'_>> {
+	pub fn begin_query(&self) -> Result<StandardCdcQueryTransaction> {
 		Ok(StandardCdcQueryTransaction::new(self.store.clone()))
 	}
 }

@@ -3,14 +3,15 @@
 
 use reifydb_core::{
 	Error,
-	interface::{QueryTransaction, ViewDef, ViewId},
+	interface::{ViewDef, ViewId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_view(rx: &mut impl QueryTransaction, view: ViewId) -> crate::Result<ViewDef> {
+	pub async fn get_view(rx: &mut impl IntoStandardTransaction, view: ViewId) -> crate::Result<ViewDef> {
 		CatalogStore::find_view(rx, view).await?.ok_or_else(|| {
 			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

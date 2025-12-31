@@ -5,10 +5,9 @@ use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		CdcTransaction, DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionBatch,
-		MultiVersionTransaction, MultiVersionValues, NamespaceDef, NamespaceId, QueryTransaction,
-		RingBufferDef, RingBufferId, SingleVersionTransaction, TableDef, TableId, TransactionId,
-		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionBatch, MultiVersionTransaction,
+		MultiVersionValues, NamespaceDef, NamespaceId, QueryTransaction, RingBufferDef, RingBufferId, TableDef,
+		TableId, TransactionId, TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalTableChanges,
 		TransactionalViewChanges, ViewDef, ViewId,
 	},
@@ -16,7 +15,11 @@ use reifydb_core::{
 use reifydb_type::Result;
 use tracing::instrument;
 
-use crate::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
+use crate::{
+	cdc::TransactionCdc,
+	multi::TransactionMultiVersion,
+	single::{SvlQueryTransaction, TransactionSingle},
+};
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
@@ -46,7 +49,7 @@ impl StandardQueryTransaction {
 	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.single.with_query(keys, f).await
@@ -70,10 +73,7 @@ impl StandardQueryTransaction {
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::query::begin_single_query", level = "trace", skip(self, keys))]
-	pub async fn begin_single_query<'a, I>(
-		&self,
-		keys: I,
-	) -> Result<<TransactionSingle as SingleVersionTransaction>::Query<'_>>
+	pub async fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
@@ -82,16 +82,13 @@ impl StandardQueryTransaction {
 
 	/// Begin a CDC query transaction
 	#[instrument(name = "transaction::standard::query::begin_cdc_query", level = "trace", skip(self))]
-	pub async fn begin_cdc_query(&self) -> Result<<TransactionCdc as CdcTransaction>::Query<'_>> {
+	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		Ok(self.cdc.begin_query()?)
 	}
 }
 
 #[async_trait]
 impl QueryTransaction for StandardQueryTransaction {
-	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
-	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
-
 	#[inline]
 	fn version(&self) -> CommitVersion {
 		QueryTransaction::version(&self.multi)
@@ -125,17 +122,6 @@ impl QueryTransaction for StandardQueryTransaction {
 	#[inline]
 	async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		QueryTransaction::read_as_of_version_exclusive(&mut self.multi, version).await
-	}
-
-	async fn begin_single_query<'a, I>(&self, keys: I) -> Result<Self::SingleVersionQuery<'_>>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		self.single.begin_query(keys).await
-	}
-
-	async fn begin_cdc_query(&self) -> Result<Self::CdcQuery<'_>> {
-		Ok(self.cdc.begin_query()?)
 	}
 }
 

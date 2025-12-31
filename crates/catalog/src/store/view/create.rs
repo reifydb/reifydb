@@ -10,6 +10,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{
@@ -38,21 +39,21 @@ pub struct ViewToCreate {
 
 impl CatalogStore {
 	pub async fn create_deferred_view(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Deferred).await
 	}
 
 	pub async fn create_transactional_view(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Transactional).await
 	}
 
 	async fn create_view(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<ViewDef> {
@@ -77,7 +78,7 @@ impl CatalogStore {
 	}
 
 	async fn store_view(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		view: ViewId,
 		namespace: NamespaceId,
 		to_create: &ViewToCreate,
@@ -103,7 +104,7 @@ impl CatalogStore {
 	}
 
 	async fn link_view_to_namespace(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		view: ViewId,
 		name: &str,
@@ -116,7 +117,7 @@ impl CatalogStore {
 	}
 
 	async fn insert_columns_for_view(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {

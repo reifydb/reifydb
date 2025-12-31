@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{EncodableKey, FlowId, FlowNodeDef, FlowNodeId, QueryTransaction},
+	interface::{EncodableKey, FlowId, FlowNodeDef, FlowNodeId},
 	key::FlowNodeKey,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -13,11 +14,12 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn list_flow_nodes_by_flow(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
+		let mut txn = rx.into_standard_transaction();
 		// First collect all node IDs
-		let batch = txn.range(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id)).await?;
+		let batch = txn.range_batch(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id), 1024).await?;
 		let node_ids: Vec<FlowNodeId> = batch
 			.items
 			.iter()
@@ -29,7 +31,7 @@ impl CatalogStore {
 		// Then fetch each node
 		let mut nodes = Vec::new();
 		for node_id in node_ids {
-			if let Some(node) = Self::find_flow_node(txn, node_id).await? {
+			if let Some(node) = Self::find_flow_node(&mut txn, node_id).await? {
 				nodes.push(node);
 			}
 		}
@@ -37,10 +39,11 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub async fn list_flow_nodes_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowNodeDef>> {
+	pub async fn list_flow_nodes_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowNodeDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range(FlowNodeKey::full_scan()).await?;
+		let batch = txn.range_batch(FlowNodeKey::full_scan(), 1024).await?;
 		let entries: Vec<_> = batch.items.into_iter().collect();
 
 		for entry in entries {

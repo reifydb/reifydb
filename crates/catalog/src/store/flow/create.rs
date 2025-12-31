@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowDef, FlowId, FlowKey, FlowStatus, NamespaceFlowKey, NamespaceId},
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -25,7 +26,10 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub async fn create_flow(txn: &mut impl CommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub async fn create_flow(
+		txn: &mut StandardCommandTransaction,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -46,7 +50,7 @@ impl CatalogStore {
 	}
 
 	async fn store_flow(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		flow: FlowId,
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
@@ -65,7 +69,7 @@ impl CatalogStore {
 	}
 
 	async fn link_flow_to_namespace(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		flow: FlowId,
 		name: &str,

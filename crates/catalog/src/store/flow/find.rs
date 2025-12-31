@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceFlowKey, NamespaceId, QueryTransaction,
+	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceFlowKey, NamespaceId,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -11,8 +12,9 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_flow(rx: &mut impl QueryTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		let Some(multi) = rx.get(&FlowKey::encoded(id)).await? else {
+	pub async fn find_flow(rx: &mut impl IntoStandardTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&FlowKey::encoded(id)).await? else {
 			return Ok(None);
 		};
 
@@ -32,12 +34,13 @@ impl CatalogStore {
 	}
 
 	pub async fn find_flow_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<FlowDef>> {
 		let name = name.as_ref();
-		let batch = rx.range(NamespaceFlowKey::full_scan(namespace)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceFlowKey::full_scan(namespace), 1024).await?;
 		let Some(flow) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
 			let row = &multi.values;
 			let flow_name = flow_namespace::LAYOUT.get_utf8(row, flow_namespace::NAME);
@@ -50,7 +53,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_flow(rx, flow).await?))
+		Ok(Some(Self::get_flow(&mut txn, flow).await?))
 	}
 }
 

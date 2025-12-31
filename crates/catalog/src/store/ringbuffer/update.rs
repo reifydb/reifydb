@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, RingBufferMetadata, RingBufferMetadataKey};
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer_metadata};
 
 impl CatalogStore {
 	pub async fn update_ringbuffer_metadata(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
 		let mut row = ringbuffer_metadata::LAYOUT.allocate();

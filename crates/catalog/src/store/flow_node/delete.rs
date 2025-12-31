@@ -5,11 +5,12 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeId},
 	key::{FlowNodeByFlowKey, FlowNodeKey},
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn delete_flow_node(txn: &mut impl CommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub async fn delete_flow_node(txn: &mut StandardCommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		// First, get the node to find the flow ID for index deletion
 		let node = CatalogStore::find_flow_node(txn, node_id).await?;
 

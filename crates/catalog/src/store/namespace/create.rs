@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, NamespaceDef, NamespaceKey};
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Fragment, diagnostic::catalog::namespace_already_exists, return_error};
 
 use crate::{
@@ -20,7 +21,7 @@ pub struct NamespaceToCreate {
 
 impl CatalogStore {
 	pub async fn create_namespace(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {
 		if let Some(namespace) = Self::find_namespace_by_name(txn, &to_create.name).await? {

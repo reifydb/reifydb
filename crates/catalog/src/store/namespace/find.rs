@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
+	interface::{NamespaceDef, NamespaceId, NamespaceKey},
 	value::encoded::EncodedValues,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -13,7 +14,7 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_namespace_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
 		let name = name.as_ref();
@@ -23,7 +24,8 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		let batch = rx.range(NamespaceKey::full_scan()).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceKey::full_scan(), 1024).await?;
 		Ok(batch.items.iter().find_map(|multi| {
 			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
@@ -36,7 +38,7 @@ impl CatalogStore {
 	}
 
 	pub async fn find_namespace(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		id: NamespaceId,
 	) -> crate::Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
@@ -44,7 +46,8 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.get(&NamespaceKey::encoded(id)).await?.map(convert_namespace))
+		let mut txn = rx.into_standard_transaction();
+		Ok(txn.get(&NamespaceKey::encoded(id)).await?.map(convert_namespace))
 	}
 }
 

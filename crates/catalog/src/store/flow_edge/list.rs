@@ -3,9 +3,10 @@
 
 use flow_edge_by_flow::LAYOUT;
 use reifydb_core::{
-	interface::{EncodableKey, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId, QueryTransaction},
+	interface::{EncodableKey, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
 	key::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -14,10 +15,11 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn list_flow_edges_by_flow(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowEdgeDef>> {
-		let batch = txn.range(FlowEdgeByFlowKey::full_scan(flow_id)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(FlowEdgeByFlowKey::full_scan(flow_id), 1024).await?;
 		let edge_ids: Vec<FlowEdgeId> = batch
 			.items
 			.iter()
@@ -27,7 +29,7 @@ impl CatalogStore {
 		// Then fetch each edge
 		let mut edges = Vec::new();
 		for edge_id in edge_ids {
-			if let Some(edge) = Self::find_flow_edge(txn, edge_id).await? {
+			if let Some(edge) = Self::find_flow_edge(&mut txn, edge_id).await? {
 				edges.push(edge);
 			}
 		}
@@ -38,10 +40,11 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub async fn list_flow_edges_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
+	pub async fn list_flow_edges_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range(FlowEdgeKey::full_scan()).await?;
+		let batch = txn.range_batch(FlowEdgeKey::full_scan(), 1024).await?;
 		let entries: Vec<_> = batch.items.into_iter().collect();
 
 		for entry in entries {

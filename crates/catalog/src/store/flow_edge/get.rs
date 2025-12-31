@@ -3,14 +3,18 @@
 
 use reifydb_core::{
 	Error,
-	interface::{FlowEdgeDef, FlowEdgeId, QueryTransaction},
+	interface::{FlowEdgeDef, FlowEdgeId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_flow_edge(txn: &mut impl QueryTransaction, edge_id: FlowEdgeId) -> crate::Result<FlowEdgeDef> {
+	pub async fn get_flow_edge(
+		txn: &mut impl IntoStandardTransaction,
+		edge_id: FlowEdgeId,
+	) -> crate::Result<FlowEdgeDef> {
 		CatalogStore::find_flow_edge(txn, edge_id).await?.ok_or_else(|| {
 			Error(internal!(
 				"Flow edge with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

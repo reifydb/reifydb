@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, PrimitiveId, QueryTransaction, TableId, ViewId},
+	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, PrimitiveId, TableId, ViewId},
 	return_internal_error,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -13,20 +14,21 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_primary_key(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		let source_id = source.into();
+		let mut txn = rx.into_standard_transaction();
 
 		// Get the primary key ID for the table or view
 		// Virtual tables and ring buffers don't have primary keys
 		// stored separately
 		let primary_key_id = match source_id {
-			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(rx, table_id).await? {
+			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(&mut txn, table_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::View(view_id) => match Self::get_view_pk_id(rx, view_id).await? {
+			PrimitiveId::View(view_id) => match Self::get_view_pk_id(&mut txn, view_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
@@ -39,7 +41,7 @@ impl CatalogStore {
 				return Ok(None);
 			}
 			PrimitiveId::RingBuffer(ringbuffer_id) => {
-				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id).await? {
+				match Self::get_ringbuffer_pk_id(&mut txn, ringbuffer_id).await? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
@@ -51,7 +53,7 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id)).await? {
+		let primary_key_multi = match txn.get(&PrimaryKeyKey::encoded(primary_key_id)).await? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",
@@ -66,7 +68,7 @@ impl CatalogStore {
 		// Fetch full ColumnDef for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = Self::get_column(rx, column_id).await?;
+			let column_def = Self::get_column(&mut txn, column_id).await?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,
@@ -86,7 +88,7 @@ impl CatalogStore {
 
 	#[inline]
 	pub async fn find_table_primary_key(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, table_id).await
@@ -94,7 +96,7 @@ impl CatalogStore {
 
 	#[inline]
 	pub async fn find_view_primary_key(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
 		Self::find_primary_key(rx, view_id).await

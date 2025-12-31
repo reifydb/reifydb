@@ -6,12 +6,13 @@ use reifydb_core::{
 	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use super::encode_retention_policy;
 
 /// Store a retention policy for a source (table, view, or ring buffer)
 pub(crate) async fn create_primitive_retention_policy(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	source: PrimitiveId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
@@ -23,7 +24,7 @@ pub(crate) async fn create_primitive_retention_policy(
 
 /// Store a retention policy for an operator (flow node)
 pub(crate) async fn _create_operator_retention_policy(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	operator: FlowNodeId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {

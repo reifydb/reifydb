@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey, QueryTransaction};
+use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore, MaterializedCatalog,
@@ -12,10 +13,14 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub async fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub async fn load_primary_keys(
+	rx: &mut impl IntoStandardTransaction,
+	catalog: &MaterializedCatalog,
+) -> crate::Result<()> {
+	let mut txn = rx.into_standard_transaction();
 	let range = PrimaryKeyKey::full_scan();
 
-	let batch = qt.range(range).await?;
+	let batch = txn.range_batch(range, 1024).await?;
 
 	for multi in batch.items {
 		let version = multi.version;
@@ -28,7 +33,7 @@ pub async fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &Materia
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = CatalogStore::get_column(qt, column_id).await?;
+			let column_def = CatalogStore::get_column(&mut txn, column_id).await?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,

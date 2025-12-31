@@ -16,7 +16,7 @@ pub(crate) use namespace::load_namespaces;
 pub(crate) use operator_retention_policy::load_operator_retention_policies;
 pub(crate) use primary_key::load_primary_keys;
 pub(crate) use primitive_retention_policy::load_source_retention_policies;
-use reifydb_core::interface::QueryTransaction;
+use reifydb_transaction::IntoStandardTransaction;
 pub(crate) use table::load_tables;
 pub(crate) use view::load_views;
 
@@ -27,22 +27,26 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub async fn load_all(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
-		load_namespaces(qt, catalog).await?;
+	pub async fn load_all(
+		rx: &mut impl IntoStandardTransaction,
+		catalog: &MaterializedCatalog,
+	) -> crate::Result<()> {
+		let mut txn = rx.into_standard_transaction();
+		load_namespaces(&mut txn, catalog).await?;
 		// Load primary keys first so they're available when loading
 		// tables/views
-		load_primary_keys(qt, catalog).await?;
+		load_primary_keys(&mut txn, catalog).await?;
 
-		load_tables(qt, catalog).await?;
-		load_views(qt, catalog).await?;
-		load_flows(qt, catalog).await?;
+		load_tables(&mut txn, catalog).await?;
+		load_views(&mut txn, catalog).await?;
+		load_flows(&mut txn, catalog).await?;
 
 		// Load retention policies
-		load_source_retention_policies(qt, catalog).await?;
-		load_operator_retention_policies(qt, catalog).await?;
+		load_source_retention_policies(&mut txn, catalog).await?;
+		load_operator_retention_policies(&mut txn, catalog).await?;
 
 		// Load dictionaries
-		load_dictionaries(qt, catalog).await?;
+		load_dictionaries(&mut txn, catalog).await?;
 
 		Ok(())
 	}

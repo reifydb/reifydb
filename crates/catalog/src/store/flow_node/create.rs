@@ -5,11 +5,15 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeDef},
 	key::{FlowNodeByFlowKey, FlowNodeKey},
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::store::flow_node::layout::{flow_node, flow_node_by_flow};
 
 impl crate::CatalogStore {
-	pub async fn create_flow_node(txn: &mut impl CommandTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
+	pub async fn create_flow_node(
+		txn: &mut StandardCommandTransaction,
+		node_def: &FlowNodeDef,
+	) -> crate::Result<()> {
 		// Write to main flow_node table
 		let mut row = flow_node::LAYOUT.allocate();
 		flow_node::LAYOUT.set_u64(&mut row, flow_node::ID, node_def.id);

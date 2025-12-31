@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceId, QueryTransaction,
-};
+use reifydb_core::interface::{FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceId};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	MaterializedCatalog,
@@ -13,9 +12,13 @@ use crate::{
 	},
 };
 
-pub(crate) async fn load_flows(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
+pub(crate) async fn load_flows(
+	rx: &mut impl IntoStandardTransaction,
+	catalog: &MaterializedCatalog,
+) -> crate::Result<()> {
+	let mut txn = rx.into_standard_transaction();
 	let range = FlowKey::full_scan();
-	let batch = qt.range(range).await?;
+	let batch = txn.range_batch(range, 1024).await?;
 
 	for multi in batch.items {
 		let version = multi.version;

@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{PrimaryKeyId, QueryTransaction, TableId, TableKey};
+use reifydb_core::interface::{PrimaryKeyId, TableId, TableKey};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::table::layout::table};
 
@@ -9,10 +10,11 @@ impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
 	pub async fn get_table_pk_id(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&TableKey::encoded(table_id)).await? {
+		let mut txn = rx.into_standard_transaction();
+		let multi = match txn.get(&TableKey::encoded(table_id)).await? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

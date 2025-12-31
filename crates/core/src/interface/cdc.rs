@@ -4,7 +4,7 @@
 use reifydb_type::internal_error;
 use serde::{Deserialize, Serialize};
 
-use super::{CdcConsumerKeyRange, EncodableKey, QueryTransaction};
+use super::{CdcConsumerKeyRange, EncodableKey};
 use crate::{CommitVersion, EncodedKey, key::CdcConsumerKey, value::encoded::EncodedValues};
 
 #[repr(transparent)]

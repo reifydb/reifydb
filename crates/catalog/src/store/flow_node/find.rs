@@ -3,17 +3,19 @@
 
 use flow_node::LAYOUT;
 use reifydb_core::{
-	interface::{FlowId, FlowNodeDef, FlowNodeId, QueryTransaction},
+	interface::{FlowId, FlowNodeDef, FlowNodeId},
 	key::FlowNodeKey,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::flow_node::layout::flow_node};
 
 impl CatalogStore {
 	pub async fn find_flow_node(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<Option<FlowNodeDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id)).await? else {
 			return Ok(None);
 		};

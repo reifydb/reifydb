@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{DictionaryDef, DictionaryId, MultiVersionValues, NamespaceId, QueryTransaction},
+	interface::{DictionaryDef, DictionaryId, MultiVersionValues, NamespaceId},
 	key::{DictionaryKey, NamespaceDictionaryKey},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
 use crate::{
@@ -14,10 +15,11 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_dictionary(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id)).await? else {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&DictionaryKey::encoded(dictionary_id)).await? else {
 			return Ok(None);
 		};
 
@@ -38,12 +40,13 @@ impl CatalogStore {
 	}
 
 	pub async fn find_dictionary_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
-		let batch = rx.range(NamespaceDictionaryKey::full_scan(namespace)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceDictionaryKey::full_scan(namespace), 1024).await?;
 		let Some(dictionary_id) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
 			let row = &multi.values;
 			let dictionary_name = dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
@@ -56,7 +59,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_dictionary(rx, dictionary_id).await?))
+		Ok(Some(Self::get_dictionary(&mut txn, dictionary_id).await?))
 	}
 }
 

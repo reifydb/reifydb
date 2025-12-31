@@ -15,9 +15,8 @@ use reifydb_core::{
 		TablePreUpdateInterceptor,
 	},
 	interface::{
-		CdcTransaction, CommandTransaction, MultiVersionBatch, MultiVersionTransaction, MultiVersionValues,
-		QueryTransaction, RowChange, SingleVersionTransaction, TransactionId, TransactionalChanges,
-		TransactionalDefChanges, WithEventBus,
+		CommandTransaction, MultiVersionBatch, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
+		RowChange, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
@@ -29,7 +28,7 @@ use tracing::instrument;
 use crate::{
 	cdc::TransactionCdc,
 	multi::{TransactionMultiVersion, pending::PendingWrites},
-	single::TransactionSingle,
+	single::{SvlCommandTransaction, SvlQueryTransaction, TransactionSingle},
 	standard::query::StandardQueryTransaction,
 };
 
@@ -162,7 +161,7 @@ impl StandardCommandTransaction {
 	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Query<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -178,7 +177,7 @@ impl StandardCommandTransaction {
 	pub async fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut <TransactionSingle as SingleVersionTransaction>::Command<'_>) -> Result<R> + Send,
+		F: FnOnce(&mut SvlCommandTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
@@ -250,10 +249,7 @@ impl StandardCommandTransaction {
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_query", level = "trace", skip(self, keys))]
-	pub async fn begin_single_query<'a, I>(
-		&self,
-		keys: I,
-	) -> Result<<TransactionSingle as SingleVersionTransaction>::Query<'_>>
+	pub async fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
@@ -263,17 +259,14 @@ impl StandardCommandTransaction {
 
 	/// Begin a CDC query transaction
 	#[instrument(name = "transaction::standard::command::begin_cdc_query", level = "trace", skip(self))]
-	pub async fn begin_cdc_query(&self) -> Result<<TransactionCdc as CdcTransaction>::Query<'_>> {
+	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		self.check_active()?;
 		Ok(self.cdc.begin_query()?)
 	}
 
 	/// Begin a single-version command transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_command", level = "trace", skip(self, keys))]
-	pub async fn begin_single_command<'a, I>(
-		&self,
-		keys: I,
-	) -> Result<<TransactionSingle as SingleVersionTransaction>::Command<'_>>
+	pub async fn begin_single_command<'a, I>(&self, keys: I) -> Result<SvlCommandTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
@@ -294,9 +287,6 @@ impl StandardCommandTransaction {
 
 #[async_trait]
 impl QueryTransaction for StandardCommandTransaction {
-	type SingleVersionQuery<'a> = <TransactionSingle as SingleVersionTransaction>::Query<'a>;
-	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
-
 	#[inline]
 	fn version(&self) -> CommitVersion {
 		QueryTransaction::version(self.cmd.as_ref().unwrap())
@@ -336,25 +326,10 @@ impl QueryTransaction for StandardCommandTransaction {
 		self.check_active()?;
 		QueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version).await
 	}
-
-	async fn begin_single_query<'a, I>(&self, keys: I) -> Result<Self::SingleVersionQuery<'_>>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		self.check_active()?;
-		self.single.begin_query(keys).await
-	}
-
-	async fn begin_cdc_query(&self) -> Result<Self::CdcQuery<'_>> {
-		self.check_active()?;
-		Ok(self.cdc.begin_query()?)
-	}
 }
 
 #[async_trait]
 impl CommandTransaction for StandardCommandTransaction {
-	type SingleVersionCommand<'a> = <TransactionSingle as SingleVersionTransaction>::Command<'a>;
-
 	#[inline]
 	async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
 		self.check_active()?;
@@ -385,14 +360,6 @@ impl CommandTransaction for StandardCommandTransaction {
 			self.state = TransactionState::RolledBack;
 		}
 		result
-	}
-
-	async fn begin_single_command<'a, I>(&self, keys: I) -> Result<Self::SingleVersionCommand<'_>>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-	{
-		self.check_active()?;
-		self.single.begin_command(keys).await
 	}
 }
 

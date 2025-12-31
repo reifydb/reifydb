@@ -7,10 +7,7 @@ use reifydb_core::{
 		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
 	},
-	interface::{
-		EncodableKey, SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionTransaction,
-		SystemVersion, SystemVersionKey, WithEventBus,
-	},
+	interface::{EncodableKey, SystemVersion, SystemVersionKey, WithEventBus},
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_transaction::single::TransactionSingle;

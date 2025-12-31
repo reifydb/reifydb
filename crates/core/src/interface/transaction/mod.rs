@@ -3,9 +3,6 @@
 
 mod cdc;
 mod change;
-pub mod interceptor;
-mod multi;
-mod single;
 
 use std::{
 	fmt::{Display, Formatter},
@@ -14,9 +11,7 @@ use std::{
 
 pub use cdc::{CdcBatch, CdcQueryTransaction, CdcTransaction};
 pub use change::*;
-pub use multi::*;
 use reifydb_type::{Error, Uuid7, return_internal_error};
-pub use single::*;
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness

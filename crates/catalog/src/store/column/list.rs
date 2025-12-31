@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{ColumnKey, PrimitiveId, QueryTransaction};
+use reifydb_core::interface::{ColumnKey, PrimitiveId};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -17,13 +18,14 @@ pub struct ColumnInfo {
 
 impl CatalogStore {
 	pub async fn list_columns(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let source = source.into();
 		let mut result = vec![];
 
-		let batch = rx.range(ColumnKey::full_scan(source)).await?;
+		let batch = txn.range_batch(ColumnKey::full_scan(source), 1024).await?;
 		let ids: Vec<_> = batch
 			.items
 			.into_iter()
@@ -34,7 +36,7 @@ impl CatalogStore {
 			.collect();
 
 		for id in ids {
-			result.push(Self::get_column(rx, id).await?);
+			result.push(Self::get_column(&mut txn, id).await?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -42,13 +44,14 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub async fn list_columns_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnInfo>> {
+	pub async fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Get all tables
-		let tables = CatalogStore::list_tables_all(rx).await?;
+		let tables = CatalogStore::list_tables_all(&mut txn).await?;
 		for table in tables {
-			let columns = CatalogStore::list_columns(rx, table.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, table.id).await?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -59,9 +62,9 @@ impl CatalogStore {
 		}
 
 		// Get all views
-		let views = CatalogStore::list_views_all(rx).await?;
+		let views = CatalogStore::list_views_all(&mut txn).await?;
 		for view in views {
-			let columns = CatalogStore::list_columns(rx, view.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, view.id).await?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -72,9 +75,9 @@ impl CatalogStore {
 		}
 
 		// Get all ring buffers
-		let ringbuffers = CatalogStore::list_ringbuffers_all(rx).await?;
+		let ringbuffers = CatalogStore::list_ringbuffers_all(&mut txn).await?;
 		for ringbuffer in ringbuffers {
-			let columns = CatalogStore::list_columns(rx, ringbuffer.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, ringbuffer.id).await?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,

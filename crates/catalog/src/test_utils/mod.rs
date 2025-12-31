@@ -5,6 +5,7 @@ use reifydb_core::interface::{
 	ColumnPolicyKind, CommandTransaction, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus,
 	NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Blob, TypeConstraint};
 
 use crate::{
@@ -19,7 +20,7 @@ use crate::{
 	},
 };
 
-pub async fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> NamespaceDef {
+pub async fn create_namespace(txn: &mut StandardCommandTransaction, namespace: &str) -> NamespaceDef {
 	CatalogStore::create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -31,14 +32,14 @@ pub async fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str
 	.unwrap()
 }
 
-pub async fn ensure_test_namespace(txn: &mut impl CommandTransaction) -> NamespaceDef {
+pub async fn ensure_test_namespace(txn: &mut StandardCommandTransaction) -> NamespaceDef {
 	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").await.unwrap() {
 		return result;
 	}
 	create_namespace(txn, "test_namespace").await
 }
 
-pub async fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
+pub async fn ensure_test_table(txn: &mut StandardCommandTransaction) -> TableDef {
 	let namespace = ensure_test_namespace(txn).await;
 
 	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").await.unwrap() {
@@ -48,7 +49,7 @@ pub async fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
 }
 
 pub async fn create_table(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	namespace: &str,
 	table: &str,
 	columns: &[crate::store::table::TableColumnToCreate],
@@ -72,7 +73,7 @@ pub async fn create_table(
 }
 
 pub async fn create_test_column(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	name: &str,
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
@@ -103,7 +104,7 @@ pub async fn create_test_column(
 }
 
 pub async fn create_view(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	namespace: &str,
 	view: &str,
 	columns: &[crate::store::view::ViewColumnToCreate],
@@ -125,7 +126,7 @@ pub async fn create_view(
 	.unwrap()
 }
 
-pub async fn ensure_test_ringbuffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
+pub async fn ensure_test_ringbuffer(txn: &mut StandardCommandTransaction) -> RingBufferDef {
 	let namespace = ensure_test_namespace(txn).await;
 
 	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").await.unwrap()
@@ -136,7 +137,7 @@ pub async fn ensure_test_ringbuffer(txn: &mut impl CommandTransaction) -> RingBu
 }
 
 pub async fn create_ringbuffer(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	namespace: &str,
 	ringbuffer: &str,
 	capacity: u64,
@@ -161,7 +162,7 @@ pub async fn create_ringbuffer(
 }
 
 pub async fn create_test_ringbuffer_column(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	ringbuffer_id: RingBufferId,
 	name: &str,
 	constraint: TypeConstraint,
@@ -190,7 +191,7 @@ pub async fn create_test_ringbuffer_column(
 	.unwrap();
 }
 
-pub async fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
+pub async fn create_flow(txn: &mut StandardCommandTransaction, namespace: &str, flow: &str) -> FlowDef {
 	// First look up the namespace to get its ID
 	let namespace_def =
 		CatalogStore::find_namespace_by_name(txn, namespace).await.unwrap().expect("Namespace not found");
@@ -208,7 +209,7 @@ pub async fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flo
 	.unwrap()
 }
 
-pub async fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
+pub async fn ensure_test_flow(txn: &mut StandardCommandTransaction) -> FlowDef {
 	let namespace = ensure_test_namespace(txn).await;
 
 	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").await.unwrap() {
@@ -218,7 +219,7 @@ pub async fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
 }
 
 pub async fn create_flow_node(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	flow_id: FlowId,
 	node_type: u8,
 	data: &[u8],
@@ -238,7 +239,7 @@ pub async fn create_flow_node(
 }
 
 pub async fn create_flow_edge(
-	txn: &mut impl CommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	flow_id: FlowId,
 	source: FlowNodeId,
 	target: FlowNodeId,

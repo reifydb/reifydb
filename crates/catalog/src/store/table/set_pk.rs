@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, PrimaryKeyId, TableId, TableKey},
+	interface::{CommandTransaction, PrimaryKeyId, QueryTransaction, TableId, TableKey},
 	return_internal_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::table::layout::table};
 
@@ -12,7 +13,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a table
 	/// Returns an internal error if the table doesn't exist
 	pub async fn set_table_primary_key(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

@@ -7,7 +7,6 @@ mod common;
 pub mod compute;
 pub mod delta;
 pub mod event;
-pub mod interceptor;
 pub mod interface;
 pub mod key;
 pub mod retention;

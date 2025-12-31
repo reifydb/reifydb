@@ -10,6 +10,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Fragment, TypeConstraint};
 
 use crate::{
@@ -43,7 +44,7 @@ pub struct TableToCreate {
 
 impl CatalogStore {
 	pub async fn create_table(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
@@ -71,7 +72,7 @@ impl CatalogStore {
 	}
 
 	async fn store_table(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		table: TableId,
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
@@ -90,7 +91,7 @@ impl CatalogStore {
 	}
 
 	async fn link_table_to_namespace(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
@@ -103,7 +104,7 @@ impl CatalogStore {
 	}
 
 	async fn insert_columns(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {

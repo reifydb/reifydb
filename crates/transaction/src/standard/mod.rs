@@ -197,15 +197,6 @@ impl<'a> StandardTransaction<'a> {
 // but we need the trait implementation for trait bounds
 #[async_trait]
 impl<'a> QueryTransaction for StandardTransaction<'a> {
-	type SingleVersionQuery<'b>
-		= crate::single::SvlQueryTransaction<'b>
-	where
-		Self: 'b;
-	type CdcQuery<'b>
-		= crate::cdc::StandardCdcQueryTransaction
-	where
-		Self: 'b;
-
 	fn version(&self) -> CommitVersion {
 		match self {
 			Self::Command(txn) => QueryTransaction::version(*txn),
@@ -252,23 +243,6 @@ impl<'a> QueryTransaction for StandardTransaction<'a> {
 		match self {
 			StandardTransaction::Command(txn) => txn.read_as_of_version_exclusive(version).await,
 			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
-		}
-	}
-
-	async fn begin_single_query<'b, I>(&self, keys: I) -> Result<Self::SingleVersionQuery<'_>>
-	where
-		I: IntoIterator<Item = &'b EncodedKey> + Send,
-	{
-		match self {
-			StandardTransaction::Command(txn) => txn.begin_single_query(keys).await,
-			StandardTransaction::Query(txn) => txn.begin_single_query(keys).await,
-		}
-	}
-
-	async fn begin_cdc_query(&self) -> Result<Self::CdcQuery<'_>> {
-		match self {
-			StandardTransaction::Command(txn) => txn.begin_cdc_query().await,
-			StandardTransaction::Query(txn) => txn.begin_cdc_query().await,
 		}
 	}
 }

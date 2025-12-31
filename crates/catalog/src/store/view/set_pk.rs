@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, PrimaryKeyId, ViewId, ViewKey},
+	interface::{CommandTransaction, PrimaryKeyId, QueryTransaction, ViewId, ViewKey},
 	return_internal_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::view::layout::view};
 
@@ -12,7 +13,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a view
 	/// Returns an internal error if the view doesn't exist
 	pub async fn set_view_primary_key(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{NamespaceId, QueryTransaction, SequenceId, SystemSequenceKey},
+	interface::{NamespaceId, SequenceId, SystemSequenceKey},
 	return_internal_error,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -16,7 +17,7 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_sequence(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
 		let (namespace, name) = match sequence_id {
@@ -37,7 +38,8 @@ impl CatalogStore {
 		// Read current value from single storage
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
-		let value = match rx.get(&sequence_key).await? {
+		let mut txn = rx.into_standard_transaction();
+		let value = match txn.get(&sequence_key).await? {
 			Some(row) => LAYOUT.get_u64(&row.values, VALUE),
 			None => 0,
 		};

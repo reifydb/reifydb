@@ -3,17 +3,19 @@
 
 use flow_edge::LAYOUT;
 use reifydb_core::{
-	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId, QueryTransaction},
+	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
 	key::FlowEdgeKey,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::flow_edge::layout::flow_edge};
 
 impl CatalogStore {
 	pub async fn find_flow_edge(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		edge: FlowEdgeId,
 	) -> crate::Result<Option<FlowEdgeDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge)).await? else {
 			return Ok(None);
 		};

@@ -3,14 +3,9 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	CowVec, EncodedKey,
-	delta::Delta,
-	event::EventBus,
-	interface::{SingleVersionTransaction, SingleVersionValues, WithEventBus},
-	value::encoded::EncodedValues,
+	CowVec, EncodedKey, delta::Delta, event::EventBus, interface::WithEventBus, value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::TransactionStore;
 use tokio::sync::RwLock as TokioRwLock;
@@ -58,20 +53,8 @@ impl TransactionSvl {
 			}),
 		}
 	}
-}
 
-impl WithEventBus for TransactionSvl {
-	fn event_bus(&self) -> &EventBus {
-		&self.inner.event_bus
-	}
-}
-
-#[async_trait]
-impl SingleVersionTransaction for TransactionSvl {
-	type Query<'a> = SvlQueryTransaction<'a>;
-	type Command<'a> = SvlCommandTransaction<'a>;
-
-	async fn begin_query<'a, I>(&self, keys: I) -> crate::Result<Self::Query<'_>>
+	pub async fn begin_query<'a, I>(&self, keys: I) -> crate::Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
@@ -100,7 +83,7 @@ impl SingleVersionTransaction for TransactionSvl {
 		})
 	}
 
-	async fn begin_command<'a, I>(&self, keys: I) -> crate::Result<Self::Command<'_>>
+	pub async fn begin_command<'a, I>(&self, keys: I) -> crate::Result<SvlCommandTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 	{
@@ -126,11 +109,16 @@ impl SingleVersionTransaction for TransactionSvl {
 	}
 }
 
+impl WithEventBus for TransactionSvl {
+	fn event_bus(&self) -> &EventBus {
+		&self.inner.event_bus
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 	use tokio::time::Duration;
 
 	use super::*;

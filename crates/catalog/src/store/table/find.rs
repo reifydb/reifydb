@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, NamespaceTableKey, QueryTransaction, TableDef, TableId, TableKey,
-};
+use reifydb_core::interface::{MultiVersionValues, NamespaceId, NamespaceTableKey, TableDef, TableId, TableKey};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -11,8 +10,12 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_table(rx: &mut impl QueryTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
-		let Some(multi) = rx.get(&TableKey::encoded(table)).await? else {
+	pub async fn find_table(
+		rx: &mut impl IntoStandardTransaction,
+		table: TableId,
+	) -> crate::Result<Option<TableDef>> {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&TableKey::encoded(table)).await? else {
 			return Ok(None);
 		};
 
@@ -25,18 +28,19 @@ impl CatalogStore {
 			id,
 			name,
 			namespace,
-			columns: Self::list_columns(rx, id).await?,
-			primary_key: Self::find_primary_key(rx, id).await?,
+			columns: Self::list_columns(&mut txn, id).await?,
+			primary_key: Self::find_primary_key(&mut txn, id).await?,
 		}))
 	}
 
 	pub async fn find_table_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
-		let batch = rx.range(NamespaceTableKey::full_scan(namespace)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceTableKey::full_scan(namespace), 1024).await?;
 		let Some(table) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
 			let row = &multi.values;
 			let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
@@ -49,7 +53,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_table(rx, table).await?))
+		Ok(Some(Self::get_table(&mut txn, table).await?))
 	}
 }
 

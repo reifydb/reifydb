@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{PrimaryKeyDef, QueryTransaction};
+use reifydb_core::interface::PrimaryKeyDef;
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -14,7 +15,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub async fn list_primary_keys(rx: &mut impl QueryTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
+	pub async fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
 		use std::ops::Bound;
 
 		use reifydb_core::{
@@ -22,6 +23,7 @@ impl CatalogStore {
 			interface::{Key, PrimaryKeyKey},
 		};
 
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage
@@ -35,7 +37,7 @@ impl CatalogStore {
 		};
 
 		// Collect entries first to avoid borrow checker issues
-		let batch = rx.range(primary_key_range).await?;
+		let batch = txn.range_batch(primary_key_range, 1024).await?;
 
 		for entry in batch.items {
 			// Decode the primary key ID from the key
@@ -54,7 +56,7 @@ impl CatalogStore {
 					// ID
 					let mut columns = Vec::new();
 					for column_id in column_ids {
-						let column_def = Self::get_column(rx, column_id).await?;
+						let column_def = Self::get_column(&mut txn, column_id).await?;
 						columns.push(reifydb_core::interface::ColumnDef {
 							id: column_def.id,
 							name: column_def.name,
@@ -82,7 +84,9 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub async fn list_primary_key_columns(rx: &mut impl QueryTransaction) -> crate::Result<Vec<(u64, u64, usize)>> {
+	pub async fn list_primary_key_columns(
+		rx: &mut impl IntoStandardTransaction,
+	) -> crate::Result<Vec<(u64, u64, usize)>> {
 		use std::ops::Bound;
 
 		use reifydb_core::{
@@ -90,6 +94,7 @@ impl CatalogStore {
 			interface::{Key, PrimaryKeyKey},
 		};
 
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Scan all primary key entries from storage using same approach
@@ -102,7 +107,7 @@ impl CatalogStore {
 		};
 
 		// Collect entries first to avoid borrow checker issues
-		let batch = rx.range(primary_key_range).await?;
+		let batch = txn.range_batch(primary_key_range, 1024).await?;
 
 		for entry in batch.items {
 			// Decode the primary key ID from the key

@@ -3,12 +3,9 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
-	EncodedKey,
-	diagnostic::sequence::sequence_exhausted,
-	interface::{CommandTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction},
-	return_error,
-	value::encoded::EncodedValuesLayout,
+	EncodedKey, diagnostic::sequence::sequence_exhausted, return_error, value::encoded::EncodedValuesLayout,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::Type;
 
 macro_rules! impl_generator {
@@ -32,7 +29,7 @@ macro_rules! impl_generator {
 
 			impl $generator {
 				pub(crate) async fn next(
-					txn: &mut impl CommandTransaction,
+					txn: &mut StandardCommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 				) -> crate::Result<$prim> {
@@ -40,7 +37,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) async fn next_batched(
-					txn: &mut impl CommandTransaction,
+					txn: &mut StandardCommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 					incr: $prim,
@@ -92,7 +89,7 @@ macro_rules! impl_generator {
 				}
 
 				pub(crate) async fn set(
-					txn: &mut impl CommandTransaction,
+					txn: &mut StandardCommandTransaction,
 					key: &EncodedKey,
 					value: $prim,
 				) -> crate::Result<()> {
@@ -110,11 +107,7 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_core::{
-					EncodedKey,
-					diagnostic::sequence::sequence_exhausted,
-					interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction},
-				};
+				use reifydb_core::{EncodedKey, diagnostic::sequence::sequence_exhausted};
 				use reifydb_engine::test_utils::create_test_command_transaction;
 				use reifydb_type::Type;
 

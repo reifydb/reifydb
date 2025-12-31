@@ -4,14 +4,15 @@
 use reifydb_core::{
 	Error,
 	diagnostic::catalog::flow_not_found,
-	interface::{FlowDef, FlowId, NamespaceId, QueryTransaction},
+	interface::{FlowDef, FlowId, NamespaceId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Fragment, internal};
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_flow(rx: &mut impl QueryTransaction, flow: FlowId) -> crate::Result<FlowDef> {
+	pub async fn get_flow(rx: &mut impl IntoStandardTransaction, flow: FlowId) -> crate::Result<FlowDef> {
 		CatalogStore::find_flow(rx, flow).await?.ok_or_else(|| {
 			Error(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -21,7 +22,7 @@ impl CatalogStore {
 	}
 
 	pub async fn get_flow_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<FlowDef> {

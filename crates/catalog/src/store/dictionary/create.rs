@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::{CommandTransaction, DictionaryDef, DictionaryId, NamespaceId},
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Fragment, Type};
 
 use crate::{CatalogStore, store::sequence::SystemSequence};
@@ -21,7 +22,7 @@ pub struct DictionaryToCreate {
 
 impl CatalogStore {
 	pub async fn create_dictionary(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
 		let namespace_id = to_create.namespace;
@@ -54,7 +55,7 @@ impl CatalogStore {
 	}
 
 	async fn store_dictionary(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
@@ -76,7 +77,7 @@ impl CatalogStore {
 	}
 
 	async fn link_dictionary_to_namespace(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
 		name: &str,
@@ -95,7 +96,7 @@ impl CatalogStore {
 	}
 
 	async fn initialize_dictionary_sequence(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<()> {
 		use reifydb_core::{key::DictionarySequenceKey, util::CowVec, value::encoded::EncodedValues};

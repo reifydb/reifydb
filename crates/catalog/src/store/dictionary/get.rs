@@ -2,15 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{DictionaryDef, DictionaryId, QueryTransaction},
+	interface::{DictionaryDef, DictionaryId},
 	return_internal_error,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub async fn get_dictionary(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {
 		match Self::find_dictionary(rx, dictionary).await? {

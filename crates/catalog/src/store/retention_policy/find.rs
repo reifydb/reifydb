@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId, QueryTransaction},
+	interface::{FlowNodeId, PrimitiveId},
 	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -14,9 +15,10 @@ impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
 	pub async fn find_primitive_retention_policy(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		source: PrimitiveId,
 	) -> crate::Result<Option<RetentionPolicy>> {
+		let mut txn = rx.into_standard_transaction();
 		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source)).await?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
@@ -24,9 +26,10 @@ impl CatalogStore {
 	/// Find a retention policy for an operator
 	/// Returns None if no retention policy is set
 	pub async fn find_operator_retention_policy(
-		txn: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
+		let mut txn = rx.into_standard_transaction();
 		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator)).await?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}

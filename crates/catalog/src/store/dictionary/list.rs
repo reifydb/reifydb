@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{DictionaryDef, DictionaryId, NamespaceId, QueryTransaction},
+	interface::{DictionaryDef, DictionaryId, NamespaceId},
 	key::{DictionaryKey, NamespaceDictionaryKey},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
 use crate::{
@@ -15,11 +16,12 @@ use crate::{
 impl CatalogStore {
 	/// List all dictionaries in a namespace
 	pub async fn list_dictionaries(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
+		let mut txn = rx.into_standard_transaction();
 		// Collect dictionary IDs first to avoid borrow conflict
-		let batch = rx.range(NamespaceDictionaryKey::full_scan(namespace)).await?;
+		let batch = txn.range_batch(NamespaceDictionaryKey::full_scan(namespace), 1024).await?;
 		let dictionary_ids: Vec<DictionaryId> = batch
 			.items
 			.iter()
@@ -31,7 +33,7 @@ impl CatalogStore {
 
 		let mut dictionaries = Vec::new();
 		for dictionary_id in dictionary_ids {
-			if let Some(dictionary) = Self::find_dictionary(rx, dictionary_id).await? {
+			if let Some(dictionary) = Self::find_dictionary(&mut txn, dictionary_id).await? {
 				dictionaries.push(dictionary);
 			}
 		}
@@ -40,10 +42,11 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub async fn list_all_dictionaries(rx: &mut impl QueryTransaction) -> crate::Result<Vec<DictionaryDef>> {
+	pub async fn list_all_dictionaries(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<DictionaryDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut dictionaries = Vec::new();
 
-		let batch = rx.range(DictionaryKey::full_scan()).await?;
+		let batch = txn.range_batch(DictionaryKey::full_scan(), 1024).await?;
 		for multi in batch.items {
 			let row = &multi.values;
 			let id = DictionaryId(dictionary::LAYOUT.get_u64(&row, dictionary::ID));

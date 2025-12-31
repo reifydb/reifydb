@@ -4,7 +4,6 @@
 mod auth;
 pub mod catalog;
 mod cdc;
-mod engine;
 pub mod evaluate;
 mod execute;
 mod flow;
@@ -18,7 +17,6 @@ pub mod version;
 pub use auth::*;
 pub use catalog::*;
 pub use cdc::*;
-pub use engine::*;
 pub use execute::*;
 pub use flow::*;
 pub use function::*;

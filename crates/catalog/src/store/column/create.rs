@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, PrimitiveId, TableId},
 	return_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
 
 /// Encodes a constraint to a byte vector for storage
@@ -55,7 +56,7 @@ pub struct ColumnToCreate {
 
 impl CatalogStore {
 	pub(crate) async fn create_column(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
 	) -> crate::Result<ColumnDef> {

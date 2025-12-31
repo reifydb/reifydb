@@ -1,14 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{QueryTransaction, RingBufferDef, RingBufferId, RingBufferMetadata};
+use reifydb_core::interface::{RingBufferDef, RingBufferId, RingBufferMetadata};
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{Error, internal};
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub async fn get_ringbuffer(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
 		Self::find_ringbuffer(rx, ringbuffer).await?.ok_or_else(|| {
@@ -20,7 +21,7 @@ impl CatalogStore {
 	}
 
 	pub async fn get_ringbuffer_metadata(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
 		Self::find_ringbuffer_metadata(rx, ringbuffer).await?.ok_or_else(|| {

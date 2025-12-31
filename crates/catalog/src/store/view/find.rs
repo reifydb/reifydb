@@ -1,9 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey, ViewKind,
-};
+use reifydb_core::interface::{MultiVersionValues, NamespaceId, NamespaceViewKey, ViewDef, ViewId, ViewKey, ViewKind};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -11,8 +10,9 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let Some(multi) = rx.get(&ViewKey::encoded(id)).await? else {
+	pub async fn find_view(rx: &mut impl IntoStandardTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&ViewKey::encoded(id)).await? else {
 			return Ok(None);
 		};
 
@@ -32,18 +32,19 @@ impl CatalogStore {
 			name,
 			namespace,
 			kind,
-			columns: Self::list_columns(rx, id).await?,
-			primary_key: Self::find_view_primary_key(rx, id).await?,
+			columns: Self::list_columns(&mut txn, id).await?,
+			primary_key: Self::find_view_primary_key(&mut txn, id).await?,
 		}))
 	}
 
 	pub async fn find_view_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let batch = rx.range(NamespaceViewKey::full_scan(namespace)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceViewKey::full_scan(namespace), 1024).await?;
 		let Some(view) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
 			let row = &multi.values;
 			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
@@ -56,7 +57,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_view(rx, view).await?))
+		Ok(Some(Self::get_view(&mut txn, view).await?))
 	}
 }
 

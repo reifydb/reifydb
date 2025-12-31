@@ -3,14 +3,15 @@
 
 use reifydb_core::{
 	Error,
-	interface::{QueryTransaction, TableDef, TableId},
+	interface::{TableDef, TableId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_table(rx: &mut impl QueryTransaction, table: TableId) -> crate::Result<TableDef> {
+	pub async fn get_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<TableDef> {
 		CatalogStore::find_table(rx, table).await?.ok_or_else(|| {
 			Error(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

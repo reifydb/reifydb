@@ -3,15 +3,16 @@
 
 use reifydb_core::{
 	Error,
-	interface::{NamespaceDef, NamespaceId, QueryTransaction},
+	interface::{NamespaceDef, NamespaceId},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub async fn get_namespace(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<NamespaceDef> {
 		CatalogStore::find_namespace(rx, namespace).await?.ok_or_else(|| {

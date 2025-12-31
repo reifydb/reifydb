@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef, RingBufferId,
-	RingBufferKey, RingBufferMetadata, RingBufferMetadataKey,
+	MultiVersionValues, NamespaceId, NamespaceRingBufferKey, RingBufferDef, RingBufferId, RingBufferKey,
+	RingBufferMetadata, RingBufferMetadataKey,
 };
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -13,10 +14,11 @@ use crate::{
 
 impl CatalogStore {
 	pub async fn find_ringbuffer(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer)).await? else {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&RingBufferKey::encoded(ringbuffer)).await? else {
 			return Ok(None);
 		};
 
@@ -31,16 +33,17 @@ impl CatalogStore {
 			namespace,
 			name,
 			capacity,
-			columns: Self::list_columns(rx, id).await?,
-			primary_key: Self::find_primary_key(rx, id).await?,
+			columns: Self::list_columns(&mut txn, id).await?,
+			primary_key: Self::find_primary_key(&mut txn, id).await?,
 		}))
 	}
 
 	pub async fn find_ringbuffer_metadata(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer)).await? else {
+		let mut txn = rx.into_standard_transaction();
+		let Some(multi) = txn.get(&RingBufferMetadataKey::encoded(ringbuffer)).await? else {
 			return Ok(None);
 		};
 
@@ -61,12 +64,13 @@ impl CatalogStore {
 	}
 
 	pub async fn find_ringbuffer_by_name(
-		rx: &mut impl QueryTransaction,
+		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
-		let batch = rx.range(NamespaceRingBufferKey::full_scan(namespace)).await?;
+		let mut txn = rx.into_standard_transaction();
+		let batch = txn.range_batch(NamespaceRingBufferKey::full_scan(namespace), 1024).await?;
 		let Some(ringbuffer) = batch.items.into_iter().find_map(|multi: MultiVersionValues| {
 			let row = &multi.values;
 			let ringbuffer_name = ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME);
@@ -79,7 +83,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_ringbuffer(rx, ringbuffer).await?))
+		Ok(Some(Self::get_ringbuffer(&mut txn, ringbuffer).await?))
 	}
 }
 

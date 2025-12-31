@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, PrimaryKeyId, RingBufferId, RingBufferKey},
+	interface::{CommandTransaction, PrimaryKeyId, QueryTransaction, RingBufferId, RingBufferKey},
 	return_internal_error,
 };
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
@@ -12,7 +13,7 @@ impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
 	/// Returns an internal error if the ring buffer doesn't exist
 	pub async fn set_ringbuffer_primary_key(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {

@@ -6,10 +6,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	CommitVersion,
-	interface::{
-		EncodableKey, SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionTransaction,
-		TransactionVersionKey,
-	},
+	interface::{EncodableKey, TransactionVersionKey},
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_type::Type;
@@ -133,8 +130,6 @@ impl VersionProvider for StandardVersionProvider {
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
-
-	use reifydb_core::interface::SingleVersionTransaction;
 
 	use super::*;
 

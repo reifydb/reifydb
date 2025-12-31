@@ -1,15 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Key, NamespaceId, QueryTransaction, RingBufferDef, RingBufferKey};
+use reifydb_core::interface::{Key, NamespaceId, RingBufferDef, RingBufferKey};
+use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
 impl CatalogStore {
-	pub async fn list_ringbuffers_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<RingBufferDef>> {
+	pub async fn list_ringbuffers_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<RingBufferDef>> {
+		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = rx.range(RingBufferKey::full_scan()).await?;
+		let batch = txn.range_batch(RingBufferKey::full_scan(), 1024).await?;
 
 		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
@@ -26,8 +28,8 @@ impl CatalogStore {
 
 					let capacity = ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
 
-					let primary_key = Self::find_primary_key(rx, ringbuffer_id).await?;
-					let columns = Self::list_columns(rx, ringbuffer_id).await?;
+					let primary_key = Self::find_primary_key(&mut txn, ringbuffer_id).await?;
+					let columns = Self::list_columns(&mut txn, ringbuffer_id).await?;
 
 					let ringbuffer_def = RingBufferDef {
 						id: ringbuffer_id,

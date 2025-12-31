@@ -2,13 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, FlowId, FlowKey, FlowStatus};
+use reifydb_transaction::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::flow::layout::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
 	pub async fn update_flow_name(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		flow_id: FlowId,
 		new_name: String,
 	) -> crate::Result<()> {
@@ -29,7 +30,7 @@ impl CatalogStore {
 
 	/// Update the status of a flow
 	pub async fn update_flow_status(
-		txn: &mut impl CommandTransaction,
+		txn: &mut StandardCommandTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
 	) -> crate::Result<()> {
