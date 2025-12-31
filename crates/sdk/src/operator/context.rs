@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Operator context providing access to state and resources
 
 use reifydb_abi::ContextFFI;

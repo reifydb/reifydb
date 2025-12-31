@@ -9,7 +9,7 @@ use super::{
 	cursor::Cursor,
 	error::LexError,
 	keyword::lookup_keyword,
-	literal::LiteralKind,
+	literal::{LiteralKind, scan_number, scan_string, scan_temporal},
 	operator::{Operator, lookup_word_operator},
 	punctuation::Punctuation,
 	span::Span,
@@ -113,15 +113,15 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 			'`' => self.scan_quoted_identifier(start, start_line, start_column),
 
 			// String literals
-			'\'' | '"' => self.scan_string(ch, start, start_line, start_column),
+			'\'' | '"' => scan_string(&mut self.cursor, ch, start, start_line, start_column),
 
 			// Numbers
-			'0'..='9' => self.scan_number(start, start_line, start_column),
+			'0'..='9' => scan_number(&mut self.cursor, start, start_line, start_column),
 
 			// Dot - could be operator or start of decimal
 			'.' => {
 				if self.cursor.peek_ahead(1).map_or(false, |c| c.is_ascii_digit()) {
-					self.scan_number(start, start_line, start_column)
+					scan_number(&mut self.cursor, start, start_line, start_column)
 				} else {
 					self.scan_operator(start, start_line, start_column)
 				}
@@ -131,6 +131,9 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 			'(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' => {
 				self.scan_punctuation(start, start_line, start_column)
 			}
+
+			// Temporal literals: @2024-01-15, @10:30:00, etc.
+			'@' => scan_temporal(&mut self.cursor, start, start_line, start_column),
 
 			// Operators
 			'+' | '*' | '/' | '^' | '%' | '?' | '<' | '>' | ':' | '&' | '|' | '=' | '!' | '-' => {
@@ -207,110 +210,6 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 			column: start_column,
 			span,
 		})
-	}
-
-	fn scan_string(
-		&mut self,
-		quote: char,
-		start: usize,
-		start_line: u32,
-		start_column: u32,
-	) -> Result<Token, LexError> {
-		self.cursor.advance(); // consume opening quote
-
-		let content_start = self.cursor.position();
-
-		loop {
-			match self.cursor.peek() {
-				None | Some('\n') => {
-					let span = self.cursor.span_from(start, start_line, start_column);
-					return Err(LexError::UnterminatedString {
-						line: start_line,
-						column: start_column,
-						span,
-					});
-				}
-				Some(ch) if ch == quote => {
-					// Create span for content only (excluding quotes)
-					let span = Span::new(
-						content_start as u32,
-						self.cursor.position() as u32,
-						start_line,
-						start_column + 1,
-					);
-					self.cursor.advance(); // consume closing quote
-					return Ok(Token::new(TokenKind::Literal(LiteralKind::String), span));
-				}
-				Some('\\') => {
-					// Skip escape sequence (backslash + next char) without processing
-					self.cursor.advance();
-					if self.cursor.peek().is_some() {
-						self.cursor.advance();
-					}
-				}
-				Some(_) => {
-					self.cursor.advance();
-				}
-			}
-		}
-	}
-
-	fn scan_number(&mut self, start: usize, start_line: u32, start_column: u32) -> Result<Token, LexError> {
-		// Check for prefixed numbers: 0x, 0b, 0o
-		let prefix = self.cursor.peek_str(2).to_ascii_lowercase();
-
-		if prefix == "0x" {
-			self.cursor.advance(); // '0'
-			self.cursor.advance(); // 'x'
-			self.cursor.advance_while(|c| c.is_ascii_hexdigit() || c == '_');
-		} else if prefix == "0b" {
-			self.cursor.advance(); // '0'
-			self.cursor.advance(); // 'b'
-			self.cursor.advance_while(|c| c == '0' || c == '1' || c == '_');
-		} else if prefix == "0o" {
-			self.cursor.advance(); // '0'
-			self.cursor.advance(); // 'o'
-			self.cursor.advance_while(|c| ('0'..='7').contains(&c) || c == '_');
-		} else {
-			// Decimal number
-			// Handle leading dot for floats like .5
-			let has_leading_dot = self.cursor.peek() == Some('.');
-			if has_leading_dot {
-				self.cursor.advance();
-			}
-
-			// Integer part
-			self.cursor.advance_while(|c| c.is_ascii_digit() || c == '_');
-
-			// Fractional part (if not leading dot)
-			if !has_leading_dot && self.cursor.peek() == Some('.') {
-				if self.cursor.peek_ahead(1).map_or(false, |c| c.is_ascii_digit()) {
-					self.cursor.advance(); // '.'
-					self.cursor.advance_while(|c| c.is_ascii_digit() || c == '_');
-				}
-			}
-
-			// Scientific notation
-			if let Some('e') | Some('E') = self.cursor.peek() {
-				self.cursor.advance();
-				if matches!(self.cursor.peek(), Some('+') | Some('-')) {
-					self.cursor.advance();
-				}
-				self.cursor.advance_while(|c| c.is_ascii_digit() || c == '_');
-			}
-		}
-
-		let span = self.cursor.span_from(start, start_line, start_column);
-		let text = span.text(self.cursor.source());
-
-		// Determine if integer or float
-		let kind = if text.contains('.') || text.to_ascii_lowercase().contains('e') {
-			LiteralKind::Float
-		} else {
-			LiteralKind::Integer
-		};
-
-		Ok(Token::new(TokenKind::Literal(kind), span))
 	}
 
 	fn scan_punctuation(&mut self, start: usize, start_line: u32, start_column: u32) -> Result<Token, LexError> {
@@ -606,7 +505,8 @@ mod tests {
 
 	#[test]
 	fn test_error_unexpected_char() {
-		let result = tokenize("@invalid");
+		// @ alone without content is unexpected
+		let result = tokenize("@");
 		assert!(matches!(
 			result,
 			Err(LexError::UnexpectedChar {
@@ -614,5 +514,62 @@ mod tests {
 				..
 			})
 		));
+
+		// ~ is not a valid character
+		let result = tokenize("~foo");
+		assert!(matches!(
+			result,
+			Err(LexError::UnexpectedChar {
+				ch: '~',
+				..
+			})
+		));
+	}
+
+	#[test]
+	fn test_temporal_literal() {
+		let bump = Bump::new();
+		let result = Lexer::new("@2024-01-15", &bump).tokenize().unwrap();
+		assert!(matches!(result.tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert_eq!(result.text(&result.tokens[0]), "2024-01-15");
+	}
+
+	#[test]
+	fn test_temporal_datetime() {
+		let bump = Bump::new();
+		let result = Lexer::new("@2024-01-15T10:30:00", &bump).tokenize().unwrap();
+		assert!(matches!(result.tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert_eq!(result.text(&result.tokens[0]), "2024-01-15T10:30:00");
+	}
+
+	#[test]
+	fn test_temporal_with_timezone() {
+		let bump = Bump::new();
+		let result = Lexer::new("@2024-01-15T10:30:00+05:30", &bump).tokenize().unwrap();
+		assert!(matches!(result.tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert_eq!(result.text(&result.tokens[0]), "2024-01-15T10:30:00+05:30");
+	}
+
+	#[test]
+	fn test_temporal_time_only() {
+		let bump = Bump::new();
+		let result = Lexer::new("@10:30:00", &bump).tokenize().unwrap();
+		assert!(matches!(result.tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert_eq!(result.text(&result.tokens[0]), "10:30:00");
+	}
+
+	#[test]
+	fn test_temporal_with_microseconds() {
+		let bump = Bump::new();
+		let result = Lexer::new("@2024-01-15T10:30:00.123456", &bump).tokenize().unwrap();
+		assert!(matches!(result.tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert_eq!(result.text(&result.tokens[0]), "2024-01-15T10:30:00.123456");
+	}
+
+	#[test]
+	fn test_temporal_with_trailing() {
+		let tokens = tokenize("@2024-01-15 rest").unwrap();
+		assert!(matches!(tokens[0].kind, TokenKind::Literal(LiteralKind::Temporal)));
+		assert!(matches!(tokens[1].kind, TokenKind::Identifier));
 	}
 }

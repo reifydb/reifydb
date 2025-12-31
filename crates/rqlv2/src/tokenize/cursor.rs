@@ -123,12 +123,6 @@ impl<'a> Cursor<'a> {
 		}
 	}
 
-	/// Get remaining input from current position.
-	#[inline]
-	pub fn remaining(&self) -> &'a str {
-		&self.source[self.position..]
-	}
-
 	/// Create a span from start position to current position.
 	#[inline]
 	pub fn span_from(&self, start: usize, start_line: u32, start_column: u32) -> Span {

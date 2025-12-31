@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Flow change marshalling between Rust and FFI types
 
 use std::slice::{from_raw_parts, from_raw_parts_mut};

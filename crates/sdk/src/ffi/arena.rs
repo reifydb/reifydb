@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Memory arena for FFI allocations
 //!
 //! Provides a simple arena allocator that is automatically cleaned up

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! # JOIN Operator Example
 //!
 //! Demonstrates the JOIN operator in ReifyDB's RQL:

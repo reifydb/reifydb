@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Single-state operators for FFI
 //!
 //! This module provides the `FFISingleStateful` trait for operators that maintain

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 fn main() {
 	let mut cc = cc::Build::new();
 	cc.include("src/xxh/c/");

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! # FILTER Operator Example
 //!
 //! Demonstrates the FILTER operator in ReifyDB's RQL:

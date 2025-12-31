@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 use core::ffi::c_void;
 
 use crate::{context::ContextFFI, data::ColumnsFFI, flow::FlowChangeFFI};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 use reifydb_core::{CommitVersion, value::column::Columns};
 use reifydb_hash::Hash128;
 use reifydb_sdk::FlowDiff;

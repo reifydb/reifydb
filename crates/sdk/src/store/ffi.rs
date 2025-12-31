@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Raw FFI functions for store access
 
 use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};

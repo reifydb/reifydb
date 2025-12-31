@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 use core::ffi::c_void;
 
 /// Magic number to identify valid FFI operator libraries

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 /// Metrics for tracking FlowTransaction operations
 #[derive(Debug, Clone, Default)]
 pub struct FlowTransactionMetrics {

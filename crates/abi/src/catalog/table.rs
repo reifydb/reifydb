@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 use super::{ColumnDefFFI, PrimaryKeyFFI};
 use crate::data::BufferFFI;
 

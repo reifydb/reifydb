@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 /// Capability: Operator can process inserts
 pub const CAPABILITY_INSERT: u32 = 1 << 0; // 0x01
 

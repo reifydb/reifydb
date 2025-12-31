@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 use super::BufferFFI;
 
 /// Type code for column data variant (maps to ColumnData enum)

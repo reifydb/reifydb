@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Literal value kinds.
+//! Literal value kinds and scanners.
+
+mod number;
+mod temporal;
+mod text;
+
+pub use number::scan_number;
+pub use temporal::scan_temporal;
+pub use text::scan_string;
 
 /// Literal value kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,4 +31,8 @@ pub enum LiteralKind {
 
 	/// Undefined/null literal.
 	Undefined,
+
+	/// Temporal literal (date/time starting with @, span excludes @).
+	/// Examples: @2024-01-15, @2024-01-15T10:30:00, @10:30:00
+	Temporal,
 }

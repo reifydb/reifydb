@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
+
 //! C ABI definitions for ReifyDB FFI operators
 //!
 //! This crate provides the stable C ABI interface that FFI operators must implement.

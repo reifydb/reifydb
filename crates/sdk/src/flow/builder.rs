@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 //! Builder for constructing FlowChange objects
 
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::column::Columns};

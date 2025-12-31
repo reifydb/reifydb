@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::interface::{FlowId, FlowNodeId};

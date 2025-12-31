@@ -1,6 +1,5 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the MIT
-
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 ReifyDB
 use std::time::Duration;
 
 use reifydb_type::{Error, Params, diagnostic};
