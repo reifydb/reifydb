@@ -6,7 +6,6 @@ use crate::{
 
 use opentelemetry::{otel_debug, otel_error, otel_warn, InstrumentationScope};
 
-use std::env;
 use std::{
     fmt::{self, Debug, Formatter},
     sync::Arc,
@@ -17,6 +16,7 @@ use std::{
 };
 
 use super::{BatchConfig, LogProcessor};
+#[cfg(feature = "experimental_async_runtime")]
 use crate::runtime::{to_interval_stream, RuntimeChannel, TrySend};
 use futures_channel::oneshot;
 use futures_util::{
@@ -80,10 +80,10 @@ impl<R: RuntimeChannel> LogProcessor for BatchLogProcessor<R> {
         let (res_sender, res_receiver) = oneshot::channel();
         self.message_sender
             .try_send(BatchMessage::Flush(Some(res_sender)))
-            .map_err(|err| OTelSdkError::InternalFailure(format!("{:?}", err)))?;
+            .map_err(|err| OTelSdkError::InternalFailure(format!("{err:?}")))?;
 
         futures_executor::block_on(res_receiver)
-            .map_err(|err| OTelSdkError::InternalFailure(format!("{:?}", err)))
+            .map_err(|err| OTelSdkError::InternalFailure(format!("{err:?}")))
             .and_then(std::convert::identity)
     }
 
@@ -101,10 +101,10 @@ impl<R: RuntimeChannel> LogProcessor for BatchLogProcessor<R> {
         let (res_sender, res_receiver) = oneshot::channel();
         self.message_sender
             .try_send(BatchMessage::Shutdown(res_sender))
-            .map_err(|err| OTelSdkError::InternalFailure(format!("{:?}", err)))?;
+            .map_err(|err| OTelSdkError::InternalFailure(format!("{err:?}")))?;
 
         futures_executor::block_on(res_receiver)
-            .map_err(|err| OTelSdkError::InternalFailure(format!("{:?}", err)))
+            .map_err(|err| OTelSdkError::InternalFailure(format!("{err:?}")))
             .and_then(std::convert::identity)
     }
 
@@ -318,10 +318,6 @@ mod tests {
 
     impl LogExporter for MockLogExporter {
         async fn export(&self, _batch: LogBatch<'_>) -> OTelSdkResult {
-            Ok(())
-        }
-
-        fn shutdown(&self) -> OTelSdkResult {
             Ok(())
         }
 
@@ -632,10 +628,6 @@ mod tests {
         fn force_flush(&self) -> OTelSdkResult {
             Ok(())
         }
-
-        fn shutdown(&self) -> OTelSdkResult {
-            Ok(())
-        }
     }
 
     #[derive(Debug)]
@@ -660,10 +652,6 @@ mod tests {
         }
 
         fn force_flush(&self) -> OTelSdkResult {
-            Ok(())
-        }
-
-        fn shutdown(&self) -> OTelSdkResult {
             Ok(())
         }
     }

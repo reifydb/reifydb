@@ -2,11 +2,45 @@
 
 ## vNext
 
+## v0.31.0
+
+Released 2025-Sep-25
+
+- *Breaking* Change return type of `opentelemetry::global::set_tracer_provider` to Unit to align with metrics counterpart
+- Add `get_all` method to `opentelemetry::propagation::Extractor` to return all values of the given propagation key and provide a default implementation.
+
+## 0.30.0
+
+Released 2025-May-23
+
+[#2821](https://github.com/open-telemetry/opentelemetry-rust/pull/2821) Context
+based suppression capabilities added: Added the ability to prevent recursive
+telemetry generation through new context-based suppression mechanisms. This
+feature helps prevent feedback loops and excessive telemetry when OpenTelemetry
+components perform their own operations.
+
+New methods added to `Context`:
+
+- `is_telemetry_suppressed()` - Checks if telemetry is suppressed in this
+  context
+- `with_telemetry_suppressed()` - Creates a new context with telemetry
+  suppression enabled
+- `is_current_telemetry_suppressed()` - Efficiently checks if the current thread's context
+  has telemetry suppressed
+- `enter_telemetry_suppressed_scope()` - Convenience method to enter a scope where telemetry is
+  suppressed
+
+These methods allow SDK components, exporters, and processors to temporarily
+disable telemetry generation during their internal operations, ensuring more
+predictable and efficient observability pipelines.
+
+- re-export `tracing` for `internal-logs` feature to remove the need of adding `tracing` as a dependency
+
 ## 0.29.1
 
 Release 2025-Apr-01
 
-- Bug Fix: Re-export `WithContext` at `opentelemetry::trace::context::WithContext` [#2879](https://github.com/open-telemetry/opentelemetry-rust/pull/2879) to restore backwards compatability
+- Bug Fix: Re-export `WithContext` at `opentelemetry::trace::context::WithContext` [#2879](https://github.com/open-telemetry/opentelemetry-rust/pull/2879) to restore backwards compatibility
   - The new path for `WithContext` and `FutureExt` are in  `opentelemetry::context` as they are independent of the trace signal. Users should prefer this path.
 
 ## 0.29.0
@@ -475,7 +509,7 @@ and SDK are still unstable.
 - Use current span for SDK-less context propagation #510
 - Always export span batch when limit reached #519
 - Rename message events to events #530
-- Update resource merge behaviour #537
+- Update resource merge behavior #537
 - Ignore links with invalid context #538
 
 ## Removed
@@ -500,7 +534,7 @@ use `opentelemetry::global::shutdown_tracer_provider` explicitly instead.
 
 ## Changed
 
-- Pull configrations from environment variables by default when creating BatchSpanProcessor #445
+- Pull configurations from environment variables by default when creating BatchSpanProcessor #445
 - Convert doc links to intra-doc #466
 - Switch to Cow for event names #471
 - Use API to configure async runtime instead of features #481
@@ -797,7 +831,7 @@ use `opentelemetry::global::shutdown_tracer_provider` explicitly instead.
 - Make trace and metrics features optional
 - ExportResult as specified in the specification
 - Add Futures compatibility API
-- Added serde serialise support to SpanData
+- Added serde serialize support to SpanData
 - Separate OpenTelemetry Jaeger crate
 
 ### Changed

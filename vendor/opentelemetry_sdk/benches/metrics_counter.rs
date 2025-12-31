@@ -55,7 +55,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     counter_add_unsorted(c);
 
     let attribute_values: [String; 10] = (1..=10)
-        .map(|i| format!("value{}", i))
+        .map(|i| format!("value{i}"))
         .collect::<Vec<String>>()
         .try_into()
         .expect("Expected a Vec of length 10");
@@ -242,13 +242,18 @@ fn random_generator(c: &mut Criterion) {
 #[cfg(not(target_os = "windows"))]
 criterion_group! {
     name = benches;
-    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    config = Criterion::default()
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2))
+        .with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
     targets = criterion_benchmark
 }
 #[cfg(target_os = "windows")]
 criterion_group! {
     name = benches;
-    config = Criterion::default();
+    config = Criterion::default()
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
     targets = criterion_benchmark
 }
 criterion_main!(benches);

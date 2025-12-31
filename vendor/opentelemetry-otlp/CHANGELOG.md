@@ -2,6 +2,29 @@
 
 ## vNext
 
+## 0.31.0
+
+Released 2025-Sep-25
+
+- Update `opentelemetry-proto` and `opentelemetry-http` dependency version to 0.31.0
+- Add HTTP compression support with `gzip-http` and `zstd-http` feature flags
+
+## 0.30.0
+
+Released 2025-May-23
+
+- Update `opentelemetry` dependency version to 0.30
+- Update `opentelemetry_sdk` dependency version to 0.30
+- Update `opentelemetry-http` dependency version to 0.30
+- Update `opentelemetry-proto` dependency version to 0.30
+- Update `tonic` dependency version to 0.13
+- Re-export `tonic` types under `tonic_types`
+  [2898](https://github.com/open-telemetry/opentelemetry-rust/pull/2898)
+- Publicly re-exported `MetricExporterBuilder`, `SpanExporterBuilder`, and
+  `LogExporterBuilder` types, enabling users to directly reference and use these
+  builder types for metrics, traces, and logs exporters.
+  [2966](https://github.com/open-telemetry/opentelemetry-rust/pull/2966)
+
 ## 0.29.0
 
 Released 2025-Mar-21
@@ -11,7 +34,7 @@ Released 2025-Mar-21
 - Update `opentelemetry-http` dependency version to 0.29
 - Update `opentelemetry-proto` dependency version to 0.29
 
-- The `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT`, `OTEL_EXPORTER_OTLP_METRICS_TIMEOUT` and `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT` are changed from seconds to miliseconds.
+- The `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_EXPORTER_OTLP_TRACES_TIMEOUT`, `OTEL_EXPORTER_OTLP_METRICS_TIMEOUT` and `OTEL_EXPORTER_OTLP_LOGS_TIMEOUT` are changed from seconds to milliseconds.
 - Fixed `.with_headers()` in `HttpExporterBuilder` to correctly support multiple key/value pairs. [#2699](https://github.com/open-telemetry/opentelemetry-rust/pull/2699)
 - Fixed
   [#2770](https://github.com/open-telemetry/opentelemetry-rust/issues/2770)
@@ -183,7 +206,7 @@ now use `.with_resource(RESOURCE::default())` to configure Resource when using
 ### Added
 
 - Added `DeltaTemporalitySelector` ([#1568])
-- Add `webkpi-roots` features to `reqwest` and `tonic` backends
+- Add `webpki-roots` features to `reqwest` and `tonic` backends
 
 [#1568]: https://github.com/open-telemetry/opentelemetry-rust/pull/1568
 

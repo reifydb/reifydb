@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry-http"
-version = "0.29.0"
+version = "0.31.0"
 build = false
 autolib = false
 autobins = false
@@ -32,9 +32,33 @@ keywords = [
 license = "Apache-2.0"
 repository = "https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-http"
 
+[features]
+default = ["internal-logs"]
+hyper = [
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:tokio",
+]
+internal-logs = ["opentelemetry/internal-logs"]
+reqwest = ["dep:reqwest"]
+reqwest-blocking = [
+    "dep:reqwest",
+    "reqwest/blocking",
+]
+reqwest-rustls = [
+    "dep:reqwest",
+    "reqwest/rustls-tls-native-roots",
+]
+reqwest-rustls-webpki-roots = [
+    "dep:reqwest",
+    "reqwest/rustls-tls-webpki-roots",
+]
+
 [lib]
 name = "opentelemetry_http"
 path = "src/lib.rs"
+bench = false
 
 [dependencies.async-trait]
 version = "0.1"
@@ -66,12 +90,12 @@ features = [
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.29"
+version = "0.31"
 features = ["trace"]
+default-features = false
 
 [dependencies.reqwest]
 version = "0.12"
-features = ["blocking"]
 optional = true
 default-features = false
 
@@ -80,32 +104,6 @@ version = "1"
 features = ["time"]
 optional = true
 default-features = false
-
-[dependencies.tracing]
-version = ">=0.1.40"
-optional = true
-default-features = false
-
-[features]
-default = ["internal-logs"]
-hyper = [
-    "dep:http-body-util",
-    "dep:hyper",
-    "dep:hyper-util",
-    "dep:tokio",
-]
-internal-logs = [
-    "tracing",
-    "opentelemetry/internal-logs",
-]
-reqwest-rustls = [
-    "reqwest",
-    "reqwest/rustls-tls-native-roots",
-]
-reqwest-rustls-webpki-roots = [
-    "reqwest",
-    "reqwest/rustls-tls-webpki-roots",
-]
 
 [lints.clippy.all]
 level = "warn"

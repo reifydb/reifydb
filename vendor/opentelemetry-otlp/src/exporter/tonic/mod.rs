@@ -14,10 +14,7 @@ use tonic::transport::ClientTlsConfig;
 use super::{default_headers, parse_header_string, OTEL_EXPORTER_OTLP_GRPC_ENDPOINT_DEFAULT};
 use super::{resolve_timeout, ExporterBuildError};
 use crate::exporter::Compression;
-use crate::{
-    ExportConfig, OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_ENDPOINT,
-    OTEL_EXPORTER_OTLP_HEADERS,
-};
+use crate::{ExportConfig, OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS};
 
 #[cfg(feature = "logs")]
 pub(crate) mod logs;
@@ -145,6 +142,8 @@ impl Default for TonicExporterBuilder {
 }
 
 impl TonicExporterBuilder {
+    // This is for clippy to work with only the grpc-tonic feature enabled
+    #[allow(unused)]
     fn build_channel(
         self,
         signal_endpoint_var: &str,
@@ -223,7 +222,7 @@ impl TonicExporterBuilder {
         // If users for some reason want to use a custom path, they can use env var or builder to pass it
         //
         // programmatic configuration overrides any value set via environment variables
-        if let Some(endpoint) = provided_endpoint {
+        if let Some(endpoint) = provided_endpoint.filter(|s| !s.is_empty()) {
             endpoint
         } else if let Ok(endpoint) = env::var(default_endpoint_var) {
             endpoint
@@ -238,15 +237,9 @@ impl TonicExporterBuilder {
         &self,
         env_override: &str,
     ) -> Result<Option<CompressionEncoding>, ExporterBuildError> {
-        if let Some(compression) = self.tonic_config.compression {
-            Ok(Some(compression.try_into()?))
-        } else if let Ok(compression) = env::var(env_override) {
-            Ok(Some(compression.parse::<Compression>()?.try_into()?))
-        } else if let Ok(compression) = env::var(OTEL_EXPORTER_OTLP_COMPRESSION) {
-            Ok(Some(compression.parse::<Compression>()?.try_into()?))
-        } else {
-            Ok(None)
-        }
+        super::resolve_compression_from_env(self.tonic_config.compression, env_override)?
+            .map(|c| c.try_into())
+            .transpose()
     }
 
     /// Build a new tonic log exporter
@@ -368,7 +361,7 @@ impl HasTonicConfig for TonicExporterBuilder {
 /// ```
 /// # #[cfg(all(feature = "trace", feature = "grpc-tonic"))]
 /// # {
-/// use crate::opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
+/// use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 /// let exporter_builder = opentelemetry_otlp::SpanExporter::builder()
 ///     .with_tonic()
 ///     .with_compression(opentelemetry_otlp::Compression::Gzip);
@@ -380,6 +373,32 @@ pub trait WithTonicConfig {
     fn with_tls_config(self, tls_config: ClientTlsConfig) -> Self;
 
     /// Set custom metadata entries to send to the collector.
+    ///
+    /// **Note**: This method is additive - calling it multiple times will merge
+    /// the metadata entries. If the same key is provided in multiple calls,
+    /// the last value will override previous ones.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # #[cfg(feature = "grpc-tonic")]
+    /// # {
+    /// use tonic::metadata::MetadataMap;
+    /// use opentelemetry_otlp::WithTonicConfig;
+    ///
+    /// let mut metadata1 = MetadataMap::new();
+    /// metadata1.insert("key1", "value1".parse().unwrap());
+    ///
+    /// let mut metadata2 = MetadataMap::new();
+    /// metadata2.insert("key2", "value2".parse().unwrap());
+    ///
+    /// let exporter = opentelemetry_otlp::SpanExporter::builder()
+    ///     .with_tonic()
+    ///     .with_metadata(metadata1)  // Adds key1=value1
+    ///     .with_metadata(metadata2)  // Adds key2=value2 (both are present)
+    ///     .build()?;
+    /// # }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn with_metadata(self, metadata: MetadataMap) -> Self;
 
     /// Set the compression algorithm to use when communicating with the collector.
@@ -394,8 +413,65 @@ pub trait WithTonicConfig {
     fn with_channel(self, channel: tonic::transport::Channel) -> Self;
 
     /// Use a custom `interceptor` to modify each outbound request.
-    /// this can be used to modify the grpc metadata, for example
+    /// This can be used to modify the gRPC metadata, for example
     /// to inject auth tokens.
+    ///
+    /// **Note**: Calling this method multiple times will replace the previous
+    /// interceptor. If you need multiple interceptors, chain them together
+    /// before passing to this method.
+    ///
+    /// # Examples
+    ///
+    /// ## Single interceptor
+    /// ```no_run
+    /// # #[cfg(feature = "grpc-tonic")]
+    /// # {
+    /// use tonic::{Request, Status};
+    /// use opentelemetry_otlp::WithTonicConfig;
+    ///
+    /// fn auth_interceptor(mut req: Request<()>) -> Result<Request<()>, Status> {
+    ///     req.metadata_mut().insert("authorization", "Bearer token".parse().unwrap());
+    ///     Ok(req)
+    /// }
+    ///
+    /// let exporter = opentelemetry_otlp::SpanExporter::builder()
+    ///     .with_tonic()
+    ///     .with_interceptor(auth_interceptor)
+    ///     .build()?;
+    /// # }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// ## Multiple interceptors (chaining)
+    /// ```no_run
+    /// # #[cfg(feature = "grpc-tonic")]
+    /// # {
+    /// use tonic::{Request, Status};
+    /// use opentelemetry_otlp::WithTonicConfig;
+    ///
+    /// fn auth_interceptor(mut req: Request<()>) -> Result<Request<()>, Status> {
+    ///     req.metadata_mut().insert("authorization", "Bearer token".parse().unwrap());
+    ///     Ok(req)
+    /// }
+    ///
+    /// fn logging_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+    ///     println!("Sending gRPC request with metadata: {:?}", req.metadata());
+    ///     Ok(req)
+    /// }
+    ///
+    /// // Chain interceptors by wrapping them
+    /// fn combined_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+    ///     let req = logging_interceptor(req)?;
+    ///     auth_interceptor(req)
+    /// }
+    ///
+    /// let exporter = opentelemetry_otlp::SpanExporter::builder()
+    ///     .with_tonic()
+    ///     .with_interceptor(combined_interceptor)
+    ///     .build()?;
+    /// # }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     fn with_interceptor<I>(self, interceptor: I) -> Self
     where
         I: tonic::service::Interceptor + Clone + Send + Sync + 'static;
@@ -514,12 +590,13 @@ mod tests {
         assert!(tonic::codec::CompressionEncoding::try_from(Compression::Zstd).is_err());
     }
 
+    #[cfg(feature = "zstd-tonic")]
     #[test]
     fn test_priority_of_signal_env_over_generic_env_for_compression() {
         run_env_test(
             vec![
                 (crate::OTEL_EXPORTER_OTLP_TRACES_COMPRESSION, "zstd"),
-                (super::OTEL_EXPORTER_OTLP_COMPRESSION, "gzip"),
+                (crate::OTEL_EXPORTER_OTLP_COMPRESSION, "gzip"),
             ],
             || {
                 let builder = TonicExporterBuilder::default();
@@ -532,12 +609,13 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "zstd-tonic")]
     #[test]
     fn test_priority_of_code_based_config_over_envs_for_compression() {
         run_env_test(
             vec![
                 (crate::OTEL_EXPORTER_OTLP_TRACES_COMPRESSION, "gzip"),
-                (super::OTEL_EXPORTER_OTLP_COMPRESSION, "gzip"),
+                (crate::OTEL_EXPORTER_OTLP_COMPRESSION, "gzip"),
             ],
             || {
                 let builder = TonicExporterBuilder::default().with_compression(Compression::Zstd);
@@ -659,6 +737,17 @@ mod tests {
         run_env_test(vec![], || {
             let url =
                 TonicExporterBuilder::resolve_endpoint(OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, None);
+            assert_eq!(url, "http://localhost:4317");
+        });
+    }
+
+    #[test]
+    fn test_use_default_when_empty_string_for_option() {
+        run_env_test(vec![], || {
+            let url = TonicExporterBuilder::resolve_endpoint(
+                OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+                Some(String::new()),
+            );
             assert_eq!(url, "http://localhost:4317");
         });
     }

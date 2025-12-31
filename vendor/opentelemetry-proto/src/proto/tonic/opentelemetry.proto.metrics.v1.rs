@@ -5,21 +5,21 @@
 ///
 /// MetricsData
 /// └─── ResourceMetrics
-///    ├── Resource
-///    ├── SchemaURL
-///    └── ScopeMetrics
-///       ├── Scope
-///       ├── SchemaURL
-///       └── Metric
-///          ├── Name
-///          ├── Description
-///          ├── Unit
-///          └── data
-///             ├── Gauge
-///             ├── Sum
-///             ├── Histogram
-///             ├── ExponentialHistogram
-///             └── Summary
+/// ├── Resource
+/// ├── SchemaURL
+/// └── ScopeMetrics
+/// ├── Scope
+/// ├── SchemaURL
+/// └── Metric
+/// ├── Name
+/// ├── Description
+/// ├── Unit
+/// └── data
+/// ├── Gauge
+/// ├── Sum
+/// ├── Histogram
+/// ├── ExponentialHistogram
+/// └── Summary
 ///
 /// The main difference between this message and collector protocol is that
 /// in this message there will not be any "control" or "metadata" specific to
@@ -89,65 +89,69 @@ pub struct ScopeMetrics {
 /// Defines a Metric which has one or more timeseries.  The following is a
 /// brief summary of the Metric data model.  For more details, see:
 ///
-///    <https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/data-model.md>
+/// <https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/data-model.md>
 ///
 /// The data model and relation between entities is shown in the
 /// diagram below. Here, "DataPoint" is the term used to refer to any
 /// one of the specific data point value types, and "points" is the term used
 /// to refer to any one of the lists of points contained in the Metric.
 ///
-/// - Metric is composed of a metadata and data.
-/// - Metadata part contains a name, description, unit.
-/// - Data is one of the possible types (Sum, Gauge, Histogram, Summary).
-/// - DataPoint contains timestamps, attributes, and one of the possible value type
-///    fields.
+/// * Metric is composed of a metadata and data.
 ///
-///     Metric
+/// * Metadata part contains a name, description, unit.
+///
+/// * Data is one of the possible types (Sum, Gauge, Histogram, Summary).
+///
+/// * DataPoint contains timestamps, attributes, and one of the possible value type
+///   fields.
+///
+///   Metric
 ///   +------------+
-///   |name        |
-///   |description |
-///   |unit        |     +------------------------------------+
-///   |data        |---> |Gauge, Sum, Histogram, Summary, ... |
+///   \|name        |
+///   \|description |
+///   \|unit        |     +------------------------------------+
+///   \|data        |---> |Gauge, Sum, Histogram, Summary, ... |
 ///   +------------+     +------------------------------------+
 ///
-///     Data \[One of Gauge, Sum, Histogram, Summary, ...\]
+///   Data \[One of Gauge, Sum, Histogram, Summary, ...\]
 ///   +-----------+
-///   |...        |  // Metadata about the Data.
-///   |points     |--+
+///   \|...        |  // Metadata about the Data.
+///   \|points     |--+
 ///   +-----------+  |
-///                  |      +---------------------------+
-///                  |      |DataPoint 1                |
-///                  v      |+------+------+   +------+ |
-///               +-----+   ||label |label |...|label | |
-///               |  1  |-->||value1|value2|...|valueN| |
-///               +-----+   |+------+------+   +------+ |
-///               |  .  |   |+-----+                    |
-///               |  .  |   ||value|                    |
-///               |  .  |   |+-----+                    |
-///               |  .  |   +---------------------------+
-///               |  .  |                   .
-///               |  .  |                   .
-///               |  .  |                   .
-///               |  .  |   +---------------------------+
-///               |  .  |   |DataPoint M                |
-///               +-----+   |+------+------+   +------+ |
-///               |  M  |-->||label |label |...|label | |
-///               +-----+   ||value1|value2|...|valueN| |
-///                         |+------+------+   +------+ |
-///                         |+-----+                    |
-///                         ||value|                    |
-///                         |+-----+                    |
-///                         +---------------------------+
+///   \|      +---------------------------+
+///   \|      |DataPoint 1                |
+///   v      |+------+------+   +------+ |
+///   +-----+   ||label |label |...|label | |
+///   \|  1  |-->||value1|value2|...|valueN| |
+///   +-----+   |+------+------+   +------+ |
+///   \|  .  |   |+-----+                    |
+///   \|  .  |   ||value|                    |
+///   \|  .  |   |+-----+                    |
+///   \|  .  |   +---------------------------+
+///   \|  .  |                   .
+///   \|  .  |                   .
+///   \|  .  |                   .
+///   \|  .  |   +---------------------------+
+///   \|  .  |   |DataPoint M                |
+///   +-----+   |+------+------+   +------+ |
+///   \|  M  |-->||label |label |...|label | |
+///   +-----+   ||value1|value2|...|valueN| |
+///   \|+------+------+   +------+ |
+///   \|+-----+                    |
+///   \||value|                    |
+///   \|+-----+                    |
+///   +---------------------------+
 ///
 /// Each distinct type of DataPoint represents the output of a specific
 /// aggregation function, the result of applying the DataPoint's
 /// associated function of to one or more measurements.
 ///
 /// All DataPoint types have three common fields:
-/// - Attributes includes key-value pairs associated with the data point
-/// - TimeUnixNano is required, set to the end time of the aggregation
-/// - StartTimeUnixNano is optional, but strongly encouraged for DataPoints
-///    having an AggregationTemporality field, as discussed below.
+///
+/// * Attributes includes key-value pairs associated with the data point
+/// * TimeUnixNano is required, set to the end time of the aggregation
+/// * StartTimeUnixNano is optional, but strongly encouraged for DataPoints
+///   having an AggregationTemporality field, as discussed below.
 ///
 /// Both TimeUnixNano and StartTimeUnixNano values are expressed as
 /// UNIX Epoch time in nanoseconds since 00:00:00 UTC on 1 January 1970.
@@ -183,7 +187,7 @@ pub struct Metric {
     #[prost(string, tag = "2")]
     pub description: ::prost::alloc::string::String,
     /// unit in which the metric value is reported. Follows the format
-    /// described by <http://unitsofmeasure.org/ucum.html.>
+    /// described by <https://unitsofmeasure.org/ucum.html.>
     #[prost(string, tag = "3")]
     pub unit: ::prost::alloc::string::String,
     /// Additional metadata attributes that describe the metric. \[Optional\].
@@ -292,7 +296,7 @@ pub struct ExponentialHistogram {
 }
 /// Summary metric data are used to convey quantile summaries,
 /// a Prometheus (see: <https://prometheus.io/docs/concepts/metric_types/#summary>)
-/// and OpenMetrics (see: <https://github.com/OpenObservability/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45>)
+/// and OpenMetrics (see: <https://github.com/prometheus/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45>)
 /// data type. These data points cannot always be merged in a meaningful way.
 /// While they can be useful in some applications, histogram data points are
 /// recommended for new applications.
@@ -320,6 +324,16 @@ pub struct NumberDataPoint {
     /// where this point belongs. The list may be empty (may contain 0 elements).
     /// Attribute keys MUST be unique (it is not allowed to have more than one
     /// attribute with the same key).
+    ///
+    /// The attribute values SHOULD NOT contain empty values.
+    /// The attribute values SHOULD NOT contain bytes values.
+    /// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+    /// double values.
+    /// The attribute values SHOULD NOT contain kvlist values.
+    /// The behavior of software that receives attributes containing such values can be unpredictable.
+    /// These restrictions can change in a minor release.
+    /// The restrictions take origin from the OpenTelemetry specification:
+    /// <https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.>
     #[prost(message, repeated, tag = "7")]
     pub attributes: ::prost::alloc::vec::Vec<super::super::common::v1::KeyValue>,
     /// StartTimeUnixNano is optional but strongly encouraged, see the
@@ -398,6 +412,16 @@ pub struct HistogramDataPoint {
     /// where this point belongs. The list may be empty (may contain 0 elements).
     /// Attribute keys MUST be unique (it is not allowed to have more than one
     /// attribute with the same key).
+    ///
+    /// The attribute values SHOULD NOT contain empty values.
+    /// The attribute values SHOULD NOT contain bytes values.
+    /// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+    /// double values.
+    /// The attribute values SHOULD NOT contain kvlist values.
+    /// The behavior of software that receives attributes containing such values can be unpredictable.
+    /// These restrictions can change in a minor release.
+    /// The restrictions take origin from the OpenTelemetry specification:
+    /// <https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.>
     #[prost(message, repeated, tag = "9")]
     pub attributes: ::prost::alloc::vec::Vec<super::super::common::v1::KeyValue>,
     /// StartTimeUnixNano is optional but strongly encouraged, see the
@@ -448,15 +472,17 @@ pub struct HistogramDataPoint {
     /// The sum of the bucket_counts must equal the value in the count field.
     ///
     /// The number of elements in bucket_counts array must be by one greater than
-    /// the number of elements in explicit_bounds array.
+    /// the number of elements in explicit_bounds array. The exception to this rule
+    /// is when the length of bucket_counts is 0, then the length of explicit_bounds
+    /// must also be 0.
     #[prost(fixed64, repeated, tag = "6")]
     pub bucket_counts: ::prost::alloc::vec::Vec<u64>,
     /// explicit_bounds specifies buckets with explicitly defined bounds for values.
     ///
     /// The boundaries for bucket at index i are:
     ///
-    /// (-infinity, explicit_bounds\[i]\] for i == 0
-    /// (explicit_bounds\[i-1\], explicit_bounds\[i]\] for 0 < i < size(explicit_bounds)
+    /// (-infinity, explicit_bounds\[i\]\] for i == 0
+    /// (explicit_bounds\[i-1\], explicit_bounds\[i\]\] for 0 \< i \< size(explicit_bounds)
     /// (explicit_bounds\[i-1\], +infinity) for i == size(explicit_bounds)
     ///
     /// The values in the explicit_bounds array must be strictly increasing.
@@ -464,6 +490,9 @@ pub struct HistogramDataPoint {
     /// Histogram buckets are inclusive of their upper boundary, except the last
     /// bucket where the boundary is at infinity. This format is intentionally
     /// compatible with the OpenMetrics histogram definition.
+    ///
+    /// If bucket_counts length is 0 then explicit_bounds length must also be 0,
+    /// otherwise the data point is invalid.
     #[prost(double, repeated, tag = "7")]
     pub explicit_bounds: ::prost::alloc::vec::Vec<f64>,
     /// (Optional) List of exemplars collected from
@@ -474,10 +503,10 @@ pub struct HistogramDataPoint {
     /// for the available flags and their meaning.
     #[prost(uint32, tag = "10")]
     pub flags: u32,
-    /// min is the minimum value over (start_time, end_time].
+    /// min is the minimum value over (start_time, end_time\].
     #[prost(double, optional, tag = "11")]
     pub min: ::core::option::Option<f64>,
-    /// max is the maximum value over (start_time, end_time].
+    /// max is the maximum value over (start_time, end_time\].
     #[prost(double, optional, tag = "12")]
     pub max: ::core::option::Option<f64>,
 }
@@ -485,7 +514,6 @@ pub struct HistogramDataPoint {
 /// time-varying values of a ExponentialHistogram of double values. A ExponentialHistogram contains
 /// summary statistics for a population of values, it may optionally contain the
 /// distribution of those values across a set of buckets.
-///
 #[cfg_attr(feature = "with-schemars", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "with-serde", serde(rename_all = "camelCase"))]
@@ -495,6 +523,16 @@ pub struct ExponentialHistogramDataPoint {
     /// where this point belongs. The list may be empty (may contain 0 elements).
     /// Attribute keys MUST be unique (it is not allowed to have more than one
     /// attribute with the same key).
+    ///
+    /// The attribute values SHOULD NOT contain empty values.
+    /// The attribute values SHOULD NOT contain bytes values.
+    /// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+    /// double values.
+    /// The attribute values SHOULD NOT contain kvlist values.
+    /// The behavior of software that receives attributes containing such values can be unpredictable.
+    /// These restrictions can change in a minor release.
+    /// The restrictions take origin from the OpenTelemetry specification:
+    /// <https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.>
     #[prost(message, repeated, tag = "1")]
     pub attributes: ::prost::alloc::vec::Vec<super::super::common::v1::KeyValue>,
     /// StartTimeUnixNano is optional but strongly encouraged, see the
@@ -528,7 +566,7 @@ pub struct ExponentialHistogramDataPoint {
     /// scale describes the resolution of the histogram.  Boundaries are
     /// located at powers of the base, where:
     ///
-    ///    base = (2^(2^-scale))
+    /// base = (2^(2^-scale))
     ///
     /// The histogram bucket identified by `index`, a signed integer,
     /// contains values that are greater than (base^index) and
@@ -566,10 +604,10 @@ pub struct ExponentialHistogramDataPoint {
     /// measurements that were used to form the data point
     #[prost(message, repeated, tag = "11")]
     pub exemplars: ::prost::alloc::vec::Vec<Exemplar>,
-    /// min is the minimum value over (start_time, end_time].
+    /// min is the minimum value over (start_time, end_time\].
     #[prost(double, optional, tag = "12")]
     pub min: ::core::option::Option<f64>,
-    /// max is the maximum value over (start_time, end_time].
+    /// max is the maximum value over (start_time, end_time\].
     #[prost(double, optional, tag = "13")]
     pub max: ::core::option::Option<f64>,
     /// ZeroThreshold may be optionally set to convey the width of the zero
@@ -588,7 +626,7 @@ pub mod exponential_histogram_data_point {
     #[cfg_attr(feature = "with-schemars", derive(schemars::JsonSchema))]
     #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
     #[cfg_attr(feature = "with-serde", serde(rename_all = "camelCase"))]
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Buckets {
         /// Offset is the bucket index of the first entry in the bucket_counts array.
         ///
@@ -620,6 +658,16 @@ pub struct SummaryDataPoint {
     /// where this point belongs. The list may be empty (may contain 0 elements).
     /// Attribute keys MUST be unique (it is not allowed to have more than one
     /// attribute with the same key).
+    ///
+    /// The attribute values SHOULD NOT contain empty values.
+    /// The attribute values SHOULD NOT contain bytes values.
+    /// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+    /// double values.
+    /// The attribute values SHOULD NOT contain kvlist values.
+    /// The behavior of software that receives attributes containing such values can be unpredictable.
+    /// These restrictions can change in a minor release.
+    /// The restrictions take origin from the OpenTelemetry specification:
+    /// <https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.>
     #[prost(message, repeated, tag = "7")]
     pub attributes: ::prost::alloc::vec::Vec<super::super::common::v1::KeyValue>,
     /// StartTimeUnixNano is optional but strongly encouraged, see the
@@ -662,8 +710,9 @@ pub mod summary_data_point {
     /// Represents the value at a given quantile of a distribution.
     ///
     /// To record Min and Max values following conventions are used:
-    /// - The 1.0 quantile is equivalent to the maximum value observed.
-    /// - The 0.0 quantile is equivalent to the minimum value observed.
+    ///
+    /// * The 1.0 quantile is equivalent to the maximum value observed.
+    /// * The 0.0 quantile is equivalent to the minimum value observed.
     ///
     /// See the following issue for more context:
     /// <https://github.com/open-telemetry/opentelemetry-proto/issues/125>
@@ -774,18 +823,18 @@ pub enum AggregationTemporality {
     /// it receives and reports the sum of these requests every second as a
     /// DELTA metric:
     ///
-    ///    1. The system starts receiving at time=t_0.
-    ///    2. A request is received, the system measures 1 request.
-    ///    3. A request is received, the system measures 1 request.
-    ///    4. A request is received, the system measures 1 request.
-    ///    5. The 1 second collection cycle ends. A metric is exported for the
-    ///       number of requests received over the interval of time t_0 to
-    ///       t_0+1 with a value of 3.
-    ///    6. A request is received, the system measures 1 request.
-    ///    7. A request is received, the system measures 1 request.
-    ///    8. The 1 second collection cycle ends. A metric is exported for the
-    ///       number of requests received over the interval of time t_0+1 to
-    ///       t_0+2 with a value of 2.
+    /// 1. The system starts receiving at time=t_0.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. The 1 second collection cycle ends. A metric is exported for the
+    ///    number of requests received over the interval of time t_0 to
+    ///    t_0+1 with a value of 3.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. The 1 second collection cycle ends. A metric is exported for the
+    ///    number of requests received over the interval of time t_0+1 to
+    ///    t_0+2 with a value of 2.
     Delta = 1,
     /// CUMULATIVE is an AggregationTemporality for a metric aggregator which
     /// reports changes since a fixed start time. This means that current values
@@ -799,24 +848,24 @@ pub enum AggregationTemporality {
     /// it receives and reports the sum of these requests every second as a
     /// CUMULATIVE metric:
     ///
-    ///    1. The system starts receiving at time=t_0.
-    ///    2. A request is received, the system measures 1 request.
-    ///    3. A request is received, the system measures 1 request.
-    ///    4. A request is received, the system measures 1 request.
-    ///    5. The 1 second collection cycle ends. A metric is exported for the
-    ///       number of requests received over the interval of time t_0 to
-    ///       t_0+1 with a value of 3.
-    ///    6. A request is received, the system measures 1 request.
-    ///    7. A request is received, the system measures 1 request.
-    ///    8. The 1 second collection cycle ends. A metric is exported for the
-    ///       number of requests received over the interval of time t_0 to
-    ///       t_0+2 with a value of 5.
-    ///    9. The system experiences a fault and loses state.
-    ///    10. The system recovers and resumes receiving at time=t_1.
-    ///    11. A request is received, the system measures 1 request.
-    ///    12. The 1 second collection cycle ends. A metric is exported for the
-    ///       number of requests received over the interval of time t_1 to
-    ///       t_0+1 with a value of 1.
+    /// 1. The system starts receiving at time=t_0.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. The 1 second collection cycle ends. A metric is exported for the
+    ///    number of requests received over the interval of time t_0 to
+    ///    t_0+1 with a value of 3.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. The 1 second collection cycle ends. A metric is exported for the
+    ///    number of requests received over the interval of time t_0 to
+    ///    t_0+2 with a value of 5.
+    /// 1. The system experiences a fault and loses state.
+    /// 1. The system recovers and resumes receiving at time=t_1.
+    /// 1. A request is received, the system measures 1 request.
+    /// 1. The 1 second collection cycle ends. A metric is exported for the
+    ///    number of requests received over the interval of time t_1 to
+    ///    t_0+1 with a value of 1.
     ///
     /// Note: Even though, when reporting changes since last report time, using
     /// CUMULATIVE is valid, it is not recommended. This may cause problems for
@@ -851,8 +900,7 @@ impl AggregationTemporality {
 /// enum is a bit-mask.  To test the presence of a single flag in the flags of
 /// a data point, for example, use an expression like:
 ///
-///    (point.flags & DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK) == DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK
-///
+/// (point.flags & DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK) == DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK
 #[cfg_attr(feature = "with-schemars", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "with-serde", serde(rename_all = "camelCase"))]

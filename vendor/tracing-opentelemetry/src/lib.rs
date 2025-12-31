@@ -9,10 +9,6 @@
 //! [OpenTelemetry]: https://opentelemetry.io
 //! [`tracing`]: https://github.com/tokio-rs/tracing
 //!
-//! *Compiler support: [requires `rustc` 1.65+][msrv]*
-//!
-//! [msrv]: #supported-rust-versions
-//!
 //! ### Special Fields
 //!
 //! Fields with an `otel.` prefix are reserved for this crate and have specific
@@ -20,11 +16,14 @@
 //! special fields are:
 //!
 //! * `otel.name`: Override the span name sent to OpenTelemetry exporters.
-//!    Setting this field is useful if you want to display non-static information
-//!    in your span name.
-//! * `otel.kind`: Set the span kind to one of the supported OpenTelemetry [span kinds].
+//!   Setting this field is useful if you want to display non-static information
+//!   in your span name.
+//! * `otel.kind`: Set the span kind to one of the supported OpenTelemetry [span kinds]. These must
+//!   be specified as strings such as `"client"` or `"server"`. If it is not specified, the span is
+//!   assumed to be internal.
 //! * `otel.status_code`: Set the span status code to one of the supported OpenTelemetry [span status codes].
-//! * `otel.status_message`: Set the span status message.
+//! * `otel.status_description`: Set the span description of the status. This should be used only if
+//!   `otel.status_code` is also set.
 //!
 //! [span kinds]: opentelemetry::trace::SpanKind
 //! [span status codes]: opentelemetry::trace::Status
@@ -33,7 +32,7 @@
 //!
 //! OpenTelemetry defines conventional names for attributes of common
 //! operations. These names can be assigned directly as fields, e.g.
-//! `trace_span!("request", "otel.kind" = %SpanKind::Client, "url.full" = ..)`, and they
+//! `trace_span!("request", "server.port" = 80, "url.full" = ..)`, and they
 //! will be passed through to your configured OpenTelemetry exporter. You can
 //! find the full list of the operations and their expected field names in the
 //! [semantic conventions] spec.
@@ -42,11 +41,19 @@
 //!
 //! ### Stability Status
 //!
-//! The OpenTelemetry specification is currently in beta so some breaking
-//! changes may still occur on the path to 1.0. You can follow the changes via
-//! the [spec repository] to track progress toward stabilization.
+//! The OpenTelemetry tracing specification is stable but the underlying [opentelemetry crate] is
+//! not so some breaking changes will still occur in this crate as well. Metrics are not yet fully
+//! stable. You can read the specification via the [spec repository].
 //!
+//! [opentelemetry crate]: https://github.com/open-telemetry/opentelemetry-rust
 //! [spec repository]: https://github.com/open-telemetry/opentelemetry-specification
+//!
+//! ### OpenTelemetry Logging
+//!
+//! Logging to OpenTelemetry collectors is not supported by this crate, only traces and metrics are.
+//! If you need to export logs through OpenTelemetry, consider [`opentelemetry-appender-tracing`].
+//!
+//! [`opentelemetry-appender-tracing`]: https://crates.io/crates/opentelemetry-appender-tracing
 //!
 //! ## Examples
 //!
@@ -88,32 +95,14 @@
 //!   default*.
 //!
 //! [layer]: tracing_subscriber::layer
-//!
-//! ## Supported Rust Versions
-//!
-//! Tracing is built against the latest stable release. The minimum supported
-//! version is 1.60. The current Tracing version is not guaranteed to build on
-//! Rust versions earlier than the minimum supported version.
-//!
-//! Tracing follows the same compiler support policies as the rest of the Tokio
-//! project. The current stable Rust compiler and the three most recent minor
-//! versions before it will always be supported. For example, if the current
-//! stable compiler version is 1.45, the minimum supported version will not be
-//! increased past 1.42, three minor versions prior. Increasing the minimum
-//! supported compiler version is not considered a semver breaking change as
-//! long as doing so complies with this policy.
-//!
-//! [subscriber]: tracing_subscriber::subscribe
 #![warn(unreachable_pub)]
-#![doc(html_root_url = "https://docs.rs/tracing-opentelemetry/0.22.0")]
 #![doc(
-    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
-    issue_tracker_base_url = "https://github.com/tokio-rs/tracing-opentelemetry/issues/"
+    html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png"
 )]
 #![cfg_attr(
     docsrs,
     // Allows displaying cfgs/feature flags in the documentation.
-    feature(doc_cfg, doc_auto_cfg),
+    feature(doc_cfg),
     // Allows adding traits to RustDoc's list of "notable traits"
     feature(doc_notable_trait),
     // Fail the docs build if any intra-docs links are broken
@@ -128,26 +117,80 @@ mod metrics;
 mod layer;
 /// Span extension which enables OpenTelemetry context management.
 mod span_ext;
-/// Protocols for OpenTelemetry Tracers that are compatible with Tracing
-mod tracer;
+
+mod stack;
+
+use std::time::SystemTime;
 
 pub use layer::{layer, OpenTelemetryLayer};
 
 #[cfg(feature = "metrics")]
 pub use metrics::MetricsLayer;
+use opentelemetry::trace::TraceContextExt as _;
 pub use span_ext::OpenTelemetrySpanExt;
-pub use tracer::PreSampledTracer;
 
 /// Per-span OpenTelemetry data tracked by this crate.
-///
-/// Useful for implementing [PreSampledTracer] in alternate otel SDKs.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct OtelData {
-    /// The parent otel `Context` for the current tracing span.
-    pub parent_cx: opentelemetry::Context,
+    /// The state of the OtelData, which can either be a builder or a context.
+    state: OtelDataState,
+    /// The end time of the span if it has been exited.
+    end_time: Option<SystemTime>,
+}
 
-    /// The otel span data recorded during the current tracing span.
-    pub builder: opentelemetry::trace::SpanBuilder,
+impl OtelData {
+    /// Gets the trace ID of the span.
+    ///
+    /// Returns `None` if the context has not been built yet. This can be forced e.g. by calling
+    /// [`context`] on the span (not on `OtelData`) or if [context activation] was not explicitly
+    /// opted-out of, simply entering the span for the first time.
+    ///
+    /// [`context`]: OpenTelemetrySpanExt::context
+    /// [context activation]: OpenTelemetryLayer::with_context_activation
+    pub fn trace_id(&self) -> Option<opentelemetry::TraceId> {
+        if let OtelDataState::Context { current_cx } = &self.state {
+            Some(current_cx.span().span_context().trace_id())
+        } else {
+            None
+        }
+    }
+
+    /// Gets the span ID of the span.
+    ///
+    /// Returns `None` if the context has not been built yet. This can be forced e.g. by calling
+    /// [`context`] on the span (not on `OtelData`) or if [context activation] was not explicitly
+    /// opted-out of, simply entering the span for the first time.
+    ///
+    /// [`context`]: OpenTelemetrySpanExt::context
+    /// [context activation]: OpenTelemetryLayer::with_context_activation
+    pub fn span_id(&self) -> Option<opentelemetry::SpanId> {
+        if let OtelDataState::Context { current_cx } = &self.state {
+            Some(current_cx.span().span_context().span_id())
+        } else {
+            None
+        }
+    }
+}
+
+/// The state of the OpenTelemetry data for a span.
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum OtelDataState {
+    /// The span is being built, with a parent context and a builder.
+    Builder {
+        parent_cx: opentelemetry::Context,
+        builder: opentelemetry::trace::SpanBuilder,
+    },
+    /// The span has been started or accessed and is now in a context.
+    Context { current_cx: opentelemetry::Context },
+}
+
+impl Default for OtelDataState {
+    fn default() -> Self {
+        OtelDataState::Context {
+            current_cx: opentelemetry::Context::default(),
+        }
+    }
 }
 
 pub(crate) mod time {

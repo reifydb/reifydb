@@ -13,7 +13,10 @@ use crate::trace::{
     IdGenerator, ShouldSample, SpanEvents, SpanLimits, SpanLinks,
 };
 use opentelemetry::{
-    trace::{SamplingDecision, SpanBuilder, SpanContext, SpanKind, TraceContextExt, TraceFlags},
+    trace::{
+        SamplingDecision, Span as _, SpanBuilder, SpanContext, SpanKind, TraceContextExt,
+        TraceFlags,
+    },
     Context, InstrumentationScope, KeyValue,
 };
 use std::fmt;
@@ -134,6 +137,7 @@ impl SdkTracer {
             sc,
             Some(SpanData {
                 parent_span_id: psc.span_id(),
+                parent_span_is_remote: psc.is_valid() && psc.is_remote(),
                 span_kind: builder.span_kind.take().unwrap_or(SpanKind::Internal),
                 name,
                 start_time,
@@ -178,6 +182,15 @@ impl opentelemetry::trace::Tracer for SdkTracer {
     /// trace includes a single root span, which is the shared ancestor of all other
     /// spans in the trace.
     fn build_with_context(&self, mut builder: SpanBuilder, parent_cx: &Context) -> Self::Span {
+        if parent_cx.is_telemetry_suppressed() {
+            return Span::new(
+                SpanContext::empty_context(),
+                None,
+                self.clone(),
+                SpanLimits::default(),
+            );
+        }
+
         let provider = self.provider();
         // no point start a span if the tracer provider has already being shutdown
         if provider.is_shutdown() {
@@ -272,9 +285,11 @@ impl opentelemetry::trace::Tracer for SdkTracer {
             }
         };
 
-        // Call `on_start` for all processors
-        for processor in provider.span_processors() {
-            processor.on_start(&mut span, parent_cx)
+        if span.is_recording() {
+            // Call `on_start` for all processors
+            for processor in provider.span_processors() {
+                processor.on_start(&mut span, parent_cx)
+            }
         }
 
         span
@@ -333,8 +348,8 @@ mod tests {
         let trace_state = TraceState::from_key_value(vec![("foo", "bar")]).unwrap();
 
         let parent_context = Context::new().with_span(TestSpan(SpanContext::new(
-            TraceId::from_u128(128),
-            SpanId::from_u64(64),
+            TraceId::from(128),
+            SpanId::from(64),
             TraceFlags::SAMPLED,
             true,
             trace_state,
@@ -375,8 +390,8 @@ mod tests {
 
         let context = Context::map_current(|cx| {
             cx.with_remote_span_context(SpanContext::new(
-                TraceId::from_u128(1),
-                SpanId::from_u64(1),
+                TraceId::from(1),
+                SpanId::from(1),
                 TraceFlags::default(),
                 true,
                 Default::default(),

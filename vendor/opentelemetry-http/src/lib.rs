@@ -43,6 +43,16 @@ impl Extractor for HeaderExtractor<'_> {
             .map(|value| value.as_str())
             .collect::<Vec<_>>()
     }
+
+    /// Get all the values for a key from the HeaderMap
+    fn get_all(&self, key: &str) -> Option<Vec<&str>> {
+        let all_iter = self.0.get_all(key).iter();
+        if let (0, Some(0)) = all_iter.size_hint() {
+            return None;
+        }
+
+        Some(all_iter.filter_map(|value| value.to_str().ok()).collect())
+    }
 }
 
 pub type HttpError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -98,6 +108,7 @@ mod reqwest {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "reqwest-blocking")]
     #[async_trait]
     impl HttpClient for reqwest::blocking::Client {
         async fn send_bytes(&self, request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
@@ -169,7 +180,11 @@ pub mod hyper {
     }
 
     #[async_trait]
-    impl HttpClient for HyperClient {
+    impl<C> HttpClient for HyperClient<C>
+    where
+        C: Connect + Clone + Send + Sync + 'static,
+        HyperClient<C>: Debug,
+    {
         async fn send_bytes(&self, request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
             otel_debug!(name: "HyperClient.Send");
             let (parts, body) = request.into_parts();
@@ -237,6 +252,7 @@ impl<T> ResponseExt for Response<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::HeaderValue;
 
     #[test]
     fn http_headers_get() {
@@ -247,6 +263,31 @@ mod tests {
             HeaderExtractor(&carrier).get("HEADERNAME"),
             Some("value"),
             "case insensitive extraction"
+        )
+    }
+    #[test]
+    fn http_headers_get_all() {
+        let mut carrier = http::HeaderMap::new();
+        carrier.append("headerName", HeaderValue::from_static("value"));
+        carrier.append("headerName", HeaderValue::from_static("value2"));
+        carrier.append("headerName", HeaderValue::from_static("value3"));
+
+        assert_eq!(
+            HeaderExtractor(&carrier).get_all("HEADERNAME"),
+            Some(vec!["value", "value2", "value3"]),
+            "all values from a key extraction"
+        )
+    }
+
+    #[test]
+    fn http_headers_get_all_missing_key() {
+        let mut carrier = http::HeaderMap::new();
+        carrier.append("headerName", HeaderValue::from_static("value"));
+
+        assert_eq!(
+            HeaderExtractor(&carrier).get_all("not_existing"),
+            None,
+            "all values from a missing key extraction"
         )
     }
 

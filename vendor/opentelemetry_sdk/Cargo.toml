@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry_sdk"
-version = "0.29.0"
+version = "0.31.0"
 build = false
 autolib = false
 autobins = false
@@ -33,6 +33,75 @@ rustdoc-args = [
     "docsrs",
 ]
 
+[features]
+default = [
+    "trace",
+    "metrics",
+    "logs",
+    "internal-logs",
+]
+experimental_async_runtime = []
+experimental_logs_batch_log_processor_with_async_runtime = [
+    "logs",
+    "experimental_async_runtime",
+]
+experimental_logs_concurrent_log_processor = ["logs"]
+experimental_metrics_custom_reader = ["metrics"]
+experimental_metrics_disable_name_validation = ["metrics"]
+experimental_metrics_periodicreader_with_async_runtime = [
+    "metrics",
+    "experimental_async_runtime",
+]
+experimental_trace_batch_span_processor_with_async_runtime = [
+    "tokio/sync",
+    "trace",
+    "experimental_async_runtime",
+]
+internal-logs = ["opentelemetry/internal-logs"]
+jaeger_remote_sampler = [
+    "trace",
+    "opentelemetry-http",
+    "http",
+    "serde",
+    "serde_json",
+    "url",
+    "experimental_async_runtime",
+]
+logs = ["opentelemetry/logs"]
+metrics = ["opentelemetry/metrics"]
+rt-tokio = [
+    "tokio/rt",
+    "tokio/time",
+    "tokio-stream",
+    "experimental_async_runtime",
+]
+rt-tokio-current-thread = [
+    "tokio/rt",
+    "tokio/time",
+    "tokio-stream",
+    "experimental_async_runtime",
+]
+spec_unstable_logs_enabled = [
+    "logs",
+    "opentelemetry/spec_unstable_logs_enabled",
+]
+spec_unstable_metrics_views = ["metrics"]
+testing = [
+    "opentelemetry/testing",
+    "trace",
+    "metrics",
+    "logs",
+    "rt-tokio",
+    "rt-tokio-current-thread",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+]
+trace = [
+    "opentelemetry/trace",
+    "rand",
+    "percent-encoding",
+]
+
 [lib]
 name = "opentelemetry_sdk"
 path = "src/lib.rs"
@@ -42,10 +111,7 @@ bench = false
 name = "batch_span_processor"
 path = "benches/batch_span_processor.rs"
 harness = false
-required-features = [
-    "rt-tokio",
-    "testing",
-]
+required-features = ["testing"]
 
 [[bench]]
 name = "context"
@@ -81,21 +147,33 @@ harness = false
 name = "metric"
 path = "benches/metric.rs"
 harness = false
-required-features = ["metrics"]
+required-features = [
+    "metrics",
+    "spec_unstable_metrics_views",
+    "experimental_metrics_custom_reader",
+]
 
 [[bench]]
 name = "metrics_counter"
 path = "benches/metrics_counter.rs"
 harness = false
+required-features = ["experimental_metrics_custom_reader"]
 
 [[bench]]
 name = "metrics_gauge"
 path = "benches/metrics_gauge.rs"
 harness = false
+required-features = ["experimental_metrics_custom_reader"]
 
 [[bench]]
 name = "metrics_histogram"
 path = "benches/metrics_histogram.rs"
+harness = false
+required-features = ["experimental_metrics_custom_reader"]
+
+[[bench]]
+name = "span"
+path = "benches/span.rs"
 harness = false
 
 [[bench]]
@@ -128,10 +206,6 @@ features = [
 ]
 default-features = false
 
-[dependencies.glob]
-version = "0.3.1"
-optional = true
-
 [dependencies.http]
 version = "1.1"
 features = ["std"]
@@ -139,11 +213,13 @@ optional = true
 default-features = false
 
 [dependencies.opentelemetry]
-version = "0.29"
+version = "0.31"
+default-features = false
 
 [dependencies.opentelemetry-http]
-version = "0.29"
+version = "0.31"
 optional = true
+default-features = false
 
 [dependencies.percent-encoding]
 version = "2.0"
@@ -180,21 +256,12 @@ default-features = false
 
 [dependencies.tokio]
 version = "1"
-features = [
-    "rt",
-    "time",
-]
 optional = true
 default-features = false
 
 [dependencies.tokio-stream]
 version = "0.1"
 optional = true
-
-[dependencies.tracing]
-version = ">=0.1.40"
-optional = true
-default-features = false
 
 [dependencies.url]
 version = "2.5"
@@ -210,67 +277,6 @@ version = "0.23.0"
 
 [dev-dependencies.temp-env]
 version = "0.3.6"
-
-[features]
-default = [
-    "trace",
-    "metrics",
-    "logs",
-    "internal-logs",
-]
-experimental_async_runtime = []
-experimental_logs_batch_log_processor_with_async_runtime = ["logs"]
-experimental_logs_concurrent_log_processor = ["logs"]
-experimental_metrics_disable_name_validation = ["metrics"]
-experimental_metrics_periodicreader_with_async_runtime = ["metrics"]
-experimental_trace_batch_span_processor_with_async_runtime = ["trace"]
-internal-logs = ["tracing"]
-jaeger_remote_sampler = [
-    "trace",
-    "opentelemetry-http",
-    "http",
-    "serde",
-    "serde_json",
-    "url",
-]
-logs = [
-    "opentelemetry/logs",
-    "serde_json",
-]
-metrics = [
-    "opentelemetry/metrics",
-    "glob",
-]
-rt-tokio = [
-    "tokio",
-    "tokio-stream",
-    "experimental_async_runtime",
-]
-rt-tokio-current-thread = [
-    "tokio",
-    "tokio-stream",
-    "experimental_async_runtime",
-]
-spec_unstable_logs_enabled = [
-    "logs",
-    "opentelemetry/spec_unstable_logs_enabled",
-]
-spec_unstable_metrics_views = ["metrics"]
-testing = [
-    "opentelemetry/testing",
-    "trace",
-    "metrics",
-    "logs",
-    "rt-tokio",
-    "rt-tokio-current-thread",
-    "tokio/macros",
-    "tokio/rt-multi-thread",
-]
-trace = [
-    "opentelemetry/trace",
-    "rand",
-    "percent-encoding",
-]
 
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies.pprof]
 version = "0.14"

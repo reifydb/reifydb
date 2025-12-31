@@ -58,8 +58,8 @@ mod runtime_tests;
 
 #[cfg(all(test, feature = "testing"))]
 mod tests {
-
     use super::*;
+    use crate::error::OTelSdkResult;
     use crate::{
         trace::span_limit::{DEFAULT_MAX_EVENT_PER_SPAN, DEFAULT_MAX_LINKS_PER_SPAN},
         trace::{InMemorySpanExporter, InMemorySpanExporterBuilder},
@@ -76,6 +76,7 @@ mod tests {
         },
         Context, KeyValue,
     };
+    use std::time::Duration;
 
     #[test]
     fn span_modification_via_context() {
@@ -136,13 +137,17 @@ mod tests {
             }
         }
 
-        fn on_end(&self, _span: SpanData) {}
+        fn on_end(&self, _span: SpanData) {
+            // TODO: Accessing Context::current() will panic today and hence commented out.
+            // See https://github.com/open-telemetry/opentelemetry-rust/issues/2871
+            // let _c = Context::current();
+        }
 
         fn force_flush(&self) -> crate::error::OTelSdkResult {
             Ok(())
         }
 
-        fn shutdown(&self) -> crate::error::OTelSdkResult {
+        fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
             Ok(())
         }
     }
@@ -230,6 +235,16 @@ mod tests {
             span.update_name("span_name_updated");
             span.set_attribute(KeyValue::new("attribute1", "value1"));
             span.add_event("test-event".to_string(), vec![]);
+            span.add_link(
+                SpanContext::new(
+                    TraceId::from(47),
+                    SpanId::from(11),
+                    TraceFlags::default(),
+                    false,
+                    Default::default(),
+                ),
+                vec![],
+            );
         });
 
         // Assert
@@ -243,6 +258,9 @@ mod tests {
         assert_eq!(span.attributes.len(), 1);
         assert_eq!(span.events.len(), 1);
         assert_eq!(span.events[0].name, "test-event");
+        assert_eq!(span.links.len(), 1);
+        assert_eq!(span.links[0].span_context.trace_id(), TraceId::from(47));
+        assert_eq!(span.links[0].span_context.span_id(), SpanId::from(11));
         assert_eq!(span.span_context.trace_flags(), TraceFlags::SAMPLED);
         assert!(!span.span_context.is_remote());
         assert_eq!(span.status, Status::Unset);
@@ -334,8 +352,8 @@ mod tests {
         let mut links = Vec::new();
         for _i in 0..(DEFAULT_MAX_LINKS_PER_SPAN * 2) {
             links.push(Link::with_context(SpanContext::new(
-                TraceId::from_u128(12),
-                SpanId::from_u64(12),
+                TraceId::from(12),
+                SpanId::from(12),
                 TraceFlags::default(),
                 false,
                 Default::default(),
@@ -404,8 +422,8 @@ mod tests {
         let trace_state = TraceState::from_key_value(vec![("foo", "bar")]).unwrap();
 
         let parent_context = Context::new().with_span(TestSpan(SpanContext::new(
-            TraceId::from_u128(10000),
-            SpanId::from_u64(20),
+            TraceId::from(10000),
+            SpanId::from(20),
             TraceFlags::SAMPLED,
             true,
             trace_state.clone(),
@@ -457,8 +475,8 @@ mod tests {
         let trace_state = TraceState::from_key_value(vec![("foo", "bar")]).unwrap();
 
         let parent_context = Context::new().with_span(TestSpan(SpanContext::new(
-            TraceId::from_u128(10000),
-            SpanId::from_u64(20),
+            TraceId::from(10000),
+            SpanId::from(20),
             TraceFlags::SAMPLED,
             true,
             trace_state.clone(),
@@ -532,5 +550,31 @@ mod tests {
         let tracer_scope = InstrumentationScope::builder("").build();
         let tracer2 = tracer_provider.tracer_with_scope(tracer_scope);
         tracer_name_retained_helper(tracer2, tracer_provider, exporter).await;
+    }
+
+    #[test]
+    fn trace_suppression() {
+        // Arrange
+        let exporter = InMemorySpanExporter::default();
+        let span_processor = SimpleSpanProcessor::new(exporter.clone());
+        let tracer_provider = SdkTracerProvider::builder()
+            .with_span_processor(span_processor)
+            .build();
+
+        // Act
+        let tracer = tracer_provider.tracer("test");
+        {
+            let _suppressed_context = Context::enter_telemetry_suppressed_scope();
+            // This span should not be emitted as it is created in a suppressed context
+            let _span = tracer.span_builder("span_name").start(&tracer);
+        }
+
+        // Assert
+        let finished_spans = exporter.get_finished_spans().expect("this should not fail");
+        assert_eq!(
+            finished_spans.len(),
+            0,
+            "There should be a no spans as span emission is done inside a suppressed context"
+        );
     }
 }

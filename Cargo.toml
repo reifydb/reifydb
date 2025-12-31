@@ -170,10 +170,10 @@ tracing = { version = "0.1.43" }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json", "fmt"] }
 
 # OpenTelemetry - compatible versions
-opentelemetry = "0.29"
-opentelemetry_sdk = "0.29"
-opentelemetry-otlp = { version = "0.29", features = ["grpc-tonic"] }
-tracing-opentelemetry = "0.30"
+opentelemetry = "0.31"
+opentelemetry_sdk = "0.31"
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.32"
 
 libc = { version = "0.2.175" }
 libloading = { version = "0.9" }

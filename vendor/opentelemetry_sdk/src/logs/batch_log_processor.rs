@@ -23,7 +23,7 @@ use crate::{
 };
 use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
 
-use opentelemetry::{otel_debug, otel_error, otel_warn, InstrumentationScope};
+use opentelemetry::{otel_debug, otel_error, otel_warn, Context, InstrumentationScope};
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::{cmp::min, env, sync::Mutex};
@@ -101,8 +101,6 @@ type LogsData = Box<(SdkLogRecord, InstrumentationScope)>;
 /// cause deadlock. Instead, call `shutdown()` from a separate thread or use
 /// tokio's `spawn_blocking`.
 ///
-/// [`shutdown()`]: crate::logs::LoggerProvider::shutdown
-/// [`force_flush()`]: crate::logs::LoggerProvider::force_flush
 ///
 /// ### Using a BatchLogProcessor:
 ///
@@ -132,7 +130,6 @@ pub struct BatchLogProcessor {
     message_sender: SyncSender<BatchMessage>, // Control channel to store control messages for the worker thread
     handle: Mutex<Option<thread::JoinHandle<()>>>,
     forceflush_timeout: Duration,
-    shutdown_timeout: Duration,
     export_log_message_sent: Arc<AtomicBool>,
     current_batch_size: Arc<AtomicUsize>,
     max_export_batch_size: usize,
@@ -210,6 +207,10 @@ impl LogProcessor for BatchLogProcessor {
                 }
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
+                // The following `otel_warn!` may cause an infinite feedback loop of
+                // 'telemetry-induced-telemetry', potentially causing a stack overflow
+                let _guard = Context::enter_telemetry_suppressed_scope();
+
                 // Given background thread is the only receiver, and it's
                 // disconnected, it indicates the thread is shutdown
                 otel_warn!(
@@ -232,7 +233,7 @@ impl LogProcessor for BatchLogProcessor {
                     if err == RecvTimeoutError::Timeout {
                         OTelSdkError::Timeout(self.forceflush_timeout)
                     } else {
-                        OTelSdkError::InternalFailure(format!("{}", err))
+                        OTelSdkError::InternalFailure(format!("{err}"))
                     }
                 })?,
             Err(mpsc::TrySendError::Full(_)) => {
@@ -256,7 +257,7 @@ impl LogProcessor for BatchLogProcessor {
         }
     }
 
-    fn shutdown(&self) -> OTelSdkResult {
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
         let dropped_logs = self.dropped_logs_count.load(Ordering::Relaxed);
         let max_queue_size = self.max_queue_size;
         if dropped_logs > 0 {
@@ -272,7 +273,7 @@ impl LogProcessor for BatchLogProcessor {
         match self.message_sender.try_send(BatchMessage::Shutdown(sender)) {
             Ok(_) => {
                 receiver
-                    .recv_timeout(self.shutdown_timeout)
+                    .recv_timeout(timeout)
                     .map(|_| {
                         // join the background thread after receiving back the
                         // shutdown signal
@@ -287,14 +288,14 @@ impl LogProcessor for BatchLogProcessor {
                                 name: "BatchLogProcessor.Shutdown.Timeout",
                                 message = "BatchLogProcessor shutdown timing out."
                             );
-                            OTelSdkError::Timeout(self.shutdown_timeout)
+                            OTelSdkError::Timeout(timeout)
                         }
                         _ => {
                             otel_error!(
                                 name: "BatchLogProcessor.Shutdown.Error",
                                 error = format!("{}", err)
                             );
-                            OTelSdkError::InternalFailure(format!("{}", err))
+                            OTelSdkError::InternalFailure(format!("{err}"))
                         }
                     })?
             }
@@ -342,6 +343,7 @@ impl BatchLogProcessor {
         let handle = thread::Builder::new()
             .name("OpenTelemetry.Logs.BatchProcessor".to_string())
             .spawn(move || {
+                let _suppress_guard = Context::enter_telemetry_suppressed_scope();
                 otel_debug!(
                     name: "BatchLogProcessor.ThreadStarted",
                     interval_in_millisecs = config.scheduled_delay.as_millis(),
@@ -362,7 +364,7 @@ impl BatchLogProcessor {
                     logs: &mut Vec<LogsData>,
                     last_export_time: &mut Instant,
                     current_batch_size: &AtomicUsize,
-                    config: &BatchConfig,
+                    max_export_size: usize,
                 ) -> OTelSdkResult
                 where
                     E: LogExporter + Send + Sync + 'static,
@@ -375,7 +377,7 @@ impl BatchLogProcessor {
                         // Get upto `max_export_batch_size` amount of logs log records from the channel and push them to the logs vec
                         while let Ok(log) = logs_receiver.try_recv() {
                             logs.push(log);
-                            if logs.len() == config.max_export_batch_size {
+                            if logs.len() == max_export_size {
                                 break;
                             }
                         }
@@ -411,7 +413,7 @@ impl BatchLogProcessor {
                                 &mut logs,
                                 &mut last_export_time,
                                 &current_batch_size,
-                                &config,
+                                max_export_batch_size,
                             );
                         }
                         Ok(BatchMessage::ForceFlush(sender)) => {
@@ -422,7 +424,7 @@ impl BatchLogProcessor {
                                 &mut logs,
                                 &mut last_export_time,
                                 &current_batch_size,
-                                &config,
+                                max_export_batch_size,
                             );
                             let _ = sender.send(result);
                         }
@@ -434,7 +436,7 @@ impl BatchLogProcessor {
                                 &mut logs,
                                 &mut last_export_time,
                                 &current_batch_size,
-                                &config,
+                                max_export_batch_size,
                             );
                             let _ = exporter.shutdown();
                             let _ = sender.send(result);
@@ -462,7 +464,7 @@ impl BatchLogProcessor {
                                 &mut logs,
                                 &mut last_export_time,
                                 &current_batch_size,
-                                &config,
+                                max_export_batch_size,
                             );
                         }
                         Err(RecvTimeoutError::Disconnected) => {
@@ -488,7 +490,6 @@ impl BatchLogProcessor {
             message_sender,
             handle: Mutex::new(Some(handle)),
             forceflush_timeout: Duration::from_secs(5), // TODO: make this configurable
-            shutdown_timeout: Duration::from_secs(5),   // TODO: make this configurable
             dropped_logs_count: AtomicUsize::new(0),
             max_queue_size,
             export_log_message_sent: Arc::new(AtomicBool::new(false)),

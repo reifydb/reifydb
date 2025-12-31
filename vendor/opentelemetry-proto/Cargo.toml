@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry-proto"
-version = "0.29.0"
+version = "0.31.0"
 build = false
 autolib = false
 autobins = false
@@ -38,75 +38,6 @@ categories = [
 license = "Apache-2.0"
 repository = "https://github.com/open-telemetry/opentelemetry-rust/tree/main/opentelemetry-proto"
 
-[lib]
-name = "opentelemetry_proto"
-path = "src/lib.rs"
-doctest = false
-
-[[test]]
-name = "grpc_build"
-path = "tests/grpc_build.rs"
-
-[[test]]
-name = "json_serde"
-path = "tests/json_serde.rs"
-
-[dependencies.base64]
-version = "0.22.1"
-optional = true
-
-[dependencies.hex]
-version = "0.4.3"
-optional = true
-
-[dependencies.opentelemetry]
-version = "0.29"
-default-features = false
-
-[dependencies.opentelemetry_sdk]
-version = "0.29"
-default-features = false
-
-[dependencies.prost]
-version = "0.13"
-optional = true
-
-[dependencies.schemars]
-version = "0.8"
-optional = true
-
-[dependencies.serde]
-version = "1.0"
-features = ["serde_derive"]
-optional = true
-default-features = false
-
-[dependencies.tonic]
-version = "0.12.3"
-features = [
-    "codegen",
-    "prost",
-]
-optional = true
-default-features = false
-
-[dependencies.tracing]
-version = ">=0.1.40"
-optional = true
-default-features = false
-
-[dev-dependencies.prost-build]
-version = "0.13"
-
-[dev-dependencies.serde_json]
-version = "1.0"
-
-[dev-dependencies.tempfile]
-version = "3.3.0"
-
-[dev-dependencies.tonic-build]
-version = "0.12"
-
 [features]
 default = ["full"]
 full = [
@@ -124,9 +55,10 @@ gen-tonic = [
 ]
 gen-tonic-messages = [
     "tonic",
+    "tonic-prost",
     "prost",
 ]
-internal-logs = ["tracing"]
+internal-logs = ["opentelemetry/internal-logs"]
 logs = [
     "opentelemetry/logs",
     "opentelemetry_sdk/logs",
@@ -135,6 +67,7 @@ metrics = [
     "opentelemetry/metrics",
     "opentelemetry_sdk/metrics",
 ]
+profiles = []
 testing = ["opentelemetry/testing"]
 trace = [
     "opentelemetry/trace",
@@ -143,10 +76,89 @@ trace = [
 with-schemars = ["schemars"]
 with-serde = [
     "serde",
-    "hex",
+    "const-hex",
     "base64",
+    "serde_json",
 ]
 zpages = ["trace"]
+
+[lib]
+name = "opentelemetry_proto"
+path = "src/lib.rs"
+doctest = false
+bench = false
+
+[[test]]
+name = "grpc_build"
+path = "tests/grpc_build.rs"
+
+[[test]]
+name = "json_serde"
+path = "tests/json_serde.rs"
+
+[dependencies.base64]
+version = "0.22.1"
+optional = true
+
+[dependencies.const-hex]
+version = "1.14.1"
+optional = true
+
+[dependencies.opentelemetry]
+version = "0.31"
+default-features = false
+
+[dependencies.opentelemetry_sdk]
+version = "0.31"
+default-features = false
+
+[dependencies.prost]
+version = "0.14"
+optional = true
+
+[dependencies.schemars]
+version = "0.8"
+optional = true
+
+[dependencies.serde]
+version = "1.0"
+features = [
+    "serde_derive",
+    "std",
+]
+optional = true
+default-features = false
+
+[dependencies.serde_json]
+version = "1.0"
+optional = true
+
+[dependencies.tonic]
+version = "0.14.1"
+features = ["codegen"]
+optional = true
+default-features = false
+
+[dependencies.tonic-prost]
+version = "0.14.1"
+optional = true
+
+[dev-dependencies.opentelemetry]
+version = "0.31"
+features = ["testing"]
+default-features = false
+
+[dev-dependencies.prost-build]
+version = "0.14"
+
+[dev-dependencies.serde_json]
+version = "1.0"
+
+[dev-dependencies.tempfile]
+version = "3.3.0"
+
+[dev-dependencies.tonic-prost-build]
+version = "0.14.1"
 
 [lints.clippy.all]
 level = "warn"

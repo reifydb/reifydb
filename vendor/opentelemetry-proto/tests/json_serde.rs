@@ -44,6 +44,7 @@ mod json_serde {
                                 }),
                             }],
                             dropped_attributes_count: 0,
+                            entity_refs: vec![],
                         }),
                         scope_spans: vec![ScopeSpans {
                             scope: Some(InstrumentationScope {
@@ -60,10 +61,11 @@ mod json_serde {
                                 dropped_attributes_count: 0,
                             }),
                             spans: vec![Span {
-                                trace_id: hex::decode("5b8efff798038103d269b633813fc60c").unwrap(),
-                                span_id: hex::decode("eee19b7ec3c1b174").unwrap(),
+                                trace_id: const_hex::decode("5b8efff798038103d269b633813fc60c")
+                                    .unwrap(),
+                                span_id: const_hex::decode("eee19b7ec3c1b174").unwrap(),
                                 trace_state: String::new(),
-                                parent_span_id: hex::decode("eee19b7ec3c1b173").unwrap(),
+                                parent_span_id: const_hex::decode("eee19b7ec3c1b173").unwrap(),
                                 flags: 0,
                                 name: String::from("I'm a server span"),
                                 kind: 2,
@@ -249,6 +251,7 @@ mod json_serde {
                                 }),
                             }],
                             dropped_attributes_count: 1,
+                            entity_refs: vec![],
                         }),
                         scope_spans: vec![ScopeSpans {
                             scope: Some(InstrumentationScope {
@@ -265,10 +268,11 @@ mod json_serde {
                                 dropped_attributes_count: 1,
                             }),
                             spans: vec![Span {
-                                trace_id: hex::decode("5b8efff798038103d269b633813fc60c").unwrap(),
-                                span_id: hex::decode("eee19b7ec3c1b174").unwrap(),
+                                trace_id: const_hex::decode("5b8efff798038103d269b633813fc60c")
+                                    .unwrap(),
+                                span_id: const_hex::decode("eee19b7ec3c1b174").unwrap(),
                                 trace_state: String::from("browser=firefox,os=linux"),
-                                parent_span_id: hex::decode("eee19b7ec3c1b173").unwrap(),
+                                parent_span_id: const_hex::decode("eee19b7ec3c1b173").unwrap(),
                                 flags: 1,
                                 name: String::from("I'm a server span"),
                                 kind: 2,
@@ -306,9 +310,9 @@ mod json_serde {
                                 }],
                                 dropped_events_count: 1,
                                 links: vec![Link {
-                                    trace_id: hex::decode("5b8efff798038103d269b633813fc60b")
+                                    trace_id: const_hex::decode("5b8efff798038103d269b633813fc60b")
                                         .unwrap(),
-                                    span_id: hex::decode("eee19b7ec3c1b172").unwrap(),
+                                    span_id: const_hex::decode("eee19b7ec3c1b172").unwrap(),
                                     trace_state: String::from("food=pizza,color=red"),
                                     attributes: vec![KeyValue {
                                         key: String::from("my.link.attr"),
@@ -792,6 +796,7 @@ mod json_serde {
                                 }),
                             }],
                             dropped_attributes_count: 0,
+                            entity_refs: vec![],
                         }),
                         scope_metrics: vec![ScopeMetrics {
                             scope: Some(InstrumentationScope {
@@ -1178,6 +1183,7 @@ mod json_serde {
                                 }),
                             }],
                             dropped_attributes_count: 0,
+                            entity_refs: vec![],
                         }),
                         scope_logs: vec![ScopeLogs {
                             scope: Some(InstrumentationScope {
@@ -1268,8 +1274,9 @@ mod json_serde {
                                 ],
                                 dropped_attributes_count: 0,
                                 flags: 0,
-                                trace_id: hex::decode("5b8efff798038103d269b633813fc60c").unwrap(),
-                                span_id: hex::decode("eee19b7ec3c1b174").unwrap(),
+                                trace_id: const_hex::decode("5b8efff798038103d269b633813fc60c")
+                                    .unwrap(),
+                                span_id: const_hex::decode("eee19b7ec3c1b174").unwrap(),
                             }],
                             schema_url: String::new(),
                         }],

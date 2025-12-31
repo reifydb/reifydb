@@ -9,7 +9,7 @@ use opentelemetry_sdk::metrics::data::ResourceMetrics;
 use super::OtlpHttpClient;
 
 impl MetricsClient for OtlpHttpClient {
-    async fn export(&self, metrics: &mut ResourceMetrics) -> OTelSdkResult {
+    async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let client = self
             .client
             .lock()
@@ -19,13 +19,21 @@ impl MetricsClient for OtlpHttpClient {
                 _ => Err(OTelSdkError::AlreadyShutdown),
             })?;
 
-        let (body, content_type) = self.build_metrics_export_body(metrics).map_err(|e| {
-            OTelSdkError::InternalFailure(format!("Failed to serialize metrics: {e:?}"))
-        })?;
-        let mut request = http::Request::builder()
+        let (body, content_type, content_encoding) =
+            self.build_metrics_export_body(metrics).ok_or_else(|| {
+                OTelSdkError::InternalFailure("Failed to serialize metrics".to_string())
+            })?;
+
+        let mut request_builder = http::Request::builder()
             .method(Method::POST)
             .uri(&self.collector_endpoint)
-            .header(CONTENT_TYPE, content_type)
+            .header(CONTENT_TYPE, content_type);
+
+        if let Some(encoding) = content_encoding {
+            request_builder = request_builder.header("Content-Encoding", encoding);
+        }
+
+        let mut request = request_builder
             .body(body.into())
             .map_err(|e| OTelSdkError::InternalFailure(format!("{e:?}")))?;
 
@@ -33,19 +41,36 @@ impl MetricsClient for OtlpHttpClient {
             request.headers_mut().insert(k.clone(), v.clone());
         }
 
-        otel_debug!(name: "HttpMetricsClient.CallingExport");
-        client
-            .send_bytes(request)
-            .await
-            .map_err(|e| OTelSdkError::InternalFailure(format!("{e:?}")))?;
+        otel_debug!(name: "HttpMetricsClient.ExportStarted");
+        let result = client.send_bytes(request).await;
 
-        Ok(())
+        match result {
+            Ok(response) => {
+                if response.status().is_success() {
+                    otel_debug!(name: "HttpMetricsClient.ExportSucceeded");
+                    Ok(())
+                } else {
+                    let error = format!(
+                        "OpenTelemetry metrics export failed. Status Code: {}, Response: {:?}",
+                        response.status().as_u16(),
+                        response.body()
+                    );
+                    otel_debug!(name: "HttpMetricsClient.ExportFailed", error = &error);
+                    Err(OTelSdkError::InternalFailure(error))
+                }
+            }
+            Err(e) => {
+                let error = format!("{e:?}");
+                otel_debug!(name: "HttpMetricsClient.ExportFailed", error = &error);
+                Err(OTelSdkError::InternalFailure(error))
+            }
+        }
     }
 
     fn shutdown(&self) -> OTelSdkResult {
         self.client
             .lock()
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to acquire lock: {}", e)))?
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to acquire lock: {e}")))?
             .take();
 
         Ok(())

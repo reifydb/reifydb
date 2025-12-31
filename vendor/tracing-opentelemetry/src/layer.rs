@@ -1,15 +1,17 @@
-use crate::{OtelData, PreSampledTracer};
-use once_cell::unsync;
+use crate::stack::IdValueStack;
+use crate::{OtelData, OtelDataState};
+use opentelemetry::ContextGuard;
 use opentelemetry::{
-    trace::{self as otel, noop, SpanBuilder, SpanKind, Status, TraceContextExt},
+    trace::{self as otel, noop, Span, SpanBuilder, SpanKind, Status, TraceContextExt},
     Context as OtelContext, Key, KeyValue, StringValue, Value,
 };
-use std::fmt;
-use std::marker;
+use std::cell::RefCell;
 use std::thread;
 #[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
 use std::time::Instant;
 use std::{any::TypeId, borrow::Cow};
+use std::{fmt, vec};
+use std::{marker, mem::take};
 use tracing_core::span::{self, Attributes, Id, Record};
 use tracing_core::{field, Event, Subscriber};
 #[cfg(feature = "tracing-log")]
@@ -23,7 +25,7 @@ use web_time::Instant;
 const SPAN_NAME_FIELD: &str = "otel.name";
 const SPAN_KIND_FIELD: &str = "otel.kind";
 const SPAN_STATUS_CODE_FIELD: &str = "otel.status_code";
-const SPAN_STATUS_MESSAGE_FIELD: &str = "otel.status_message";
+const SPAN_STATUS_DESCRIPTION_FIELD: &str = "otel.status_description";
 
 const EVENT_EXCEPTION_NAME: &str = "exception";
 const FIELD_EXCEPTION_MESSAGE: &str = "exception.message";
@@ -40,8 +42,10 @@ pub struct OpenTelemetryLayer<S, T> {
     tracked_inactivity: bool,
     with_threads: bool,
     with_level: bool,
+    with_target: bool,
+    context_activation: bool,
     sem_conv_config: SemConvConfig,
-    get_context: WithContext,
+    with_context: WithContext,
     _registry: marker::PhantomData<S>,
 }
 
@@ -76,26 +80,58 @@ where
     OpenTelemetryLayer::default()
 }
 
-// this function "remembers" the types of the subscriber so that we
-// can downcast to something aware of them without knowing those
-// types at the callsite.
-//
-// See https://github.com/tokio-rs/tracing/blob/4dad420ee1d4607bad79270c1520673fa6266a3d/tracing-error/src/layer.rs
-pub(crate) struct WithContext(
+///
+/// This struct lets us call back into the layer from the [crate::OpenTelemetrySpanExt] methods,
+/// letting us access and mutate the underlying data on the layer side in the context of
+/// tokio-tracing's span operations.
+///
+/// The functions on this struct "remember" the types of the subscriber so that we
+/// can downcast to something aware of them without knowing those
+/// types at the callsite.
+///
+/// See https://github.com/tokio-rs/tracing/blob/4dad420ee1d4607bad79270c1520673fa6266a3d/tracing-error/src/layer.rs
+pub(crate) struct WithContext {
+    ///
+    /// Provides access to the OtelData associated with the given span ID.
+    ///
     #[allow(clippy::type_complexity)]
-    fn(&tracing::Dispatch, &span::Id, f: &mut dyn FnMut(&mut OtelData, &dyn PreSampledTracer)),
-);
+    pub(crate) with_context: fn(&tracing::Dispatch, &span::Id, f: &mut dyn FnMut(&mut OtelData)),
+
+    ///
+    /// Ensures the given SpanId has been activated - that is, created in the OTel side of things,
+    /// and had its SpanBuilder consumed - and then provides access to the OtelData associated with it.
+    ///
+    #[allow(clippy::type_complexity)]
+    pub(crate) with_activated_context:
+        fn(&tracing::Dispatch, &span::Id, f: &mut dyn FnMut(&mut OtelData)),
+}
 
 impl WithContext {
-    // This function allows a function to be called in the context of the
-    // "remembered" subscriber.
+    ///
+    /// Return the OtelData associated with the given spanId.
+    ///
     pub(crate) fn with_context(
         &self,
         dispatch: &tracing::Dispatch,
         id: &span::Id,
-        mut f: impl FnMut(&mut OtelData, &dyn PreSampledTracer),
+        mut f: impl FnMut(&mut OtelData),
     ) {
-        (self.0)(dispatch, id, &mut f)
+        (self.with_context)(dispatch, id, &mut f)
+    }
+
+    ///
+    /// If the span associated with the given SpanId has not yet been
+    /// built, build it, consuming the span ID.
+    ///
+    /// Optionally performs additional operations on the OtelData after building.
+    ///
+    pub(crate) fn with_activated_context(
+        &self,
+        dispatch: &tracing::Dispatch,
+        id: &span::Id,
+        mut f: impl FnMut(&mut OtelData),
+    ) {
+        (self.with_activated_context)(dispatch, id, &mut f)
     }
 }
 
@@ -150,6 +186,19 @@ impl SpanBuilderUpdates {
             } else {
                 span_builder.attributes = Some(attributes);
             }
+        }
+    }
+
+    fn update_span(self, span: &opentelemetry::trace::SpanRef<'_>) {
+        let Self {
+            status, attributes, ..
+        } = self;
+
+        if let Some(status) = status {
+            span.set_status(status);
+        }
+        if let Some(attributes) = attributes {
+            span.set_attributes(attributes);
         }
     }
 }
@@ -226,18 +275,17 @@ impl field::Visit for SpanEventVisitor<'_, '_> {
                     self.span_builder_updates
                         .get_or_insert_with(SpanBuilderUpdates::default)
                         .status
-                        .replace(otel::Status::error(format!("{:?}", value)));
+                        .replace(otel::Status::error(format!("{value:?}")));
                 }
                 if self.sem_conv_config.error_events_to_exceptions {
                     self.event_builder.name = EVENT_EXCEPTION_NAME.into();
-                    self.event_builder.attributes.push(KeyValue::new(
-                        FIELD_EXCEPTION_MESSAGE,
-                        format!("{:?}", value),
-                    ));
+                    self.event_builder
+                        .attributes
+                        .push(KeyValue::new(FIELD_EXCEPTION_MESSAGE, format!("{value:?}")));
                 } else {
                     self.event_builder
                         .attributes
-                        .push(KeyValue::new("error", format!("{:?}", value)));
+                        .push(KeyValue::new("error", format!("{value:?}")));
                 }
             }
             // Skip fields that are actually log metadata that have already been handled
@@ -257,7 +305,7 @@ impl field::Visit for SpanEventVisitor<'_, '_> {
     /// [`Span`]: opentelemetry::trace::Span
     fn record_debug(&mut self, field: &field::Field, value: &dyn fmt::Debug) {
         match field.name() {
-            "message" => self.event_builder.name = format!("{:?}", value).into(),
+            "message" => self.event_builder.name = format!("{value:?}").into(),
             // While tracing supports the error primitive, the instrumentation macro does not
             // use the primitive and instead uses the debug or display primitive.
             // In both cases, an event with an empty name and with an error attribute is created.
@@ -266,18 +314,17 @@ impl field::Visit for SpanEventVisitor<'_, '_> {
                     self.span_builder_updates
                         .get_or_insert_with(SpanBuilderUpdates::default)
                         .status
-                        .replace(otel::Status::error(format!("{:?}", value)));
+                        .replace(otel::Status::error(format!("{value:?}")));
                 }
                 if self.sem_conv_config.error_events_to_exceptions {
                     self.event_builder.name = EVENT_EXCEPTION_NAME.into();
-                    self.event_builder.attributes.push(KeyValue::new(
-                        FIELD_EXCEPTION_MESSAGE,
-                        format!("{:?}", value),
-                    ));
+                    self.event_builder
+                        .attributes
+                        .push(KeyValue::new(FIELD_EXCEPTION_MESSAGE, format!("{value:?}")));
                 } else {
                     self.event_builder
                         .attributes
-                        .push(KeyValue::new("error", format!("{:?}", value)));
+                        .push(KeyValue::new("error", format!("{value:?}")));
                 }
             }
             // Skip fields that are actually log metadata that have already been handled
@@ -286,7 +333,7 @@ impl field::Visit for SpanEventVisitor<'_, '_> {
             name => {
                 self.event_builder
                     .attributes
-                    .push(KeyValue::new(name, format!("{:?}", value)));
+                    .push(KeyValue::new(name, format!("{value:?}")));
             }
         }
     }
@@ -442,7 +489,7 @@ impl field::Visit for SpanAttributeVisitor<'_> {
             SPAN_NAME_FIELD => self.span_builder_updates.name = Some(value.to_string().into()),
             SPAN_KIND_FIELD => self.span_builder_updates.span_kind = str_to_span_kind(value),
             SPAN_STATUS_CODE_FIELD => self.span_builder_updates.status = Some(str_to_status(value)),
-            SPAN_STATUS_MESSAGE_FIELD => {
+            SPAN_STATUS_DESCRIPTION_FIELD => {
                 self.span_builder_updates.status = Some(otel::Status::error(value.to_string()))
             }
             _ => self.record(KeyValue::new(field.name(), value.to_string())),
@@ -455,19 +502,19 @@ impl field::Visit for SpanAttributeVisitor<'_> {
     /// [`Span`]: opentelemetry::trace::Span
     fn record_debug(&mut self, field: &field::Field, value: &dyn fmt::Debug) {
         match field.name() {
-            SPAN_NAME_FIELD => self.span_builder_updates.name = Some(format!("{:?}", value).into()),
+            SPAN_NAME_FIELD => self.span_builder_updates.name = Some(format!("{value:?}").into()),
             SPAN_KIND_FIELD => {
-                self.span_builder_updates.span_kind = str_to_span_kind(&format!("{:?}", value))
+                self.span_builder_updates.span_kind = str_to_span_kind(&format!("{value:?}"))
             }
             SPAN_STATUS_CODE_FIELD => {
-                self.span_builder_updates.status = Some(str_to_status(&format!("{:?}", value)))
+                self.span_builder_updates.status = Some(str_to_status(&format!("{value:?}")))
             }
-            SPAN_STATUS_MESSAGE_FIELD => {
-                self.span_builder_updates.status = Some(otel::Status::error(format!("{:?}", value)))
+            SPAN_STATUS_DESCRIPTION_FIELD => {
+                self.span_builder_updates.status = Some(otel::Status::error(format!("{value:?}")))
             }
             _ => self.record(KeyValue::new(
                 Key::new(field.name()),
-                Value::String(format!("{:?}", value).into()),
+                Value::String(format!("{value:?}").into()),
             )),
         }
     }
@@ -523,7 +570,8 @@ impl field::Visit for SpanAttributeVisitor<'_> {
 impl<S, T> OpenTelemetryLayer<S, T>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
-    T: otel::Tracer + PreSampledTracer + 'static,
+    T: otel::Tracer + 'static,
+    T::Span: Send + Sync,
 {
     /// Set the [`Tracer`] that this layer will use to produce and track
     /// OpenTelemetry [`Span`]s.
@@ -566,14 +614,18 @@ where
             tracked_inactivity: true,
             with_threads: true,
             with_level: false,
+            with_target: true,
+            context_activation: true,
             sem_conv_config: SemConvConfig {
                 error_fields_to_exceptions: true,
                 error_records_to_exceptions: true,
                 error_events_to_exceptions: true,
                 error_events_to_status: true,
             },
-
-            get_context: WithContext(Self::get_context),
+            with_context: WithContext {
+                with_context: Self::get_context,
+                with_activated_context: Self::get_activated_context,
+            },
             _registry: marker::PhantomData,
         }
     }
@@ -613,7 +665,8 @@ where
     /// ```
     pub fn with_tracer<Tracer>(self, tracer: Tracer) -> OpenTelemetryLayer<S, Tracer>
     where
-        Tracer: otel::Tracer + PreSampledTracer + 'static,
+        Tracer: otel::Tracer + 'static,
+        Tracer::Span: Send + Sync,
     {
         OpenTelemetryLayer {
             tracer,
@@ -621,8 +674,13 @@ where
             tracked_inactivity: self.tracked_inactivity,
             with_threads: self.with_threads,
             with_level: self.with_level,
+            with_target: self.with_target,
+            context_activation: self.context_activation,
             sem_conv_config: self.sem_conv_config,
-            get_context: WithContext(OpenTelemetryLayer::<S, Tracer>::get_context),
+            with_context: WithContext {
+                with_context: OpenTelemetryLayer::<S, Tracer>::get_context,
+                with_activated_context: OpenTelemetryLayer::<S, Tracer>::get_activated_context,
+            },
             _registry: self._registry,
             // cannot use ``..self` here due to different generics
         }
@@ -653,9 +711,8 @@ where
         }
     }
 
-    /// Sets whether or not an event considered for exception mapping (see [`OpenTelemetryLayer::with_error_recording`])
+    /// Sets whether or not an event considered for exception mapping (see [`OpenTelemetryLayer::with_error_records_to_exceptions`])
     /// should be propagated to the span status error description.
-    ///
     ///
     /// By default, these events do set the span status error description.
     pub fn with_error_events_to_status(self, error_events_to_status: bool) -> Self {
@@ -765,6 +822,30 @@ where
         }
     }
 
+    /// Sets whether or not span metadata should include an attribute with `target` from `tracing` spans.
+    ///
+    /// By default, the target attribute is enabled..
+    pub fn with_target(self, target: bool) -> Self {
+        Self {
+            with_target: target,
+            ..self
+        }
+    }
+
+    /// Sets whether or not an OpenTelemetry Context should be activated on span entry.
+    ///
+    /// When enabled, entering a span will activate its OpenTelemetry context, making it
+    /// available to other OpenTelemetry instrumentation. This allows for proper context
+    /// propagation across different instrumentation libraries.
+    ///
+    /// By default, context activation is enabled.
+    pub fn with_context_activation(self, context_activation: bool) -> Self {
+        Self {
+            context_activation,
+            ..self
+        }
+    }
+
     /// Retrieve the parent OpenTelemetry [`Context`] from the current tracing
     /// [`span`] through the [`Registry`]. This [`Context`] links spans to their
     /// parent for proper hierarchical visualization.
@@ -788,33 +869,66 @@ where
             // In these case, we prefer to emit a smaller span tree instead of panicking.
             if let Some(span) = ctx.span(parent) {
                 let mut extensions = span.extensions_mut();
-                return extensions
-                    .get_mut::<OtelData>()
-                    .map(|builder| self.tracer.sampled_context(builder))
-                    .unwrap_or_default();
+                if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+                    // If the parent span has a span builder the parent span should be started
+                    // so we get a proper context with the parent span.
+                    return self.with_started_cx(otel_data, &|cx| cx.clone());
+                }
             }
         }
 
-        // Else if the span is inferred from context, look up any available current span.
         if attrs.is_contextual() {
-            ctx.lookup_current()
-                .and_then(|span| {
-                    let mut extensions = span.extensions_mut();
-                    extensions
-                        .get_mut::<OtelData>()
-                        .map(|builder| self.tracer.sampled_context(builder))
-                })
-                .unwrap_or_else(OtelContext::current)
-        // Explicit root spans should have no parent context.
+            if self.context_activation {
+                // If the span is contextual and we are using context activation,
+                // we should use the current OTel context
+                OtelContext::current()
+            } else {
+                // If the span is contextual and we are not using context activation,
+                // we should use the current tracing context
+                ctx.lookup_current()
+                    .and_then(|span| {
+                        let mut extensions = span.extensions_mut();
+                        extensions
+                            .get_mut::<OtelData>()
+                            .map(|data| self.with_started_cx(data, &|cx| cx.clone()))
+                    })
+                    .unwrap_or_else(OtelContext::current)
+            }
         } else {
-            OtelContext::new()
+            OtelContext::default()
         }
     }
 
-    fn get_context(
+    /// Provides access to the OpenTelemetry data (`OtelData`) stored in a tracing span.
+    ///
+    /// This function retrieves the span from the subscriber's registry using the provided span ID,
+    /// and then applies the callback function `f` to the span's `OtelData` if present.
+    ///
+    /// # Parameters
+    /// * `dispatch` - A reference to the tracing dispatch, used to access the subscriber
+    /// * `id` - The ID of the span to look up
+    /// * `f` - A callback function that receives a mutable reference to the span's `OtelData`
+    ///   This callback is used to manipulate or extract information from the OpenTelemetry context
+    ///   associated with the tracing span
+    ///
+    fn get_context(dispatch: &tracing::Dispatch, id: &span::Id, f: &mut dyn FnMut(&mut OtelData)) {
+        let subscriber = dispatch
+            .downcast_ref::<S>()
+            .expect("subscriber should downcast to expected type; this is a bug!");
+        let span = subscriber
+            .span(id)
+            .expect("registry should have a span for the current ID");
+
+        let mut extensions = span.extensions_mut();
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            f(otel_data);
+        }
+    }
+
+    fn get_activated_context(
         dispatch: &tracing::Dispatch,
         id: &span::Id,
-        f: &mut dyn FnMut(&mut OtelData, &dyn PreSampledTracer),
+        f: &mut dyn FnMut(&mut OtelData),
     ) {
         let subscriber = dispatch
             .downcast_ref::<S>()
@@ -822,13 +936,16 @@ where
         let span = subscriber
             .span(id)
             .expect("registry should have a span for the current ID");
+
         let layer = dispatch
             .downcast_ref::<OpenTelemetryLayer<S, T>>()
             .expect("layer should downcast to expected type; this is a bug!");
 
         let mut extensions = span.extensions_mut();
-        if let Some(builder) = extensions.get_mut::<OtelData>() {
-            f(builder, &layer.tracer);
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            // Activate the context
+            layer.start_cx(otel_data);
+            f(otel_data);
         }
     }
 
@@ -843,12 +960,37 @@ where
         if self.with_level {
             extra_attrs += 1;
         }
+        if self.with_target {
+            extra_attrs += 1;
+        }
         extra_attrs
+    }
+
+    ///
+    /// Builds the OTel span associated with given OTel context, consuming the SpanBuilder within
+    /// the context in the process.
+    ///
+    fn start_cx(&self, otel_data: &mut OtelData) {
+        if let OtelDataState::Context { .. } = &otel_data.state {
+            // If the context is already started, we do nothing.
+        } else if let OtelDataState::Builder { builder, parent_cx } = take(&mut otel_data.state) {
+            let span = builder.start_with_context(&self.tracer, &parent_cx);
+            let current_cx = parent_cx.with_span(span);
+            otel_data.state = OtelDataState::Context { current_cx };
+        }
+    }
+
+    fn with_started_cx<U>(&self, otel_data: &mut OtelData, f: &dyn Fn(&OtelContext) -> U) -> U {
+        self.start_cx(otel_data);
+        match &otel_data.state {
+            OtelDataState::Context { current_cx, .. } => f(current_cx),
+            _ => panic!("OtelDataState should be a Context after starting it; this is a bug!"),
+        }
     }
 }
 
 thread_local! {
-    static THREAD_ID: unsync::Lazy<u64> = unsync::Lazy::new(|| {
+    static THREAD_ID: u64 = {
         // OpenTelemetry's semantic conventions require the thread ID to be
         // recorded as an integer, but `std::thread::ThreadId` does not expose
         // the integer value on stable, so we have to convert it to a `usize` by
@@ -857,13 +999,20 @@ thread_local! {
         // TODO(eliza): once `std::thread::ThreadId::as_u64` is stabilized
         // (https://github.com/rust-lang/rust/issues/67939), just use that.
         thread_id_integer(thread::current().id())
-    });
+    };
 }
+
+thread_local! {
+    static GUARD_STACK: RefCell<IdContextGuardStack> = RefCell::new(IdContextGuardStack::new());
+}
+
+type IdContextGuardStack = IdValueStack<ContextGuard>;
 
 impl<S, T> Layer<S> for OpenTelemetryLayer<S, T>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
-    T: otel::Tracer + PreSampledTracer + 'static,
+    T: otel::Tracer + 'static,
+    T::Span: Send + Sync,
 {
     /// Creates an [OpenTelemetry `Span`] for the corresponding [tracing `Span`].
     ///
@@ -881,14 +1030,7 @@ where
         let mut builder = self
             .tracer
             .span_builder(attrs.metadata().name())
-            .with_start_time(crate::time::now())
-            // Eagerly assign span id so children have stable parent id
-            .with_span_id(self.tracer.new_span_id());
-
-        // Record new trace id if there is no active parent span
-        if !parent_cx.has_active_span() {
-            builder.trace_id = Some(self.tracer.new_trace_id());
-        }
+            .with_start_time(crate::time::now());
 
         let builder_attrs = builder.attributes.get_or_insert(Vec::with_capacity(
             attrs.fields().len() + self.extra_span_attrs(),
@@ -898,20 +1040,20 @@ where
             let meta = attrs.metadata();
 
             if let Some(filename) = meta.file() {
-                builder_attrs.push(KeyValue::new("code.filepath", filename));
+                builder_attrs.push(KeyValue::new("code.file.path", filename));
             }
 
             if let Some(module) = meta.module_path() {
-                builder_attrs.push(KeyValue::new("code.namespace", module));
+                builder_attrs.push(KeyValue::new("code.module.name", module));
             }
 
             if let Some(line) = meta.line() {
-                builder_attrs.push(KeyValue::new("code.lineno", line as i64));
+                builder_attrs.push(KeyValue::new("code.line.number", line as i64));
             }
         }
 
         if self.with_threads {
-            THREAD_ID.with(|id| builder_attrs.push(KeyValue::new("thread.id", **id as i64)));
+            THREAD_ID.with(|id| builder_attrs.push(KeyValue::new("thread.id", *id as i64)));
             if let Some(name) = std::thread::current().name() {
                 // TODO(eliza): it's a bummer that we have to allocate here, but
                 // we can't easily get the string as a `static`. it would be
@@ -924,6 +1066,9 @@ where
         if self.with_level {
             builder_attrs.push(KeyValue::new("level", attrs.metadata().level().as_str()));
         }
+        if self.with_target {
+            builder_attrs.push(KeyValue::new("target", attrs.metadata().target()));
+        }
 
         let mut updates = SpanBuilderUpdates::default();
         attrs.record(&mut SpanAttributeVisitor {
@@ -932,21 +1077,40 @@ where
         });
 
         updates.update(&mut builder);
-        extensions.insert(OtelData { builder, parent_cx });
+        extensions.insert(OtelData {
+            state: OtelDataState::Builder { builder, parent_cx },
+            end_time: None,
+        });
     }
 
     fn on_enter(&self, id: &span::Id, ctx: Context<'_, S>) {
-        if !self.tracked_inactivity {
+        if !self.context_activation && !self.tracked_inactivity {
             return;
         }
 
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
+        if self.context_activation {
+            if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+                self.with_started_cx(otel_data, &|cx| {
+                    let guard = cx.clone().attach();
+                    GUARD_STACK.with(|stack| stack.borrow_mut().push(id.clone(), guard));
+                });
+            }
+
+            if !self.tracked_inactivity {
+                return;
+            }
+        }
+
         if let Some(timings) = extensions.get_mut::<Timings>() {
-            let now = Instant::now();
-            timings.idle += (now - timings.last).as_nanos() as i64;
-            timings.last = now;
+            if timings.entered_count == 0 {
+                let now = Instant::now();
+                timings.idle += (now - timings.last).as_nanos() as i64;
+                timings.last = now;
+            }
+            timings.entered_count += 1;
         }
     }
 
@@ -955,7 +1119,10 @@ where
         let mut extensions = span.extensions_mut();
 
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            otel_data.builder.end_time = Some(crate::time::now());
+            otel_data.end_time = Some(crate::time::now());
+            if self.context_activation {
+                GUARD_STACK.with(|stack| stack.borrow_mut().pop(id));
+            }
         }
 
         if !self.tracked_inactivity {
@@ -963,9 +1130,12 @@ where
         }
 
         if let Some(timings) = extensions.get_mut::<Timings>() {
-            let now = Instant::now();
-            timings.busy += (now - timings.last).as_nanos() as i64;
-            timings.last = now;
+            timings.entered_count -= 1;
+            if timings.entered_count == 0 {
+                let now = Instant::now();
+                timings.busy += (now - timings.last).as_nanos() as i64;
+                timings.last = now;
+            }
         }
     }
 
@@ -980,8 +1150,17 @@ where
             sem_conv_config: self.sem_conv_config,
         });
         let mut extensions = span.extensions_mut();
-        if let Some(data) = extensions.get_mut::<OtelData>() {
-            updates.update(&mut data.builder);
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            match &mut otel_data.state {
+                OtelDataState::Builder { builder, .. } => {
+                    // If the builder is present, then update it.
+                    updates.update(builder);
+                }
+                OtelDataState::Context { current_cx, .. } => {
+                    // If the Context has been created, then update the span.
+                    updates.update_span(&current_cx.span());
+                }
+            }
         }
     }
 
@@ -1000,18 +1179,19 @@ where
             let follows_data = follows_extensions
                 .get_mut::<OtelData>()
                 .expect("Missing otel data span extensions");
-
-            let follows_context = self
-                .tracer
-                .sampled_context(follows_data)
-                .span()
-                .span_context()
-                .clone();
-            let follows_link = otel::Link::with_context(follows_context);
-            if let Some(ref mut links) = data.builder.links {
-                links.push(follows_link);
-            } else {
-                data.builder.links = Some(vec![follows_link]);
+            let follows_context =
+                self.with_started_cx(follows_data, &|cx| cx.span().span_context().clone());
+            match &mut data.state {
+                OtelDataState::Builder { builder, .. } => {
+                    if let Some(ref mut links) = builder.links {
+                        links.push(otel::Link::with_context(follows_context));
+                    } else {
+                        builder.links = Some(vec![otel::Link::with_context(follows_context)]);
+                    }
+                }
+                OtelDataState::Context { current_cx, .. } => {
+                    current_cx.span().add_link(follows_context, vec![]);
+                }
             }
         }
     }
@@ -1083,21 +1263,8 @@ where
             }
 
             let mut extensions = span.extensions_mut();
-            let otel_data = extensions.get_mut::<OtelData>();
 
-            if let Some(otel_data) = otel_data {
-                let builder = &mut otel_data.builder;
-
-                if builder.status == otel::Status::Unset
-                    && *meta.level() == tracing_core::Level::ERROR
-                {
-                    builder.status = otel::Status::error("")
-                }
-
-                if let Some(builder_updates) = builder_updates {
-                    builder_updates.update(builder);
-                }
-
+            if let Some(otel_data) = extensions.get_mut::<OtelData>() {
                 if self.location {
                     #[cfg(not(feature = "tracing-log"))]
                     let normalized_meta: Option<tracing_core::Metadata<'_>> = None;
@@ -1115,27 +1282,50 @@ where
                     if let Some(file) = file {
                         otel_event
                             .attributes
-                            .push(KeyValue::new("code.filepath", file));
+                            .push(KeyValue::new("code.file.path", file));
                     }
                     if let Some(module) = module {
                         otel_event
                             .attributes
-                            .push(KeyValue::new("code.namespace", module));
+                            .push(KeyValue::new("code.module.name", module));
                     }
                     if let Some(line) = meta.line() {
                         otel_event
                             .attributes
-                            .push(KeyValue::new("code.lineno", line as i64));
+                            .push(KeyValue::new("code.line.number", line as i64));
                     }
                 }
 
-                if let Some(ref mut events) = builder.events {
-                    events.push(otel_event);
-                } else {
-                    builder.events = Some(vec![otel_event]);
+                match &mut otel_data.state {
+                    OtelDataState::Builder { builder, .. } => {
+                        if builder.status == otel::Status::Unset
+                            && *meta.level() == tracing_core::Level::ERROR
+                        {
+                            builder.status = otel::Status::error("");
+                        }
+                        if let Some(builder_updates) = builder_updates {
+                            builder_updates.update(builder);
+                        }
+                        if let Some(ref mut events) = builder.events {
+                            events.push(otel_event);
+                        } else {
+                            builder.events = Some(vec![otel_event]);
+                        }
+                    }
+                    OtelDataState::Context { current_cx, .. } => {
+                        let span = current_cx.span();
+                        // TODO:ban fix this with accessor in SpanRef that can check the span status
+                        if *meta.level() == tracing_core::Level::ERROR {
+                            span.set_status(otel::Status::error(""));
+                        }
+                        if let Some(builder_updates) = builder_updates {
+                            builder_updates.update_span(&span);
+                        }
+                        span.add_event(otel_event.name, otel_event.attributes);
+                    }
                 }
-            }
-        };
+            };
+        }
     }
 
     /// Exports an OpenTelemetry [`Span`] on close.
@@ -1143,6 +1333,7 @@ where
     /// [`Span`]: opentelemetry::trace::Span
     fn on_close(&self, id: span::Id, ctx: Context<'_, S>) {
         let span = ctx.span(&id).expect("Span not found, this is a bug");
+        // Now get mutable extensions for removal
         let (otel_data, timings) = {
             let mut extensions = span.extensions_mut();
             let timings = if self.tracked_inactivity {
@@ -1153,25 +1344,40 @@ where
             (extensions.remove::<OtelData>(), timings)
         };
 
-        if let Some(OtelData {
-            mut builder,
-            parent_cx,
-        }) = otel_data
-        {
+        if let Some(OtelData { state, end_time }) = otel_data {
             // Append busy/idle timings when enabled.
-            if let Some(timings) = timings {
+            let timings = timings.map(|timings| {
                 let busy_ns = Key::new("busy_ns");
                 let idle_ns = Key::new("idle_ns");
 
-                let attributes = builder
-                    .attributes
-                    .get_or_insert_with(|| Vec::with_capacity(2));
-                attributes.push(KeyValue::new(busy_ns, timings.busy));
-                attributes.push(KeyValue::new(idle_ns, timings.idle));
-            }
+                vec![
+                    KeyValue::new(busy_ns, timings.busy),
+                    KeyValue::new(idle_ns, timings.idle),
+                ]
+            });
 
-            // Build and start span, drop span to export
-            builder.start_with_context(&self.tracer, &parent_cx);
+            match state {
+                OtelDataState::Builder { builder, parent_cx } => {
+                    // Don't create the context here just to get a SpanRef since it's costly
+                    let mut span = builder.start_with_context(&self.tracer, &parent_cx);
+                    if let Some(timings) = timings {
+                        span.set_attributes(timings)
+                    };
+                    if let Some(end_time) = end_time {
+                        span.end_with_timestamp(end_time);
+                    } else {
+                        span.end();
+                    }
+                }
+                OtelDataState::Context { current_cx } => {
+                    let span = current_cx.span();
+                    if let Some(timings) = timings {
+                        span.set_attributes(timings)
+                    };
+                    end_time
+                        .map_or_else(|| span.end(), |end_time| span.end_with_timestamp(end_time));
+                }
+            }
         }
     }
 
@@ -1181,7 +1387,7 @@ where
         match id {
             id if id == TypeId::of::<Self>() => Some(self as *const _ as *const ()),
             id if id == TypeId::of::<WithContext>() => {
-                Some(&self.get_context as *const _ as *const ())
+                Some(&self.with_context as *const _ as *const ())
             }
             _ => None,
         }
@@ -1192,6 +1398,7 @@ struct Timings {
     idle: i64,
     busy: i64,
     last: Instant,
+    entered_count: u64,
 }
 
 impl Timings {
@@ -1200,12 +1407,13 @@ impl Timings {
             idle: 0,
             busy: 0,
             last: Instant::now(),
+            entered_count: 0,
         }
     }
 }
 
 fn thread_id_integer(id: thread::ThreadId) -> u64 {
-    let thread_id = format!("{:?}", id);
+    let thread_id = format!("{id:?}");
     thread_id
         .trim_start_matches("ThreadId(")
         .trim_end_matches(')')
@@ -1215,63 +1423,62 @@ fn thread_id_integer(id: thread::ThreadId) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::OpenTelemetrySpanExt;
+
     use super::*;
-    use opentelemetry::trace::{SpanContext, TraceFlags};
-    use std::{
-        collections::HashMap,
-        error::Error,
-        fmt::Display,
-        sync::{Arc, Mutex},
-        time::SystemTime,
-    };
+    use opentelemetry::trace::{SpanContext, TraceFlags, TracerProvider};
+    use opentelemetry_sdk::trace::SpanExporter;
+    use std::{collections::HashMap, error::Error, fmt::Display, time::SystemTime};
+    use tracing::trace_span;
     use tracing_subscriber::prelude::*;
 
     #[derive(Debug, Clone)]
-    struct TestTracer(Arc<Mutex<Option<OtelData>>>);
-    impl otel::Tracer for TestTracer {
-        type Span = noop::NoopSpan;
-        fn start_with_context<T>(&self, _name: T, _context: &OtelContext) -> Self::Span
-        where
-            T: Into<Cow<'static, str>>,
-        {
-            noop::NoopSpan::DEFAULT
-        }
-        fn span_builder<T>(&self, name: T) -> otel::SpanBuilder
-        where
-            T: Into<Cow<'static, str>>,
-        {
-            otel::SpanBuilder::from_name(name)
-        }
-        fn build_with_context(
-            &self,
-            builder: otel::SpanBuilder,
-            parent_cx: &OtelContext,
-        ) -> Self::Span {
-            *self.0.lock().unwrap() = Some(OtelData {
-                builder,
-                parent_cx: parent_cx.clone(),
-            });
-            noop::NoopSpan::DEFAULT
-        }
-    }
-
-    impl PreSampledTracer for TestTracer {
-        fn sampled_context(&self, _builder: &mut crate::OtelData) -> OtelContext {
-            OtelContext::new()
-        }
-        fn new_trace_id(&self) -> otel::TraceId {
-            otel::TraceId::INVALID
-        }
-        fn new_span_id(&self) -> otel::SpanId {
-            otel::SpanId::INVALID
-        }
+    struct TestTracer {
+        tracer: opentelemetry_sdk::trace::Tracer,
+        exporter: opentelemetry_sdk::trace::InMemorySpanExporter,
     }
 
     impl TestTracer {
-        fn with_data<T>(&self, f: impl FnOnce(&OtelData) -> T) -> T {
-            let lock = self.0.lock().unwrap();
-            let data = lock.as_ref().expect("no span data has been recorded yet");
-            f(data)
+        fn spans(&mut self) -> Vec<opentelemetry_sdk::trace::SpanData> {
+            self.exporter
+                .force_flush()
+                .expect("problems flushing spans");
+            self.exporter
+                .get_finished_spans()
+                .expect("problems recording spans")
+        }
+
+        fn with_data<T>(&mut self, f: impl FnOnce(&opentelemetry_sdk::trace::SpanData) -> T) -> T {
+            let spans = self.spans();
+            f(spans.first().expect("no spans recorded"))
+        }
+
+        fn attributes(&mut self) -> HashMap<String, Value> {
+            self.with_data(|data| {
+                data.attributes
+                    .iter()
+                    .map(|kv| (kv.key.to_string(), kv.value.clone()))
+                    .collect()
+            })
+        }
+    }
+
+    impl Default for TestTracer {
+        fn default() -> Self {
+            let exporter = opentelemetry_sdk::trace::InMemorySpanExporter::default();
+            let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_simple_exporter(exporter.clone())
+                .build();
+            let tracer = provider.tracer("test-tracer");
+            Self { tracer, exporter }
+        }
+    }
+
+    impl opentelemetry::trace::Tracer for TestTracer {
+        type Span = opentelemetry_sdk::trace::Span;
+
+        fn build_with_context(&self, builder: SpanBuilder, parent_cx: &OtelContext) -> Self::Span {
+            self.tracer.build_with_context(builder, parent_cx)
         }
     }
 
@@ -1331,81 +1538,81 @@ mod tests {
     #[test]
     fn dynamic_span_names() {
         let dynamic_name = "GET http://example.com".to_string();
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("static_name", otel.name = dynamic_name.as_str());
         });
 
-        let recorded_name = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|b| b.builder.name.clone());
-        assert_eq!(recorded_name, Some(dynamic_name.into()))
+        let recorded_name = tracer.spans().first().unwrap().name.clone();
+        assert_eq!(recorded_name, dynamic_name.as_str())
     }
 
     #[test]
     fn span_kind() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request", otel.kind = "server");
         });
 
-        let recorded_kind = tracer.with_data(|data| data.builder.span_kind.clone());
-        assert_eq!(recorded_kind, Some(otel::SpanKind::Server))
+        let recorded_kind = tracer.with_data(|data| data.span_kind.clone());
+        assert_eq!(recorded_kind, otel::SpanKind::Server)
     }
 
     #[test]
     fn span_status_code() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request", otel.status_code = ?otel::Status::Ok);
         });
 
-        let recorded_status = tracer.with_data(|data| data.builder.status.clone());
+        let recorded_status = tracer.with_data(|data| data.status.clone());
         assert_eq!(recorded_status, otel::Status::Ok)
     }
 
     #[test]
-    fn span_status_message() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+    fn span_status_description() {
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
 
         let message = "message";
 
         tracing::subscriber::with_default(subscriber, || {
-            tracing::debug_span!("request", otel.status_message = message);
+            tracing::debug_span!("request", otel.status_description = message);
         });
 
-        let recorded_status_message = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .status
-            .clone();
+        let recorded_status_message = tracer.with_data(|data| data.status.clone());
 
         assert_eq!(recorded_status_message, otel::Status::error(message))
     }
 
     #[test]
-    fn trace_id_from_existing_context() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+    fn trace_id_from_existing_context_with_context_activation() {
+        trace_id_from_existing_context_impl(true);
+    }
+
+    #[test]
+    fn trace_id_from_existing_context_no_context_activation() {
+        trace_id_from_existing_context_impl(false);
+    }
+
+    fn trace_id_from_existing_context_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
         let trace_id = otel::TraceId::from(42u128);
         let existing_cx = OtelContext::current_with_span(TestSpan(otel::SpanContext::new(
             trace_id,
             otel::SpanId::from(1u64),
-            TraceFlags::default(),
+            TraceFlags::SAMPLED,
             false,
             Default::default(),
         )));
@@ -1415,37 +1622,56 @@ mod tests {
             tracing::debug_span!("request", otel.kind = "server");
         });
 
-        let recorded_trace_id =
-            tracer.with_data(|data| data.parent_cx.span().span_context().trace_id());
+        let recorded_trace_id = tracer.with_data(|data| data.span_context.trace_id());
         assert_eq!(recorded_trace_id, trace_id)
     }
 
     #[test]
-    fn includes_timings() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+    fn includes_timings_with_context_activation() {
+        includes_timings_impl(true);
+    }
+
+    #[test]
+    fn includes_timings_no_context_activation() {
+        includes_timings_impl(false);
+    }
+
+    fn includes_timings_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(
             layer()
                 .with_tracer(tracer.clone())
-                .with_tracked_inactivity(true),
+                .with_tracked_inactivity(true)
+                .with_context_activation(context_activation),
         );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(keys.contains(&"idle_ns"));
-        assert!(keys.contains(&"busy_ns"));
+        let attributes = tracer.attributes();
+
+        assert!(attributes.contains_key("idle_ns"));
+        assert!(attributes.contains_key("busy_ns"));
     }
 
     #[test]
-    fn records_error_fields() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+    fn records_error_fields_with_context_activation() {
+        records_error_fields_impl(true);
+    }
+
+    #[test]
+    fn records_error_fields_no_context_activation() {
+        records_error_fields_impl(false);
+    }
+
+    fn records_error_fields_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
 
         let err = TestDynError::new("base error")
             .with_parent("intermediate error")
@@ -1458,26 +1684,11 @@ mod tests {
             );
         });
 
-        let attributes = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .attributes
-            .as_ref()
-            .unwrap()
-            .clone();
+        let attributes = tracer.attributes();
 
-        let key_values = attributes
-            .into_iter()
-            .map(|kv| (kv.key.as_str().to_owned(), kv.value))
-            .collect::<HashMap<_, _>>();
-
-        assert_eq!(key_values["error"].as_str(), "user error");
+        assert_eq!(attributes["error"].as_str(), "user error");
         assert_eq!(
-            key_values["error.chain"],
+            attributes["error.chain"],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1487,9 +1698,9 @@ mod tests {
             )
         );
 
-        assert_eq!(key_values[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
+        assert_eq!(attributes[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
         assert_eq!(
-            key_values[FIELD_EXCEPTION_STACKTRACE],
+            attributes[FIELD_EXCEPTION_STACKTRACE],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1501,9 +1712,22 @@ mod tests {
     }
 
     #[test]
-    fn records_event_name() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+    fn records_event_name_with_context_activation() {
+        records_event_name_impl(true);
+    }
+
+    #[test]
+    fn records_event_name_no_context_activation() {
+        records_event_name_impl(false);
+    }
+
+    fn records_event_name_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("test span").in_scope(|| {
@@ -1515,17 +1739,7 @@ mod tests {
             });
         });
 
-        let events = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .events
-            .as_ref()
-            .unwrap()
-            .clone();
+        let events = tracer.with_data(|data| data.events.clone());
 
         let mut iter = events.iter();
 
@@ -1537,12 +1751,22 @@ mod tests {
     }
 
     #[test]
-    fn records_no_error_fields() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+    fn records_no_error_fields_with_context_activation() {
+        records_no_error_fields_impl(true);
+    }
+
+    #[test]
+    fn records_no_error_fields_no_context_activation() {
+        records_no_error_fields_impl(false);
+    }
+
+    fn records_no_error_fields_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(
             layer()
                 .with_error_records_to_exceptions(false)
-                .with_tracer(tracer.clone()),
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
         );
 
         let err = TestDynError::new("base error")
@@ -1556,26 +1780,11 @@ mod tests {
             );
         });
 
-        let attributes = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .attributes
-            .as_ref()
-            .unwrap()
-            .clone();
+        let attributes = tracer.attributes();
 
-        let key_values = attributes
-            .into_iter()
-            .map(|kv| (kv.key.as_str().to_owned(), kv.value))
-            .collect::<HashMap<_, _>>();
-
-        assert_eq!(key_values["error"].as_str(), "user error");
+        assert_eq!(attributes["error"].as_str(), "user error");
         assert_eq!(
-            key_values["error.chain"],
+            attributes["error.chain"],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1585,9 +1794,9 @@ mod tests {
             )
         );
 
-        assert_eq!(key_values[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
+        assert_eq!(attributes[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
         assert_eq!(
-            key_values[FIELD_EXCEPTION_STACKTRACE],
+            attributes[FIELD_EXCEPTION_STACKTRACE],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1599,129 +1808,232 @@ mod tests {
     }
 
     #[test]
-    fn includes_span_location() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_location(true));
+    fn includes_span_location_with_context_activation() {
+        includes_span_location_impl(true);
+    }
+
+    #[test]
+    fn includes_span_location_no_context_activation() {
+        includes_span_location_impl(false);
+    }
+
+    fn includes_span_location_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_location(true)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(keys.contains(&"code.filepath"));
-        assert!(keys.contains(&"code.namespace"));
-        assert!(keys.contains(&"code.lineno"));
+        let attributes = tracer.attributes();
+
+        assert!(attributes.contains_key("code.file.path"));
+        assert!(attributes.contains_key("code.module.name"));
+        assert!(attributes.contains_key("code.line.number"));
     }
 
     #[test]
-    fn excludes_span_location() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_location(false));
+    fn excludes_span_location_with_context_activation() {
+        excludes_span_location_impl(true);
+    }
+
+    #[test]
+    fn excludes_span_location_no_context_activation() {
+        excludes_span_location_impl(false);
+    }
+
+    fn excludes_span_location_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_location(false)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(!keys.contains(&"code.filepath"));
-        assert!(!keys.contains(&"code.namespace"));
-        assert!(!keys.contains(&"code.lineno"));
+        let attributes = tracer.attributes();
+
+        assert!(!attributes.contains_key("code.file.path"));
+        assert!(!attributes.contains_key("code.module.name"));
+        assert!(!attributes.contains_key("code.line.number"));
     }
 
     #[test]
-    fn includes_thread() {
+    fn includes_thread_with_context_activation() {
+        includes_thread_impl(true);
+    }
+
+    #[test]
+    fn includes_thread_no_context_activation() {
+        includes_thread_impl(false);
+    }
+
+    fn includes_thread_impl(context_activation: bool) {
         let thread = thread::current();
         let expected_name = thread
             .name()
             .map(|name| Value::String(name.to_owned().into()));
         let expected_id = Value::I64(thread_id_integer(thread.id()) as i64);
 
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_threads(true));
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_threads(true)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer
-            .with_data(|data| data.builder.attributes.as_ref().unwrap().clone())
-            .drain(..)
-            .map(|kv| (kv.key.as_str().to_string(), kv.value))
-            .collect::<HashMap<_, _>>();
+        let attributes = tracer.attributes();
+
         assert_eq!(attributes.get("thread.name"), expected_name.as_ref());
         assert_eq!(attributes.get("thread.id"), Some(&expected_id));
     }
 
     #[test]
-    fn excludes_thread() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_threads(false));
+    fn excludes_thread_with_context_activation() {
+        excludes_thread_impl(true);
+    }
+
+    #[test]
+    fn excludes_thread_no_context_activation() {
+        excludes_thread_impl(false);
+    }
+
+    fn excludes_thread_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_threads(false)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(!keys.contains(&"thread.name"));
-        assert!(!keys.contains(&"thread.id"));
+        let attributes = tracer.attributes();
+
+        assert!(!attributes.contains_key("thread.name"));
+        assert!(!attributes.contains_key("thread.id"));
     }
 
     #[test]
-    fn includes_level() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_level(true));
+    fn includes_level_with_context_activation() {
+        includes_level_impl(true);
+    }
+
+    #[test]
+    fn includes_level_no_context_activation() {
+        includes_level_impl(false);
+    }
+
+    fn includes_level_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_level(true)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(keys.contains(&"level"));
+        let attributes = tracer.attributes();
+
+        assert!(attributes.contains_key("level"));
     }
 
     #[test]
-    fn excludes_level() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry()
-            .with(layer().with_tracer(tracer.clone()).with_level(false));
+    fn excludes_level_with_context_activation() {
+        excludes_level_impl(true);
+    }
+
+    #[test]
+    fn excludes_level_no_context_activation() {
+        excludes_level_impl(false);
+    }
+
+    fn excludes_level_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_level(false)
+                .with_context_activation(context_activation),
+        );
 
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug_span!("request");
         });
 
-        let attributes = tracer.with_data(|data| data.builder.attributes.as_ref().unwrap().clone());
-        let keys = attributes
-            .iter()
-            .map(|kv| kv.key.as_str())
-            .collect::<Vec<&str>>();
-        assert!(!keys.contains(&"level"));
+        let attributes = tracer.attributes();
+
+        assert!(!attributes.contains_key("level"));
     }
 
     #[test]
-    fn propagates_error_fields_from_event_to_span() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
-        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+    fn includes_target() {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(layer().with_tracer(tracer.clone()).with_target(true));
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug_span!("request");
+        });
+
+        let attributes = tracer.attributes();
+        let keys = attributes.keys().map(|k| k.as_str()).collect::<Vec<&str>>();
+        assert!(keys.contains(&"target"));
+    }
+
+    #[test]
+    fn excludes_target() {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(layer().with_tracer(tracer.clone()).with_target(false));
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug_span!("request");
+        });
+
+        let attributes = tracer.attributes();
+        let keys = attributes.keys().map(|k| k.as_str()).collect::<Vec<&str>>();
+        assert!(!keys.contains(&"target"));
+    }
+
+    #[test]
+    fn propagates_error_fields_from_event_to_span_with_context_activation() {
+        propagates_error_fields_from_event_to_span_impl(true);
+    }
+
+    #[test]
+    fn propagates_error_fields_from_event_to_span_no_context_activation() {
+        propagates_error_fields_from_event_to_span_impl(false);
+    }
+
+    fn propagates_error_fields_from_event_to_span_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
 
         let err = TestDynError::new("base error")
             .with_parent("intermediate error")
@@ -1736,26 +2048,11 @@ mod tests {
             )
         });
 
-        let attributes = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .attributes
-            .as_ref()
-            .unwrap()
-            .clone();
+        let attributes = tracer.attributes();
 
-        let key_values = attributes
-            .into_iter()
-            .map(|kv| (kv.key.as_str().to_owned(), kv.value))
-            .collect::<HashMap<_, _>>();
-
-        assert_eq!(key_values[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
+        assert_eq!(attributes[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
         assert_eq!(
-            key_values[FIELD_EXCEPTION_STACKTRACE],
+            attributes[FIELD_EXCEPTION_STACKTRACE],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1767,12 +2064,22 @@ mod tests {
     }
 
     #[test]
-    fn propagates_no_error_fields_from_event_to_span() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+    fn propagates_no_error_fields_from_event_to_span_with_context_activation() {
+        propagates_no_error_fields_from_event_to_span_impl(true);
+    }
+
+    #[test]
+    fn propagates_no_error_fields_from_event_to_span_no_context_activation() {
+        propagates_no_error_fields_from_event_to_span_impl(false);
+    }
+
+    fn propagates_no_error_fields_from_event_to_span_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry().with(
             layer()
                 .with_error_fields_to_exceptions(false)
-                .with_tracer(tracer.clone()),
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
         );
 
         let err = TestDynError::new("base error")
@@ -1788,26 +2095,11 @@ mod tests {
             )
         });
 
-        let attributes = tracer
-            .0
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .builder
-            .attributes
-            .as_ref()
-            .unwrap()
-            .clone();
+        let attributes = tracer.attributes();
 
-        let key_values = attributes
-            .into_iter()
-            .map(|kv| (kv.key.as_str().to_owned(), kv.value))
-            .collect::<HashMap<_, _>>();
-
-        assert_eq!(key_values[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
+        assert_eq!(attributes[FIELD_EXCEPTION_MESSAGE].as_str(), "user error");
         assert_eq!(
-            key_values[FIELD_EXCEPTION_STACKTRACE],
+            attributes[FIELD_EXCEPTION_STACKTRACE],
             Value::Array(
                 vec![
                     StringValue::from("intermediate error"),
@@ -1819,13 +2111,23 @@ mod tests {
     }
 
     #[test]
-    fn tracing_error_compatibility() {
-        let tracer = TestTracer(Arc::new(Mutex::new(None)));
+    fn tracing_error_compatibility_with_context_activation() {
+        tracing_error_compatibility_impl(true);
+    }
+
+    #[test]
+    fn tracing_error_compatibility_no_context_activation() {
+        tracing_error_compatibility_impl(false);
+    }
+
+    fn tracing_error_compatibility_impl(context_activation: bool) {
+        let tracer = TestTracer::default();
         let subscriber = tracing_subscriber::registry()
             .with(
                 layer()
                     .with_error_fields_to_exceptions(false)
-                    .with_tracer(tracer.clone()),
+                    .with_tracer(tracer.clone())
+                    .with_context_activation(context_activation),
             )
             .with(tracing_error::ErrorLayer::default());
 
@@ -1841,5 +2143,396 @@ mod tests {
         });
 
         // No need to assert anything, as long as this finished (and did not panic), everything is ok.
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct ValueA(&'static str);
+    #[derive(Debug, PartialEq)]
+    struct ValueB(&'static str);
+
+    #[test]
+    fn otel_context_propagation() {
+        use opentelemetry::trace::Tracer;
+        use tracing::span;
+
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+
+        tracing::subscriber::with_default(subscriber, || {
+            // Add a value to the current OpenTelemetry context for the bridge to propagate
+            let _outer_guard =
+                OtelContext::attach(OtelContext::default().with_value(ValueA("outer")));
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            let root = span!(tracing::Level::TRACE, "tokio-tracing-span-parent");
+            // Drop the guard to ensure the context is cleared
+            drop(_outer_guard);
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+            // Enter the root span, the context should be propagated
+            let _enter_root = root.enter();
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            // Add another value to the current OpenTelemetry context for the bridge to propagate
+            let _inner_guard =
+                OtelContext::attach(OtelContext::current_with_value(ValueB("inner")));
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            assert_eq!(OtelContext::current().get(), Some(&ValueB("inner")));
+            let child = span!(tracing::Level::TRACE, "tokio-tracing-span-child");
+            // Drop the guard to ensure the context is reverted
+            drop(_inner_guard);
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            assert!(OtelContext::current().get::<ValueB>().is_none());
+            // Enter the child span, the context should be propagated
+            let _enter_child = child.enter();
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            assert_eq!(OtelContext::current().get(), Some(&ValueB("inner")));
+            // Create an OpenTelemetry span using the OpentTelemetry notion of current
+            // span to see check that it is a child of the tokio child span
+            let span = tracer
+                .tracer
+                .span_builder("otel-tracing-span")
+                .start(&tracer);
+            let _otel_guard = OtelContext::attach(OtelContext::current_with_span(span));
+            let child2 = span!(tracing::Level::TRACE, "tokio-tracing-span-child2");
+            drop(_otel_guard);
+            // Drop the child span, the context should be reverted
+            drop(_enter_child);
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+            assert!(OtelContext::current().get::<ValueB>().is_none());
+            // Drop the root span, the context should be reverted
+            drop(_enter_root);
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+            assert!(OtelContext::current().get::<ValueB>().is_none());
+            let _ = child2.enter();
+        });
+
+        // Let's check the spans
+        let spans = tracer.spans();
+        let parent = spans
+            .iter()
+            .find(|span| span.name == "tokio-tracing-span-parent")
+            .unwrap();
+        let child = spans
+            .iter()
+            .find(|span| span.name == "tokio-tracing-span-child")
+            .unwrap();
+        let child2 = spans
+            .iter()
+            .find(|span| span.name == "tokio-tracing-span-child2")
+            .unwrap();
+        let otel = spans
+            .iter()
+            .find(|span| span.name == "otel-tracing-span")
+            .unwrap();
+        // The tokio parent span should be a root span
+        assert_eq!(parent.parent_span_id, otel::SpanId::INVALID);
+        // The first tokio child span should have the tokio parent span as parent
+        assert_eq!(child.parent_span_id, parent.span_context.span_id());
+        // The otel span should have the first tokio child span as parent
+        assert_eq!(otel.parent_span_id, child.span_context.span_id());
+        // The second tokio child span should have the otel span as parent
+        assert_eq!(child2.parent_span_id, otel.span_context.span_id());
+    }
+
+    #[test]
+    fn parent_context() {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+
+        tracing::subscriber::with_default(subscriber, || {
+            let root = trace_span!("root");
+
+            let child1 = trace_span!("child-1");
+            let root_context = root.context(); // SpanData (None)
+            let _ = child1.set_parent(root_context); // Clone context, but SpanData(None)
+
+            let _enter_root = root.enter();
+            drop(_enter_root);
+
+            let child2 = trace_span!("child-2");
+            let _ = child2.set_parent(root.context());
+        });
+
+        // Let's check the spans
+        let spans = tracer.spans();
+        let parent = spans.iter().find(|span| span.name == "root").unwrap();
+        let child1 = spans.iter().find(|span| span.name == "child-1").unwrap();
+        let child2 = spans.iter().find(|span| span.name == "child-2").unwrap();
+        assert_eq!(parent.parent_span_id, otel::SpanId::INVALID);
+        assert_eq!(child1.parent_span_id, parent.span_context.span_id());
+        assert_eq!(child2.parent_span_id, parent.span_context.span_id());
+    }
+
+    #[test]
+    fn record_after_with_context_activation() {
+        record_after_impl(true);
+    }
+
+    #[test]
+    fn record_after_no_context_activation() {
+        record_after_impl(false);
+    }
+
+    fn record_after_impl(context_activation: bool) {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            let root = trace_span!("root", before = "before", after = "before");
+
+            // Record a value before the span is entered
+            root.record("before", "after");
+
+            // Enter and exit the span
+            let _enter_root = root.enter();
+            drop(_enter_root);
+
+            // Record a value after the span is exited
+            root.record("after", "after");
+        });
+
+        // Let's check the spans. Both values should've been
+        // updated to 'after'.
+        let spans = tracer.spans();
+        let parent = spans.iter().find(|span| span.name == "root").unwrap();
+        assert_eq!(parent.parent_span_id, otel::SpanId::INVALID);
+        assert!(parent
+            .attributes
+            .iter()
+            .filter(|kv| kv.key.as_str() == "before")
+            .any(|kv| kv.value.as_str() == "after"));
+
+        assert!(parent
+            .attributes
+            .iter()
+            .filter(|kv| kv.key.as_str() == "after")
+            .any(|kv| kv.value.as_str() == "after"));
+    }
+
+    #[test]
+    fn parent_context_2() {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(layer().with_tracer(tracer.clone()));
+
+        tracing::subscriber::with_default(subscriber, || {
+            let root = trace_span!("root");
+            _ = root.enter();
+
+            let child1 = trace_span!("child-1");
+            let _ = child1.set_parent(root.context());
+
+            trace_span!(parent: &child1, "child-2");
+            let _ = child1.set_parent(root.context()); // <-- this is what causes the issue
+
+            trace_span!(parent: &child1, "child-3");
+        });
+
+        // Let's check the spans
+        let spans = tracer.spans();
+        let root = spans.iter().find(|span| span.name == "root").unwrap();
+        let child1 = spans.iter().find(|span| span.name == "child-1").unwrap();
+        let child2 = spans.iter().find(|span| span.name == "child-2").unwrap();
+        let child3 = spans.iter().find(|span| span.name == "child-3").unwrap();
+        assert_eq!(root.parent_span_id, otel::SpanId::INVALID);
+        assert_eq!(child1.parent_span_id, root.span_context.span_id());
+        assert_eq!(child2.parent_span_id, child1.span_context.span_id());
+
+        // The parent should be `child1`
+        assert_eq!(child3.parent_span_id, child1.span_context.span_id());
+    }
+
+    #[test]
+    fn follows_from_adds_link_with_context_activation() {
+        follows_from_adds_link_impl(true);
+    }
+
+    #[test]
+    fn follows_from_adds_link_no_context_activation() {
+        follows_from_adds_link_impl(false);
+    }
+
+    fn follows_from_adds_link_impl(context_activation: bool) {
+        use crate::OpenTelemetrySpanExt;
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
+
+        let span1_id = tracing::subscriber::with_default(subscriber, || {
+            let span2 = tracing::debug_span!("span2");
+            let span1 = tracing::debug_span!("span1");
+
+            // Ensure that span2 is started
+            let _ = span2.context();
+
+            // Establish follows_from relationship
+            span2.follows_from(&span1);
+
+            // Enter span2 to ensure it's exported
+            let _guard = span2.enter();
+
+            // Get span ID for later verification
+            span1.context().span().span_context().span_id()
+        });
+
+        let spans = tracer.spans();
+        // Check that both spans are exported
+        assert_eq!(spans.len(), 2, "Expected two spans to be exported");
+        assert!(spans.iter().any(|span| span.name == "span1"));
+        let span2 = spans
+            .iter()
+            .find(|span| span.name == "span2")
+            .expect("Expected span2 to be exported");
+
+        // Collect span2 links
+        let links = span2
+            .links
+            .iter()
+            .map(|link| link.span_context.span_id())
+            .collect::<Vec<_>>();
+
+        // Verify that span2 has a link to span1
+        assert_eq!(
+            links.len(),
+            1,
+            "Expected span to have one link from follows_from relationship"
+        );
+
+        assert!(
+            links.contains(&span1_id),
+            "Link should point to the correct source span"
+        );
+    }
+
+    #[test]
+    fn follows_from_multiple_links_with_context_activation() {
+        follows_from_multiple_links_impl(true);
+    }
+
+    #[test]
+    fn follows_from_multiple_links_no_context_activation() {
+        follows_from_multiple_links_impl(false);
+    }
+
+    fn follows_from_multiple_links_impl(context_activation: bool) {
+        use crate::OpenTelemetrySpanExt;
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(context_activation),
+        );
+
+        let (span1_id, span2_id) = tracing::subscriber::with_default(subscriber, || {
+            let span3 = tracing::debug_span!("span3");
+            let span2 = tracing::debug_span!("span2");
+            let span1 = tracing::debug_span!("span1");
+
+            // Establish multiple follows_from relationships
+            span3.follows_from(&span1);
+            span3.follows_from(&span2);
+
+            // Enter span3 to ensure it's exported
+            let _guard = span3.enter();
+
+            // Get span IDs for later verification
+            (
+                span1.context().span().span_context().span_id(),
+                span2.context().span().span_context().span_id(),
+            )
+        });
+
+        let spans = tracer.spans();
+        // Check that all three spans are exported
+        assert_eq!(spans.len(), 3, "Expected three spans to be exported");
+        assert!(spans.iter().any(|span| span.name == "span1"));
+        assert!(spans.iter().any(|span| span.name == "span2"));
+        let span3 = spans
+            .iter()
+            .find(|span| span.name == "span3")
+            .expect("Expected span3 to be exported");
+
+        // Collect span3 links
+        let links = span3
+            .links
+            .iter()
+            .map(|link| link.span_context.span_id())
+            .collect::<Vec<_>>();
+
+        // Verify that span3 has multiple links and they point to the correct spans
+        assert_eq!(
+            links.len(),
+            2,
+            "Expected span to have two links from follows_from relationships"
+        );
+
+        // Verify that the links point to the correct spans in the correct order
+        assert!(
+            links[0] == span1_id && links[1] == span2_id,
+            "Links should point to the correct source spans"
+        );
+    }
+
+    #[test]
+    fn context_activation_disabled() {
+        use tracing::span;
+
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_context_activation(false),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            // Add a value to the current OpenTelemetry context
+            let _outer_guard =
+                OtelContext::attach(OtelContext::default().with_value(ValueA("outer")));
+            assert_eq!(OtelContext::current().get(), Some(&ValueA("outer")));
+
+            let root = span!(tracing::Level::TRACE, "tokio-tracing-span-parent");
+
+            // Drop the guard to ensure the context is cleared
+            drop(_outer_guard);
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+
+            // Enter the root span - with context activation disabled,
+            // the context should NOT be propagated
+            let _enter_root = root.enter();
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+
+            // Add another value to the current OpenTelemetry context
+            let _inner_guard =
+                OtelContext::attach(OtelContext::current_with_value(ValueB("inner")));
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+            assert_eq!(OtelContext::current().get(), Some(&ValueB("inner")));
+
+            let child = span!(tracing::Level::TRACE, "tokio-tracing-span-child");
+
+            // Drop the guard to ensure the context is reverted
+            drop(_inner_guard);
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+            assert!(OtelContext::current().get::<ValueB>().is_none());
+
+            // Enter the child span - with context activation disabled,
+            // the context should NOT be propagated
+            let _enter_child = child.enter();
+            assert!(OtelContext::current().get::<ValueA>().is_none());
+            assert!(OtelContext::current().get::<ValueB>().is_none());
+        });
+
+        // Verify spans were still created and exported
+        let spans = tracer.spans();
+        assert_eq!(spans.len(), 2);
+        assert!(spans
+            .iter()
+            .any(|span| span.name == "tokio-tracing-span-parent"));
+        assert!(spans
+            .iter()
+            .any(|span| span.name == "tokio-tracing-span-child"));
     }
 }

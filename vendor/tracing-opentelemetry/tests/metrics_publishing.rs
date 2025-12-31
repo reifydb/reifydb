@@ -4,9 +4,8 @@ use opentelemetry_sdk::{
     metrics::{
         data::{self, Gauge, Histogram, Sum},
         reader::MetricReader,
-        InstrumentKind, ManualReader, MeterProviderBuilder, MetricError, SdkMeterProvider,
+        InstrumentKind, ManualReader, MeterProviderBuilder,
     },
-    Resource,
 };
 
 use std::{fmt::Debug, sync::Arc};
@@ -28,9 +27,8 @@ async fn u64_counter_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(monotonic_counter.hello_world = 1_u64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -44,9 +42,8 @@ async fn u64_counter_is_exported_i64_at_instrumentation_point() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(monotonic_counter.hello_world2 = 1_i64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -60,9 +57,8 @@ async fn f64_counter_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(monotonic_counter.float_hello_world = 1.000000123_f64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -76,9 +72,8 @@ async fn i64_up_down_counter_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(counter.pebcak = -5_i64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -92,9 +87,8 @@ async fn i64_up_down_counter_is_exported_u64_at_instrumentation_point() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(counter.pebcak2 = 5_u64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -108,12 +102,10 @@ async fn f64_up_down_counter_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(counter.pebcak_blah = 99.123_f64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn u64_gauge_is_exported() {
     let (subscriber, exporter) =
@@ -122,12 +114,10 @@ async fn u64_gauge_is_exported() {
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(gauge.gygygy = 1_u64);
         tracing::info!(gauge.gygygy = 2_u64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn f64_gauge_is_exported() {
     let (subscriber, exporter) =
@@ -136,12 +126,10 @@ async fn f64_gauge_is_exported() {
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(gauge.huitt = 1_f64);
         tracing::info!(gauge.huitt = 2_f64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn i64_gauge_is_exported() {
     let (subscriber, exporter) =
@@ -150,9 +138,8 @@ async fn i64_gauge_is_exported() {
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(gauge.samsagaz = 1_i64);
         tracing::info!(gauge.samsagaz = 2_i64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -166,9 +153,8 @@ async fn u64_histogram_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(histogram.abcdefg = 9_u64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -182,9 +168,8 @@ async fn f64_histogram_is_exported() {
 
     tracing::subscriber::with_default(subscriber, || {
         tracing::info!(histogram.abcdefg_racecar = 777.0012_f64);
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -211,9 +196,8 @@ async fn u64_counter_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -240,9 +224,8 @@ async fn f64_counter_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -269,9 +252,8 @@ async fn i64_up_down_counter_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -298,12 +280,10 @@ async fn f64_up_down_counter_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn f64_gauge_with_attributes_is_exported() {
     let (subscriber, exporter) = init_subscriber(
@@ -328,12 +308,10 @@ async fn f64_gauge_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn u64_gauge_with_attributes_is_exported() {
     let (subscriber, exporter) = init_subscriber(
@@ -358,12 +336,10 @@ async fn u64_gauge_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
-#[cfg(feature = "metrics_gauge_unstable")]
 #[tokio::test]
 async fn i64_gauge_with_attributes_is_exported() {
     let (subscriber, exporter) = init_subscriber(
@@ -388,9 +364,8 @@ async fn i64_gauge_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -417,9 +392,8 @@ async fn u64_histogram_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -446,9 +420,8 @@ async fn f64_histogram_with_attributes_is_exported() {
             str_key_1 = "foo",
             bool_key_1 = true,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -475,9 +448,8 @@ async fn display_attribute_is_exported() {
             monotonic_counter.hello_world = 1_u64,
             display_key_1 = %display_attribute,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 #[tokio::test]
@@ -504,9 +476,8 @@ async fn debug_attribute_is_exported() {
             monotonic_counter.hello_world = 1_u64,
             debug_key_1 = ?debug_attribute,
         );
+        exporter.export().unwrap();
     });
-
-    exporter.export().unwrap();
 }
 
 fn init_subscriber<T>(
@@ -529,7 +500,6 @@ fn init_subscriber<T>(
         expected_value,
         expected_attributes,
         reader,
-        _meter_provider: provider.clone(),
     };
 
     (
@@ -548,10 +518,7 @@ impl MetricReader for TestReader {
         self.inner.register_pipeline(pipeline);
     }
 
-    fn collect(
-        &self,
-        rm: &mut data::ResourceMetrics,
-    ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+    fn collect(&self, rm: &mut data::ResourceMetrics) -> OTelSdkResult {
         self.inner.collect(rm)
     }
 
@@ -566,6 +533,10 @@ impl MetricReader for TestReader {
     fn temporality(&self, kind: InstrumentKind) -> opentelemetry_sdk::metrics::Temporality {
         self.inner.temporality(kind)
     }
+
+    fn shutdown_with_timeout(&self, timeout: std::time::Duration) -> OTelSdkResult {
+        self.inner.shutdown_with_timeout(timeout)
+    }
 }
 
 struct TestExporter<T> {
@@ -574,86 +545,112 @@ struct TestExporter<T> {
     expected_value: T,
     expected_attributes: Option<Vec<KeyValue>>,
     reader: TestReader,
-    _meter_provider: SdkMeterProvider,
+}
+
+trait AsAny {
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+impl AsAny for data::AggregatedMetrics {
+    fn as_any(&self) -> &dyn std::any::Any {
+        match self {
+            data::AggregatedMetrics::F64(x) => match x {
+                data::MetricData::Gauge(x) => x as &dyn std::any::Any,
+                data::MetricData::Sum(x) => x as &dyn std::any::Any,
+                data::MetricData::Histogram(x) => x as &dyn std::any::Any,
+                data::MetricData::ExponentialHistogram(x) => x as &dyn std::any::Any,
+            },
+            data::AggregatedMetrics::U64(x) => match x {
+                data::MetricData::Gauge(x) => x as &dyn std::any::Any,
+                data::MetricData::Sum(x) => x as &dyn std::any::Any,
+                data::MetricData::Histogram(x) => x as &dyn std::any::Any,
+                data::MetricData::ExponentialHistogram(x) => x as &dyn std::any::Any,
+            },
+            data::AggregatedMetrics::I64(x) => match x {
+                data::MetricData::Gauge(x) => x as &dyn std::any::Any,
+                data::MetricData::Sum(x) => x as &dyn std::any::Any,
+                data::MetricData::Histogram(x) => x as &dyn std::any::Any,
+                data::MetricData::ExponentialHistogram(x) => x as &dyn std::any::Any,
+            },
+        }
+    }
 }
 
 impl<T> TestExporter<T>
 where
     T: Debug + PartialEq + Copy + std::iter::Sum + 'static,
 {
-    fn export(&self) -> Result<(), MetricError> {
-        let mut rm = data::ResourceMetrics {
-            resource: Resource::builder().build(),
-            scope_metrics: Vec::new(),
-        };
+    fn export(&self) -> OTelSdkResult {
+        let mut rm = data::ResourceMetrics::default();
         self.reader.collect(&mut rm)?;
 
-        assert!(!rm.scope_metrics.is_empty());
+        let mut scope_metrics = rm.scope_metrics().peekable();
 
-        rm.scope_metrics.into_iter().for_each(|scope_metrics| {
-            assert_eq!(scope_metrics.scope.name(), INSTRUMENTATION_LIBRARY_NAME);
-            assert_eq!(scope_metrics.scope.version().unwrap(), CARGO_PKG_VERSION);
+        assert!(scope_metrics.peek().is_some());
 
-            scope_metrics.metrics.into_iter().for_each(|metric| {
-                assert_eq!(metric.name, self.expected_metric_name);
+        scope_metrics.for_each(|scope_metrics| {
+            assert_eq!(scope_metrics.scope().name(), INSTRUMENTATION_LIBRARY_NAME);
+            assert_eq!(scope_metrics.scope().version().unwrap(), CARGO_PKG_VERSION);
+
+            scope_metrics.metrics().for_each(|metric| {
+                assert_eq!(metric.name(), self.expected_metric_name);
 
                 match self.expected_instrument_kind {
                     InstrumentKind::Counter | InstrumentKind::UpDownCounter => {
-                        let sum = metric.data.as_any().downcast_ref::<Sum<T>>().unwrap();
+                        let sum = metric.data().as_any().downcast_ref::<Sum<T>>().unwrap();
                         assert_eq!(
                             self.expected_value,
-                            sum.data_points
-                                .iter()
-                                .map(|data_point| data_point.value)
-                                .sum()
+                            sum.data_points().map(|data_point| data_point.value()).sum()
                         );
 
                         if let Some(expected_attributes) = self.expected_attributes.as_ref() {
-                            sum.data_points.iter().for_each(|data_point| {
+                            sum.data_points().for_each(|data_point| {
                                 assert!(compare_attributes(
                                     expected_attributes,
-                                    &data_point.attributes,
+                                    data_point.attributes().cloned().collect(),
                                 ))
                             });
                         }
                     }
                     InstrumentKind::Gauge => {
-                        let gauge = metric.data.as_any().downcast_ref::<Gauge<T>>().unwrap();
+                        let gauge = metric.data().as_any().downcast_ref::<Gauge<T>>().unwrap();
                         assert_eq!(
                             self.expected_value,
                             gauge
-                                .data_points
-                                .iter()
-                                .map(|data_point| data_point.value)
+                                .data_points()
+                                .map(|data_point| data_point.value())
                                 .last()
                                 .unwrap()
                         );
 
                         if let Some(expected_attributes) = self.expected_attributes.as_ref() {
-                            gauge.data_points.iter().for_each(|data_point| {
+                            gauge.data_points().for_each(|data_point| {
                                 assert!(compare_attributes(
                                     expected_attributes,
-                                    &data_point.attributes,
+                                    data_point.attributes().cloned().collect(),
                                 ))
                             });
                         }
                     }
                     InstrumentKind::Histogram => {
-                        let histogram =
-                            metric.data.as_any().downcast_ref::<Histogram<T>>().unwrap();
-                        let histogram_data = histogram.data_points.first().unwrap();
-                        assert!(histogram_data.count > 0);
-                        assert_eq!(histogram_data.sum, self.expected_value);
+                        let histogram = metric
+                            .data()
+                            .as_any()
+                            .downcast_ref::<Histogram<T>>()
+                            .unwrap();
+                        let histogram_data = histogram.data_points().next().unwrap();
+                        assert!(histogram_data.count() > 0);
+                        assert_eq!(histogram_data.sum(), self.expected_value);
 
                         if let Some(expected_attributes) = self.expected_attributes.as_ref() {
                             assert!(compare_attributes(
                                 expected_attributes,
-                                &histogram_data.attributes
+                                histogram_data.attributes().cloned().collect(),
                             ))
                         }
                     }
                     unexpected => {
-                        panic!("InstrumentKind {:?} not currently supported!", unexpected)
+                        panic!("InstrumentKind {unexpected:?} not currently supported!")
                     }
                 }
             });
@@ -666,7 +663,7 @@ where
 // After sorting the KeyValue vec, compare them.
 // Return true if they are equal.
 #[allow(clippy::ptr_arg)]
-fn compare_attributes(expected: &Vec<KeyValue>, actual: &Vec<KeyValue>) -> bool {
+fn compare_attributes(expected: &Vec<KeyValue>, actual: Vec<KeyValue>) -> bool {
     let mut expected = expected.clone();
     let mut actual = actual.clone();
 

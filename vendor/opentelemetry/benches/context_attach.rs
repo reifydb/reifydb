@@ -98,13 +98,18 @@ fn dummy_work() -> i32 {
     black_box(1 + 1)
 }
 
-fn group(c: &mut Criterion) -> BenchmarkGroup<WallTime> {
+fn group(c: &mut Criterion) -> BenchmarkGroup<'_, WallTime> {
     c.benchmark_group("context_attach")
 }
 
 #[derive(Debug, PartialEq)]
 struct Value(i32);
 
-criterion_group!(benches, criterion_benchmark);
-
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    targets = criterion_benchmark
+}
 criterion_main!(benches);

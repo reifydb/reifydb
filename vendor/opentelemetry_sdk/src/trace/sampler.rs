@@ -311,8 +311,8 @@ mod tests {
                         TraceFlags::default()
                     };
                     let span_context = SpanContext::new(
-                        TraceId::from_u128(1),
-                        SpanId::from_u64(1),
+                        TraceId::from(1),
+                        SpanId::from(1),
                         trace_flags,
                         false,
                         TraceState::default(),
@@ -351,12 +351,7 @@ mod tests {
             let diff = (got - expectation).abs();
             assert!(
                 diff <= tolerance,
-                "{} got {:?} (diff: {}), expected {} (w/tolerance: {})",
-                name,
-                got,
-                diff,
-                expectation,
-                tolerance
+                "{name} got {got:?} (diff: {diff}), expected {expectation} (w/tolerance: {tolerance})"
             );
         }
     }
@@ -371,7 +366,7 @@ mod tests {
 
         let result = sampler.should_sample(
             Some(&cx),
-            TraceId::from_u128(1),
+            TraceId::from(1),
             "should sample",
             &SpanKind::Internal,
             &[],
@@ -380,7 +375,7 @@ mod tests {
 
         let cloned_result = cloned_sampler.should_sample(
             Some(&cx),
-            TraceId::from_u128(1),
+            TraceId::from(1),
             "should sample",
             &SpanKind::Internal,
             &[],
@@ -404,8 +399,8 @@ mod tests {
                 "should use parent result, always off",
                 Sampler::AlwaysOn,
                 Context::current_with_span(TestSpan(SpanContext::new(
-                    TraceId::from_u128(1),
-                    SpanId::from_u64(1),
+                    TraceId::from(1),
+                    SpanId::from(1),
                     TraceFlags::default(), // not sampling
                     false,
                     TraceState::default(),
@@ -416,8 +411,8 @@ mod tests {
                 "should use parent result, always on",
                 Sampler::AlwaysOff,
                 Context::current_with_span(TestSpan(SpanContext::new(
-                    TraceId::from_u128(1),
-                    SpanId::from_u64(1),
+                    TraceId::from(1),
+                    SpanId::from(1),
                     TraceFlags::SAMPLED, // not sampling
                     false,
                     TraceState::default(),
@@ -430,7 +425,7 @@ mod tests {
             let sampler = Sampler::ParentBased(Box::new(delegate));
             let result = sampler.should_sample(
                 Some(&parent_cx),
-                TraceId::from_u128(1),
+                TraceId::from(1),
                 name,
                 &SpanKind::Internal,
                 &[],

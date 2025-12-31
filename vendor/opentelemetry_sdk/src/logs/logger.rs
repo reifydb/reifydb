@@ -1,11 +1,15 @@
-use super::{SdkLogRecord, SdkLoggerProvider, TraceContext};
-use opentelemetry::{trace::TraceContextExt, Context, InstrumentationScope};
+#[cfg(feature = "trace")]
+use super::TraceContext;
+use super::{SdkLogRecord, SdkLoggerProvider};
+#[cfg(feature = "trace")]
+use opentelemetry::trace::TraceContextExt;
+use opentelemetry::{Context, InstrumentationScope};
 
 #[cfg(feature = "spec_unstable_logs_enabled")]
 use opentelemetry::logs::Severity;
 use opentelemetry::time::now;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// The object for emitting [`LogRecord`]s.
 ///
 /// [`LogRecord`]: opentelemetry::logs::LogRecord
@@ -29,11 +33,15 @@ impl opentelemetry::logs::Logger for SdkLogger {
 
     /// Emit a `LogRecord`.
     fn emit(&self, mut record: Self::LogRecord) {
+        if Context::is_current_telemetry_suppressed() {
+            return;
+        }
         let provider = &self.provider;
         let processors = provider.log_processors();
 
         //let mut log_record = record;
         if record.trace_context.is_none() {
+            #[cfg(feature = "trace")]
             Context::map_current(|cx| {
                 cx.has_active_span().then(|| {
                     record.trace_context = Some(TraceContext::from(cx.span().span_context()))
@@ -52,6 +60,9 @@ impl opentelemetry::logs::Logger for SdkLogger {
     #[cfg(feature = "spec_unstable_logs_enabled")]
     #[inline]
     fn event_enabled(&self, level: Severity, target: &str, name: Option<&str>) -> bool {
+        if Context::is_current_telemetry_suppressed() {
+            return false;
+        }
         self.provider
             .log_processors()
             .iter()

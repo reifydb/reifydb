@@ -8,16 +8,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use opentelemetry::{otel_debug, otel_error, otel_info, otel_warn};
+use opentelemetry::{otel_debug, otel_error, otel_info, otel_warn, Context};
 
 use crate::{
     error::{OTelSdkError, OTelSdkResult},
-    metrics::{exporter::PushMetricExporter, reader::SdkProducer, MetricError, MetricResult},
+    metrics::{exporter::PushMetricExporter, reader::SdkProducer},
     Resource,
 };
 
 use super::{
-    data::ResourceMetrics, instrument::InstrumentKind, reader::MetricReader, Pipeline, Temporality,
+    data::ResourceMetrics, instrument::InstrumentKind, pipeline::Pipeline, reader::MetricReader,
+    Temporality,
 };
 
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
@@ -155,9 +156,15 @@ impl<E: PushMetricExporter> PeriodicReader<E> {
         };
         let cloned_reader = reader.clone();
 
+        let mut rm = ResourceMetrics {
+            resource: Resource::empty(),
+            scope_metrics: Vec::new(),
+        };
+
         let result_thread_creation = thread::Builder::new()
             .name("OpenTelemetry.Metrics.PeriodicReader".to_string())
             .spawn(move || {
+                let _suppress_guard = Context::enter_telemetry_suppressed_scope();
                 let mut interval_start = Instant::now();
                 let mut remaining_interval = interval;
                 otel_debug!(
@@ -173,7 +180,7 @@ impl<E: PushMetricExporter> PeriodicReader<E> {
                             otel_debug!(
                                 name: "PeriodReaderThreadExportingDueToFlush"
                             );
-                            let export_result = cloned_reader.collect_and_export();
+                            let export_result = cloned_reader.collect_and_export(&mut rm);
                             otel_debug!(
                                 name: "PeriodReaderInvokedExport",
                                 export_result = format!("{:?}", export_result)
@@ -229,7 +236,7 @@ impl<E: PushMetricExporter> PeriodicReader<E> {
                         Ok(Message::Shutdown(response_sender)) => {
                             // Perform final export and break out of loop and exit the thread
                             otel_debug!(name: "PeriodReaderThreadExportingDueToShutdown");
-                            let export_result = cloned_reader.collect_and_export();
+                            let export_result = cloned_reader.collect_and_export(&mut rm);
                             otel_debug!(
                                 name: "PeriodReaderInvokedExport",
                                 export_result = format!("{:?}", export_result)
@@ -277,7 +284,7 @@ impl<E: PushMetricExporter> PeriodicReader<E> {
                                 name: "PeriodReaderThreadExportingDueToTimer"
                             );
 
-                            let export_result = cloned_reader.collect_and_export();
+                            let export_result = cloned_reader.collect_and_export(&mut rm);
                             otel_debug!(
                                 name: "PeriodReaderInvokedExport",
                                 export_result = format!("{:?}", export_result)
@@ -329,8 +336,8 @@ impl<E: PushMetricExporter> PeriodicReader<E> {
         reader
     }
 
-    fn collect_and_export(&self) -> OTelSdkResult {
-        self.inner.collect_and_export()
+    fn collect_and_export(&self, rm: &mut ResourceMetrics) -> OTelSdkResult {
+        self.inner.collect_and_export(rm)
     }
 }
 
@@ -356,11 +363,11 @@ impl<E: PushMetricExporter> PeriodicReaderInner<E> {
         self.exporter.temporality()
     }
 
-    fn collect(&self, rm: &mut ResourceMetrics) -> MetricResult<()> {
+    fn collect(&self, rm: &mut ResourceMetrics) -> OTelSdkResult {
         let producer = self.producer.lock().expect("lock poisoned");
         if let Some(p) = producer.as_ref() {
             p.upgrade()
-                .ok_or_else(|| MetricError::Other("pipeline is dropped".into()))?
+                .ok_or(OTelSdkError::AlreadyShutdown)?
                 .produce(rm)?;
             Ok(())
         } else {
@@ -370,20 +377,15 @@ impl<E: PushMetricExporter> PeriodicReaderInner<E> {
                    This occurs when a periodic reader is created but not associated with a MeterProvider \
                    by calling `.with_reader(reader)` on MeterProviderBuilder."
             );
-            Err(MetricError::Other("MeterProvider is not registered".into()))
+            Err(OTelSdkError::InternalFailure(
+                "MeterProvider is not registered".into(),
+            ))
         }
     }
 
-    fn collect_and_export(&self) -> OTelSdkResult {
-        // TODO: Reuse the internal vectors. Or refactor to avoid needing any
-        // owned data structures to be passed to exporters.
-        let mut rm = ResourceMetrics {
-            resource: Resource::empty(),
-            scope_metrics: Vec::new(),
-        };
-
+    fn collect_and_export(&self, rm: &mut ResourceMetrics) -> OTelSdkResult {
         let current_time = Instant::now();
-        let collect_result = self.collect(&mut rm);
+        let collect_result = self.collect(rm);
         let time_taken_for_collect = current_time.elapsed();
 
         #[allow(clippy::question_mark)]
@@ -407,7 +409,7 @@ impl<E: PushMetricExporter> PeriodicReaderInner<E> {
 
         // Relying on futures executor to execute async call.
         // TODO: Pass timeout to exporter
-        futures_executor::block_on(self.exporter.export(&mut rm))
+        futures_executor::block_on(self.exporter.export(rm))
     }
 
     fn force_flush(&self) -> OTelSdkResult {
@@ -478,7 +480,7 @@ impl<E: PushMetricExporter> MetricReader for PeriodicReader<E> {
         self.inner.register_pipeline(pipeline);
     }
 
-    fn collect(&self, rm: &mut ResourceMetrics) -> MetricResult<()> {
+    fn collect(&self, rm: &mut ResourceMetrics) -> OTelSdkResult {
         self.inner.collect(rm)
     }
 
@@ -490,7 +492,7 @@ impl<E: PushMetricExporter> MetricReader for PeriodicReader<E> {
     // completion, and avoid blocking the thread. The default shutdown on drop
     // can still use blocking call. If user already explicitly called shutdown,
     // drop won't call shutdown again.
-    fn shutdown(&self) -> OTelSdkResult {
+    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
         self.inner.shutdown()
     }
 
@@ -549,7 +551,7 @@ mod tests {
     }
 
     impl PushMetricExporter for MetricExporterThatFailsOnlyOnFirst {
-        async fn export(&self, _metrics: &mut ResourceMetrics) -> OTelSdkResult {
+        async fn export(&self, _metrics: &ResourceMetrics) -> OTelSdkResult {
             if self.count.fetch_add(1, Ordering::Relaxed) == 0 {
                 Err(OTelSdkError::InternalFailure("export failed".into()))
             } else {
@@ -565,6 +567,10 @@ mod tests {
             Ok(())
         }
 
+        fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
+            Ok(())
+        }
+
         fn temporality(&self) -> Temporality {
             Temporality::Cumulative
         }
@@ -576,7 +582,7 @@ mod tests {
     }
 
     impl PushMetricExporter for MockMetricExporter {
-        async fn export(&self, _metrics: &mut ResourceMetrics) -> OTelSdkResult {
+        async fn export(&self, _metrics: &ResourceMetrics) -> OTelSdkResult {
             Ok(())
         }
 
@@ -585,6 +591,10 @@ mod tests {
         }
 
         fn shutdown(&self) -> OTelSdkResult {
+            self.shutdown_with_timeout(Duration::from_secs(5))
+        }
+
+        fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
             self.is_shutdown.store(true, Ordering::Relaxed);
             Ok(())
         }
