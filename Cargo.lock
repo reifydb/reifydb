@@ -1926,8 +1926,14 @@ name = "reifydb-rqlv2"
 version = "0.2.0"
 dependencies = [
  "bumpalo",
+ "reifydb",
+ "reifydb-catalog",
+ "reifydb-core",
  "reifydb-testing",
+ "reifydb-transaction",
+ "reifydb-type",
  "test_each_file",
+ "tracing",
 ]
 
 [[package]]

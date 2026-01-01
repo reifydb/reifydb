@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test computed projection
+plan 'from test.orders | map { total: amount * 2 }'
+---
+PROJECT
+  output: [(amount * 2) AS total]
+schema:
+    total: Any
+  SCAN test.orders
+  schema:
+      id: Int8
+      user_id: Int8
+      amount: Float8

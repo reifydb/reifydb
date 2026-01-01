@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test full pipeline with multiple operations
+plan 'from test.users | filter age > 18 | map { name, age } | sort { name } | take 5'
+---
+TAKE 5
+  SORT
+    by: [name ASC]
+    PROJECT
+      output: [name, age]
+    schema:
+        name: Any
+        age: Any
+      FILTER
+        condition: (age > 18)
+        SCAN test.users
+        schema:
+            id: Int8
+            name: Utf8
+            age: Int4

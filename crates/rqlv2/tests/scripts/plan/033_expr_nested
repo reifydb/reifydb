@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test nested expressions
+plan 'from test.orders | map { calc: (amount + 10) * 2 }'
+---
+PROJECT
+  output: [((amount + 10) * 2) AS calc]
+schema:
+    calc: Any
+  SCAN test.orders
+  schema:
+      id: Int8
+      user_id: Int8
+      amount: Float8

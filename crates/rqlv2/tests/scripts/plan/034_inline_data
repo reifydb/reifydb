@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test inline data source
+plan 'from [{ a: 1, b: 2 }, { a: 3, b: 4 }]'
+---
+INLINE_DATA (2 rows)

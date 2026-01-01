@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test distinct on all columns
+plan 'from test.users | distinct {}'
+---
+DISTINCT
+  SCAN test.users
+  schema:
+      id: Int8
+      name: Utf8
+      age: Int4

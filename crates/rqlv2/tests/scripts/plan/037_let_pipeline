@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test let with pipeline (using subquery syntax)
+plan 'let $data = { from test.users }'
+---
+LET $data = <1 statements>

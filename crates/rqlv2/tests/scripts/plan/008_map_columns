@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test simple projection with map
+plan 'from test.users | map { name, age }'
+---
+PROJECT
+  output: [name, age]
+schema:
+    name: Any
+    age: Any
+  SCAN test.users
+  schema:
+      id: Int8
+      name: Utf8
+      age: Int4

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test natural join
+plan 'from test.users | natural join { from test.orders } as o'
+---
+JOIN NATURAL INNER AS o
+schema:
+    id: Int8
+    name: Utf8
+    age: Int4
+    o_id: Int8
+    o_user_id: Int8
+    o_amount: Float8
+  left:
+    SCAN test.users
+    schema:
+        id: Int8
+        name: Utf8
+        age: Int4
+  right:
+    SCAN test.orders
+    schema:
+        id: Int8
+        user_id: Int8
+        amount: Float8

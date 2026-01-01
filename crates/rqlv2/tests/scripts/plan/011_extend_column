@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test extend to add computed column
+plan 'from test.orders | extend { doubled: amount * 2 }'
+---
+EXTEND
+  add: [(amount * 2) AS doubled]
+schema:
+    id: Int8
+    user_id: Int8
+    amount: Float8
+    doubled: Any
+  SCAN test.orders
+  schema:
+      id: Int8
+      user_id: Int8
+      amount: Float8

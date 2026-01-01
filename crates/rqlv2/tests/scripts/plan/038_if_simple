@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test simple if
+plan 'if true { 1 }'
+---
+IF true
+THEN
+  RETURN 1

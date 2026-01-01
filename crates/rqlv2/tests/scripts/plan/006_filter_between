@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test filter with BETWEEN
+plan 'from test.users | filter age between 18 and 65'
+---
+FILTER
+  condition: age BETWEEN 18 AND 65
+  SCAN test.users
+  schema:
+      id: Int8
+      name: Utf8
+      age: Int4

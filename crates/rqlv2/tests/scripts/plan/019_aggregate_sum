@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test sum aggregate with group by
+plan 'from test.orders | aggregate { total: sum(amount) } by { user_id }'
+---
+AGGREGATE
+  group_by: [user_id]
+  aggregations: [sum(amount) AS total]
+schema:
+    user_id: Any
+    total: Any
+  SCAN test.orders
+  schema:
+      id: Int8
+      user_id: Int8
+      amount: Float8

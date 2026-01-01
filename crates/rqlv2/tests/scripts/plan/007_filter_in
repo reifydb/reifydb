@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test filter with IN
+plan "from test.users | filter name in ['Alice', 'Bob']"
+---
+FILTER
+  condition: name IN ('lic', 'o')
+  SCAN test.users
+  schema:
+      id: Int8
+      name: Utf8
+      age: Int4
