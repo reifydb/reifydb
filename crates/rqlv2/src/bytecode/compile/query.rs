@@ -9,6 +9,7 @@ use crate::{
 		opcode::{Opcode, OperatorKind},
 		program::{Constant, NullsOrder, SortDirection, SortKey, SortSpec, SourceDef},
 	},
+	expression::compile::{compile_plan_expr, compile_plan_filter},
 	plan::{
 		Primitive,
 		node::query::{
@@ -60,8 +61,13 @@ impl PlanCompiler {
 		// Compile input pipeline
 		self.compile_plan(node.input)?;
 
-		// Compile predicate expression and push to operand stack
-		self.compile_expr(node.predicate)?;
+		// Compile predicate to CompiledFilter closure
+		let compiled = compile_plan_filter(node.predicate);
+		let filter_index = self.program.add_compiled_filter(compiled);
+
+		// Push compiled filter reference
+		self.writer.emit_opcode(Opcode::PushExpr);
+		self.writer.emit_u16(filter_index);
 
 		// Apply filter operator
 		self.writer.emit_opcode(Opcode::Apply);
@@ -107,13 +113,14 @@ impl PlanCompiler {
 			self.compile_plan(input)?;
 		}
 
-		// Build extension spec
+		// Build extension spec with compiled expressions
 		let mut spec = Vec::new();
 		for ext in node.extensions.iter() {
 			let name = ext.alias.unwrap_or("").to_string();
-			// For now, use a placeholder expression index
-			// TODO: Properly compile expressions
-			spec.push((name, 0u16));
+			// Compile expression to CompiledExpr closure
+			let compiled = compile_plan_expr(ext.expr);
+			let expr_index = self.program.add_compiled_expr(compiled);
+			spec.push((name, expr_index));
 		}
 
 		let spec_index = self.program.add_extension_spec(spec);

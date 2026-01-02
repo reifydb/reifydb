@@ -70,7 +70,7 @@ async fn explore() {
 
 	// Setup: create namespace, table, and insert data
 	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int4, name: utf8, age: int4").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
 	insert_data(
 		&engine,
 		r#"from [
@@ -89,7 +89,7 @@ async fn explore() {
 	let registry = Arc::new(InMemorySourceRegistry::new());
 
 	let script = r#"
-        let $x = from test.users | MAP { name, age }
+        let $x = from test.users | filter age > 25  | MAP { name, age }
         $x
     "#;
 
