@@ -8,5 +8,5 @@ parse 'let $x = 1; FROM users'
 > +-- [0] Let($x)
 > |   `-- Integer(1)
 > `-- [1] Expression
->     `-- From(users)
+>     `-- From(default.users)
 >

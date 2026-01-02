@@ -6,7 +6,7 @@ parse 'FROM users;; FROM orders'
 ---
 > Program
 > +-- [0] Expression
-> |   `-- From(users)
+> |   `-- From(default.users)
 > `-- [1] Expression
->     `-- From(orders)
+>     `-- From(default.orders)
 >

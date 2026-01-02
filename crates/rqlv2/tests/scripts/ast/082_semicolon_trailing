@@ -6,5 +6,5 @@ parse 'FROM users;'
 ---
 > Program
 > `-- [0] Expression
->     `-- From(users)
+>     `-- From(default.users)
 >
