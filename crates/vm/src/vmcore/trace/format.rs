@@ -162,23 +162,12 @@ impl Display for InstructionSnapshot {
 			InstructionSnapshot::PushExtSpec {
 				index,
 			} => write!(f, "PushExtSpec index={}", index),
-			InstructionSnapshot::Pop => write!(f, "Pop"),
-			InstructionSnapshot::Dup => write!(f, "Dup"),
 			InstructionSnapshot::LoadVar {
 				name,
 			} => write!(f, "LoadVar name=\"{}\"", name),
 			InstructionSnapshot::StoreVar {
 				name,
 			} => write!(f, "StoreVar name=\"{}\"", name),
-			InstructionSnapshot::StorePipeline {
-				name,
-			} => write!(f, "StorePipeline name=\"{}\"", name),
-			InstructionSnapshot::LoadPipeline {
-				name,
-			} => write!(f, "LoadPipeline name=\"{}\"", name),
-			InstructionSnapshot::UpdateVar {
-				name,
-			} => write!(f, "UpdateVar name=\"{}\"", name),
 			InstructionSnapshot::Source {
 				index,
 				name,
@@ -192,7 +181,6 @@ impl Display for InstructionSnapshot {
 			InstructionSnapshot::Collect => write!(f, "Collect"),
 			InstructionSnapshot::PopPipeline => write!(f, "PopPipeline"),
 			InstructionSnapshot::Merge => write!(f, "Merge"),
-			InstructionSnapshot::DupPipeline => write!(f, "DupPipeline"),
 			InstructionSnapshot::Jump {
 				offset,
 				target,

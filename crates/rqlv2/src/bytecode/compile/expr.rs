@@ -59,7 +59,7 @@ impl PlanCompiler {
 			}
 			PlanExpr::Variable(var) => {
 				self.record_span(var.span);
-				self.writer.emit_opcode(Opcode::LoadVarById);
+				self.writer.emit_opcode(Opcode::LoadVar);
 				self.writer.emit_u32(var.variable_id);
 			}
 			PlanExpr::Rownum(span) => {

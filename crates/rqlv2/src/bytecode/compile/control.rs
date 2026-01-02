@@ -186,7 +186,7 @@ impl PlanCompiler {
 		self.writer.emit_opcode(Opcode::FrameRow);
 
 		// Store in loop variable (use variable ID)
-		self.writer.emit_opcode(Opcode::StoreVarById);
+		self.writer.emit_opcode(Opcode::StoreVar);
 		self.writer.emit_u32(node.variable.variable_id);
 
 		// Compile body
@@ -233,7 +233,7 @@ impl PlanCompiler {
 			DeclareValue::Expression(expr) => {
 				self.compile_expr(expr)?;
 				// Store using variable ID
-				self.writer.emit_opcode(Opcode::StoreVarById);
+				self.writer.emit_opcode(Opcode::StoreVar);
 				self.writer.emit_u32(node.variable.variable_id);
 			}
 			DeclareValue::Plan(plans) => {
@@ -241,7 +241,7 @@ impl PlanCompiler {
 					self.compile_plan(plan)?;
 				}
 				// Store pipeline using variable ID
-				self.writer.emit_opcode(Opcode::StorePipelineById);
+				self.writer.emit_opcode(Opcode::StorePipeline);
 				self.writer.emit_u32(node.variable.variable_id);
 			}
 		}
@@ -255,7 +255,7 @@ impl PlanCompiler {
 			DeclareValue::Expression(expr) => {
 				self.compile_expr(expr)?;
 				// Update using variable ID
-				self.writer.emit_opcode(Opcode::UpdateVarById);
+				self.writer.emit_opcode(Opcode::UpdateVar);
 				self.writer.emit_u32(node.variable.variable_id);
 			}
 			DeclareValue::Plan(plans) => {
@@ -263,7 +263,7 @@ impl PlanCompiler {
 					self.compile_plan(plan)?;
 				}
 				// Update pipeline using variable ID
-				self.writer.emit_opcode(Opcode::StorePipelineById);
+				self.writer.emit_opcode(Opcode::StorePipeline);
 				self.writer.emit_u32(node.variable.variable_id);
 			}
 		}

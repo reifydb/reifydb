@@ -307,7 +307,7 @@ impl PlanCompiler {
 	pub(crate) fn compile_variable_source<'bump>(&mut self, node: &VariableSourceNode<'bump>) -> Result<()> {
 		self.record_span(node.span);
 		// Load pipeline using variable ID
-		self.writer.emit_opcode(Opcode::LoadPipelineById);
+		self.writer.emit_opcode(Opcode::LoadPipeline);
 		self.writer.emit_u32(node.variable.variable_id);
 		Ok(())
 	}

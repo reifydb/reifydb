@@ -25,12 +25,6 @@ pub enum Opcode {
 	/// Operand: u16 (column list index)
 	PushColList = 0x04,
 
-	/// Pop top of operand stack
-	Pop = 0x05,
-
-	/// Duplicate top of operand stack
-	Dup = 0x06,
-
 	/// Push sort specification onto operand stack
 	/// Operand: u16 (sort spec index)
 	PushSortSpec = 0x07,
@@ -40,50 +34,27 @@ pub enum Opcode {
 	PushExtSpec = 0x08,
 
 	// ─────────────────────────────────────────────────────────────
-	// Variable Operations (by name - legacy)
-	// ─────────────────────────────────────────────────────────────
-	/// Load variable onto operand stack
-	/// Operand: u16 (variable name index)
-	LoadVar = 0x10,
-
-	/// Store operand stack top into variable
-	/// Operand: u16 (variable name index)
-	StoreVar = 0x11,
-
-	/// Store pipeline stack top into variable
-	/// Operand: u16 (variable name index)
-	StorePipeline = 0x12,
-
-	/// Load pipeline variable onto pipeline stack
-	/// Operand: u16 (variable name index)
-	LoadPipeline = 0x13,
-
-	/// Update existing variable (searches all scopes)
-	/// Operand: u16 (variable name index)
-	UpdateVar = 0x14,
-
-	// ─────────────────────────────────────────────────────────────
-	// Variable Operations (by ID - faster lookup)
+	// Variable Operations
 	// ─────────────────────────────────────────────────────────────
 	/// Load variable onto operand stack by ID
-	/// Operand: u32 (variable ID)
-	LoadVarById = 0x15,
+	/// Operand: u32
+	LoadVar = 0x15,
 
 	/// Store operand stack top into variable by ID
-	/// Operand: u32 (variable ID)
-	StoreVarById = 0x16,
+	/// Operand: u32
+	StoreVar = 0x16,
 
 	/// Update existing variable by ID (searches all scopes)
-	/// Operand: u32 (variable ID)
-	UpdateVarById = 0x17,
+	/// Operand: u32
+	UpdateVar = 0x17,
 
 	/// Load pipeline variable onto pipeline stack by ID
-	/// Operand: u32 (variable ID)
-	LoadPipelineById = 0x18,
+	/// Operand: u32
+	LoadPipeline = 0x18,
 
 	/// Store pipeline stack top into variable by ID
-	/// Operand: u32 (variable ID)
-	StorePipelineById = 0x19,
+	/// Operand: u32
+	StorePipeline = 0x19,
 
 	// ─────────────────────────────────────────────────────────────
 	// Pipeline Operations
@@ -107,9 +78,6 @@ pub enum Opcode {
 
 	/// Pop pipeline from pipeline stack
 	PopPipeline = 0x25,
-
-	/// Duplicate top of pipeline stack
-	DupPipeline = 0x26,
 
 	/// Fetch next batch from active scan
 	/// Operand: u16 (source index)
@@ -298,14 +266,6 @@ pub enum Opcode {
 	/// Operand: u16 (definition index)
 	CreateDictionary = 0xC6,
 
-	/// Alter table
-	/// Operand: u16 (definition index)
-	AlterTable = 0xC8,
-
-	/// Alter sequence
-	/// Operand: u16 (definition index)
-	AlterSequence = 0xC9,
-
 	/// Drop object
 	/// Operand: u16 (definition index), u8 (object type)
 	DropObject = 0xD0,
@@ -330,22 +290,17 @@ impl TryFrom<u8> for Opcode {
 			0x02 => Ok(Opcode::PushExpr),
 			0x03 => Ok(Opcode::PushColRef),
 			0x04 => Ok(Opcode::PushColList),
-			0x05 => Ok(Opcode::Pop),
-			0x06 => Ok(Opcode::Dup),
 			0x07 => Ok(Opcode::PushSortSpec),
 			0x08 => Ok(Opcode::PushExtSpec),
 			// Variable Operations (by name)
 			0x10 => Ok(Opcode::LoadVar),
 			0x11 => Ok(Opcode::StoreVar),
-			0x12 => Ok(Opcode::StorePipeline),
-			0x13 => Ok(Opcode::LoadPipeline),
-			0x14 => Ok(Opcode::UpdateVar),
 			// Variable Operations (by ID)
-			0x15 => Ok(Opcode::LoadVarById),
-			0x16 => Ok(Opcode::StoreVarById),
-			0x17 => Ok(Opcode::UpdateVarById),
-			0x18 => Ok(Opcode::LoadPipelineById),
-			0x19 => Ok(Opcode::StorePipelineById),
+			0x15 => Ok(Opcode::LoadVar),
+			0x16 => Ok(Opcode::StoreVar),
+			0x17 => Ok(Opcode::UpdateVar),
+			0x18 => Ok(Opcode::LoadPipeline),
+			0x19 => Ok(Opcode::StorePipeline),
 			// Pipeline Operations
 			0x20 => Ok(Opcode::Source),
 			0x21 => Ok(Opcode::Inline),
@@ -353,7 +308,6 @@ impl TryFrom<u8> for Opcode {
 			0x23 => Ok(Opcode::Collect),
 			0x24 => Ok(Opcode::Merge),
 			0x25 => Ok(Opcode::PopPipeline),
-			0x26 => Ok(Opcode::DupPipeline),
 			0x27 => Ok(Opcode::FetchBatch),
 			0x28 => Ok(Opcode::CheckComplete),
 			// Control Flow
@@ -406,8 +360,6 @@ impl TryFrom<u8> for Opcode {
 			0xC4 => Ok(Opcode::CreateSequence),
 			0xC5 => Ok(Opcode::CreateRingBuffer),
 			0xC6 => Ok(Opcode::CreateDictionary),
-			0xC8 => Ok(Opcode::AlterTable),
-			0xC9 => Ok(Opcode::AlterSequence),
 			0xD0 => Ok(Opcode::DropObject),
 			// Control
 			0xFE => Ok(Opcode::Nop),

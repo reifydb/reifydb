@@ -57,21 +57,10 @@ pub enum InstructionSnapshot {
 	PushExtSpec {
 		index: u16,
 	},
-	Pop,
-	Dup,
 	LoadVar {
 		name: String,
 	},
 	StoreVar {
-		name: String,
-	},
-	StorePipeline {
-		name: String,
-	},
-	LoadPipeline {
-		name: String,
-	},
-	UpdateVar {
 		name: String,
 	},
 	Source {
@@ -85,7 +74,6 @@ pub enum InstructionSnapshot {
 	Collect,
 	PopPipeline,
 	Merge,
-	DupPipeline,
 	Jump {
 		offset: i16,
 		target: usize,

@@ -27,12 +27,6 @@ pub enum Opcode {
 	/// Operand: u16 (column list index)
 	PushColList = 0x04,
 
-	/// Pop top of operand stack
-	Pop = 0x05,
-
-	/// Duplicate top of operand stack
-	Dup = 0x06,
-
 	/// Push sort specification onto operand stack
 	/// Operand: u16 (sort spec index)
 	PushSortSpec = 0x07,
@@ -51,18 +45,6 @@ pub enum Opcode {
 	/// Store operand stack top into variable
 	/// Operand: u16 (variable name index)
 	StoreVar = 0x11,
-
-	/// Store pipeline stack top into variable
-	/// Operand: u16 (variable name index)
-	StorePipeline = 0x12,
-
-	/// Load pipeline variable onto pipeline stack
-	/// Operand: u16 (variable name index)
-	LoadPipeline = 0x13,
-
-	/// Update existing variable (searches all scopes)
-	/// Operand: u16 (variable name index)
-	UpdateVar = 0x14,
 
 	// ─────────────────────────────────────────────────────────────
 	// Pipeline Operations
@@ -86,9 +68,6 @@ pub enum Opcode {
 
 	/// Pop pipeline from pipeline stack
 	PopPipeline = 0x25,
-
-	/// Duplicate top of pipeline stack
-	DupPipeline = 0x26,
 
 	// ─────────────────────────────────────────────────────────────
 	// Control Flow
@@ -240,22 +219,16 @@ impl TryFrom<u8> for Opcode {
 			0x02 => Ok(Opcode::PushExpr),
 			0x03 => Ok(Opcode::PushColRef),
 			0x04 => Ok(Opcode::PushColList),
-			0x05 => Ok(Opcode::Pop),
-			0x06 => Ok(Opcode::Dup),
 			0x07 => Ok(Opcode::PushSortSpec),
 			0x08 => Ok(Opcode::PushExtSpec),
 			0x10 => Ok(Opcode::LoadVar),
 			0x11 => Ok(Opcode::StoreVar),
-			0x12 => Ok(Opcode::StorePipeline),
-			0x13 => Ok(Opcode::LoadPipeline),
-			0x14 => Ok(Opcode::UpdateVar),
 			0x20 => Ok(Opcode::Source),
 			0x21 => Ok(Opcode::Inline),
 			0x22 => Ok(Opcode::Apply),
 			0x23 => Ok(Opcode::Collect),
 			0x24 => Ok(Opcode::Merge),
 			0x25 => Ok(Opcode::PopPipeline),
-			0x26 => Ok(Opcode::DupPipeline),
 			0x40 => Ok(Opcode::Jump),
 			0x41 => Ok(Opcode::JumpIf),
 			0x42 => Ok(Opcode::JumpIfNot),

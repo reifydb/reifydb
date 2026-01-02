@@ -206,21 +206,23 @@ impl BytecodeCompiler {
 			LetValue::Pipeline(pipeline) => {
 				// Compile the pipeline
 				self.compile_pipeline(*pipeline)?;
-				// Store as pipeline variable
-				self.writer.emit_opcode(Opcode::StorePipeline);
-				self.writer.emit_u16(name_index);
+				// Store as pipeline variable (using StorePipelineById)
+				let var_id = self.program.next_var_id();
+				self.writer.emit_opcode(Opcode::StorePipelineById);
+				self.writer.emit_u32(var_id);
 			}
 		}
 		Ok(())
 	}
 	/// Compile an assignment statement (updates existing variable).
 	fn compile_assign(&mut self, assign: AssignAst) -> Result<()> {
-		let name_index = self.program.add_constant(Value::Utf8(assign.name));
+		let name_index = self.program.add_constant(Value::Utf8(assign.name.clone()));
 		// Compile expression and push result to operand stack
 		self.compile_expr_to_operand(assign.value)?;
-		// Update existing variable (searches all scopes)
-		self.writer.emit_opcode(Opcode::UpdateVar);
-		self.writer.emit_u16(name_index);
+		// Update existing variable (use UpdateVarById)
+		let var_id = self.program.next_var_id();
+		self.writer.emit_opcode(Opcode::UpdateVarById);
+		self.writer.emit_u32(var_id);
 		Ok(())
 	}
 	/// Compile a function definition.
@@ -508,8 +510,9 @@ impl BytecodeCompiler {
 							let name_index = self
 								.program
 								.add_constant(Value::Utf8(var_name.to_string()));
-							self.writer.emit_opcode(Opcode::LoadPipeline);
-							self.writer.emit_u16(name_index);
+							let var_id = self.program.next_var_id();
+							self.writer.emit_opcode(Opcode::LoadPipelineById);
+							self.writer.emit_u32(var_id);
 						}
 					} else {
 						// Normal table scan

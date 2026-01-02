@@ -52,21 +52,10 @@ enum DecodedInstruction {
 	PushExtSpec {
 		index: u16,
 	},
-	Pop,
-	Dup,
 	LoadVar {
 		name_index: u16,
 	},
 	StoreVar {
-		name_index: u16,
-	},
-	StorePipeline {
-		name_index: u16,
-	},
-	LoadPipeline {
-		name_index: u16,
-	},
-	UpdateVar {
 		name_index: u16,
 	},
 	LoadVarById {
@@ -94,7 +83,6 @@ enum DecodedInstruction {
 	Collect,
 	PopPipeline,
 	Merge,
-	DupPipeline,
 	FetchBatch {
 		source_index: u16,
 	},
@@ -210,8 +198,6 @@ impl VmState {
 					index,
 				}
 			}
-			Opcode::Pop => DecodedInstruction::Pop,
-			Opcode::Dup => DecodedInstruction::Dup,
 			Opcode::LoadVar => {
 				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::LoadVar {
@@ -224,49 +210,31 @@ impl VmState {
 					name_index,
 				}
 			}
-			Opcode::StorePipeline => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::StorePipeline {
-					name_index,
-				}
-			}
-			Opcode::LoadPipeline => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::LoadPipeline {
-					name_index,
-				}
-			}
-			Opcode::UpdateVar => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::UpdateVar {
-					name_index,
-				}
-			}
-			Opcode::LoadVarById => {
+			Opcode::LoadVar => {
 				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::LoadVarById {
 					var_id,
 				}
 			}
-			Opcode::StoreVarById => {
+			Opcode::StoreVar => {
 				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::StoreVarById {
 					var_id,
 				}
 			}
-			Opcode::UpdateVarById => {
+			Opcode::UpdateVar => {
 				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::UpdateVarById {
 					var_id,
 				}
 			}
-			Opcode::LoadPipelineById => {
+			Opcode::LoadPipeline => {
 				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::LoadPipelineById {
 					var_id,
 				}
 			}
-			Opcode::StorePipelineById => {
+			Opcode::StorePipeline => {
 				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::StorePipelineById {
 					var_id,
@@ -293,7 +261,6 @@ impl VmState {
 			Opcode::Collect => DecodedInstruction::Collect,
 			Opcode::PopPipeline => DecodedInstruction::PopPipeline,
 			Opcode::Merge => DecodedInstruction::Merge,
-			Opcode::DupPipeline => DecodedInstruction::DupPipeline,
 			Opcode::FetchBatch => {
 				let source_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::FetchBatch {
@@ -437,17 +404,6 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Pop => {
-				self.pop_operand()?;
-				self.ip = next_ip;
-			}
-
-			DecodedInstruction::Dup => {
-				let value = self.peek_operand()?.clone();
-				self.push_operand(value)?;
-				self.ip = next_ip;
-			}
-
 			// ─────────────────────────────────────────────────────────
 			// Variable Operations
 			// ─────────────────────────────────────────────────────────
@@ -468,50 +424,6 @@ impl VmState {
 				let name = self.get_constant_string(name_index)?;
 				let value = self.pop_operand()?;
 				self.scopes.set(name, value);
-				self.ip = next_ip;
-			}
-
-			DecodedInstruction::StorePipeline {
-				name_index,
-			} => {
-				let name = self.get_constant_string(name_index)?;
-				let pipeline = self.pop_pipeline()?;
-				let handle = self.register_pipeline(pipeline);
-				self.scopes.set(name, OperandValue::PipelineRef(handle));
-				self.ip = next_ip;
-			}
-
-			DecodedInstruction::LoadPipeline {
-				name_index,
-			} => {
-				let name = self.get_constant_string(name_index)?;
-				let value = self.scopes.get(&name).cloned().ok_or(VmError::UndefinedVariable {
-					name: name.clone(),
-				})?;
-
-				match value {
-					OperandValue::PipelineRef(handle) => {
-						let pipeline = self
-							.take_pipeline(&handle)
-							.ok_or(VmError::InvalidPipelineHandle)?;
-						self.push_pipeline(pipeline)?;
-					}
-					_ => return Err(VmError::ExpectedPipeline),
-				}
-				self.ip = next_ip;
-			}
-
-			DecodedInstruction::UpdateVar {
-				name_index,
-			} => {
-				let name = self.get_constant_string(name_index)?;
-				let value = self.pop_operand()?;
-				// Update existing variable (searches all scopes)
-				if !self.scopes.update(&name, value) {
-					return Err(VmError::UndefinedVariable {
-						name,
-					});
-				}
 				self.ip = next_ip;
 			}
 
@@ -648,9 +560,9 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Merge | DecodedInstruction::DupPipeline => {
+			DecodedInstruction::Merge => {
 				return Err(VmError::UnsupportedOperation {
-					operation: "Merge/DupPipeline".to_string(),
+					operation: "Merge".to_string(),
 				});
 			}
 
