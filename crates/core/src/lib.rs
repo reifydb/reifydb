@@ -24,7 +24,7 @@ pub use row::Row;
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, RetryError, WaitGroup, ioc, retry};
 pub use value::{
-	batch::{LazyBatch, LazyColumnMeta},
+	batch::{Batch, LazyBatch, LazyColumnMeta},
 	encoded::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange},
 	frame::*,
 };

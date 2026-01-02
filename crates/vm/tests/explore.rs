@@ -84,7 +84,7 @@ async fn explore() {
 	let catalog = engine.catalog();
 
 	let script = r#"
-        let $x = from test.users | filter age > 25  | MAP { name, age };
+        let $x = from test.users | filter age > 25  | MAP { name, age } | take 100;
         $x
     "#;
 

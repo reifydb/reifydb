@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, Columns};
+use reifydb_core::{
+	Batch,
+	value::column::{Column, Columns},
+};
 use reifydb_rqlv2::expression::{CompiledExpr, EvalContext};
 use reifydb_type::Fragment;
 use tokio_stream::StreamExt as TokioStreamExt;
@@ -57,22 +60,27 @@ impl ProjectOp {
 			let eval_ctx = eval_ctx.clone();
 			async move {
 				let batch = result?;
+
+				// Materialize batch for expression evaluation
+				let columns = batch.into_columns();
 				let mut new_columns: Vec<Column> = Vec::new();
 
 				if keep_input {
 					// Copy input columns
-					new_columns.extend(batch.iter().cloned());
+					new_columns.extend(columns.iter().cloned());
 				}
 
 				// Add computed columns
 				for (name, compiled_expr) in &extensions {
-					let col = compiled_expr.eval(&batch, &eval_ctx).await?;
+					let col = compiled_expr.eval(&columns, &eval_ctx).await?;
 					// Set the column name
 					let col = Column::new(Fragment::internal(name), col.data().clone());
 					new_columns.push(col);
 				}
 
-				Ok(Columns::with_row_numbers(new_columns, batch.row_numbers.to_vec()))
+				let result_columns =
+					Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec());
+				Ok(Batch::fully_materialized(result_columns))
 			}
 		}))
 	}

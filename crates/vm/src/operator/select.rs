@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use futures_util::StreamExt;
-use reifydb_core::value::column::{Column, Columns};
+use reifydb_core::{
+	Batch,
+	value::column::{Column, Columns},
+};
 
 use crate::{
 	error::{Result, VmError},
@@ -28,20 +31,28 @@ impl SelectOp {
 	}
 }
 
-fn project_columns(batch: &Columns, column_names: &[String]) -> Result<Columns> {
+fn project_columns(batch: &Batch, column_names: &[String]) -> Result<Batch> {
+	// For projection, we need to materialize the batch to access column metadata
+	let columns = match batch {
+		Batch::Lazy(lazy) => lazy.clone().into_columns(),
+		Batch::FullyMaterialized(columns) => columns.clone(),
+	};
+
 	let mut projected: Vec<Column> = Vec::with_capacity(column_names.len());
 
 	for name in column_names {
-		let col = batch.iter().find(|c| c.name().text() == name).ok_or_else(|| VmError::ColumnNotFound {
+		let col = columns.iter().find(|c| c.name().text() == name).ok_or_else(|| VmError::ColumnNotFound {
 			name: name.clone(),
 		})?;
 
 		projected.push(col.clone());
 	}
 
-	if batch.row_numbers.is_empty() {
-		Ok(Columns::new(projected))
+	let result_columns = if columns.row_numbers.is_empty() {
+		Columns::new(projected)
 	} else {
-		Ok(Columns::with_row_numbers(projected, batch.row_numbers.to_vec()))
-	}
+		Columns::with_row_numbers(projected, columns.row_numbers.to_vec())
+	};
+
+	Ok(Batch::fully_materialized(result_columns))
 }

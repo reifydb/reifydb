@@ -42,8 +42,11 @@ impl FilterOp {
 					Ok(b) => b,
 				};
 
+				// Materialize batch for filter evaluation
+				let columns = batch.clone().into_columns();
+
 				// Evaluate compiled filter to get filter mask
-				let mask = match predicate.eval(&batch, &eval_ctx).await {
+				let mask = match predicate.eval(&columns, &eval_ctx).await {
 					Err(e) => return Some(Err(e.into())), // Convert EvalError to VmError
 					Ok(m) => m,
 				};

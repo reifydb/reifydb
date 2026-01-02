@@ -1,28 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Table scan operator for creating pipelines from catalog tables.
+//! Table scan operator for VM-controlled batch-at-a-time scanning.
 
 use reifydb_catalog::Catalog;
 use reifydb_core::{
-	interface::{EncodableKey, NamespaceId, RowKey, RowKeyRange, TableDef},
-	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesLayout,
-	},
+	Batch, EncodedKey, LazyBatch, LazyColumnMeta,
+	interface::{EncodableKey, MultiVersionValues, NamespaceId, RowKey, RowKeyRange, TableDef},
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::StandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_type::{Fragment, Type};
 
-use crate::{
-	error::{Result, VmError},
-	pipeline::Pipeline,
-};
+use crate::error::{Result, VmError};
+
+/// State for scanning a table batch-at-a-time.
+/// Stored in VM and used across multiple fetch operations.
+pub struct ScanState {
+	pub table_def: TableDef,
+	pub row_layout: EncodedValuesLayout,
+	pub storage_types: Vec<Type>,
+	pub last_key: Option<EncodedKey>,
+	pub exhausted: bool,
+}
 
 /// Operator for scanning tables from catalog storage.
 ///
-/// This is a source operator that creates a new pipeline from a table name
-/// by looking it up in the catalog and scanning its data from storage.
+/// This is a stateless helper that initializes scan state and fetches batches.
+/// The VM owns the ScanState and controls when to fetch more data.
 pub struct ScanTableOp {
 	pub table_name: String,
 	pub batch_size: u64,
@@ -37,11 +42,11 @@ impl ScanTableOp {
 		}
 	}
 
-	/// Create a pipeline by scanning a table from the catalog.
+	/// Initialize scan state by looking up the table in the catalog.
 	///
-	/// This performs namespace resolution (qualified vs simple names),
-	/// looks up the table definition, and scans all data from storage.
-	pub async fn create<'a>(&self, catalog: &Catalog, tx: &mut StandardTransaction<'a>) -> Result<Pipeline> {
+	/// Called once by the VM when executing a Source instruction.
+	/// The returned ScanState is stored in the VM's active_scans map.
+	pub async fn initialize<'a>(&self, catalog: &Catalog, tx: &mut StandardTransaction<'a>) -> Result<ScanState> {
 		// Resolve namespace and table name
 		let (namespace_id, table_name) = if let Some((ns, tbl)) = self.table_name.split_once('.') {
 			// Qualified name: look up namespace by name
@@ -71,72 +76,89 @@ impl ScanTableOp {
 				name: self.table_name.clone(),
 			})?;
 
-		// Scan the table
-		let columns = scan_table(&table_def, tx, self.batch_size).await?;
+		// Build storage types and layout
+		let storage_types: Vec<_> = table_def.columns.iter().map(|col| col.constraint.get_type()).collect();
+		let row_layout = EncodedValuesLayout::new(&storage_types);
 
-		// Create pipeline from scanned data
-		Ok(create_pipeline_from_columns(columns))
-	}
-}
-
-/// Scan a table and return all rows as a single Columns batch.
-///
-/// This materializes the entire table immediately. For large tables,
-/// a streaming approach would be more appropriate.
-async fn scan_table<'a>(table_def: &TableDef, rx: &mut StandardTransaction<'a>, batch_size: u64) -> Result<Columns> {
-	// Build storage types from column definitions
-	let storage_types: Vec<_> = table_def.columns.iter().map(|col| col.constraint.get_type()).collect();
-
-	let row_layout = EncodedValuesLayout::new(&storage_types);
-
-	// Create empty columns with proper types
-	let empty_columns: Vec<Column> = table_def
-		.columns
-		.iter()
-		.enumerate()
-		.map(|(idx, col)| Column {
-			name: Fragment::internal(&col.name),
-			data: ColumnData::with_capacity(storage_types[idx], 0),
+		Ok(ScanState {
+			table_def,
+			row_layout,
+			storage_types,
+			last_key: None,
+			exhausted: false,
 		})
-		.collect();
+	}
 
-	let mut result = Columns::with_row_numbers(empty_columns, Vec::new());
-	let mut last_key: Option<reifydb_core::EncodedKey> = None;
+	/// Fetch the next batch from storage.
+	///
+	/// Called repeatedly by the VM to fetch batches one at a time.
+	/// Returns None when the scan is exhausted.
+	pub async fn next_batch<'a>(
+		state: &mut ScanState,
+		tx: &mut StandardTransaction<'a>,
+		batch_size: u64,
+	) -> Result<Option<Batch>> {
+		if state.exhausted {
+			return Ok(None);
+		}
 
-	loop {
-		let range = RowKeyRange::scan_range(table_def.id.into(), last_key.as_ref());
-		let batch = rx
+		let range = RowKeyRange::scan_range(state.table_def.id.into(), state.last_key.as_ref());
+
+		let storage_batch = tx
 			.range_batch(range, batch_size)
 			.await
 			.map_err(|e| VmError::Internal(format!("storage error: {}", e)))?;
 
-		if batch.items.is_empty() {
-			break;
+		if storage_batch.items.is_empty() {
+			state.exhausted = true;
+			return Ok(None);
 		}
 
-		let mut batch_rows = Vec::new();
-		let mut row_numbers = Vec::new();
+		// Build LazyBatch from storage data
+		let lazy_batch = build_lazy_batch(
+			storage_batch.items,
+			&state.table_def,
+			&state.row_layout,
+			&state.storage_types,
+			&mut state.last_key,
+		)?;
 
-		for multi in batch.items.into_iter().take(batch_size as usize) {
-			if let Some(key) = RowKey::decode(&multi.key) {
-				batch_rows.push(multi.values);
-				row_numbers.push(key.row);
-				last_key = Some(multi.key);
-			}
-		}
-
-		if batch_rows.is_empty() {
-			break;
-		}
-
-		result.append_rows(&row_layout, batch_rows.into_iter(), row_numbers)
-			.map_err(|e| VmError::Internal(format!("column append error: {}", e)))?;
+		Ok(Some(Batch::lazy(lazy_batch)))
 	}
-
-	Ok(result)
 }
 
-/// Create a pipeline that yields a single batch from pre-scanned data.
-fn create_pipeline_from_columns(columns: Columns) -> Pipeline {
-	Box::pin(futures_util::stream::once(async move { Ok(columns) }))
+/// Build a LazyBatch from storage data.
+///
+/// This keeps data in encoded form for lazy evaluation through filters.
+fn build_lazy_batch(
+	batch: impl IntoIterator<Item = MultiVersionValues>,
+	table_def: &TableDef,
+	row_layout: &EncodedValuesLayout,
+	storage_types: &[Type],
+	last_key: &mut Option<EncodedKey>,
+) -> Result<LazyBatch> {
+	let mut rows = Vec::new();
+	let mut row_numbers = Vec::new();
+
+	for item in batch {
+		if let Some(key) = RowKey::decode(&item.key) {
+			rows.push(item.values);
+			row_numbers.push(key.row);
+			*last_key = Some(item.key);
+		}
+	}
+
+	let column_metas = table_def
+		.columns
+		.iter()
+		.enumerate()
+		.map(|(idx, col)| LazyColumnMeta {
+			name: Fragment::internal(&col.name),
+			storage_type: storage_types[idx],
+			output_type: col.constraint.get_type(),
+			dictionary: None, // TODO: Add dictionary support
+		})
+		.collect();
+
+	Ok(LazyBatch::new(rows, row_numbers, row_layout.clone(), column_metas))
 }

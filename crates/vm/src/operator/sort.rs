@@ -4,7 +4,10 @@
 use std::cmp::Ordering;
 
 use futures_util::{StreamExt, stream::unfold};
-use reifydb_core::value::column::{ColumnData, Columns};
+use reifydb_core::{
+	Batch,
+	value::column::{ColumnData, Columns},
+};
 
 use crate::{
 	error::{Result, VmError},
@@ -52,9 +55,12 @@ impl SortOp {
 				match result {
 					Err(e) => return Some((Err(e), None)),
 					Ok(batch) => {
+						// Materialize the batch to Columns
+						let columns = batch.into_columns();
+
 						collected = Some(match collected {
-							None => batch,
-							Some(existing) => match merge_columns(&existing, batch) {
+							None => columns,
+							Some(existing) => match merge_columns(&existing, columns) {
 								Ok(merged) => merged,
 								Err(e) => return Some((Err(e), None)),
 							},
@@ -64,7 +70,11 @@ impl SortOp {
 			}
 
 			// Sort and emit once, then return None to signal end
-			collected.map(|data| (sort_columns(&data, &specs), None))
+			collected.map(|data| {
+				let sorted = sort_columns(&data, &specs);
+				// Wrap the sorted Columns in a Batch
+				(sorted.map(Batch::fully_materialized), None)
+			})
 		}))
 	}
 }

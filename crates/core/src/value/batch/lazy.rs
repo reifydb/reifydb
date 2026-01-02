@@ -31,7 +31,7 @@ pub struct LazyColumnMeta {
 /// materialize the rows that pass the filter.
 #[derive(Debug, Clone)]
 pub struct LazyBatch {
-	/// Encoded row data (already in memory from storage)
+	/// Encoded row data
 	rows: Vec<EncodedValues>,
 	/// Row numbers from storage
 	row_numbers: Vec<RowNumber>,

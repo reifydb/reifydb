@@ -95,6 +95,10 @@ enum DecodedInstruction {
 	PopPipeline,
 	Merge,
 	DupPipeline,
+	FetchBatch {
+		source_index: u16,
+	},
+	CheckComplete,
 	Jump {
 		offset: i16,
 	},
@@ -149,24 +153,6 @@ impl VmState {
 	pub async fn execute<'a>(&mut self, rx: &mut StandardTransaction<'a>) -> Result<Option<Pipeline>> {
 		loop {
 			let result = self.step(Some(rx)).await?;
-			match result {
-				DispatchResult::Continue => continue,
-				DispatchResult::Halt => break,
-				DispatchResult::Yield(pipeline) => return Ok(Some(pipeline)),
-			}
-		}
-
-		// Return top of pipeline stack if present
-		Ok(self.pipeline_stack.pop())
-	}
-
-	/// Execute the program using only in-memory sources (for testing).
-	///
-	/// This variant doesn't require a transaction and only works when
-	/// all sources are registered in the InMemorySourceRegistry.
-	pub async fn execute_memory(&mut self) -> Result<Option<Pipeline>> {
-		loop {
-			let result = self.step(None).await?;
 			match result {
 				DispatchResult::Continue => continue,
 				DispatchResult::Halt => break,
@@ -308,6 +294,13 @@ impl VmState {
 			Opcode::PopPipeline => DecodedInstruction::PopPipeline,
 			Opcode::Merge => DecodedInstruction::Merge,
 			Opcode::DupPipeline => DecodedInstruction::DupPipeline,
+			Opcode::FetchBatch => {
+				let source_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::FetchBatch {
+					source_index,
+				}
+			}
+			Opcode::CheckComplete => DecodedInstruction::CheckComplete,
 			Opcode::Jump => {
 				let offset = reader.read_i16().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::Jump {
@@ -598,14 +591,30 @@ impl VmState {
 					},
 				)?;
 
-				// Scan table from catalog
 				if let (Some(catalog), Some(rx)) = (&self.context.catalog, rx) {
+					// 1. Initialize scan state
 					let op = ScanTableOp::new(
 						source_def.name.clone(),
 						self.context.config.batch_size,
 					);
-					let pipeline = op.create(catalog, rx).await?;
+					let mut scan_state = op.initialize(catalog, rx).await?;
+
+					// 2. Fetch first batch to maintain backward compatibility
+					let batch_size = self.context.config.batch_size;
+					let batch_opt =
+						ScanTableOp::next_batch(&mut scan_state, rx, batch_size).await?;
+
+					// 3. Store scan state (for potential future FetchBatch calls)
+					self.active_scans.insert(source_index, scan_state);
+
+					// 4. Push first batch as pipeline (maintains old semantics)
+					let pipeline = if let Some(batch) = batch_opt {
+						crate::pipeline::from_batch(batch)
+					} else {
+						crate::pipeline::empty()
+					};
 					self.push_pipeline(pipeline)?;
+
 					self.ip = next_ip;
 				} else {
 					return Err(VmError::TableNotFound {
@@ -643,6 +652,52 @@ impl VmState {
 				return Err(VmError::UnsupportedOperation {
 					operation: "Merge/DupPipeline".to_string(),
 				});
+			}
+
+			DecodedInstruction::FetchBatch {
+				source_index,
+			} => {
+				// Fetch next batch from active scan
+				if let Some(rx) = rx {
+					let scan_state = self
+						.active_scans
+						.get_mut(&source_index)
+						.ok_or(VmError::Internal("scan not initialized".to_string()))?;
+
+					let batch_size = self.context.config.batch_size;
+					let batch_opt = ScanTableOp::next_batch(scan_state, rx, batch_size).await?;
+
+					if let Some(batch) = batch_opt {
+						// Has more data - push batch and true
+						self.push_pipeline(crate::pipeline::from_batch(batch))?;
+						self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(
+							true,
+						)))?;
+					} else {
+						// Exhausted - push empty pipeline and false
+						self.push_pipeline(crate::pipeline::empty())?;
+						self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(
+							false,
+						)))?;
+					}
+					self.ip = next_ip;
+				} else {
+					return Err(VmError::Internal("FetchBatch requires transaction".to_string()));
+				}
+			}
+
+			DecodedInstruction::CheckComplete => {
+				// Pop boolean from operand stack (query complete flag)
+				// This is used by TAKE and other limiting operators to signal completion
+				// The VM could use this in the future to stop execution early
+				let _complete = match self.pop_operand()? {
+					OperandValue::Scalar(reifydb_type::Value::Boolean(b)) => b,
+					_ => return Err(VmError::ExpectedBoolean),
+				};
+
+				// For now, just consume the flag
+				// In the future, this could set a flag on VmState to enable early termination
+				self.ip = next_ip;
 			}
 
 			// ─────────────────────────────────────────────────────────

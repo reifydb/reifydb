@@ -18,7 +18,7 @@ use super::trace::VmTracer;
 use super::{call_stack::CallStack, scope::ScopeChain};
 use crate::{
 	error::{Result, VmError},
-	operator::sort::SortSpec,
+	operator::{ScanState, sort::SortSpec},
 	pipeline::Pipeline,
 };
 
@@ -254,6 +254,10 @@ pub struct VmState {
 	pipeline_registry: HashMap<u64, Pipeline>,
 	next_pipeline_id: u64,
 
+	/// Active table scans (source_index -> ScanState).
+	/// Stores iteration state for batch-at-a-time table scans.
+	pub active_scans: HashMap<u16, ScanState>,
+
 	/// Optional tracer for recording execution.
 	#[cfg(feature = "trace")]
 	pub tracer: Option<VmTracer>,
@@ -273,6 +277,7 @@ impl VmState {
 			context,
 			pipeline_registry: HashMap::new(),
 			next_pipeline_id: 0,
+			active_scans: HashMap::new(),
 			#[cfg(feature = "trace")]
 			tracer: None,
 		}

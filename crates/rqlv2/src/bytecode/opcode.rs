@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Bytecode opcodes for the VM.
-
-/// Bytecode opcodes for the VM.
-/// Each opcode is a single byte, operands follow inline.
+/// ! Each opcode is a single byte, operands follow inline.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opcode {
@@ -112,6 +110,16 @@ pub enum Opcode {
 
 	/// Duplicate top of pipeline stack
 	DupPipeline = 0x26,
+
+	/// Fetch next batch from active scan
+	/// Operand: u16 (source index)
+	/// Pushes batch onto pipeline stack, pushes boolean (has_more) onto operand stack
+	FetchBatch = 0x27,
+
+	/// Check if query is complete (for early termination)
+	/// No operand - pops boolean from operand stack
+	/// Used by TAKE and other limiting operators
+	CheckComplete = 0x28,
 
 	// ─────────────────────────────────────────────────────────────
 	// Control Flow
@@ -346,6 +354,8 @@ impl TryFrom<u8> for Opcode {
 			0x24 => Ok(Opcode::Merge),
 			0x25 => Ok(Opcode::PopPipeline),
 			0x26 => Ok(Opcode::DupPipeline),
+			0x27 => Ok(Opcode::FetchBatch),
+			0x28 => Ok(Opcode::CheckComplete),
 			// Control Flow
 			0x40 => Ok(Opcode::Jump),
 			0x41 => Ok(Opcode::JumpIf),
