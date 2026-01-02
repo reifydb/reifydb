@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
+import {
     decode,
     Value
 } from "@reifydb/core";
