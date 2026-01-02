@@ -62,12 +62,22 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		while !self.is_eof() {
 			self.skip_newlines();
+
+			// Skip empty statements (multiple consecutive semicolons)
+			while self.try_consume_punct(Punctuation::Semicolon) {
+				self.skip_newlines();
+			}
+
 			if self.is_eof() {
 				break;
 			}
 
 			match self.parse_statement() {
-				Ok(stmt) => statements.push(stmt),
+				Ok(stmt) => {
+					statements.push(stmt);
+					// Optional statement separator (semicolon)
+					self.try_consume_punct(Punctuation::Semicolon);
+				}
 				Err(e) => {
 					errors.push(e);
 					self.synchronize();

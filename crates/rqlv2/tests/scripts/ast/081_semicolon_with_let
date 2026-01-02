@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test semicolon with LET statement
+parse 'let $x = 1; FROM users'
+---
+> Program
+> +-- [0] Let($x)
+> |   `-- Integer(1)
+> `-- [1] Expression
+>     `-- From(users)
+>

@@ -165,6 +165,7 @@ impl std::fmt::Debug for CompiledFilter {
 
 #[cfg(test)]
 mod tests {
+	use reifydb::vendor::tokio;
 	use reifydb_core::value::column::ColumnData;
 	use reifydb_type::Fragment;
 

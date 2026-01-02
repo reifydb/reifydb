@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2025 ReifyDB
+
+# Test semicolon with pipeline
+parse 'FROM users | FILTER age > 21; FROM orders'
+---
+> Program
+> +-- [0] Pipeline
+> |   +-- [0] From(users)
+> |   `-- [1] Filter
+> |       `-- Binary(Gt)
+> |           +-- left: Identifier(age)
+> |           `-- right: Integer(21)
+> `-- [1] Expression
+>     `-- From(orders)
+>

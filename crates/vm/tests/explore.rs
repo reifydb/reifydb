@@ -89,7 +89,7 @@ async fn explore() {
 	let registry = Arc::new(InMemorySourceRegistry::new());
 
 	let script = r#"
-        let $x = from test.users | filter age > 25  | MAP { name, age }
+        let $x = from test.users | filter age > 25  | MAP { name, age };
         $x
     "#;
 

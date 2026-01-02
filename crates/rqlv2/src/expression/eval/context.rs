@@ -7,6 +7,8 @@ use std::collections::HashMap;
 
 use reifydb_type::Value;
 
+use super::value::EvalValue;
+
 /// Context for expression evaluation with captured scope variables.
 #[derive(Default, Clone)]
 pub struct EvalContext {
@@ -16,15 +18,6 @@ pub struct EvalContext {
 	/// Current row values for correlated subquery execution.
 	/// Maps column names to their values for the current outer row.
 	pub current_row_values: Option<HashMap<String, Value>>,
-}
-
-/// Value types that can be used in expression evaluation.
-#[derive(Debug, Clone)]
-pub enum EvalValue {
-	/// A scalar value.
-	Scalar(Value),
-	/// A record (map of field names to values).
-	Record(HashMap<String, Value>),
 }
 
 impl EvalContext {
@@ -110,21 +103,5 @@ mod tests {
 
 		assert!(matches!(ctx.get_outer_column("id"), Some(Value::Int8(1))));
 		assert!(ctx.get_outer_column("missing").is_none());
-	}
-
-	#[test]
-	fn test_eval_value_record() {
-		let mut fields = HashMap::new();
-		fields.insert("x".to_string(), Value::Int8(10));
-		fields.insert("y".to_string(), Value::Int8(20));
-
-		let record = EvalValue::Record(fields);
-
-		if let EvalValue::Record(map) = record {
-			assert_eq!(map.get("x"), Some(&Value::Int8(10)));
-			assert_eq!(map.get("y"), Some(&Value::Int8(20)));
-		} else {
-			panic!("expected Record variant");
-		}
 	}
 }
