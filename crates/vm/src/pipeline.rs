@@ -58,3 +58,23 @@ fn merge_columns(target: &mut Columns, source: Columns) -> Result<()> {
 
 	Ok(())
 }
+
+/// Create a pipeline from a Columns batch.
+pub fn from_columns(data: Columns) -> Pipeline {
+	Box::pin(futures_util::stream::once(async move { Ok(data) }))
+}
+
+/// Create an empty pipeline that yields no batches.
+pub fn empty() -> Pipeline {
+	Box::pin(futures_util::stream::empty())
+}
+
+/// Create a pipeline from multiple batches.
+pub fn from_batches(batches: Vec<Columns>) -> Pipeline {
+	Box::pin(futures_util::stream::iter(batches.into_iter().map(Ok::<_, VmError>)))
+}
+
+/// Create a pipeline from a single result.
+pub fn from_result(result: Result<Columns>) -> Pipeline {
+	Box::pin(futures_util::stream::once(async move { result }))
+}

@@ -36,7 +36,6 @@ pub mod rql;
 // pub mod expr; // TODO: Remove - using RQLv2 expressions instead
 pub mod operator;
 pub mod pipeline;
-pub mod source;
 pub mod vmcore;
 
 // Re-exports for convenience
@@ -47,7 +46,8 @@ pub mod vmcore;
 // // TODO: Replace with RQLv2
 pub use error::{Result, VmError};
 // pub use expr::{ColumnSchema, Expr, ExprBuilder, col, lit}; // TODO: Remove - using RQLv2 expressions
-pub use pipeline::{Pipeline, collect};
+pub use operator::{ScanInlineOp, ScanTableOp};
+pub use pipeline::{Pipeline, collect, empty, from_batches, from_columns, from_result};
 pub use reifydb_rqlv2::bytecode::{
 	BytecodeReader,
 	BytecodeWriter,
@@ -56,7 +56,6 @@ pub use reifydb_rqlv2::bytecode::{
 	OperatorKind,
 };
 pub use rql::{RqlError, compile_script, execute_program};
-pub use source::{InMemorySource, InMemorySourceRegistry, SourceRegistry, TableSource, from_batches, from_columns};
 #[cfg(feature = "trace")]
 pub use vmcore::{TraceEntry, VmTracer};
 pub use vmcore::{VmConfig, VmContext, VmState};

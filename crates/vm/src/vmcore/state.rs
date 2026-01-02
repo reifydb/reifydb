@@ -20,7 +20,6 @@ use crate::{
 	error::{Result, VmError},
 	operator::sort::SortSpec,
 	pipeline::Pipeline,
-	source::SourceRegistry,
 };
 
 /// A record is a single row with named fields.
@@ -181,68 +180,50 @@ impl Default for VmConfig {
 
 /// Execution context providing external resources.
 pub struct VmContext {
-	/// Source registry for table lookups.
-	pub sources: Arc<dyn SourceRegistry>,
-
 	/// VM configuration.
 	pub config: VmConfig,
-
-	/// Optional subquery executor for expression evaluation.
-	///
-	/// DEPRECATED: RQLv2 doesn't support user-defined subquery executors yet.
-	/// This field will be removed when subquery support is added to RQLv2.
-	// pub subquery_executor: Option<Arc<dyn SubqueryExecutor>>,
 
 	/// Optional catalog for real storage lookups.
 	pub catalog: Option<Catalog>,
 }
 
 impl VmContext {
-	/// Create a new VM context.
-	pub fn new(sources: Arc<dyn SourceRegistry>) -> Self {
+	/// Create a new VM context with default configuration.
+	pub fn new() -> Self {
 		Self {
-			sources,
 			config: VmConfig::default(),
-			// subquery_executor: None,
 			catalog: None,
 		}
 	}
 
 	/// Create a new VM context with custom configuration.
-	pub fn with_config(sources: Arc<dyn SourceRegistry>, config: VmConfig) -> Self {
+	pub fn with_config(config: VmConfig) -> Self {
 		Self {
-			sources,
 			config,
-			// subquery_executor: None,
-			catalog: None,
-		}
-	}
-
-	/// Create a new VM context with a subquery executor.
-	///
-	/// DEPRECATED: RQLv2 doesn't support user-defined subquery executors yet.
-	#[deprecated(note = "RQLv2 doesn't support user-defined subquery executors yet")]
-	#[allow(dead_code)]
-	pub fn with_subquery_executor(
-		sources: Arc<dyn SourceRegistry>,
-		_executor: (), // Was: Arc<dyn SubqueryExecutor>
-	) -> Self {
-		Self {
-			sources,
-			config: VmConfig::default(),
-			// subquery_executor: None,
 			catalog: None,
 		}
 	}
 
 	/// Create a new VM context with a catalog.
-	pub fn with_catalog(sources: Arc<dyn SourceRegistry>, catalog: Catalog) -> Self {
+	pub fn with_catalog(catalog: Catalog) -> Self {
 		Self {
-			sources,
 			config: VmConfig::default(),
-			// subquery_executor: None,
 			catalog: Some(catalog),
 		}
+	}
+
+	/// Create a new VM context with both custom config and catalog.
+	pub fn with_config_and_catalog(config: VmConfig, catalog: Catalog) -> Self {
+		Self {
+			config,
+			catalog: Some(catalog),
+		}
+	}
+}
+
+impl Default for VmContext {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

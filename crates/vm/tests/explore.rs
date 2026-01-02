@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
-use futures_util::{StreamExt, TryStreamExt};
+use futures_util::TryStreamExt;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{event::EventBus, interface::Identity, ioc::IocContainer, value::column::Columns};
 use reifydb_engine::StandardEngine;
@@ -13,7 +11,7 @@ use reifydb_transaction::{
 	single::TransactionSingle,
 };
 use reifydb_type::Params;
-use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_program};
+use reifydb_vm::{collect, compile_script, execute_program};
 
 async fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory().await;
@@ -85,9 +83,6 @@ async fn explore() {
 
 	let catalog = engine.catalog();
 
-	// Use empty registry - rely on catalog lookups instead
-	let registry = Arc::new(InMemorySourceRegistry::new());
-
 	let script = r#"
         let $x = from test.users | filter age > 25  | MAP { name, age };
         $x
@@ -154,7 +149,7 @@ async fn explore() {
 		println!("{}", frame);
 	}
 
-	let pipeline = execute_program(program.clone(), registry, catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {

@@ -41,7 +41,6 @@ use thiserror::Error;
 use crate::{
 	error::VmError,
 	pipeline::Pipeline,
-	source::SourceRegistry,
 	vmcore::{VmContext, VmState},
 };
 
@@ -139,12 +138,11 @@ pub async fn compile_script(
 /// Execute a compiled bytecode program with catalog access.
 ///
 /// This function creates a VM context, initializes the VM state, and executes
-/// the bytecode program with access to both in-memory sources and the catalog.
+/// the bytecode program with access to the catalog.
 ///
 /// # Arguments
 ///
 /// * `program` - The compiled bytecode program
-/// * `sources` - In-memory source registry (for test data, etc.)
 /// * `catalog` - Catalog for table/view resolution
 /// * `tx` - Transaction for catalog access and execution
 ///
@@ -158,19 +156,17 @@ pub async fn compile_script(
 /// ```ignore
 /// let pipeline = execute_program(
 ///     program,
-///     registry,
 ///     catalog,
 ///     &mut tx
 /// ).await?;
 /// ```
 pub async fn execute_program(
 	program: Arc<CompiledProgram>,
-	sources: Arc<dyn SourceRegistry + Send + Sync>,
 	catalog: Catalog,
 	tx: &mut reifydb_engine::StandardCommandTransaction,
 ) -> Result<Option<Pipeline>, RqlError> {
-	// Create VM context with source registry AND catalog
-	let context = Arc::new(VmContext::with_catalog(sources, catalog));
+	// Create VM context with catalog
+	let context = Arc::new(VmContext::with_catalog(catalog));
 
 	// Create VM state
 	let mut vm = VmState::new(program, context);

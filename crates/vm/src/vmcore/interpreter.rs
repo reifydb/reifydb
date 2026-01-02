@@ -5,22 +5,18 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{interface::NamespaceId, value::column::ColumnData};
+use reifydb_core::value::column::ColumnData;
 use reifydb_engine::StandardTransaction;
 use reifydb_rqlv2::{
 	bytecode::{BytecodeReader, Opcode, OperatorKind},
 	expression::{EvalContext, EvalValue},
 };
 
-use super::{
-	call_stack::CallFrame,
-	state::{OperandValue, VmState},
-};
+use super::state::{OperandValue, VmState};
 use crate::{
 	error::{Result, VmError},
-	operator::{FilterOp, ProjectOp, SelectOp, SortOp, TakeOp},
+	operator::{FilterOp, ProjectOp, ScanTableOp, SelectOp, SortOp, TakeOp},
 	pipeline::Pipeline,
-	source::create_table_scan_pipeline,
 };
 
 /// Result of dispatching a single instruction.
@@ -602,49 +598,16 @@ impl VmState {
 					},
 				)?;
 
-				// Try to get pipeline from in-memory sources first (for testing)
-				if let Some(source) = self.context.sources.get_source(&source_def.name) {
-					let pipeline = source.scan();
-					self.push_pipeline(pipeline)?;
-					self.ip = next_ip;
-				} else if let (Some(catalog), Some(rx)) = (&self.context.catalog, rx) {
-					// Fallback to catalog lookup for real storage
-					let (namespace_id, table_name) =
-						if let Some((ns, tbl)) = source_def.name.split_once('.') {
-							// Qualified name: look up namespace by name
-							let namespace_def = catalog
-								.find_namespace_by_name(rx, ns)
-								.await
-								.map_err(|e| VmError::CatalogError {
-									message: e.to_string(),
-								})?
-								.ok_or_else(|| VmError::NamespaceNotFound {
-									name: ns.to_string(),
-								})?;
-							(namespace_def.id, tbl)
-						} else {
-							// Simple name: use default namespace ID = 1
-							(NamespaceId(1), source_def.name.as_str())
-						};
-
-					// Look up table from catalog via transaction
-					let table_def = catalog
-						.find_table_by_name(rx, namespace_id, table_name)
-						.await
-						.map_err(|e| VmError::CatalogError {
-							message: e.to_string(),
-						})?
-						.ok_or_else(|| VmError::TableNotFound {
-							name: source_def.name.clone(),
-						})?;
-
-					// Create a pipeline that scans the table
-					let batch_size = self.context.config.batch_size;
-					let pipeline = create_table_scan_pipeline(&table_def, rx, batch_size).await?;
+				// Scan table from catalog
+				if let (Some(catalog), Some(rx)) = (&self.context.catalog, rx) {
+					let op = ScanTableOp::new(
+						source_def.name.clone(),
+						self.context.config.batch_size,
+					);
+					let pipeline = op.create(catalog, rx).await?;
 					self.push_pipeline(pipeline)?;
 					self.ip = next_ip;
 				} else {
-					// No transaction and source not found in memory
 					return Err(VmError::TableNotFound {
 						name: source_def.name.clone(),
 					});
