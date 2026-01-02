@@ -9,13 +9,19 @@
 //! - [`CompiledProgram`] - Compiled bytecode ready for execution
 //! - [`SourceMap`] - Maps bytecode offsets to source spans for error reporting
 //! - [`PlanCompiler`] - Compiles Plan to bytecode
+//! - [`ProgramFormatter`] - Pretty-prints compiled programs for debugging
+//! - [`explain_bytecode`] - Explains compiled programs (for testing/debugging)
 
 pub mod compile;
+pub mod display;
+pub mod explain;
 pub mod instruction;
 pub mod opcode;
 pub mod program;
 
 pub use compile::{CompileError, PlanCompiler};
+pub use display::{DisplayConfig, ProgramFormatter};
+pub use explain::explain_bytecode;
 pub use instruction::{BytecodeReader, BytecodeWriter};
 pub use opcode::{ObjectType, Opcode, OperatorKind};
 pub use program::{

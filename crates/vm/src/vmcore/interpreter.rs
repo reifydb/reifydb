@@ -31,111 +31,6 @@ pub enum DispatchResult {
 	Yield(Pipeline),
 }
 
-/// Decoded instruction with all operands.
-#[derive(Debug, Clone)]
-enum DecodedInstruction {
-	PushConst {
-		index: u16,
-	},
-	PushExpr {
-		index: u16,
-	},
-	PushColRef {
-		name_index: u16,
-	},
-	PushColList {
-		index: u16,
-	},
-	PushSortSpec {
-		index: u16,
-	},
-	PushExtSpec {
-		index: u16,
-	},
-	LoadVar {
-		name_index: u16,
-	},
-	StoreVar {
-		name_index: u16,
-	},
-	LoadVarById {
-		var_id: u32,
-	},
-	StoreVarById {
-		var_id: u32,
-	},
-	UpdateVarById {
-		var_id: u32,
-	},
-	LoadPipelineById {
-		var_id: u32,
-	},
-	StorePipelineById {
-		var_id: u32,
-	},
-	Source {
-		source_index: u16,
-	},
-	Inline,
-	Apply {
-		op_kind: OperatorKind,
-	},
-	Collect,
-	PopPipeline,
-	Merge,
-	FetchBatch {
-		source_index: u16,
-	},
-	CheckComplete,
-	Jump {
-		offset: i16,
-	},
-	JumpIf {
-		offset: i16,
-	},
-	JumpIfNot {
-		offset: i16,
-	},
-	Call {
-		func_index: u16,
-	},
-	Return,
-	CallBuiltin {
-		_builtin_id: u16,
-		_arg_count: u8,
-	},
-	EnterScope,
-	ExitScope,
-	FrameLen,
-	FrameRow,
-	GetField {
-		name_index: u16,
-	},
-	IntAdd,
-	IntLt,
-	IntEq,
-	IntSub,
-	IntMul,
-	IntDiv,
-	// Columnar operations
-	ColAdd,
-	ColSub,
-	ColMul,
-	ColDiv,
-	ColLt,
-	ColLe,
-	ColGt,
-	ColGe,
-	ColEq,
-	ColNe,
-	ColAnd,
-	ColOr,
-	ColNot,
-	PrintOut,
-	Nop,
-	Halt,
-}
-
 impl VmState {
 	/// Execute the program until halt or yield.
 	pub async fn execute<'a>(&mut self, rx: &mut StandardTransaction<'a>) -> Result<Option<Pipeline>> {
@@ -152,235 +47,74 @@ impl VmState {
 		Ok(self.pipeline_stack.pop())
 	}
 
-	/// Decode the instruction at the current IP.
-	fn decode(&self) -> Result<(DecodedInstruction, usize)> {
-		let mut reader = BytecodeReader::new(&self.program.bytecode);
-		reader.set_position(self.ip);
-
-		let opcode = reader.read_opcode().ok_or(VmError::InvalidBytecode {
-			position: self.ip,
-		})?;
-
-		let instruction = match opcode {
-			Opcode::PushConst => {
-				let index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushConst {
-					index,
-				}
-			}
-			Opcode::PushExpr => {
-				let index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushExpr {
-					index,
-				}
-			}
-			Opcode::PushColRef => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushColRef {
-					name_index,
-				}
-			}
-			Opcode::PushColList => {
-				let index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushColList {
-					index,
-				}
-			}
-			Opcode::PushSortSpec => {
-				let index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushSortSpec {
-					index,
-				}
-			}
-			Opcode::PushExtSpec => {
-				let index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::PushExtSpec {
-					index,
-				}
-			}
-			Opcode::LoadVar => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::LoadVar {
-					name_index,
-				}
-			}
-			Opcode::StoreVar => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::StoreVar {
-					name_index,
-				}
-			}
-			Opcode::LoadVar => {
-				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::LoadVarById {
-					var_id,
-				}
-			}
-			Opcode::StoreVar => {
-				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::StoreVarById {
-					var_id,
-				}
-			}
-			Opcode::UpdateVar => {
-				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::UpdateVarById {
-					var_id,
-				}
-			}
-			Opcode::LoadPipeline => {
-				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::LoadPipelineById {
-					var_id,
-				}
-			}
-			Opcode::StorePipeline => {
-				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::StorePipelineById {
-					var_id,
-				}
-			}
-			Opcode::Source => {
-				let source_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::Source {
-					source_index,
-				}
-			}
-			Opcode::Inline => DecodedInstruction::Inline,
-			Opcode::Apply => {
-				let op_kind_byte = reader.read_u8().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				let op_kind = OperatorKind::try_from(op_kind_byte).map_err(|_| {
-					VmError::UnknownOperatorKind {
-						kind: op_kind_byte,
-					}
-				})?;
-				DecodedInstruction::Apply {
-					op_kind,
-				}
-			}
-			Opcode::Collect => DecodedInstruction::Collect,
-			Opcode::PopPipeline => DecodedInstruction::PopPipeline,
-			Opcode::Merge => DecodedInstruction::Merge,
-			Opcode::FetchBatch => {
-				let source_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::FetchBatch {
-					source_index,
-				}
-			}
-			Opcode::CheckComplete => DecodedInstruction::CheckComplete,
-			Opcode::Jump => {
-				let offset = reader.read_i16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::Jump {
-					offset,
-				}
-			}
-			Opcode::JumpIf => {
-				let offset = reader.read_i16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::JumpIf {
-					offset,
-				}
-			}
-			Opcode::JumpIfNot => {
-				let offset = reader.read_i16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::JumpIfNot {
-					offset,
-				}
-			}
-			Opcode::Call => {
-				let func_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::Call {
-					func_index,
-				}
-			}
-			Opcode::Return => DecodedInstruction::Return,
-			Opcode::CallBuiltin => {
-				let builtin_id = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				let arg_count = reader.read_u8().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::CallBuiltin {
-					_builtin_id: builtin_id,
-					_arg_count: arg_count,
-				}
-			}
-			Opcode::EnterScope => DecodedInstruction::EnterScope,
-			Opcode::ExitScope => DecodedInstruction::ExitScope,
-			Opcode::FrameLen => DecodedInstruction::FrameLen,
-			Opcode::FrameRow => DecodedInstruction::FrameRow,
-			Opcode::GetField => {
-				let name_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
-				DecodedInstruction::GetField {
-					name_index,
-				}
-			}
-			Opcode::IntAdd => DecodedInstruction::IntAdd,
-			Opcode::IntLt => DecodedInstruction::IntLt,
-			Opcode::IntEq => DecodedInstruction::IntEq,
-			Opcode::IntSub => DecodedInstruction::IntSub,
-			Opcode::IntMul => DecodedInstruction::IntMul,
-			Opcode::IntDiv => DecodedInstruction::IntDiv,
-			// Columnar operations
-			Opcode::ColAdd => DecodedInstruction::ColAdd,
-			Opcode::ColSub => DecodedInstruction::ColSub,
-			Opcode::ColMul => DecodedInstruction::ColMul,
-			Opcode::ColDiv => DecodedInstruction::ColDiv,
-			Opcode::ColLt => DecodedInstruction::ColLt,
-			Opcode::ColLe => DecodedInstruction::ColLe,
-			Opcode::ColGt => DecodedInstruction::ColGt,
-			Opcode::ColGe => DecodedInstruction::ColGe,
-			Opcode::ColEq => DecodedInstruction::ColEq,
-			Opcode::ColNe => DecodedInstruction::ColNe,
-			Opcode::ColAnd => DecodedInstruction::ColAnd,
-			Opcode::ColOr => DecodedInstruction::ColOr,
-			Opcode::ColNot => DecodedInstruction::ColNot,
-			Opcode::PrintOut => DecodedInstruction::PrintOut,
-			Opcode::Nop => DecodedInstruction::Nop,
-			Opcode::Halt => DecodedInstruction::Halt,
-			// DDL/DML opcodes not yet implemented
-			_ => {
-				return Err(VmError::UnsupportedOperation {
-					operation: format!("Opcode {:?} not yet implemented", opcode),
-				});
-			}
-		};
-
-		Ok((instruction, reader.position()))
-	}
-
 	/// Execute a single instruction.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
 	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
-		let (instruction, next_ip) = self.decode()?;
+		// Helper macros for reading operands
+		macro_rules! read_u8 {
+			($reader:expr) => {
+				$reader.read_u8().ok_or(VmError::UnexpectedEndOfBytecode)?
+			};
+		}
 
-		match instruction {
+		macro_rules! read_u16 {
+			($reader:expr) => {
+				$reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?
+			};
+		}
+
+		macro_rules! read_i16 {
+			($reader:expr) => {
+				$reader.read_i16().ok_or(VmError::UnexpectedEndOfBytecode)?
+			};
+		}
+
+		macro_rules! read_u32 {
+			($reader:expr) => {
+				$reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?
+			};
+		}
+
+		// Set up bytecode reader at current IP
+		let mut reader = BytecodeReader::new(&self.program.bytecode);
+		reader.set_position(self.ip);
+
+		// Read the opcode
+		let opcode = reader.read_opcode().ok_or(VmError::InvalidBytecode {
+			position: self.ip,
+		})?;
+
+		match opcode {
 			// ─────────────────────────────────────────────────────────
 			// Stack Operations
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::PushConst {
-				index,
-			} => {
+			Opcode::PushConst => {
+				let index = read_u16!(reader);
+				let next_ip = reader.position();
 				let value = self.get_constant(index)?;
 				self.push_operand(OperandValue::Scalar(value))?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PushExpr {
-				index,
-			} => {
+			Opcode::PushExpr => {
+				let index = read_u16!(reader);
+				let next_ip = reader.position();
 				self.push_operand(OperandValue::ExprRef(index))?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PushColRef {
-				name_index,
-			} => {
+			Opcode::PushColRef => {
+				let name_index = read_u16!(reader);
+				let next_ip = reader.position();
 				let name = self.get_constant_string(name_index)?;
 				self.push_operand(OperandValue::ColRef(name))?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PushColList {
-				index,
-			} => {
+			Opcode::PushColList => {
+				let index = read_u16!(reader);
+				let next_ip = reader.position();
 				let columns = self.program.column_lists.get(index as usize).cloned().ok_or(
 					VmError::InvalidColumnListIndex {
 						index,
@@ -390,49 +124,26 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PushSortSpec {
-				index,
-			} => {
+			Opcode::PushSortSpec => {
+				let index = read_u16!(reader);
+				let next_ip = reader.position();
 				self.push_operand(OperandValue::SortSpecRef(index))?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PushExtSpec {
-				index,
-			} => {
+			Opcode::PushExtSpec => {
+				let index = read_u16!(reader);
+				let next_ip = reader.position();
 				self.push_operand(OperandValue::ExtSpecRef(index))?;
-				self.ip = next_ip;
-			}
-
-			// ─────────────────────────────────────────────────────────
-			// Variable Operations
-			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::LoadVar {
-				name_index,
-			} => {
-				let name = self.get_constant_string(name_index)?;
-				let value = self.scopes.get(&name).cloned().ok_or(VmError::UndefinedVariable {
-					name,
-				})?;
-				self.push_operand(value)?;
-				self.ip = next_ip;
-			}
-
-			DecodedInstruction::StoreVar {
-				name_index,
-			} => {
-				let name = self.get_constant_string(name_index)?;
-				let value = self.pop_operand()?;
-				self.scopes.set(name, value);
 				self.ip = next_ip;
 			}
 
 			// ─────────────────────────────────────────────────────────
 			// Variable Operations (by ID)
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::LoadVarById {
-				var_id,
-			} => {
+			Opcode::LoadVar => {
+				let var_id = read_u32!(reader);
+				let next_ip = reader.position();
 				let value =
 					self.scopes.get_by_id(var_id).cloned().ok_or(VmError::UndefinedVariable {
 						name: format!("${}", var_id),
@@ -441,17 +152,17 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::StoreVarById {
-				var_id,
-			} => {
+			Opcode::StoreVar => {
+				let var_id = read_u32!(reader);
+				let next_ip = reader.position();
 				let value = self.pop_operand()?;
 				self.scopes.set_by_id(var_id, value);
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::UpdateVarById {
-				var_id,
-			} => {
+			Opcode::UpdateVar => {
+				let var_id = read_u32!(reader);
+				let next_ip = reader.position();
 				let value = self.pop_operand()?;
 				// Update existing variable (searches all scopes)
 				if !self.scopes.update_by_id(var_id, value) {
@@ -462,9 +173,9 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::LoadPipelineById {
-				var_id,
-			} => {
+			Opcode::LoadPipeline => {
+				let var_id = read_u32!(reader);
+				let next_ip = reader.position();
 				let value =
 					self.scopes.get_by_id(var_id).cloned().ok_or(VmError::UndefinedVariable {
 						name: format!("${}", var_id),
@@ -482,9 +193,9 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::StorePipelineById {
-				var_id,
-			} => {
+			Opcode::StorePipeline => {
+				let var_id = read_u32!(reader);
+				let next_ip = reader.position();
 				let pipeline = self.pop_pipeline()?;
 				let handle = self.register_pipeline(pipeline);
 				self.scopes.set_by_id(var_id, OperandValue::PipelineRef(handle));
@@ -494,9 +205,9 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Pipeline Operations
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::Source {
-				source_index,
-			} => {
+			Opcode::Source => {
+				let source_index = read_u16!(reader);
+				let next_ip = reader.position();
 				let source_def = self.program.sources.get(source_index as usize).ok_or(
 					VmError::InvalidSourceIndex {
 						index: source_index,
@@ -535,40 +246,48 @@ impl VmState {
 				}
 			}
 
-			DecodedInstruction::Inline => {
+			Opcode::Inline => {
+				let next_ip = reader.position();
 				let pipeline: Pipeline = Box::pin(futures_util::stream::empty());
 				self.push_pipeline(pipeline)?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Apply {
-				op_kind,
-			} => {
+			Opcode::Apply => {
+				let op_kind_byte = read_u8!(reader);
+				let next_ip = reader.position();
+				let op_kind = OperatorKind::try_from(op_kind_byte).map_err(|_| {
+					VmError::UnknownOperatorKind {
+						kind: op_kind_byte,
+					}
+				})?;
 				self.apply_operator(op_kind)?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Collect => {
+			Opcode::Collect => {
+				let next_ip = reader.position();
 				let pipeline = self.pop_pipeline()?;
 				let columns = crate::pipeline::collect(pipeline).await?;
 				self.push_operand(OperandValue::Frame(columns))?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::PopPipeline => {
+			Opcode::PopPipeline => {
+				let next_ip = reader.position();
 				let _ = self.pop_pipeline()?;
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Merge => {
+			Opcode::Merge => {
 				return Err(VmError::UnsupportedOperation {
 					operation: "Merge".to_string(),
 				});
 			}
 
-			DecodedInstruction::FetchBatch {
-				source_index,
-			} => {
+			Opcode::FetchBatch => {
+				let source_index = read_u16!(reader);
+				let next_ip = reader.position();
 				// Fetch next batch from active scan
 				if let Some(rx) = rx {
 					let scan_state = self
@@ -598,7 +317,8 @@ impl VmState {
 				}
 			}
 
-			DecodedInstruction::CheckComplete => {
+			Opcode::CheckComplete => {
+				let next_ip = reader.position();
 				// Pop boolean from operand stack (query complete flag)
 				// This is used by TAKE and other limiting operators to signal completion
 				// The VM could use this in the future to stop execution early
@@ -615,32 +335,29 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Control Flow
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::Jump {
-				offset,
-			} => {
-				let new_ip = (next_ip as i32 + offset as i32) as usize;
-				self.ip = new_ip;
+			Opcode::Jump => {
+				let offset = read_i16!(reader);
+				let next_ip = reader.position();
+				self.ip = (next_ip as i32 + offset as i32) as usize;
 			}
 
-			DecodedInstruction::JumpIf {
-				offset,
-			} => {
+			Opcode::JumpIf => {
+				let offset = read_i16!(reader);
+				let next_ip = reader.position();
 				let value = self.pop_operand()?;
 				if self.is_truthy(&value)? {
-					let new_ip = (next_ip as i32 + offset as i32) as usize;
-					self.ip = new_ip;
+					self.ip = (next_ip as i32 + offset as i32) as usize;
 				} else {
 					self.ip = next_ip;
 				}
 			}
 
-			DecodedInstruction::JumpIfNot {
-				offset,
-			} => {
+			Opcode::JumpIfNot => {
+				let offset = read_i16!(reader);
+				let next_ip = reader.position();
 				let value = self.pop_operand()?;
 				if !self.is_truthy(&value)? {
-					let new_ip = (next_ip as i32 + offset as i32) as usize;
-					self.ip = new_ip;
+					self.ip = (next_ip as i32 + offset as i32) as usize;
 				} else {
 					self.ip = next_ip;
 				}
@@ -649,9 +366,8 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Function Calls
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::Call {
-				func_index,
-			} => {
+			Opcode::Call => {
+				let func_index = read_u16!(reader);
 				// RQLv2's CompiledProgram doesn't support user-defined functions yet.
 				// Functions are planned for a future release.
 				return Err(VmError::UnsupportedOperation {
@@ -698,7 +414,7 @@ impl VmState {
 				*/
 			}
 
-			DecodedInstruction::Return => {
+			Opcode::Return => {
 				// Check if we're at the top level (no call frames)
 				if self.call_stack.is_empty() {
 					// Top-level return: yield the pipeline if present
@@ -731,9 +447,9 @@ impl VmState {
 				self.ip = frame.return_address;
 			}
 
-			DecodedInstruction::CallBuiltin {
-				..
-			} => {
+			Opcode::CallBuiltin => {
+				let _builtin_id = read_u16!(reader);
+				let _arg_count = read_u8!(reader);
 				return Err(VmError::UnsupportedOperation {
 					operation: "CallBuiltin".to_string(),
 				});
@@ -742,12 +458,14 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Scope Management
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::EnterScope => {
+			Opcode::EnterScope => {
+				let next_ip = reader.position();
 				self.scopes.push();
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::ExitScope => {
+			Opcode::ExitScope => {
+				let next_ip = reader.position();
 				self.scopes.pop();
 				self.ip = next_ip;
 			}
@@ -755,7 +473,8 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Frame/Record Operations
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::FrameLen => {
+			Opcode::FrameLen => {
+				let next_ip = reader.position();
 				let frame = self.pop_operand()?;
 				match frame {
 					OperandValue::Frame(columns) => {
@@ -769,7 +488,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::FrameRow => {
+			Opcode::FrameRow => {
+				let next_ip = reader.position();
 				let index = self.pop_operand()?;
 				let frame = self.pop_operand()?;
 
@@ -796,9 +516,9 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::GetField {
-				name_index,
-			} => {
+			Opcode::GetField => {
+				let name_index = read_u16!(reader);
+				let next_ip = reader.position();
 				let record = self.pop_operand()?;
 				let field_name = self.get_constant_string(name_index)?;
 
@@ -818,7 +538,8 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Scalar Arithmetic and Comparison
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::IntAdd => {
+			Opcode::IntAdd => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -834,7 +555,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::IntLt => {
+			Opcode::IntLt => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -850,7 +572,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::IntEq => {
+			Opcode::IntEq => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -866,7 +589,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::IntSub => {
+			Opcode::IntSub => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -882,7 +606,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::IntMul => {
+			Opcode::IntMul => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -898,7 +623,8 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::IntDiv => {
+			Opcode::IntDiv => {
+				let next_ip = reader.position();
 				let b = self.pop_operand()?;
 				let a = self.pop_operand()?;
 
@@ -922,24 +648,24 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Columnar Operations
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::ColAdd
-			| DecodedInstruction::ColSub
-			| DecodedInstruction::ColMul
-			| DecodedInstruction::ColDiv
-			| DecodedInstruction::ColLt
-			| DecodedInstruction::ColLe
-			| DecodedInstruction::ColGt
-			| DecodedInstruction::ColGe
-			| DecodedInstruction::ColEq
-			| DecodedInstruction::ColNe
-			| DecodedInstruction::ColAnd
-			| DecodedInstruction::ColOr => {
+			Opcode::ColAdd
+			| Opcode::ColSub
+			| Opcode::ColMul
+			| Opcode::ColDiv
+			| Opcode::ColLt
+			| Opcode::ColLe
+			| Opcode::ColGt
+			| Opcode::ColGe
+			| Opcode::ColEq
+			| Opcode::ColNe
+			| Opcode::ColAnd
+			| Opcode::ColOr => {
 				return Err(VmError::UnsupportedOperation {
 					operation: "columnar binary operation (not yet implemented)".to_string(),
 				});
 			}
 
-			DecodedInstruction::ColNot => {
+			Opcode::ColNot => {
 				return Err(VmError::UnsupportedOperation {
 					operation: "columnar NOT operation (not yet implemented)".to_string(),
 				});
@@ -948,7 +674,8 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// I/O Operations
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::PrintOut => {
+			Opcode::PrintOut => {
+				let next_ip = reader.position();
 				let value = self.pop_operand()?;
 				self.print_value(&value);
 				self.ip = next_ip;
@@ -957,12 +684,20 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			// Control
 			// ─────────────────────────────────────────────────────────
-			DecodedInstruction::Nop => {
+			Opcode::Nop => {
+				let next_ip = reader.position();
 				self.ip = next_ip;
 			}
 
-			DecodedInstruction::Halt => {
+			Opcode::Halt => {
 				return Ok(DispatchResult::Halt);
+			}
+
+			// DDL/DML opcodes not yet implemented
+			_ => {
+				return Err(VmError::UnsupportedOperation {
+					operation: format!("Opcode {:?} not yet implemented", opcode),
+				});
 			}
 		}
 

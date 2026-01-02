@@ -11,6 +11,7 @@ use reifydb_rqlv2::{
 		explain_ast,
 		parse::{ParseError, ParseErrorKind, Parser},
 	},
+	bytecode::{PlanCompiler, explain_bytecode},
 	plan::{compile::plan as compile_plan, explain::explain_plans},
 	token::{explain_tokenize, tokenize},
 };
@@ -78,6 +79,47 @@ impl testscript::Runner for Runner {
 
 				write!(output, "{}", result)?;
 			}
+			"bytecode" => {
+				let mut args = command.consume_args();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
+				args.reject_rest()?;
+
+				let engine = self.instance.as_ref().unwrap().engine().clone();
+				let catalog = engine.catalog();
+				let bump = Bump::new();
+
+				// Tokenize and parse
+				let tokens = tokenize(query, &bump).map_err(|e| {
+					Box::new(ParseError {
+						kind: ParseErrorKind::Custom(format!("Lex error: {}", e)),
+						span: reifydb_rqlv2::token::Span::default(),
+					}) as Box<dyn Error>
+				})?;
+				let parser = Parser::new(&bump, tokens.tokens.into_bump_slice(), query);
+				let parse_result = parser.parse();
+
+				if !parse_result.errors.is_empty() {
+					return Err(Box::new(parse_result.errors[0].clone()) as Box<dyn Error>);
+				}
+
+				// Compile to plan
+				let runtime = self.runtime.as_ref().unwrap();
+				let result = runtime.block_on(async {
+					let mut tx =
+						engine.begin_query().await.map_err(|e| format!("tx error: {}", e))?;
+					let plans = compile_plan(&bump, &catalog, &mut tx, parse_result.program)
+						.await
+						.map_err(|e| format!("plan error: {}", e))?;
+
+					// Compile plans to bytecode
+					let program = PlanCompiler::compile_all(plans)
+						.map_err(|e| format!("bytecode compile error: {}", e))?;
+
+					Ok::<_, String>(explain_bytecode(&program))
+				})?;
+
+				write!(output, "{}", result)?;
+			}
 			_ => unimplemented!("unknown command: {}", command.name),
 		}
 		Ok(output)
@@ -126,6 +168,7 @@ impl Runner {
 
 test_each_path! { in "crates/rqlv2/tests/scripts/token" as tokenize => run_test }
 test_each_path! { in "crates/rqlv2/tests/scripts/ast" as ast => run_test }
+test_each_path! { in "crates/rqlv2/tests/scripts/bytecode" as bytecode => run_plan_test }
 test_each_path! { in "crates/rqlv2/tests/scripts/plan" as plan => run_plan_test }
 
 fn run_test(path: &Path) {
