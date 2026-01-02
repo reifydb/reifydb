@@ -7,15 +7,17 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::Catalog;
 use reifydb_core::value::column::{Column, Columns};
+use reifydb_rqlv2::{
+	bytecode::{CompiledProgram, Constant},
+	expression::{CompiledExpr, CompiledFilter},
+};
 use reifydb_type::Value;
 
 #[cfg(feature = "trace")]
 use super::trace::VmTracer;
 use super::{call_stack::CallStack, scope::ScopeChain};
 use crate::{
-	bytecode::Program,
 	error::{Result, VmError},
-	expr::{CompiledExpr, CompiledFilter},
 	operator::sort::SortSpec,
 	pipeline::Pipeline,
 	source::SourceRegistry,
@@ -186,7 +188,10 @@ pub struct VmContext {
 	pub config: VmConfig,
 
 	/// Optional subquery executor for expression evaluation.
-	pub subquery_executor: Option<Arc<dyn crate::expr::SubqueryExecutor>>,
+	///
+	/// DEPRECATED: RQLv2 doesn't support user-defined subquery executors yet.
+	/// This field will be removed when subquery support is added to RQLv2.
+	// pub subquery_executor: Option<Arc<dyn SubqueryExecutor>>,
 
 	/// Optional catalog for real storage lookups.
 	pub catalog: Option<Catalog>,
@@ -198,7 +203,7 @@ impl VmContext {
 		Self {
 			sources,
 			config: VmConfig::default(),
-			subquery_executor: None,
+			// subquery_executor: None,
 			catalog: None,
 		}
 	}
@@ -208,20 +213,24 @@ impl VmContext {
 		Self {
 			sources,
 			config,
-			subquery_executor: None,
+			// subquery_executor: None,
 			catalog: None,
 		}
 	}
 
 	/// Create a new VM context with a subquery executor.
+	///
+	/// DEPRECATED: RQLv2 doesn't support user-defined subquery executors yet.
+	#[deprecated(note = "RQLv2 doesn't support user-defined subquery executors yet")]
+	#[allow(dead_code)]
 	pub fn with_subquery_executor(
 		sources: Arc<dyn SourceRegistry>,
-		executor: Arc<dyn crate::expr::SubqueryExecutor>,
+		_executor: (), // Was: Arc<dyn SubqueryExecutor>
 	) -> Self {
 		Self {
 			sources,
 			config: VmConfig::default(),
-			subquery_executor: Some(executor),
+			// subquery_executor: None,
 			catalog: None,
 		}
 	}
@@ -231,7 +240,7 @@ impl VmContext {
 		Self {
 			sources,
 			config: VmConfig::default(),
-			subquery_executor: None,
+			// subquery_executor: None,
 			catalog: Some(catalog),
 		}
 	}
@@ -255,7 +264,7 @@ pub struct VmState {
 	pub call_stack: CallStack,
 
 	/// The program being executed.
-	pub program: Arc<Program>,
+	pub program: Arc<CompiledProgram>,
 
 	/// Execution context (sources, config).
 	pub context: Arc<VmContext>,
@@ -271,7 +280,7 @@ pub struct VmState {
 
 impl VmState {
 	/// Create a new VM state.
-	pub fn new(program: Arc<Program>, context: Arc<VmContext>) -> Self {
+	pub fn new(program: Arc<CompiledProgram>, context: Arc<VmContext>) -> Self {
 		let max_call_depth = context.config.max_call_depth;
 		Self {
 			ip: program.entry_point,
@@ -359,10 +368,35 @@ impl VmState {
 		self.pipeline_registry.remove(&handle.id)
 	}
 
+	/// Convert an RQLv2 Constant to a VM Value.
+	fn constant_to_value(constant: &Constant) -> Value {
+		use reifydb_type::value::{Blob, OrderedF64};
+
+		match constant {
+			Constant::Null => Value::Undefined,
+			Constant::Bool(b) => Value::Boolean(*b),
+			Constant::Int(i) => Value::Int8(*i),
+			Constant::Float(f) => {
+				Value::Float8(OrderedF64::try_from(*f).expect("RQLv2 constants should not contain NaN"))
+			}
+			Constant::String(s) => Value::Utf8(s.clone()),
+			Constant::Bytes(b) => Value::Blob(Blob::from(b.clone())),
+		}
+	}
+
+	/// Get a constant value from the program.
+	pub fn get_constant(&self, index: u16) -> Result<Value> {
+		self.program.constants.get(index as usize).map(Self::constant_to_value).ok_or(
+			VmError::InvalidConstantIndex {
+				index,
+			},
+		)
+	}
+
 	/// Get a constant string from the program.
 	pub fn get_constant_string(&self, index: u16) -> Result<String> {
 		match self.program.constants.get(index as usize) {
-			Some(Value::Utf8(s)) => Ok(s.clone()),
+			Some(Constant::String(s)) => Ok(s.clone()),
 			Some(_) => Err(VmError::ExpectedString {
 				index,
 			}),
@@ -383,15 +417,16 @@ impl VmState {
 	}
 
 	/// Resolve an expression reference to an expression.
-	pub fn resolve_expr(&self, value: &OperandValue) -> Result<crate::expr::Expr> {
-		match value {
-			OperandValue::ExprRef(index) => self.program.expressions.get(*index as usize).cloned().ok_or(
-				VmError::InvalidExpressionIndex {
-					index: *index,
-				},
-			),
-			_ => Err(VmError::ExpectedExpression),
-		}
+	///
+	/// DEPRECATED: RQLv2 uses pre-compiled expressions (CompiledExpr/CompiledFilter)
+	/// instead of AST expressions. This method will be removed.
+	#[allow(dead_code)]
+	pub fn resolve_expr(&self, _value: &OperandValue) -> Result<()> {
+		// RQLv2's CompiledProgram doesn't store AST expressions.
+		// Expressions are pre-compiled to closures in compiled_exprs/compiled_filters.
+		Err(VmError::UnsupportedOperation {
+			operation: "Expression references (RQLv2 uses pre-compiled expressions)".into(),
+		})
 	}
 
 	/// Resolve a compiled filter reference.
@@ -440,13 +475,32 @@ impl VmState {
 
 	/// Resolve a sort specification.
 	pub fn resolve_sort_spec(&self, value: &OperandValue) -> Result<Vec<SortSpec>> {
+		use reifydb_rqlv2::bytecode::SortDirection;
+
+		use crate::operator::sort::SortOrder;
+
 		match value {
 			OperandValue::SortSpecRef(index) => {
-				self.program.sort_specs.get(*index as usize).cloned().ok_or(
+				let rql_spec = self.program.sort_specs.get(*index as usize).ok_or(
 					VmError::InvalidSortSpecIndex {
 						index: *index,
 					},
-				)
+				)?;
+
+				// Convert RQLv2's SortSpec (has Vec<SortKey>) to Vec<VM SortSpec>
+				let vm_specs: Vec<SortSpec> = rql_spec
+					.keys
+					.iter()
+					.map(|key| SortSpec {
+						column: key.column.clone(),
+						order: match key.direction {
+							SortDirection::Asc => SortOrder::Asc,
+							SortDirection::Desc => SortOrder::Desc,
+						},
+					})
+					.collect();
+
+				Ok(vm_specs)
 			}
 			_ => Err(VmError::ExpectedSortSpec),
 		}

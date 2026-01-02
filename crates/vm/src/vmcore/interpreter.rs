@@ -7,15 +7,17 @@ use std::collections::HashMap;
 
 use reifydb_core::{interface::NamespaceId, value::column::ColumnData};
 use reifydb_engine::StandardTransaction;
+use reifydb_rqlv2::{
+	bytecode::{BytecodeReader, Opcode, OperatorKind},
+	expression::{EvalContext, EvalValue},
+};
 
 use super::{
 	call_stack::CallFrame,
 	state::{OperandValue, VmState},
 };
 use crate::{
-	bytecode::{BytecodeReader, Opcode, OperatorKind},
 	error::{Result, VmError},
-	expr::{EvalContext, EvalValue, VmFunctionExecutor},
 	operator::{FilterOp, ProjectOp, SelectOp, SortOp, TakeOp},
 	pipeline::Pipeline,
 	source::create_table_scan_pipeline,
@@ -70,6 +72,21 @@ enum DecodedInstruction {
 	},
 	UpdateVar {
 		name_index: u16,
+	},
+	LoadVarById {
+		var_id: u32,
+	},
+	StoreVarById {
+		var_id: u32,
+	},
+	UpdateVarById {
+		var_id: u32,
+	},
+	LoadPipelineById {
+		var_id: u32,
+	},
+	StorePipelineById {
+		var_id: u32,
 	},
 	Source {
 		source_index: u16,
@@ -243,6 +260,36 @@ impl VmState {
 					name_index,
 				}
 			}
+			Opcode::LoadVarById => {
+				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::LoadVarById {
+					var_id,
+				}
+			}
+			Opcode::StoreVarById => {
+				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::StoreVarById {
+					var_id,
+				}
+			}
+			Opcode::UpdateVarById => {
+				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::UpdateVarById {
+					var_id,
+				}
+			}
+			Opcode::LoadPipelineById => {
+				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::LoadPipelineById {
+					var_id,
+				}
+			}
+			Opcode::StorePipelineById => {
+				let var_id = reader.read_u32().ok_or(VmError::UnexpectedEndOfBytecode)?;
+				DecodedInstruction::StorePipelineById {
+					var_id,
+				}
+			}
 			Opcode::Source => {
 				let source_index = reader.read_u16().ok_or(VmError::UnexpectedEndOfBytecode)?;
 				DecodedInstruction::Source {
@@ -331,6 +378,12 @@ impl VmState {
 			Opcode::PrintOut => DecodedInstruction::PrintOut,
 			Opcode::Nop => DecodedInstruction::Nop,
 			Opcode::Halt => DecodedInstruction::Halt,
+			// DDL/DML opcodes not yet implemented
+			_ => {
+				return Err(VmError::UnsupportedOperation {
+					operation: format!("Opcode {:?} not yet implemented", opcode),
+				});
+			}
 		};
 
 		Ok((instruction, reader.position()))
@@ -349,11 +402,7 @@ impl VmState {
 			DecodedInstruction::PushConst {
 				index,
 			} => {
-				let value = self.program.constants.get(index as usize).cloned().ok_or(
-					VmError::InvalidConstantIndex {
-						index,
-					},
-				)?;
+				let value = self.get_constant(index)?;
 				self.push_operand(OperandValue::Scalar(value))?;
 				self.ip = next_ip;
 			}
@@ -474,6 +523,70 @@ impl VmState {
 						name,
 					});
 				}
+				self.ip = next_ip;
+			}
+
+			// ─────────────────────────────────────────────────────────
+			// Variable Operations (by ID)
+			// ─────────────────────────────────────────────────────────
+			DecodedInstruction::LoadVarById {
+				var_id,
+			} => {
+				let value =
+					self.scopes.get_by_id(var_id).cloned().ok_or(VmError::UndefinedVariable {
+						name: format!("${}", var_id),
+					})?;
+				self.push_operand(value)?;
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::StoreVarById {
+				var_id,
+			} => {
+				let value = self.pop_operand()?;
+				self.scopes.set_by_id(var_id, value);
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::UpdateVarById {
+				var_id,
+			} => {
+				let value = self.pop_operand()?;
+				// Update existing variable (searches all scopes)
+				if !self.scopes.update_by_id(var_id, value) {
+					return Err(VmError::UndefinedVariable {
+						name: format!("${}", var_id),
+					});
+				}
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::LoadPipelineById {
+				var_id,
+			} => {
+				let value =
+					self.scopes.get_by_id(var_id).cloned().ok_or(VmError::UndefinedVariable {
+						name: format!("${}", var_id),
+					})?;
+
+				match value {
+					OperandValue::PipelineRef(handle) => {
+						let pipeline = self
+							.take_pipeline(&handle)
+							.ok_or(VmError::InvalidPipelineHandle)?;
+						self.push_pipeline(pipeline)?;
+					}
+					_ => return Err(VmError::ExpectedPipeline),
+				}
+				self.ip = next_ip;
+			}
+
+			DecodedInstruction::StorePipelineById {
+				var_id,
+			} => {
+				let pipeline = self.pop_pipeline()?;
+				let handle = self.register_pipeline(pipeline);
+				self.scopes.set_by_id(var_id, OperandValue::PipelineRef(handle));
 				self.ip = next_ip;
 			}
 
@@ -609,6 +722,14 @@ impl VmState {
 			DecodedInstruction::Call {
 				func_index,
 			} => {
+				// RQLv2's CompiledProgram doesn't support user-defined functions yet.
+				// Functions are planned for a future release.
+				return Err(VmError::UnsupportedOperation {
+					operation: format!("User-defined functions (func_index: {})", func_index),
+				});
+
+				// TODO: Restore when RQLv2 adds function support
+				/*
 				let func_def = self
 					.program
 					.functions
@@ -644,10 +765,23 @@ impl VmState {
 
 				// Jump to function body
 				self.ip = func_def.bytecode_offset;
+				*/
 			}
 
 			DecodedInstruction::Return => {
-				let frame = self.call_stack.pop().ok_or(VmError::ReturnOutsideFunction)?;
+				// Check if we're at the top level (no call frames)
+				if self.call_stack.is_empty() {
+					// Top-level return: yield the pipeline if present
+					if let Some(pipeline) = self.pipeline_stack.pop() {
+						return Ok(DispatchResult::Yield(pipeline));
+					} else {
+						// No pipeline to return, just halt
+						return Ok(DispatchResult::Halt);
+					}
+				}
+
+				// Inside a function: pop call frame and return to caller
+				let frame = self.call_stack.pop().unwrap();
 
 				// Restore scope
 				self.scopes.pop_to_depth(frame.scope_depth);
@@ -941,6 +1075,13 @@ impl VmState {
 				let sort_spec = self.resolve_sort_spec(&spec)?;
 				SortOp::new(sort_spec).apply(pipeline)
 			}
+
+			// Not yet implemented
+			_ => {
+				return Err(VmError::UnsupportedOperation {
+					operation: format!("OperatorKind {:?} not yet implemented", op_kind),
+				});
+			}
 		};
 
 		self.push_pipeline(new_pipeline)?;
@@ -948,76 +1089,23 @@ impl VmState {
 	}
 
 	/// Capture all scope variables into an EvalContext for expression evaluation.
+	///
+	/// NOTE: RQLv2 uses variable IDs (u32) instead of variable names.
+	/// This method is deprecated and will be removed when DSL compilation is replaced with RQLv2.
+	#[allow(dead_code)]
 	fn capture_scope_context(&self) -> EvalContext {
-		let mut variables = HashMap::new();
-
-		// Iterate through all scope levels and capture variables
-		for scope in self.scopes.iter() {
-			for (name, value) in scope.iter() {
-				// Only add if not already present (inner scopes shadow outer)
-				if !variables.contains_key(name) {
-					if let Some(eval_value) = operand_to_eval_value(value) {
-						variables.insert(name.clone(), eval_value);
-					}
-				}
-			}
-		}
-
-		// Build function executor from program's functions
-		let functions = self.build_function_executor();
-
-		EvalContext::with_functions(variables, functions)
+		// For now, return an empty context since the old DSL module is deprecated.
+		// When we implement RQLv2 compilation, variables will be tracked by ID.
+		EvalContext::new()
 	}
 
-	/// Build a VmFunctionExecutor from the program's bytecode functions.
+	/// Build a function executor from the program's bytecode functions.
 	///
-	/// TODO: User-defined function execution needs to be refactored to work with transactions.
-	/// For now, this returns an empty executor - functions in expressions are not yet supported.
-	fn build_function_executor(&self) -> VmFunctionExecutor {
-		let executor = VmFunctionExecutor::new();
-
-		// TODO: Re-enable when function execution is refactored to work with transactions
-		// for func_def in &self.program.functions {
-		// 	let func_name = func_def.name.clone();
-		// 	let program = self.program.clone();
-		// 	let func_index =
-		// 		self.program.functions.iter().position(|f| f.name == func_name).unwrap() as u16;
-		//
-		// 	// Create a wrapper that executes the bytecode function
-		// 	let wrapper: crate::expr::VmScalarFn =
-		// 		Arc::new(move |ctx: VmFunctionContext| -> Result<ColumnData> {
-		// 			let func_def = &program.functions[func_index as usize];
-		//
-		// 			// For functions with column arguments, we need columnar execution.
-		// 			// For now, handle the simple case of no-arg functions that return constants.
-		// 			if !func_def.parameters.is_empty() && !ctx.columns.is_empty() {
-		// 				// TODO: Implement full columnar function execution
-		// 				// For now, execute row-by-row for functions with arguments
-		// 				return execute_function_columnar(&program, func_index, ctx);
-		// 			}
-		//
-		// 			// Execute the function in a fresh VM state
-		// 			let result = execute_function_once(&program, func_index, ctx.columns)?;
-		//
-		// 			// Broadcast scalar result to column
-		// 			match result {
-		// 				OperandValue::Scalar(v) => {
-		// 					Ok(broadcast_scalar_to_column(&v, ctx.row_count))
-		// 				}
-		// 				OperandValue::Column(col) => Ok(col.data().clone()),
-		// 				_ => Err(VmError::UnsupportedOperation {
-		// 					operation: format!(
-		// 						"function returned {:?}, expected scalar or column",
-		// 						result
-		// 					),
-		// 				}),
-		// 			}
-		// 		});
-		//
-		// 	executor.register(func_name, wrapper);
-		// }
-
-		executor
+	/// DEPRECATED: User-defined functions are not supported in RQLv2 yet.
+	/// This method will be removed when DSL compilation is replaced with RQLv2.
+	#[allow(dead_code)]
+	fn build_function_executor(&self) {
+		// Stubbed out - RQLv2 doesn't support user-defined functions yet
 	}
 
 	/// Print a value to stdout (for console::log).
@@ -1050,10 +1138,20 @@ impl VmState {
 }
 
 /// Convert an OperandValue to an EvalValue if possible.
+///
+/// DEPRECATED: This function is no longer used since the old DSL module is deprecated.
+#[allow(dead_code)]
 fn operand_to_eval_value(value: &OperandValue) -> Option<EvalValue> {
 	match value {
 		OperandValue::Scalar(v) => Some(EvalValue::Scalar(v.clone())),
-		OperandValue::Record(r) => Some(EvalValue::Record(r.clone())),
+		OperandValue::Record(r) => {
+			// Convert Record to HashMap for RQLv2's EvalValue
+			let mut map = HashMap::new();
+			for (name, val) in &r.fields {
+				map.insert(name.clone(), val.clone());
+			}
+			Some(EvalValue::Record(map))
+		}
 		_ => None, // Other types cannot be used in expressions
 	}
 }

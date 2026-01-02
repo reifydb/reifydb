@@ -16,8 +16,7 @@ use crate::{
 		OutputSchema, Plan,
 		node::{
 			control::{BreakNode, ContinueNode, ReturnNode},
-			expr::PlanExpr,
-			query::ScanNode,
+			query::{ScanNode, VariableSourceNode},
 		},
 	},
 };
@@ -160,12 +159,11 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					span: lit.span(),
 				}))
 			}
-			// Handle variables as return statements (for for loop body)
+			// Handle variables as pipeline sources
 			Expr::Variable(var) => {
 				let resolved = self.resolve_variable(var.name, var.span)?;
-				let expr = self.bump.alloc(PlanExpr::Variable(resolved));
-				Ok(Plan::Return(ReturnNode {
-					value: Some(expr),
+				Ok(Plan::VariableSource(VariableSourceNode {
+					variable: resolved,
 					span: var.span,
 				}))
 			}
@@ -248,12 +246,11 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					span: lit.span(),
 				}))
 			}
-			// Handle variables as return statements (for for loop body)
+			// Handle variables as pipeline sources
 			Expr::Variable(var) => {
 				let resolved = self.resolve_variable(var.name, var.span)?;
-				let expr = self.bump.alloc(PlanExpr::Variable(resolved));
-				Ok(Plan::Return(ReturnNode {
-					value: Some(expr),
+				Ok(Plan::VariableSource(VariableSourceNode {
+					variable: resolved,
 					span: var.span,
 				}))
 			}

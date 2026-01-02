@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_rqlv2::expression::EvalError;
 use reifydb_type::Type;
 use thiserror::Error;
 
@@ -245,3 +246,47 @@ pub enum VmError {
 }
 
 pub type Result<T> = std::result::Result<T, VmError>;
+
+// Conversion from RQLv2's EvalError to VmError
+impl From<EvalError> for VmError {
+	fn from(err: EvalError) -> Self {
+		match err {
+			EvalError::ColumnNotFound {
+				name,
+			} => VmError::ColumnNotFound {
+				name,
+			},
+			EvalError::VariableNotFound {
+				id,
+			} => VmError::UndefinedVariable {
+				name: format!("variable ID {}", id),
+			},
+			EvalError::TypeMismatch {
+				expected,
+				found,
+				context,
+			} => VmError::CompileError {
+				message: format!(
+					"type mismatch in {}: expected {}, found {}",
+					context, expected, found
+				),
+			},
+			EvalError::DivisionByZero => VmError::DivisionByZero,
+			EvalError::RowCountMismatch {
+				expected,
+				actual,
+			} => VmError::RowCountMismatch {
+				expected,
+				actual,
+			},
+			EvalError::UnsupportedOperation {
+				operation,
+			} => VmError::UnsupportedOperation {
+				operation,
+			},
+			EvalError::SubqueryError {
+				message,
+			} => VmError::Internal(message),
+		}
+	}
+}

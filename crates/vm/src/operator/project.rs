@@ -2,13 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, Columns};
+use reifydb_rqlv2::expression::{CompiledExpr, EvalContext};
 use reifydb_type::Fragment;
 use tokio_stream::StreamExt as TokioStreamExt;
 
-use crate::{
-	expr::{CompiledExpr, EvalContext},
-	pipeline::Pipeline,
-};
+use crate::pipeline::Pipeline;
 
 /// Project operator - adds computed columns using compiled expressions.
 pub struct ProjectOp {

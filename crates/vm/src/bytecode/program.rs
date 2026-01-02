@@ -2,13 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Program structure for compiled bytecode.
+//!
+//! DEPRECATED: This module is deprecated. Use `reifydb_rqlv2::bytecode::CompiledProgram` instead.
+
+#![allow(dead_code)]
 
 use reifydb_type::Value;
 
-use crate::{
-	expr::{CompiledExpr, CompiledFilter, Expr},
-	operator::sort::SortSpec,
-};
+use crate::operator::sort::SortSpec;
 
 /// A compiled VM program.
 #[derive(Debug, Clone)]
@@ -20,13 +21,16 @@ pub struct Program {
 	pub constants: Vec<Value>,
 
 	/// Expression pool (AST expressions, used during compilation).
-	pub expressions: Vec<Expr>,
+	/// DEPRECATED: Use RQLv2's expression system instead.
+	pub expressions: Vec<String>, // Placeholder - was Vec<Expr>
 
 	/// Compiled filter expressions (closure-compiled for fast evaluation).
-	pub compiled_filters: Vec<CompiledFilter>,
+	/// DEPRECATED: Use RQLv2's CompiledFilter instead.
+	pub compiled_filters: Vec<String>, // Placeholder - was Vec<CompiledFilter>
 
 	/// Compiled expressions (closure-compiled for fast evaluation).
-	pub compiled_exprs: Vec<CompiledExpr>,
+	/// DEPRECATED: Use RQLv2's CompiledExpr instead.
+	pub compiled_exprs: Vec<String>, // Placeholder - was Vec<CompiledExpr>
 
 	/// Source definitions (table names for scan).
 	pub sources: Vec<SourceDef>,
@@ -83,23 +87,29 @@ impl Program {
 	}
 
 	/// Add an expression and return its index.
-	pub fn add_expression(&mut self, expr: Expr) -> u16 {
+	/// DEPRECATED: Use RQLv2's expression system instead.
+	#[deprecated(note = "Use RQLv2's expression system")]
+	pub fn add_expression(&mut self, _expr: String) -> u16 {
 		let index = self.expressions.len();
-		self.expressions.push(expr);
+		self.expressions.push(String::new());
 		index as u16
 	}
 
 	/// Add a compiled filter and return its index.
-	pub fn add_compiled_filter(&mut self, filter: CompiledFilter) -> u16 {
+	/// DEPRECATED: Use RQLv2's CompiledFilter instead.
+	#[deprecated(note = "Use RQLv2's CompiledFilter")]
+	pub fn add_compiled_filter(&mut self, _filter: String) -> u16 {
 		let index = self.compiled_filters.len();
-		self.compiled_filters.push(filter);
+		self.compiled_filters.push(String::new());
 		index as u16
 	}
 
 	/// Add a compiled expression and return its index.
-	pub fn add_compiled_expr(&mut self, expr: CompiledExpr) -> u16 {
+	/// DEPRECATED: Use RQLv2's CompiledExpr instead.
+	#[deprecated(note = "Use RQLv2's CompiledExpr")]
+	pub fn add_compiled_expr(&mut self, _expr: String) -> u16 {
 		let index = self.compiled_exprs.len();
-		self.compiled_exprs.push(expr);
+		self.compiled_exprs.push(String::new());
 		index as u16
 	}
 

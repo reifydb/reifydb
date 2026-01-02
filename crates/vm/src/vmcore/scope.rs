@@ -10,8 +10,10 @@ use super::state::OperandValue;
 /// A single scope level.
 #[derive(Debug, Clone)]
 pub struct Scope {
-	/// Variables bound in this scope.
+	/// Variables bound in this scope by name.
 	variables: HashMap<String, OperandValue>,
+	/// Variables bound in this scope by ID (for RQLv2 bytecode).
+	variables_by_id: HashMap<u32, OperandValue>,
 }
 
 impl Scope {
@@ -19,6 +21,7 @@ impl Scope {
 	pub fn new() -> Self {
 		Self {
 			variables: HashMap::new(),
+			variables_by_id: HashMap::new(),
 		}
 	}
 
@@ -32,9 +35,24 @@ impl Scope {
 		self.variables.insert(name, value);
 	}
 
+	/// Get a variable from this scope by ID.
+	pub fn get_by_id(&self, id: u32) -> Option<&OperandValue> {
+		self.variables_by_id.get(&id)
+	}
+
+	/// Set a variable in this scope by ID.
+	pub fn set_by_id(&mut self, id: u32, value: OperandValue) {
+		self.variables_by_id.insert(id, value);
+	}
+
 	/// Check if a variable exists in this scope.
 	pub fn contains(&self, name: &str) -> bool {
 		self.variables.contains_key(name)
+	}
+
+	/// Check if a variable ID exists in this scope.
+	pub fn contains_id(&self, id: u32) -> bool {
+		self.variables_by_id.contains_key(&id)
 	}
 
 	/// Iterate over all variables in this scope.
@@ -95,12 +113,41 @@ impl ScopeChain {
 		}
 	}
 
+	/// Look up a variable by ID (searches from innermost to outermost scope).
+	pub fn get_by_id(&self, id: u32) -> Option<&OperandValue> {
+		for scope in self.scopes.iter().rev() {
+			if let Some(value) = scope.get_by_id(id) {
+				return Some(value);
+			}
+		}
+		None
+	}
+
+	/// Set a variable by ID in the current (innermost) scope.
+	pub fn set_by_id(&mut self, id: u32, value: OperandValue) {
+		if let Some(scope) = self.scopes.last_mut() {
+			scope.set_by_id(id, value);
+		}
+	}
+
 	/// Update an existing variable (searches all scopes from inner to outer).
 	/// Returns true if variable was found and updated, false otherwise.
 	pub fn update(&mut self, name: &str, value: OperandValue) -> bool {
 		for scope in self.scopes.iter_mut().rev() {
 			if scope.contains(name) {
 				scope.set(name.to_string(), value);
+				return true;
+			}
+		}
+		false
+	}
+
+	/// Update an existing variable by ID (searches all scopes from inner to outer).
+	/// Returns true if variable was found and updated, false otherwise.
+	pub fn update_by_id(&mut self, id: u32, value: OperandValue) -> bool {
+		for scope in self.scopes.iter_mut().rev() {
+			if scope.contains_id(id) {
+				scope.set_by_id(id, value);
 				return true;
 			}
 		}

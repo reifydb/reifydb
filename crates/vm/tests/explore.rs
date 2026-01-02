@@ -1,141 +1,196 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-// use std::sync::Arc;
-//
-// use reifydb_core::value::column::{Column, ColumnData, Columns};
-// use reifydb_type::Fragment;
-// use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_script_memory};
-//
-// /// Create test data - modify this to set up your exploration data
-// fn create_registry() -> InMemorySourceRegistry {
-// 	let mut registry = InMemorySourceRegistry::new();
-//
-// 	let columns = Columns::new(vec![
-// 		Column::new(Fragment::from("id"), ColumnData::int8(vec![1, 2, 3, 4, 5])),
-// 		Column::new(
-// 			Fragment::from("name"),
-// 			ColumnData::utf8(vec![
-// 				String::from("Alice"),
-// 				String::from("Bob"),
-// 				String::from("Charlie"),
-// 				String::from("Diana"),
-// 				String::from("Eve"),
-// 			]),
-// 		),
-// 		Column::new(Fragment::from("age"), ColumnData::int8(vec![25, 17, 35, 22, 19])),
-// 		Column::new(Fragment::from("score"), ColumnData::float8(vec![85.5, 92.0, 78.5, 88.0, 95.5])),
-// 	]);
-//
-// 	registry.register("users", columns);
-// 	registry
-// }
-//
-// #[tokio::test]
-// async fn explore() {
-// 	let registry = create_registry();
-//
-// 	// ============================================
-// 	// MODIFY THIS SCRIPT TO EXPLORE THE VM
-// 	// ============================================
-// 	let script = r#"
-//         let $user = scan users | filter age > 20 | select [name, age]
-//         $user
-//     "#;
-//
-// 	// Debug: compile and show bytecode
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== BYTECODE ===");
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Sources: {:?}", program.sources);
-// 	println!("Expressions: {:?}", program.expressions);
-// 	println!("Column lists: {:?}", program.column_lists);
-// 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
-//
-// 	// Decode bytecode
-// 	println!("\nDecoded:");
-// 	let mut i = 0;
-// 	while i < program.bytecode.len() {
-// 		let op = program.bytecode[i];
-// 		let desc = match op {
-// 			0x20 => {
-// 				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
-// 				i += 2;
-// 				format!("Source {}", idx)
-// 			}
-// 			0x02 => {
-// 				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
-// 				i += 2;
-// 				format!("PushExpr {}", idx)
-// 			}
-// 			0x04 => {
-// 				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
-// 				i += 2;
-// 				format!("PushColList {}", idx)
-// 			}
-// 			0x22 => {
-// 				let k = program.bytecode[i + 1];
-// 				i += 1;
-// 				format!("Apply {:?}", k)
-// 			}
-// 			0x12 => {
-// 				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
-// 				i += 2;
-// 				format!("StorePipeline {} ({:?})", idx, program.constants.get(idx as usize))
-// 			}
-// 			0x13 => {
-// 				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
-// 				i += 2;
-// 				format!("LoadPipeline {} ({:?})", idx, program.constants.get(idx as usize))
-// 			}
-// 			0xFF => "Halt".to_string(),
-// 			_ => format!("Unknown(0x{:02X})", op),
-// 		};
-// 		println!("  {:04}: {}", i, desc);
-// 		i += 1;
-// 	}
-// 	println!("================\n");
-//
-// 	// Execute using bytecode VM
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-// 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => {
-// 			println!("Got pipeline, collecting...");
-// 			match collect(p).await {
-// 				Ok(cols) => {
-// 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
-// 					cols
-// 				}
-// 				Err(e) => {
-// 					println!("Collect failed: {:?}", e);
-// 					Columns::empty()
-// 				}
-// 			}
-// 		}
-// 		Ok(None) => {
-// 			println!("No pipeline returned");
-// 			Columns::empty()
-// 		}
-// 		Err(e) => {
-// 			println!("Execute failed: {:?}", e);
-// 			Columns::empty()
-// 		}
-// 	};
-//
-// 	// Print results
-// 	println!("\n=== RESULT ===");
-// 	println!("Columns: {}", result.len());
-// 	println!("Rows: {}", result.row_count());
-// 	for col in result.iter() {
-// 		println!("\n  Column: {}", col.name().text());
-// 		println!("  Data: {:?}", col.data());
-// 	}
-// 	println!("==============\n");
-// }
-//
+use std::sync::Arc;
+
+use futures_util::{StreamExt, TryStreamExt};
+use reifydb_catalog::MaterializedCatalog;
+use reifydb_core::{event::EventBus, interface::Identity, ioc::IocContainer, value::column::Columns};
+use reifydb_engine::StandardEngine;
+use reifydb_store_transaction::TransactionStore;
+use reifydb_transaction::{
+	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
+	single::TransactionSingle,
+};
+use reifydb_type::Params;
+use reifydb_vm::{InMemorySourceRegistry, collect, compile_script, execute_program};
+
+async fn create_test_engine() -> StandardEngine {
+	let store = TransactionStore::testing_memory().await;
+	let eventbus = EventBus::new();
+	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
+	let cdc = TransactionCdc::new(store.clone());
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
+
+	StandardEngine::new(
+		multi,
+		single,
+		cdc,
+		eventbus,
+		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
+		None,
+		IocContainer::new(),
+	)
+	.await
+}
+
+/// Test identity for commands.
+fn test_identity() -> Identity {
+	Identity::root()
+}
+
+/// Create a namespace via RQL command.
+async fn create_namespace(engine: &StandardEngine, name: &str) {
+	let identity = test_identity();
+	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
+		.try_collect::<Vec<_>>()
+		.await
+		.unwrap();
+}
+
+/// Create a table via RQL command.
+async fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
+	let identity = test_identity();
+	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
+		.try_collect::<Vec<_>>()
+		.await
+		.unwrap();
+}
+
+/// Insert data via RQL command.
+async fn insert_data(engine: &StandardEngine, rql: &str) {
+	let identity = test_identity();
+	engine.command_as(&identity, rql, Default::default()).try_collect::<Vec<_>>().await.unwrap();
+}
+
+#[tokio::test]
+async fn explore() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int4, name: utf8, age: int4").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 30},
+				{id: 2, name: "Bob", age: 25},
+				{id: 3, name: "Charlie", age: 35}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+
+	let catalog = engine.catalog();
+
+	// Use empty registry - rely on catalog lookups instead
+	let registry = Arc::new(InMemorySourceRegistry::new());
+
+	let script = r#"
+        let $x = from test.users | MAP { name, age }
+        $x
+    "#;
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== BYTECODE ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Sources: {:?}", program.sources);
+	println!("Column lists: {:?}", program.column_lists);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+
+	// Decode bytecode
+	println!("\nDecoded:");
+	let mut i = 0;
+	while i < program.bytecode.len() {
+		let op = program.bytecode[i];
+		let desc = match op {
+			0x20 => {
+				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
+				i += 2;
+				format!("Source {}", idx)
+			}
+			0x02 => {
+				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
+				i += 2;
+				format!("PushExpr {}", idx)
+			}
+			0x04 => {
+				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
+				i += 2;
+				format!("PushColList {}", idx)
+			}
+			0x22 => {
+				let k = program.bytecode[i + 1];
+				i += 1;
+				format!("Apply {:?}", k)
+			}
+			0x12 => {
+				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
+				i += 2;
+				format!("StorePipeline {} ({:?})", idx, program.constants.get(idx as usize))
+			}
+			0x13 => {
+				let idx = u16::from_le_bytes([program.bytecode[i + 1], program.bytecode[i + 2]]);
+				i += 2;
+				format!("LoadPipeline {} ({:?})", idx, program.constants.get(idx as usize))
+			}
+			0xFF => "Halt".to_string(),
+			_ => format!("Unknown(0x{:02X})", op),
+		};
+		println!("  {:04}: {}", i, desc);
+		i += 1;
+	}
+	println!("================\n");
+
+	for frame in engine
+		.query_as(&test_identity(), "from test.users", Params::None)
+		.try_collect::<Vec<_>>()
+		.await
+		.unwrap()
+	{
+		println!("{}", frame);
+	}
+
+	let pipeline = execute_program(program.clone(), registry, catalog, &mut tx).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	let result = match pipeline {
+		Ok(Some(p)) => {
+			println!("Got pipeline, collecting...");
+			match collect(p).await {
+				Ok(cols) => {
+					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
+					cols
+				}
+				Err(e) => {
+					println!("Collect failed: {:?}", e);
+					Columns::empty()
+				}
+			}
+		}
+		Ok(None) => {
+			println!("No pipeline returned");
+			Columns::empty()
+		}
+		Err(e) => {
+			println!("Execute failed: {:?}", e);
+			Columns::empty()
+		}
+	};
+
+	// Print results
+	println!("\n=== RESULT ===");
+	println!("Columns: {}", result.len());
+	println!("Rows: {}", result.row_count());
+	for col in result.iter() {
+		println!("\n  Column: {}", col.name().text());
+		println!("  Data: {:?}", col.data());
+	}
+	println!("==============\n");
+}
 // #[tokio::test]
 // async fn test_function_declaration_and_call() {
 // 	let registry = create_registry();

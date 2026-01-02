@@ -2,11 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use futures_util::StreamExt;
+use reifydb_rqlv2::expression::{CompiledFilter, EvalContext};
 
-use crate::{
-	expr::{CompiledFilter, EvalContext},
-	pipeline::Pipeline,
-};
+use crate::pipeline::Pipeline;
 
 /// Filter operator - applies a compiled boolean predicate to filter rows.
 pub struct FilterOp {
@@ -46,7 +44,7 @@ impl FilterOp {
 
 				// Evaluate compiled filter to get filter mask
 				let mask = match predicate.eval(&batch, &eval_ctx).await {
-					Err(e) => return Some(Err(e)),
+					Err(e) => return Some(Err(e.into())), // Convert EvalError to VmError
 					Ok(m) => m,
 				};
 

@@ -5,13 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_core::value::column::Columns;
 
-use crate::{expr::ColumnSchema, pipeline::Pipeline};
+use crate::pipeline::Pipeline;
 
 /// Trait for table sources that can produce pipelines.
 pub trait TableSource: Send + Sync {
-	/// Get the schema of this table.
-	fn schema(&self) -> Vec<ColumnSchema>;
-
 	/// Create a scan pipeline that reads all rows from this table.
 	fn scan(&self) -> Pipeline;
 }
@@ -24,33 +21,18 @@ pub trait SourceRegistry {
 /// In-memory table source.
 pub struct InMemoryTable {
 	data: Columns,
-	schema: Vec<ColumnSchema>,
 }
 
 impl InMemoryTable {
 	/// Create an in-memory table from a Columns batch.
 	pub fn new(data: Columns) -> Self {
-		let schema = data
-			.iter()
-			.enumerate()
-			.map(|(i, col)| ColumnSchema {
-				name: col.name().text().to_string(),
-				index: i,
-			})
-			.collect();
-
 		Self {
 			data,
-			schema,
 		}
 	}
 }
 
 impl TableSource for InMemoryTable {
-	fn schema(&self) -> Vec<ColumnSchema> {
-		self.schema.clone()
-	}
-
 	fn scan(&self) -> Pipeline {
 		let data = self.data.clone();
 		Box::pin(futures_util::stream::once(async move { Ok(data) }))
@@ -87,19 +69,6 @@ impl SourceRegistry for InMemorySourceRegistry {
 		self.tables.get(name).map(|t| {
 			Box::new(InMemoryTable {
 				data: t.data.clone(),
-				schema: t.schema.clone(),
-			}) as Box<dyn TableSource>
-		})
-	}
-}
-
-// Also implement the DSL's SourceRegistry trait for use with parse_pipeline
-impl crate::dsl::compile::SourceRegistry for InMemorySourceRegistry {
-	fn get_source(&self, name: &str) -> Option<Box<dyn TableSource>> {
-		self.tables.get(name).map(|t| {
-			Box::new(InMemoryTable {
-				data: t.data.clone(),
-				schema: t.schema.clone(),
 			}) as Box<dyn TableSource>
 		})
 	}

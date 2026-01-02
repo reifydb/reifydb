@@ -2172,10 +2172,12 @@ name = "reifydb-vm"
 version = "0.2.0"
 dependencies = [
  "async-trait",
+ "bumpalo",
  "futures-util",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-rqlv2",
  "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
