@@ -41,14 +41,27 @@ impl StandardColumnEvaluator {
 					let mut bitvec = Vec::with_capacity(l_container.bitvec().len());
 
 					for i in 0..l_container.data().len() {
-						if l_container.is_defined(i) && r_container.is_defined(i) {
-							data.push(
-								l_container.data().get(i) && r_container.data().get(i)
-							);
-							bitvec.push(true);
-						} else {
-							data.push(false);
-							bitvec.push(false);
+						let l_val = l_container.get(i); // Option<bool>
+						let r_val = r_container.get(i); // Option<bool>
+
+						match (l_val, r_val) {
+							(Some(false), _) | (_, Some(false)) => {
+								// FALSE AND anything = FALSE
+								data.push(false);
+								bitvec.push(true);
+							}
+							(Some(true), Some(true)) => {
+								// TRUE AND TRUE = TRUE
+								data.push(true);
+								bitvec.push(true);
+							}
+							_ => {
+								// At least one is undefined and no FALSE values
+								// undefined AND undefined = undefined, TRUE AND
+								// undefined = undefined
+								data.push(false);
+								bitvec.push(false);
+							}
 						}
 					}
 

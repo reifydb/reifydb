@@ -73,7 +73,7 @@ async fn main() {
 				price: uint1
 			} as {
 				from solana.jupiter_6_swap_events
-				left join { from solana.token } token1 on input_mint == token1.mint
+				left join { from solana.token } as token1 using (input_mint, token1.mint)
 				map {
 					price: token1_decimals
 				}
