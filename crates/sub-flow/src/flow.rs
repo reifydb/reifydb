@@ -118,6 +118,8 @@ impl FlowConsumer {
 #[async_trait]
 impl CdcConsume for FlowConsumeImpl {
 	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		let catalog_cache = FlowCatalog::new(self.flow_engine.inner.catalog.clone());
+
 		for cdc in cdcs {
 			let version = cdc.version;
 
@@ -126,8 +128,6 @@ impl CdcConsume for FlowConsumeImpl {
 
 			// Create query transaction for row decoding at the CDC event's version
 			let mut query_txn = self.engine.begin_query_at_version(version).await?;
-			let catalog_cache = FlowCatalog::new(self.flow_engine.inner.catalog.clone());
-
 			for cdc_change in &cdc.changes {
 				// Only process Row keys (data events)
 				if let Some(Key::Row(row_key)) = Key::decode(cdc_change.key()) {

@@ -45,9 +45,6 @@ mod write;
 /// All writes go directly to the `cmd` (StandardCommandTransaction).
 /// The caller is responsible for committing the transaction.
 pub struct FlowTransaction<'a> {
-	/// CDC event version for snapshot isolation of source data reads.
-	version: CommitVersion,
-
 	/// The command transaction for writes and flow state reads (latest version).
 	cmd: &'a mut StandardCommandTransaction,
 
@@ -71,16 +68,10 @@ impl<'a> FlowTransaction<'a> {
 		primitive_query.read_as_of_version_inclusive(version);
 
 		Self {
-			version,
 			cmd,
 			primitive_query,
 			catalog,
 		}
-	}
-
-	/// Get the version this transaction is reading source data at
-	pub fn version(&self) -> CommitVersion {
-		self.version
 	}
 
 	/// Get access to the catalog for reading metadata

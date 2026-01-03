@@ -43,14 +43,14 @@ impl FlowTransaction<'_> {
 		};
 
 		if is_state_range {
-			self.cmd.range_batch(range, 1024).await
+			self.cmd.range(range).await
 		} else {
-			self.primitive_query.range_batch(range, 1024).await
+			self.primitive_query.range(range).await
 		}
 	}
 
 	/// Range query with batching
-	pub async fn range_batched(
+	pub async fn range_batch(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,

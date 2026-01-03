@@ -413,7 +413,7 @@ impl MultiVersionRange for StandardTransactionStore {
 			all_entries: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)>,
 		) -> crate::Result<()> {
 			let table = classify_key_range(range);
-			let (start, end) = make_versioned_range_bounds(range, version);
+			let (start, end) = make_versioned_range_bounds(range);
 
 			// With descending version encoding, forward scan returns newest versions first.
 			let batch = storage
@@ -505,7 +505,7 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 			all_entries: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)>,
 		) -> crate::Result<()> {
 			let table = classify_key_range(range);
-			let (start, end) = make_versioned_range_bounds(range, version);
+			let (start, end) = make_versioned_range_bounds(range);
 
 			// With descending version encoding, forward scan returns newest versions first.
 			let batch = storage
@@ -592,7 +592,7 @@ fn classify_key_range(range: &EncodedKeyRange) -> Store {
 /// - Start uses version MAX to get the smallest encoded value
 /// - End uses version 0 to get the largest encoded value
 /// The actual key range and version filtering happens after retrieval.
-fn make_versioned_range_bounds(range: &EncodedKeyRange, _version: CommitVersion) -> (Vec<u8>, Vec<u8>) {
+fn make_versioned_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 	let start = match &range.start {
 		// Version MAX encodes smallest, capturing all versions of this key
 		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
