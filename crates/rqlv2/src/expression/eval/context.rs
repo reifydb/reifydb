@@ -3,11 +3,13 @@
 
 //! Evaluation context for compiled expressions.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
+use reifydb_core::value::column::{ColumnData, Columns};
 use reifydb_type::Value;
 
-use super::value::EvalValue;
+use super::{ScriptFunctionCaller, value::EvalValue};
+use crate::expression::types::EvalError;
 
 /// Context for expression evaluation with captured scope variables.
 #[derive(Default, Clone)]
@@ -18,6 +20,10 @@ pub struct EvalContext {
 	/// Current row values for correlated subquery execution.
 	/// Maps column names to their values for the current outer row.
 	pub current_row_values: Option<HashMap<String, Value>>,
+
+	/// Script function caller for executing user-defined functions.
+	/// Provided by the VM at runtime.
+	pub script_functions: Option<Arc<dyn ScriptFunctionCaller>>,
 }
 
 impl EvalContext {
@@ -26,6 +32,7 @@ impl EvalContext {
 		Self {
 			variables: HashMap::new(),
 			current_row_values: None,
+			script_functions: None,
 		}
 	}
 
@@ -34,6 +41,16 @@ impl EvalContext {
 		Self {
 			variables,
 			current_row_values: None,
+			script_functions: None,
+		}
+	}
+
+	/// Create a context with a script function caller.
+	pub fn with_script_functions(caller: Arc<dyn ScriptFunctionCaller>) -> Self {
+		Self {
+			variables: HashMap::new(),
+			current_row_values: None,
+			script_functions: Some(caller),
 		}
 	}
 
@@ -57,7 +74,31 @@ impl EvalContext {
 		Self {
 			variables: self.variables.clone(),
 			current_row_values: Some(outer_values),
+			script_functions: self.script_functions.clone(),
 		}
+	}
+
+	/// Call a script function by name with columnar arguments.
+	///
+	/// # Arguments
+	/// * `name` - The name of the script function to call
+	/// * `args` - Columnar arguments (one column per parameter)
+	/// * `row_count` - Number of rows to produce in the result
+	///
+	/// # Returns
+	/// Columnar result data.
+	pub fn call_script_function(
+		&self,
+		name: &str,
+		args: &Columns,
+		row_count: usize,
+	) -> Result<ColumnData, EvalError> {
+		self.script_functions
+			.as_ref()
+			.ok_or_else(|| EvalError::UnsupportedOperation {
+				operation: format!("script function '{}' (no executor available)", name),
+			})?
+			.call(name, args, row_count)
 	}
 }
 

@@ -24,7 +24,9 @@ use operator::{
 	compile_aggregate, compile_between, compile_binary, compile_call, compile_cast, compile_conditional,
 	compile_in, compile_list, compile_record, compile_tuple, compile_unary,
 };
-use reference::{compile_column_ref, compile_rownum, compile_variable_ref, compile_wildcard};
+use reference::{compile_column_ref, compile_field_access, compile_rownum, compile_variable_ref, compile_wildcard};
+use reifydb_core::value::column::{Column, Columns};
+use reifydb_type::Fragment;
 
 use crate::{
 	expression::types::{CompiledExpr, CompiledFilter, EvalError},
@@ -110,6 +112,41 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 			expr,
 			..
 		} => compile_plan_expr(expr), // Alias is metadata only
+		PlanExpr::FieldAccess {
+			base,
+			field,
+			..
+		} => compile_field_access(compile_plan_expr(base), field.to_string()),
+		PlanExpr::CallScriptFunction {
+			name,
+			arguments,
+			..
+		} => {
+			// Compile arguments
+			let name = name.to_string();
+			let compiled_args: Vec<CompiledExpr> = arguments.iter().map(|a| compile_plan_expr(a)).collect();
+
+			CompiledExpr::new(move |columns, ctx| {
+				let name = name.clone();
+				let compiled_args = compiled_args.clone();
+				let columns = columns.clone();
+				let ctx = ctx.clone();
+
+				Box::pin(async move {
+					// Evaluate arguments to columns
+					let mut arg_cols = Vec::with_capacity(compiled_args.len());
+					for arg in &compiled_args {
+						arg_cols.push(arg.eval(&columns, &ctx).await?);
+					}
+					let args = Columns::new(arg_cols);
+
+					// Call script function through trait
+					let result = ctx.call_script_function(&name, &args, columns.row_count())?;
+
+					Ok(Column::new(Fragment::internal("_call"), result))
+				})
+			})
+		}
 	}
 }
 

@@ -106,6 +106,18 @@ pub enum PlanExpr<'bump> {
 		alias: &'bump str,
 		span: Span,
 	},
+	/// Field access: expr.field (e.g., $user.id)
+	FieldAccess {
+		base: &'bump PlanExpr<'bump>,
+		field: &'bump str,
+		span: Span,
+	},
+	/// Script function call (user-defined function)
+	CallScriptFunction {
+		name: &'bump str,
+		arguments: &'bump [&'bump PlanExpr<'bump>],
+		span: Span,
+	},
 }
 
 impl<'bump> PlanExpr<'bump> {
@@ -162,6 +174,102 @@ impl<'bump> PlanExpr<'bump> {
 				span,
 				..
 			} => *span,
+			PlanExpr::FieldAccess {
+				span,
+				..
+			} => *span,
+			PlanExpr::CallScriptFunction {
+				span,
+				..
+			} => *span,
+		}
+	}
+
+	/// Check if this expression contains any script function calls.
+	///
+	/// This is used to determine whether bytecode-based evaluation is needed.
+	pub fn contains_script_function_call(&self) -> bool {
+		match self {
+			// Leaves - no script function calls
+			PlanExpr::LiteralUndefined(_)
+			| PlanExpr::LiteralBool(_, _)
+			| PlanExpr::LiteralInt(_, _)
+			| PlanExpr::LiteralFloat(_, _)
+			| PlanExpr::LiteralString(_, _)
+			| PlanExpr::LiteralBytes(_, _)
+			| PlanExpr::Column(_)
+			| PlanExpr::Variable(_)
+			| PlanExpr::Rownum(_)
+			| PlanExpr::Wildcard(_) => false,
+
+			// Script function call - this is what we're looking for
+			PlanExpr::CallScriptFunction {
+				..
+			} => true,
+
+			// Recursive cases - check children
+			PlanExpr::Binary {
+				left,
+				right,
+				..
+			} => left.contains_script_function_call() || right.contains_script_function_call(),
+			PlanExpr::Unary {
+				operand,
+				..
+			} => operand.contains_script_function_call(),
+			PlanExpr::Between {
+				expr,
+				low,
+				high,
+				..
+			} => {
+				expr.contains_script_function_call()
+					|| low.contains_script_function_call()
+					|| high.contains_script_function_call()
+			}
+			PlanExpr::In {
+				expr,
+				list,
+				..
+			} => {
+				expr.contains_script_function_call()
+					|| list.iter().any(|e| e.contains_script_function_call())
+			}
+			PlanExpr::Cast {
+				expr,
+				..
+			} => expr.contains_script_function_call(),
+			PlanExpr::Call {
+				arguments,
+				..
+			} => arguments.iter().any(|e| e.contains_script_function_call()),
+			PlanExpr::Aggregate {
+				arguments,
+				..
+			} => arguments.iter().any(|e| e.contains_script_function_call()),
+			PlanExpr::Conditional {
+				condition,
+				then_expr,
+				else_expr,
+				..
+			} => {
+				condition.contains_script_function_call()
+					|| then_expr.contains_script_function_call()
+					|| else_expr.contains_script_function_call()
+			}
+			PlanExpr::Subquery(_) => false, // Subqueries are separate execution contexts
+			PlanExpr::List(items, _) | PlanExpr::Tuple(items, _) => {
+				items.iter().any(|e| e.contains_script_function_call())
+			}
+			PlanExpr::Record(fields, _) => fields.iter().any(|(_, e)| e.contains_script_function_call()),
+			PlanExpr::Alias {
+				expr,
+				..
+			} => expr.contains_script_function_call(),
+			PlanExpr::FieldAccess {
+				base,
+				..
+			} => base.contains_script_function_call(),
 		}
 	}
 }

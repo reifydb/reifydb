@@ -22,10 +22,10 @@ reifydb-transaction = { workspace = true }
 async-trait = { workspace = true }
 bumpalo = { workspace = true }
 futures-util = { workspace = true }
+tokio = { workspace = true }
 tokio-stream = { workspace = true }
 thiserror = "2.0"
 
 [dev-dependencies]
-tokio = { workspace = true }
 reifydb-store-transaction = { path = "../store-transaction" }
 reifydb-transaction = { path = "../transaction" }

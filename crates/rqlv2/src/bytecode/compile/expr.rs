@@ -275,6 +275,39 @@ impl PlanCompiler {
 				self.compile_expr(expr)?;
 				// Alias is metadata, not runtime
 			}
+			PlanExpr::FieldAccess {
+				base,
+				field,
+				span,
+			} => {
+				self.record_span(*span);
+				// Compile base expression (pushes value onto stack)
+				self.compile_expr(base)?;
+				// Get field from the value on stack
+				let field_index = self.program.add_constant(Constant::String(field.to_string()));
+				self.writer.emit_opcode(Opcode::GetField);
+				self.writer.emit_u16(field_index);
+			}
+			PlanExpr::CallScriptFunction {
+				name,
+				arguments,
+				span,
+			} => {
+				self.record_span(*span);
+				// Compile arguments onto stack
+				for arg in arguments.iter() {
+					self.compile_expr(arg)?;
+				}
+				// Look up function index
+				let func_index = *self.script_function_indices.get(*name).ok_or_else(|| {
+					CompileError::Internal {
+						message: format!("undefined script function in expression: {}", name),
+					}
+				})?;
+				// Emit call opcode
+				self.writer.emit_opcode(Opcode::Call);
+				self.writer.emit_u16(func_index);
+			}
 		}
 		Ok(())
 	}

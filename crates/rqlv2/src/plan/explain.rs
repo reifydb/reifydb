@@ -992,6 +992,21 @@ impl<'a> PlanExplainer<'a> {
 			} => {
 				format!("{} AS {}", self.format_expr(expr), alias)
 			}
+			PlanExpr::FieldAccess {
+				base,
+				field,
+				..
+			} => {
+				format!("{}.{}", self.format_expr(base), field)
+			}
+			PlanExpr::CallScriptFunction {
+				name,
+				arguments,
+				..
+			} => {
+				let args: Vec<String> = arguments.iter().map(|e| self.format_expr(e)).collect();
+				format!("{}({})", name, args.join(", "))
+			}
 		}
 	}
 }

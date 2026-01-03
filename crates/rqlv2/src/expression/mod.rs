@@ -19,5 +19,5 @@ pub mod eval;
 pub mod types;
 
 pub use compile::{compile_plan_expr, compile_plan_filter};
-pub use eval::{EvalContext, EvalValue};
+pub use eval::{EvalContext, EvalValue, ScriptFunctionCaller};
 pub use types::{CompiledExpr, CompiledFilter, EvalError, EvalResult, ExprFuture, FilterFuture};

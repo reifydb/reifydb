@@ -76,8 +76,31 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 
 			// Operators
 			Expr::Binary(bin) => {
-				// Dot operator - resolve via schema if available
+				// Dot operator - handle field access on variables or column resolution
 				if bin.op == BinaryOp::Dot {
+					// Check if left side is a variable - this is field access
+					if let Expr::Variable(var) = bin.left {
+						let field = match bin.right {
+							Expr::Identifier(ident) => ident.name,
+							_ => {
+								return Err(PlanError {
+									kind: PlanErrorKind::Unsupported(
+										"non-identifier after dot".to_string(),
+									),
+									span: bin.span,
+								});
+							}
+						};
+						let resolved = self.resolve_variable(var.name, var.span)?;
+						let base = self.bump.alloc(PlanExpr::Variable(resolved));
+						return Ok(self.bump.alloc(PlanExpr::FieldAccess {
+							base,
+							field,
+							span: bin.span,
+						}));
+					}
+
+					// Otherwise resolve via schema if available
 					if let Some(schema) = schema {
 						// Extract source.column from dot expression
 						let (source, column) = self.extract_dot_parts(bin)?;
@@ -165,6 +188,19 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 
 			Expr::Call(call) => {
+				// Check if it's a script function call
+				if let Expr::Identifier(ident) = call.function {
+					if self.script_functions.iter().any(|&name| name == ident.name) {
+						let arguments = self.compile_expr_slice(call.arguments, schema)?;
+						return Ok(self.bump.alloc(PlanExpr::CallScriptFunction {
+							name: self.bump.alloc_str(ident.name),
+							arguments,
+							span: call.span,
+						}));
+					}
+				}
+
+				// Otherwise treat as builtin function
 				let (name, is_aggregate) = self.resolve_function_name(call.function)?;
 				let arguments = self.compile_expr_slice(call.arguments, schema)?;
 				let function = self.bump.alloc(Function {

@@ -79,3 +79,16 @@ pub(super) fn compile_wildcard() -> CompiledExpr {
 		})
 	})
 }
+
+pub(super) fn compile_field_access(_base: CompiledExpr, field: String) -> CompiledExpr {
+	// Field access on records is not supported in the columnar expression evaluator.
+	// Use the bytecode VM for record field access.
+	CompiledExpr::new(move |_, _| {
+		let field = field.clone();
+		Box::pin(async move {
+			Err(EvalError::UnsupportedOperation {
+				operation: format!("field access '.{}' requires bytecode VM", field),
+			})
+		})
+	})
+}

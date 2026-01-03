@@ -628,222 +628,321 @@ async fn test_loop_count_to_10() {
 	// Should execute successfully (console::log prints 1-10)
 	assert!(pipeline.is_ok(), "Loop count test should execute successfully");
 }
-// /// Test for..in with field access
-// #[tokio::test]
-// async fn test_for_in_field_access() {
-// 	let registry = create_registry();
-//
-// 	let script = r#"
-//         for $user in scan users | take 10 {
-//         	let $x = $user.id
-//         	if $x < 4 {
-//             	console::log($x)
-//             }
-//         }
-//     "#;
-//
-// 	// Debug: compile and show bytecode
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== FOR..IN FIELD ACCESS TEST BYTECODE ===");
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Sources: {:?}", program.sources);
-// 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
-// 	println!("==========================================\n");
-//
-// 	// Execute using bytecode VM
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-// 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
-// }
-//
-// /// Test bare literal expression in function body - compilation only
-// #[test]
-// fn test_bare_literal_expression_compiles() {
-// 	// Function with bare literal as implicit return
-// 	let script = r#"
-//         fn get_min_age() {
-//             20
-//         }
-//
-//         scan users | take 1
-//     "#;
-//
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Bytecode: {:?}", program.bytecode);
-//
-// 	// Decode bytecode manually
-// 	let func = &program.functions[0];
-// 	println!("\nFunction bytecode (offset {}, len {}):", func.bytecode_offset, func.bytecode_len);
-// 	for i in func.bytecode_offset..(func.bytecode_offset + func.bytecode_len) {
-// 		println!("  {}: 0x{:02x}", i, program.bytecode[i]);
-// 	}
-//
-// 	assert_eq!(program.functions.len(), 1);
-// 	assert_eq!(program.functions[0].name, "get_min_age");
-// }
-//
-// /// Test bare literal expression in function body used in filter
-// #[tokio::test]
-// async fn test_bare_literal_expression_in_filter() {
-// 	let registry = create_registry();
-//
-// 	// Function with bare literal as implicit return, used in filter
-// 	let script = r#"
-//         fn get_min_age() {
-//             20
-//         }
-//
-//         scan users | filter age > get_min_age() | select [name, age]
-//     "#;
-//
-// 	// Debug: compile and show bytecode
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== BARE LITERAL IN FILTER TEST ===");
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("Expressions: {:?}", program.expressions);
-// 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
-// 	println!("===================================\n");
-//
-// 	// Execute using bytecode VM
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-// 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => {
-// 			println!("Got pipeline, collecting...");
-// 			match collect(p).await {
-// 				Ok(cols) => {
-// 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
-// 					cols
-// 				}
-// 				Err(e) => {
-// 					println!("Collect failed: {:?}", e);
-// 					Columns::empty()
-// 				}
-// 			}
-// 		}
-// 		Ok(None) => {
-// 			println!("No pipeline returned");
-// 			Columns::empty()
-// 		}
-// 		Err(e) => {
-// 			println!("Execute failed: {:?}", e);
-// 			Columns::empty()
-// 		}
-// 	};
-//
-// 	// Print results
-// 	println!("\n=== BARE LITERAL IN FILTER RESULT ===");
-// 	println!("Columns: {}", result.len());
-// 	println!("Rows: {}", result.row_count());
-// 	for col in result.iter() {
-// 		println!("\n  Column: {}", col.name().text());
-// 		println!("  Data: {:?}", col.data());
-// 	}
-// 	println!("=====================================\n");
-//
-// 	// Users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
-// 	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
-// 	assert_eq!(result.len(), 2, "Expected 2 columns (name, age)");
-// }
-//
-// /// Test arithmetic expression in function body used in filter
-// #[tokio::test]
-// async fn test_arithmetic_expression_in_filter() {
-// 	let registry = create_registry();
-//
-// 	// Function with arithmetic as implicit return
-// 	let script = r#"
-//         fn calculate_threshold() {
-//             10 + 15
-//         }
-//
-//         scan users | filter age > calculate_threshold() | select [name, age]
-//     "#;
-//
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== ARITHMETIC IN FILTER TEST ===");
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("=================================\n");
-//
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
-// 		_ => Columns::empty(),
-// 	};
-//
-// 	println!("Result: {} rows", result.row_count());
-// 	// 10 + 15 = 25, users with age > 25: Charlie(35) = 1 row
-// 	assert_eq!(result.row_count(), 1, "Expected 1 user with age > 25");
-// }
-//
-// /// Test parenthesized expression in function body used in filter
-// #[tokio::test]
-// async fn test_parenthesized_expression_in_filter() {
-// 	let registry = create_registry();
-//
-// 	// Function with parenthesized expression
-// 	let script = r#"
-//         fn compute_limit() {
-//             (2 + 3) * 4
-//         }
-//
-//         scan users | filter age > compute_limit() | select [name, age]
-//     "#;
-//
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== PARENTHESIZED IN FILTER TEST ===");
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("====================================\n");
-//
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
-// 		_ => Columns::empty(),
-// 	};
-//
-// 	println!("Result: {} rows", result.row_count());
-// 	// (2 + 3) * 4 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
-// 	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
-// }
-//
-// /// Test variable expression in function body used in filter
-// #[tokio::test]
-// async fn test_variable_expression_in_filter() {
-// 	let registry = create_registry();
-//
-// 	// Function with variable arithmetic
-// 	let script = r#"
-//         fn double_base() {
-//             let $base = 10
-//             $base * 2
-//         }
-//
-//         scan users | filter age > double_base() | select [name, age]
-//     "#;
-//
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== VARIABLE IN FILTER TEST ===");
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("===============================\n");
-//
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
-// 		_ => Columns::empty(),
-// 	};
-//
-// 	println!("Result: {} rows", result.row_count());
-// 	// 10 * 2 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
-// 	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
-// }
+
+/// Test for..in with field access
+#[tokio::test]
+async fn test_for_in_field_access() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	let script = r#"
+		for $user in from test.users | take 10 {
+			let $x = $user.id
+			if $x < 4 {
+				console::log($x)
+			}
+		}
+	"#;
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== FOR..IN FIELD ACCESS TEST BYTECODE ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Sources: {:?}", program.sources);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+	println!("==========================================\n");
+
+	// Execute using bytecode VM
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	// Should execute successfully
+	assert!(pipeline.is_ok(), "For..in field access test should execute successfully");
+}
+
+/// Test bare literal expression in function body - compilation only
+#[tokio::test]
+async fn test_bare_literal_expression_compiles() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// Function with bare literal as implicit return
+	let script = r#"
+		fn get_min_age() {
+			20
+		}
+
+		from test.users | filter age > get_in_age() | take 1
+	"#;
+
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("Script Functions: {:?}", program.script_functions);
+	println!("Constants: {:?}", program.constants);
+	println!("Bytecode: {:?}", program.bytecode);
+
+	assert_eq!(program.script_functions.len(), 1);
+	assert_eq!(program.script_functions[0].name, "get_min_age");
+}
+
+/// Test bare literal expression in function body used in filter
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bare_literal_expression_in_filter() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// Function with bare literal as implicit return, used in filter
+	let script = r#"
+		fn get_min_age() {
+			20
+		}
+
+		from test.users | filter age > get_min_age() | map { name, age }
+	"#;
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== BARE LITERAL IN FILTER TEST ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Script Functions: {:?}", program.script_functions);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+	println!("===================================\n");
+
+	// Execute using bytecode VM
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	let result = match pipeline {
+		Ok(Some(p)) => {
+			println!("Got pipeline, collecting...");
+			match collect(p).await {
+				Ok(cols) => {
+					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
+					cols
+				}
+				Err(e) => {
+					println!("Collect failed: {:?}", e);
+					Columns::empty()
+				}
+			}
+		}
+		Ok(None) => {
+			println!("No pipeline returned");
+			Columns::empty()
+		}
+		Err(e) => {
+			println!("Execute failed: {:?}", e);
+			Columns::empty()
+		}
+	};
+
+	// Print results
+	println!("\n=== BARE LITERAL IN FILTER RESULT ===");
+	println!("Columns: {}", result.len());
+	println!("Rows: {}", result.row_count());
+	for col in result.iter() {
+		println!("\n  Column: {}", col.name().text());
+		println!("  Data: {:?}", col.data());
+	}
+	println!("=====================================\n");
+
+	// Users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
+	assert_eq!(result.len(), 2, "Expected 2 columns (name, age)");
+}
+
+/// Test arithmetic expression in function body used in filter
+#[tokio::test(flavor = "multi_thread")]
+async fn test_arithmetic_expression_in_filter() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// Function with arithmetic as implicit return
+	let script = r#"
+		fn calculate_threshold() {
+			10 + 15
+		}
+
+		from test.users | filter age > calculate_threshold() | map { name, age }
+	"#;
+
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== ARITHMETIC IN FILTER TEST ===");
+	println!("Script Functions: {:?}", program.script_functions);
+	println!("=================================\n");
+
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// 10 + 15 = 25, users with age > 25: Charlie(35) = 1 row
+	assert_eq!(result.row_count(), 1, "Expected 1 user with age > 25");
+}
+
+/// Test parenthesized expression in function body used in filter
+#[tokio::test(flavor = "multi_thread")]
+async fn test_parenthesized_expression_in_filter() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// Function with parenthesized expression
+	let script = r#"
+		fn compute_limit() {
+			(2 + 3) * 4
+		}
+
+		from test.users | filter age > compute_limit() | map { name, age }
+	"#;
+
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== PARENTHESIZED IN FILTER TEST ===");
+	println!("Script Functions: {:?}", program.script_functions);
+	println!("====================================\n");
+
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// (2 + 3) * 4 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
+}
+
+/// Test variable expression in function body used in filter
+#[tokio::test(flavor = "multi_thread")]
+async fn test_variable_expression_in_filter() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// Function with variable arithmetic
+	let script = r#"
+		fn double_base() {
+			let $base = 10
+			$base * 2
+		}
+
+		from test.users | filter age > double_base() | map { name, age }
+	"#;
+
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== VARIABLE IN FILTER TEST ===");
+	println!("Script Functions: {:?}", program.script_functions);
+	println!("===============================\n");
+
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+
+	let result = match pipeline {
+		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		_ => Columns::empty(),
+	};
+
+	println!("Result: {} rows", result.row_count());
+	// 10 * 2 = 20, users with age > 20: Alice(25), Charlie(35), Diana(22) = 3 rows
+	assert_eq!(result.row_count(), 3, "Expected 3 users with age > 20");
+}

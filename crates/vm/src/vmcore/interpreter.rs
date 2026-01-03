@@ -3,7 +3,7 @@
 
 //! Bytecode interpreter.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::value::column::ColumnData;
 use reifydb_engine::StandardTransaction;
@@ -15,6 +15,7 @@ use reifydb_rqlv2::{
 use super::{
 	builtin::BuiltinRegistry,
 	call_stack::CallFrame,
+	script::BytecodeScriptCaller,
 	state::{OperandValue, VmState},
 };
 use crate::{
@@ -836,13 +837,12 @@ impl VmState {
 
 	/// Capture all scope variables into an EvalContext for expression evaluation.
 	///
-	/// NOTE: RQLv2 uses variable IDs (u32) instead of variable names.
-	/// This method is deprecated and will be removed when DSL compilation is replaced with RQLv2.
-	#[allow(dead_code)]
+	/// This method creates an EvalContext with a BytecodeScriptCaller that can
+	/// execute script functions by running their bytecode.
 	fn capture_scope_context(&self) -> EvalContext {
-		// For now, return an empty context since the old DSL module is deprecated.
-		// When we implement RQLv2 compilation, variables will be tracked by ID.
-		EvalContext::new()
+		// Create a script function caller that can execute bytecode
+		let caller = Arc::new(BytecodeScriptCaller::new(self.program.clone()));
+		EvalContext::with_script_functions(caller)
 	}
 
 	/// Build a function executor from the program's bytecode functions.
