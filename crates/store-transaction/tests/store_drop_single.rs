@@ -11,8 +11,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	BackendConfig, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-	SingleVersionRangeRev, StandardTransactionStore, TransactionStoreConfig, backend::BackendStorage,
+	HotConfig, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+	SingleVersionRangeRev, StandardTransactionStore, TransactionStoreConfig, hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -23,14 +23,14 @@ test_each_path! { in "crates/store-transaction/tests/scripts/drop/single" as sto
 
 fn test_memory(path: &Path) {
 	let runtime = Runtime::new().unwrap();
-	let storage = runtime.block_on(async { BackendStorage::memory().await });
+	let storage = runtime.block_on(async { HotStorage::memory().await });
 	testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let runtime = Runtime::new().unwrap();
-		let storage = runtime.block_on(async { BackendStorage::sqlite_in_memory().await });
+		let storage = runtime.block_on(async { HotStorage::sqlite_in_memory().await });
 		testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path)
 	})
 	.expect("test failed")
@@ -43,10 +43,10 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new_with_runtime(storage: BackendStorage, runtime: Runtime) -> Self {
+	fn new_with_runtime(storage: HotStorage, runtime: Runtime) -> Self {
 		let store = runtime.block_on(async {
 			StandardTransactionStore::new(TransactionStoreConfig {
-				hot: Some(BackendConfig {
+				hot: Some(HotConfig {
 					storage,
 					retention_period: Duration::from_millis(200),
 				}),

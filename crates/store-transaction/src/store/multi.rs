@@ -23,9 +23,10 @@ use super::{
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
 	MultiVersionRangeRev, MultiVersionStore,
-	backend::{BackendStorage, PrimitiveStorage, TableId, delta_optimizer::optimize_deltas},
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
+	hot::delta_optimizer::optimize_deltas,
 	stats::{PreVersionInfo, Tier},
+	tier::{TableId, TierStorage},
 };
 
 #[async_trait]
@@ -104,14 +105,8 @@ impl MultiVersionContains for StandardTransactionStore {
 impl MultiVersionCommit for StandardTransactionStore {
 	#[instrument(name = "store::multi::commit", level = "info", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	async fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
-		// Get the first available storage tier
-		let storage = if let Some(hot) = &self.hot {
-			hot
-		} else if let Some(warm) = &self.warm {
-			warm
-		} else if let Some(cold) = &self.cold {
-			cold
-		} else {
+		// Get the hot storage tier (warm and cold are placeholders for now)
+		let Some(storage) = &self.hot else {
 			return Ok(());
 		};
 
@@ -297,7 +292,7 @@ impl StandardTransactionStore {
 	/// Get information about the previous value of a key for stats tracking (async version).
 	async fn get_previous_value_info_async(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
-		async fn get_value(storage: &BackendStorage, table: TableId, key: &[u8]) -> Option<(u64, u64)> {
+		async fn get_value<S: TierStorage>(storage: &S, table: TableId, key: &[u8]) -> Option<(u64, u64)> {
 			match get_at_version(storage, table, key, CommitVersion(u64::MAX)).await {
 				Ok(VersionedGetResult::Value {
 					value,
@@ -410,8 +405,8 @@ impl MultiVersionRange for StandardTransactionStore {
 		let mut all_entries: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
 
 		// Helper to process a batch from a tier
-		async fn process_tier_batch(
-			storage: &BackendStorage,
+		async fn process_tier_batch<S: TierStorage>(
+			storage: &S,
 			range: &EncodedKeyRange,
 			version: CommitVersion,
 			batch_size: u64,
@@ -501,8 +496,8 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 		let mut all_entries: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
 
 		// Helper to process a batch from a tier (reverse)
-		async fn process_tier_batch_rev(
-			storage: &BackendStorage,
+		async fn process_tier_batch_rev<S: TierStorage>(
+			storage: &S,
 			range: &EncodedKeyRange,
 			version: CommitVersion,
 			batch_size: u64,
@@ -587,10 +582,10 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 impl MultiVersionStore for StandardTransactionStore {}
 
 /// Classify a range to determine which table it belongs to.
-fn classify_key_range(range: &EncodedKeyRange) -> crate::backend::TableId {
+fn classify_key_range(range: &EncodedKeyRange) -> crate::hot::TableId {
 	use super::router::classify_range;
 
-	classify_range(range).unwrap_or(crate::backend::TableId::Multi)
+	classify_range(range).unwrap_or(crate::hot::TableId::Multi)
 }
 
 /// Create versioned range bounds for primitive storage query.

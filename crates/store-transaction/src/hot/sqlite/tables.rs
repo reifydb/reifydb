@@ -3,7 +3,7 @@
 
 //! Table name mapping for SQLite backend.
 
-use crate::backend::primitive::TableId;
+use crate::tier::TableId;
 
 /// Convert TableId to a SQLite table name.
 pub(super) fn table_id_to_name(table: TableId) -> String {

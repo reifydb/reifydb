@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_store_transaction::backend::sqlite::SqliteConfig;
+use reifydb_store_transaction::hot::sqlite::SqliteConfig;
 
 use crate::{ServerBuilder, memory as memory_store, sqlite as sqlite_store, transaction};
 

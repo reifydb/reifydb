@@ -22,7 +22,7 @@ use super::{
 	query::build_range_query,
 	tables::table_id_to_name,
 };
-use crate::backend::primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
+use crate::tier::{RangeBatch, RawEntry, TableId, TierBackend, TierStorage};
 
 /// SQLite-based primitive storage implementation.
 ///
@@ -89,7 +89,7 @@ impl SqlitePrimitiveStorage {
 }
 
 #[async_trait]
-impl PrimitiveStorage for SqlitePrimitiveStorage {
+impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
 	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let table_name = table_id_to_name(table);
@@ -340,7 +340,7 @@ impl PrimitiveStorage for SqlitePrimitiveStorage {
 	}
 }
 
-impl PrimitiveBackend for SqlitePrimitiveStorage {}
+impl TierBackend for SqlitePrimitiveStorage {}
 
 /// Convert owned Bound to Bound<&[u8]>
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {

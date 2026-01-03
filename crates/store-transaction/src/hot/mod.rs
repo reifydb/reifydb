@@ -3,10 +3,10 @@
 
 pub(crate) mod delta_optimizer;
 pub mod memory;
-pub mod primitive;
 pub mod result;
 pub mod sqlite;
 pub mod storage;
 
-pub use primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
-pub use storage::BackendStorage;
+pub use storage::HotStorage;
+
+pub use crate::tier::{RangeBatch, RawEntry, TableId, TierBackend, TierStorage};

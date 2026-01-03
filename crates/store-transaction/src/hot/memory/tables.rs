@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::backend::primitive::TableId;
+use crate::tier::TableId;
 
 /// Convert TableId to a unique string key for storage in a HashMap
 pub(super) fn table_id_to_key(table: TableId) -> String {

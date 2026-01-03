@@ -3,13 +3,13 @@
 
 use std::time::Duration;
 
-use crate::backend::BackendStorage;
+use crate::hot::HotStorage;
 
 #[derive(Clone)]
 pub struct TransactionStoreConfig {
-	pub hot: Option<BackendConfig>,
-	pub warm: Option<BackendConfig>,
-	pub cold: Option<BackendConfig>,
+	pub hot: Option<HotConfig>,
+	pub warm: Option<WarmConfig>,
+	pub cold: Option<ColdConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub stats: StorageStatsConfig,
@@ -31,10 +31,22 @@ impl Default for StorageStatsConfig {
 }
 
 #[derive(Clone)]
-pub struct BackendConfig {
-	pub storage: BackendStorage,
+pub struct HotConfig {
+	pub storage: HotStorage,
 	pub retention_period: Duration,
 }
+
+/// Warm tier configuration.
+///
+/// Placeholder for future warm tier configuration.
+#[derive(Clone, Default)]
+pub struct WarmConfig;
+
+/// Cold tier configuration.
+///
+/// Placeholder for future cold tier configuration.
+#[derive(Clone, Default)]
+pub struct ColdConfig;
 
 #[derive(Clone, Debug)]
 pub struct RetentionConfig {

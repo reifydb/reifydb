@@ -18,7 +18,7 @@ use super::StandardTransactionStore;
 use crate::{
 	SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	backend::{BackendStorage, PrimitiveStorage, TableId},
+	tier::{TableId, TierStorage},
 };
 
 #[async_trait]
@@ -96,14 +96,8 @@ impl SingleVersionCommit for StandardTransactionStore {
 	async fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
 		let table = TableId::Single;
 
-		// Get the first available storage tier
-		let storage = if let Some(hot) = &self.hot {
-			hot
-		} else if let Some(warm) = &self.warm {
-			warm
-		} else if let Some(cold) = &self.cold {
-			cold
-		} else {
+		// Get the hot storage tier (warm and cold are placeholders for now)
+		let Some(storage) = &self.hot else {
 			return Ok(());
 		};
 
@@ -144,8 +138,8 @@ impl SingleVersionRange for StandardTransactionStore {
 		let (start, end) = make_range_bounds(&range);
 
 		// Helper to process a batch from a tier
-		async fn process_tier_batch(
-			storage: &BackendStorage,
+		async fn process_tier_batch<S: TierStorage>(
+			storage: &S,
 			table: TableId,
 			start: Bound<Vec<u8>>,
 			end: Bound<Vec<u8>>,
@@ -206,8 +200,8 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 		let (start, end) = make_range_bounds(&range);
 
 		// Helper to process a reverse batch from a tier
-		async fn process_tier_batch_rev(
-			storage: &BackendStorage,
+		async fn process_tier_batch_rev<S: TierStorage>(
+			storage: &S,
 			table: TableId,
 			start: Bound<Vec<u8>>,
 			end: Bound<Vec<u8>>,

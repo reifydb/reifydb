@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Unified backend storage enum.
+//! Hot storage tier enum.
 //!
-//! This module provides a single enum that dispatches to either
+//! This module provides the hot storage tier that dispatches to either
 //! Memory or SQLite primitive storage implementations.
 
 use std::{collections::HashMap, ops::Bound};
@@ -11,26 +11,23 @@ use std::{collections::HashMap, ops::Bound};
 use async_trait::async_trait;
 use reifydb_type::Result;
 
-use super::{
-	memory::MemoryPrimitiveStorage,
-	primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, TableId},
-	sqlite::SqlitePrimitiveStorage,
-};
+use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
+use crate::tier::{RangeBatch, TableId, TierBackend, TierStorage};
 
-/// Unified backend storage enum.
+/// Hot storage tier.
 ///
-/// Provides a single interface for storage operations, dispatching
+/// Provides a single interface for hot tier storage operations, dispatching
 /// to either Memory or SQLite implementations.
 #[derive(Clone)]
 #[repr(u8)]
-pub enum BackendStorage {
+pub enum HotStorage {
 	/// In-memory storage (non-persistent)
 	Memory(MemoryPrimitiveStorage) = 0,
 	/// SQLite-based persistent storage
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
-impl BackendStorage {
+impl HotStorage {
 	/// Create a new in-memory backend for testing
 	pub async fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new().await)
@@ -48,7 +45,7 @@ impl BackendStorage {
 }
 
 #[async_trait]
-impl PrimitiveStorage for BackendStorage {
+impl TierStorage for HotStorage {
 	#[inline]
 	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		match self {
@@ -118,7 +115,7 @@ impl PrimitiveStorage for BackendStorage {
 	}
 }
 
-impl PrimitiveBackend for BackendStorage {}
+impl TierBackend for HotStorage {}
 
 #[cfg(test)]
 mod tests {
@@ -126,7 +123,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_memory_backend() {
-		let storage = BackendStorage::memory().await;
+		let storage = HotStorage::memory().await;
 
 		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
 			.await
@@ -136,7 +133,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_sqlite_backend() {
-		let storage = BackendStorage::sqlite_in_memory().await;
+		let storage = HotStorage::sqlite_in_memory().await;
 
 		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
 			.await
@@ -146,7 +143,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch_memory() {
-		let storage = BackendStorage::memory().await;
+		let storage = HotStorage::memory().await;
 
 		storage.set(HashMap::from([(
 			TableId::Multi,
@@ -167,7 +164,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_range_batch_sqlite() {
-		let storage = BackendStorage::sqlite_in_memory().await;
+		let storage = HotStorage::sqlite_in_memory().await;
 
 		storage.set(HashMap::from([(
 			TableId::Multi,

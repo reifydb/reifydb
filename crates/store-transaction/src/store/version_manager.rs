@@ -14,7 +14,7 @@ use std::ops::Bound;
 use reifydb_core::CommitVersion;
 use reifydb_type::Result;
 
-use crate::backend::{PrimitiveStorage, TableId};
+use crate::tier::{TableId, TierStorage};
 
 /// Size of version suffix in bytes (u64 big-endian)
 pub(crate) const VERSION_SIZE: usize = 8;
@@ -80,7 +80,7 @@ pub enum VersionedGetResult {
 }
 
 /// Get the latest version of a key at or before the given version.
-pub async fn get_at_version<S: PrimitiveStorage>(
+pub async fn get_at_version<S: TierStorage>(
 	storage: &S,
 	table: TableId,
 	key: &[u8],
@@ -114,7 +114,7 @@ pub async fn get_at_version<S: PrimitiveStorage>(
 
 /// Async version of get_latest_version - get the latest version number for a key (if any exists).
 #[allow(dead_code)]
-pub async fn get_latest_version<S: PrimitiveStorage>(
+pub async fn get_latest_version<S: TierStorage>(
 	storage: &S,
 	table: TableId,
 	key: &[u8],

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Primitive storage traits for raw key-value operations.
+//! Common storage tier traits and types.
 //!
-//! This module defines the minimal interface that storage backends must implement.
-//! All MVCC, CDC, and routing logic belongs in the store layer above.
+//! This module defines the minimal interface that all storage tiers (hot, warm, cold)
+//! must implement. All MVCC, CDC, and routing logic belongs in the store layer above.
 
 use std::{collections::HashMap, ops::Bound};
 
@@ -62,14 +62,14 @@ impl RangeBatch {
 	}
 }
 
-/// The primitive key-value storage trait.
+/// The tier storage trait.
 ///
 /// This is intentionally minimal - just raw bytes in/out.
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
 #[async_trait]
-pub trait PrimitiveStorage: Send + Sync + Clone + 'static {
+pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
 	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
@@ -120,5 +120,5 @@ pub trait PrimitiveStorage: Send + Sync + Clone + 'static {
 	async fn clear_table(&self, table: TableId) -> Result<()>;
 }
 
-/// Marker trait for backends that support the primitive storage interface.
-pub trait PrimitiveBackend: PrimitiveStorage {}
+/// Marker trait for storage tiers that support the tier storage interface.
+pub trait TierBackend: TierStorage {}

@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::KeyKind,
 };
 
-use crate::backend::TableId;
+use crate::hot::TableId;
 
 /// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> TableId {

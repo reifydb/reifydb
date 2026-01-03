@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 
 use super::tables::Tables;
-use crate::backend::primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
+use crate::tier::{RangeBatch, RawEntry, TableId, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
@@ -41,7 +41,7 @@ impl MemoryPrimitiveStorage {
 }
 
 #[async_trait]
-impl PrimitiveStorage for MemoryPrimitiveStorage {
+impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let tables = self.inner.tables.read().await;
@@ -169,7 +169,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	}
 }
 
-impl PrimitiveBackend for MemoryPrimitiveStorage {}
+impl TierBackend for MemoryPrimitiveStorage {}
 
 /// Convert Bound references to a tuple for BTreeMap range queries.
 fn make_range_bounds<'a>(
