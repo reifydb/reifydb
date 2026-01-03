@@ -153,7 +153,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			let table = classify_key(key);
 
 			// Look up previous value to calculate size delta
-			let pre_version_info = self.get_previous_value_info_async(table, key_bytes).await;
+			let pre_version_info = self.get_previous_value_info(table, key_bytes).await;
 
 			// Versioned key size = original key + VERSION_SIZE
 			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
@@ -294,8 +294,8 @@ impl MultiVersionCommit for StandardTransactionStore {
 }
 
 impl StandardTransactionStore {
-	/// Get information about the previous value of a key for stats tracking (async version).
-	async fn get_previous_value_info_async(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
+	/// Get information about the previous value of a key for stats tracking .
+	async fn get_previous_value_info(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
 		async fn get_value(storage: &BackendStorage, table: TableId, key: &[u8]) -> Option<(u64, u64)> {
 			match get_at_version(storage, table, key, CommitVersion(u64::MAX)).await {

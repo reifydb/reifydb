@@ -459,6 +459,13 @@ impl<'a> AstFormatter<'a> {
 			}
 			Expr::Cast(_) => "Cast".to_string(),
 			Expr::SubQuery(_) => "SubQuery".to_string(),
+			Expr::Exists(e) => {
+				if e.negated {
+					"NotExists".to_string()
+				} else {
+					"Exists".to_string()
+				}
+			}
 			Expr::IfExpr(_) => "If".to_string(),
 			Expr::LoopExpr(_) => "Loop".to_string(),
 			Expr::ForExpr(f) => format!("For(${})", f.variable),
@@ -696,6 +703,10 @@ impl<'a> AstFormatter<'a> {
 				for (i, stage) in s.pipeline.iter().enumerate() {
 					self.format_expr_indexed(i == len - 1, i, stage);
 				}
+			}
+			Expr::Exists(e) => {
+				self.write_branch(true, "subquery:");
+				self.with_child(true, |f| f.format_expr(true, e.subquery));
 			}
 			Expr::IfExpr(i) => {
 				let has_else_ifs = !i.else_ifs.is_empty();

@@ -5,12 +5,14 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::ColumnData;
+use async_recursion::async_recursion;
+use reifydb_core::value::column::{ColumnData, Columns};
 use reifydb_engine::StandardTransaction;
 use reifydb_rqlv2::{
-	bytecode::{BytecodeReader, Opcode, OperatorKind},
+	bytecode::{BytecodeReader, CompiledProgram, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
+use reifydb_type::Value;
 
 use super::{
 	builtin::BuiltinRegistry,
@@ -21,7 +23,7 @@ use super::{
 use crate::{
 	error::{Result, VmError},
 	operator::{FilterOp, ProjectOp, ScanTableOp, SelectOp, SortOp, TakeOp},
-	pipeline::Pipeline,
+	pipeline::{self, Pipeline},
 };
 
 /// Result of dispatching a single instruction.
@@ -55,6 +57,7 @@ impl VmState {
 	/// Execute a single instruction.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
+	#[async_recursion(?Send)]
 	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
 		// Helper macros for reading operands
 		macro_rules! read_u8 {
@@ -764,6 +767,116 @@ impl VmState {
 			}
 
 			// ─────────────────────────────────────────────────────────
+			// Subquery Operations
+			// ─────────────────────────────────────────────────────────
+			Opcode::ExecSubqueryExists => {
+				let subquery_index = read_u16!(reader);
+				let negated = read_u8!(reader) != 0;
+				let next_ip = reader.position();
+
+				// Get the subquery definition
+				let subquery_def = self.program.subqueries.get(subquery_index as usize).ok_or(
+					VmError::InvalidSubqueryIndex {
+						index: subquery_index,
+					},
+				)?;
+
+				// Execute the subquery
+				let result = self.execute_subquery(subquery_def, rx).await?;
+
+				// EXISTS returns true if any rows, NOT EXISTS returns true if no rows
+				let row_count = result.row_count();
+				let exists = row_count > 0;
+				let value = if negated {
+					!exists
+				} else {
+					exists
+				};
+
+				self.push_operand(OperandValue::Scalar(Value::Boolean(value)))?;
+				self.ip = next_ip;
+			}
+
+			Opcode::ExecSubqueryIn => {
+				let subquery_index = read_u16!(reader);
+				let negated = read_u8!(reader) != 0;
+				let next_ip = reader.position();
+
+				// Pop the value to check
+				let check_value = self.pop_operand()?;
+				let check_scalar = match &check_value {
+					OperandValue::Scalar(v) => v.clone(),
+					_ => {
+						return Err(VmError::TypeMismatchStr {
+							expected: "scalar value".to_string(),
+							found: "non-scalar".to_string(),
+						});
+					}
+				};
+
+				// Get the subquery definition
+				let subquery_def = self.program.subqueries.get(subquery_index as usize).ok_or(
+					VmError::InvalidSubqueryIndex {
+						index: subquery_index,
+					},
+				)?;
+
+				// Execute the subquery
+				let result = self.execute_subquery(subquery_def, rx).await?;
+
+				// Check if value is in the first column of the result
+				let found = if result.is_empty() || result.columns.is_empty() {
+					false
+				} else {
+					let first_column = &result.columns[0];
+					// Iterate through the column data to check for the value
+					first_column.data().iter().any(|v| v == check_scalar)
+				};
+
+				let value = if negated {
+					!found
+				} else {
+					found
+				};
+				self.push_operand(OperandValue::Scalar(Value::Boolean(value)))?;
+				self.ip = next_ip;
+			}
+
+			Opcode::ExecSubqueryScalar => {
+				let subquery_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				// Get the subquery definition
+				let subquery_def = self.program.subqueries.get(subquery_index as usize).ok_or(
+					VmError::InvalidSubqueryIndex {
+						index: subquery_index,
+					},
+				)?;
+
+				// Execute the subquery
+				let result = self.execute_subquery(subquery_def, rx).await?;
+
+				// Scalar subquery must return exactly one row and one column
+				if result.row_count() > 1 {
+					return Err(VmError::SubqueryMultipleRows {
+						expected: 1,
+						found: result.row_count(),
+					});
+				}
+
+				let value = if result.is_empty() || result.columns.is_empty() {
+					Value::Undefined
+				} else {
+					let first_column = &result.columns[0];
+					// Get the first value from the column
+					first_column.data().iter().next().unwrap_or(Value::Undefined)
+				};
+
+				self.push_operand(OperandValue::Scalar(value))?;
+				self.ip = next_ip;
+			}
+
+			// ─────────────────────────────────────────────────────────
 			// Control
 			// ─────────────────────────────────────────────────────────
 			Opcode::Nop => {
@@ -852,6 +965,61 @@ impl VmState {
 	#[allow(dead_code)]
 	fn build_function_executor(&self) {
 		// Stubbed out - RQLv2 doesn't support user-defined functions yet
+	}
+
+	/// Execute a subquery and return the collected result.
+	///
+	/// This creates a nested VM execution with the subquery's bytecode.
+	async fn execute_subquery<'a>(
+		&self,
+		subquery_def: &SubqueryDef,
+		rx: Option<&mut StandardTransaction<'a>>,
+	) -> Result<Columns> {
+		// Create a CompiledProgram from the subquery definition
+		let subquery_program = CompiledProgram {
+			bytecode: subquery_def.bytecode.clone(),
+			constants: subquery_def.constants.clone(),
+			sources: subquery_def.sources.clone(),
+			source_map: subquery_def.source_map.clone(),
+			// Subqueries don't have their own nested subqueries, column lists, etc.
+			column_lists: Vec::new(),
+			sort_specs: Vec::new(),
+			extension_specs: Vec::new(),
+			subqueries: Vec::new(),
+			ddl_defs: Vec::new(),
+			dml_targets: Vec::new(),
+			compiled_exprs: Vec::new(),
+			compiled_filters: Vec::new(),
+			entry_point: 0,
+			script_functions: Vec::new(),
+		};
+
+		// Create a new VM state for the subquery
+		let mut subquery_vm = VmState::new(Arc::new(subquery_program), self.context.clone());
+
+		// Execute the subquery - it should end with Collect which pushes a Frame
+		if let Some(rx) = rx {
+			// For now, we can't share the transaction, so this won't work for real table access
+			// This is a limitation we need to address in the future
+			// For testing, we'll use a workaround
+			let _ = subquery_vm.execute(rx).await?;
+		} else {
+			// No transaction available - subquery can only work with in-memory data
+			// This shouldn't happen in practice
+			return Err(VmError::NoTransactionAvailable);
+		}
+
+		// The subquery should have pushed a Frame onto the operand stack
+		if let Some(OperandValue::Frame(columns)) = subquery_vm.operand_stack.pop() {
+			Ok(columns)
+		} else {
+			// Check pipeline stack as fallback
+			if let Some(pipeline) = subquery_vm.pipeline_stack.pop() {
+				pipeline::collect(pipeline).await
+			} else {
+				Ok(Columns::empty())
+			}
+		}
 	}
 }
 

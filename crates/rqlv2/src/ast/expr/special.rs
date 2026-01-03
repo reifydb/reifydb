@@ -236,3 +236,22 @@ pub enum ForIterable<'bump> {
 	/// Pipeline stages (e.g., `from table | filter x > 0`)
 	Pipeline(&'bump [Expr<'bump>]),
 }
+
+/// EXISTS expression: EXISTS(subquery) or NOT EXISTS(subquery)
+#[derive(Debug, Clone, Copy)]
+pub struct ExistsExpr<'bump> {
+	pub subquery: &'bump Expr<'bump>,
+	pub negated: bool,
+	pub span: Span,
+}
+
+impl<'bump> ExistsExpr<'bump> {
+	/// Create a new EXISTS expression.
+	pub fn new(subquery: &'bump Expr<'bump>, negated: bool, span: Span) -> Self {
+		Self {
+			subquery,
+			negated,
+			span,
+		}
+	}
+}

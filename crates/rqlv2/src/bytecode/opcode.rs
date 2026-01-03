@@ -288,6 +288,24 @@ pub enum Opcode {
 	DropObject = 0xD0,
 
 	// ─────────────────────────────────────────────────────────────
+	// Subquery Operations
+	// ─────────────────────────────────────────────────────────────
+	/// Execute subquery and check if result has any rows (EXISTS)
+	/// Operand: u16 (subquery index), u8 (negated: 0=exists, 1=not exists)
+	/// Pushes Boolean onto operand stack
+	ExecSubqueryExists = 0xE0,
+
+	/// Execute subquery and check if value is in result (IN)
+	/// Operand: u16 (subquery index), u8 (negated: 0=in, 1=not in)
+	/// Pops value from operand stack, pushes Boolean result
+	ExecSubqueryIn = 0xE1,
+
+	/// Execute subquery and return scalar result
+	/// Operand: u16 (subquery index)
+	/// Pushes scalar value onto operand stack (error if >1 row)
+	ExecSubqueryScalar = 0xE2,
+
+	// ─────────────────────────────────────────────────────────────
 	// Control
 	// ─────────────────────────────────────────────────────────────
 	/// No operation
@@ -382,6 +400,10 @@ impl TryFrom<u8> for Opcode {
 			0xC5 => Ok(Opcode::CreateRingBuffer),
 			0xC6 => Ok(Opcode::CreateDictionary),
 			0xD0 => Ok(Opcode::DropObject),
+			// Subquery Operations
+			0xE0 => Ok(Opcode::ExecSubqueryExists),
+			0xE1 => Ok(Opcode::ExecSubqueryIn),
+			0xE2 => Ok(Opcode::ExecSubqueryScalar),
 			// Control
 			0xFE => Ok(Opcode::Nop),
 			0xFF => Ok(Opcode::Halt),

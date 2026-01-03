@@ -105,6 +105,30 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 				})
 			})
 		}
+		PlanExpr::Exists {
+			..
+		} => {
+			// EXISTS subqueries require executor support
+			CompiledExpr::new(|_, _| {
+				Box::pin(async {
+					Err(EvalError::UnsupportedOperation {
+						operation: "EXISTS subquery".to_string(),
+					})
+				})
+			})
+		}
+		PlanExpr::InSubquery {
+			..
+		} => {
+			// IN subqueries require executor support
+			CompiledExpr::new(|_, _| {
+				Box::pin(async {
+					Err(EvalError::UnsupportedOperation {
+						operation: "IN subquery".to_string(),
+					})
+				})
+			})
+		}
 		PlanExpr::List(items, _) => compile_list(items),
 		PlanExpr::Tuple(items, _) => compile_tuple(items),
 		PlanExpr::Record(fields, _) => compile_record(fields),

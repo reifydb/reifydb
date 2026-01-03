@@ -94,7 +94,8 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		filter: &FilterExpr<'bump>,
 		input: &'bump Plan<'bump>,
 	) -> Result<Plan<'bump>> {
-		let predicate = self.compile_expr(filter.predicate, None)?;
+		// Use async version to support subqueries in filter predicates
+		let predicate = self.compile_expr_with_subqueries(filter.predicate, None).await?;
 		Ok(Plan::Filter(FilterNode {
 			input,
 			predicate,
@@ -185,7 +186,8 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		input: &'bump Plan<'bump>,
 		schema: Option<&OutputSchema<'bump>>,
 	) -> Result<Plan<'bump>> {
-		let predicate = self.compile_expr(filter.predicate, schema)?;
+		// Use async version to support subqueries in filter predicates
+		let predicate = self.compile_expr_with_subqueries(filter.predicate, schema).await?;
 		Ok(Plan::Filter(FilterNode {
 			input,
 			predicate,

@@ -94,6 +94,19 @@ pub enum PlanExpr<'bump> {
 	},
 	/// Subquery (becomes a nested plan)
 	Subquery(&'bump Plan<'bump>),
+	/// EXISTS subquery - returns boolean
+	Exists {
+		subquery: &'bump Plan<'bump>,
+		negated: bool,
+		span: Span,
+	},
+	/// IN with subquery
+	InSubquery {
+		expr: &'bump PlanExpr<'bump>,
+		subquery: &'bump Plan<'bump>,
+		negated: bool,
+		span: Span,
+	},
 	/// List expression [a, b, c]
 	List(&'bump [&'bump PlanExpr<'bump>], Span),
 	/// Tuple expression (a, b, c)
@@ -167,6 +180,14 @@ impl<'bump> PlanExpr<'bump> {
 				..
 			} => *span,
 			PlanExpr::Subquery(p) => p.span(),
+			PlanExpr::Exists {
+				span,
+				..
+			} => *span,
+			PlanExpr::InSubquery {
+				span,
+				..
+			} => *span,
 			PlanExpr::List(_, s) => *s,
 			PlanExpr::Tuple(_, s) => *s,
 			PlanExpr::Record(_, s) => *s,
@@ -258,6 +279,13 @@ impl<'bump> PlanExpr<'bump> {
 					|| else_expr.contains_script_function_call()
 			}
 			PlanExpr::Subquery(_) => false, // Subqueries are separate execution contexts
+			PlanExpr::Exists {
+				..
+			} => false, // Subqueries are separate execution contexts
+			PlanExpr::InSubquery {
+				expr,
+				..
+			} => expr.contains_script_function_call(),
 			PlanExpr::List(items, _) | PlanExpr::Tuple(items, _) => {
 				items.iter().any(|e| e.contains_script_function_call())
 			}

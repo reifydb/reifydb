@@ -101,6 +101,8 @@ pub enum Expr<'bump> {
 	// === Subquery ===
 	/// Subquery: { FROM ... | ... }
 	SubQuery(SubQueryExpr<'bump>),
+	/// EXISTS expression: EXISTS(subquery) or NOT EXISTS(subquery)
+	Exists(ExistsExpr<'bump>),
 	/// Parenthesized expression
 	Paren(&'bump Expr<'bump>),
 }
@@ -141,6 +143,7 @@ impl<'bump> Expr<'bump> {
 			Expr::LoopExpr(l) => l.span,
 			Expr::ForExpr(f) => f.span,
 			Expr::SubQuery(s) => s.span,
+			Expr::Exists(e) => e.span,
 			Expr::Paren(p) => p.span(),
 		}
 	}

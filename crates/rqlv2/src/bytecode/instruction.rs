@@ -164,6 +164,11 @@ impl BytecodeWriter {
 	pub fn finish(self) -> Vec<u8> {
 		self.bytecode
 	}
+
+	/// Get a copy of the current bytecode without consuming the writer.
+	pub fn to_vec(&self) -> Vec<u8> {
+		self.bytecode.clone()
+	}
 }
 
 impl Default for BytecodeWriter {

@@ -241,9 +241,45 @@ impl PlanCompiler {
 				self.writer.patch_jump(end_jump);
 			}
 			PlanExpr::Subquery(plan) => {
-				// Compile nested plan
-				self.compile_plan(plan)?;
-				self.writer.emit_opcode(Opcode::Collect);
+				// Compile subquery and emit scalar subquery opcode
+				let subquery_index = self.compile_subquery(plan)?;
+				self.writer.emit_opcode(Opcode::ExecSubqueryScalar);
+				self.writer.emit_u16(subquery_index);
+			}
+			PlanExpr::Exists {
+				subquery,
+				negated,
+				span,
+			} => {
+				self.record_span(*span);
+				// Compile subquery and emit EXISTS opcode
+				let subquery_index = self.compile_subquery(subquery)?;
+				self.writer.emit_opcode(Opcode::ExecSubqueryExists);
+				self.writer.emit_u16(subquery_index);
+				self.writer.emit_u8(if *negated {
+					1
+				} else {
+					0
+				});
+			}
+			PlanExpr::InSubquery {
+				expr,
+				subquery,
+				negated,
+				span,
+			} => {
+				self.record_span(*span);
+				// Compile the expression to check
+				self.compile_expr(expr)?;
+				// Compile subquery and emit IN opcode
+				let subquery_index = self.compile_subquery(subquery)?;
+				self.writer.emit_opcode(Opcode::ExecSubqueryIn);
+				self.writer.emit_u16(subquery_index);
+				self.writer.emit_u8(if *negated {
+					1
+				} else {
+					0
+				});
 			}
 			PlanExpr::List(items, span) => {
 				self.record_span(*span);

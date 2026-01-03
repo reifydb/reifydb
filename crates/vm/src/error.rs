@@ -243,6 +243,21 @@ pub enum VmError {
 	ScalarSubqueryTooManyRows {
 		count: usize,
 	},
+
+	#[error("subquery returned {found} rows, expected at most {expected}")]
+	SubqueryMultipleRows {
+		expected: usize,
+		found: usize,
+	},
+
+	#[error("no transaction available for subquery execution")]
+	NoTransactionAvailable,
+
+	#[error("type mismatch: expected {expected}, found {found}")]
+	TypeMismatchStr {
+		expected: String,
+		found: String,
+	},
 }
 
 pub type Result<T> = std::result::Result<T, VmError>;

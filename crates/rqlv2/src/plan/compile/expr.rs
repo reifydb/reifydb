@@ -14,7 +14,7 @@ use crate::{
 		expr::{BinaryExpr, BinaryOp, Literal, UnaryOp},
 	},
 	plan::{
-		CatalogColumn, Column, ComputedColumn, Function, OutputSchema,
+		CatalogColumn, Column, ComputedColumn, Function, OutputSchema, Plan,
 		node::expr::{BinaryPlanOp, PlanExpr, UnaryPlanOp},
 	},
 	token::Span,
@@ -280,6 +280,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			| Expr::Window(_)
 			| Expr::Apply(_)
 			| Expr::SubQuery(_)
+			| Expr::Exists(_)
 			| Expr::LoopExpr(_)
 			| Expr::ForExpr(_) => {
 				return Err(PlanError {
@@ -599,5 +600,132 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 		// No expression found, return undefined
 		Ok(self.bump.alloc(PlanExpr::LiteralUndefined(default_span)))
+	}
+
+	/// Compile an expression that may contain subqueries
+	///
+	/// This is the async version of compile_expr that can handle SubQuery,
+	/// Exists, and IN with subquery expressions.
+	pub(crate) fn compile_expr_with_subqueries<'a>(
+		&'a mut self,
+		expr: &'a Expr<'bump>,
+		schema: Option<&'a OutputSchema<'bump>>,
+	) -> std::pin::Pin<Box<dyn Future<Output = Result<&'bump PlanExpr<'bump>>> + 'a>>
+	where
+		'bump: 'a,
+	{
+		Box::pin(async move {
+			match expr {
+				// Handle subquery expressions
+				Expr::SubQuery(subquery) => {
+					let plan = self.compile_subquery(subquery, None).await?;
+					let plan_ref: &'bump Plan<'bump> = self.bump.alloc(plan);
+					let result: &'bump PlanExpr<'bump> =
+						self.bump.alloc(PlanExpr::Subquery(plan_ref));
+					Ok(result)
+				}
+				Expr::Exists(exists) => {
+					// Extract subquery from the exists expression
+					let subquery = match exists.subquery {
+						Expr::SubQuery(sq) => sq,
+						Expr::Paren(inner) => match inner {
+							Expr::SubQuery(sq) => sq,
+							_ => {
+								return Err(PlanError {
+									kind: PlanErrorKind::Unsupported(
+										"EXISTS requires a subquery"
+											.to_string(),
+									),
+									span: exists.span,
+								});
+							}
+						},
+						_ => {
+							return Err(PlanError {
+								kind: PlanErrorKind::Unsupported(
+									"EXISTS requires a subquery".to_string(),
+								),
+								span: exists.span,
+							});
+						}
+					};
+					let plan = self.compile_subquery(subquery, None).await?;
+					let plan_ref: &'bump Plan<'bump> = self.bump.alloc(plan);
+					let result: &'bump PlanExpr<'bump> = self.bump.alloc(PlanExpr::Exists {
+						subquery: plan_ref,
+						negated: exists.negated,
+						span: exists.span,
+					});
+					Ok(result)
+				}
+				Expr::In(in_expr) => {
+					// Check if the list is a subquery
+					match in_expr.list {
+						Expr::SubQuery(subquery) => {
+							let value_expr = self
+								.compile_expr_with_subqueries(in_expr.value, schema)
+								.await?;
+							let plan = self.compile_subquery(subquery, None).await?;
+							let plan_ref: &'bump Plan<'bump> = self.bump.alloc(plan);
+							let result: &'bump PlanExpr<'bump> =
+								self.bump.alloc(PlanExpr::InSubquery {
+									expr: value_expr,
+									subquery: plan_ref,
+									negated: in_expr.negated,
+									span: in_expr.span,
+								});
+							Ok(result)
+						}
+						Expr::Paren(Expr::SubQuery(subquery)) => {
+							let value_expr = self
+								.compile_expr_with_subqueries(in_expr.value, schema)
+								.await?;
+							let plan = self.compile_subquery(subquery, None).await?;
+							let plan_ref: &'bump Plan<'bump> = self.bump.alloc(plan);
+							let result: &'bump PlanExpr<'bump> =
+								self.bump.alloc(PlanExpr::InSubquery {
+									expr: value_expr,
+									subquery: plan_ref,
+									negated: in_expr.negated,
+									span: in_expr.span,
+								});
+							Ok(result)
+						}
+						_ => {
+							// Regular IN list - use sync compile_expr
+							self.compile_expr(expr, schema)
+						}
+					}
+				}
+				// Binary expressions may contain subqueries
+				Expr::Binary(bin) => {
+					let left = self.compile_expr_with_subqueries(bin.left, schema).await?;
+					let right = self.compile_expr_with_subqueries(bin.right, schema).await?;
+					let op = self.convert_binary_op(bin.op)?;
+					let result: &'bump PlanExpr<'bump> = self.bump.alloc(PlanExpr::Binary {
+						op,
+						left,
+						right,
+						span: bin.span,
+					});
+					Ok(result)
+				}
+				// Unary expressions may contain subqueries
+				Expr::Unary(unary) => {
+					let operand = self.compile_expr_with_subqueries(unary.operand, schema).await?;
+					let op = self.convert_unary_op(unary.op);
+					let result: &'bump PlanExpr<'bump> = self.bump.alloc(PlanExpr::Unary {
+						op,
+						operand,
+						span: unary.span,
+					});
+					Ok(result)
+				}
+				// Parenthesized expressions
+				Expr::Paren(inner) => self.compile_expr_with_subqueries(inner, schema).await,
+				// For all other expressions, use the sync version
+				_ => self.compile_expr(expr, schema).map_err(|e| e),
+			}
+		})
 	}
 }

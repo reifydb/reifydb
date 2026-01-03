@@ -571,6 +571,18 @@ fn decode_operands(
 			operands.push(Operand::ObjectType(obj_type));
 		}
 
+		// Subquery Operations
+		Opcode::ExecSubqueryExists | Opcode::ExecSubqueryIn => {
+			let idx = read_u16(reader, raw_bytes)?;
+			let negated = read_u8(reader, raw_bytes)?;
+			operands.push(Operand::U16(idx));
+			operands.push(Operand::U8(negated));
+		}
+		Opcode::ExecSubqueryScalar => {
+			let idx = read_u16(reader, raw_bytes)?;
+			operands.push(Operand::U16(idx));
+		}
+
 		// No operands
 		Opcode::Inline
 		| Opcode::Collect
@@ -939,7 +951,7 @@ fn format_subqueries_section(program: &CompiledProgram) -> String {
 	output.push_str("╗\n");
 
 	for (i, subq) in program.subqueries.iter().enumerate() {
-		let formatted = format!("Source: {}", subq.source_name);
+		let formatted = format!("{} bytes, {} sources", subq.bytecode.len(), subq.sources.len());
 		let prefix = format!("[{}] ", i);
 		let content_width = HEADER_CONTENT_WIDTH - prefix.width();
 		output.push_str(&format!("║ {}{} ║\n", prefix, pad_to_width(&formatted, content_width)));

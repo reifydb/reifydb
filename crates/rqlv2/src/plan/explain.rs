@@ -972,6 +972,31 @@ impl<'a> PlanExplainer<'a> {
 			PlanExpr::Subquery(plan) => {
 				format!("({})", explain_plan(plan).trim())
 			}
+			PlanExpr::Exists {
+				subquery,
+				negated,
+				..
+			} => {
+				let prefix = if *negated {
+					"NOT EXISTS"
+				} else {
+					"EXISTS"
+				};
+				format!("{}({})", prefix, explain_plan(subquery).trim())
+			}
+			PlanExpr::InSubquery {
+				expr,
+				subquery,
+				negated,
+				..
+			} => {
+				let op = if *negated {
+					"NOT IN"
+				} else {
+					"IN"
+				};
+				format!("{} {} ({})", self.format_expr(expr), op, explain_plan(subquery).trim())
+			}
 			PlanExpr::List(items, _) => {
 				let elements: Vec<String> = items.iter().map(|e| self.format_expr(e)).collect();
 				format!("[{}]", elements.join(", "))

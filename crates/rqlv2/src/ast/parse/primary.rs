@@ -244,6 +244,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Keyword::Distinct => self.parse_distinct(),
 			Keyword::Aggregate => self.parse_aggregate(),
 			Keyword::If => self.parse_if_expr(),
+			Keyword::Exists => self.parse_exists(false),
 			// JOIN variants
 			Keyword::Join => self.parse_join(),
 			Keyword::Inner => self.parse_inner_join(),
@@ -315,7 +316,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		Ok(self.alloc(Expr::Between(BetweenExpr::new(value, lower, upper, span))))
 	}
 
-	/// Parse IN expression: x IN [list] or x NOT IN [list]
+	/// Parse IN expression: x IN [list] or x NOT IN [list] or x IN (subquery)
 	pub(super) fn parse_in(
 		&mut self,
 		value: &'bump Expr<'bump>,
@@ -326,10 +327,74 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		}
 		self.advance(); // consume IN
 
-		let list = self.parse_expr(Precedence::Comparison)?;
+		// Check for subquery: (FROM ...)
+		let list = if self.check_punct(Punctuation::OpenParen) {
+			// Subquery: (from ... | ...)
+			let start_span = self.advance().span; // consume (
+
+			let mut stages = BumpVec::new_in(self.bump);
+			let first = self.parse_expr(Precedence::None)?;
+			stages.push(*first);
+
+			while self.try_consume_operator(Operator::Pipe) {
+				let stage = self.parse_expr(Precedence::None)?;
+				stages.push(*stage);
+			}
+
+			let end_span = self.expect_punct(Punctuation::CloseParen)?;
+			let pipeline_span = start_span.merge(&end_span);
+
+			self.alloc(Expr::SubQuery(SubQueryExpr::new(stages.into_bump_slice(), pipeline_span)))
+		} else if self.check_punct(Punctuation::OpenBracket) {
+			// Inline list: [value, value, ...]
+			self.parse_list()?
+		} else {
+			return Err(self.error(ParseErrorKind::ExpectedPunctuation(Punctuation::OpenBracket)));
+		};
+
 		let span = value.span().merge(&list.span());
 
 		Ok(self.alloc(Expr::In(InExpr::new(value, list, negated, span))))
+	}
+
+	/// Parse EXISTS expression: EXISTS(subquery) or NOT EXISTS(subquery)
+	///
+	/// Supports two forms:
+	/// - `exists(from table | filter ...)` - pipeline inside parentheses
+	/// - `exists({ from table | filter ... })` - explicit subquery syntax
+	pub(super) fn parse_exists(&mut self, negated: bool) -> Result<&'bump Expr<'bump>, ParseError> {
+		let start_span = self.advance().span; // consume EXISTS
+
+		// Expect opening parenthesis
+		self.expect_punct(Punctuation::OpenParen)?;
+
+		// Parse the subquery - can be explicit { } or implicit pipeline
+		let subquery = if self.check_punct(Punctuation::OpenCurly) {
+			// Explicit subquery syntax: exists({ FROM ... })
+			self.parse_inline_or_subquery()?
+		} else {
+			// Implicit pipeline: exists(FROM ... | ...)
+			let mut stages = BumpVec::new_in(self.bump);
+			let first = self.parse_expr(Precedence::None)?;
+			stages.push(*first);
+
+			while self.try_consume_operator(Operator::Pipe) {
+				let stage = self.parse_expr(Precedence::None)?;
+				stages.push(*stage);
+			}
+
+			let pipeline_span = if let Some(last) = stages.last() {
+				first.span().merge(&last.span())
+			} else {
+				first.span()
+			};
+
+			self.alloc(Expr::SubQuery(SubQueryExpr::new(stages.into_bump_slice(), pipeline_span)))
+		};
+
+		let end_span = self.expect_punct(Punctuation::CloseParen)?;
+
+		Ok(self.alloc(Expr::Exists(ExistsExpr::new(subquery, negated, start_span.merge(&end_span)))))
 	}
 
 	/// Parse IF expression.

@@ -309,20 +309,21 @@ pub enum NullsOrder {
 /// Definition of a subquery for IN/EXISTS expressions.
 #[derive(Debug, Clone)]
 pub struct SubqueryDef {
-	/// Source table name (for the scan stage).
-	pub source_name: String,
+	/// Compiled bytecode for the subquery.
+	/// This is a complete program that can be executed independently.
+	pub bytecode: Vec<u8>,
 
-	/// Filter expression index (if any).
-	pub filter_expr_index: Option<u16>,
+	/// Constants used by the subquery.
+	pub constants: Vec<Constant>,
 
-	/// Select column list index (if any).
-	pub select_list_index: Option<u16>,
-
-	/// Take limit (if any).
-	pub take_limit: Option<u64>,
+	/// Sources used by the subquery.
+	pub sources: Vec<SourceDef>,
 
 	/// Column references from outer query (for correlated subqueries).
 	pub outer_refs: Vec<String>,
+
+	/// Source map for error reporting.
+	pub source_map: SourceMap,
 }
 
 /// DDL definition for CREATE/ALTER/DROP operations.

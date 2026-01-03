@@ -15,7 +15,7 @@ use crate::{
 	bytecode::{
 		instruction::BytecodeWriter,
 		opcode::Opcode,
-		program::{CompiledProgram, ScriptFunctionDef, SourceMap, SourceMapEntry},
+		program::{CompiledProgram, ScriptFunctionDef, SourceMap, SourceMapEntry, SubqueryDef},
 	},
 	plan::Plan,
 	token::Span,
@@ -147,6 +147,45 @@ impl PlanCompiler {
 			bytecode_offset: self.writer.position() as u32,
 			span,
 		});
+	}
+
+	/// Compile a subquery plan into a SubqueryDef.
+	///
+	/// This creates a separate bytecode stream for the subquery that can be
+	/// executed independently. Used for EXISTS, IN subqueries, and scalar subqueries.
+	pub(crate) fn compile_subquery<'bump>(&mut self, plan: &Plan<'bump>) -> Result<u16> {
+		// Save current state
+		let saved_writer = std::mem::replace(&mut self.writer, BytecodeWriter::new());
+		let saved_source_map = std::mem::take(&mut self.source_map_entries);
+		let saved_program = std::mem::replace(&mut self.program, CompiledProgram::new());
+
+		// Compile the subquery plan into the new writer
+		self.compile_plan(plan)?;
+		self.writer.emit_opcode(Opcode::Collect);
+		self.writer.emit_opcode(Opcode::Halt);
+
+		// Extract the compiled subquery
+		let subquery_bytecode = self.writer.to_vec();
+		let subquery_constants = std::mem::take(&mut self.program.constants);
+		let subquery_sources = std::mem::take(&mut self.program.sources);
+		let subquery_source_map = SourceMap::from_entries(std::mem::take(&mut self.source_map_entries));
+
+		// Restore state
+		self.writer = saved_writer;
+		self.source_map_entries = saved_source_map;
+		self.program = saved_program;
+
+		// Create the subquery definition
+		let subquery_def = SubqueryDef {
+			bytecode: subquery_bytecode,
+			constants: subquery_constants,
+			sources: subquery_sources,
+			outer_refs: Vec::new(), // TODO: Track outer references for correlated subqueries
+			source_map: subquery_source_map,
+		};
+
+		// Add to program and return index
+		Ok(self.program.add_subquery(subquery_def))
 	}
 
 	/// Finalize script functions by appending their bytecode to the main program.

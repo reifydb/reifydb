@@ -46,6 +46,9 @@ impl Precedence {
 				| Operator::RightAngle
 				| Operator::RightAngleEqual => Precedence::Comparison,
 
+				// NOT needs Comparison precedence for NOT IN / NOT BETWEEN
+				Operator::Not => Precedence::Comparison,
+
 				Operator::Plus | Operator::Minus => Precedence::Term,
 				Operator::Asterisk | Operator::Slash | Operator::Percent => Precedence::Factor,
 
@@ -90,8 +93,15 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			// Unary operators
 			TokenKind::Operator(Operator::Minus) => self.parse_unary(UnaryOp::Neg),
 			TokenKind::Operator(Operator::Plus) => self.parse_unary(UnaryOp::Plus),
+			// NOT operator - check for NOT EXISTS special case
 			TokenKind::Operator(Operator::Bang) | TokenKind::Operator(Operator::Not) => {
-				self.parse_unary(UnaryOp::Not)
+				// Check for NOT EXISTS pattern
+				if self.peek().kind == TokenKind::Keyword(Keyword::Exists) {
+					self.advance(); // consume NOT
+					self.parse_exists(true)
+				} else {
+					self.parse_unary(UnaryOp::Not)
+				}
 			}
 
 			// Grouping: (expr) or tuple
