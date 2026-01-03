@@ -35,6 +35,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				// Check if expression is a SubQuery - treat as pipeline
 				if let Expr::SubQuery(subquery) = expr {
 					let plan = self.compile_subquery(subquery, None).await?;
+					// Store the schema for this variable
+					let schema = self.build_schema_from_plan(&plan);
+					self.store_variable_schema(var_id, schema);
 					let plan_ref = self.bump.alloc(plan) as &'bump Plan<'bump>;
 					DeclareValue::Plan(std::slice::from_ref(self.bump.alloc(plan_ref)))
 				} else {
@@ -44,6 +47,11 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 			LetValue::Pipeline(stages) => {
 				let plans = self.compile_statement_body_as_pipeline(stages).await?;
+				// Store the schema from the last plan for this variable
+				if let Some(last_plan) = plans.last() {
+					let schema = self.build_schema_from_plan(last_plan);
+					self.store_variable_schema(var_id, schema);
+				}
 				DeclareValue::Plan(plans)
 			}
 		};

@@ -413,6 +413,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				let right_schema = self.build_schema_from_plan(join.right);
 				schema.merge(&right_schema);
 			}
+			Plan::VariableSource(var_source) => {
+				if let Some(stored_schema) = self.get_variable_schema(var_source.variable.variable_id) {
+					return stored_schema.clone_schema();
+				}
+				unimplemented!()
+			}
 			// For other plan types, return empty schema
 			_ => {}
 		}

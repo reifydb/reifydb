@@ -266,68 +266,86 @@ async fn test_function_declaration_and_call() {
 	assert_eq!(result.row_count(), 3, "Expected 3 rows from get_top_scorers()");
 	assert_eq!(result.len(), 4, "Expected 4 columns (id, name, age, score)");
 }
-// /// Test dollar-prefixed variable declaration syntax
-// #[tokio::test]
-// async fn test_dollar_variable_declaration() {
-// 	let registry = create_registry();
-// 	let script = r#"
-//         let $adults = scan users | filter age >= 18
-//         $adults | select [name, age]
-//     "#;
-//
-// 	// Debug: compile and show bytecode
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== DOLLAR VARIABLE TEST BYTECODE ===");
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Sources: {:?}", program.sources);
-// 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
-// 	println!("=====================================\n");
-//
-// 	// Execute using bytecode VM
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-// 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => {
-// 			println!("Got pipeline, collecting...");
-// 			match collect(p).await {
-// 				Ok(cols) => {
-// 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
-// 					cols
-// 				}
-// 				Err(e) => {
-// 					println!("Collect failed: {:?}", e);
-// 					Columns::empty()
-// 				}
-// 			}
-// 		}
-// 		Ok(None) => {
-// 			println!("No pipeline returned");
-// 			Columns::empty()
-// 		}
-// 		Err(e) => {
-// 			println!("Execute failed: {:?}", e);
-// 			Columns::empty()
-// 		}
-// 	};
-//
-// 	// Print results
-// 	println!("\n=== DOLLAR VARIABLE TEST RESULT ===");
-// 	println!("Columns: {}", result.len());
-// 	println!("Rows: {}", result.row_count());
-// 	for col in result.iter() {
-// 		println!("\n  Column: {}", col.name().text());
-// 		println!("  Data: {:?}", col.data());
-// 	}
-// 	println!("===================================\n");
-//
-// 	// Users: Alice(25), Bob(17), Charlie(35), Diana(22), Eve(19)
-// 	// Adults (age >= 18): Alice, Charlie, Diana, Eve = 4 rows
-// 	assert_eq!(result.row_count(), 4, "Expected 4 adults");
-// 	assert_eq!(result.len(), 2, "Expected 2 columns [name, age]");
-// }
-//
+/// Test dollar-prefixed variable declaration syntax
+#[tokio::test]
+async fn test_dollar_variable_declaration() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25},
+				{id: 2, name: "Bob", age: 17},
+				{id: 3, name: "Charlie", age: 35},
+				{id: 4, name: "Diana", age: 22},
+				{id: 5, name: "Eve", age: 19}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// ============================================
+	// Test dollar-prefixed variable declaration with map projection
+	// Variable schema tracking allows column resolution in $adults | map { name, age }
+	// ============================================
+	let script = "let $adults = from test.users | filter age >= 18; $adults | map { name, age }";
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== DOLLAR VARIABLE TEST BYTECODE ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Sources: {:?}", program.sources);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+	println!("=====================================\n");
+
+	// Execute using bytecode VM
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	let result = match pipeline {
+		Ok(Some(p)) => {
+			println!("Got pipeline, collecting...");
+			match collect(p).await {
+				Ok(cols) => {
+					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
+					cols
+				}
+				Err(e) => {
+					println!("Collect failed: {:?}", e);
+					Columns::empty()
+				}
+			}
+		}
+		Ok(None) => {
+			println!("No pipeline returned");
+			Columns::empty()
+		}
+		Err(e) => {
+			println!("Execute failed: {:?}", e);
+			Columns::empty()
+		}
+	};
+
+	// Print results
+	println!("\n=== DOLLAR VARIABLE TEST RESULT ===");
+	println!("Columns: {}", result.len());
+	println!("Rows: {}", result.row_count());
+	for col in result.iter() {
+		println!("\n  Column: {}", col.name().text());
+		println!("  Data: {:?}", col.data());
+	}
+	println!("===================================\n");
+
+	// Users: Alice(25), Bob(17), Charlie(35), Diana(22), Eve(19)
+	// Adults (age >= 18): Alice, Charlie, Diana, Eve = 4 rows
+	assert_eq!(result.row_count(), 4, "Expected 4 adults");
+	assert_eq!(result.len(), 2, "Expected 2 columns [name, age]");
+}
 // /// Test if/else-if/else chain
 // #[tokio::test]
 // async fn test_if_else_if_else() {

@@ -9,7 +9,11 @@ use reifydb_transaction::IntoStandardTransaction;
 use tracing::instrument;
 
 use super::scope::Scope;
-use crate::{ast::Program, plan::Plan, token::Span};
+use crate::{
+	ast::Program,
+	plan::{OutputSchema, Plan},
+	token::Span,
+};
 
 /// Planner context - holds bump allocator, catalog, and transaction.
 pub(super) struct Planner<'bump, 'cat, T> {
@@ -20,6 +24,8 @@ pub(super) struct Planner<'bump, 'cat, T> {
 	pub(super) next_variable_id: u32,
 	/// Script function names that have been defined.
 	pub(super) script_functions: BumpVec<'bump, &'bump str>,
+	/// Variable schemas for pipeline-valued variables (variable_id -> schema).
+	pub(super) variable_schemas: BumpVec<'bump, (u32, OutputSchema<'bump>)>,
 }
 
 /// Result type for plan compilation.
@@ -92,6 +98,7 @@ pub async fn plan<'bump, T: IntoStandardTransaction>(
 		scopes: BumpVec::new_in(bump),
 		next_variable_id: 0,
 		script_functions: BumpVec::new_in(bump),
+		variable_schemas: BumpVec::new_in(bump),
 	};
 	planner.push_scope();
 	planner.compile_program(program).await
