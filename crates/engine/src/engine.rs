@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc};
 
 use async_trait::async_trait;
 use reifydb_builtin::{Functions, generator, math};
@@ -21,13 +21,13 @@ use reifydb_core::{
 };
 use reifydb_rql::ast;
 use reifydb_transaction::{
-	StandardCommandTransaction, StandardQueryTransaction,
-	cdc::TransactionCdc,
-	interceptor::InterceptorFactory,
-	multi::{AwaitWatermarkError, TransactionMultiVersion},
-	single::TransactionSingle,
+	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
+	multi::TransactionMultiVersion, single::TransactionSingle,
 };
-use reifydb_type::{Error, Fragment, TypeConstraint, diagnostic::engine::parallel_execution_error};
+use reifydb_type::{
+	Error, Fragment, TypeConstraint,
+	diagnostic::{catalog::namespace_not_found, engine::parallel_execution_error},
+};
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -251,6 +251,7 @@ async fn execute_query_sequential(
 ///
 /// Each statement gets its own transaction at the same snapshot version,
 /// ensuring consistent reads across all parallel executions.
+#[allow(dead_code)]
 async fn execute_query_parallel(
 	engine: StandardEngine,
 	rql: String,
@@ -507,33 +508,12 @@ impl StandardEngine {
 		self.multi.current_version().await
 	}
 
-	/// Wait for the watermark to reach the specified version.
-	/// Returns Ok(()) if the watermark reaches the version within the timeout,
-	/// or Err(AwaitWatermarkError) if the timeout expires.
-	///
-	/// This is useful for CDC polling to ensure all in-flight commits have
-	/// completed their storage writes before querying for CDC events.
-	#[inline]
-	pub async fn try_wait_for_watermark(
-		&self,
-		version: CommitVersion,
-		timeout: Duration,
-	) -> Result<(), AwaitWatermarkError> {
-		self.multi.try_wait_for_watermark(version, timeout).await
-	}
-
 	/// Returns the highest version where ALL prior versions have completed.
 	/// This is useful for CDC polling to know the safe upper bound for fetching
 	/// CDC events - all events up to this version are guaranteed to be in storage.
 	#[inline]
 	pub fn done_until(&self) -> CommitVersion {
 		self.multi.done_until()
-	}
-
-	/// Returns (query_done_until, command_done_until) for debugging watermark state.
-	#[inline]
-	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
-		self.multi.watermarks()
 	}
 
 	#[inline]
@@ -584,10 +564,10 @@ impl StandardEngine {
 		table: T,
 	) -> crate::Result<VTableId> {
 		// Look up namespace by name (use max u64 to get latest version)
-		let ns_def =
-			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
-			})?;
+		let ns_def = self
+			.catalog
+			.find_namespace_by_name(namespace, CommitVersion(u64::MAX))
+			.ok_or_else(|| Error(namespace_not_found(Fragment::None, namespace)))?;
 
 		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
@@ -628,10 +608,10 @@ impl StandardEngine {
 	/// * `name` - The table name
 	pub fn unregister_virtual_table(&self, namespace: &str, name: &str) -> crate::Result<()> {
 		// Look up namespace by name (use max u64 to get latest version)
-		let ns_def =
-			self.catalog.find_namespace_by_name(namespace, CommitVersion(u64::MAX)).ok_or_else(|| {
-				Error(reifydb_type::diagnostic::catalog::namespace_not_found(Fragment::None, namespace))
-			})?;
+		let ns_def = self
+			.catalog
+			.find_namespace_by_name(namespace, CommitVersion(u64::MAX))
+			.ok_or_else(|| Error(namespace_not_found(Fragment::None, namespace)))?;
 
 		// Unregister from catalog
 		self.catalog.unregister_vtable_user(ns_def.id, name)?;

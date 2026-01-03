@@ -70,7 +70,7 @@ impl Display for Frame {
 
 		// Regular column widths
 		for col in &self.columns {
-			let header_width = escape_control_chars(&col.qualified_name()).width();
+			let header_width = escape_control_chars(&col.name).width();
 			let mut max_val_width = 0;
 			for i in 0..col.data.len() {
 				max_val_width = max_val_width.max(escape_control_chars(&col.data.as_string(i)).width());
@@ -105,7 +105,7 @@ impl Display for Frame {
 			col_idx += 1;
 		}
 		for col in &self.columns {
-			let name = escape_control_chars(&col.qualified_name());
+			let name = escape_control_chars(&col.name);
 			let w = col_widths[col_idx];
 			let pad = w - name.width();
 			let l = pad / 2;

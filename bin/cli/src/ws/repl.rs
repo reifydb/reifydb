@@ -251,7 +251,7 @@ fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
 
 	// Regular columns
 	for col in &frame.columns {
-		let header_width = col.qualified_name().width();
+		let header_width = col.name.width();
 		let max_val_width = (0..col.data.len()).map(|i| col.data.as_string(i).width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
@@ -312,7 +312,7 @@ fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
 		if col_idx >= num_cols_to_show {
 			break;
 		}
-		let name = col.qualified_name();
+		let name = &col.name;
 		let w = natural_widths[col_idx];
 		let pad = w - name.width();
 		let l = pad / 2;

@@ -12,7 +12,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 # Update with larger value
@@ -25,20 +25,20 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 10
 
 # Historical should have the old smaller value
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 1
 
 # Total should reflect both
 stats_totals
 ---
 total_count: 2
-current_bytes: 19
-historical_bytes: 10
-total_bytes: 29
+current_bytes: 21
+historical_bytes: 12
+total_bytes: 33

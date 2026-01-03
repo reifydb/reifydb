@@ -13,8 +13,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	BackendConfig, CdcCount, CdcGet, CdcRange, MultiVersionCommit, StandardTransactionStore,
-	TransactionStoreConfig, backend::BackendStorage,
+	CdcCount, CdcGet, CdcRange, HotConfig, MultiVersionCommit, StandardTransactionStore, TransactionStoreConfig,
+	hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -30,8 +30,8 @@ fn test_memory(path: &Path) {
 	let runtime = Runtime::new().unwrap();
 	let (_config, store) = runtime.block_on(async {
 		let config = TransactionStoreConfig {
-			hot: Some(BackendConfig {
-				storage: BackendStorage::memory().await,
+			hot: Some(HotConfig {
+				storage: HotStorage::memory().await,
 				retention_period: Duration::from_secs(300),
 			}),
 			warm: None,
@@ -53,8 +53,8 @@ fn test_sqlite(path: &Path) {
 		let runtime = Runtime::new().unwrap();
 		let (_config, store) = runtime.block_on(async {
 			let config = TransactionStoreConfig {
-				hot: Some(BackendConfig {
-					storage: BackendStorage::sqlite_in_memory().await,
+				hot: Some(HotConfig {
+					storage: HotStorage::sqlite_in_memory().await,
 					retention_period: Duration::from_secs(86400),
 				}),
 				warm: None,

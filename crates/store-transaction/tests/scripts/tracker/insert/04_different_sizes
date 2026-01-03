@@ -13,7 +13,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 # Insert longer key with longer value
@@ -26,7 +26,7 @@ ok
 stats_current
 ---
 current_count: 2
-current_key_bytes: 24
+current_key_bytes: 28
 current_value_bytes: 10
 
 # Insert key with empty value
@@ -39,13 +39,13 @@ ok
 stats_current
 ---
 current_count: 3
-current_key_bytes: 37
+current_key_bytes: 43
 current_value_bytes: 10
 
 # Verify total bytes
 stats_totals
 ---
 total_count: 3
-current_bytes: 47
+current_bytes: 53
 historical_bytes: 0
-total_bytes: 47
+total_bytes: 53

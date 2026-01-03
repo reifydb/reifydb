@@ -20,9 +20,9 @@ ok
 stats_totals
 ---
 total_count: 3
-current_bytes: 30
+current_bytes: 36
 historical_bytes: 0
-total_bytes: 30
+total_bytes: 36
 
 # Phase 2: Updates
 set a=11
@@ -36,9 +36,9 @@ ok
 stats_totals
 ---
 total_count: 5
-current_bytes: 32
-historical_bytes: 20
-total_bytes: 52
+current_bytes: 38
+historical_bytes: 24
+total_bytes: 62
 
 # Phase 3: Delete
 remove c
@@ -48,9 +48,9 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 22
-historical_bytes: 39
-total_bytes: 61
+current_bytes: 26
+historical_bytes: 47
+total_bytes: 73
 
 # Phase 4: More updates on remaining keys
 set a=111
@@ -64,9 +64,9 @@ ok
 stats_totals
 ---
 total_count: 8
-current_bytes: 24
-historical_bytes: 61
-total_bytes: 85
+current_bytes: 28
+historical_bytes: 73
+total_bytes: 101
 
 # Phase 5: Drop old versions of key a (keep last 1)
 drop a keep_last_versions=1 version=10
@@ -76,9 +76,9 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 24
-historical_bytes: 40
-total_bytes: 64
+current_bytes: 28
+historical_bytes: 48
+total_bytes: 76
 
 # Phase 6: Final insert
 set d=4
@@ -88,20 +88,20 @@ ok
 stats_totals
 ---
 total_count: 7
-current_bytes: 34
-historical_bytes: 40
-total_bytes: 74
+current_bytes: 40
+historical_bytes: 48
+total_bytes: 88
 
 # Final full stats check
 stats
 ---
 current_count: 3
-current_key_bytes: 27
+current_key_bytes: 33
 current_value_bytes: 7
 historical_count: 4
-historical_key_bytes: 36
+historical_key_bytes: 44
 historical_value_bytes: 4
 cdc_count: 9
 cdc_key_bytes: 9
 cdc_value_bytes: 684
-total_bytes: 74
+total_bytes: 88

@@ -12,7 +12,7 @@ ok
 stats
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 historical_count: 0
 historical_key_bytes: 0
@@ -20,7 +20,7 @@ historical_value_bytes: 0
 cdc_count: 1
 cdc_key_bytes: 1
 cdc_value_bytes: 76
-total_bytes: 10
+total_bytes: 12
 
 # First update - adds to historical
 set a=2
@@ -30,7 +30,7 @@ ok
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 1
 
 # Second update - adds to historical
@@ -41,7 +41,7 @@ ok
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 18
+historical_key_bytes: 22
 historical_value_bytes: 2
 
 # Delete - moves current to historical and adds tombstone
@@ -64,5 +64,5 @@ current_value_bytes: 0
 stats_historical
 ---
 historical_count: 4
-historical_key_bytes: 36
+historical_key_bytes: 44
 historical_value_bytes: 3

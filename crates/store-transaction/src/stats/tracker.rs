@@ -21,8 +21,8 @@ use super::{
 	types::{ObjectId, StorageStats, Tier},
 };
 use crate::{
-	backend::{PrimitiveStorage, primitive::TableId},
 	stats::parser::extract_object_id,
+	tier::{Store, TierStorage},
 };
 
 /// Configuration for storage tracking.
@@ -376,9 +376,9 @@ impl StorageTracker {
 	/// Persist current stats to storage.
 	///
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
-	pub async fn checkpoint<S: PrimitiveStorage>(&self, storage: &S) -> Result<()> {
+	pub async fn checkpoint<S: TierStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
-		storage.ensure_table(TableId::Single).await?;
+		storage.ensure_table(Store::Single).await?;
 
 		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
 			let inner = self.inner.read().unwrap();
@@ -403,7 +403,7 @@ impl StorageTracker {
 		};
 
 		// Batch write all entries
-		storage.set(HashMap::from([(TableId::Single, entries)])).await?;
+		storage.set(HashMap::from([(Store::Single, entries)])).await?;
 
 		// Reset checkpoint timer
 		{
@@ -417,7 +417,7 @@ impl StorageTracker {
 	/// Restore stats from storage on startup.
 	///
 	/// Loads previously persisted stats from storage using `KeyKind::StorageTracker` keys.
-	pub async fn restore_async<S: PrimitiveStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
+	pub async fn restore_async<S: TierStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
 		let mut by_type: HashMap<(Tier, KeyKind), StorageStats> = HashMap::new();
 		let mut by_object: HashMap<(Tier, ObjectId), StorageStats> = HashMap::new();
 
@@ -429,7 +429,7 @@ impl StorageTracker {
 		}
 
 		let batch = storage
-			.range_batch(TableId::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
+			.range_batch(Store::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
 			.await?;
 
 		for entry in batch.entries {
@@ -450,7 +450,7 @@ impl StorageTracker {
 		}
 
 		let batch = storage
-			.range_batch(TableId::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
+			.range_batch(Store::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
 			.await?;
 
 		for entry in batch.entries {
@@ -679,10 +679,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_checkpoint_and_restore_roundtrip() {
-		use crate::backend::BackendStorage;
+		use crate::hot::HotStorage;
 
 		// Create a memory storage backend
-		let storage = BackendStorage::memory().await;
+		let storage = HotStorage::memory().await;
 
 		// Create tracker with some data
 		let config = StorageTrackerConfig {
@@ -732,9 +732,9 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_checkpoint_resets_timer() {
-		use crate::backend::BackendStorage;
+		use crate::hot::HotStorage;
 
-		let storage = BackendStorage::memory().await;
+		let storage = HotStorage::memory().await;
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
@@ -759,10 +759,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_restore_empty_storage() {
-		use crate::backend::BackendStorage;
+		use crate::hot::HotStorage;
 
 		// Create empty storage
-		let storage = BackendStorage::memory().await;
+		let storage = HotStorage::memory().await;
 
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_secs(10),

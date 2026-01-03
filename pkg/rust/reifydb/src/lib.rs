@@ -34,7 +34,7 @@ pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
-pub use reifydb_store_transaction::{backend::BackendStorage, sqlite::SqliteConfig};
+pub use reifydb_store_transaction::{hot::HotStorage, sqlite::SqliteConfig};
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;

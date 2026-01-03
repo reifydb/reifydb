@@ -6,7 +6,11 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 
-pub mod backend;
+pub mod cold;
+pub mod hot;
+pub mod tier;
+pub mod warm;
+
 pub(crate) mod cdc;
 pub mod config;
 mod multi;
@@ -19,7 +23,9 @@ use std::collections::Bound;
 
 use async_trait::async_trait;
 pub use cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, CdcStore};
-pub use config::{BackendConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig};
+pub use config::{
+	ColdConfig, HotConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig, WarmConfig,
+};
 pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
@@ -31,10 +37,10 @@ pub use stats::{ObjectId, StorageStats, StorageTracker, Tier, TierStats};
 pub use store::StandardTransactionStore;
 
 pub mod memory {
-	pub use crate::backend::memory::MemoryPrimitiveStorage;
+	pub use crate::hot::memory::MemoryPrimitiveStorage;
 }
 pub mod sqlite {
-	pub use crate::backend::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
+	pub use crate::hot::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
 }
 
 pub struct TransactionStoreVersion;

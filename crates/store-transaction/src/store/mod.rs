@@ -6,10 +6,12 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 use tracing::instrument;
 
 use crate::{
-	BackendConfig,
-	backend::BackendStorage,
+	HotConfig,
+	cold::ColdStorage,
 	config::TransactionStoreConfig,
+	hot::HotStorage,
 	stats::{StorageTracker, StorageTrackerConfig},
+	warm::WarmStorage,
 };
 
 mod cdc;
@@ -17,15 +19,15 @@ mod drop;
 mod multi;
 pub mod router;
 mod single;
-pub mod version_manager;
+pub mod version;
 
 #[derive(Clone)]
 pub struct StandardTransactionStore(Arc<StandardTransactionStoreInner>);
 
 pub struct StandardTransactionStoreInner {
-	pub(crate) hot: Option<BackendStorage>,
-	pub(crate) warm: Option<BackendStorage>,
-	pub(crate) cold: Option<BackendStorage>,
+	pub(crate) hot: Option<HotStorage>,
+	pub(crate) warm: Option<WarmStorage>,
+	pub(crate) cold: Option<ColdStorage>,
 	pub(crate) stats_tracker: StorageTracker,
 }
 
@@ -37,8 +39,11 @@ impl StandardTransactionStore {
 	))]
 	pub fn new(config: TransactionStoreConfig) -> crate::Result<Self> {
 		let hot = config.hot.map(|c| c.storage);
-		let warm = config.warm.map(|c| c.storage);
-		let cold = config.cold.map(|c| c.storage);
+		// TODO: warm and cold are placeholders for now
+		let warm = None;
+		let cold = None;
+		let _ = config.warm;
+		let _ = config.cold;
 
 		let tracker_config = StorageTrackerConfig {
 			checkpoint_interval: config.stats.checkpoint_interval,
@@ -73,8 +78,8 @@ impl Deref for StandardTransactionStore {
 impl StandardTransactionStore {
 	pub async fn testing_memory() -> Self {
 		Self::new(TransactionStoreConfig {
-			hot: Some(BackendConfig {
-				storage: BackendStorage::memory().await,
+			hot: Some(HotConfig {
+				storage: HotStorage::memory().await,
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

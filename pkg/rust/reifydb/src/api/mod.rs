@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb_core::event::EventBus;
 use reifydb_store_transaction::{
-	BackendConfig, TransactionStore, TransactionStoreConfig, backend::BackendStorage, sqlite::SqliteConfig,
+	HotConfig, TransactionStore, TransactionStoreConfig, hot::HotStorage, sqlite::SqliteConfig,
 };
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
@@ -15,9 +15,9 @@ pub mod server;
 /// Convenience function to create in-memory storage
 pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = BackendStorage::memory().await;
+	let storage = HotStorage::memory().await;
 	let store = TransactionStore::standard(TransactionStoreConfig {
-		hot: Some(BackendConfig {
+		hot: Some(HotConfig {
 			storage,
 			retention_period: Duration::from_millis(200),
 		}),
@@ -34,9 +34,9 @@ pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, E
 /// Convenience function to create SQLite storage
 pub async fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = BackendStorage::sqlite(config).await;
+	let storage = HotStorage::sqlite(config).await;
 	let store = TransactionStore::standard(TransactionStoreConfig {
-		hot: Some(BackendConfig {
+		hot: Some(HotConfig {
 			storage,
 			retention_period: Duration::from_millis(200),
 		}),

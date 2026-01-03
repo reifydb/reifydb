@@ -11,8 +11,8 @@ use std::ops::Bound;
 
 use reifydb_core::CommitVersion;
 
-use super::version_manager::{encode_versioned_key, extract_version, key_version_range};
-use crate::backend::{PrimitiveStorage, TableId};
+use super::version::{encode_versioned_key, extract_version, key_version_range};
+use crate::tier::{Store, TierStorage};
 
 /// Information about an entry to be dropped.
 #[derive(Debug, Clone)]
@@ -31,9 +31,9 @@ pub struct DropEntry {
 /// - `key`: The logical key (without version suffix)
 /// - `up_to_version`: If Some(v), candidate versions where version < v
 /// - `keep_last_versions`: If Some(n), protect n most recent versions from being dropped
-pub(crate) async fn find_keys_to_drop<S: PrimitiveStorage>(
+pub(crate) async fn find_keys_to_drop<S: TierStorage>(
 	storage: &S,
-	table: TableId,
+	table: Store,
 	key: &[u8],
 	up_to_version: Option<CommitVersion>,
 	keep_last_versions: Option<usize>,
@@ -105,13 +105,13 @@ mod tests {
 	use std::collections::HashMap;
 
 	use super::{
-		super::version_manager::{encode_versioned_key, extract_key},
+		super::version::{encode_versioned_key, extract_key},
 		*,
 	};
-	use crate::backend::BackendStorage;
+	use crate::hot::HotStorage;
 
 	/// Create versioned test entries for a key
-	async fn setup_versioned_entries(storage: &BackendStorage, table: TableId, key: &[u8], versions: &[u64]) {
+	async fn setup_versioned_entries(storage: &HotStorage, table: Store, key: &[u8], versions: &[u64]) {
 		let entries: Vec<_> = versions
 			.iter()
 			.map(|v| {
@@ -130,8 +130,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_drop_all_versions() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
@@ -149,8 +149,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_drop_up_to_version() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		// Versions: 1, 5, 10, 20, 100
@@ -172,8 +172,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_drop_up_to_version_boundary() {
 		// Test exact boundary - version == threshold should NOT be dropped
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[9, 10, 11]).await;
@@ -188,8 +188,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_keep_last_n_versions() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		// Versions: 1, 5, 10, 20, 100 (sorted descending: 100, 20, 10, 5, 1)
@@ -210,8 +210,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_keep_more_than_exists() {
 		// Keep 10 but only 3 exist - should drop nothing
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
@@ -224,8 +224,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_keep_zero_versions() {
 		// Keep 0 = drop all
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
@@ -237,8 +237,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_keep_one_version() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]).await;
@@ -253,8 +253,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_combined_constraints_keep_protects() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		// Versions: 1, 5, 10, 20, 100 (sorted desc: 100, 20, 10, 5, 1)
@@ -283,8 +283,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_combined_constraints_version_restricts() {
 		// Test case where up_to_version is more restrictive than keep_last
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		// Versions: 1, 5, 10, 20, 100 (sorted desc: 100, 20, 10, 5, 1)
@@ -309,8 +309,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_combined_constraints_both_aggressive() {
 		// Both constraints are aggressive
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		// Versions: 1, 5, 10, 20, 100 (sorted desc: 100, 20, 10, 5, 1)
@@ -340,8 +340,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_empty_storage() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"nonexistent";
 
 		let to_drop = find_keys_to_drop(&storage, table, key, None, None, None).await.unwrap();
@@ -350,8 +350,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_version_drop_all() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[42]).await;
@@ -363,8 +363,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_single_version_keep_one() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[42]).await;
@@ -376,8 +376,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_different_keys_isolated() {
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 
 		setup_versioned_entries(&storage, table, b"key_a", &[1, 2, 3]).await;
 		setup_versioned_entries(&storage, table, b"key_b", &[10, 20, 30]).await;
@@ -396,8 +396,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_up_to_version_zero() {
 		// up_to_version=0 means drop nothing (no versions < 0)
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]).await;
@@ -411,8 +411,8 @@ mod tests {
 	#[tokio::test]
 	async fn test_up_to_version_max() {
 		// up_to_version=MAX means drop all (all versions < MAX)
-		let storage = BackendStorage::memory().await;
-		let table = TableId::Multi;
+		let storage = HotStorage::memory().await;
+		let table = Store::Multi;
 		let key = b"test_key";
 
 		setup_versioned_entries(&storage, table, key, &[1, 5, u64::MAX - 1]).await;

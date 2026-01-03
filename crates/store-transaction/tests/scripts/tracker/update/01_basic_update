@@ -13,7 +13,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 stats_historical
@@ -32,12 +32,12 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 # Historical should now have 1 entry (the old version)
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 1

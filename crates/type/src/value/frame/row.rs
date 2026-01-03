@@ -205,14 +205,10 @@ mod tests {
 		Frame::with_row_numbers(
 			vec![
 				FrameColumn {
-					namespace: None,
-					source: None,
 					name: "id".to_string(),
 					data: FrameColumnData::Int8(NumberContainer::from_vec(vec![1i64, 2, 3])),
 				},
 				FrameColumn {
-					namespace: None,
-					source: None,
 					name: "name".to_string(),
 					data: FrameColumnData::Utf8(Utf8Container::new(
 						vec!["Alice".to_string(), "Bob".to_string(), String::new()],

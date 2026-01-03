@@ -17,8 +17,6 @@ pub struct ResponseFrame {
 /// A column in a response frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseColumn {
-	pub namespace: Option<String>,
-	pub store: Option<String>,
 	pub name: String,
 	#[serde(rename = "type")]
 	pub r#type: Type,
@@ -49,8 +47,6 @@ pub fn convert_frames(frames: Vec<Frame>) -> Vec<ResponseFrame> {
 				.collect();
 
 			columns.push(ResponseColumn {
-				namespace: column.namespace.clone(),
-				store: column.source.clone(),
 				name: column.name.clone(),
 				r#type: column.data.get_type(),
 				data: column_data,

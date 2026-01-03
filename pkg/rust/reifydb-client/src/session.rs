@@ -66,8 +66,6 @@ pub fn convert_command_response(payload: crate::CommandResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				namespace: col.namespace,
-				source: col.store,
 				name: col.name,
 				data: convert_column_to_data(col.r#type, col.data),
 			})
@@ -88,8 +86,6 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				namespace: col.namespace,
-				source: col.store,
 				name: col.name,
 				data: convert_column_to_data(col.r#type, col.data),
 			})

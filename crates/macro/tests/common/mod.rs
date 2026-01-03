@@ -11,8 +11,6 @@ use reifydb_type::{
 /// Create a simple column with just a name.
 fn column(name: &str, data: FrameColumnData) -> FrameColumn {
 	FrameColumn {
-		namespace: None,
-		source: None,
 		name: name.to_string(),
 		data,
 	}
