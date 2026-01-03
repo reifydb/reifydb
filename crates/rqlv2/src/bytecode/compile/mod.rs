@@ -210,7 +210,7 @@ impl PlanCompiler {
 			Plan::Continue(node) => self.compile_continue(node),
 			Plan::DefineScriptFunction(node) => self.compile_define_script_function(node),
 			Plan::CallScriptFunction(node) => self.compile_call_script_function(node),
-			Plan::ExprStmt(node) => self.compile_expr_stmt(node),
+			Plan::Expr(node) => self.compile_expr_node(node),
 
 			// Other
 			Plan::InlineData(node) => self.compile_inline_data(node),

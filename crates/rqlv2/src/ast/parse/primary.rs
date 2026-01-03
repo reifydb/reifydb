@@ -11,7 +11,7 @@ use super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::{Expr, expr::*},
+	ast::{Expr, Statement, expr::*, stmt::ExprStmt},
 	token::{Keyword, LiteralKind, Operator, Punctuation, Span, TokenKind},
 };
 
@@ -339,11 +339,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let condition = self.parse_expr(Precedence::LogicOr)?;
 
 		// Expect THEN or block
-		let then_branch = if self.try_consume_keyword(Keyword::Then) {
+		let then_expr = if self.try_consume_keyword(Keyword::Then) {
 			self.parse_expr(Precedence::None)?
 		} else {
 			return Err(self.error(ParseErrorKind::ExpectedKeyword(Keyword::Then)));
 		};
+		let then_branch = self.wrap_expr_as_block(then_expr);
 
 		// Parse else-if branches
 		let mut else_ifs = BumpVec::new_in(self.bump);
@@ -351,12 +352,14 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			if self.try_consume_keyword(Keyword::If) {
 				let cond = self.parse_expr(Precedence::LogicOr)?;
 				self.expect_keyword(Keyword::Then)?;
-				let branch = self.parse_expr(Precedence::None)?;
-				else_ifs.push(ElseIf::new(cond, branch, cond.span().merge(&branch.span())));
+				let branch_expr = self.parse_expr(Precedence::None)?;
+				let branch = self.wrap_expr_as_block(branch_expr);
+				else_ifs.push(ElseIf::new(cond, branch, cond.span().merge(&branch_expr.span())));
 			} else {
 				// Final else
-				let else_branch = self.parse_expr(Precedence::None)?;
-				let span = start_span.merge(&else_branch.span());
+				let else_expr = self.parse_expr(Precedence::None)?;
+				let else_branch = self.wrap_expr_as_block(else_expr);
+				let span = start_span.merge(&else_expr.span());
 				return Ok(self.alloc(Expr::IfExpr(IfExpr::new(
 					condition,
 					then_branch,
@@ -370,7 +373,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = if let Some(last) = else_ifs.last() {
 			last.span
 		} else {
-			then_branch.span()
+			then_expr.span()
 		};
 
 		Ok(self.alloc(Expr::IfExpr(IfExpr::new(
@@ -380,5 +383,11 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			None,
 			start_span.merge(&end_span),
 		))))
+	}
+
+	/// Wrap a single expression as a statement block.
+	fn wrap_expr_as_block(&self, expr: &'bump Expr<'bump>) -> &'bump [Statement<'bump>] {
+		let stmt = Statement::Expression(ExprStmt::new(expr, expr.span()));
+		self.bump.alloc_slice_copy(&[stmt])
 	}
 }

@@ -588,6 +588,10 @@ fn decode_operands(
 		| Opcode::IntSub
 		| Opcode::IntMul
 		| Opcode::IntDiv
+		| Opcode::IntNe
+		| Opcode::IntLe
+		| Opcode::IntGt
+		| Opcode::IntGe
 		| Opcode::ColAdd
 		| Opcode::ColSub
 		| Opcode::ColMul
@@ -750,7 +754,7 @@ fn resolve_dml_target(program: &CompiledProgram, idx: u16) -> String {
 
 fn format_constant(c: &Constant) -> String {
 	match c {
-		Constant::Null => "Null".to_string(),
+		Constant::Undefined => "Undefined".to_string(),
 		Constant::Bool(b) => format!("Bool({})", b),
 		Constant::Int(i) => format!("Int({})", i),
 		Constant::Float(f) => format!("Float({})", f),

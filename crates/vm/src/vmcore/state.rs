@@ -364,7 +364,7 @@ impl VmState {
 		use reifydb_type::value::{Blob, OrderedF64};
 
 		match constant {
-			Constant::Null => Value::Undefined,
+			Constant::Undefined => Value::Undefined,
 			Constant::Bool(b) => Value::Boolean(*b),
 			Constant::Int(i) => Value::Int8(*i),
 			Constant::Float(f) => {

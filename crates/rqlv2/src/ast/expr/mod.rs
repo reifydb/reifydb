@@ -90,9 +90,15 @@ pub enum Expr<'bump> {
 	/// Inline object/record: { key: value, ... }
 	Inline(InlineExpr<'bump>),
 
-	// === Conditional & Subquery ===
+	// === Control Flow Expressions ===
 	/// Conditional expression: if cond then else
 	IfExpr(IfExpr<'bump>),
+	/// Loop expression: loop { body }
+	LoopExpr(LoopExpr<'bump>),
+	/// For loop expression: for $var in iterable { body }
+	ForExpr(ForExpr<'bump>),
+
+	// === Subquery ===
 	/// Subquery: { FROM ... | ... }
 	SubQuery(SubQueryExpr<'bump>),
 	/// Parenthesized expression
@@ -132,6 +138,8 @@ impl<'bump> Expr<'bump> {
 			Expr::Tuple(t) => t.span,
 			Expr::Inline(i) => i.span,
 			Expr::IfExpr(i) => i.span,
+			Expr::LoopExpr(l) => l.span,
+			Expr::ForExpr(f) => f.span,
 			Expr::SubQuery(s) => s.span,
 			Expr::Paren(p) => p.span(),
 		}

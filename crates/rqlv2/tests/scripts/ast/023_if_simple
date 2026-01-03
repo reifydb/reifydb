@@ -23,14 +23,10 @@ parse 'if $flag { $x = 1; $y = 2 }'
 >     +-- condition:
 >     |   `-- Variable($flag)
 >     `-- then:
->         +-- [0] Expression
->         |   `-- Binary(Assign)
->         |       +-- left: Variable($x)
->         |       `-- right: Integer(1)
->         `-- [1] Expression
->             `-- Binary(Assign)
->                 +-- left: Variable($y)
->                 `-- right: Integer(2)
+>         +-- [0] Assign($x)
+>         |   `-- Integer(1)
+>         `-- [1] Assign($y)
+>             `-- Integer(2)
 >
 
 # Test if with AND condition
@@ -79,10 +75,8 @@ parse 'if $status = "active" { $count = $count + 1 }'
 >     |       +-- left: Variable($status)
 >     |       `-- right: String("ctiv")
 >     `-- then:
->         `-- [0] Expression
->             `-- Binary(Assign)
+>         `-- [0] Assign($count)
+>             `-- Binary(Add)
 >                 +-- left: Variable($count)
->                 `-- right: Binary(Add)
->                     +-- left: Variable($count)
->                     `-- right: Integer(1)
+>                 `-- right: Integer(1)
 >

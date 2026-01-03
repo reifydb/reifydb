@@ -1,111 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Control flow statement types (if, loop, for, break, continue, return).
+//! Control flow statement types (break, continue, return).
+//!
+//! Note: `if`, `loop`, and `for` are now unified as expressions
+//! (`IfExpr`, `LoopExpr`, `ForExpr`) in the expression module.
 
-use super::{Expr, Statement};
+use super::Expr;
 use crate::token::Span;
-
-/// If statement: if cond { then } else if cond { ... } else { else }
-#[derive(Debug, Clone, Copy)]
-pub struct IfStmt<'bump> {
-	pub condition: &'bump Expr<'bump>,
-	pub then_branch: &'bump [Statement<'bump>],
-	pub else_ifs: &'bump [ElseIfBranch<'bump>],
-	pub else_branch: Option<&'bump [Statement<'bump>]>,
-	pub span: Span,
-}
-
-impl<'bump> IfStmt<'bump> {
-	/// Create a new if statement.
-	pub fn new(
-		condition: &'bump Expr<'bump>,
-		then_branch: &'bump [Statement<'bump>],
-		else_ifs: &'bump [ElseIfBranch<'bump>],
-		else_branch: Option<&'bump [Statement<'bump>]>,
-		span: Span,
-	) -> Self {
-		Self {
-			condition,
-			then_branch,
-			else_ifs,
-			else_branch,
-			span,
-		}
-	}
-}
-
-/// Else-if branch in an if statement.
-#[derive(Debug, Clone, Copy)]
-pub struct ElseIfBranch<'bump> {
-	pub condition: &'bump Expr<'bump>,
-	pub body: &'bump [Statement<'bump>],
-	pub span: Span,
-}
-
-impl<'bump> ElseIfBranch<'bump> {
-	/// Create a new else-if branch.
-	pub fn new(condition: &'bump Expr<'bump>, body: &'bump [Statement<'bump>], span: Span) -> Self {
-		Self {
-			condition,
-			body,
-			span,
-		}
-	}
-}
-
-/// Loop statement: loop { body }
-#[derive(Debug, Clone, Copy)]
-pub struct LoopStmt<'bump> {
-	pub body: &'bump [Statement<'bump>],
-	pub span: Span,
-}
-
-impl<'bump> LoopStmt<'bump> {
-	/// Create a new loop statement.
-	pub fn new(body: &'bump [Statement<'bump>], span: Span) -> Self {
-		Self {
-			body,
-			span,
-		}
-	}
-}
-
-/// For loop iterable - can be a single expression or a pipeline.
-#[derive(Debug, Clone, Copy)]
-pub enum ForIterable<'bump> {
-	/// Single expression (e.g., `$array`, `range(1, 10)`)
-	Expr(&'bump Expr<'bump>),
-	/// Pipeline stages (e.g., `from table | filter x > 0`)
-	Pipeline(&'bump [Expr<'bump>]),
-}
-
-/// For loop: for $var in iterable { body }
-#[derive(Debug, Clone, Copy)]
-pub struct ForStmt<'bump> {
-	/// Variable name (without $)
-	pub variable: &'bump str,
-	pub iterable: ForIterable<'bump>,
-	pub body: &'bump [Statement<'bump>],
-	pub span: Span,
-}
-
-impl<'bump> ForStmt<'bump> {
-	/// Create a new for statement.
-	pub fn new(
-		variable: &'bump str,
-		iterable: ForIterable<'bump>,
-		body: &'bump [Statement<'bump>],
-		span: Span,
-	) -> Self {
-		Self {
-			variable,
-			iterable,
-			body,
-			span,
-		}
-	}
-}
 
 /// Break statement: break
 #[derive(Debug, Clone, Copy)]

@@ -13,7 +13,10 @@ pub use control::*;
 pub use ddl::*;
 pub use dml::*;
 
-use super::{Expr, Pipeline};
+use super::{
+	Expr, Pipeline,
+	expr::{ForExpr, IfExpr, LoopExpr},
+};
 use crate::token::Span;
 
 /// Top-level statement.
@@ -31,11 +34,11 @@ pub enum Statement<'bump> {
 	/// Function definition: def name(params) { body }
 	Def(DefStmt<'bump>),
 	/// If/else: if cond { then } else { else }
-	If(IfStmt<'bump>),
+	If(IfExpr<'bump>),
 	/// Loop: loop { body }
-	Loop(LoopStmt<'bump>),
+	Loop(LoopExpr<'bump>),
 	/// For loop: for $var in iterable { body }
-	For(ForStmt<'bump>),
+	For(ForExpr<'bump>),
 	/// Break from loop
 	Break(BreakStmt),
 	/// Continue to next iteration

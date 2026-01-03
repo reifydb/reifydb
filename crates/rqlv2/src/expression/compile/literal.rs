@@ -8,10 +8,12 @@ use reifydb_type::Fragment;
 
 use crate::expression::types::CompiledExpr;
 
-pub(super) fn compile_literal_null() -> CompiledExpr {
+pub(super) fn compile_literal_undefined() -> CompiledExpr {
 	CompiledExpr::new(|columns, _ctx| {
 		let row_count = columns.row_count();
-		Box::pin(async move { Ok(Column::new(Fragment::internal("_null"), ColumnData::undefined(row_count))) })
+		Box::pin(
+			async move { Ok(Column::new(Fragment::internal("_undefined"), ColumnData::undefined(row_count))) },
+		)
 	})
 }
 

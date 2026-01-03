@@ -21,18 +21,14 @@ parse 'for $x in $items { $sum = $sum + $x; $count = $count + 1 }'
 >     +-- iterable:
 >     |   `-- Variable($items)
 >     `-- body:
->         +-- [0] Expression
->         |   `-- Binary(Assign)
+>         +-- [0] Assign($sum)
+>         |   `-- Binary(Add)
 >         |       +-- left: Variable($sum)
->         |       `-- right: Binary(Add)
->         |           +-- left: Variable($sum)
->         |           `-- right: Variable($x)
->         `-- [1] Expression
->             `-- Binary(Assign)
+>         |       `-- right: Variable($x)
+>         `-- [1] Assign($count)
+>             `-- Binary(Add)
 >                 +-- left: Variable($count)
->                 `-- right: Binary(Add)
->                     +-- left: Variable($count)
->                     `-- right: Integer(1)
+>                 `-- right: Integer(1)
 >
 
 # Test for with conditional break
@@ -67,12 +63,10 @@ parse 'for $i in $range { if $i = 0 { continue }; $result = $result + 1 / $i }'
 >         |   |       `-- right: Integer(0)
 >         |   `-- then:
 >         |       `-- [0] Continue
->         `-- [1] Expression
->             `-- Binary(Assign)
+>         `-- [1] Assign($result)
+>             `-- Binary(Add)
 >                 +-- left: Variable($result)
->                 `-- right: Binary(Add)
->                     +-- left: Variable($result)
->                     `-- right: Binary(Div)
->                         +-- left: Integer(1)
->                         `-- right: Variable($i)
+>                 `-- right: Binary(Div)
+>                     +-- left: Integer(1)
+>                     `-- right: Variable($i)
 >

@@ -6,6 +6,6 @@ plan 'if true { 1 } else { 0 }'
 ---
 IF true
 THEN
-  RETURN 1
+  EXPR
 ELSE
-  RETURN 0
+  EXPR

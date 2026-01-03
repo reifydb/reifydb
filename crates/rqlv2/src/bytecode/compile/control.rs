@@ -14,7 +14,7 @@ use crate::{
 	},
 	plan::node::control::{
 		AssignNode, BreakNode, CallScriptFunctionNode, ConditionalNode, ContinueNode, DeclareNode,
-		DeclareValue, DefineScriptFunctionNode, ExprStmtNode, ForIterableValue, ForNode, LoopNode, ReturnNode,
+		DeclareValue, DefineScriptFunctionNode, ExprNode, ForIterableValue, ForNode, LoopNode, ReturnNode,
 	},
 };
 
@@ -368,9 +368,9 @@ impl PlanCompiler {
 		Ok(())
 	}
 
-	pub(crate) fn compile_expr_stmt<'bump>(&mut self, node: &ExprStmtNode<'bump>) -> Result<()> {
+	pub(crate) fn compile_expr_node<'bump>(&mut self, node: &ExprNode<'bump>) -> Result<()> {
 		self.record_span(node.span);
-		// Compile the expression for its side effects
+		// Compile the expression - it produces a value
 		self.compile_expr(node.expr)?;
 		// Note: If the expression leaves a value on the stack and we want to discard it,
 		// we would need a Pop opcode. For now, builtin functions like console::log

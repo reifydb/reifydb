@@ -12,8 +12,8 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub enum PlanExpr<'bump> {
 	// === Literals ===
-	/// Null literal
-	LiteralNull(Span),
+	/// Undefined literal
+	LiteralUndefined(Span),
 	/// Boolean literal
 	LiteralBool(bool, Span),
 	/// Integer literal
@@ -112,7 +112,7 @@ impl<'bump> PlanExpr<'bump> {
 	/// Get the span of this expression.
 	pub fn span(&self) -> Span {
 		match self {
-			PlanExpr::LiteralNull(s) => *s,
+			PlanExpr::LiteralUndefined(s) => *s,
 			PlanExpr::LiteralBool(_, s) => *s,
 			PlanExpr::LiteralInt(_, s) => *s,
 			PlanExpr::LiteralFloat(_, s) => *s,

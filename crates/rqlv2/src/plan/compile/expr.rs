@@ -10,7 +10,7 @@ use reifydb_type::Type;
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
 	ast::{
-		Expr,
+		Expr, Statement,
 		expr::{BinaryExpr, BinaryOp, Literal, UnaryOp},
 	},
 	plan::{
@@ -190,11 +190,13 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 
 			Expr::IfExpr(if_expr) => {
 				let condition = self.compile_expr(if_expr.condition, schema)?;
-				let then_expr = self.compile_expr(if_expr.then_branch, schema)?;
+				// Extract the last expression from each branch for expression semantics
+				let then_expr =
+					self.compile_block_as_expr(if_expr.then_branch, if_expr.span, schema)?;
 				let else_expr = if let Some(else_branch) = if_expr.else_branch {
-					self.compile_expr(else_branch, schema)?
+					self.compile_block_as_expr(else_branch, if_expr.span, schema)?
 				} else {
-					self.bump.alloc(PlanExpr::LiteralNull(if_expr.span))
+					self.bump.alloc(PlanExpr::LiteralUndefined(if_expr.span))
 				};
 				PlanExpr::Conditional {
 					condition,
@@ -241,10 +243,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			| Expr::Merge(_)
 			| Expr::Window(_)
 			| Expr::Apply(_)
-			| Expr::SubQuery(_) => {
+			| Expr::SubQuery(_)
+			| Expr::LoopExpr(_)
+			| Expr::ForExpr(_) => {
 				return Err(PlanError {
 					kind: PlanErrorKind::Unsupported(format!(
-						"query operation in expression context"
+						"query or control flow operation in expression context"
 					)),
 					span: expr.span(),
 				});
@@ -281,7 +285,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			} => PlanExpr::LiteralBool(*value, *span),
 			Literal::Undefined {
 				span,
-			} => PlanExpr::LiteralNull(*span),
+			} => PlanExpr::LiteralUndefined(*span),
 			Literal::Temporal {
 				value,
 				span,
@@ -443,8 +447,15 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 	/// Resolve function name from expression.
 	fn resolve_function_name(&self, expr: &Expr<'bump>) -> Result<(&'bump str, bool)> {
 		let name = match expr {
-			Expr::Identifier(ident) => ident.name,
-			Expr::QualifiedIdent(qual) => qual.name(),
+			Expr::Identifier(ident) => self.bump.alloc_str(ident.name),
+			Expr::QualifiedIdent(qual) => self.bump.alloc_str(qual.name()),
+			// Handle namespace::function syntax (Binary with DoubleColon)
+			Expr::Binary(bin) if bin.op == BinaryOp::DoubleColon => {
+				let left = self.extract_identifier_name(bin.left)?;
+				let right = self.extract_identifier_name(bin.right)?;
+				let full_name = format!("{}::{}", left, right);
+				self.bump.alloc_str(&full_name)
+			}
 			_ => {
 				return Err(PlanError {
 					kind: PlanErrorKind::Unsupported("non-identifier function name".to_string()),
@@ -460,7 +471,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			"count" | "sum" | "avg" | "min" | "max" | "first" | "last" | "collect"
 		);
 
-		Ok((self.bump.alloc_str(name), is_aggregate))
+		Ok((name, is_aggregate))
 	}
 	/// Compile an expression with alias context for resolving qualified column references.
 	pub(super) fn compile_expr_with_aliases(
@@ -531,5 +542,26 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			"blob" => Type::Blob,
 			_ => Type::Any,
 		})
+	}
+
+	/// Compile a statement block as an expression.
+	///
+	/// In expression-oriented semantics, a block's value is the value of its last
+	/// expression statement. If the block is empty or ends with a non-expression
+	/// statement, returns null.
+	fn compile_block_as_expr(
+		&self,
+		stmts: &[Statement<'bump>],
+		default_span: Span,
+		schema: Option<&OutputSchema<'bump>>,
+	) -> Result<&'bump PlanExpr<'bump>> {
+		// Find the last expression statement
+		if let Some(last) = stmts.last() {
+			if let Statement::Expression(expr_stmt) = last {
+				return Ok(self.bump.alloc(self.compile_expr(expr_stmt.expr, schema)?));
+			}
+		}
+		// No expression found, return undefined
+		Ok(self.bump.alloc(PlanExpr::LiteralUndefined(default_span)))
 	}
 }

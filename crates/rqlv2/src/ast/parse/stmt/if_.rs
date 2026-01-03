@@ -12,7 +12,10 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
-	ast::{Statement, stmt::ElseIfBranch},
+	ast::{
+		Statement,
+		expr::{ElseIf, IfExpr},
+	},
 	token::{Keyword, Punctuation},
 };
 
@@ -36,14 +39,14 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 				let body = self.parse_block()?;
 				end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
-				else_ifs.push(ElseIfBranch::new(cond, body, cond.span().merge(&end_span)));
+				else_ifs.push(ElseIf::new(cond, body, cond.span().merge(&end_span)));
 			} else {
 				// else branch
 				self.expect_punct(Punctuation::OpenCurly)?;
 				let else_body = self.parse_block()?;
 				end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
-				return Ok(Statement::If(crate::ast::stmt::IfStmt::new(
+				return Ok(Statement::If(IfExpr::new(
 					condition,
 					then_branch,
 					else_ifs.into_bump_slice(),
@@ -53,7 +56,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			}
 		}
 
-		Ok(Statement::If(crate::ast::stmt::IfStmt::new(
+		Ok(Statement::If(IfExpr::new(
 			condition,
 			then_branch,
 			else_ifs.into_bump_slice(),

@@ -107,9 +107,12 @@ pub struct CallScriptFunctionNode<'bump> {
 	pub span: Span,
 }
 
-/// Expression statement - evaluates expression for side effects.
+/// Expression node - evaluates expression and produces a value.
+///
+/// In an expression-oriented language, every construct produces a value.
+/// This node wraps a PlanExpr for use in statement/plan contexts.
 #[derive(Debug, Clone, Copy)]
-pub struct ExprStmtNode<'bump> {
+pub struct ExprNode<'bump> {
 	pub expr: &'bump PlanExpr<'bump>,
 	pub span: Span,
 }

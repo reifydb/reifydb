@@ -26,23 +26,15 @@ parse 'if $flag { $a = 1; $b = 2 } else { $a = 0; $b = 0 }'
 >     +-- condition:
 >     |   `-- Variable($flag)
 >     +-- then:
->     |   +-- [0] Expression
->     |   |   `-- Binary(Assign)
->     |   |       +-- left: Variable($a)
->     |   |       `-- right: Integer(1)
->     |   `-- [1] Expression
->     |       `-- Binary(Assign)
->     |           +-- left: Variable($b)
->     |           `-- right: Integer(2)
+>     |   +-- [0] Assign($a)
+>     |   |   `-- Integer(1)
+>     |   `-- [1] Assign($b)
+>     |       `-- Integer(2)
 >     `-- else:
->         +-- [0] Expression
->         |   `-- Binary(Assign)
->         |       +-- left: Variable($a)
->         |       `-- right: Integer(0)
->         `-- [1] Expression
->             `-- Binary(Assign)
->                 +-- left: Variable($b)
->                 `-- right: Integer(0)
+>         +-- [0] Assign($a)
+>         |   `-- Integer(0)
+>         `-- [1] Assign($b)
+>             `-- Integer(0)
 >
 
 # Test if-else with expressions

@@ -15,7 +15,7 @@ use crate::{
 	plan::{
 		OutputSchema, Plan,
 		node::{
-			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ExprStmtNode, ReturnNode},
+			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ExprNode, ReturnNode},
 			query::{ScanNode, VariableSourceNode},
 		},
 	},
@@ -37,8 +37,59 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		match stmt {
 			Statement::Pipeline(pipeline) => self.compile_pipeline(pipeline).await,
 			Statement::Expression(expr_stmt) => {
-				// Treat a standalone expression as a single-stage pipeline
-				self.compile_pipeline_stage(expr_stmt.expr, None).await
+				// Handle based on expression type:
+				// - Pipeline operators go through compile_pipeline_stage
+				// - Other expressions compile directly to Plan::Expr
+				match expr_stmt.expr {
+					// Pipeline-producing expressions
+					Expr::From(_)
+					| Expr::Filter(_)
+					| Expr::Map(_)
+					| Expr::Extend(_)
+					| Expr::Aggregate(_)
+					| Expr::Sort(_)
+					| Expr::Take(_)
+					| Expr::Distinct(_)
+					| Expr::Join(_)
+					| Expr::Merge(_)
+					| Expr::Window(_)
+					| Expr::SubQuery(_) => self.compile_pipeline_stage(expr_stmt.expr, None).await,
+
+					// Binary(As) is used for aliasing (e.g., "from table as t")
+					Expr::Binary(bin) if bin.op == BinaryOp::As => {
+						self.compile_pipeline_stage(expr_stmt.expr, None).await
+					}
+
+					// Function calls need special handling for script functions
+					Expr::Call(call) => {
+						if let Expr::Identifier(ident) = call.function {
+							if self.script_functions.iter().any(|&name| name == ident.name)
+							{
+								return Ok(Plan::CallScriptFunction(
+									CallScriptFunctionNode {
+										name: self.bump.alloc_str(ident.name),
+										span: call.span,
+									},
+								));
+							}
+						}
+						// Builtin functions compile as expressions
+						let plan_expr = self.compile_expr(expr_stmt.expr, None)?;
+						Ok(Plan::Expr(ExprNode {
+							expr: self.bump.alloc(plan_expr),
+							span: expr_stmt.span,
+						}))
+					}
+
+					// All other expressions compile directly
+					_ => {
+						let plan_expr = self.compile_expr(expr_stmt.expr, None)?;
+						Ok(Plan::Expr(ExprNode {
+							expr: self.bump.alloc(plan_expr),
+							span: expr_stmt.span,
+						}))
+					}
+				}
 			}
 			Statement::Let(let_stmt) => self.compile_let(let_stmt).await,
 			Statement::Assign(assign_stmt) => self.compile_assign(assign_stmt).await,
@@ -180,9 +231,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 						}));
 					}
 				}
-				// For other calls (like builtin functions), compile as expression statement
+				// For other calls (like builtin functions), compile as expression
 				let plan_expr = self.compile_expr(expr, None)?;
-				Ok(Plan::ExprStmt(ExprStmtNode {
+				Ok(Plan::Expr(ExprNode {
 					expr: self.bump.alloc(plan_expr),
 					span: expr.span(),
 				}))
@@ -286,9 +337,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 						}));
 					}
 				}
-				// For other calls (like builtin functions), compile as expression statement
+				// For other calls (like builtin functions), compile as expression
 				let plan_expr = self.compile_expr(expr, schema)?;
-				Ok(Plan::ExprStmt(ExprStmtNode {
+				Ok(Plan::Expr(ExprNode {
 					expr: self.bump.alloc(plan_expr),
 					span: expr.span(),
 				}))

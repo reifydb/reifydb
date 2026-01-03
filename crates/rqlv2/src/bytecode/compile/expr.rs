@@ -15,9 +15,9 @@ use crate::{
 impl PlanCompiler {
 	pub(crate) fn compile_expr<'bump>(&mut self, expr: &PlanExpr<'bump>) -> Result<()> {
 		match expr {
-			PlanExpr::LiteralNull(span) => {
+			PlanExpr::LiteralUndefined(span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Null);
+				let const_index = self.program.add_constant(Constant::Undefined);
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
@@ -87,19 +87,29 @@ impl PlanCompiler {
 				self.record_span(*span);
 				self.compile_expr(left)?;
 				self.compile_expr(right)?;
+				// Use scalar Int* opcodes for now - columnar Col* opcodes will be added
+				// when we have proper type information to decide between scalar/columnar
 				let opcode = match op {
-					BinaryPlanOp::Add => Opcode::ColAdd,
-					BinaryPlanOp::Sub => Opcode::ColSub,
-					BinaryPlanOp::Mul => Opcode::ColMul,
-					BinaryPlanOp::Div => Opcode::ColDiv,
-					BinaryPlanOp::Eq => Opcode::ColEq,
-					BinaryPlanOp::Ne => Opcode::ColNe,
-					BinaryPlanOp::Lt => Opcode::ColLt,
-					BinaryPlanOp::Le => Opcode::ColLe,
-					BinaryPlanOp::Gt => Opcode::ColGt,
-					BinaryPlanOp::Ge => Opcode::ColGe,
-					BinaryPlanOp::And => Opcode::ColAnd,
-					BinaryPlanOp::Or => Opcode::ColOr,
+					BinaryPlanOp::Add => Opcode::IntAdd,
+					BinaryPlanOp::Sub => Opcode::IntSub,
+					BinaryPlanOp::Mul => Opcode::IntMul,
+					BinaryPlanOp::Div => Opcode::IntDiv,
+					BinaryPlanOp::Eq => Opcode::IntEq,
+					BinaryPlanOp::Ne => Opcode::IntNe,
+					BinaryPlanOp::Lt => Opcode::IntLt,
+					BinaryPlanOp::Le => Opcode::IntLe,
+					BinaryPlanOp::Gt => Opcode::IntGt,
+					BinaryPlanOp::Ge => Opcode::IntGe,
+					BinaryPlanOp::And | BinaryPlanOp::Or => {
+						// Logical ops - use scalar for now
+						return Err(CompileError::UnsupportedExpr {
+							message: format!(
+								"logical operator {:?} not yet supported in scalar context",
+								op
+							),
+							span: *span,
+						});
+					}
 					BinaryPlanOp::Rem | BinaryPlanOp::Xor | BinaryPlanOp::Concat => {
 						return Err(CompileError::UnsupportedExpr {
 							message: format!("binary operator {:?} not yet supported", op),

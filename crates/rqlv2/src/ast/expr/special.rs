@@ -4,7 +4,7 @@
 //! Special expression types (BETWEEN, IN, CAST, CALL, etc.).
 
 use super::Expr;
-use crate::token::Span;
+use crate::{ast::Statement, token::Span};
 
 /// BETWEEN expression: x BETWEEN low AND high
 #[derive(Debug, Clone, Copy)]
@@ -128,13 +128,16 @@ impl<'bump> SubQueryExpr<'bump> {
 	}
 }
 
-/// Conditional expression (in expression context): if cond then else
+/// Conditional expression: if cond { then } else if cond { ... } else { else }
+///
+/// In an expression-oriented language, `if` is an expression that produces a value.
+/// The value is the result of the last expression in the taken branch.
 #[derive(Debug, Clone, Copy)]
 pub struct IfExpr<'bump> {
 	pub condition: &'bump Expr<'bump>,
-	pub then_branch: &'bump Expr<'bump>,
+	pub then_branch: &'bump [Statement<'bump>],
 	pub else_ifs: &'bump [ElseIf<'bump>],
-	pub else_branch: Option<&'bump Expr<'bump>>,
+	pub else_branch: Option<&'bump [Statement<'bump>]>,
 	pub span: Span,
 }
 
@@ -142,9 +145,9 @@ impl<'bump> IfExpr<'bump> {
 	/// Create a new if expression.
 	pub fn new(
 		condition: &'bump Expr<'bump>,
-		then_branch: &'bump Expr<'bump>,
+		then_branch: &'bump [Statement<'bump>],
 		else_ifs: &'bump [ElseIf<'bump>],
-		else_branch: Option<&'bump Expr<'bump>>,
+		else_branch: Option<&'bump [Statement<'bump>]>,
 		span: Span,
 	) -> Self {
 		Self {
@@ -161,17 +164,75 @@ impl<'bump> IfExpr<'bump> {
 #[derive(Debug, Clone, Copy)]
 pub struct ElseIf<'bump> {
 	pub condition: &'bump Expr<'bump>,
-	pub then_branch: &'bump Expr<'bump>,
+	pub body: &'bump [Statement<'bump>],
 	pub span: Span,
 }
 
 impl<'bump> ElseIf<'bump> {
 	/// Create a new else-if branch.
-	pub fn new(condition: &'bump Expr<'bump>, then_branch: &'bump Expr<'bump>, span: Span) -> Self {
+	pub fn new(condition: &'bump Expr<'bump>, body: &'bump [Statement<'bump>], span: Span) -> Self {
 		Self {
 			condition,
-			then_branch,
+			body,
 			span,
 		}
 	}
+}
+
+/// Loop expression: loop { body }
+///
+/// In an expression-oriented language, `loop` produces a value via `break value`.
+/// If no value is provided to break, the loop returns undefined.
+#[derive(Debug, Clone, Copy)]
+pub struct LoopExpr<'bump> {
+	pub body: &'bump [Statement<'bump>],
+	pub span: Span,
+}
+
+impl<'bump> LoopExpr<'bump> {
+	/// Create a new loop expression.
+	pub fn new(body: &'bump [Statement<'bump>], span: Span) -> Self {
+		Self {
+			body,
+			span,
+		}
+	}
+}
+
+/// For loop expression: for $var in iterable { body }
+///
+/// Returns the collected values or undefined.
+#[derive(Debug, Clone, Copy)]
+pub struct ForExpr<'bump> {
+	/// Variable name (without $)
+	pub variable: &'bump str,
+	pub iterable: ForIterable<'bump>,
+	pub body: &'bump [Statement<'bump>],
+	pub span: Span,
+}
+
+impl<'bump> ForExpr<'bump> {
+	/// Create a new for expression.
+	pub fn new(
+		variable: &'bump str,
+		iterable: ForIterable<'bump>,
+		body: &'bump [Statement<'bump>],
+		span: Span,
+	) -> Self {
+		Self {
+			variable,
+			iterable,
+			body,
+			span,
+		}
+	}
+}
+
+/// For loop iterable - can be a single expression or a pipeline.
+#[derive(Debug, Clone, Copy)]
+pub enum ForIterable<'bump> {
+	/// Single expression (e.g., `$array`, `range(1, 10)`)
+	Expr(&'bump Expr<'bump>),
+	/// Pipeline stages (e.g., `from table | filter x > 0`)
+	Pipeline(&'bump [Expr<'bump>]),
 }

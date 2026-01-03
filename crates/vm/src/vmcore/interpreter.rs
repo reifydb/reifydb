@@ -668,6 +668,74 @@ impl VmState {
 				self.ip = next_ip;
 			}
 
+			Opcode::IntNe => {
+				let next_ip = reader.position();
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a != b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(result)))?;
+				self.ip = next_ip;
+			}
+
+			Opcode::IntLe => {
+				let next_ip = reader.position();
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a <= b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(result)))?;
+				self.ip = next_ip;
+			}
+
+			Opcode::IntGt => {
+				let next_ip = reader.position();
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a > b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(result)))?;
+				self.ip = next_ip;
+			}
+
+			Opcode::IntGe => {
+				let next_ip = reader.position();
+				let b = self.pop_operand()?;
+				let a = self.pop_operand()?;
+
+				let result = match (a, b) {
+					(
+						OperandValue::Scalar(reifydb_type::Value::Int8(a)),
+						OperandValue::Scalar(reifydb_type::Value::Int8(b)),
+					) => a >= b,
+					_ => return Err(VmError::ExpectedInteger),
+				};
+
+				self.push_operand(OperandValue::Scalar(reifydb_type::Value::Boolean(result)))?;
+				self.ip = next_ip;
+			}
+
 			// ─────────────────────────────────────────────────────────
 			// Columnar Operations
 			// ─────────────────────────────────────────────────────────

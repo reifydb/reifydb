@@ -211,10 +211,10 @@ impl<'a> AstFormatter<'a> {
 				self.with_child(is_last, |f| {
 					f.write_branch(false, "iterable:");
 					f.with_child(false, |f| match &fr.iterable {
-						crate::ast::stmt::ForIterable::Expr(expr) => {
+						crate::ast::expr::ForIterable::Expr(expr) => {
 							f.format_expr(true, expr);
 						}
-						crate::ast::stmt::ForIterable::Pipeline(stages) => {
+						crate::ast::expr::ForIterable::Pipeline(stages) => {
 							let len = stages.len();
 							for (i, stage) in stages.iter().enumerate() {
 								f.format_expr_indexed(i == len - 1, i, stage);
@@ -460,6 +460,8 @@ impl<'a> AstFormatter<'a> {
 			Expr::Cast(_) => "Cast".to_string(),
 			Expr::SubQuery(_) => "SubQuery".to_string(),
 			Expr::IfExpr(_) => "If".to_string(),
+			Expr::LoopExpr(_) => "Loop".to_string(),
+			Expr::ForExpr(f) => format!("For(${})", f.variable),
 			Expr::Paren(_) => "Paren".to_string(),
 		}
 	}
@@ -704,7 +706,12 @@ impl<'a> AstFormatter<'a> {
 
 				let then_is_last = !has_else_ifs && !has_else;
 				self.write_branch(then_is_last, "then:");
-				self.with_child(then_is_last, |f| f.format_expr(true, i.then_branch));
+				self.with_child(then_is_last, |f| {
+					let len = i.then_branch.len();
+					for (idx, stmt) in i.then_branch.iter().enumerate() {
+						f.format_statement_indexed(idx == len - 1, idx, stmt);
+					}
+				});
 
 				for (idx, else_if) in i.else_ifs.iter().enumerate() {
 					let ei_is_last = idx == i.else_ifs.len() - 1 && !has_else;
@@ -712,15 +719,55 @@ impl<'a> AstFormatter<'a> {
 					self.with_child(ei_is_last, |f| {
 						f.write_branch(false, "condition:");
 						f.with_child(false, |f| f.format_expr(true, else_if.condition));
-						f.write_branch(true, "then:");
-						f.with_child(true, |f| f.format_expr(true, else_if.then_branch));
+						f.write_branch(true, "body:");
+						f.with_child(true, |f| {
+							let len = else_if.body.len();
+							for (idx, stmt) in else_if.body.iter().enumerate() {
+								f.format_statement_indexed(idx == len - 1, idx, stmt);
+							}
+						});
 					});
 				}
 
 				if let Some(else_branch) = i.else_branch {
 					self.write_branch(true, "else:");
-					self.with_child(true, |f| f.format_expr(true, else_branch));
+					self.with_child(true, |f| {
+						let len = else_branch.len();
+						for (idx, stmt) in else_branch.iter().enumerate() {
+							f.format_statement_indexed(idx == len - 1, idx, stmt);
+						}
+					});
 				}
+			}
+			Expr::LoopExpr(l) => {
+				self.write_branch(true, "body:");
+				self.with_child(true, |f| {
+					let len = l.body.len();
+					for (idx, stmt) in l.body.iter().enumerate() {
+						f.format_statement_indexed(idx == len - 1, idx, stmt);
+					}
+				});
+			}
+			Expr::ForExpr(fr) => {
+				self.write_branch(false, "iterable:");
+				self.with_child(false, |f| match &fr.iterable {
+					crate::ast::expr::ForIterable::Expr(expr) => {
+						f.format_expr(true, expr);
+					}
+					crate::ast::expr::ForIterable::Pipeline(stages) => {
+						let len = stages.len();
+						for (i, stage) in stages.iter().enumerate() {
+							f.format_expr_indexed(i == len - 1, i, stage);
+						}
+					}
+				});
+				self.write_branch(true, "body:");
+				self.with_child(true, |f| {
+					let len = fr.body.len();
+					for (idx, stmt) in fr.body.iter().enumerate() {
+						f.format_statement_indexed(idx == len - 1, idx, stmt);
+					}
+				});
 			}
 			Expr::Paren(inner) => {
 				self.format_expr(true, inner);

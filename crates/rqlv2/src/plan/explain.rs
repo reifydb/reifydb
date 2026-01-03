@@ -592,6 +592,12 @@ impl<'a> PlanExplainer<'a> {
 			Plan::CallScriptFunction(n) => {
 				self.write_line(&format!("CALL_SCRIPT_FUNCTION {}()", n.name));
 			}
+			Plan::Expr(n) => {
+				self.write_line("EXPR");
+				self.with_indent(|e| {
+					e.format_expr(n.expr);
+				});
+			}
 
 			// Other
 			Plan::InlineData(n) => {
@@ -829,7 +835,7 @@ impl<'a> PlanExplainer<'a> {
 	fn format_expr(&self, expr: &PlanExpr<'_>) -> String {
 		match expr {
 			// Literals
-			PlanExpr::LiteralNull(_) => "NULL".to_string(),
+			PlanExpr::LiteralUndefined(_) => "undefined".to_string(),
 			PlanExpr::LiteralBool(b, _) => if *b {
 				"true"
 			} else {

@@ -5,54 +5,44 @@
 parse '$x = $x + 1'
 ---
 > Program
-> `-- [0] Expression
->     `-- Binary(Assign)
+> `-- [0] Assign($x)
+>     `-- Binary(Add)
 >         +-- left: Variable($x)
->         `-- right: Binary(Add)
->             +-- left: Variable($x)
->             `-- right: Integer(1)
+>         `-- right: Integer(1)
 >
 
 # Test simple variable assignment
 parse '$count = 0'
 ---
 > Program
-> `-- [0] Expression
->     `-- Binary(Assign)
->         +-- left: Variable($count)
->         `-- right: Integer(0)
+> `-- [0] Assign($count)
+>     `-- Integer(0)
 >
 
 # Test assignment with function call
 parse '$total = sum($values)'
 ---
 > Program
-> `-- [0] Expression
->     `-- Binary(Assign)
->         +-- left: Variable($total)
->         `-- right: Call(sum)
->             `-- args:
->                 `-- [0] Variable($values)
+> `-- [0] Assign($total)
+>     `-- Call(sum)
+>         `-- args:
+>             `-- [0] Variable($values)
 >
 
 # Test assignment with complex expression
 parse '$avg = $sum / $count'
 ---
 > Program
-> `-- [0] Expression
->     `-- Binary(Assign)
->         +-- left: Variable($avg)
->         `-- right: Binary(Div)
->             +-- left: Variable($sum)
->             `-- right: Variable($count)
+> `-- [0] Assign($avg)
+>     `-- Binary(Div)
+>         +-- left: Variable($sum)
+>         `-- right: Variable($count)
 >
 
 # Test assignment with string
 parse '$name = "updated"'
 ---
 > Program
-> `-- [0] Expression
->     `-- Binary(Assign)
->         +-- left: Variable($name)
->         `-- right: String("pdate")
+> `-- [0] Assign($name)
+>     `-- String("pdate")
 >

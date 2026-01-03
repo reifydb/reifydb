@@ -15,7 +15,10 @@ use super::super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::{Statement, stmt::ForIterable},
+	ast::{
+		Statement,
+		expr::{ForExpr, ForIterable},
+	},
 	token::{Keyword, Operator, Punctuation, TokenKind},
 };
 
@@ -47,7 +50,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let body = self.parse_block()?;
 		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
-		Ok(Statement::For(crate::ast::stmt::ForStmt::new(name, iterable, body, start_span.merge(&end_span))))
+		Ok(Statement::For(ForExpr::new(name, iterable, body, start_span.merge(&end_span))))
 	}
 
 	/// Parse the iterable part of a for statement.

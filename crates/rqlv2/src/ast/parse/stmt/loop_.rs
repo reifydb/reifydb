@@ -8,7 +8,7 @@
 
 use super::super::{Parser, error::ParseError};
 use crate::{
-	ast::Statement,
+	ast::{Statement, expr::LoopExpr},
 	token::{Keyword, Punctuation},
 };
 
@@ -21,6 +21,6 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let body = self.parse_block()?;
 		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
-		Ok(Statement::Loop(crate::ast::stmt::LoopStmt::new(body, start_span.merge(&end_span))))
+		Ok(Statement::Loop(LoopExpr::new(body, start_span.merge(&end_span))))
 	}
 }

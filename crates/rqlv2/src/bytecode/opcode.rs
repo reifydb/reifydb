@@ -178,6 +178,22 @@ pub enum Opcode {
 	/// Pops two Int8 values (b, a), pushes Int8 result (a / b)
 	IntDiv = 0x85,
 
+	/// Compare two integers: not equal
+	/// Pops two Int8 values (b, a), pushes Boolean(a != b)
+	IntNe = 0x86,
+
+	/// Compare two integers: less than or equal
+	/// Pops two Int8 values (b, a), pushes Boolean(a <= b)
+	IntLe = 0x87,
+
+	/// Compare two integers: greater than
+	/// Pops two Int8 values (b, a), pushes Boolean(a > b)
+	IntGt = 0x88,
+
+	/// Compare two integers: greater than or equal
+	/// Pops two Int8 values (b, a), pushes Boolean(a >= b)
+	IntGe = 0x89,
+
 	// ─────────────────────────────────────────────────────────────
 	// Columnar Arithmetic and Comparison (for expressions)
 	// ─────────────────────────────────────────────────────────────
@@ -335,6 +351,10 @@ impl TryFrom<u8> for Opcode {
 			0x83 => Ok(Opcode::IntSub),
 			0x84 => Ok(Opcode::IntMul),
 			0x85 => Ok(Opcode::IntDiv),
+			0x86 => Ok(Opcode::IntNe),
+			0x87 => Ok(Opcode::IntLe),
+			0x88 => Ok(Opcode::IntGt),
+			0x89 => Ok(Opcode::IntGe),
 			// Columnar Operations
 			0xA0 => Ok(Opcode::ColAdd),
 			0xA1 => Ok(Opcode::ColSub),

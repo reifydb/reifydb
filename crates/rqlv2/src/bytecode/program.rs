@@ -138,7 +138,7 @@ pub struct CompiledProgram {
 /// A constant value in the program.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
-	Null,
+	Undefined,
 	Bool(bool),
 	Int(i64),
 	Float(f64),

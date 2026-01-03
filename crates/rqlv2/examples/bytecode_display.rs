@@ -10,7 +10,7 @@ fn main() {
 	let mut program = CompiledProgram::new();
 
 	// Add some constants
-	program.add_constant(Constant::Null);
+	program.add_constant(Constant::Undefined);
 	program.add_constant(Constant::Int(42));
 	program.add_constant(Constant::String("users".to_string()));
 	program.add_constant(Constant::String("id".to_string()));

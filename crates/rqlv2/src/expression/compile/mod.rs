@@ -17,8 +17,8 @@ mod reference;
 
 use helpers::column_to_mask;
 use literal::{
-	compile_literal_bool, compile_literal_bytes, compile_literal_float, compile_literal_int, compile_literal_null,
-	compile_literal_string,
+	compile_literal_bool, compile_literal_bytes, compile_literal_float, compile_literal_int,
+	compile_literal_string, compile_literal_undefined,
 };
 use operator::{
 	compile_aggregate, compile_between, compile_binary, compile_call, compile_cast, compile_conditional,
@@ -37,7 +37,7 @@ use crate::{
 /// literals, operators) and only needs columns and context at evaluation time.
 pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 	match expr {
-		PlanExpr::LiteralNull(_) => compile_literal_null(),
+		PlanExpr::LiteralUndefined(_) => compile_literal_undefined(),
 		PlanExpr::LiteralBool(v, _) => compile_literal_bool(*v),
 		PlanExpr::LiteralInt(v, _) => compile_literal_int(*v),
 		PlanExpr::LiteralFloat(v, _) => compile_literal_float(*v),

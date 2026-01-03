@@ -10,13 +10,14 @@ use super::core::{Planner, Result};
 use crate::{
 	ast::{
 		Expr,
-		stmt::{AssignStmt, DefStmt, ForIterable, ForStmt, IfStmt, LetStmt, LetValue, LoopStmt, ReturnStmt},
+		expr::{ForExpr, ForIterable, IfExpr, LoopExpr},
+		stmt::{AssignStmt, DefStmt, LetStmt, LetValue, ReturnStmt},
 	},
 	plan::{
 		Plan, Variable,
 		node::control::{
-			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode, ElseIfBranch,
-			ForIterableValue, ForNode, LoopNode, ReturnNode,
+			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode,
+			ElseIfBranch as PlanElseIfBranch, ForIterableValue, ForNode, LoopNode, ReturnNode,
 		},
 	},
 };
@@ -72,29 +73,29 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: assign_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_if(&mut self, if_stmt: &IfStmt<'bump>) -> Result<Plan<'bump>> {
-		let condition = self.compile_expr(if_stmt.condition, None)?;
+	pub(super) async fn compile_if(&mut self, if_expr: &IfExpr<'bump>) -> Result<Plan<'bump>> {
+		let condition = self.compile_expr(if_expr.condition, None)?;
 
 		// Compile then branch
 		self.push_scope();
-		let then_branch = self.compile_statement_body(if_stmt.then_branch).await?;
+		let then_branch = self.compile_statement_body(if_expr.then_branch).await?;
 		self.pop_scope();
 
 		// Compile else-if branches
-		let mut else_ifs = BumpVec::with_capacity_in(if_stmt.else_ifs.len(), self.bump);
-		for else_if in if_stmt.else_ifs {
+		let mut else_ifs = BumpVec::with_capacity_in(if_expr.else_ifs.len(), self.bump);
+		for else_if in if_expr.else_ifs {
 			let cond = self.compile_expr(else_if.condition, None)?;
 			self.push_scope();
 			let body = self.compile_statement_body(else_if.body).await?;
 			self.pop_scope();
-			else_ifs.push(ElseIfBranch {
+			else_ifs.push(PlanElseIfBranch {
 				condition: cond,
 				body,
 			});
 		}
 
 		// Compile else branch
-		let else_branch = if let Some(else_body) = if_stmt.else_branch {
+		let else_branch = if let Some(else_body) = if_expr.else_branch {
 			self.push_scope();
 			let body = self.compile_statement_body(else_body).await?;
 			self.pop_scope();
@@ -108,32 +109,32 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			then_branch,
 			else_ifs: else_ifs.into_bump_slice(),
 			else_branch,
-			span: if_stmt.span,
+			span: if_expr.span,
 		}))
 	}
-	pub(super) async fn compile_loop(&mut self, loop_stmt: &LoopStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) async fn compile_loop(&mut self, loop_expr: &LoopExpr<'bump>) -> Result<Plan<'bump>> {
 		self.push_scope();
-		let body = self.compile_statement_body(loop_stmt.body).await?;
+		let body = self.compile_statement_body(loop_expr.body).await?;
 		self.pop_scope();
 
 		Ok(Plan::Loop(LoopNode {
 			body,
-			span: loop_stmt.span,
+			span: loop_expr.span,
 		}))
 	}
-	pub(super) async fn compile_for(&mut self, for_stmt: &ForStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) async fn compile_for(&mut self, for_expr: &ForExpr<'bump>) -> Result<Plan<'bump>> {
 		self.push_scope();
 
 		// Declare the loop variable
-		let var_id = self.declare_variable(for_stmt.variable);
+		let var_id = self.declare_variable(for_expr.variable);
 		let variable = self.bump.alloc(Variable {
-			name: self.bump.alloc_str(for_stmt.variable),
+			name: self.bump.alloc_str(for_expr.variable),
 			variable_id: var_id,
-			span: for_stmt.span,
+			span: for_expr.span,
 		});
 
 		// Compile the iterable (expression or pipeline)
-		let iterable = match &for_stmt.iterable {
+		let iterable = match &for_expr.iterable {
 			ForIterable::Expr(expr) => {
 				// Check if expression is a SubQuery - treat as pipeline
 				if let Expr::SubQuery(subquery) = expr {
@@ -167,7 +168,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		};
 
 		// Compile the body
-		let body = self.compile_statement_body(for_stmt.body).await?;
+		let body = self.compile_statement_body(for_expr.body).await?;
 
 		self.pop_scope();
 
@@ -175,7 +176,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			variable,
 			iterable,
 			body,
-			span: for_stmt.span,
+			span: for_expr.span,
 		}))
 	}
 	pub(super) async fn compile_return(&mut self, return_stmt: &ReturnStmt<'bump>) -> Result<Plan<'bump>> {
