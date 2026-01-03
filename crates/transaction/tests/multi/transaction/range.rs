@@ -257,3 +257,84 @@ async fn test_range_edge() {
 	let batch = txn.range_rev(ten_to_one.clone()).await.unwrap();
 	check_rev_iter(batch.items, &[31]);
 }
+
+/// Regression test for MVCC flickering bug.
+///
+/// When a key has many versions and batch_size is smaller than the number
+/// of versions, the query must still return the newest version.
+///
+/// Bug scenario (before fix):
+/// - Key "foo" has versions 1, 2, 3, ..., 50
+/// - Query with batch_size=5 using ASC order
+/// - Storage returns oldest versions first
+/// - Query returns old value instead of newest
+///
+/// Fixed behavior:
+/// - Query with batch_size=5 using DESC order
+/// - Storage returns versions newest-first
+/// - Query correctly returns newest version
+#[tokio::test]
+async fn test_range_batch_returns_newest_version() {
+	let engine = TransactionMulti::testing().await;
+
+	// Create many versions of the SAME key
+	// Each commit creates a new version
+	const NUM_VERSIONS: u64 = 50;
+
+	for i in 1..=NUM_VERSIONS {
+		let mut txn = engine.begin_command().await.unwrap();
+		txn.set(&as_key!(1), as_values!(i)).unwrap();
+		txn.commit().await.unwrap();
+	}
+
+	// Query with small batch_size
+	// Before fix: would return an older version
+	// After fix: returns newest version
+	let txn = engine.begin_query().await.unwrap();
+	let batch = txn.range_batch(EncodedKeyRange::all(), 5).await.unwrap();
+
+	assert_eq!(batch.items.len(), 1);
+	let item = &batch.items[0];
+	assert_eq!(item.key, as_key!(1));
+	// Must be the NEWEST version's value
+	assert_eq!(from_values!(u64, &item.values), NUM_VERSIONS);
+}
+
+/// Test that batch_size works correctly across multiple keys, each with many versions.
+///
+/// Note: batch_size limits the number of *versioned entries* fetched from storage,
+/// not the number of distinct keys. To see all keys, batch_size must be large enough
+/// to cover all versions across all keys.
+#[tokio::test]
+async fn test_range_batch_multiple_keys_many_versions() {
+	let engine = TransactionMulti::testing().await;
+
+	const NUM_KEYS: u64 = 5;
+	const VERSIONS_PER_KEY: u64 = 20;
+
+	// Create many versions for each key
+	for version in 1..=VERSIONS_PER_KEY {
+		let mut txn = engine.begin_command().await.unwrap();
+		for key in 1..=NUM_KEYS {
+			// Value encodes both key and version for verification
+			txn.set(&as_key!(key), as_values!(key * 1000 + version)).unwrap();
+		}
+		txn.commit().await.unwrap();
+	}
+
+	// Query with batch_size large enough to cover all versioned entries
+	// Total entries = 5 keys × 20 versions = 100
+	let txn = engine.begin_query().await.unwrap();
+	let batch = txn.range_batch(EncodedKeyRange::all(), 200).await.unwrap();
+
+	// Should have all 5 keys, each with newest version
+	// Keys are returned in descending order (5, 4, 3, 2, 1)
+	assert_eq!(batch.items.len(), 5);
+
+	for (expected_key, item) in (1..=NUM_KEYS).rev().zip(batch.items.iter()) {
+		let expected_value = expected_key * 1000 + VERSIONS_PER_KEY;
+
+		assert_eq!(item.key, as_key!(expected_key));
+		assert_eq!(from_values!(u64, &item.values), expected_value);
+	}
+}

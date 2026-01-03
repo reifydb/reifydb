@@ -415,8 +415,16 @@ impl MultiVersionRange for StandardTransactionStore {
 			let table = classify_key_range(range);
 			let (start, end) = make_versioned_range_bounds(range, version);
 
+			// Use range_rev_batch (DESC order) to get newest versions first.
+			// This ensures that with batch_size limits, we see the most recent
+			// versions of each key rather than the oldest.
 			let batch = storage
-				.range_batch(table, Bound::Included(start), Bound::Included(end), batch_size as usize)
+				.range_rev_batch(
+					table,
+					Bound::Included(start),
+					Bound::Included(end),
+					batch_size as usize,
+				)
 				.await?;
 
 			for entry in batch.entries {
