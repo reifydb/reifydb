@@ -581,6 +581,17 @@ impl<'a> PlanExplainer<'a> {
 			Plan::Continue(_) => {
 				self.write_line("CONTINUE");
 			}
+			Plan::DefineScriptFunction(n) => {
+				self.write_line(&format!("DEFINE_SCRIPT_FUNCTION {}", n.name));
+				self.with_indent(|e| {
+					for stmt in n.body.iter() {
+						e.format_plan(stmt);
+					}
+				});
+			}
+			Plan::CallScriptFunction(n) => {
+				self.write_line(&format!("CALL_SCRIPT_FUNCTION {}()", n.name));
+			}
 
 			// Other
 			Plan::InlineData(n) => {

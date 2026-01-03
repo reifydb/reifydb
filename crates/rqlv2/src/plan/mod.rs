@@ -98,6 +98,10 @@ pub enum Plan<'bump> {
 	Break(BreakNode),
 	/// Continue to next iteration
 	Continue(ContinueNode),
+	/// Script function definition (fn name() { ... })
+	DefineScriptFunction(DefineScriptFunctionNode<'bump>),
+	/// Call script function
+	CallScriptFunction(CallScriptFunctionNode<'bump>),
 
 	// === Other ===
 	/// Inline data (literal rows)
@@ -148,6 +152,8 @@ impl<'bump> Plan<'bump> {
 			Plan::Return(n) => n.span,
 			Plan::Break(n) => n.span,
 			Plan::Continue(n) => n.span,
+			Plan::DefineScriptFunction(n) => n.span,
+			Plan::CallScriptFunction(n) => n.span,
 			Plan::InlineData(n) => n.span,
 			Plan::Generator(n) => n.span,
 			Plan::VariableSource(n) => n.span,

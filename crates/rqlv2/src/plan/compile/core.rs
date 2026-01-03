@@ -18,6 +18,8 @@ pub(super) struct Planner<'bump, 'cat, T> {
 	pub(super) tx: &'cat mut T,
 	pub(super) scopes: BumpVec<'bump, Scope<'bump>>,
 	pub(super) next_variable_id: u32,
+	/// Script function names that have been defined.
+	pub(super) script_functions: BumpVec<'bump, &'bump str>,
 }
 
 /// Result type for plan compilation.
@@ -89,6 +91,7 @@ pub async fn plan<'bump, T: IntoStandardTransaction>(
 		tx,
 		scopes: BumpVec::new_in(bump),
 		next_variable_id: 0,
+		script_functions: BumpVec::new_in(bump),
 	};
 	planner.push_scope();
 	planner.compile_program(program).await

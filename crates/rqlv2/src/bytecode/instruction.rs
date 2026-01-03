@@ -132,6 +132,11 @@ impl BytecodeWriter {
 		self.bytecode.extend_from_slice(&value.to_le_bytes());
 	}
 
+	/// Append raw bytecode from another buffer.
+	pub fn append(&mut self, bytes: &[u8]) {
+		self.bytecode.extend_from_slice(bytes);
+	}
+
 	/// Patch a u16 at the given position.
 	pub fn patch_u16(&mut self, position: usize, value: u16) {
 		let bytes = value.to_le_bytes();

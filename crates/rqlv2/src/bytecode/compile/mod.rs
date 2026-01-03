@@ -9,11 +9,13 @@ mod dml;
 mod expr;
 mod query;
 
+use std::collections::HashMap;
+
 use crate::{
 	bytecode::{
 		instruction::BytecodeWriter,
 		opcode::Opcode,
-		program::{CompiledProgram, SourceMap, SourceMapEntry},
+		program::{CompiledProgram, ScriptFunctionDef, SourceMap, SourceMapEntry},
 	},
 	plan::Plan,
 	token::Span,
@@ -81,6 +83,10 @@ pub struct PlanCompiler {
 	pub(crate) source_map_entries: Vec<SourceMapEntry>,
 	/// Stack of loop contexts for nested loops.
 	pub(crate) loop_contexts: Vec<LoopContext>,
+	/// Script function name to index mapping.
+	pub(crate) script_function_indices: HashMap<String, u16>,
+	/// Pending script function bytecode (name, bytecode).
+	pub(crate) pending_script_functions: Vec<(String, Vec<u8>)>,
 }
 
 impl PlanCompiler {
@@ -91,6 +97,8 @@ impl PlanCompiler {
 			writer: BytecodeWriter::new(),
 			source_map_entries: Vec::new(),
 			loop_contexts: Vec::new(),
+			script_function_indices: HashMap::new(),
+			pending_script_functions: Vec::new(),
 		}
 	}
 
@@ -99,6 +107,7 @@ impl PlanCompiler {
 		let mut compiler = Self::new();
 		compiler.compile_plan(plan)?;
 		compiler.writer.emit_opcode(Opcode::Halt);
+		compiler.finalize_script_functions();
 		compiler.program.bytecode = compiler.writer.finish();
 		compiler.program.source_map = SourceMap::from_entries(compiler.source_map_entries);
 		Ok(compiler.program)
@@ -116,6 +125,7 @@ impl PlanCompiler {
 			compiler.compile_plan(plan)?;
 		}
 		compiler.writer.emit_opcode(Opcode::Halt);
+		compiler.finalize_script_functions();
 		compiler.program.bytecode = compiler.writer.finish();
 		compiler.program.source_map = SourceMap::from_entries(compiler.source_map_entries);
 		Ok(compiler.program)
@@ -127,6 +137,21 @@ impl PlanCompiler {
 			bytecode_offset: self.writer.position() as u32,
 			span,
 		});
+	}
+
+	/// Finalize script functions by appending their bytecode to the main program.
+	fn finalize_script_functions(&mut self) {
+		for (name, bytecode) in self.pending_script_functions.drain(..) {
+			let offset = self.writer.position();
+			let len = bytecode.len();
+			self.writer.append(&bytecode);
+			self.program.add_script_function(ScriptFunctionDef {
+				name,
+				bytecode_offset: offset,
+				bytecode_len: len,
+				parameter_count: 0,
+			});
+		}
 	}
 
 	/// Compile a plan node.
@@ -173,6 +198,8 @@ impl PlanCompiler {
 			Plan::Return(node) => self.compile_return(node),
 			Plan::Break(node) => self.compile_break(node),
 			Plan::Continue(node) => self.compile_continue(node),
+			Plan::DefineScriptFunction(node) => self.compile_define_script_function(node),
+			Plan::CallScriptFunction(node) => self.compile_call_script_function(node),
 
 			// Other
 			Plan::InlineData(node) => self.compile_inline_data(node),

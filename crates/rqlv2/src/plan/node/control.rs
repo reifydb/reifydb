@@ -82,3 +82,18 @@ pub struct BreakNode {
 pub struct ContinueNode {
 	pub span: Span,
 }
+
+/// Script function definition (fn name() { body }).
+#[derive(Debug, Clone, Copy)]
+pub struct DefineScriptFunctionNode<'bump> {
+	pub name: &'bump str,
+	pub body: &'bump [&'bump Plan<'bump>],
+	pub span: Span,
+}
+
+/// Script function call.
+#[derive(Debug, Clone, Copy)]
+pub struct CallScriptFunctionNode<'bump> {
+	pub name: &'bump str,
+	pub span: Span,
+}

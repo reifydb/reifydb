@@ -186,80 +186,86 @@ async fn explore() {
 	}
 	println!("==============\n");
 }
-// #[tokio::test]
-// async fn test_function_declaration_and_call() {
-// 	let registry = create_registry();
-//
-// 	// ============================================
-// 	// Test function declarations and calls
-// 	// ============================================
-// 	let script = r#"
-//         fn get_adults() {
-//             scan users | filter age >= 18
-//         }
-//
-//         fn get_top_scorers() {
-//             scan users | sort score desc | take 3
-//         }
-//
-//         get_top_scorers()
-//     "#;
-//
-// 	// Debug: compile and show bytecode
-// 	let program = compile_script(script).expect("compile failed");
-// 	println!("\n=== FUNCTION TEST BYTECODE ===");
-// 	println!("Constants: {:?}", program.constants);
-// 	println!("Functions: {:?}", program.functions);
-// 	println!("Sources: {:?}", program.sources);
-// 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
-// 	println!("==============================\n");
-//
-// 	// Execute using bytecode VM
-// 	let registry = Arc::new(registry);
-// 	let pipeline = execute_script_memory(script, registry).await;
-// 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
-//
-// 	let result = match pipeline {
-// 		Ok(Some(p)) => {
-// 			println!("Got pipeline, collecting...");
-// 			match collect(p).await {
-// 				Ok(cols) => {
-// 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
-// 					cols
-// 				}
-// 				Err(e) => {
-// 					println!("Collect failed: {:?}", e);
-// 					Columns::empty()
-// 				}
-// 			}
-// 		}
-// 		Ok(None) => {
-// 			println!("No pipeline returned");
-// 			Columns::empty()
-// 		}
-// 		Err(e) => {
-// 			println!("Execute failed: {:?}", e);
-// 			Columns::empty()
-// 		}
-// 	};
-//
-// 	// Print results
-// 	println!("\n=== FUNCTION TEST RESULT ===");
-// 	println!("Columns: {}", result.len());
-// 	println!("Rows: {}", result.row_count());
-// 	for col in result.iter() {
-// 		println!("\n  Column: {}", col.name().text());
-// 		println!("  Data: {:?}", col.data());
-// 	}
-// 	println!("============================\n");
-//
-// 	// Verify: get_top_scorers() should return 3 rows sorted by score descending
-// 	// Scores are: [85.5, 92.0, 78.5, 88.0, 95.5] for [Alice, Bob, Charlie, Diana, Eve]
-// 	// Top 3 by score: Eve(95.5), Bob(92.0), Diana(88.0)
-// 	assert_eq!(result.row_count(), 3, "Expected 3 rows from get_top_scorers()");
-// 	assert_eq!(result.len(), 4, "Expected 4 columns (id, name, age, score)");
-// }
-//
+#[tokio::test]
+async fn test_function_declaration_and_call() {
+	let engine = create_test_engine().await;
+
+	// Setup: create namespace, table, and insert data with scores
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8, score: float8").await;
+	insert_data(
+		&engine,
+		r#"from [
+				{id: 1, name: "Alice", age: 25, score: 85.5},
+				{id: 2, name: "Bob", age: 17, score: 92.0},
+				{id: 3, name: "Charlie", age: 35, score: 78.5},
+				{id: 4, name: "Diana", age: 22, score: 88.0},
+				{id: 5, name: "Eve", age: 19, score: 95.5}
+			] insert test.users"#,
+	)
+	.await;
+
+	let mut tx = engine.begin_command().await.unwrap();
+	let catalog = engine.catalog();
+
+	// ============================================
+	// Test function declarations and calls
+	// ============================================
+	let script = "fn get_top_scorers() { from test.users | sort { score: asc } | take 3 }; get_top_scorers()";
+
+	// Debug: compile and show bytecode
+	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	println!("\n=== FUNCTION TEST BYTECODE ===");
+	println!("Constants: {:?}", program.constants);
+	println!("Script functions: {:?}", program.script_functions);
+	println!("Sources: {:?}", program.sources);
+	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
+	println!("==============================\n");
+
+	// Execute using bytecode VM
+	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
+
+	let result = match pipeline {
+		Ok(Some(p)) => {
+			println!("Got pipeline, collecting...");
+			match collect(p).await {
+				Ok(cols) => {
+					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
+					cols
+				}
+				Err(e) => {
+					println!("Collect failed: {:?}", e);
+					Columns::empty()
+				}
+			}
+		}
+		Ok(None) => {
+			println!("No pipeline returned");
+			Columns::empty()
+		}
+		Err(e) => {
+			println!("Execute failed: {:?}", e);
+			Columns::empty()
+		}
+	};
+
+	// Print results
+	println!("\n=== FUNCTION TEST RESULT ===");
+	println!("Columns: {}", result.len());
+	println!("Rows: {}", result.row_count());
+	for col in result.iter() {
+		println!("\n  Column: {}", col.name().text());
+		println!("  Data: {:?}", col.data());
+	}
+	println!("============================\n");
+
+	// Verify: get_top_scorers() should return 3 rows sorted by score descending
+	// Scores are: [85.5, 92.0, 78.5, 88.0, 95.5] for [Alice, Bob, Charlie, Diana, Eve]
+	// Top 3 by score: Eve(95.5), Bob(92.0), Diana(88.0)
+	assert_eq!(result.row_count(), 3, "Expected 3 rows from get_top_scorers()");
+	assert_eq!(result.len(), 4, "Expected 4 columns (id, name, age, score)");
+}
 // /// Test dollar-prefixed variable declaration syntax
 // #[tokio::test]
 // async fn test_dollar_variable_declaration() {

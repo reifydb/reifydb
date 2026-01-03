@@ -130,6 +130,9 @@ pub struct CompiledProgram {
 
 	/// Entry point offset.
 	pub entry_point: usize,
+
+	/// Script function definitions (user-defined functions).
+	pub script_functions: Vec<ScriptFunctionDef>,
 }
 
 /// A constant value in the program.
@@ -160,6 +163,7 @@ impl CompiledProgram {
 			compiled_exprs: Vec::new(),
 			compiled_filters: Vec::new(),
 			entry_point: 0,
+			script_functions: Vec::new(),
 		}
 	}
 
@@ -242,6 +246,13 @@ impl CompiledProgram {
 	pub fn add_compiled_filter(&mut self, filter: CompiledFilter) -> u16 {
 		let index = self.compiled_filters.len();
 		self.compiled_filters.push(filter);
+		index as u16
+	}
+
+	/// Add a script function and return its index.
+	pub fn add_script_function(&mut self, func: ScriptFunctionDef) -> u16 {
+		let index = self.script_functions.len();
+		self.script_functions.push(func);
 		index as u16
 	}
 }
@@ -453,4 +464,17 @@ pub enum DmlTargetType {
 	Table,
 	RingBuffer,
 	Dictionary,
+}
+
+/// Script function definition (user-defined function in RQL scripts).
+#[derive(Debug, Clone)]
+pub struct ScriptFunctionDef {
+	/// Function name.
+	pub name: String,
+	/// Offset into bytecode where function body starts.
+	pub bytecode_offset: usize,
+	/// Length of function body in bytes.
+	pub bytecode_len: usize,
+	/// Number of parameters (0 for parameterless functions).
+	pub parameter_count: u8,
 }

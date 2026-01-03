@@ -3,15 +3,18 @@
 
 //! Control flow compilation.
 
+use std::mem::swap;
+
 use crate::{
 	bytecode::{
+		BytecodeWriter,
 		compile::{CompileError, LoopContext, PlanCompiler, Result},
 		opcode::Opcode,
 		program::Constant,
 	},
 	plan::node::control::{
-		AssignNode, BreakNode, ConditionalNode, ContinueNode, DeclareNode, DeclareValue, ForNode, LoopNode,
-		ReturnNode,
+		AssignNode, BreakNode, CallScriptFunctionNode, ConditionalNode, ContinueNode, DeclareNode,
+		DeclareValue, DefineScriptFunctionNode, ForNode, LoopNode, ReturnNode,
 	},
 };
 
@@ -305,6 +308,52 @@ impl PlanCompiler {
 		self.writer.emit_opcode(Opcode::Jump);
 		let offset = (context.continue_target as i32 - current as i32 - 3) as i16;
 		self.writer.emit_i16(offset);
+		Ok(())
+	}
+
+	pub(crate) fn compile_define_script_function<'bump>(
+		&mut self,
+		node: &DefineScriptFunctionNode<'bump>,
+	) -> Result<()> {
+		self.record_span(node.span);
+
+		let func_index = self.pending_script_functions.len();
+		self.script_function_indices.insert(node.name.to_string(), func_index as u16);
+
+		let mut func_writer = BytecodeWriter::new();
+		swap(&mut self.writer, &mut func_writer);
+		self.writer.emit_opcode(Opcode::EnterScope);
+
+		// Compile function body
+		for plan in node.body.iter() {
+			self.compile_plan(plan)?;
+		}
+
+		// Implicit return at end of function
+		self.writer.emit_opcode(Opcode::ExitScope);
+		self.writer.emit_opcode(Opcode::Return);
+
+		swap(&mut self.writer, &mut func_writer);
+
+		self.pending_script_functions.push((node.name.to_string(), func_writer.finish()));
+
+		Ok(())
+	}
+
+	pub(crate) fn compile_call_script_function<'bump>(
+		&mut self,
+		node: &CallScriptFunctionNode<'bump>,
+	) -> Result<()> {
+		self.record_span(node.span);
+
+		let func_index =
+			*self.script_function_indices.get(node.name).ok_or_else(|| CompileError::Internal {
+				message: format!("undefined script function: {}", node.name),
+			})?;
+
+		self.writer.emit_opcode(Opcode::Call);
+		self.writer.emit_u16(func_index);
+
 		Ok(())
 	}
 }

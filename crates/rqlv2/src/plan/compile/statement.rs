@@ -15,7 +15,7 @@ use crate::{
 	plan::{
 		OutputSchema, Plan,
 		node::{
-			control::{BreakNode, ContinueNode, ReturnNode},
+			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ReturnNode},
 			query::{ScanNode, VariableSourceNode},
 		},
 	},
@@ -58,6 +58,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			Statement::Delete(delete_stmt) => self.compile_delete(delete_stmt).await,
 			Statement::Drop(drop_stmt) => self.compile_drop(drop_stmt).await,
 			Statement::Alter(alter_stmt) => self.compile_alter(alter_stmt).await,
+			Statement::Def(def_stmt) => self.compile_def(def_stmt).await,
 			_ => Err(PlanError {
 				kind: PlanErrorKind::Unsupported(format!("statement type: {:?}", stmt)),
 				span: stmt.span(),
@@ -167,6 +168,24 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					span: var.span,
 				}))
 			}
+			// Handle script function calls
+			Expr::Call(call) => {
+				// Get the function name
+				if let Expr::Identifier(ident) = call.function {
+					// Check if this is a script function
+					if self.script_functions.iter().any(|&name| name == ident.name) {
+						return Ok(Plan::CallScriptFunction(CallScriptFunctionNode {
+							name: self.bump.alloc_str(ident.name),
+							span: call.span,
+						}));
+					}
+				}
+				// Fall through to unsupported for non-script function calls
+				Err(PlanError {
+					kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
+					span: expr.span(),
+				})
+			}
 			_ => Err(PlanError {
 				kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
 				span: expr.span(),
@@ -253,6 +272,24 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					variable: resolved,
 					span: var.span,
 				}))
+			}
+			// Handle script function calls
+			Expr::Call(call) => {
+				// Get the function name
+				if let Expr::Identifier(ident) = call.function {
+					// Check if this is a script function
+					if self.script_functions.iter().any(|&name| name == ident.name) {
+						return Ok(Plan::CallScriptFunction(CallScriptFunctionNode {
+							name: self.bump.alloc_str(ident.name),
+							span: call.span,
+						}));
+					}
+				}
+				// Fall through to unsupported for non-script function calls
+				Err(PlanError {
+					kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
+					span: expr.span(),
+				})
 			}
 			_ => Err(PlanError {
 				kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),

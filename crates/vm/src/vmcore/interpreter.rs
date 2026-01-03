@@ -12,7 +12,10 @@ use reifydb_rqlv2::{
 	expression::{EvalContext, EvalValue},
 };
 
-use super::state::{OperandValue, VmState};
+use super::{
+	call_stack::CallFrame,
+	state::{OperandValue, VmState},
+};
 use crate::{
 	error::{Result, VmError},
 	operator::{FilterOp, ProjectOp, ScanTableOp, SelectOp, SortOp, TakeOp},
@@ -368,28 +371,19 @@ impl VmState {
 			// ─────────────────────────────────────────────────────────
 			Opcode::Call => {
 				let func_index = read_u16!(reader);
-				// RQLv2's CompiledProgram doesn't support user-defined functions yet.
-				// Functions are planned for a future release.
-				return Err(VmError::UnsupportedOperation {
-					operation: format!("User-defined functions (func_index: {})", func_index),
-				});
+				let next_ip = reader.position();
 
-				// TODO: Restore when RQLv2 adds function support
-				/*
-				let func_def = self
-					.program
-					.functions
-					.get(func_index as usize)
-					.ok_or(VmError::InvalidFunctionIndex {
+				let func_def = self.program.script_functions.get(func_index as usize).ok_or(
+					VmError::InvalidFunctionIndex {
 						index: func_index,
-					})?
-					.clone();
+					},
+				)?;
 
 				// Push call frame
 				let frame = CallFrame::new(
 					func_index,
 					next_ip,
-					self.operand_stack.len().saturating_sub(func_def.parameters.len()),
+					self.operand_stack.len(),
 					self.pipeline_stack.len(),
 					self.scopes.depth(),
 				);
@@ -400,18 +394,8 @@ impl VmState {
 					});
 				}
 
-				// Enter new scope and bind parameters
-				self.scopes.push();
-				for (i, param) in func_def.parameters.iter().enumerate() {
-					let arg_index = self.operand_stack.len() - func_def.parameters.len() + i;
-					if let Some(value) = self.operand_stack.get(arg_index).cloned() {
-						self.scopes.set(param.name.clone(), value);
-					}
-				}
-
-				// Jump to function body
+				// Jump to function body (scope management is done within the function bytecode)
 				self.ip = func_def.bytecode_offset;
-				*/
 			}
 
 			Opcode::Return => {

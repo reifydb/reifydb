@@ -10,13 +10,13 @@ use super::core::{Planner, Result};
 use crate::{
 	ast::{
 		Expr,
-		stmt::{AssignStmt, ForStmt, IfStmt, LetStmt, LetValue, LoopStmt, ReturnStmt},
+		stmt::{AssignStmt, DefStmt, ForStmt, IfStmt, LetStmt, LetValue, LoopStmt, ReturnStmt},
 	},
 	plan::{
 		Plan, Variable,
 		node::control::{
-			AssignNode, ConditionalNode, DeclareNode, DeclareValue, ElseIfBranch, ForNode, LoopNode,
-			ReturnNode,
+			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode, ElseIfBranch,
+			ForNode, LoopNode, ReturnNode,
 		},
 	},
 };
@@ -149,6 +149,23 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		Ok(Plan::Return(ReturnNode {
 			value,
 			span: return_stmt.span,
+		}))
+	}
+
+	pub(super) async fn compile_def(&mut self, def_stmt: &DefStmt<'bump>) -> Result<Plan<'bump>> {
+		// Register the script function name
+		let name = self.bump.alloc_str(def_stmt.name);
+		self.script_functions.push(name);
+
+		// Compile the function body
+		self.push_scope();
+		let body = self.compile_statement_body(def_stmt.body).await?;
+		self.pop_scope();
+
+		Ok(Plan::DefineScriptFunction(DefineScriptFunctionNode {
+			name,
+			body,
+			span: def_stmt.span,
 		}))
 	}
 }
