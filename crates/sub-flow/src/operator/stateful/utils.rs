@@ -149,6 +149,7 @@ pub fn empty_key() -> EncodedKey {
 mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
+	use reifydb_catalog::Catalog;
 	use reifydb_core::{CommitVersion, util::CowVec};
 	use reifydb_type::Type;
 
@@ -158,7 +159,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("get");
 		let value = test_row();
@@ -175,7 +176,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_get_non_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
 
@@ -186,7 +187,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_set_and_update() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
 		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
@@ -206,7 +207,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_remove() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("remove");
 		let value = test_row();
@@ -223,7 +224,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_scan() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -246,7 +247,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_range() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 
 		// Add entries with different keys
@@ -268,7 +269,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_range_open_ended() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 
 		// Add some entries
@@ -293,7 +294,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_state_clear() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -324,7 +325,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_row_existing() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
@@ -341,7 +342,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_load_or_create_row_new() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
@@ -355,7 +356,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_save_row() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("save");
 		let value = test_row();
@@ -379,7 +380,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_multiple_nodes_isolation() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
@@ -406,7 +407,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_large_values() {
 		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), &MaterializedCatalog::new()).await;
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");
 

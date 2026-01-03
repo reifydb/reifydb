@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::Catalog;
 use reifydb_core::CommitVersion;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_transaction::multi::StandardQueryTransaction;
@@ -55,7 +55,7 @@ pub struct FlowTransaction<'a> {
 	primitive_query: StandardQueryTransaction,
 
 	/// Catalog for metadata access.
-	catalog: MaterializedCatalog,
+	catalog: Catalog,
 }
 
 impl<'a> FlowTransaction<'a> {
@@ -66,11 +66,7 @@ impl<'a> FlowTransaction<'a> {
 	/// * `version` - The CDC event version for snapshot isolation of source data
 	/// * `catalog` - The materialized catalog for metadata access
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(cmd, catalog), fields(version = version.0))]
-	pub async fn new(
-		cmd: &'a mut StandardCommandTransaction,
-		version: CommitVersion,
-		catalog: &MaterializedCatalog,
-	) -> Self {
+	pub async fn new(cmd: &'a mut StandardCommandTransaction, version: CommitVersion, catalog: Catalog) -> Self {
 		let mut primitive_query = cmd.multi.begin_query().await.unwrap();
 		primitive_query.read_as_of_version_inclusive(version);
 
@@ -78,7 +74,7 @@ impl<'a> FlowTransaction<'a> {
 			version,
 			cmd,
 			primitive_query,
-			catalog: catalog.clone(),
+			catalog,
 		}
 	}
 
@@ -88,7 +84,7 @@ impl<'a> FlowTransaction<'a> {
 	}
 
 	/// Get access to the catalog for reading metadata
-	pub(crate) fn catalog(&self) -> &MaterializedCatalog {
+	pub(crate) fn catalog(&self) -> &Catalog {
 		&self.catalog
 	}
 }

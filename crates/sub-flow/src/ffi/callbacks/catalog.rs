@@ -6,7 +6,7 @@
 //! Provides read-only access to the catalog system (namespaces, tables)
 //! with version-based queries for time-travel support.
 
-use std::slice::from_raw_parts;
+use std::{slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
 	ContextFFI, FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
@@ -41,7 +41,7 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.find_namespace(NamespaceId(namespace_id), CommitVersion(version)) {
+		match catalog.materialized.find_namespace(NamespaceId(namespace_id), CommitVersion(version)) {
 			Some(namespace) => {
 				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
@@ -71,7 +71,7 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 
 		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
-		let name = match std::str::from_utf8(name_bytes) {
+		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
@@ -80,7 +80,7 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.find_namespace_by_name(name, CommitVersion(version)) {
+		match catalog.materialized.find_namespace_by_name(name, CommitVersion(version)) {
 			Some(namespace) => {
 				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
@@ -111,7 +111,7 @@ pub(super) extern "C" fn host_catalog_find_table(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.find_table(TableId(table_id), CommitVersion(version)) {
+		match catalog.materialized.find_table(TableId(table_id), CommitVersion(version)) {
 			Some(table) => {
 				// Marshal to FFI
 				match marshal_table(&table) {
@@ -147,7 +147,7 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 
 		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
-		let name = match std::str::from_utf8(name_bytes) {
+		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
@@ -156,7 +156,7 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.find_table_by_name(NamespaceId(namespace_id), name, CommitVersion(version)) {
+		match catalog.materialized.find_table_by_name(NamespaceId(namespace_id), name, CommitVersion(version)) {
 			Some(table) => {
 				// Marshal to FFI
 				match marshal_table(&table) {

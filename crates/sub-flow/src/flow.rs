@@ -168,10 +168,7 @@ impl CdcConsume for FlowConsumeImpl {
 
 			// Process batch if we have any changes
 			if !flow_changes.is_empty() {
-				// Create flow transaction for this CDC batch
-				let mut ft =
-					FlowTransaction::new(txn, version, self.engine.materialized_catalog()).await;
-
+				let mut ft = FlowTransaction::new(txn, version, self.engine.catalog()).await;
 				for change in flow_changes {
 					self.flow_engine.process(&mut ft, change, self.flow_id).await?;
 				}
