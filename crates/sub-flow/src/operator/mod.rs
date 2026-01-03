@@ -39,7 +39,7 @@ pub use map::MapOperator;
 pub use merge::MergeOperator;
 use reifydb_sdk::FlowChange;
 pub use scan::{PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator};
-pub use sink::SinkViewOperator;
+pub use sink::{SinkSubscriptionOperator, SinkViewOperator};
 pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use window::WindowOperator;
@@ -74,6 +74,7 @@ pub enum Operators {
 	Merge(MergeOperator),
 	Apply(ApplyOperator),
 	SinkView(SinkViewOperator),
+	SinkSubscription(SinkSubscriptionOperator),
 	Window(WindowOperator),
 }
 
@@ -95,6 +96,7 @@ impl Operators {
 			Operators::Merge(op) => op.apply(txn, change, evaluator).await,
 			Operators::Apply(op) => op.apply(txn, change, evaluator).await,
 			Operators::SinkView(op) => op.apply(txn, change, evaluator).await,
+			Operators::SinkSubscription(op) => op.apply(txn, change, evaluator).await,
 			Operators::Window(op) => op.apply(txn, change, evaluator).await,
 			Operators::SourceTable(op) => op.apply(txn, change, evaluator).await,
 			Operators::SourceView(op) => op.apply(txn, change, evaluator).await,
@@ -114,6 +116,7 @@ impl Operators {
 			Operators::Merge(op) => op.pull(txn, rows).await,
 			Operators::Apply(op) => op.pull(txn, rows).await,
 			Operators::SinkView(op) => op.pull(txn, rows).await,
+			Operators::SinkSubscription(op) => op.pull(txn, rows).await,
 			Operators::Window(op) => op.pull(txn, rows).await,
 			Operators::SourceTable(op) => op.pull(txn, rows).await,
 			Operators::SourceView(op) => op.pull(txn, rows).await,
@@ -138,6 +141,7 @@ impl OperatorInfo for Operators {
 			Operators::Merge(_) => "Merge",
 			Operators::Apply(_) => "Apply",
 			Operators::SinkView(_) => "SinkView",
+			Operators::SinkSubscription(_) => "SinkSubscription",
 			Operators::Window(_) => "Window",
 		}
 	}
@@ -157,6 +161,7 @@ impl OperatorInfo for Operators {
 			Operators::Merge(op) => op.id(),
 			Operators::Apply(op) => op.id(),
 			Operators::SinkView(op) => op.id(),
+			Operators::SinkSubscription(op) => op.id(),
 			Operators::Window(op) => op.id(),
 		}
 	}

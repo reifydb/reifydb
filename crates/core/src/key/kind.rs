@@ -46,6 +46,9 @@ pub enum KeyKind {
 	DictionarySequence = 0x24,
 	StorageTracker = 0x25,
 	FlowVersion = 0x26,
+	Subscription = 0x27,
+	SubscriptionDelta = 0x28,
+	SubscriptionColumn = 0x29,
 }
 
 impl From<KeyKind> for u8 {
@@ -96,6 +99,9 @@ impl TryFrom<u8> for KeyKind {
 			0x24 => Ok(Self::DictionarySequence),
 			0x25 => Ok(Self::StorageTracker),
 			0x26 => Ok(Self::FlowVersion),
+			0x27 => Ok(Self::Subscription),
+			0x28 => Ok(Self::SubscriptionDelta),
+			0x29 => Ok(Self::SubscriptionColumn),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

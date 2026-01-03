@@ -7,7 +7,10 @@ mod create;
 pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
 	Catalog,
-	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{
+		ringbuffer::create::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
+		table::TableColumnToCreate, view::ViewColumnToCreate,
+	},
 };
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
@@ -108,6 +111,10 @@ impl Compiler {
 
 				LogicalPlan::CreateDictionary(create) => {
 					stack.push(self.compile_create_dictionary(rx, create).await?);
+				}
+
+				LogicalPlan::CreateSubscription(create) => {
+					stack.push(self.compile_create_subscription(create)?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
@@ -1005,6 +1012,7 @@ pub enum PhysicalPlan {
 	CreateRingBuffer(CreateRingBufferNode),
 	CreateFlow(CreateFlowNode),
 	CreateDictionary(CreateDictionaryNode),
+	CreateSubscription(CreateSubscriptionNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),
@@ -1118,6 +1126,11 @@ pub struct CreateDictionaryNode {
 	pub if_not_exists: bool,
 	pub value_type: Type,
 	pub id_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSubscriptionNode {
+	pub columns: Vec<SubscriptionColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]

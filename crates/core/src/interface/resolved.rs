@@ -7,7 +7,8 @@ use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfR
 use serde::{Deserialize, Serialize};
 
 use super::{
-	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, TableDef, VTableDef, ViewDef,
+	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, SubscriptionColumnDef,
+	SubscriptionDef, TableDef, VTableDef, ViewDef,
 };
 
 /// Resolved namespace with both identifier and definition
@@ -337,6 +338,58 @@ impl ResolvedDictionary {
 		ResolvedDictionary(Arc::new(ResolvedDictionaryInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
 			namespace: self.0.namespace.clone(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
+/// Resolved subscription (global entity, no namespace)
+#[derive(Debug, Clone)]
+pub struct ResolvedSubscription(Arc<ResolvedSubscriptionInner>);
+
+#[derive(Debug)]
+struct ResolvedSubscriptionInner {
+	pub identifier: Fragment,
+	pub def: SubscriptionDef,
+}
+
+impl ResolvedSubscription {
+	pub fn new(identifier: Fragment, def: SubscriptionDef) -> Self {
+		Self(Arc::new(ResolvedSubscriptionInner {
+			identifier,
+			def,
+		}))
+	}
+
+	/// Get the subscription ID as a string identifier
+	pub fn id_str(&self) -> String {
+		format!("subscription_{}", self.0.def.id.0)
+	}
+
+	/// Get the subscription def
+	pub fn def(&self) -> &SubscriptionDef {
+		&self.0.def
+	}
+
+	/// Get the identifier
+	pub fn identifier(&self) -> &Fragment {
+		&self.0.identifier
+	}
+
+	/// Get columns
+	pub fn columns(&self) -> &[SubscriptionColumnDef] {
+		&self.0.def.columns
+	}
+
+	/// Find a column by name
+	pub fn find_column(&self, name: &str) -> Option<&SubscriptionColumnDef> {
+		self.0.def.columns.iter().find(|c| c.name == name)
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedSubscription {
+		ResolvedSubscription(Arc::new(ResolvedSubscriptionInner {
+			identifier: Fragment::internal(self.0.identifier.text()),
 			def: self.0.def.clone(),
 		}))
 	}

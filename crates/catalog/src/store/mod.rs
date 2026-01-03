@@ -13,5 +13,6 @@ pub mod primitive;
 pub mod retention_policy;
 pub mod ringbuffer;
 pub mod sequence;
+pub mod subscription;
 pub mod table;
 pub mod view;

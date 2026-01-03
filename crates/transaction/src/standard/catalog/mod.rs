@@ -9,6 +9,7 @@ mod dictionary;
 mod flow;
 mod namespace;
 mod ringbuffer;
+mod subscription;
 mod table;
 mod view;
 

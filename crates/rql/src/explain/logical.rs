@@ -68,6 +68,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		LogicalPlan::CreateDictionary(_) => unimplemented!(),
+		LogicalPlan::CreateSubscription(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

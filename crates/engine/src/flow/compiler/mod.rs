@@ -198,6 +198,7 @@ impl FlowCompiler {
 			| PhysicalPlan::CreateRingBuffer(_)
 			| PhysicalPlan::CreateFlow(_)
 			| PhysicalPlan::CreateDictionary(_)
+			| PhysicalPlan::CreateSubscription(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)

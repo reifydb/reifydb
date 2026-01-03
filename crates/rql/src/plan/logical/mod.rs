@@ -13,7 +13,10 @@ use async_recursion::async_recursion;
 use query::window::WindowNode;
 use reifydb_catalog::{
 	Catalog,
-	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{
+		ringbuffer::create::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
+		table::TableColumnToCreate, view::ViewColumnToCreate,
+	},
 };
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
@@ -495,6 +498,7 @@ pub enum LogicalPlan {
 	CreateDictionary(CreateDictionaryNode),
 	CreateFlow(CreateFlowNode),
 	CreateIndex(CreateIndexNode),
+	CreateSubscription(CreateSubscriptionNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),
@@ -692,6 +696,11 @@ pub struct CreateIndexNode {
 	pub columns: Vec<IndexColumn>,
 	pub filter: Vec<Expression>,
 	pub map: Option<Expression>,
+}
+
+#[derive(Debug)]
+pub struct CreateSubscriptionNode {
+	pub columns: Vec<SubscriptionColumnToCreate>,
 }
 
 #[derive(Debug)]

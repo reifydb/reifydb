@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace};
+use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace, Subscription};
 use Operator::{Colon, Dot};
 use reifydb_core::SortDirection;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-	AstCreateRingBuffer, AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType, AstIndexColumn,
-	AstPrimaryKeyDef,
+	AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable, AstCreateTransactionalView,
+	AstDataType, AstIndexColumn, AstPrimaryKeyDef,
 	identifier::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 	},
@@ -89,6 +89,10 @@ impl Parser {
 			return self.parse_series(token);
 		}
 
+		if (self.consume_if(TokenKind::Keyword(Subscription))?).is_some() {
+			return self.parse_subscription(token);
+		}
+
 		if self.peek_is_index_creation()? {
 			return self.parse_create_index(token);
 		}
@@ -135,6 +139,17 @@ impl Parser {
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
 			sequence,
+			columns,
+		}))
+	}
+
+	fn parse_subscription(&mut self, token: Token) -> crate::Result<AstCreate> {
+		// Subscriptions don't have names - they're identified only by UUID v7
+		// Syntax: CREATE SUBSCRIPTION { columns... }
+		let columns = self.parse_columns()?;
+
+		Ok(AstCreate::Subscription(AstCreateSubscription {
+			token,
 			columns,
 		}))
 	}
@@ -715,8 +730,8 @@ impl Parser {
 mod tests {
 	use crate::ast::{
 		AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace, AstCreateRingBuffer,
-		AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType, AstPolicyKind, parse::Parser,
-		tokenize,
+		AstCreateSeries, AstCreateSubscription, AstCreateTable, AstCreateTransactionalView, AstDataType,
+		AstPolicyKind, parse::Parser, tokenize,
 	};
 
 	#[test]
@@ -1654,6 +1669,77 @@ mod tests {
 				}
 			}
 			_ => unreachable!("Expected Dictionary create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_basic() {
+		let tokens = tokenize("CREATE SUBSCRIPTION { id: Int4, name: Utf8 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				..
+			}) => {
+				assert_eq!(columns.len(), 2);
+
+				{
+					let col = &columns[0];
+					assert_eq!(col.name.text(), "id");
+					match &col.ty {
+						AstDataType::Unconstrained(ident) => {
+							assert_eq!(ident.text(), "Int4")
+						}
+						_ => panic!("Expected simple type"),
+					}
+				}
+
+				{
+					let col = &columns[1];
+					assert_eq!(col.name.text(), "name");
+					match &col.ty {
+						AstDataType::Unconstrained(ident) => {
+							assert_eq!(ident.text(), "Utf8")
+						}
+						_ => panic!("Expected simple type"),
+					}
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_single_column() {
+		let tokens = tokenize("CREATE SUBSCRIPTION { value: Float8 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				..
+			}) => {
+				assert_eq!(columns.len(), 1);
+				assert_eq!(columns[0].name.text(), "value");
+				match &columns[0].ty {
+					AstDataType::Unconstrained(ident) => {
+						assert_eq!(ident.text(), "Float8")
+					}
+					_ => panic!("Expected simple type"),
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
 		}
 	}
 }

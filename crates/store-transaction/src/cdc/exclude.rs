@@ -93,10 +93,13 @@ mod tests {
 			KeyKind::NamespaceDictionary => {}
 			KeyKind::DictionarySequence => {}
 			KeyKind::StorageTracker => {}
-			KeyKind::FlowVersion => {} /* When adding a new variant, add it here.
-			                            * The compiler will error if you forget.
-			                            * Then add a test and update should_exclude_from_cdc() if
-			                            * needed. */
+			KeyKind::FlowVersion => {}
+			KeyKind::Subscription => {}
+			KeyKind::SubscriptionDelta => {}
+			KeyKind::SubscriptionColumn => {} /* When adding a new variant, add it here.
+			                                   * The compiler will error if you forget.
+			                                   * Then add a test and update should_exclude_from_cdc() if
+			                                   * needed. */
 		}
 	}
 

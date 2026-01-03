@@ -12,6 +12,7 @@ mod dictionary;
 mod flow;
 mod namespace;
 mod ringbuffer;
+mod subscription;
 mod table;
 #[allow(dead_code)] // FIXME
 mod transactional;

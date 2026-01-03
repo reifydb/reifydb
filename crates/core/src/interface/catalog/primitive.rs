@@ -8,6 +8,9 @@ use crate::interface::{
 	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, VTableDef, VTableId, ViewDef, ViewId,
 };
 
+/// PrimitiveId represents identifiers for catalog primitives that use u64-based IDs.
+/// Note: SubscriptionId is NOT included here because it uses UUID v7 which is a
+/// different type. Subscriptions are handled separately.
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveId {
 	Table(TableId),

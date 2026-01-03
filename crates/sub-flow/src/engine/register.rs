@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use FlowNodeType::{Aggregate, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
+use FlowNodeType::{Aggregate, SinkSubscription, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
 use reifydb_core::{
 	Error,
 	interface::{FlowId, FlowNodeId, PrimitiveId},
@@ -22,7 +22,7 @@ use crate::{
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator,
 		MergeOperator, Operators, PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator,
-		SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
+		SinkSubscriptionOperator, SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
 	},
 };
 
@@ -104,6 +104,28 @@ impl FlowEngine {
 				self.inner.operators.write().await.insert(
 					node.id,
 					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
+				);
+			}
+			SinkSubscription {
+				subscription,
+			} => {
+				let parent = self
+					.inner
+					.operators
+					.read()
+					.await
+					.get(&node.inputs[0])
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.clone();
+
+				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
+				// which uses PrimitiveId (u64-based). Subscriptions are ephemeral 1:1 mapped.
+				let resolved = self.inner.catalog.resolve_subscription(txn, subscription).await?;
+				self.inner.operators.write().await.insert(
+					node.id,
+					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
+						parent, node.id, resolved,
+					))),
 				);
 			}
 			Filter {

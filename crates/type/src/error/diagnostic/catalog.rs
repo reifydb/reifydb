@@ -551,3 +551,33 @@ pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn subscription_already_exists(fragment: Fragment, subscription: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_010".to_string(),
+		statement: None,
+		message: format!("subscription `{}` already exists", subscription),
+		fragment,
+		label: Some("duplicate subscription definition".to_string()),
+		help: Some("choose a different name or close the existing subscription first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn subscription_not_found(fragment: Fragment, subscription: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_011".to_string(),
+		statement: None,
+		message: format!("subscription `{}` not found", subscription),
+		fragment,
+		label: Some("unknown subscription reference".to_string()),
+		help: Some("ensure the subscription exists or create it first using `CREATE SUBSCRIPTION`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

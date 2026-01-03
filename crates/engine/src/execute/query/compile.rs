@@ -359,6 +359,7 @@ pub(crate) async fn compile<'a>(
 		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::CreateFlow(_)
 		| PhysicalPlan::CreateDictionary(_)
+		| PhysicalPlan::CreateSubscription(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)

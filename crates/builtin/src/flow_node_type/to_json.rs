@@ -63,6 +63,9 @@ pub enum JsonFlowNodeType {
 	SinkView {
 		view: u64,
 	},
+	SinkSubscription {
+		subscription: String,
+	},
 	Window {
 		window_type: WindowType,
 		size: WindowSize,
@@ -165,6 +168,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				view,
 			} => JsonFlowNodeType::SinkView {
 				view: view.0,
+			},
+			FlowNodeType::SinkSubscription {
+				subscription,
+			} => JsonFlowNodeType::SinkSubscription {
+				subscription: subscription.0.to_string(),
 			},
 			FlowNodeType::Window {
 				window_type,

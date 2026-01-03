@@ -641,6 +641,61 @@ impl<'de> Deserialize<'de> for DictionaryId {
 	}
 }
 
+/// A unique identifier for a subscription using UUID v7.
+/// UUID v7 is time-ordered and globally unique without requiring sequence generation.
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SubscriptionId(pub uuid::Uuid);
+
+impl SubscriptionId {
+	/// Generate a new subscription ID using UUID v7
+	pub fn new() -> Self {
+		Self(uuid::Uuid::now_v7())
+	}
+
+	/// Create a subscription ID from raw bytes
+	pub fn from_bytes(bytes: [u8; 16]) -> Self {
+		Self(uuid::Uuid::from_bytes(bytes))
+	}
+
+	/// Get the raw bytes of the UUID
+	pub fn as_bytes(&self) -> &[u8; 16] {
+		self.0.as_bytes()
+	}
+}
+
+impl Default for SubscriptionId {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl Display for SubscriptionId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for SubscriptionId {
+	type Target = uuid::Uuid;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl From<uuid::Uuid> for SubscriptionId {
+	fn from(value: uuid::Uuid) -> Self {
+		Self(value)
+	}
+}
+
+impl From<SubscriptionId> for uuid::Uuid {
+	fn from(value: SubscriptionId) -> Self {
+		value.0
+	}
+}
+
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct SequenceId(pub u64);
@@ -684,6 +739,80 @@ impl<'de> Deserialize<'de> for SequenceId {
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(SequenceId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct SubscriptionColumnId(pub u64);
+
+impl Display for SubscriptionColumnId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for SubscriptionColumnId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for SubscriptionColumnId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<SubscriptionColumnId> for u64 {
+	fn from(value: SubscriptionColumnId) -> Self {
+		value.0
+	}
+}
+
+impl From<i32> for SubscriptionColumnId {
+	fn from(value: i32) -> Self {
+		Self(value as u64)
+	}
+}
+
+impl From<u64> for SubscriptionColumnId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for SubscriptionColumnId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for SubscriptionColumnId {
+	fn deserialize<D>(deserializer: D) -> Result<SubscriptionColumnId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = SubscriptionColumnId;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+				Ok(SubscriptionColumnId(value))
 			}
 		}
 
