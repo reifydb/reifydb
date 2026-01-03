@@ -95,6 +95,7 @@ use crate::{
 
 mod catalog;
 pub(crate) mod mutate;
+
 pub(crate) mod parallel;
 mod query;
 

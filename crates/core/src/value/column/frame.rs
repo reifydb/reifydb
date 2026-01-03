@@ -57,19 +57,8 @@ impl From<ColumnData> for FrameColumnData {
 
 impl From<Column> for FrameColumn {
 	fn from(value: Column) -> Self {
-		// Since Column is now just name + data, we extract any qualification from the name
-		let name_str = value.name.text();
-		let parts: Vec<&str> = name_str.split('.').collect();
-		let (namespace, store, name) = match parts.as_slice() {
-			[ns, src, n] => (Some(ns.to_string()), Some(src.to_string()), n.to_string()),
-			[src, n] => (None, Some(src.to_string()), n.to_string()),
-			[n] => (None, None, n.to_string()),
-			_ => (None, None, name_str.to_string()),
-		};
 		FrameColumn {
-			namespace,
-			source: store,
-			name,
+			name: value.name.to_string(),
 			data: value.data.into(),
 		}
 	}

@@ -343,15 +343,7 @@ where
 	}
 
 	pub(crate) async fn version(&self) -> crate::Result<CommitVersion> {
-		let clock = {
-			let inner = self.inner.read().await;
-			inner.clock.clone()
-		};
-		clock.current().await
-	}
-
-	pub(crate) fn discard_at_or_below(&self) -> CommitVersion {
-		self.command.done_until()
+		self.inner.read().await.clock.current().await
 	}
 
 	pub async fn stop(&mut self) {

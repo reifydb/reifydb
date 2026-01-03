@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus};
 use reifydb_store_transaction::{
@@ -38,7 +38,6 @@ pub use query::QueryTransaction;
 
 pub use crate::multi::oracle::MAX_COMMITTED_TXNS;
 use crate::multi::{
-	AwaitWatermarkError,
 	conflict::ConflictManager,
 	pending::PendingWrites,
 	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
@@ -109,44 +108,16 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::manager::discard_hint", level = "trace", skip(self))]
-	pub fn discard_hint(&self) -> CommitVersion {
-		self.inner.discard_at_or_below()
-	}
-
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
 	pub async fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
+		let safe_version = self.inner.version().await?;
+
 		Ok(if let Some(version) = version {
+			assert!(version <= safe_version);
 			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
 		} else {
-			TransactionManagerQuery::new_current(
-				TransactionId::generate(),
-				self.clone(),
-				self.inner.version().await?,
-			)
+			TransactionManagerQuery::new_current(TransactionId::generate(), self.clone(), safe_version)
 		})
-	}
-
-	/// Wait for the command watermark to reach the specified version.
-	/// Returns Ok(()) if the watermark reaches the version within the timeout,
-	/// or Err(AwaitWatermarkError) if the timeout expires.
-	///
-	/// This is useful for CDC polling to ensure all in-flight commits have
-	/// completed their storage writes before querying for CDC events.
-	#[instrument(name = "transaction::manager::wait_for_watermark", level = "debug", skip(self))]
-	pub async fn try_wait_for_watermark(
-		&self,
-		version: CommitVersion,
-		timeout: Duration,
-	) -> Result<(), AwaitWatermarkError> {
-		if self.inner.command.wait_for_mark_timeout(version, timeout).await {
-			Ok(())
-		} else {
-			Err(AwaitWatermarkError {
-				version,
-				timeout,
-			})
-		}
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.
@@ -155,11 +126,6 @@ where
 	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
 	pub fn done_until(&self) -> CommitVersion {
 		self.inner.command.done_until()
-	}
-
-	/// Returns (query_done_until, command_done_until) for debugging watermark state.
-	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
-		(self.inner.query.done_until(), self.inner.command.done_until())
 	}
 }
 

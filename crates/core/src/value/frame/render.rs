@@ -69,7 +69,7 @@ impl FrameRenderer {
 
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &frame[col_idx];
-			let display_name = Self::escape_control_chars(&col.qualified_name());
+			let display_name = Self::escape_control_chars(&col.name);
 			col_widths[row_num_col_idx + display_idx] = Self::display_width(&display_name);
 		}
 
@@ -106,7 +106,7 @@ impl FrameRenderer {
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &frame[col_idx];
 			let w = col_widths[row_num_col_idx + display_idx];
-			let name = Self::escape_control_chars(&col.qualified_name());
+			let name = Self::escape_control_chars(&col.name);
 			let pad = w - Self::display_width(&name);
 			let l = pad / 2;
 			let r = pad - l;
