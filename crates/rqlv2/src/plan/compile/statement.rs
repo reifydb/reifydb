@@ -15,7 +15,7 @@ use crate::{
 	plan::{
 		OutputSchema, Plan,
 		node::{
-			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ReturnNode},
+			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ExprStmtNode, ReturnNode},
 			query::{ScanNode, VariableSourceNode},
 		},
 	},
@@ -168,7 +168,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					span: var.span,
 				}))
 			}
-			// Handle script function calls
+			// Handle function calls
 			Expr::Call(call) => {
 				// Get the function name
 				if let Expr::Identifier(ident) = call.function {
@@ -180,11 +180,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 						}));
 					}
 				}
-				// Fall through to unsupported for non-script function calls
-				Err(PlanError {
-					kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
+				// For other calls (like builtin functions), compile as expression statement
+				let plan_expr = self.compile_expr(expr, None)?;
+				Ok(Plan::ExprStmt(ExprStmtNode {
+					expr: self.bump.alloc(plan_expr),
 					span: expr.span(),
-				})
+				}))
 			}
 			_ => Err(PlanError {
 				kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
@@ -273,7 +274,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					span: var.span,
 				}))
 			}
-			// Handle script function calls
+			// Handle function calls
 			Expr::Call(call) => {
 				// Get the function name
 				if let Expr::Identifier(ident) = call.function {
@@ -285,11 +286,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 						}));
 					}
 				}
-				// Fall through to unsupported for non-script function calls
-				Err(PlanError {
-					kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),
+				// For other calls (like builtin functions), compile as expression statement
+				let plan_expr = self.compile_expr(expr, schema)?;
+				Ok(Plan::ExprStmt(ExprStmtNode {
+					expr: self.bump.alloc(plan_expr),
 					span: expr.span(),
-				})
+				}))
 			}
 			_ => Err(PlanError {
 				kind: PlanErrorKind::Unsupported(format!("pipeline stage: {:?}", expr)),

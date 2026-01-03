@@ -210,7 +210,17 @@ impl<'a> AstFormatter<'a> {
 				self.write_indexed(is_last, index, &format!("For(${})", fr.variable));
 				self.with_child(is_last, |f| {
 					f.write_branch(false, "iterable:");
-					f.with_child(false, |f| f.format_expr(true, fr.iterable));
+					f.with_child(false, |f| match &fr.iterable {
+						crate::ast::stmt::ForIterable::Expr(expr) => {
+							f.format_expr(true, expr);
+						}
+						crate::ast::stmt::ForIterable::Pipeline(stages) => {
+							let len = stages.len();
+							for (i, stage) in stages.iter().enumerate() {
+								f.format_expr_indexed(i == len - 1, i, stage);
+							}
+						}
+					});
 					f.write_branch(true, "body:");
 					f.with_child(true, |f| {
 						let len = fr.body.len();

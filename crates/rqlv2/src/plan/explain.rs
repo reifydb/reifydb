@@ -8,7 +8,7 @@ use std::fmt::Write;
 use crate::plan::{
 	CatalogColumn, Plan, Primitive,
 	node::{
-		control::DeclareValue,
+		control::{DeclareValue, ForIterableValue},
 		ddl::{AlterNode, AlterTableAction, CreateNode, DropNode, DropTarget},
 		expr::{BinaryPlanOp, PlanExpr, UnaryPlanOp},
 		mutate::{DeleteTarget, InsertTarget, UpdateTarget},
@@ -543,11 +543,11 @@ impl<'a> PlanExplainer<'a> {
 				});
 			}
 			Plan::For(n) => {
-				self.write_line(&format!(
-					"FOR ${} IN {}",
-					n.variable.name,
-					self.format_expr(n.iterable)
-				));
+				let iterable = match &n.iterable {
+					ForIterableValue::Expression(expr) => self.format_expr(expr),
+					ForIterableValue::Plan(plans) => format!("<{} statements>", plans.len()),
+				};
+				self.write_line(&format!("FOR ${} IN {}", n.variable.name, iterable));
 				self.with_indent(|e| {
 					for stmt in n.body.iter() {
 						e.format_plan(stmt);

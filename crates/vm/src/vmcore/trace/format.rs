@@ -235,7 +235,6 @@ impl Display for InstructionSnapshot {
 			InstructionSnapshot::ColAnd => write!(f, "ColAnd"),
 			InstructionSnapshot::ColOr => write!(f, "ColOr"),
 			InstructionSnapshot::ColNot => write!(f, "ColNot"),
-			InstructionSnapshot::PrintOut => write!(f, "PrintOut"),
 			InstructionSnapshot::Nop => write!(f, "Nop"),
 			InstructionSnapshot::Halt => write!(f, "Halt"),
 		}

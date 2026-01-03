@@ -194,13 +194,6 @@ pub enum Opcode {
 	ColNot = 0xAC,
 
 	// ─────────────────────────────────────────────────────────────
-	// I/O Operations
-	// ─────────────────────────────────────────────────────────────
-	/// Print value from operand stack (for console::log)
-	/// Pops value, prints it to stdout
-	PrintOut = 0x90,
-
-	// ─────────────────────────────────────────────────────────────
 	// Control
 	// ─────────────────────────────────────────────────────────────
 	/// No operation
@@ -259,7 +252,6 @@ impl TryFrom<u8> for Opcode {
 			0xAA => Ok(Opcode::ColAnd),
 			0xAB => Ok(Opcode::ColOr),
 			0xAC => Ok(Opcode::ColNot),
-			0x90 => Ok(Opcode::PrintOut),
 			0xFE => Ok(Opcode::Nop),
 			0xFF => Ok(Opcode::Halt),
 			_ => Err(value),

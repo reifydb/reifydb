@@ -188,13 +188,14 @@ impl PlanCompiler {
 				span,
 			} => {
 				self.record_span(*span);
+				// Push arguments onto stack
 				for arg in arguments.iter() {
 					self.compile_expr(arg)?;
 				}
-				// TODO: Look up function and emit call
-				let _ = function;
+				// Store function name in constant pool and emit call
+				let name_index = self.program.add_constant(Constant::String(function.name.to_string()));
 				self.writer.emit_opcode(Opcode::CallBuiltin);
-				self.writer.emit_u16(0); // TODO: function ID
+				self.writer.emit_u16(name_index);
 				self.writer.emit_u8(arguments.len() as u8);
 			}
 			PlanExpr::Aggregate {

@@ -56,6 +56,14 @@ pub enum Opcode {
 	/// Operand: u32
 	StorePipeline = 0x19,
 
+	/// Load internal (compiler-generated) variable onto operand stack
+	/// Operand: u16 (internal variable ID)
+	LoadInternalVar = 0x1A,
+
+	/// Store operand stack top into internal variable
+	/// Operand: u16 (internal variable ID)
+	StoreInternalVar = 0x1B,
+
 	// ─────────────────────────────────────────────────────────────
 	// Pipeline Operations
 	// ─────────────────────────────────────────────────────────────
@@ -169,13 +177,6 @@ pub enum Opcode {
 	/// Divide two integers on operand stack
 	/// Pops two Int8 values (b, a), pushes Int8 result (a / b)
 	IntDiv = 0x85,
-
-	// ─────────────────────────────────────────────────────────────
-	// I/O Operations
-	// ─────────────────────────────────────────────────────────────
-	/// Print value from operand stack (for console::log)
-	/// Pops value, prints it to stdout
-	PrintOut = 0x90,
 
 	// ─────────────────────────────────────────────────────────────
 	// Columnar Arithmetic and Comparison (for expressions)
@@ -301,6 +302,8 @@ impl TryFrom<u8> for Opcode {
 			0x17 => Ok(Opcode::UpdateVar),
 			0x18 => Ok(Opcode::LoadPipeline),
 			0x19 => Ok(Opcode::StorePipeline),
+			0x1A => Ok(Opcode::LoadInternalVar),
+			0x1B => Ok(Opcode::StoreInternalVar),
 			// Pipeline Operations
 			0x20 => Ok(Opcode::Source),
 			0x21 => Ok(Opcode::Inline),
@@ -332,8 +335,6 @@ impl TryFrom<u8> for Opcode {
 			0x83 => Ok(Opcode::IntSub),
 			0x84 => Ok(Opcode::IntMul),
 			0x85 => Ok(Opcode::IntDiv),
-			// I/O
-			0x90 => Ok(Opcode::PrintOut),
 			// Columnar Operations
 			0xA0 => Ok(Opcode::ColAdd),
 			0xA1 => Ok(Opcode::ColSub),

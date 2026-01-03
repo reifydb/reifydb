@@ -5,6 +5,9 @@
 //!
 //! Syntax:
 //! - `for $var in iterable { body }`
+//! - `for $var in pipeline { body }`
+
+use bumpalo::collections::Vec as BumpVec;
 
 use super::super::{
 	Parser,
@@ -12,8 +15,8 @@ use super::super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::Statement,
-	token::{Keyword, Punctuation, TokenKind},
+	ast::{Statement, stmt::ForIterable},
+	token::{Keyword, Operator, Punctuation, TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -37,12 +40,38 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		self.expect_keyword(Keyword::In)?;
 
-		let iterable = self.parse_expr(Precedence::None)?;
+		// Parse iterable (expression or pipeline)
+		let iterable = self.parse_for_iterable()?;
 
 		self.expect_punct(Punctuation::OpenCurly)?;
 		let body = self.parse_block()?;
 		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
 		Ok(Statement::For(crate::ast::stmt::ForStmt::new(name, iterable, body, start_span.merge(&end_span))))
+	}
+
+	/// Parse the iterable part of a for statement.
+	fn parse_for_iterable(&mut self) -> Result<ForIterable<'bump>, ParseError> {
+		// Parse first expression
+		let first = self.parse_expr(Precedence::None)?;
+
+		// Check for pipe to make it a pipeline
+		if self.try_consume_operator(Operator::Pipe) {
+			let mut stages = BumpVec::new_in(self.bump);
+			stages.push(*first);
+
+			loop {
+				let stage = self.parse_expr(Precedence::None)?;
+				stages.push(*stage);
+
+				if !self.try_consume_operator(Operator::Pipe) {
+					break;
+				}
+			}
+
+			Ok(ForIterable::Pipeline(stages.into_bump_slice()))
+		} else {
+			Ok(ForIterable::Expr(first))
+		}
 	}
 }

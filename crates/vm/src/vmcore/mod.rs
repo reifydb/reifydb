@@ -3,6 +3,7 @@
 
 //! VM core - bytecode interpreter and execution state.
 
+pub mod builtin;
 pub mod call_stack;
 pub mod interpreter;
 pub mod scope;
@@ -11,6 +12,7 @@ pub mod state;
 #[cfg(feature = "trace")]
 pub mod trace;
 
+pub use builtin::BuiltinRegistry;
 pub use call_stack::{CallFrame, CallStack};
 pub use interpreter::DispatchResult;
 pub use scope::{Scope, ScopeChain};

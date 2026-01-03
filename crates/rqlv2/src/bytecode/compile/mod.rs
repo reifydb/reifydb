@@ -87,6 +87,8 @@ pub struct PlanCompiler {
 	pub(crate) script_function_indices: HashMap<String, u16>,
 	/// Pending script function bytecode (name, bytecode).
 	pub(crate) pending_script_functions: Vec<(String, Vec<u8>)>,
+	/// Counter for internal variable IDs.
+	pub(crate) next_internal_var_id: u16,
 }
 
 impl PlanCompiler {
@@ -99,7 +101,15 @@ impl PlanCompiler {
 			loop_contexts: Vec::new(),
 			script_function_indices: HashMap::new(),
 			pending_script_functions: Vec::new(),
+			next_internal_var_id: 0,
 		}
+	}
+
+	/// Allocate a new internal variable ID.
+	pub(crate) fn alloc_internal_var(&mut self) -> u16 {
+		let id = self.next_internal_var_id;
+		self.next_internal_var_id += 1;
+		id
 	}
 
 	/// Compile a plan into a program.
@@ -200,6 +210,7 @@ impl PlanCompiler {
 			Plan::Continue(node) => self.compile_continue(node),
 			Plan::DefineScriptFunction(node) => self.compile_define_script_function(node),
 			Plan::CallScriptFunction(node) => self.compile_call_script_function(node),
+			Plan::ExprStmt(node) => self.compile_expr_stmt(node),
 
 			// Other
 			Plan::InlineData(node) => self.compile_inline_data(node),

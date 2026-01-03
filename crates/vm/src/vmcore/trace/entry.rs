@@ -121,7 +121,6 @@ pub enum InstructionSnapshot {
 	ColAnd,
 	ColOr,
 	ColNot,
-	PrintOut,
 	Nop,
 	Halt,
 }

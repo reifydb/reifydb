@@ -503,6 +503,12 @@ fn decode_operands(
 			operands.push(Operand::U32(id));
 		}
 
+		// Internal Variable Operations - u16
+		Opcode::LoadInternalVar | Opcode::StoreInternalVar => {
+			let id = read_u16(reader, raw_bytes)?;
+			operands.push(Operand::U16(id));
+		}
+
 		// Pipeline Operations
 		Opcode::Source | Opcode::FetchBatch => {
 			let idx = read_u16(reader, raw_bytes)?;
@@ -582,7 +588,6 @@ fn decode_operands(
 		| Opcode::IntSub
 		| Opcode::IntMul
 		| Opcode::IntDiv
-		| Opcode::PrintOut
 		| Opcode::ColAdd
 		| Opcode::ColSub
 		| Opcode::ColMul
@@ -1186,6 +1191,9 @@ fn find_jump_targets(program: &CompiledProgram) -> HashSet<usize> {
 					| Opcode::LoadPipeline
 					| Opcode::StorePipeline => {
 						reader.read_u32();
+					}
+					Opcode::LoadInternalVar | Opcode::StoreInternalVar => {
+						reader.read_u16();
 					}
 					Opcode::Apply => {
 						reader.read_u8();

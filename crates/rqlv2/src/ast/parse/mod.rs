@@ -24,8 +24,11 @@ use bumpalo::{Bump, collections::Vec as BumpVec};
 pub use error::{ParseError, ParseErrorKind};
 pub use pratt::Precedence;
 
-use super::{Program, Statement};
-use crate::token::{EOF_TOKEN, Keyword, Operator, Punctuation, Span, Token, TokenKind};
+use super::{Expr, Program, Statement};
+use crate::{
+	ast::expr::BinaryOp,
+	token::{EOF_TOKEN, Keyword, Operator, Punctuation, Span, Token, TokenKind},
+};
 
 /// Parse result.
 pub struct ParseResult<'bump> {
@@ -352,6 +355,16 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			let span = stages.first().unwrap().span().merge(&stages.last().unwrap().span());
 			Ok(Statement::Pipeline(super::Pipeline::new(stages.into_bump_slice(), span)))
 		} else {
+			// Check if this is an assignment expression ($var = expr)
+			if let Expr::Binary(bin) = first {
+				if bin.op == BinaryOp::Assign {
+					if let Expr::Variable(var) = bin.left {
+						return Ok(Statement::Assign(super::stmt::AssignStmt::new(
+							var.name, bin.right, bin.span,
+						)));
+					}
+				}
+			}
 			let span = first.span();
 			Ok(Statement::Expression(super::stmt::ExprStmt::new(first, span)))
 		}

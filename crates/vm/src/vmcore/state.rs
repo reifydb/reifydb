@@ -258,6 +258,10 @@ pub struct VmState {
 	/// Stores iteration state for batch-at-a-time table scans.
 	pub active_scans: HashMap<u16, ScanState>,
 
+	/// Internal (compiler-generated) variables storage.
+	/// Used for loop indices, temporary values, etc.
+	pub internal_vars: HashMap<u16, OperandValue>,
+
 	/// Optional tracer for recording execution.
 	#[cfg(feature = "trace")]
 	pub tracer: Option<VmTracer>,
@@ -278,6 +282,7 @@ impl VmState {
 			pipeline_registry: HashMap::new(),
 			next_pipeline_id: 0,
 			active_scans: HashMap::new(),
+			internal_vars: HashMap::new(),
 			#[cfg(feature = "trace")]
 			tracer: None,
 		}

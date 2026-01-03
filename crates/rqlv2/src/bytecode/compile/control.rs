@@ -14,7 +14,7 @@ use crate::{
 	},
 	plan::node::control::{
 		AssignNode, BreakNode, CallScriptFunctionNode, ConditionalNode, ContinueNode, DeclareNode,
-		DeclareValue, DefineScriptFunctionNode, ForNode, LoopNode, ReturnNode,
+		DeclareValue, DefineScriptFunctionNode, ExprStmtNode, ForIterableValue, ForNode, LoopNode, ReturnNode,
 	},
 };
 
@@ -131,31 +131,42 @@ impl PlanCompiler {
 	pub(crate) fn compile_for<'bump>(&mut self, node: &ForNode<'bump>) -> Result<()> {
 		self.record_span(node.span);
 
-		// Compile iterable expression
-		self.compile_expr(node.iterable)?;
+		// Compile iterable (expression or pipeline)
+		match &node.iterable {
+			ForIterableValue::Expression(expr) => {
+				self.compile_expr(expr)?;
+			}
+			ForIterableValue::Plan(plans) => {
+				for plan in plans.iter() {
+					self.compile_plan(plan)?;
+				}
+			}
+		}
 
 		// Collect to frame
 		self.writer.emit_opcode(Opcode::Collect);
 
-		// Store frame
-		let frame_var = self.program.add_constant(Constant::String("__for_frame".to_string()));
-		self.writer.emit_opcode(Opcode::StoreVar);
+		// Allocate internal variable IDs for loop state
+		let frame_var = self.alloc_internal_var();
+		let len_var = self.alloc_internal_var();
+		let idx_var = self.alloc_internal_var();
+
+		// Store frame (internal variable)
+		self.writer.emit_opcode(Opcode::StoreInternalVar);
 		self.writer.emit_u16(frame_var);
 
 		// Get frame length
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(frame_var);
 		self.writer.emit_opcode(Opcode::FrameLen);
-		let len_var = self.program.add_constant(Constant::String("__for_len".to_string()));
-		self.writer.emit_opcode(Opcode::StoreVar);
+		self.writer.emit_opcode(Opcode::StoreInternalVar);
 		self.writer.emit_u16(len_var);
 
 		// Initialize index = 0
-		let idx_var = self.program.add_constant(Constant::String("__for_idx".to_string()));
 		let zero_const = self.program.add_constant(Constant::Int(0));
 		self.writer.emit_opcode(Opcode::PushConst);
 		self.writer.emit_u16(zero_const);
-		self.writer.emit_opcode(Opcode::StoreVar);
+		self.writer.emit_opcode(Opcode::StoreInternalVar);
 		self.writer.emit_u16(idx_var);
 
 		// Loop start
@@ -167,9 +178,9 @@ impl PlanCompiler {
 		});
 
 		// Check idx < len
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(idx_var);
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(len_var);
 		self.writer.emit_opcode(Opcode::IntLt);
 
@@ -182,13 +193,13 @@ impl PlanCompiler {
 		self.writer.emit_opcode(Opcode::EnterScope);
 
 		// Get current row
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(frame_var);
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(idx_var);
 		self.writer.emit_opcode(Opcode::FrameRow);
 
-		// Store in loop variable (use variable ID)
+		// Store in loop variable (user variable ID)
 		self.writer.emit_opcode(Opcode::StoreVar);
 		self.writer.emit_u32(node.variable.variable_id);
 
@@ -201,13 +212,13 @@ impl PlanCompiler {
 		self.writer.emit_opcode(Opcode::ExitScope);
 
 		// Increment index
-		self.writer.emit_opcode(Opcode::LoadVar);
+		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(idx_var);
 		let one_const = self.program.add_constant(Constant::Int(1));
 		self.writer.emit_opcode(Opcode::PushConst);
 		self.writer.emit_u16(one_const);
 		self.writer.emit_opcode(Opcode::IntAdd);
-		self.writer.emit_opcode(Opcode::StoreVar);
+		self.writer.emit_opcode(Opcode::StoreInternalVar);
 		self.writer.emit_u16(idx_var);
 
 		// Jump back to loop start
@@ -354,6 +365,16 @@ impl PlanCompiler {
 		self.writer.emit_opcode(Opcode::Call);
 		self.writer.emit_u16(func_index);
 
+		Ok(())
+	}
+
+	pub(crate) fn compile_expr_stmt<'bump>(&mut self, node: &ExprStmtNode<'bump>) -> Result<()> {
+		self.record_span(node.span);
+		// Compile the expression for its side effects
+		self.compile_expr(node.expr)?;
+		// Note: If the expression leaves a value on the stack and we want to discard it,
+		// we would need a Pop opcode. For now, builtin functions like console::log
+		// that return nothing won't leave a value on the stack.
 		Ok(())
 	}
 }

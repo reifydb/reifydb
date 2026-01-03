@@ -480,19 +480,17 @@ impl BytecodeCompiler {
 	}
 	/// Compile a module function call (e.g., console::log).
 	fn compile_module_call(&mut self, call: ModuleCallAst) -> Result<()> {
-		match (call.module.as_str(), call.function.as_str()) {
-			("console", "log") => {
-				// Compile each argument and print it
-				for arg in call.arguments {
-					self.compile_expr_to_operand(arg)?;
-					self.writer.emit_opcode(Opcode::PrintOut);
-				}
-				Ok(())
-			}
-			_ => Err(VmError::CompileError {
-				message: format!("unknown module function: {}::{}", call.module, call.function),
-			}),
+		// Compile arguments
+		for arg in &call.arguments {
+			self.compile_expr_to_operand(arg.clone())?;
 		}
+		// Emit CallBuiltin with function name
+		let func_name = format!("{}::{}", call.module, call.function);
+		let name_index = self.program.add_constant(Value::Utf8(func_name));
+		self.writer.emit_opcode(Opcode::CallBuiltin);
+		self.writer.emit_u16(name_index);
+		self.writer.emit_u8(call.arguments.len() as u8);
+		Ok(())
 	}
 	/// Compile a pipeline.
 	fn compile_pipeline(&mut self, pipeline: PipelineAst) -> Result<()> {

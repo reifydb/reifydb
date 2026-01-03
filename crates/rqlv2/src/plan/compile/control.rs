@@ -10,13 +10,13 @@ use super::core::{Planner, Result};
 use crate::{
 	ast::{
 		Expr,
-		stmt::{AssignStmt, DefStmt, ForStmt, IfStmt, LetStmt, LetValue, LoopStmt, ReturnStmt},
+		stmt::{AssignStmt, DefStmt, ForIterable, ForStmt, IfStmt, LetStmt, LetValue, LoopStmt, ReturnStmt},
 	},
 	plan::{
 		Plan, Variable,
 		node::control::{
 			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode, ElseIfBranch,
-			ForNode, LoopNode, ReturnNode,
+			ForIterableValue, ForNode, LoopNode, ReturnNode,
 		},
 	},
 };
@@ -132,8 +132,39 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: for_stmt.span,
 		});
 
-		// Compile the iterable expression
-		let iterable = self.compile_expr(for_stmt.iterable, None)?;
+		// Compile the iterable (expression or pipeline)
+		let iterable = match &for_stmt.iterable {
+			ForIterable::Expr(expr) => {
+				// Check if expression is a SubQuery - treat as pipeline
+				if let Expr::SubQuery(subquery) = expr {
+					let plan = self.compile_subquery(subquery, None).await?;
+					// Store the schema for the loop variable
+					let schema = self.build_schema_from_plan(&plan);
+					self.store_variable_schema(var_id, schema);
+					let plan_ref = self.bump.alloc(plan) as &'bump Plan<'bump>;
+					ForIterableValue::Plan(std::slice::from_ref(self.bump.alloc(plan_ref)))
+				} else if let Expr::From(_) = expr {
+					// Single FROM expression - compile as pipeline stage
+					let plan = self.compile_pipeline_stage(expr, None).await?;
+					let schema = self.build_schema_from_plan(&plan);
+					self.store_variable_schema(var_id, schema);
+					let plan_ref = self.bump.alloc(plan) as &'bump Plan<'bump>;
+					ForIterableValue::Plan(std::slice::from_ref(self.bump.alloc(plan_ref)))
+				} else {
+					let compiled = self.compile_expr(expr, None)?;
+					ForIterableValue::Expression(compiled)
+				}
+			}
+			ForIterable::Pipeline(stages) => {
+				let plans = self.compile_statement_body_as_pipeline(stages).await?;
+				// Store the schema from the last plan for the loop variable
+				if let Some(last_plan) = plans.last() {
+					let schema = self.build_schema_from_plan(last_plan);
+					self.store_variable_schema(var_id, schema);
+				}
+				ForIterableValue::Plan(plans)
+			}
+		};
 
 		// Compile the body
 		let body = self.compile_statement_body(for_stmt.body).await?;

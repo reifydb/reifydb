@@ -13,6 +13,7 @@ use reifydb_rqlv2::{
 };
 
 use super::{
+	builtin::BuiltinRegistry,
 	call_stack::CallFrame,
 	state::{OperandValue, VmState},
 };
@@ -202,6 +203,28 @@ impl VmState {
 				let pipeline = self.pop_pipeline()?;
 				let handle = self.register_pipeline(pipeline);
 				self.scopes.set_by_id(var_id, OperandValue::PipelineRef(handle));
+				self.ip = next_ip;
+			}
+
+			// ─────────────────────────────────────────────────────────
+			// Internal Variable Operations
+			// ─────────────────────────────────────────────────────────
+			Opcode::LoadInternalVar => {
+				let var_id = read_u16!(reader);
+				let next_ip = reader.position();
+				let value =
+					self.internal_vars.get(&var_id).cloned().ok_or(VmError::UndefinedVariable {
+						name: format!("__internal_{}", var_id),
+					})?;
+				self.push_operand(value)?;
+				self.ip = next_ip;
+			}
+
+			Opcode::StoreInternalVar => {
+				let var_id = read_u16!(reader);
+				let next_ip = reader.position();
+				let value = self.pop_operand()?;
+				self.internal_vars.insert(var_id, value);
 				self.ip = next_ip;
 			}
 
@@ -432,11 +455,27 @@ impl VmState {
 			}
 
 			Opcode::CallBuiltin => {
-				let _builtin_id = read_u16!(reader);
-				let _arg_count = read_u8!(reader);
-				return Err(VmError::UnsupportedOperation {
-					operation: "CallBuiltin".to_string(),
-				});
+				let name_index = read_u16!(reader);
+				let arg_count = read_u8!(reader) as usize;
+				let next_ip = reader.position();
+
+				// Get function name from constant pool
+				let func_name = self.get_constant_string(name_index)?;
+
+				// Pop arguments from stack (in reverse order)
+				let mut args = Vec::with_capacity(arg_count);
+				for _ in 0..arg_count {
+					args.push(self.pop_operand()?);
+				}
+				args.reverse();
+
+				// Look up and execute builtin
+				let registry = BuiltinRegistry::new();
+				if let Some(result) = registry.call(&func_name, &args)? {
+					self.push_operand(result)?;
+				}
+
+				self.ip = next_ip;
 			}
 
 			// ─────────────────────────────────────────────────────────
@@ -656,16 +695,6 @@ impl VmState {
 			}
 
 			// ─────────────────────────────────────────────────────────
-			// I/O Operations
-			// ─────────────────────────────────────────────────────────
-			Opcode::PrintOut => {
-				let next_ip = reader.position();
-				let value = self.pop_operand()?;
-				self.print_value(&value);
-				self.ip = next_ip;
-			}
-
-			// ─────────────────────────────────────────────────────────
 			// Control
 			// ─────────────────────────────────────────────────────────
 			Opcode::Nop => {
@@ -755,34 +784,6 @@ impl VmState {
 	#[allow(dead_code)]
 	fn build_function_executor(&self) {
 		// Stubbed out - RQLv2 doesn't support user-defined functions yet
-	}
-
-	/// Print a value to stdout (for console::log).
-	fn print_value(&self, value: &OperandValue) {
-		match value {
-			OperandValue::Scalar(v) => match v {
-				reifydb_type::Value::Undefined => println!("undefined"),
-				reifydb_type::Value::Boolean(b) => println!("{}", b),
-				reifydb_type::Value::Int8(n) => println!("{}", n),
-				reifydb_type::Value::Float8(f) => println!("{}", f),
-				reifydb_type::Value::Utf8(s) => println!("{}", s),
-				_ => println!("{:?}", v),
-			},
-			OperandValue::Record(r) => {
-				print!("{{ ");
-				for (i, (name, val)) in r.fields.iter().enumerate() {
-					if i > 0 {
-						print!(", ");
-					}
-					print!("{}: {:?}", name, val);
-				}
-				println!(" }}");
-			}
-			OperandValue::Frame(cols) => {
-				println!("Frame({} columns, {} rows)", cols.len(), cols.row_count());
-			}
-			_ => println!("{:?}", value),
-		}
 	}
 }
 

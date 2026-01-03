@@ -32,11 +32,20 @@ pub struct LoopNode<'bump> {
 	pub span: Span,
 }
 
+/// For loop iterable value.
+#[derive(Debug, Clone, Copy)]
+pub enum ForIterableValue<'bump> {
+	/// Single expression to iterate (e.g., array, range)
+	Expression(&'bump PlanExpr<'bump>),
+	/// Pipeline result to iterate (e.g., from table | filter)
+	Plan(&'bump [&'bump Plan<'bump>]),
+}
+
 /// For loop.
 #[derive(Debug, Clone, Copy)]
 pub struct ForNode<'bump> {
 	pub variable: &'bump Variable<'bump>,
-	pub iterable: &'bump PlanExpr<'bump>,
+	pub iterable: ForIterableValue<'bump>,
 	pub body: &'bump [&'bump Plan<'bump>],
 	pub span: Span,
 }
@@ -95,5 +104,12 @@ pub struct DefineScriptFunctionNode<'bump> {
 #[derive(Debug, Clone, Copy)]
 pub struct CallScriptFunctionNode<'bump> {
 	pub name: &'bump str,
+	pub span: Span,
+}
+
+/// Expression statement - evaluates expression for side effects.
+#[derive(Debug, Clone, Copy)]
+pub struct ExprStmtNode<'bump> {
+	pub expr: &'bump PlanExpr<'bump>,
 	pub span: Span,
 }

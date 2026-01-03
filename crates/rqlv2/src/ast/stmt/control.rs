@@ -71,12 +71,21 @@ impl<'bump> LoopStmt<'bump> {
 	}
 }
 
+/// For loop iterable - can be a single expression or a pipeline.
+#[derive(Debug, Clone, Copy)]
+pub enum ForIterable<'bump> {
+	/// Single expression (e.g., `$array`, `range(1, 10)`)
+	Expr(&'bump Expr<'bump>),
+	/// Pipeline stages (e.g., `from table | filter x > 0`)
+	Pipeline(&'bump [Expr<'bump>]),
+}
+
 /// For loop: for $var in iterable { body }
 #[derive(Debug, Clone, Copy)]
 pub struct ForStmt<'bump> {
 	/// Variable name (without $)
 	pub variable: &'bump str,
-	pub iterable: &'bump Expr<'bump>,
+	pub iterable: ForIterable<'bump>,
 	pub body: &'bump [Statement<'bump>],
 	pub span: Span,
 }
@@ -85,7 +94,7 @@ impl<'bump> ForStmt<'bump> {
 	/// Create a new for statement.
 	pub fn new(
 		variable: &'bump str,
-		iterable: &'bump Expr<'bump>,
+		iterable: ForIterable<'bump>,
 		body: &'bump [Statement<'bump>],
 		span: Span,
 	) -> Self {

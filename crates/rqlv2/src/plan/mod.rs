@@ -102,6 +102,8 @@ pub enum Plan<'bump> {
 	DefineScriptFunction(DefineScriptFunctionNode<'bump>),
 	/// Call script function
 	CallScriptFunction(CallScriptFunctionNode<'bump>),
+	/// Expression statement (evaluates expression for side effects)
+	ExprStmt(ExprStmtNode<'bump>),
 
 	// === Other ===
 	/// Inline data (literal rows)
@@ -154,6 +156,7 @@ impl<'bump> Plan<'bump> {
 			Plan::Continue(n) => n.span,
 			Plan::DefineScriptFunction(n) => n.span,
 			Plan::CallScriptFunction(n) => n.span,
+			Plan::ExprStmt(n) => n.span,
 			Plan::InlineData(n) => n.span,
 			Plan::Generator(n) => n.span,
 			Plan::VariableSource(n) => n.span,
