@@ -10,7 +10,7 @@ use std::{collections::HashMap, ops::Bound};
 use async_trait::async_trait;
 use reifydb_type::Result;
 
-use crate::tier::{RangeBatch, TableId, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, Store, TierBackend, TierStorage};
 
 /// Cold storage tier.
 ///
@@ -21,17 +21,17 @@ pub enum ColdStorage {}
 
 #[async_trait]
 impl TierStorage for ColdStorage {
-	async fn get(&self, _table: TableId, _key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, _table: Store, _key: &[u8]) -> Result<Option<Vec<u8>>> {
 		match *self {}
 	}
 
-	async fn set(&self, _batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	async fn set(&self, _batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		match *self {}
 	}
 
 	async fn range_batch(
 		&self,
-		_table: TableId,
+		_table: Store,
 		_start: Bound<Vec<u8>>,
 		_end: Bound<Vec<u8>>,
 		_batch_size: usize,
@@ -41,7 +41,7 @@ impl TierStorage for ColdStorage {
 
 	async fn range_rev_batch(
 		&self,
-		_table: TableId,
+		_table: Store,
 		_start: Bound<Vec<u8>>,
 		_end: Bound<Vec<u8>>,
 		_batch_size: usize,
@@ -49,11 +49,11 @@ impl TierStorage for ColdStorage {
 		match *self {}
 	}
 
-	async fn ensure_table(&self, _table: TableId) -> Result<()> {
+	async fn ensure_table(&self, _table: Store) -> Result<()> {
 		match *self {}
 	}
 
-	async fn clear_table(&self, _table: TableId) -> Result<()> {
+	async fn clear_table(&self, _table: Store) -> Result<()> {
 		match *self {}
 	}
 }

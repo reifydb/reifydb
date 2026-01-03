@@ -3,15 +3,15 @@
 
 //! Table name mapping for SQLite backend.
 
-use crate::tier::TableId;
+use crate::tier::Store;
 
 /// Convert TableId to a SQLite table name.
-pub(super) fn table_id_to_name(table: TableId) -> String {
+pub(super) fn table_id_to_name(table: Store) -> String {
 	match table {
-		TableId::Multi => "prim_multi".to_string(),
-		TableId::Single => "prim_single".to_string(),
-		TableId::Cdc => "prim_cdc".to_string(),
-		TableId::Source(id) => format!("prim_source_{}", id),
-		TableId::Operator(id) => format!("prim_operator_{}", id),
+		Store::Multi => "prim_multi".to_string(),
+		Store::Single => "prim_single".to_string(),
+		Store::Cdc => "prim_cdc".to_string(),
+		Store::Source(id) => format!("prim_source_{}", id),
+		Store::Operator(id) => format!("prim_operator_{}", id),
 	}
 }

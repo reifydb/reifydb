@@ -19,7 +19,7 @@ mod drop;
 mod multi;
 pub mod router;
 mod single;
-pub mod version_manager;
+pub mod version;
 
 #[derive(Clone)]
 pub struct StandardTransactionStore(Arc<StandardTransactionStoreInner>);

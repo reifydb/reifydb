@@ -11,15 +11,15 @@ use reifydb_core::{
 	key::KeyKind,
 };
 
-use crate::hot::TableId;
+use crate::hot::Store;
 
 /// Classify a key to determine which table it belongs to.
-pub fn classify_key(key: &EncodedKey) -> TableId {
+pub fn classify_key(key: &EncodedKey) -> Store {
 	match Key::decode(key) {
-		Some(Key::Row(row_key)) => TableId::Source(row_key.primitive),
-		Some(Key::FlowNodeState(state_key)) => TableId::Operator(state_key.node),
-		Some(Key::FlowNodeInternalState(internal_key)) => TableId::Operator(internal_key.node),
-		_ => TableId::Multi,
+		Some(Key::Row(row_key)) => Store::Source(row_key.primitive),
+		Some(Key::FlowNodeState(state_key)) => Store::Operator(state_key.node),
+		Some(Key::FlowNodeInternalState(internal_key)) => Store::Operator(internal_key.node),
+		_ => Store::Multi,
 	}
 }
 
@@ -35,17 +35,17 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 ///
 /// Returns `Some(TableId)` if the range is confined to a single table,
 /// or `None` if the range spans multiple tables.
-pub fn classify_range(range: &EncodedKeyRange) -> Option<TableId> {
+pub fn classify_range(range: &EncodedKeyRange) -> Option<Store> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(TableId::Source(start.primitive));
+		return Some(Store::Source(start.primitive));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
-		return Some(TableId::Operator(start.node));
+		return Some(Store::Operator(start.node));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeInternalStateKeyRange::decode(range) {
-		return Some(TableId::Operator(start.node));
+		return Some(Store::Operator(start.node));
 	}
 
 	None
@@ -64,19 +64,19 @@ mod tests {
 	#[test]
 	fn test_classify_key_unknown() {
 		let key = EncodedKey(CowVec::new(vec![0u8; 10]));
-		assert!(matches!(classify_key(&key), TableId::Multi));
+		assert!(matches!(classify_key(&key), Store::Multi));
 	}
 
 	#[test]
 	fn test_classify_key_flow_node_state() {
 		let key = FlowNodeStateKey::new(FlowNodeId(42), vec![1, 2, 3]).encode();
-		assert!(matches!(classify_key(&key), TableId::Operator(FlowNodeId(42))));
+		assert!(matches!(classify_key(&key), Store::Operator(FlowNodeId(42))));
 	}
 
 	#[test]
 	fn test_classify_key_flow_node_internal_state() {
 		let key = FlowNodeInternalStateKey::new(FlowNodeId(99), vec![4, 5, 6]).encode();
-		assert!(matches!(classify_key(&key), TableId::Operator(FlowNodeId(99))));
+		assert!(matches!(classify_key(&key), Store::Operator(FlowNodeId(99))));
 	}
 
 	#[test]

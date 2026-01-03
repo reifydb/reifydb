@@ -16,7 +16,7 @@ ok
 stats
 ---
 current_count: 2
-current_key_bytes: 18
+current_key_bytes: 22
 current_value_bytes: 2
 historical_count: 0
 historical_key_bytes: 0
@@ -24,7 +24,7 @@ historical_value_bytes: 0
 cdc_count: 2
 cdc_key_bytes: 2
 cdc_value_bytes: 152
-total_bytes: 20
+total_bytes: 24
 
 # Update key a
 set a=2
@@ -34,7 +34,7 @@ ok
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 1
 
 # Update key b
@@ -45,7 +45,7 @@ ok
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 18
+historical_key_bytes: 22
 historical_value_bytes: 2
 
 # Update key a again
@@ -56,7 +56,7 @@ ok
 stats_historical
 ---
 historical_count: 3
-historical_key_bytes: 27
+historical_key_bytes: 33
 historical_value_bytes: 3
 
 # Update key b again
@@ -67,12 +67,12 @@ ok
 stats_historical
 ---
 historical_count: 4
-historical_key_bytes: 36
+historical_key_bytes: 44
 historical_value_bytes: 4
 
 # Current should still have 2 entries
 stats_current
 ---
 current_count: 2
-current_key_bytes: 18
+current_key_bytes: 22
 current_value_bytes: 2

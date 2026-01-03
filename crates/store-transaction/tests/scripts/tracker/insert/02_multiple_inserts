@@ -26,7 +26,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 # Insert second key: "b" = 1 byte key, versioned = 9 bytes (1 + 8), value "2" = 1 byte
@@ -37,7 +37,7 @@ ok
 stats_current
 ---
 current_count: 2
-current_key_bytes: 18
+current_key_bytes: 22
 current_value_bytes: 2
 
 # Insert third key: "c" = 1 byte key, versioned = 9 bytes (1 + 8), value "3" = 1 byte
@@ -48,7 +48,7 @@ ok
 stats_current
 ---
 current_count: 3
-current_key_bytes: 27
+current_key_bytes: 33
 current_value_bytes: 3
 
 # Historical should still be zero (no updates, just inserts)

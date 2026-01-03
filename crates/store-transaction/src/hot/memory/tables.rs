@@ -5,16 +5,16 @@
 
 use std::collections::BTreeMap;
 
-use crate::tier::TableId;
+use crate::tier::Store;
 
 /// Convert TableId to a unique string key for storage in a HashMap
-pub(super) fn table_id_to_key(table: TableId) -> String {
+pub(super) fn table_id_to_key(table: Store) -> String {
 	match table {
-		TableId::Multi => "multi".to_string(),
-		TableId::Single => "single".to_string(),
-		TableId::Cdc => "cdc".to_string(),
-		TableId::Source(id) => format!("source:{}", id),
-		TableId::Operator(id) => format!("operator:{}", id),
+		Store::Multi => "multi".to_string(),
+		Store::Single => "single".to_string(),
+		Store::Cdc => "cdc".to_string(),
+		Store::Source(id) => format!("source:{}", id),
+		Store::Operator(id) => format!("operator:{}", id),
 	}
 }
 
@@ -32,11 +32,11 @@ impl Default for Tables {
 }
 
 impl Tables {
-	pub(super) fn get_table(&self, table: TableId) -> Option<&BTreeMap<Vec<u8>, Option<Vec<u8>>>> {
+	pub(super) fn get_table(&self, table: Store) -> Option<&BTreeMap<Vec<u8>, Option<Vec<u8>>>> {
 		self.data.get(&table_id_to_key(table))
 	}
 
-	pub(super) fn get_table_mut(&mut self, table: TableId) -> &mut BTreeMap<Vec<u8>, Option<Vec<u8>>> {
+	pub(super) fn get_table_mut(&mut self, table: Store) -> &mut BTreeMap<Vec<u8>, Option<Vec<u8>>> {
 		self.data.entry(table_id_to_key(table)).or_default()
 	}
 }

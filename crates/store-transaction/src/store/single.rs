@@ -18,7 +18,7 @@ use super::StandardTransactionStore;
 use crate::{
 	SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	tier::{TableId, TierStorage},
+	tier::{Store, TierStorage},
 };
 
 #[async_trait]
@@ -26,7 +26,7 @@ impl SingleVersionGet for StandardTransactionStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	async fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		// Single-version storage uses TableId::Single for all keys
-		let table = TableId::Single;
+		let table = Store::Single;
 
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
@@ -66,7 +66,7 @@ impl SingleVersionGet for StandardTransactionStore {
 impl SingleVersionContains for StandardTransactionStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
 	async fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
-		let table = TableId::Single;
+		let table = Store::Single;
 
 		if let Some(hot) = &self.hot {
 			if hot.contains(table, key.as_ref()).await? {
@@ -94,7 +94,7 @@ impl SingleVersionContains for StandardTransactionStore {
 impl SingleVersionCommit for StandardTransactionStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	async fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
-		let table = TableId::Single;
+		let table = Store::Single;
 
 		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
@@ -132,7 +132,7 @@ impl SingleVersionRemove for StandardTransactionStore {}
 impl SingleVersionRange for StandardTransactionStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
-		let table = TableId::Single;
+		let table = Store::Single;
 		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
@@ -140,7 +140,7 @@ impl SingleVersionRange for StandardTransactionStore {
 		// Helper to process a batch from a tier
 		async fn process_tier_batch<S: TierStorage>(
 			storage: &S,
-			table: TableId,
+			table: Store,
 			start: Bound<Vec<u8>>,
 			end: Bound<Vec<u8>>,
 			batch_size: u64,
@@ -194,7 +194,7 @@ impl SingleVersionRange for StandardTransactionStore {
 impl SingleVersionRangeRev for StandardTransactionStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	async fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
-		let table = TableId::Single;
+		let table = Store::Single;
 		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
@@ -202,7 +202,7 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 		// Helper to process a reverse batch from a tier
 		async fn process_tier_batch_rev<S: TierStorage>(
 			storage: &S,
-			table: TableId,
+			table: Store,
 			start: Bound<Vec<u8>>,
 			end: Bound<Vec<u8>>,
 			batch_size: u64,

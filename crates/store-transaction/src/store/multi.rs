@@ -18,15 +18,15 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version_manager::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
+	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
 };
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
 	MultiVersionRangeRev, MultiVersionStore,
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
-	hot::delta_optimizer::optimize_deltas,
+	hot::{Store::Multi, delta_optimizer::optimize_deltas},
 	stats::{PreVersionInfo, Tier},
-	tier::{TableId, TierStorage},
+	tier::{Store, TierStorage},
 };
 
 #[async_trait]
@@ -189,7 +189,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		})?;
 
 		// Batch deltas by table for efficient storage writes
-		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
+		let mut batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
 
 		for delta in all_deltas.iter() {
 			let table = classify_key(delta.key());
@@ -274,7 +274,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		};
 
 		if let Some((cdc_key, encoded)) = cdc_data {
-			batches.entry(TableId::Cdc).or_default().push((cdc_key, Some(encoded)));
+			batches.entry(Store::Cdc).or_default().push((cdc_key, Some(encoded)));
 		}
 
 		storage.set(batches).await?;
@@ -290,9 +290,9 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 impl StandardTransactionStore {
 	/// Get information about the previous value of a key for stats tracking (async version).
-	async fn get_previous_value_info_async(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
+	async fn get_previous_value_info_async(&self, table: Store, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
-		async fn get_value<S: TierStorage>(storage: &S, table: TableId, key: &[u8]) -> Option<(u64, u64)> {
+		async fn get_value<S: TierStorage>(storage: &S, table: Store, key: &[u8]) -> Option<(u64, u64)> {
 			match get_at_version(storage, table, key, CommitVersion(u64::MAX)).await {
 				Ok(VersionedGetResult::Value {
 					value,
@@ -337,7 +337,7 @@ impl StandardTransactionStore {
 	/// Collect previous versions for all keys in the delta list.
 	/// Used for CDC to determine Insert vs Update operations.
 	async fn collect_previous_versions(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, CommitVersion> {
-		use super::version_manager::get_latest_version;
+		use super::version::get_latest_version;
 
 		let mut version_map = HashMap::new();
 
@@ -400,7 +400,7 @@ impl MultiVersionRange for StandardTransactionStore {
 		version: CommitVersion,
 		batch_size: u64,
 	) -> crate::Result<MultiVersionBatch> {
-		use super::version_manager::{extract_key, extract_version};
+		use super::version::{extract_key, extract_version};
 
 		let mut all_entries: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
 
@@ -415,16 +415,9 @@ impl MultiVersionRange for StandardTransactionStore {
 			let table = classify_key_range(range);
 			let (start, end) = make_versioned_range_bounds(range, version);
 
-			// Use range_rev_batch (DESC order) to get newest versions first.
-			// This ensures that with batch_size limits, we see the most recent
-			// versions of each key rather than the oldest.
+			// With descending version encoding, forward scan returns newest versions first.
 			let batch = storage
-				.range_rev_batch(
-					table,
-					Bound::Included(start),
-					Bound::Included(end),
-					batch_size as usize,
-				)
+				.range_batch(table, Bound::Included(start), Bound::Included(end), batch_size as usize)
 				.await?;
 
 			for entry in batch.entries {
@@ -437,19 +430,19 @@ impl MultiVersionRange for StandardTransactionStore {
 					}
 
 					// Skip if key is not within the requested range
-					let original_key_encoded = EncodedKey(CowVec::new(original_key.to_vec()));
+					let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
 					if !range.contains(&original_key_encoded) {
 						continue;
 					}
 
 					// Update if no entry exists or this is a higher version
-					let should_update = match all_entries.get(original_key) {
+					let should_update = match all_entries.get(&original_key) {
 						None => true,
 						Some((existing_version, _)) => entry_version > *existing_version,
 					};
 
 					if should_update {
-						all_entries.insert(original_key.to_vec(), (entry_version, entry.value));
+						all_entries.insert(original_key, (entry_version, entry.value));
 					}
 				}
 			}
@@ -499,7 +492,7 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 		version: CommitVersion,
 		batch_size: u64,
 	) -> crate::Result<MultiVersionBatch> {
-		use super::version_manager::{extract_key, extract_version};
+		use super::version::{extract_key, extract_version};
 
 		let mut all_entries: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
 
@@ -514,13 +507,9 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 			let table = classify_key_range(range);
 			let (start, end) = make_versioned_range_bounds(range, version);
 
+			// With descending version encoding, forward scan returns newest versions first.
 			let batch = storage
-				.range_rev_batch(
-					table,
-					Bound::Included(start),
-					Bound::Included(end),
-					batch_size as usize,
-				)
+				.range_batch(table, Bound::Included(start), Bound::Included(end), batch_size as usize)
 				.await?;
 
 			for entry in batch.entries {
@@ -533,19 +522,19 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 					}
 
 					// Skip if key is not within the requested range
-					let original_key_encoded = EncodedKey(CowVec::new(original_key.to_vec()));
+					let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
 					if !range.contains(&original_key_encoded) {
 						continue;
 					}
 
 					// Update if no entry exists or this is a higher version
-					let should_update = match all_entries.get(original_key) {
+					let should_update = match all_entries.get(&original_key) {
 						None => true,
 						Some((existing_version, _)) => entry_version > *existing_version,
 					};
 
 					if should_update {
-						all_entries.insert(original_key.to_vec(), (entry_version, entry.value));
+						all_entries.insert(original_key, (entry_version, entry.value));
 					}
 				}
 			}
@@ -590,24 +579,32 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 impl MultiVersionStore for StandardTransactionStore {}
 
 /// Classify a range to determine which table it belongs to.
-fn classify_key_range(range: &EncodedKeyRange) -> crate::hot::TableId {
+fn classify_key_range(range: &EncodedKeyRange) -> Store {
 	use super::router::classify_range;
 
-	classify_range(range).unwrap_or(crate::hot::TableId::Multi)
+	classify_range(range).unwrap_or(Multi)
 }
 
-/// Create versioned range bounds for primitive storage query.
-fn make_versioned_range_bounds(range: &EncodedKeyRange, version: CommitVersion) -> (Vec<u8>, Vec<u8>) {
+/// - Version MAX encodes to 0x00..00 (smallest bytes)
+/// - Version 0 encodes to 0xFF..FF (largest bytes)
+///
+/// For range queries, we need start <= end in byte order:
+/// - Start uses version MAX to get the smallest encoded value
+/// - End uses version 0 to get the largest encoded value
+/// The actual key range and version filtering happens after retrieval.
+fn make_versioned_range_bounds(range: &EncodedKeyRange, _version: CommitVersion) -> (Vec<u8>, Vec<u8>) {
 	let start = match &range.start {
-		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
+		// Version MAX encodes smallest, capturing all versions of this key
+		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
 		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
-		Bound::Unbounded => encode_versioned_key(&[], CommitVersion(0)),
+		Bound::Unbounded => encode_versioned_key(&[], CommitVersion(u64::MAX)),
 	};
 
 	let end = match &range.end {
-		Bound::Included(key) => encode_versioned_key(key.as_ref(), version),
+		// Version 0 encodes largest, capturing all versions of this key
+		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
 		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
-		Bound::Unbounded => encode_versioned_key(&[0xFFu8; 256], version),
+		Bound::Unbounded => encode_versioned_key(&[0xFFu8; 256], CommitVersion(0)),
 	};
 
 	(start, end)

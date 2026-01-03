@@ -12,7 +12,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1
 
 stats_historical
@@ -39,5 +39,5 @@ current_value_bytes: 0
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 18
+historical_key_bytes: 22
 historical_value_bytes: 1

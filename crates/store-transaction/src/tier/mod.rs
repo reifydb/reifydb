@@ -14,9 +14,9 @@ use reifydb_type::Result;
 
 /// Identifies a logical table/namespace in storage.
 ///
-/// The store layer routes keys to the appropriate table based on key type.
+/// The store layer routes keys to the appropriate storage based on key type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TableId {
+pub enum Store {
 	/// Multi-version storage for general data
 	Multi,
 	/// Single-version storage (no version history)
@@ -71,10 +71,10 @@ impl RangeBatch {
 #[async_trait]
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
-	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>>;
+	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
 	/// Check if a key exists in storage.
-	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
 		Ok(self.get(table, key).await?.is_some())
 	}
 
@@ -82,7 +82,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	async fn set(&self, batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
+	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
 	/// Fetch a batch of entries in key order (ascending).
 	///
@@ -91,7 +91,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// from the batch as the `start` bound (excluded) for the next call.
 	async fn range_batch(
 		&self,
-		table: TableId,
+		table: Store,
 		start: Bound<Vec<u8>>,
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
@@ -104,7 +104,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// from the batch as the `end` bound (excluded) for the next call.
 	async fn range_rev_batch(
 		&self,
-		table: TableId,
+		table: Store,
 		start: Bound<Vec<u8>>,
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
@@ -114,10 +114,10 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// For memory backends this is typically a no-op.
 	/// For SQL backends this may create tables.
-	async fn ensure_table(&self, table: TableId) -> Result<()>;
+	async fn ensure_table(&self, table: Store) -> Result<()>;
 
 	/// Delete all entries in a table.
-	async fn clear_table(&self, table: TableId) -> Result<()>;
+	async fn clear_table(&self, table: Store) -> Result<()>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

@@ -13,7 +13,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 6
 
 stats_historical
@@ -35,7 +35,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 6
 
 # CRITICAL: Historical should be completely empty
@@ -57,7 +57,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 13
 
 stats_historical
@@ -78,7 +78,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 2
 
 # Verify all three historical fields remain zero together
@@ -92,6 +92,6 @@ historical_value_bytes: 0
 stats_totals
 ---
 total_count: 1
-current_bytes: 11
+current_bytes: 13
 historical_bytes: 0
-total_bytes: 11
+total_bytes: 13

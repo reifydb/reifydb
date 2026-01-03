@@ -22,7 +22,7 @@ use super::{
 };
 use crate::{
 	stats::parser::extract_object_id,
-	tier::{TableId, TierStorage},
+	tier::{Store, TierStorage},
 };
 
 /// Configuration for storage tracking.
@@ -378,7 +378,7 @@ impl StorageTracker {
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
 	pub async fn checkpoint<S: TierStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
-		storage.ensure_table(TableId::Single).await?;
+		storage.ensure_table(Store::Single).await?;
 
 		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
 			let inner = self.inner.read().unwrap();
@@ -403,7 +403,7 @@ impl StorageTracker {
 		};
 
 		// Batch write all entries
-		storage.set(HashMap::from([(TableId::Single, entries)])).await?;
+		storage.set(HashMap::from([(Store::Single, entries)])).await?;
 
 		// Reset checkpoint timer
 		{
@@ -429,7 +429,7 @@ impl StorageTracker {
 		}
 
 		let batch = storage
-			.range_batch(TableId::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
+			.range_batch(Store::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
 			.await?;
 
 		for entry in batch.entries {
@@ -450,7 +450,7 @@ impl StorageTracker {
 		}
 
 		let batch = storage
-			.range_batch(TableId::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
+			.range_batch(Store::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
 			.await?;
 
 		for entry in batch.entries {

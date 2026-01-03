@@ -20,9 +20,9 @@ ok
 stats_totals
 ---
 total_count: 3
-current_bytes: 30
+current_bytes: 36
 historical_bytes: 0
-total_bytes: 30
+total_bytes: 36
 
 # Update each once
 set a=11
@@ -41,9 +41,9 @@ ok
 stats_totals
 ---
 total_count: 6
-current_bytes: 33
-historical_bytes: 30
-total_bytes: 63
+current_bytes: 39
+historical_bytes: 36
+total_bytes: 75
 
 # Delete one (moves to historical + tombstone)
 remove a
@@ -55,6 +55,6 @@ ok
 stats_totals
 ---
 total_count: 7
-current_bytes: 22
-historical_bytes: 50
-total_bytes: 72
+current_bytes: 26
+historical_bytes: 60
+total_bytes: 86

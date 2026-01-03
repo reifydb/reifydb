@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 
 use super::tables::Tables;
-use crate::tier::{RangeBatch, RawEntry, TableId, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RawEntry, Store, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
@@ -43,7 +43,7 @@ impl MemoryPrimitiveStorage {
 #[async_trait]
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			Ok(table_data.get(key).cloned().flatten())
@@ -53,7 +53,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
-	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
 		let tables = self.inner.tables.read().await;
 		if let Some(table_data) = tables.get_table(table) {
 			// Key exists and is not a tombstone
@@ -64,7 +64,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	async fn set(&self, batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		let mut guard = self.inner.tables.write().await;
 		for (table, entries) in batches {
 			let table_data = guard.get_table_mut(table);
@@ -78,7 +78,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::range_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_batch(
 		&self,
-		table: TableId,
+		table: Store,
 		start: Bound<Vec<u8>>,
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
@@ -116,7 +116,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::range_rev_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_rev_batch(
 		&self,
-		table: TableId,
+		table: Store,
 		start: Bound<Vec<u8>>,
 		end: Bound<Vec<u8>>,
 		batch_size: usize,
@@ -153,7 +153,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
-	async fn ensure_table(&self, table: TableId) -> Result<()> {
+	async fn ensure_table(&self, table: Store) -> Result<()> {
 		// For memory backend, tables are created on-demand, so this is a no-op
 		let mut tables = self.inner.tables.write().await;
 		let _ = tables.get_table_mut(table);
@@ -161,7 +161,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
-	async fn clear_table(&self, table: TableId) -> Result<()> {
+	async fn clear_table(&self, table: Store) -> Result<()> {
 		let mut guard = self.inner.tables.write().await;
 		let table_data = guard.get_table_mut(table);
 		table_data.clear();
@@ -200,34 +200,34 @@ mod tests {
 		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Put and get
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
 			.await
 			.unwrap();
-		let value = storage.get(TableId::Multi, b"key1").await.unwrap();
+		let value = storage.get(Store::Multi, b"key1").await.unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(TableId::Multi, b"key1").await.unwrap());
-		assert!(!storage.contains(TableId::Multi, b"nonexistent").await.unwrap());
+		assert!(storage.contains(Store::Multi, b"key1").await.unwrap());
+		assert!(!storage.contains(Store::Multi, b"nonexistent").await.unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
-		assert!(!storage.contains(TableId::Multi, b"key1").await.unwrap());
+		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
+		assert!(!storage.contains(Store::Multi, b"key1").await.unwrap());
 	}
 
 	#[tokio::test]
 	async fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+		storage.set(HashMap::from([(Store::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
 			.await
 			.unwrap();
-		storage.set(HashMap::from([(TableId::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+		storage.set(HashMap::from([(Store::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
 			.await
 			.unwrap();
 
-		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(TableId::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(Store::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(Store::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
 	}
 
 	#[tokio::test]
@@ -240,37 +240,31 @@ mod tests {
 		let source2 = PrimitiveId::Table(CoreTableId(2));
 
 		storage.set(HashMap::from([(
-			TableId::Source(source1),
+			Store::Source(source1),
 			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 		storage.set(HashMap::from([(
-			TableId::Source(source2),
+			Store::Source(source2),
 			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 
-		assert_eq!(storage.get(TableId::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(TableId::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(Store::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(Store::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
 	}
 
 	#[tokio::test]
 	async fn test_range_batch() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
 
-		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let batch = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
@@ -283,18 +277,12 @@ mod tests {
 	async fn test_range_rev_batch() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
 
 		let batch =
-			storage.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+			storage.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
@@ -309,13 +297,13 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
 
 		// First batch of 3
-		let batch1 = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+		let batch1 = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert_eq!(batch1.entries[0].key, vec![0]);
@@ -324,7 +312,7 @@ mod tests {
 		// Next batch using last key
 		let last_key = batch1.entries.last().unwrap().key.clone();
 		let batch2 = storage
-			.range_batch(TableId::Multi, Bound::Excluded(last_key), Bound::Unbounded, 3)
+			.range_batch(Store::Multi, Bound::Excluded(last_key), Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
@@ -339,14 +327,14 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
 
 		// First batch of 3 (reverse)
 		let batch1 =
-			storage.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+			storage.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert_eq!(batch1.entries[0].key, vec![9]);
@@ -355,7 +343,7 @@ mod tests {
 		// Next batch using last key (reverse continues from before last key)
 		let last_key = batch1.entries.last().unwrap().key.clone();
 		let batch2 = storage
-			.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Excluded(last_key), 3)
+			.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Excluded(last_key), 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);

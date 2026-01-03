@@ -57,13 +57,13 @@ ok
 stats_current
 ---
 current_count: 10
-current_key_bytes: 101
+current_key_bytes: 121
 current_value_bytes: 10
 
 # Verify totals
 stats_totals
 ---
 total_count: 10
-current_bytes: 111
+current_bytes: 131
 historical_bytes: 0
-total_bytes: 111
+total_bytes: 131

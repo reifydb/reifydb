@@ -9,7 +9,7 @@ use reifydb_core::{CommitVersion, CowVec, interface::Cdc, value::encoded::Encode
 use crate::{
 	CdcStore, StandardTransactionStore,
 	cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, InternalCdc, codec::decode_internal_cdc, converter::CdcConverter},
-	tier::{TableId, TierStorage},
+	tier::{Store, TierStorage},
 };
 
 /// Encode a version as a key for CDC storage
@@ -32,7 +32,7 @@ async fn get_internal_cdc<S: TierStorage>(
 	storage: &S,
 	version: CommitVersion,
 ) -> reifydb_type::Result<Option<InternalCdc>> {
-	let table = TableId::Cdc;
+	let table = Store::Cdc;
 	let key = version_to_key(version);
 
 	if let Some(value) = storage.get(table, &key).await? {
@@ -96,7 +96,7 @@ impl CdcRange for StandardTransactionStore {
 			batch_size: u64,
 			all_entries: &mut BTreeMap<CommitVersion, InternalCdc>,
 		) -> reifydb_type::Result<()> {
-			let batch = storage.range_batch(TableId::Cdc, start, end, batch_size as usize).await?;
+			let batch = storage.range_batch(Store::Cdc, start, end, batch_size as usize).await?;
 
 			for entry in batch.entries {
 				if let Some(version) = key_to_version(&entry.key) {

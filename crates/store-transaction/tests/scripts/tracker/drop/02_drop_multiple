@@ -28,7 +28,7 @@ ok
 stats_historical
 ---
 historical_count: 4
-historical_key_bytes: 36
+historical_key_bytes: 44
 historical_value_bytes: 4
 
 # Drop versions < 4 (should drop v1, v2, v3)
@@ -40,12 +40,12 @@ ok
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 1
 
 # Current unchanged (v5)
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 1

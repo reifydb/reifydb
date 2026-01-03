@@ -14,7 +14,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 4
 
 stats_historical
@@ -31,13 +31,13 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 4
 
 stats_historical
 ---
 historical_count: 1
-historical_key_bytes: 9
+historical_key_bytes: 11
 historical_value_bytes: 4
 
 # Another update creates second historical entry
@@ -48,13 +48,13 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 4
 
 stats_historical
 ---
 historical_count: 2
-historical_key_bytes: 18
+historical_key_bytes: 22
 historical_value_bytes: 8
 
 # Drop all but latest version
@@ -66,7 +66,7 @@ ok
 stats_current
 ---
 current_count: 1
-current_key_bytes: 9
+current_key_bytes: 11
 current_value_bytes: 4
 
 # CRITICAL: All three historical fields must be zero together
@@ -80,6 +80,6 @@ historical_value_bytes: 0
 stats_totals
 ---
 total_count: 1
-current_bytes: 13
+current_bytes: 15
 historical_bytes: 0
-total_bytes: 13
+total_bytes: 15
