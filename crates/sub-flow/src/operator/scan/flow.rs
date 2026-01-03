@@ -35,14 +35,14 @@ impl Operator for PrimitiveFlowOperator {
 
 	async fn apply(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		Ok(change)
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, _txn: &mut FlowTransaction<'_>, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		// TODO: Implement flow pull
 		unimplemented!()
 	}

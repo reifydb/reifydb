@@ -70,7 +70,7 @@ impl WindowOperator {
 /// Process inserts for tumbling windows
 async fn process_tumbling_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<Vec<FlowDiff>> {
@@ -99,7 +99,7 @@ async fn process_tumbling_insert(
 /// Process inserts for a single group in tumbling windows
 async fn process_tumbling_group_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	group_hash: Hash128,
 	evaluator: &StandardColumnEvaluator,
@@ -178,7 +178,7 @@ async fn process_tumbling_group_insert(
 			}
 		}
 
-		operator.save_window_state(txn, &window_key, &window_state)?;
+		operator.save_window_state(txn, &window_key, &window_state).await?;
 	}
 
 	Ok(result)
@@ -187,7 +187,7 @@ async fn process_tumbling_group_insert(
 /// Apply changes for tumbling windows
 pub async fn apply_tumbling_window(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	change: FlowChange,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<FlowChange> {

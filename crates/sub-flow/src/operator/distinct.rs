@@ -229,7 +229,7 @@ impl DistinctOperator {
 		}
 	}
 
-	async fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
+	async fn load_distinct_state(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<DistinctState> {
 		let state_row = self.load_state(txn).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -245,7 +245,7 @@ impl DistinctOperator {
 			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
-	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
+	async fn save_distinct_state(&self, txn: &mut FlowTransaction<'_>, state: &DistinctState) -> crate::Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
@@ -253,7 +253,7 @@ impl DistinctOperator {
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.save_state(txn, state_row).await
 	}
 
 	/// Process inserts - operates directly on Columns without Row conversion
@@ -457,7 +457,7 @@ impl Operator for DistinctOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -488,12 +488,12 @@ impl Operator for DistinctOperator {
 			}
 		}
 
-		self.save_distinct_state(txn, &state)?;
+		self.save_distinct_state(txn, &state).await?;
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
 		self.parent.pull(txn, rows).await
 	}
 }

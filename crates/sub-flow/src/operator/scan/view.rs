@@ -36,14 +36,14 @@ impl Operator for PrimitiveViewOperator {
 
 	async fn apply(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		Ok(change)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
 		if rows.is_empty() {
 			return Ok(Columns::from_view_def(&self.view));
 		}

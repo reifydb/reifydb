@@ -64,6 +64,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 }
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
+// FIXME materialize directly into columns
 pub(crate) async fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,

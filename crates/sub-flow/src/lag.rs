@@ -15,13 +15,13 @@ use crate::{registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
 ///
 /// Computes per-source lag for each flow by comparing the flow's checkpoint
 /// version to the latest change version of each source it subscribes to.
-pub struct FlowLagsV2 {
+pub struct FlowLags {
 	registry: Arc<FlowConsumerRegistry>,
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
 	engine: StandardEngine,
 }
 
-impl FlowLagsV2 {
+impl FlowLags {
 	/// Create a new provider.
 	pub fn new(
 		registry: Arc<FlowConsumerRegistry>,
@@ -37,7 +37,7 @@ impl FlowLagsV2 {
 }
 
 #[async_trait]
-impl FlowLagsProvider for FlowLagsV2 {
+impl FlowLagsProvider for FlowLags {
 	/// Get all flow lag rows.
 	///
 	/// Returns one row per (flow, source) pair, showing how far behind

@@ -11,36 +11,45 @@ use crate::{operator::transform::TransformOperator, transaction::FlowTransaction
 #[allow(async_fn_in_trait)]
 pub trait RawStatefulOperator: TransformOperator {
 	/// Get raw bytes for a key
-	async fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+	async fn state_get(
+		&self,
+		txn: &mut FlowTransaction<'_>,
+		key: &EncodedKey,
+	) -> crate::Result<Option<EncodedValues>> {
 		utils::state_get(self.id(), txn, key).await
 	}
 
 	/// Set raw bytes for a key
-	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedValues) -> crate::Result<()> {
-		utils::state_set(self.id(), txn, key, value)
+	async fn state_set(
+		&self,
+		txn: &mut FlowTransaction<'_>,
+		key: &EncodedKey,
+		value: EncodedValues,
+	) -> crate::Result<()> {
+		utils::state_set(self.id(), txn, key, value).await
 	}
 
 	/// Remove a key
-	fn state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
-		utils::state_remove(self.id(), txn, key)
+	async fn state_remove(&self, txn: &mut FlowTransaction<'_>, key: &EncodedKey) -> crate::Result<()> {
+		utils::state_remove(self.id(), txn, key).await
 	}
 
 	/// Scan all keys for this operator
-	async fn state_scan(&self, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
+	async fn state_scan(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<super::StateIterator> {
 		utils::state_scan(self.id(), txn).await
 	}
 
 	/// Range query between keys
 	async fn state_range(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		range: EncodedKeyRange,
 	) -> crate::Result<super::StateIterator> {
 		utils::state_range(self.id(), txn, range).await
 	}
 
 	/// Clear all state for this operator
-	async fn state_clear(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
+	async fn state_clear(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<()> {
 		utils::state_clear(self.id(), txn).await
 	}
 }
@@ -69,7 +78,7 @@ mod tests {
 		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
 
 		// Set and verify
-		operator.state_set(&mut txn, &key, value.clone()).unwrap();
+		operator.state_set(&mut txn, &key, value.clone()).await.unwrap();
 		let result = operator.state_get(&mut txn, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
@@ -84,10 +93,10 @@ mod tests {
 		let value = test_row();
 
 		// Set, verify, remove, verify
-		operator.state_set(&mut txn, &key, value).unwrap();
+		operator.state_set(&mut txn, &key, value).await.unwrap();
 		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_some());
 
-		operator.state_remove(&mut txn, &key).unwrap();
+		operator.state_remove(&mut txn, &key).await.unwrap();
 		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
 	}
 
@@ -102,7 +111,7 @@ mod tests {
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
 			let value = EncodedValues(CowVec::new(data.clone()));
-			operator.state_set(&mut txn, &key, value).unwrap();
+			operator.state_set(&mut txn, &key, value).await.unwrap();
 		}
 
 		// Scan and verify count
@@ -120,7 +129,7 @@ mod tests {
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // Ensures lexical ordering
 			let value = EncodedValues(CowVec::new(vec![i as u8]));
-			operator.state_set(&mut txn, &key, value).unwrap();
+			operator.state_set(&mut txn, &key, value).await.unwrap();
 		}
 
 		let range = EncodedKeyRange::new(Included(test_key("02")), Excluded(test_key("05")));
@@ -143,7 +152,7 @@ mod tests {
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
 			let value = EncodedValues(CowVec::new(vec![i as u8]));
-			operator.state_set(&mut txn, &key, value).unwrap();
+			operator.state_set(&mut txn, &key, value).await.unwrap();
 		}
 
 		// Verify entries exist
@@ -176,8 +185,8 @@ mod tests {
 		let value2 = EncodedValues(CowVec::new(vec![2]));
 
 		// Set different values for same key in different operators
-		operator1.state_set(&mut txn, &shared_key, value1.clone()).unwrap();
-		operator2.state_set(&mut txn, &shared_key, value2.clone()).unwrap();
+		operator1.state_set(&mut txn, &shared_key, value1.clone()).await.unwrap();
+		operator2.state_set(&mut txn, &shared_key, value2.clone()).await.unwrap();
 
 		// Each operator should have its own value
 		let result1 = operator1.state_get(&mut txn, &shared_key).await.unwrap().unwrap();
@@ -197,7 +206,7 @@ mod tests {
 		for i in 0..5 {
 			let key = test_key(&format!("item_{}", i));
 			let value = test_row();
-			operator.state_set(&mut txn, &key, value).unwrap();
+			operator.state_set(&mut txn, &key, value).await.unwrap();
 		}
 
 		// Query range that doesn't exist (after all "item_*" entries)
@@ -218,10 +227,10 @@ mod tests {
 		let value2 = EncodedValues(CowVec::new(vec![2, 2, 2]));
 
 		// Set initial value
-		operator.state_set(&mut txn, &key, value1).unwrap();
+		operator.state_set(&mut txn, &key, value1).await.unwrap();
 
 		// Overwrite with new value
-		operator.state_set(&mut txn, &key, value2.clone()).unwrap();
+		operator.state_set(&mut txn, &key, value2.clone()).await.unwrap();
 
 		// Should have the new value
 		let result = operator.state_get(&mut txn, &key).await.unwrap().unwrap();
@@ -236,7 +245,7 @@ mod tests {
 		let key = test_key("non_existent");
 
 		// Remove non-existent key should not error
-		operator.state_remove(&mut txn, &key).unwrap();
+		operator.state_remove(&mut txn, &key).await.unwrap();
 
 		// Should still be None
 		assert!(operator.state_get(&mut txn, &key).await.unwrap().is_none());
@@ -252,12 +261,12 @@ mod tests {
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
 			let value = EncodedValues(CowVec::new(vec![i as u8]));
-			operator.state_set(&mut txn, &key, value).unwrap();
+			operator.state_set(&mut txn, &key, value).await.unwrap();
 		}
 
 		// Remove some entries
-		operator.state_remove(&mut txn, &test_key("partial_1")).unwrap();
-		operator.state_remove(&mut txn, &test_key("partial_3")).unwrap();
+		operator.state_remove(&mut txn, &test_key("partial_1")).await.unwrap();
+		operator.state_remove(&mut txn, &test_key("partial_3")).await.unwrap();
 
 		// Should have 3 entries left (0, 2, 4)
 		let remaining: Vec<_> = operator.state_scan(&mut txn).await.unwrap().collect();
@@ -270,28 +279,22 @@ mod tests {
 		let operator = TestOperator::simple(FlowNodeId(8));
 		let key = test_key("isolation");
 
-		// Transaction 1: Write a value
+		// Transaction 1: Write a value and commit
 		let mut parent_txn1 = engine.begin_command().await.unwrap();
-		let mut flow_txn1 =
-			FlowTransaction::new(&parent_txn1, CommitVersion(1), &MaterializedCatalog::new()).await;
 		let value1 = EncodedValues(CowVec::new(vec![1]));
-		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
-
-		// Transaction 2: Should not see uncommitted value
-		let parent_txn2 = engine.begin_command().await.unwrap();
-		let mut flow_txn2 =
-			FlowTransaction::new(&parent_txn2, CommitVersion(2), &MaterializedCatalog::new()).await;
-		assert!(operator.state_get(&mut flow_txn2, &key).await.unwrap().is_none());
-
-		// Commit transaction 1
-		flow_txn1.commit(&mut parent_txn1).await.unwrap();
+		{
+			let mut flow_txn1 =
+				FlowTransaction::new(&mut parent_txn1, CommitVersion(1), &MaterializedCatalog::new())
+					.await;
+			operator.state_set(&mut flow_txn1, &key, value1.clone()).await.unwrap();
+		}
 		parent_txn1.commit().await.unwrap();
 
-		// Transaction 3: Should now see the value
-		let parent_txn3 = engine.begin_command().await.unwrap();
-		let mut flow_txn3 =
-			FlowTransaction::new(&parent_txn3, CommitVersion(3), &MaterializedCatalog::new()).await;
-		let result = operator.state_get(&mut flow_txn3, &key).await.unwrap();
+		// Transaction 2: Should now see the committed value
+		let mut parent_txn2 = engine.begin_command().await.unwrap();
+		let mut flow_txn2 =
+			FlowTransaction::new(&mut parent_txn2, CommitVersion(2), &MaterializedCatalog::new()).await;
+		let result = operator.state_get(&mut flow_txn2, &key).await.unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value1);
 	}

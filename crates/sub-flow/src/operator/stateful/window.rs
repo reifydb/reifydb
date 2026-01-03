@@ -23,23 +23,27 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a window
-	async fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
+	async fn load_state(
+		&self,
+		txn: &mut FlowTransaction<'_>,
+		window_key: &EncodedKey,
+	) -> crate::Result<EncodedValues> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout()).await
 	}
 
 	/// Save state for a window
-	fn save_state(
+	async fn save_state(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		window_key: &EncodedKey,
 		row: EncodedValues,
 	) -> crate::Result<()> {
-		utils::save_row(self.id(), txn, window_key, row)
+		utils::save_row(self.id(), txn, window_key, row).await
 	}
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	async fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
+	async fn expire_range(&self, txn: &mut FlowTransaction<'_>, range: EncodedKeyRange) -> crate::Result<u32> {
 		let mut count = 0;
 
 		// Add the operator state prefix to the range
@@ -50,7 +54,7 @@ pub trait WindowStateful: RawStatefulOperator {
 		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
-			txn.remove(&key)?;
+			txn.remove(&key).await?;
 			count += 1;
 		}
 
@@ -121,7 +125,7 @@ mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		modified.make_mut()[0] = 0xAB;
-		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
+		operator.save_state(&mut txn, &window_key, modified.clone()).await.unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &window_key).await.unwrap();
@@ -139,7 +143,7 @@ mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			state.make_mut()[0] = i as u8;
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state).await.unwrap();
 		}
 
 		// Verify each window has its own state
@@ -160,7 +164,7 @@ mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			state.make_mut()[0] = i as u8;
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state).await.unwrap();
 		}
 
 		// Expire windows before 5 (should remove 0-4)
@@ -195,7 +199,7 @@ mod tests {
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			state.make_mut()[0] = (idx + 5) as u8;
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state).await.unwrap();
 		}
 
 		// Expire before 3 (should remove nothing since all windows are >= 5)
@@ -222,7 +226,7 @@ mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			state.make_mut()[0] = i as u8;
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state).await.unwrap();
 		}
 
 		// Expire before 100 (should remove all)
@@ -254,7 +258,7 @@ mod tests {
 			all_window_keys.push(window_key.clone());
 			let mut state = operator.create_state();
 			state.make_mut()[0] = current_window as u8;
-			operator.save_state(&mut txn, &window_key, state).unwrap();
+			operator.save_state(&mut txn, &window_key, state).await.unwrap();
 
 			// Expire old windows
 			if current_window >= window_size {

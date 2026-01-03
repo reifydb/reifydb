@@ -38,14 +38,14 @@ impl Operator for ApplyOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		self.inner.apply(txn, change, evaluator).await
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
 		self.parent.pull(txn, rows).await
 	}
 }

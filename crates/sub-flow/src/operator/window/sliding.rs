@@ -133,7 +133,7 @@ impl WindowOperator {
 /// Process inserts for sliding windows
 async fn process_sliding_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<Vec<FlowDiff>> {
@@ -162,7 +162,7 @@ async fn process_sliding_insert(
 /// Process inserts for a single group in sliding windows
 async fn process_sliding_group_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	group_hash: Hash128,
 	evaluator: &StandardColumnEvaluator,
@@ -253,7 +253,7 @@ async fn process_sliding_group_insert(
 				}
 			}
 
-			operator.save_window_state(txn, &window_key, &window_state)?;
+			operator.save_window_state(txn, &window_key, &window_state).await?;
 		}
 	}
 
@@ -263,7 +263,7 @@ async fn process_sliding_group_insert(
 /// Apply changes for sliding windows
 pub async fn apply_sliding_window(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	change: FlowChange,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<FlowChange> {

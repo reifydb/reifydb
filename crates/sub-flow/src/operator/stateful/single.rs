@@ -27,33 +27,33 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Load the operator's single state encoded
-	async fn load_state(&self, txn: &mut FlowTransaction) -> crate::Result<EncodedValues> {
+	async fn load_state(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<EncodedValues> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout()).await
 	}
 
 	/// Save the operator's single state encoded
-	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedValues) -> crate::Result<()> {
+	async fn save_state(&self, txn: &mut FlowTransaction<'_>, row: EncodedValues) -> crate::Result<()> {
 		let key = self.key();
-		utils::save_row(self.id(), txn, &key, row)
+		utils::save_row(self.id(), txn, &key, row).await
 	}
 
 	/// Update state with a function
-	async fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> crate::Result<EncodedValues>
+	async fn update_state<F>(&self, txn: &mut FlowTransaction<'_>, f: F) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
 		let mut row = self.load_state(txn).await?;
 		f(&layout, &mut row)?;
-		self.save_state(txn, row.clone())?;
+		self.save_state(txn, row.clone()).await?;
 		Ok(row)
 	}
 
 	/// Clear state
-	fn clear_state(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
+	async fn clear_state(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<()> {
 		let key = self.key();
-		utils::state_remove(self.id(), txn, &key)
+		utils::state_remove(self.id(), txn, &key).await
 	}
 }
 
@@ -101,7 +101,7 @@ mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		modified.make_mut()[0] = 0x33;
-		operator.save_state(&mut txn, modified.clone()).unwrap();
+		operator.save_state(&mut txn, modified.clone()).await.unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn).await.unwrap();
@@ -145,7 +145,7 @@ mod tests {
 		.unwrap();
 
 		// Clear state
-		operator.clear_state(&mut txn).unwrap();
+		operator.clear_state(&mut txn).await.unwrap();
 
 		// Loading should create new default state
 		let new_state = operator.load_state(&mut txn).await.unwrap();

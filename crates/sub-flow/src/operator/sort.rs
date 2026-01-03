@@ -39,7 +39,7 @@ impl Operator for SortOperator {
 
 	async fn apply(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -48,7 +48,7 @@ impl Operator for SortOperator {
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
 		self.parent.pull(txn, rows).await
 	}
 }

@@ -54,7 +54,7 @@ impl WindowOperator {
 /// Process inserts for rolling windows
 async fn process_rolling_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<Vec<FlowDiff>> {
@@ -92,7 +92,7 @@ async fn process_rolling_insert(
 /// Process inserts for a single group in rolling windows
 async fn process_rolling_group_insert(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	columns: &Columns,
 	group_hash: Hash128,
 	current_timestamp: u64,
@@ -169,7 +169,7 @@ async fn process_rolling_group_insert(
 	}
 
 	// Save window state once after processing all rows in the group
-	operator.save_window_state(txn, &window_key, &window_state)?;
+	operator.save_window_state(txn, &window_key, &window_state).await?;
 
 	Ok(result)
 }
@@ -177,7 +177,7 @@ async fn process_rolling_group_insert(
 /// Apply changes for rolling windows
 pub async fn apply_rolling_window(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut FlowTransaction<'_>,
 	change: FlowChange,
 	evaluator: &StandardColumnEvaluator,
 ) -> crate::Result<FlowChange> {

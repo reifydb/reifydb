@@ -17,7 +17,7 @@ use reifydb_rql::flow::{Flow, FlowNodeType};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
-use crate::{FlowEngine, FlowTransaction, catalog::FlowCatalog, routing::convert_cdc_to_flow_change};
+use crate::{FlowEngine, FlowTransaction, catalog::FlowCatalog, convert::convert_cdc_to_flow_change};
 
 /// Per-flow consumer that processes CDC events for its sources.
 pub struct FlowConsumer {
@@ -118,8 +118,6 @@ impl FlowConsumer {
 #[async_trait]
 impl CdcConsume for FlowConsumeImpl {
 	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
-		let mut flow_txn: Option<FlowTransaction> = None;
-
 		for cdc in cdcs {
 			let version = cdc.version;
 
@@ -138,7 +136,7 @@ impl CdcConsume for FlowConsumeImpl {
 
 					// Check if this source belongs to our flow
 					if self.sources.contains(&source_id) {
-						// Reuse existing conversion logic from routing.rs
+						// Reuse existing conversion logic from convert
 						match convert_cdc_to_flow_change(
 							&mut query_txn,
 							&catalog_cache,
@@ -170,33 +168,16 @@ impl CdcConsume for FlowConsumeImpl {
 
 			// Process batch if we have any changes
 			if !flow_changes.is_empty() {
-				// Get or create flow transaction, update version for this batch
-				let ft = match &mut flow_txn {
-					Some(ft) => {
-						ft.update_version(version).await;
-						ft
-					}
-					None => {
-						flow_txn = Some(FlowTransaction::new(
-							txn,
-							version,
-							self.engine.materialized_catalog(),
-						)
-						.await);
-						flow_txn.as_mut().unwrap()
-					}
-				};
+				// Create flow transaction for this CDC batch
+				let mut ft =
+					FlowTransaction::new(txn, version, self.engine.materialized_catalog()).await;
 
 				for change in flow_changes {
-					self.flow_engine.process(ft, change, self.flow_id).await?;
+					self.flow_engine.process(&mut ft, change, self.flow_id).await?;
 				}
 
 				debug!(flow_id = self.flow_id.0, version = version.0, "processed flow changes");
 			}
-		}
-
-		if let Some(mut ft) = flow_txn {
-			ft.commit(txn).await?;
 		}
 		Ok(())
 	}

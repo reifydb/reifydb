@@ -55,7 +55,7 @@ impl TakeOperator {
 		}
 	}
 
-	async fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
+	async fn load_take_state(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<TakeState> {
 		let state_row = self.load_state(txn).await?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -71,7 +71,7 @@ impl TakeOperator {
 			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
+	async fn save_take_state(&self, txn: &mut FlowTransaction<'_>, state: &TakeState) -> crate::Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
@@ -79,13 +79,13 @@ impl TakeOperator {
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.save_state(txn, state_row).await
 	}
 
 	async fn promote_candidates(
 		&self,
 		state: &mut TakeState,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 
@@ -109,7 +109,7 @@ impl TakeOperator {
 	async fn evict_to_candidates(
 		&self,
 		state: &mut TakeState,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 		let candidate_limit = self.limit * 4;
@@ -156,7 +156,7 @@ impl Operator for TakeOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -274,12 +274,12 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		self.save_take_state(txn, &state)?;
+		self.save_take_state(txn, &state).await?;
 
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
 		self.parent.pull(txn, rows).await
 	}
 }

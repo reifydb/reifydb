@@ -14,7 +14,7 @@ impl FlowEngine {
 	#[instrument(name = "flow::process", level = "debug", skip(self, txn), fields(flow_id = ?flow_id, origin = ?change.origin, version = change.version.0, diff_count = change.diffs.len()))]
 	pub async fn process(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		change: FlowChange,
 		flow_id: FlowId,
 	) -> crate::Result<()> {
@@ -78,7 +78,7 @@ impl FlowEngine {
 	#[instrument(name = "flow::apply", level = "trace", skip(self, txn), fields(node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut FlowTransaction<'_>,
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
@@ -92,46 +92,54 @@ impl FlowEngine {
 		Ok(result)
 	}
 
-	#[instrument(name = "flow::process::change", level = "trace", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
 	fn process_change<'a>(
 		&'a self,
-		txn: &'a mut FlowTransaction,
+		txn: &'a mut FlowTransaction<'_>,
 		flow: &'a Flow,
 		node: &'a FlowNode,
 		change: FlowChange,
 	) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + 'a>> {
-		Box::pin(async move {
-			let node_type = &node.ty;
-			let changes = &node.outputs;
+		Box::pin(self.process_change_inner(txn, flow, node, change))
+	}
 
-			let change = match &node_type {
-				SourceInlineData {} => unimplemented!(),
-				_ => {
-					let result = self.apply(txn, node, change).await?;
-					tracing::Span::current().record("output_diffs", result.diffs.len());
-					result
-				}
-			};
+	async fn process_change_inner(
+		&self,
+		txn: &mut FlowTransaction<'_>,
+		flow: &Flow,
+		node: &FlowNode,
+		change: FlowChange,
+	) -> crate::Result<()> {
+		let node_type = &node.ty;
+		let changes = &node.outputs;
 
-			if changes.is_empty() {
-			} else if changes.len() == 1 {
-				let output_id = changes[0];
-				self.process_change(txn, flow, flow.get_node(&output_id).unwrap(), change).await?;
-			} else {
-				let (last, rest) = changes.split_last().unwrap();
-				for output_id in rest {
-					self.process_change(
-						txn,
-						flow,
-						flow.get_node(output_id).unwrap(),
-						change.clone(),
-					)
-					.await?;
-				}
-				self.process_change(txn, flow, flow.get_node(last).unwrap(), change).await?;
+		let change = match &node_type {
+			SourceInlineData {} => unimplemented!(),
+			_ => {
+				let result = self.apply(txn, node, change).await?;
+				tracing::Span::current().record("output_diffs", result.diffs.len());
+				result
 			}
+		};
 
-			Ok(())
-		})
+		if changes.is_empty() {
+		} else if changes.len() == 1 {
+			let output_id = changes[0];
+			Box::pin(self.process_change_inner(txn, flow, flow.get_node(&output_id).unwrap(), change))
+				.await?;
+		} else {
+			let (last, rest) = changes.split_last().unwrap();
+			for output_id in rest {
+				Box::pin(self.process_change_inner(
+					txn,
+					flow,
+					flow.get_node(output_id).unwrap(),
+					change.clone(),
+				))
+				.await?;
+			}
+			Box::pin(self.process_change_inner(txn, flow, flow.get_node(last).unwrap(), change)).await?;
+		}
+
+		Ok(())
 	}
 }
