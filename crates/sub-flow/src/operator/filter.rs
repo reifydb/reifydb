@@ -118,7 +118,7 @@ impl Operator for FilterOperator {
 
 	async fn apply(
 		&self,
-		_txn: &mut FlowTransaction<'_>,
+		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -193,7 +193,7 @@ impl Operator for FilterOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let _guard = operator_context_guard!(self);
 		self.parent.pull(txn, rows).await
 	}

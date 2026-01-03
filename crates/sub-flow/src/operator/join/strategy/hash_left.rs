@@ -21,7 +21,7 @@ impl LeftHashJoin {
 	/// Handle insert for rows with undefined join keys (emits unmatched left row)
 	pub(crate) async fn handle_insert_undefined(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		post: &Columns,
 		row_idx: usize,
 		side: JoinSide,
@@ -46,7 +46,7 @@ impl LeftHashJoin {
 	/// Handle remove for rows with undefined join keys
 	pub(crate) async fn handle_remove_undefined(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		row_idx: usize,
 		side: JoinSide,
@@ -75,7 +75,7 @@ impl LeftHashJoin {
 	/// Handle update for rows with undefined join keys
 	pub(crate) async fn handle_update_undefined(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -104,7 +104,7 @@ impl LeftHashJoin {
 	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_insert(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		side: JoinSide,
@@ -191,7 +191,7 @@ impl LeftHashJoin {
 	/// Handle remove for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_remove(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		side: JoinSide,
@@ -297,7 +297,7 @@ impl LeftHashJoin {
 	/// Handle update for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_update(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],

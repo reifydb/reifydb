@@ -19,8 +19,9 @@ use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{
-	FlowEngine, coordinator::Coordinator, lag::FlowLags, operator::transform::registry::TransformOperatorRegistry,
-	registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker,
+	FlowEngine, coordinator::Coordinator, lag::FlowLagsV2,
+	operator::transform::registry::TransformOperatorRegistry, registry::FlowConsumerRegistry,
+	tracker::PrimitiveVersionTracker,
 };
 
 /// Flow subsystem - greenfield rewrite with independent per-flow consumers.
@@ -50,7 +51,7 @@ impl FlowSubsystem {
 
 		// Create lag provider
 		let lags_provider =
-			Arc::new(FlowLags::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
+			Arc::new(FlowLagsV2::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
 
 		// Register in IoC for virtual table access
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(lags_provider);

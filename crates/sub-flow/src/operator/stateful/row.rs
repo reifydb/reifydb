@@ -42,7 +42,7 @@ impl RowNumberProvider {
 	/// where is_new indicates if the row number was newly created
 	pub async fn get_or_create_row_numbers<'a, I>(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		keys: I,
 	) -> crate::Result<Vec<(RowNumber, bool)>>
 	where
@@ -71,7 +71,7 @@ impl RowNumberProvider {
 
 			// Save the mapping from key to encoded number
 			let row_num_bytes = counter.to_be_bytes().to_vec();
-			internal_state_set(self.node, txn, &map_key, EncodedValues(CowVec::new(row_num_bytes))).await?;
+			internal_state_set(self.node, txn, &map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
 
 			// Save the reverse mapping from row_number to key
 			let reverse_key = self.make_reverse_map_key(new_row_number);
@@ -80,8 +80,7 @@ impl RowNumberProvider {
 				txn,
 				&reverse_key,
 				EncodedValues(CowVec::new(key.as_ref().to_vec())),
-			)
-			.await?;
+			)?;
 
 			results.push((new_row_number, true));
 			counter += 1;
@@ -89,7 +88,7 @@ impl RowNumberProvider {
 
 		// Save the updated counter if we allocated any new row numbers
 		if counter != initial_counter {
-			self.save_counter(txn, counter).await?;
+			self.save_counter(txn, counter)?;
 		}
 
 		Ok(results)
@@ -100,7 +99,7 @@ impl RowNumberProvider {
 	/// created
 	pub async fn get_or_create_row_number(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers(txn, once(key)).await?.into_iter().next().unwrap())
@@ -109,7 +108,7 @@ impl RowNumberProvider {
 	/// Get the original key for a given row number (reverse lookup)
 	pub async fn get_key_for_row_number(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		row_number: RowNumber,
 	) -> crate::Result<Option<EncodedKey>> {
 		let reverse_key = self.make_reverse_map_key(row_number);
@@ -121,7 +120,7 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	async fn load_counter(&self, txn: &mut FlowTransaction<'_>) -> crate::Result<u64> {
+	async fn load_counter(&self, txn: &mut FlowTransaction) -> crate::Result<u64> {
 		let key = self.make_counter_key();
 		match internal_state_get(self.node, txn, &key).await? {
 			None => Ok(1), // First time, start at 1
@@ -141,10 +140,10 @@ impl RowNumberProvider {
 	}
 
 	/// Save the counter value
-	async fn save_counter(&self, txn: &mut FlowTransaction<'_>, counter: u64) -> crate::Result<()> {
+	fn save_counter(&self, txn: &mut FlowTransaction, counter: u64) -> crate::Result<()> {
 		let key = self.make_counter_key();
 		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
-		internal_state_set(self.node, txn, &key, value).await?;
+		internal_state_set(self.node, txn, &key, value)?;
 		Ok(())
 	}
 
@@ -173,7 +172,7 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub async fn remove_by_prefix(&self, txn: &mut FlowTransaction<'_>, key_prefix: &[u8]) -> crate::Result<()> {
+	pub async fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
 		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
@@ -188,7 +187,7 @@ impl RowNumberProvider {
 		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
-			txn.remove(&key).await?;
+			txn.remove(&key)?;
 		}
 
 		Ok(())

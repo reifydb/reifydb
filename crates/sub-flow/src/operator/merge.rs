@@ -88,7 +88,7 @@ impl Operator for MergeOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -206,7 +206,7 @@ impl Operator for MergeOperator {
 		Ok(FlowChange::internal(self.node, change.version, result_diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {

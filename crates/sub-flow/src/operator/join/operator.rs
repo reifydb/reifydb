@@ -160,7 +160,7 @@ impl JoinOperator {
 	/// Creates combined columns with left values and Undefined values for right columns.
 	pub(crate) async fn unmatched_left_columns(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_idx: usize,
 	) -> crate::Result<Columns> {
@@ -187,7 +187,7 @@ impl JoinOperator {
 	/// Generate columns for multiple unmatched left join results.
 	pub(crate) async fn unmatched_left_columns_batch(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
 	) -> crate::Result<Columns> {
@@ -224,7 +224,7 @@ impl JoinOperator {
 	/// This removes both matched and unmatched join results
 	pub(crate) async fn cleanup_left_row_joins(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left_number: u64,
 	) -> crate::Result<()> {
 		let mut serializer = KeySerializer::new();
@@ -239,7 +239,7 @@ impl JoinOperator {
 	/// Join a single left row with a single right row, returning combined Columns.
 	pub(crate) async fn join_columns(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -297,7 +297,7 @@ impl JoinOperator {
 	/// Returns combined Columns with one row per right row.
 	pub(crate) async fn join_columns_one_to_many(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -330,7 +330,7 @@ impl JoinOperator {
 	/// Returns combined Columns with one row per left row.
 	pub(crate) async fn join_columns_many_to_one(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
@@ -363,7 +363,7 @@ impl JoinOperator {
 	/// Returns combined Columns with left_indices.len() * right.row_count() rows.
 	pub(crate) async fn join_columns_cartesian(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
@@ -429,7 +429,7 @@ impl Operator for JoinOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -635,7 +635,7 @@ impl Operator for JoinOperator {
 	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
 	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
 	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {

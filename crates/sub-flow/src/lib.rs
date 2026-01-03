@@ -6,7 +6,6 @@
 pub mod builder;
 pub(crate) mod catalog;
 pub(crate) mod config;
-pub(crate) mod convert;
 pub(crate) mod coordinator;
 mod engine;
 pub mod ffi;
@@ -15,6 +14,7 @@ pub(crate) mod lag;
 #[allow(dead_code)]
 mod operator;
 pub(crate) mod registry;
+pub(crate) mod routing;
 pub mod subsystem;
 pub(crate) mod tracker;
 pub mod transaction;
@@ -22,7 +22,7 @@ pub mod transaction;
 pub use builder::FlowBuilder;
 pub use config::FlowRuntimeConfig;
 pub use engine::*;
-pub use lag::FlowLags;
+pub use lag::FlowLagsV2;
 pub use operator::{
 	Operator, stateful,
 	transform::{TransformOperator, TransformOperatorFactory, extract},

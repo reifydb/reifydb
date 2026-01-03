@@ -20,7 +20,7 @@ impl InnerHashJoin {
 	/// Handle insert for rows with undefined join keys (no output for inner join)
 	pub(crate) async fn handle_insert_undefined(
 		&self,
-		_txn: &mut FlowTransaction<'_>,
+		_txn: &mut FlowTransaction,
 		_post: &Columns,
 		_row_idx: usize,
 		_side: JoinSide,
@@ -34,7 +34,7 @@ impl InnerHashJoin {
 	/// Handle remove for rows with undefined join keys (no output for inner join)
 	pub(crate) async fn handle_remove_undefined(
 		&self,
-		_txn: &mut FlowTransaction<'_>,
+		_txn: &mut FlowTransaction,
 		_pre: &Columns,
 		_row_idx: usize,
 		_side: JoinSide,
@@ -49,7 +49,7 @@ impl InnerHashJoin {
 	/// Handle update for rows with undefined join keys (no output for inner join)
 	pub(crate) async fn handle_update_undefined(
 		&self,
-		_txn: &mut FlowTransaction<'_>,
+		_txn: &mut FlowTransaction,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -65,7 +65,7 @@ impl InnerHashJoin {
 	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_insert(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		side: JoinSide,
@@ -120,7 +120,7 @@ impl InnerHashJoin {
 	/// Handle remove for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_remove(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		side: JoinSide,
@@ -187,7 +187,7 @@ impl InnerHashJoin {
 	/// Handle update for rows with defined join keys (batched by key)
 	pub(crate) async fn handle_update(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],

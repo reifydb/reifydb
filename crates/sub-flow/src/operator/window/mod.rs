@@ -358,7 +358,7 @@ impl WindowOperator {
 	/// Apply aggregations to all events in a window
 	pub async fn apply_aggregations(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
 		row_evaluator: &StandardColumnEvaluator,
@@ -437,7 +437,7 @@ impl WindowOperator {
 	/// Process expired windows and clean up state
 	pub async fn process_expired_windows(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		current_timestamp: u64,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let result = Vec::new();
@@ -462,7 +462,7 @@ impl WindowOperator {
 	/// Load window state from storage
 	pub async fn load_window_state(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<WindowState> {
 		let state_row = self.load_state(txn, window_key).await?;
@@ -481,9 +481,9 @@ impl WindowOperator {
 	}
 
 	/// Save window state to storage
-	pub async fn save_window_state(
+	pub fn save_window_state(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> crate::Result<()> {
@@ -494,13 +494,13 @@ impl WindowOperator {
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, window_key, state_row).await
+		self.save_state(txn, window_key, state_row)
 	}
 
 	/// Get and increment global event count for count-based windows
 	pub async fn get_and_increment_global_count(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 	) -> crate::Result<u64> {
 		let count_key = self.create_count_key(group_hash);
@@ -527,7 +527,7 @@ impl WindowOperator {
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut count_state_row, 0, &blob);
 
-		self.save_state(txn, &count_key, count_state_row).await?;
+		self.save_state(txn, &count_key, count_state_row)?;
 
 		Ok(current_count)
 	}
@@ -559,7 +559,7 @@ impl Operator for WindowOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -573,7 +573,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction<'_>, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		todo!()
 	}
 }

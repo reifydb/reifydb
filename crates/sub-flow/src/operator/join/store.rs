@@ -39,7 +39,7 @@ impl Store {
 
 	pub(crate) async fn get(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		hash: &Hash128,
 	) -> crate::Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
@@ -59,9 +59,9 @@ impl Store {
 		}
 	}
 
-	pub(crate) async fn set(
+	pub(crate) fn set(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		hash: &Hash128,
 		entry: &JoinSideEntry,
 	) -> crate::Result<()> {
@@ -77,24 +77,24 @@ impl Store {
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
 
-		state_set(self.node_id, txn, &key, row).await?;
+		state_set(self.node_id, txn, &key, row)?;
 		Ok(())
 	}
 
-	pub(crate) async fn contains_key(&self, txn: &mut FlowTransaction<'_>, hash: &Hash128) -> crate::Result<bool> {
+	pub(crate) async fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
 		let key = self.make_key(hash);
 		Ok(state_get(self.node_id, txn, &key).await?.is_some())
 	}
 
-	pub(crate) async fn remove(&self, txn: &mut FlowTransaction<'_>, hash: &Hash128) -> crate::Result<()> {
+	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<()> {
 		let key = self.make_key(hash);
-		state_remove(self.node_id, txn, &key).await?;
+		state_remove(self.node_id, txn, &key)?;
 		Ok(())
 	}
 
 	pub(crate) async fn get_or_insert_with<F>(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		hash: &Hash128,
 		f: F,
 	) -> crate::Result<JoinSideEntry>
@@ -105,23 +105,18 @@ impl Store {
 			Ok(entry)
 		} else {
 			let entry = f();
-			self.set(txn, hash, &entry).await?;
+			self.set(txn, hash, &entry)?;
 			Ok(entry)
 		}
 	}
 
-	pub(crate) async fn update_entry<F>(
-		&self,
-		txn: &mut FlowTransaction<'_>,
-		hash: &Hash128,
-		f: F,
-	) -> crate::Result<()>
+	pub(crate) async fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
 	where
 		F: FnOnce(&mut JoinSideEntry),
 	{
 		if let Some(mut entry) = self.get(txn, hash).await? {
 			f(&mut entry);
-			self.set(txn, hash, &entry).await?;
+			self.set(txn, hash, &entry)?;
 		}
 		Ok(())
 	}

@@ -106,13 +106,7 @@ pub(super) extern "C" fn host_state_set(
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 		let value = EncodedValues(CowVec::new(value_bytes.to_vec()));
 
-		// Use block_in_place to call async method from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current()
-				.block_on(async { flow_txn.state_set(FlowNodeId(operator_id), &key, value).await })
-		});
-
-		match result {
+		match flow_txn.state_set(FlowNodeId(operator_id), &key, value) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -139,13 +133,8 @@ pub(super) extern "C" fn host_state_remove(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Use block_in_place to call async method from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current()
-				.block_on(async { flow_txn.state_remove(FlowNodeId(operator_id), &key).await })
-		});
-
-		match result {
+		// Remove state from transaction
+		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}

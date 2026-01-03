@@ -94,7 +94,7 @@ impl Operator for FFIOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> Result<FlowChange> {
@@ -139,7 +139,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.write().await;
 

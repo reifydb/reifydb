@@ -19,7 +19,7 @@ use crate::{
 /// Add a row to a state entry (left or right)
 /// Takes Columns + row index instead of Row to avoid allocation
 pub(crate) async fn add_to_state_entry(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -32,13 +32,13 @@ pub(crate) async fn add_to_state_entry(
 		})
 		.await?;
 	entry.rows.push(row_number);
-	store.set(txn, key_hash, &entry).await?;
+	store.set(txn, key_hash, &entry)?;
 	Ok(())
 }
 
 /// Add multiple rows to a state entry
 pub(crate) async fn add_to_state_entry_batch(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -52,13 +52,13 @@ pub(crate) async fn add_to_state_entry_batch(
 	for &idx in indices {
 		entry.rows.push(columns.row_numbers[idx]);
 	}
-	store.set(txn, key_hash, &entry).await?;
+	store.set(txn, key_hash, &entry)?;
 	Ok(())
 }
 
 /// Remove a row from state entry and cleanup if empty
 pub(crate) async fn remove_from_state_entry(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	row_number: RowNumber,
@@ -67,10 +67,10 @@ pub(crate) async fn remove_from_state_entry(
 		entry.rows.retain(|&r| r != row_number);
 
 		if entry.rows.is_empty() {
-			store.remove(txn, key_hash).await?;
+			store.remove(txn, key_hash)?;
 			Ok(true) // Entry was removed
 		} else {
-			store.set(txn, key_hash, &entry).await?;
+			store.set(txn, key_hash, &entry)?;
 			Ok(false) // Entry still has rows
 		}
 	} else {
@@ -80,7 +80,7 @@ pub(crate) async fn remove_from_state_entry(
 
 /// Update a row in-place within a state entry
 pub(crate) async fn update_row_in_entry(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	old_row_number: RowNumber,
@@ -90,7 +90,7 @@ pub(crate) async fn update_row_in_entry(
 		for row in &mut entry.rows {
 			if *row == old_row_number {
 				*row = new_row_number;
-				store.set(txn, key_hash, &entry).await?;
+				store.set(txn, key_hash, &entry)?;
 				return Ok(true);
 			}
 		}
@@ -100,7 +100,7 @@ pub(crate) async fn update_row_in_entry(
 
 /// Check if a right side has any rows for a given key
 pub(crate) async fn has_right_rows(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
@@ -109,7 +109,7 @@ pub(crate) async fn has_right_rows(
 
 /// Check if it's the first right row being added for a key
 pub(crate) async fn is_first_right_row(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
@@ -118,7 +118,7 @@ pub(crate) async fn is_first_right_row(
 
 /// Get all rows from a store for a given key as Columns (no Row conversion)
 pub(crate) async fn pull_from_store(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	parent: &Arc<Operators>,
@@ -133,7 +133,7 @@ pub(crate) async fn pull_from_store(
 /// Emit joined columns when inserting a row that has matches on the opposite side.
 /// Uses index-based access, no Row allocation.
 pub(crate) async fn emit_joined_columns(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	primary: &Columns,
 	primary_idx: usize,
 	primary_side: JoinSide,
@@ -163,7 +163,7 @@ pub(crate) async fn emit_joined_columns(
 
 /// Emit removal of joined columns
 pub(crate) async fn emit_remove_joined_columns(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	primary: &Columns,
 	primary_idx: usize,
 	primary_side: JoinSide,
@@ -193,7 +193,7 @@ pub(crate) async fn emit_remove_joined_columns(
 
 /// Emit updates for joined columns when a row is updated
 pub(crate) async fn emit_update_joined_columns(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	pre: &Columns,
 	post: &Columns,
 	row_idx: usize,
@@ -231,7 +231,7 @@ pub(crate) async fn emit_update_joined_columns(
 
 /// Emit joined columns for a batch of rows with the same key
 pub(crate) async fn emit_joined_columns_batch(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -271,7 +271,7 @@ pub(crate) async fn emit_joined_columns_batch(
 
 /// Emit removal of joined columns for a batch
 pub(crate) async fn emit_remove_joined_columns_batch(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -308,7 +308,7 @@ pub(crate) async fn emit_remove_joined_columns_batch(
 
 /// Get all left rows for a given key as Columns
 pub(crate) async fn pull_left_columns(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
 	left_parent: &Arc<Operators>,

@@ -12,7 +12,7 @@ use crate::transaction::FlowTransaction;
 
 /// Create a new FFI context
 pub(crate) fn new_ffi_context(
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	operator_id: FlowNodeId,
 	callbacks: HostCallbacks,
 ) -> ContextFFI {
@@ -27,6 +27,6 @@ pub(crate) fn new_ffi_context(
 ///
 /// # Safety
 /// Caller must ensure the context's txn_ptr is valid and points to a FlowTransaction
-pub(crate) unsafe fn get_transaction_mut(ctx: &mut ContextFFI) -> &mut FlowTransaction<'_> {
+pub(crate) unsafe fn get_transaction_mut(ctx: &mut ContextFFI) -> &mut FlowTransaction {
 	unsafe { &mut *(ctx.txn_ptr as *mut FlowTransaction) }
 }

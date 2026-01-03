@@ -41,7 +41,7 @@ impl Operator for SinkViewOperator {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -62,7 +62,7 @@ impl Operator for SinkViewOperator {
 							encode_row_at_index(&coerced, row_idx, &layout);
 
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
-						txn.set(&key, encoded).await?;
+						txn.set(&key, encoded)?;
 					}
 				}
 				FlowDiff::Update {
@@ -85,8 +85,8 @@ impl Operator for SinkViewOperator {
 							PrimitiveId::view(view_def.id),
 							post_row_number,
 						);
-						txn.remove(&old_key).await?;
-						txn.set(&new_key, post_encoded).await?;
+						txn.remove(&old_key)?;
+						txn.set(&new_key, post_encoded)?;
 					}
 				}
 				FlowDiff::Remove {
@@ -99,7 +99,7 @@ impl Operator for SinkViewOperator {
 						let row_number = coerced.row_numbers[row_idx];
 
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
-						txn.remove(&key).await?;
+						txn.remove(&key)?;
 					}
 				}
 			}
@@ -108,7 +108,7 @@ impl Operator for SinkViewOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction<'_>, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		unreachable!()
 	}
 }

@@ -40,30 +40,21 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	async fn load_state(
-		&self,
-		txn: &mut FlowTransaction<'_>,
-		key_values: &[Value],
-	) -> crate::Result<EncodedValues> {
+	async fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout()).await
 	}
 
 	/// Save state for a specific key
-	async fn save_state(
-		&self,
-		txn: &mut FlowTransaction<'_>,
-		key_values: &[Value],
-		row: EncodedValues,
-	) -> crate::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
-		utils::save_row(self.id(), txn, &key, row).await
+		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
 	async fn update_state<F>(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		key_values: &[Value],
 		f: F,
 	) -> crate::Result<EncodedValues>
@@ -73,14 +64,14 @@ pub trait KeyedStateful: RawStatefulOperator {
 		let layout = self.layout();
 		let mut row = self.load_state(txn, key_values).await?;
 		f(&layout, &mut row)?;
-		self.save_state(txn, key_values, row.clone()).await?;
+		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
 	}
 
 	/// Remove state for a key
-	async fn remove_state(&self, txn: &mut FlowTransaction<'_>, key_values: &[Value]) -> crate::Result<()> {
+	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
-		utils::state_remove(self.id(), txn, &key).await
+		utils::state_remove(self.id(), txn, &key)
 	}
 }
 
@@ -146,7 +137,7 @@ mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		modified.make_mut()[0] = 0x42; // Modify first byte
-		operator.save_state(&mut txn, &key, modified.clone()).await.unwrap();
+		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &key).await.unwrap();
@@ -186,10 +177,10 @@ mod tests {
 
 		// Create and save state
 		let state = operator.create_state();
-		operator.save_state(&mut txn, &key, state).await.unwrap();
+		operator.save_state(&mut txn, &key, state).unwrap();
 
 		// Remove state
-		operator.remove_state(&mut txn, &key).await.unwrap();
+		operator.remove_state(&mut txn, &key).unwrap();
 
 		// Loading should create new state (not find existing)
 		let new_state = operator.load_state(&mut txn, &key).await.unwrap();

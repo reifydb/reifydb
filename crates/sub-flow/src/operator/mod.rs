@@ -50,12 +50,12 @@ pub trait Operator: Send + Sync {
 
 	async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange>;
 
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns>;
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator>;
@@ -80,7 +80,7 @@ pub enum Operators {
 impl Operators {
 	pub async fn apply(
 		&self,
-		txn: &mut FlowTransaction<'_>,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -102,7 +102,7 @@ impl Operators {
 		}
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction<'_>, rows: &[RowNumber]) -> crate::Result<Columns> {
+	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		match self {
 			Operators::Filter(op) => op.pull(txn, rows).await,
 			Operators::Map(op) => op.pull(txn, rows).await,

@@ -15,7 +15,7 @@ use crate::transaction::FlowTransaction;
 /// Get raw bytes for a key
 pub async fn state_get(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 ) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -28,30 +28,30 @@ pub async fn state_get(
 }
 
 /// Set raw bytes for a key
-pub async fn state_set(
+pub fn state_set(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
 ) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.set(&encoded_key, value).await?;
+	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
 /// Remove a key
-pub async fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction<'_>, key: &EncodedKey) -> crate::Result<()> {
+pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.remove(&encoded_key).await?;
+	txn.remove(&encoded_key)?;
 	Ok(())
 }
 
 /// Get raw bytes for a key from internal state (not subject to retention policies)
 pub async fn internal_state_get(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 ) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
@@ -64,32 +64,28 @@ pub async fn internal_state_get(
 }
 
 /// Set raw bytes for a key in internal state (not subject to retention policies)
-pub async fn internal_state_set(
+pub fn internal_state_set(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
 ) -> crate::Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.set(&encoded_key, value).await?;
+	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
 /// Remove a key from internal state
-pub async fn internal_state_remove(
-	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
-	key: &EncodedKey,
-) -> crate::Result<()> {
+pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.remove(&encoded_key).await?;
+	txn.remove(&encoded_key)?;
 	Ok(())
 }
 
 /// Scan all keys for this operator
-pub async fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction<'_>) -> crate::Result<super::StateIterator> {
+pub async fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
 	let batch = txn.range(range).await?;
 	Ok(super::StateIterator::new(batch))
@@ -98,7 +94,7 @@ pub async fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction<'_>) -> crate:
 /// Range query between keys
 pub async fn state_range(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	range: EncodedKeyRange,
 ) -> crate::Result<super::StateIterator> {
 	let batch = txn.range(range.with_prefix(FlowNodeStateKey::encoded(id, vec![]))).await?;
@@ -106,13 +102,13 @@ pub async fn state_range(
 }
 
 /// Clear all state for this operator
-pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction<'_>) -> crate::Result<()> {
+pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let batch = txn.range(range).await?;
 	let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
 
 	for key in keys_to_remove {
-		txn.remove(&key).await?;
+		txn.remove(&key)?;
 	}
 	Ok(())
 }
@@ -120,7 +116,7 @@ pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction<'_>) -> crate
 /// Load state for a key, creating if not exists
 pub async fn load_or_create_row(
 	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	layout: &EncodedValuesLayout,
 ) -> crate::Result<EncodedValues> {
@@ -131,13 +127,8 @@ pub async fn load_or_create_row(
 }
 
 /// Save state encoded
-pub async fn save_row(
-	id: FlowNodeId,
-	txn: &mut FlowTransaction<'_>,
-	key: &EncodedKey,
-	row: EncodedValues,
-) -> crate::Result<()> {
-	state_set(id, txn, key, row).await
+pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+	state_set(id, txn, key, row)
 }
 
 /// Create an empty key for single-state operators
@@ -165,7 +156,7 @@ mod tests {
 		let value = test_row();
 
 		// Set a value first
-		state_set(node_id, &mut txn, &key, value.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Get should return the value
 		let result = state_get(node_id, &mut txn, &key).await.unwrap();
@@ -194,12 +185,12 @@ mod tests {
 		let value2 = EncodedValues(CowVec::new(vec![4, 5, 6]));
 
 		// Set initial value
-		state_set(node_id, &mut txn, &key, value1.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 		assert_row_eq(&result, &value1);
 
 		// Update value
-		state_set(node_id, &mut txn, &key, value2.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, value2.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 		assert_row_eq(&result, &value2);
 	}
@@ -213,11 +204,11 @@ mod tests {
 		let value = test_row();
 
 		// Set and verify
-		state_set(node_id, &mut txn, &key, value.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 		assert!(state_get(node_id, &mut txn, &key).await.unwrap().is_some());
 
 		// Remove and verify
-		state_remove(node_id, &mut txn, &key).await.unwrap();
+		state_remove(node_id, &mut txn, &key).unwrap();
 		assert!(state_get(node_id, &mut txn, &key).await.unwrap().is_none());
 	}
 
@@ -231,7 +222,7 @@ mod tests {
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // Use padding for proper ordering
 			let value = EncodedValues(CowVec::new(vec![i as u8]));
-			state_set(node_id, &mut txn, &key, value).await.unwrap();
+			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
 		// Scan all entries
@@ -255,7 +246,7 @@ mod tests {
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).await.unwrap();
+			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
 		// Test range query from b to d (exclusive end)
@@ -276,7 +267,7 @@ mod tests {
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).await.unwrap();
+			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
@@ -301,7 +292,7 @@ mod tests {
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).await.unwrap();
+			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
 		// Verify entries exist
@@ -332,7 +323,7 @@ mod tests {
 		let layout = TestOperator::simple(node_id).layout;
 
 		// Set existing value
-		state_set(node_id, &mut txn, &key, value.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Load should return existing
 		let result = load_or_create_row(node_id, &mut txn, &key, &layout).await.unwrap();
@@ -362,7 +353,7 @@ mod tests {
 		let value = test_row();
 
 		// Save encoded
-		save_row(node_id, &mut txn, &key, value.clone()).await.unwrap();
+		save_row(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Verify saved
 		let result = state_get(node_id, &mut txn, &key).await.unwrap();
@@ -388,8 +379,8 @@ mod tests {
 		let value2 = EncodedValues(CowVec::new(vec![2]));
 
 		// Set different values for same key in different nodes
-		state_set(node1, &mut txn, &key, value1.clone()).await.unwrap();
-		state_set(node2, &mut txn, &key, value2.clone()).await.unwrap();
+		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
+		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
 
 		// Each operator should have its own value
 		let result1 = state_get(node1, &mut txn, &key).await.unwrap().unwrap();
@@ -415,7 +406,7 @@ mod tests {
 		let large_value = EncodedValues(CowVec::new(vec![0xAB; 10240]));
 
 		// Store and retrieve
-		state_set(node_id, &mut txn, &key, large_value.clone()).await.unwrap();
+		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).await.unwrap().unwrap();
 
 		assert_row_eq(&result, &large_value);
