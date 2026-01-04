@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnKey, PrimitiveId};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -25,15 +26,16 @@ impl CatalogStore {
 		let source = source.into();
 		let mut result = vec![];
 
-		let batch = txn.range_batch(ColumnKey::full_scan(source), 1024).await?;
-		let ids: Vec<_> = batch
-			.items
-			.into_iter()
-			.map(|multi| {
+		// Collect column IDs first to avoid holding stream borrow
+		let mut ids = Vec::new();
+		{
+			let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
+			while let Some(entry) = stream.next().await {
+				let multi = entry?;
 				let row = multi.values;
-				ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID))
-			})
-			.collect();
+				ids.push(ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID)));
+			}
+		}
 
 		for id in ids {
 			result.push(Self::get_column(&mut txn, id).await?);

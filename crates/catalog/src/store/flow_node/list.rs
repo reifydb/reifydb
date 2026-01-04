@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{EncodableKey, FlowId, FlowNodeDef, FlowNodeId},
 	key::FlowNodeKey,
@@ -18,15 +19,18 @@ impl CatalogStore {
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
 		let mut txn = rx.into_standard_transaction();
-		// First collect all node IDs
-		let batch = txn.range_batch(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id), 1024).await?;
-		let node_ids: Vec<FlowNodeId> = batch
-			.items
-			.iter()
-			.map(|multi| {
-				FlowNodeId(flow_node_by_flow::LAYOUT.get_u64(&multi.values, flow_node_by_flow::ID))
-			})
-			.collect();
+
+		// First collect all node IDs to avoid holding stream borrow
+		let mut node_ids = Vec::new();
+		{
+			let mut stream = txn.range(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+			while let Some(entry) = stream.next().await {
+				let multi = entry?;
+				node_ids.push(FlowNodeId(
+					flow_node_by_flow::LAYOUT.get_u64(&multi.values, flow_node_by_flow::ID),
+				));
+			}
+		}
 
 		// Then fetch each node
 		let mut nodes = Vec::new();
@@ -43,10 +47,10 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(FlowNodeKey::full_scan(), 1024).await?;
-		let entries: Vec<_> = batch.items.into_iter().collect();
+		let mut stream = txn.range(FlowNodeKey::full_scan(), 1024)?;
 
-		for entry in entries {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {
 				let node_id = flow_node_key.node;
 				let flow_id = FlowId(flow_node::LAYOUT.get_u64(&entry.values, flow_node::FLOW));

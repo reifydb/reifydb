@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+// These types are now only used by tests (production code uses streaming),
+// but we keep them for testing the merge algorithm.
+#![allow(dead_code)]
+
 use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 
 use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};

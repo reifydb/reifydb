@@ -61,6 +61,8 @@ impl QueryNode for DictionaryScanNode {
 		rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
+		use futures_util::StreamExt;
+
 		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -79,22 +81,20 @@ impl QueryNode for DictionaryScanNode {
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
 
-		// Get entries from storage
-		let entries: Vec<_> = rx
-			.range_batch(range, batch_size).await?
-			.items.into_iter()
-			// Skip entries we've already seen
-			.skip_while(|entry| {
-				if let Some(ref last) = self.last_key {
-					&entry.key <= last
-				} else {
-					false
-				}
-			})
-			.take(batch_size as usize)
-			.collect();
+		// Get entries from storage using stream
+		let mut stream = rx.range(range, batch_size as usize)?;
+		let mut count = 0;
 
-		for entry in entries {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
+
+			// Skip entries we've already seen
+			if let Some(ref last) = self.last_key {
+				if &entry.key <= last {
+					continue;
+				}
+			}
+
 			// Decode the key to get the entry ID
 			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
 				// Create DictionaryEntryId with proper type
@@ -108,6 +108,11 @@ impl QueryNode for DictionaryScanNode {
 				ids.push(entry_id);
 				values.push(value);
 				new_last_key = Some(entry.key);
+
+				count += 1;
+				if count >= batch_size as usize {
+					break;
+				}
 			}
 		}
 

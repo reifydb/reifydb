@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{FlowNodeId, PrimitiveId},
 	key::{
@@ -36,9 +37,10 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024).await?;
+		let mut stream = txn.range(PrimitiveRetentionPolicyKeyRange::full_scan(), 1024)?;
 
-		for entry in batch.items {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			if let Some(key) = PrimitiveRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.values) {
 					result.push(PrimitiveRetentionPolicyEntry {
@@ -59,9 +61,10 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(OperatorRetentionPolicyKeyRange::full_scan(), 1024).await?;
+		let mut stream = txn.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;
 
-		for entry in batch.items {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.values) {
 					result.push(OperatorRetentionPolicyEntry {

@@ -116,7 +116,7 @@ impl QueryNode for TableScanNode {
 		let mut new_last_key = None;
 
 		// Use streaming API which properly handles version density at storage level
-		let mut stream = rx.range_stream(range, batch_size as usize)?;
+		let mut stream = rx.range(range, batch_size as usize)?;
 
 		// Consume up to batch_size items from the stream
 		for _ in 0..batch_size {
@@ -194,7 +194,7 @@ impl QueryNode for TableScanNode {
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
-		let mut stream = rx.range_stream(range, batch_size as usize)?;
+		let mut stream = rx.range(range, batch_size as usize)?;
 
 		let mut encoded_rows = Vec::with_capacity(batch_size as usize);
 		let mut row_numbers = Vec::with_capacity(batch_size as usize);

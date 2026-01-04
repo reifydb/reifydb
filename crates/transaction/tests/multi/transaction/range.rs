@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use futures_util::TryStreamExt;
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::TransactionMulti;
 
@@ -26,15 +27,15 @@ async fn test_range() {
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
 	let txn = engine.begin_query().await.unwrap();
-	let batch = txn.range(four_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=3).rev().zip(batch.items) {
+	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.values, as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let batch = txn.range_rev(four_to_one).await.unwrap();
-	for (expected, v) in (1..=3).zip(batch.items) {
+	let items: Vec<_> = txn.range_rev(four_to_one, 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.values, as_values!(expected));
 		assert_eq!(v.version, 2);
@@ -51,15 +52,15 @@ async fn test_range2() {
 
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-	let batch = txn.range(four_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=3).rev().zip(batch.items) {
+	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let batch = txn.range_rev(four_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=3).zip(batch.items) {
+	let items: Vec<_> = txn.range_rev(four_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 1);
@@ -74,15 +75,15 @@ async fn test_range2() {
 
 	let seven_to_one = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(1)));
 
-	let batch = txn.range(seven_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=6).rev().zip(batch.items) {
+	let items: Vec<_> = txn.range(seven_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let batch = txn.range_rev(seven_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=6).zip(batch.items) {
+	let items: Vec<_> = txn.range_rev(seven_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 2);
@@ -99,15 +100,15 @@ async fn test_range3() {
 
 	let seven_to_four = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(4)));
 
-	let batch = txn.range(seven_to_four.clone()).await.unwrap();
-	for (expected, v) in (4..=6).rev().zip(batch.items) {
+	let items: Vec<_> = txn.range(seven_to_four.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (4..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let batch = txn.range_rev(seven_to_four.clone()).await.unwrap();
-	for (expected, v) in (4..=6).zip(batch.items) {
+	let items: Vec<_> = txn.range_rev(seven_to_four.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (4..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 1);
@@ -122,15 +123,15 @@ async fn test_range3() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let batch = txn.range(five_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=5).rev().zip(batch.items) {
+	let items: Vec<_> = txn.range(five_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=5).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let batch = txn.range_rev(five_to_one.clone()).await.unwrap();
-	for (expected, v) in (1..=5).zip(batch.items) {
+	let items: Vec<_> = txn.range_rev(five_to_one.clone(), 1024).try_collect().await.unwrap();
+	for (expected, v) in (1..=5).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.values, &as_values!(expected));
 		assert_eq!(v.version, 2);
@@ -205,15 +206,15 @@ async fn test_range_edge() {
 	let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
 	let mut txn = engine.begin_command().await.unwrap();
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
-	check_iter(batch.items, &[32, 13]);
-	let batch = txn.range_rev(ten_to_one.clone()).await.unwrap();
-	check_rev_iter(batch.items, &[13, 32]);
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_iter(items, &[32, 13]);
+	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_rev_iter(items, &[13, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(6));
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
 	let mut count = 2;
-	for v in batch.items {
+	for v in items {
 		if v.key == as_key!(1) {
 			count -= 1;
 		}
@@ -224,9 +225,9 @@ async fn test_range_edge() {
 	}
 	assert_eq!(0, count);
 
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
 	let mut count = 2;
-	for v in batch.items {
+	for v in items {
 		if v.key == as_key!(1) {
 			count -= 1;
 		}
@@ -238,24 +239,24 @@ async fn test_range_edge() {
 	assert_eq!(0, count);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
-	check_iter(batch.items, &[32, 23, 13]);
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_iter(items, &[32, 23, 13]);
 
-	let batch = txn.range_rev(ten_to_one.clone()).await.unwrap();
-	check_rev_iter(batch.items, &[13, 23, 32]);
+	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_rev_iter(items, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
-	check_iter(batch.items, &[32, 12]);
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_iter(items, &[32, 12]);
 
-	let batch = txn.range_rev(ten_to_one.clone()).await.unwrap();
-	check_rev_iter(batch.items, &[12, 32]);
+	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_rev_iter(items, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let batch = txn.range(ten_to_one.clone()).await.unwrap();
-	check_iter(batch.items, &[31]);
-	let batch = txn.range_rev(ten_to_one.clone()).await.unwrap();
-	check_rev_iter(batch.items, &[31]);
+	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_iter(items, &[31]);
+	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).try_collect().await.unwrap();
+	check_rev_iter(items, &[31]);
 }
 
 /// Regression test for MVCC flickering bug.
@@ -274,7 +275,7 @@ async fn test_range_edge() {
 /// - Storage returns versions newest-first
 /// - Query correctly returns newest version
 #[tokio::test]
-async fn test_range_batch_returns_newest_version() {
+async fn test_range_stream_returns_newest_version() {
 	let engine = TransactionMulti::testing().await;
 
 	// Create many versions of the SAME key
@@ -291,22 +292,18 @@ async fn test_range_batch_returns_newest_version() {
 	// Before fix: would return an older version
 	// After fix: returns newest version
 	let txn = engine.begin_query().await.unwrap();
-	let batch = txn.range_batch(EncodedKeyRange::all(), 5).await.unwrap();
+	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 5).try_collect().await.unwrap();
 
-	assert_eq!(batch.items.len(), 1);
-	let item = &batch.items[0];
+	assert_eq!(items.len(), 1);
+	let item = &items[0];
 	assert_eq!(item.key, as_key!(1));
 	// Must be the NEWEST version's value
 	assert_eq!(from_values!(u64, &item.values), NUM_VERSIONS);
 }
 
-/// Test that batch_size works correctly across multiple keys, each with many versions.
-///
-/// Note: batch_size limits the number of *versioned entries* fetched from storage,
-/// not the number of distinct keys. To see all keys, batch_size must be large enough
-/// to cover all versions across all keys.
+/// Test that streaming works correctly across multiple keys, each with many versions.
 #[tokio::test]
-async fn test_range_batch_multiple_keys_many_versions() {
+async fn test_range_stream_multiple_keys_many_versions() {
 	let engine = TransactionMulti::testing().await;
 
 	const NUM_KEYS: u64 = 5;
@@ -322,16 +319,15 @@ async fn test_range_batch_multiple_keys_many_versions() {
 		txn.commit().await.unwrap();
 	}
 
-	// Query with batch_size large enough to cover all versioned entries
-	// Total entries = 5 keys × 20 versions = 100
+	// Query with streaming
 	let txn = engine.begin_query().await.unwrap();
-	let batch = txn.range_batch(EncodedKeyRange::all(), 200).await.unwrap();
+	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 200).try_collect().await.unwrap();
 
 	// Should have all 5 keys, each with newest version
 	// Keys are returned in descending order (5, 4, 3, 2, 1)
-	assert_eq!(batch.items.len(), 5);
+	assert_eq!(items.len(), 5);
 
-	for (expected_key, item) in (1..=NUM_KEYS).rev().zip(batch.items.iter()) {
+	for (expected_key, item) in (1..=NUM_KEYS).rev().zip(items.iter()) {
 		let expected_value = expected_key * 1000 + VERSIONS_PER_KEY;
 
 		assert_eq!(item.key, as_key!(expected_key));

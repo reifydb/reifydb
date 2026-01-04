@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::PrimaryKeyDef;
+use std::ops::Bound;
+
+use futures_util::StreamExt;
+use reifydb_core::{
+	EncodedKeyRange,
+	interface::{Key, PrimaryKeyDef, PrimaryKeyKey},
+};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
@@ -16,13 +22,6 @@ pub struct PrimaryKeyInfo {
 
 impl CatalogStore {
 	pub async fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
-		use std::ops::Bound;
-
-		use reifydb_core::{
-			EncodedKeyRange,
-			interface::{Key, PrimaryKeyKey},
-		};
-
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -37,9 +36,15 @@ impl CatalogStore {
 		};
 
 		// Collect entries first to avoid borrow checker issues
-		let batch = txn.range_batch(primary_key_range, 1024).await?;
+		let mut entries = Vec::new();
+		{
+			let mut stream = txn.range(primary_key_range, 1024)?;
+			while let Some(entry) = stream.next().await {
+				entries.push(entry?);
+			}
+		}
 
-		for entry in batch.items {
+		for entry in entries {
 			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::PrimaryKey(pk_key) = key {
@@ -87,13 +92,6 @@ impl CatalogStore {
 	pub async fn list_primary_key_columns(
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<(u64, u64, usize)>> {
-		use std::ops::Bound;
-
-		use reifydb_core::{
-			EncodedKeyRange,
-			interface::{Key, PrimaryKeyKey},
-		};
-
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -106,10 +104,10 @@ impl CatalogStore {
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
 
-		// Collect entries first to avoid borrow checker issues
-		let batch = txn.range_batch(primary_key_range, 1024).await?;
+		let mut stream = txn.range(primary_key_range, 1024)?;
 
-		for entry in batch.items {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::PrimaryKey(pk_key) = key {

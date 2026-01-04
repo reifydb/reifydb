@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -11,18 +12,17 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(FlowKey::full_scan(), 1024).await?;
+		let mut stream = txn.range(FlowKey::full_scan(), 1024)?;
 
-		for entry in batch.items {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::Flow(flow_key) = key {
 					let flow_id = flow_key.flow;
 
 					let namespace_id =
 						NamespaceId(flow::LAYOUT.get_u64(&entry.values, flow::NAMESPACE));
-
 					let name = flow::LAYOUT.get_utf8(&entry.values, flow::NAME).to_string();
-
 					let status_u8 = flow::LAYOUT.get_u8(&entry.values, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 

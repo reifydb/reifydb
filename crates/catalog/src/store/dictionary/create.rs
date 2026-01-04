@@ -114,6 +114,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
+	use futures_util::TryStreamExt;
 	use reifydb_core::interface::NamespaceDictionaryKey;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -193,13 +194,12 @@ mod tests {
 		CatalogStore::create_dictionary(&mut txn, to_create2).await.unwrap();
 
 		// Check namespace links
-		let links = txn
-			.range(NamespaceDictionaryKey::full_scan(test_namespace.id))
-			.await
+		let links: Vec<_> = txn
+			.range(NamespaceDictionaryKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.items
-			.into_iter()
-			.collect::<Vec<_>>();
+			.try_collect()
+			.await
+			.unwrap();
 		assert_eq!(links.len(), 2);
 
 		// Check first link (descending order, so dict2 comes first)

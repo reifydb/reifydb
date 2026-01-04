@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{DictionaryDef, DictionaryId, NamespaceId},
 	key::{DictionaryKey, NamespaceDictionaryKey},
@@ -21,15 +22,17 @@ impl CatalogStore {
 	) -> crate::Result<Vec<DictionaryDef>> {
 		let mut txn = rx.into_standard_transaction();
 		// Collect dictionary IDs first to avoid borrow conflict
-		let batch = txn.range_batch(NamespaceDictionaryKey::full_scan(namespace), 1024).await?;
-		let dictionary_ids: Vec<DictionaryId> = batch
-			.items
-			.iter()
-			.map(|multi| {
+		let mut dictionary_ids = Vec::new();
+		{
+			let mut stream = txn.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+			while let Some(entry) = stream.next().await {
+				let multi = entry?;
 				let row = &multi.values;
-				DictionaryId(dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID))
-			})
-			.collect();
+				dictionary_ids.push(DictionaryId(
+					dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID),
+				));
+			}
+		}
 
 		let mut dictionaries = Vec::new();
 		for dictionary_id in dictionary_ids {
@@ -46,8 +49,9 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut dictionaries = Vec::new();
 
-		let batch = txn.range_batch(DictionaryKey::full_scan(), 1024).await?;
-		for multi in batch.items {
+		let mut stream = txn.range(DictionaryKey::full_scan(), 1024)?;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let id = DictionaryId(dictionary::LAYOUT.get_u64(&row, dictionary::ID));
 			let namespace = NamespaceId(dictionary::LAYOUT.get_u64(&row, dictionary::NAMESPACE));

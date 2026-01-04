@@ -95,13 +95,14 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.range(EncodedKeyRange::all()).await })?;
+					let batch = self.runtime.block_on(async {
+						SingleVersionRange::range(&self.store, EncodedKeyRange::all()).await
+					})?;
 					print(&mut output, batch.items.into_iter())
 				} else {
 					let batch = self.runtime.block_on(async {
-						self.store.range_rev(EncodedKeyRange::all()).await
+						SingleVersionRangeRev::range_rev(&self.store, EncodedKeyRange::all())
+							.await
 					})?;
 					print(&mut output, batch.items.into_iter())
 				};
@@ -116,11 +117,14 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = self.runtime.block_on(async { self.store.range(range).await })?;
+					let batch = self.runtime.block_on(async {
+						SingleVersionRange::range(&self.store, range).await
+					})?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch =
-						self.runtime.block_on(async { self.store.range_rev(range).await })?;
+					let batch = self.runtime.block_on(async {
+						SingleVersionRangeRev::range_rev(&self.store, range).await
+					})?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}
@@ -134,13 +138,14 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch =
-						self.runtime.block_on(async { self.store.prefix(&prefix).await })?;
+					let batch = self.runtime.block_on(async {
+						SingleVersionRange::prefix(&self.store, &prefix).await
+					})?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.prefix_rev(&prefix).await })?;
+					let batch = self.runtime.block_on(async {
+						SingleVersionRangeRev::prefix_rev(&self.store, &prefix).await
+					})?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}

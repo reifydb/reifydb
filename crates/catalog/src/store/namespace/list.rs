@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{Key, NamespaceDef, NamespaceKey};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -13,9 +14,10 @@ impl CatalogStore {
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let batch = txn.range_batch(namespace_range, 1024).await?;
+		let mut stream = txn.range(namespace_range, 1024)?;
 
-		for entry in batch.items {
+		while let Some(entry) = stream.next().await {
+			let entry = entry?;
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::Namespace(namespace_key) = key {
 					let namespace_id = namespace_key.namespace;

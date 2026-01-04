@@ -8,6 +8,7 @@
 //! policies - versions at or above the watermark cannot be cleaned up because
 //! consumers still need them.
 
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	CommitVersion,
 	interface::{CdcConsumerKeyRange, ConsumerState, EncodableKey},
@@ -43,8 +44,10 @@ use reifydb_transaction::IntoStandardTransaction;
 pub async fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
-	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
-	for multi in batch.items {
+	let items: Vec<_> =
+		txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)?.try_collect().await?;
+
+	for multi in items {
 		// Checkpoint values are stored as 8-byte big-endian u64
 		if multi.values.len() >= 8 {
 			let mut buffer = [0u8; 8];
@@ -70,8 +73,10 @@ pub async fn get_all_consumer_states(
 ) -> reifydb_core::Result<Vec<ConsumerState>> {
 	let mut states = Vec::new();
 
-	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
-	for multi in batch.items {
+	let items: Vec<_> =
+		txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)?.try_collect().await?;
+
+	for multi in items {
 		let key = match CdcConsumerKey::decode(&multi.key) {
 			Some(k) => k,
 			None => continue,

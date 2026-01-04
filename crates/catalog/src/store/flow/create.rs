@@ -89,6 +89,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
+	use futures_util::TryStreamExt;
 	use reifydb_core::interface::{FlowId, FlowStatus, NamespaceFlowKey, NamespaceId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
@@ -145,13 +146,12 @@ mod tests {
 		CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 
 		// Verify both are linked to namespace
-		let links = txn
-			.range(NamespaceFlowKey::full_scan(test_namespace.id))
-			.await
+		let links: Vec<_> = txn
+			.range(NamespaceFlowKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.items
-			.into_iter()
-			.collect::<Vec<_>>();
+			.try_collect::<Vec<_>>()
+			.await
+			.unwrap();
 		assert_eq!(links.len(), 2);
 
 		// Verify link metadata (order may vary)

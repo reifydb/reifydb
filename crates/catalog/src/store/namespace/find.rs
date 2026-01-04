@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{NamespaceDef, NamespaceId, NamespaceKey},
 	value::encoded::EncodedValues,
@@ -25,16 +26,18 @@ impl CatalogStore {
 		}
 
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceKey::full_scan(), 1024).await?;
-		Ok(batch.items.iter().find_map(|multi| {
+		let mut stream = txn.range(NamespaceKey::full_scan(), 1024)?;
+
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
-				Some(convert_namespace(multi.clone()))
-			} else {
-				None
+				return Ok(Some(convert_namespace(multi)));
 			}
-		}))
+		}
+
+		Ok(None)
 	}
 
 	pub async fn find_namespace(

@@ -23,8 +23,7 @@ use super::{
 	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
 };
 use crate::{
-	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
-	MultiVersionRangeRev, MultiVersionStore,
+	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
 	hot::{Store::Multi, delta_optimizer::optimize_deltas},
 	stats::{PreVersionInfo, Tier},
@@ -425,20 +424,6 @@ impl MultiVersionRangeCursor {
 	}
 }
 
-#[async_trait]
-impl MultiVersionRange for StandardTransactionStore {
-	#[instrument(name = "store::multi::range", level = "debug", skip(self), fields(version = version.0, batch_size = batch_size))]
-	async fn range_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		let mut cursor = MultiVersionRangeCursor::new();
-		self.range_next(&mut cursor, range, version, batch_size).await
-	}
-}
-
 impl StandardTransactionStore {
 	/// Fetch the next batch of entries, continuing from cursor position.
 	///
@@ -608,7 +593,7 @@ impl StandardTransactionStore {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// and maintains cursor state internally.
-	pub fn range_stream(
+	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
@@ -633,7 +618,7 @@ impl StandardTransactionStore {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// in reverse key order and maintains cursor state internally.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
@@ -652,28 +637,12 @@ impl StandardTransactionStore {
 			}
 		}
 	}
-}
 
-#[async_trait]
-impl MultiVersionRangeRev for StandardTransactionStore {
-	#[instrument(name = "store::multi::range_rev", level = "debug", skip(self), fields(version = version.0, batch_size = batch_size))]
-	async fn range_rev_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		let mut cursor = MultiVersionRangeCursor::new();
-		self.range_rev_next(&mut cursor, range, version, batch_size).await
-	}
-}
-
-impl StandardTransactionStore {
 	/// Fetch the next batch of entries in reverse order, continuing from cursor position.
 	///
 	/// This properly handles high version density by scanning until `batch_size`
 	/// unique logical keys are collected OR all tiers are exhausted.
-	pub async fn range_rev_next(
+	async fn range_rev_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,

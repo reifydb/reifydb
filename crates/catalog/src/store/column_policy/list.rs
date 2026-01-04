@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -15,26 +16,28 @@ impl CatalogStore {
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(ColumnPolicyKey::full_scan(column), 1024).await?;
-		Ok(batch.items
-			.into_iter()
-			.map(|multi| {
-				let row = multi.values;
-				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
-				let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
+		let mut stream = txn.range(ColumnPolicyKey::full_scan(column), 1024)?;
+		let mut result = Vec::new();
 
-				let policy = ColumnPolicyKind::from_u8(
-					column_policy::LAYOUT.get_u8(&row, column_policy::POLICY),
-					column_policy::LAYOUT.get_u8(&row, column_policy::VALUE),
-				);
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
+			let row = multi.values;
+			let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
+			let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
 
-				ColumnPolicy {
-					id,
-					column,
-					policy,
-				}
-			})
-			.collect::<Vec<_>>())
+			let policy = ColumnPolicyKind::from_u8(
+				column_policy::LAYOUT.get_u8(&row, column_policy::POLICY),
+				column_policy::LAYOUT.get_u8(&row, column_policy::VALUE),
+			);
+
+			result.push(ColumnPolicy {
+				id,
+				column,
+				policy,
+			});
+		}
+
+		Ok(result)
 	}
 
 	pub async fn list_column_policies_all(

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
+use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	key::{EncodableKey, FlowNodeStateKey},
@@ -40,15 +41,21 @@ pub trait WindowStateful: RawStatefulOperator {
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
 	async fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
-		let mut count = 0;
-
 		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
 		// Collect keys to remove (similar pattern to state_clear in utils.rs)
-		let batch = txn.range(prefixed_range).await?;
-		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
+		let keys_to_remove = {
+			let mut stream = txn.range(prefixed_range, 1024);
+			let mut keys = Vec::new();
+			while let Some(result) = stream.next().await {
+				let multi = result?;
+				keys.push(multi.key);
+			}
+			keys
+		};
 
+		let mut count = 0;
 		for key in keys_to_remove {
 			txn.remove(&key)?;
 			count += 1;

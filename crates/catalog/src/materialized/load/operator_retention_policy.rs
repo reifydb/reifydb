@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::key::{EncodableKey, OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -12,9 +13,10 @@ pub(crate) async fn load_operator_retention_policies(
 ) -> crate::Result<()> {
 	let mut txn = rx.into_standard_transaction();
 	let range = OperatorRetentionPolicyKeyRange::full_scan();
-	let batch = txn.range_batch(range, 1024).await?;
+	let mut stream = txn.range(range, 1024)?;
 
-	for multi in batch.items {
+	while let Some(entry) = stream.next().await {
+		let multi = entry?;
 		let version = multi.version;
 
 		if let Some(key) = OperatorRetentionPolicyKey::decode(&multi.key) {

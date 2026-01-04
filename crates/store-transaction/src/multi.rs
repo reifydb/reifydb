@@ -2,19 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use async_trait::async_trait;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, interface::MultiVersionValues};
 
 /// Composite trait for multi-version storage capabilities.
 pub trait MultiVersionStore:
-	Send
-	+ Sync
-	+ Clone
-	+ MultiVersionCommit
-	+ MultiVersionGet
-	+ MultiVersionContains
-	+ MultiVersionRange
-	+ MultiVersionRangeRev
-	+ 'static
+	Send + Sync + Clone + MultiVersionCommit + MultiVersionGet + MultiVersionContains + 'static
 {
 }
 
@@ -61,54 +53,4 @@ pub trait MultiVersionGet: Send + Sync {
 pub trait MultiVersionContains: Send + Sync {
 	/// Check if a key exists at a specific version.
 	async fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
-}
-
-/// Trait for forward range queries with batch-fetch pattern.
-#[async_trait]
-pub trait MultiVersionRange: Send + Sync {
-	/// Fetch a batch of values in key order (ascending).
-	///
-	/// Returns up to `batch_size` values. The `has_more` field indicates
-	/// whether there are more values after this batch.
-	async fn range_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch>;
-
-	/// Convenience method with default batch size.
-	async fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
-		self.range_batch(range, version, 1024).await
-	}
-
-	/// Range query with prefix.
-	async fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
-		self.range(EncodedKeyRange::prefix(prefix), version).await
-	}
-}
-
-/// Trait for reverse range queries with batch-fetch pattern.
-#[async_trait]
-pub trait MultiVersionRangeRev: Send + Sync {
-	/// Fetch a batch of values in reverse key order (descending).
-	///
-	/// Returns up to `batch_size` values. The `has_more` field indicates
-	/// whether there are more values after this batch.
-	async fn range_rev_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch>;
-
-	/// Convenience method with default batch size.
-	async fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
-		self.range_rev_batch(range, version, 1024).await
-	}
-
-	/// Reverse range query with prefix.
-	async fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
-		self.range_rev(EncodedKeyRange::prefix(prefix), version).await
-	}
 }

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceFlowKey, NamespaceId,
-};
+use futures_util::StreamExt;
+use reifydb_core::interface::{FlowDef, FlowId, FlowKey, FlowStatus, NamespaceFlowKey, NamespaceId};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
@@ -40,16 +39,22 @@ impl CatalogStore {
 	) -> crate::Result<Option<FlowDef>> {
 		let name = name.as_ref();
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceFlowKey::full_scan(namespace), 1024).await?;
-		let Some(flow) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+		let mut stream = txn.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
+
+		let mut found_flow = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let flow_name = flow_namespace::LAYOUT.get_utf8(row, flow_namespace::NAME);
 			if name == flow_name {
-				Some(FlowId(flow_namespace::LAYOUT.get_u64(row, flow_namespace::ID)))
-			} else {
-				None
+				found_flow = Some(FlowId(flow_namespace::LAYOUT.get_u64(row, flow_namespace::ID)));
+				break;
 			}
-		}) else {
+		}
+
+		drop(stream);
+
+		let Some(flow) = found_flow else {
 			return Ok(None);
 		};
 

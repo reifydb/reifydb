@@ -114,40 +114,6 @@ impl MultiVersionCommit for TransactionStore {
 	}
 }
 
-#[async_trait]
-impl MultiVersionRange for TransactionStore {
-	#[inline]
-	async fn range_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> Result<MultiVersionBatch> {
-		match self {
-			TransactionStore::Standard(store) => {
-				MultiVersionRange::range_batch(store, range, version, batch_size).await
-			}
-		}
-	}
-}
-
-#[async_trait]
-impl MultiVersionRangeRev for TransactionStore {
-	#[inline]
-	async fn range_rev_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> Result<MultiVersionBatch> {
-		match self {
-			TransactionStore::Standard(store) => {
-				MultiVersionRangeRev::range_rev_batch(store, range, version, batch_size).await
-			}
-		}
-	}
-}
-
 /// Stream type for multi-version range results.
 pub type MultiVersionRangeStream<'a> = Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + 'a>>;
 
@@ -157,14 +123,14 @@ impl TransactionStore {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// and maintains cursor state internally.
-	pub fn range_stream(
+	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
 	) -> MultiVersionRangeStream<'_> {
 		match self {
-			TransactionStore::Standard(store) => Box::pin(store.range_stream(range, version, batch_size)),
+			TransactionStore::Standard(store) => Box::pin(store.range(range, version, batch_size)),
 		}
 	}
 
@@ -173,16 +139,14 @@ impl TransactionStore {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// in reverse key order and maintains cursor state internally.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
 	) -> MultiVersionRangeStream<'_> {
 		match self {
-			TransactionStore::Standard(store) => {
-				Box::pin(store.range_rev_stream(range, version, batch_size))
-			}
+			TransactionStore::Standard(store) => Box::pin(store.range_rev(range, version, batch_size)),
 		}
 	}
 }

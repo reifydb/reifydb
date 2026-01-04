@@ -70,18 +70,6 @@ impl StandardQueryTransaction {
 		self.multi.contains_key(key).await
 	}
 
-	/// Get a range batch
-	#[inline]
-	pub async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		self.multi.range_batch(range, batch_size).await
-	}
-
-	/// Get a reverse range batch
-	#[inline]
-	pub async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		self.multi.range_rev_batch(range, batch_size).await
-	}
-
 	/// Get a prefix batch
 	#[inline]
 	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
@@ -103,22 +91,22 @@ impl StandardQueryTransaction {
 
 	/// Create a streaming iterator for forward range queries.
 	#[inline]
-	pub fn range_stream(
+	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
-		self.multi.range_stream(range, batch_size)
+		self.multi.range(range, batch_size)
 	}
 
 	/// Create a streaming iterator for reverse range queries.
 	#[inline]
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
-		self.multi.range_rev_stream(range, batch_size)
+		self.multi.range_rev(range, batch_size)
 	}
 
 	/// Execute a function with query access to the single transaction.

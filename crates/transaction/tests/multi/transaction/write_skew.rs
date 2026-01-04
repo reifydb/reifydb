@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
+use futures_util::TryStreamExt;
 use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::{CommandTransaction, TransactionMulti};
 
@@ -93,10 +94,10 @@ async fn test_black_white() {
 
 	let mut white = engine.begin_command().await.unwrap();
 	let indices = white
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|sv| {
 			if sv.values == as_values!("black".to_string()) {
@@ -113,10 +114,10 @@ async fn test_black_white() {
 
 	let mut black = engine.begin_command().await.unwrap();
 	let indices = black
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|sv| {
 			if sv.values == as_values!("white".to_string()) {
@@ -136,7 +137,7 @@ async fn test_black_white() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
-	let result = rx.range(EncodedKeyRange::all()).await.unwrap().items;
+	let result: Vec<_> = rx.range(EncodedKeyRange::all(), 1024).try_collect().await.unwrap();
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
@@ -194,11 +195,11 @@ async fn test_primary_colors() {
 	txn.commit().await.unwrap();
 
 	let mut red = engine.begin_command().await.unwrap();
-	let indices = red
-		.range_batch(EncodedKeyRange::all(), 15000)
+	let indices: Vec<_> = red
+		.range(EncodedKeyRange::all(), 15000)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|sv| {
 			if sv.values == as_values!("yellow".to_string()) {
@@ -207,17 +208,17 @@ async fn test_primary_colors() {
 				None
 			}
 		})
-		.collect::<Vec<_>>();
+		.collect();
 	for i in indices {
 		red.set(&i, as_values!("red".to_string())).unwrap();
 	}
 
 	let mut yellow = engine.begin_command().await.unwrap();
-	let indices = yellow
-		.range_batch(EncodedKeyRange::all(), 15000)
+	let indices: Vec<_> = yellow
+		.range(EncodedKeyRange::all(), 15000)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|sv| {
 			if sv.values == as_values!("blue".to_string()) {
@@ -226,17 +227,17 @@ async fn test_primary_colors() {
 				None
 			}
 		})
-		.collect::<Vec<_>>();
+		.collect();
 	for i in indices {
 		yellow.set(&i, as_values!("yellow".to_string())).unwrap();
 	}
 
 	let mut red_two = engine.begin_command().await.unwrap();
-	let indices = red_two
-		.range_batch(EncodedKeyRange::all(), 15000)
+	let indices: Vec<_> = red_two
+		.range(EncodedKeyRange::all(), 15000)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|sv| {
 			if sv.values == as_values!("blue".to_string()) {
@@ -245,7 +246,7 @@ async fn test_primary_colors() {
 				None
 			}
 		})
-		.collect::<Vec<_>>();
+		.collect();
 	for i in indices {
 		red_two.set(&i, as_values!("red".to_string())).unwrap();
 	}
@@ -258,7 +259,7 @@ async fn test_primary_colors() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().await.unwrap();
-	let result = rx.range_batch(EncodedKeyRange::all(), 15000).await.unwrap().items;
+	let result: Vec<_> = rx.range(EncodedKeyRange::all(), 15000).try_collect().await.unwrap();
 	assert_eq!(result.len(), 9000);
 
 	let mut red_count = 0;
@@ -296,10 +297,10 @@ async fn test_intersecting_data() {
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
@@ -317,10 +318,10 @@ async fn test_intersecting_data() {
 
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
@@ -342,10 +343,10 @@ async fn test_intersecting_data() {
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
@@ -376,10 +377,10 @@ async fn test_intersecting_data2() {
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"))
+		.range(EncodedKeyRange::parse("a..b"), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
@@ -389,10 +390,10 @@ async fn test_intersecting_data2() {
 
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"))
+		.range(EncodedKeyRange::parse("b..c"), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
@@ -406,10 +407,10 @@ async fn test_intersecting_data2() {
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
@@ -438,10 +439,10 @@ async fn test_intersecting_data3() {
 
 	let mut txn1 = engine.begin_command().await.unwrap();
 	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"))
+		.range(EncodedKeyRange::parse("a..b"), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
@@ -450,10 +451,10 @@ async fn test_intersecting_data3() {
 
 	let mut txn2 = engine.begin_command().await.unwrap();
 	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"))
+		.range(EncodedKeyRange::parse("b..c"), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.map(|tv| from_values!(u64, tv.values))
 		.sum::<u64>();
@@ -466,10 +467,10 @@ async fn test_intersecting_data3() {
 
 	let mut txn3 = engine.begin_command().await.unwrap();
 	let val = txn3
-		.range(EncodedKeyRange::all())
+		.range(EncodedKeyRange::all(), 1024)
+		.try_collect::<Vec<_>>()
 		.await
 		.unwrap()
-		.items
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);

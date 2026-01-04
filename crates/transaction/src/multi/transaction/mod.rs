@@ -12,11 +12,8 @@
 use core::mem;
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus};
-use reifydb_store_transaction::{
-	MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-	TransactionStore,
-};
+use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
+use reifydb_store_transaction::{MultiVersionContains, MultiVersionGet, TransactionStore};
 use reifydb_type::util::hex;
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
@@ -247,41 +244,6 @@ impl TransactionMulti {
 		version: CommitVersion,
 	) -> Result<bool, reifydb_type::Error> {
 		MultiVersionContains::contains(&self.store, key, version).await
-	}
-
-	#[instrument(name = "transaction::range_batch", level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
-	pub async fn range_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> reifydb_type::Result<MultiVersionBatch> {
-		MultiVersionRange::range_batch(&self.store, range, version, batch_size).await
-	}
-
-	pub async fn range(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> reifydb_type::Result<MultiVersionBatch> {
-		self.range_batch(range, version, 1024).await
-	}
-
-	pub async fn range_rev_batch(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: u64,
-	) -> reifydb_type::Result<MultiVersionBatch> {
-		MultiVersionRangeRev::range_rev_batch(&self.store, range, version, batch_size).await
-	}
-
-	pub async fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> reifydb_type::Result<MultiVersionBatch> {
-		self.range_rev_batch(range, version, 1024).await
 	}
 
 	/// Get a reference to the underlying transaction store.

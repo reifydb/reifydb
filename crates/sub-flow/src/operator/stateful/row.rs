@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 use std::iter::once;
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey,
 	interface::FlowNodeId,
@@ -183,8 +184,15 @@ impl RowNumberProvider {
 		let state_prefix = FlowNodeInternalStateKey::new(self.node, prefix.clone());
 		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
-		let batch = txn.range(full_range).await?;
-		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
+		let keys_to_remove = {
+			let mut stream = txn.range(full_range, 1024);
+			let mut keys = Vec::new();
+			while let Some(result) = stream.next().await {
+				let multi = result?;
+				keys.push(multi.key);
+			}
+			keys
+		};
 
 		for key in keys_to_remove {
 			txn.remove(&key)?;

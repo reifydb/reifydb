@@ -98,25 +98,36 @@ impl ScanTableOp {
 		tx: &mut StandardTransaction<'a>,
 		batch_size: u64,
 	) -> Result<Option<Batch>> {
+		use futures_util::StreamExt;
+
 		if state.exhausted {
 			return Ok(None);
 		}
 
 		let range = RowKeyRange::scan_range(state.table_def.id.into(), state.last_key.as_ref());
 
-		let storage_batch = tx
-			.range_batch(range, batch_size)
-			.await
+		// Collect items from stream
+		let mut items = Vec::new();
+		let mut stream = tx
+			.range(range, batch_size as usize)
 			.map_err(|e| VmError::Internal(format!("storage error: {}", e)))?;
 
-		if storage_batch.items.is_empty() {
+		while let Some(entry) = stream.next().await {
+			let item = entry.map_err(|e| VmError::Internal(format!("storage error: {}", e)))?;
+			items.push(item);
+			if items.len() >= batch_size as usize {
+				break;
+			}
+		}
+
+		if items.is_empty() {
 			state.exhausted = true;
 			return Ok(None);
 		}
 
 		// Build LazyBatch from storage data
 		let lazy_batch = build_lazy_batch(
-			storage_batch.items,
+			items,
 			&state.table_def,
 			&state.row_layout,
 			&state.storage_types,

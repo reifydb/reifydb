@@ -9,6 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use futures_util::TryStreamExt;
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::TransactionMulti;
 
@@ -38,9 +39,9 @@ async fn test_versions() {
 		}
 
 		// Try retrieving the latest version forward and reverse.
-		let batch = txn.range(EncodedKeyRange::all()).await.unwrap();
+		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).try_collect().await.unwrap();
 		let mut count = 0;
-		for sv in batch.items {
+		for sv in items {
 			assert_eq!(&sv.key, &k0);
 			let value = from_values!(i32, &sv.values);
 			assert_eq!(value, idx, "{idx} {:?}", value);
@@ -48,9 +49,9 @@ async fn test_versions() {
 		}
 		assert_eq!(1, count); // should only loop once.
 
-		let batch_rev = txn.range_rev(EncodedKeyRange::all()).await.unwrap();
+		let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).try_collect().await.unwrap();
 		let mut count = 0;
-		for sv in batch_rev.items {
+		for sv in items {
 			let value = from_values!(i32, &sv.values);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -20,9 +21,16 @@ pub async fn load_primary_keys(
 	let mut txn = rx.into_standard_transaction();
 	let range = PrimaryKeyKey::full_scan();
 
-	let batch = txn.range_batch(range, 1024).await?;
+	// Collect entries first to avoid borrow issues with nested async calls
+	let mut entries = Vec::new();
+	{
+		let mut stream = txn.range(range, 1024)?;
+		while let Some(entry) = stream.next().await {
+			entries.push(entry?);
+		}
+	}
 
-	for multi in batch.items {
+	for multi in entries {
 		let version = multi.version;
 		let row = multi.values;
 

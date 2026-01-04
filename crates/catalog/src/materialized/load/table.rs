@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{
 	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, TableKey,
 };
@@ -20,9 +21,10 @@ pub(crate) async fn load_tables(
 ) -> crate::Result<()> {
 	let mut txn = rx.into_standard_transaction();
 	let range = TableKey::full_scan();
-	let batch = txn.range_batch(range, 1024).await?;
+	let mut stream = txn.range(range, 1024)?;
 
-	for multi in batch.items {
+	while let Some(entry) = stream.next().await {
+		let multi = entry?;
 		let version = multi.version;
 
 		let pk_id = get_table_primary_key_id(&multi);

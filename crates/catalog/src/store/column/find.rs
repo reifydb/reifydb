@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnKey, PrimitiveId};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -16,20 +17,24 @@ impl CatalogStore {
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(ColumnKey::full_scan(source), 1024).await?;
-		let maybe_id = batch.items.into_iter().find_map(|multi| {
+		let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
+
+		let mut found_id = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = multi.values;
 			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
 			let name = source_column::LAYOUT.get_utf8(&row, source_column::NAME);
 
 			if name == column_name {
-				Some(column)
-			} else {
-				None
+				found_id = Some(column);
+				break;
 			}
-		});
+		}
 
-		if let Some(id) = maybe_id {
+		drop(stream);
+
+		if let Some(id) = found_id {
 			Ok(Some(Self::get_column(&mut txn, id).await?))
 		} else {
 			Ok(None)

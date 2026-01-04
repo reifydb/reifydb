@@ -150,6 +150,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
+	use futures_util::TryStreamExt;
 	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
@@ -205,13 +206,12 @@ mod tests {
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap();
 
-		let links = txn
-			.range(NamespaceViewKey::full_scan(namespace.id))
-			.await
+		let links: Vec<_> = txn
+			.range(NamespaceViewKey::full_scan(namespace.id), 1024)
 			.unwrap()
-			.items
-			.into_iter()
-			.collect::<Vec<_>>();
+			.try_collect::<Vec<_>>()
+			.await
+			.unwrap();
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];

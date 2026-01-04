@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{Key, NamespaceId, RingBufferDef, RingBufferKey};
+use futures_util::StreamExt;
+use reifydb_core::interface::{Key, NamespaceId, RingBufferDef, RingBufferId, RingBufferKey};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
@@ -11,38 +12,50 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(RingBufferKey::full_scan(), 1024).await?;
+		// Collect ringbuffer data first to avoid holding stream borrow
+		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64)> = Vec::new();
+		{
+			let mut stream = txn.range(RingBufferKey::full_scan(), 1024)?;
 
-		for entry in batch.items {
-			if let Some(key) = Key::decode(&entry.key) {
-				if let Key::RingBuffer(ringbuffer_key) = key {
-					let ringbuffer_id = ringbuffer_key.ringbuffer;
+			while let Some(entry) = stream.next().await {
+				let entry = entry?;
+				if let Some(key) = Key::decode(&entry.key) {
+					if let Key::RingBuffer(ringbuffer_key) = key {
+						let ringbuffer_id = ringbuffer_key.ringbuffer;
 
-					let namespace_id = NamespaceId(
-						ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::NAMESPACE),
-					);
+						let namespace_id = NamespaceId(
+							ringbuffer::LAYOUT
+								.get_u64(&entry.values, ringbuffer::NAMESPACE),
+						);
 
-					let name = ringbuffer::LAYOUT
-						.get_utf8(&entry.values, ringbuffer::NAME)
-						.to_string();
+						let name = ringbuffer::LAYOUT
+							.get_utf8(&entry.values, ringbuffer::NAME)
+							.to_string();
 
-					let capacity = ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
+						let capacity =
+							ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
 
-					let primary_key = Self::find_primary_key(&mut txn, ringbuffer_id).await?;
-					let columns = Self::list_columns(&mut txn, ringbuffer_id).await?;
-
-					let ringbuffer_def = RingBufferDef {
-						id: ringbuffer_id,
-						namespace: namespace_id,
-						name,
-						capacity,
-						columns,
-						primary_key,
-					};
-
-					result.push(ringbuffer_def);
+						ringbuffer_data.push((ringbuffer_id, namespace_id, name, capacity));
+					}
 				}
 			}
+		}
+
+		// Now fetch additional details for each ringbuffer
+		for (ringbuffer_id, namespace_id, name, capacity) in ringbuffer_data {
+			let primary_key = Self::find_primary_key(&mut txn, ringbuffer_id).await?;
+			let columns = Self::list_columns(&mut txn, ringbuffer_id).await?;
+
+			let ringbuffer_def = RingBufferDef {
+				id: ringbuffer_id,
+				namespace: namespace_id,
+				name,
+				capacity,
+				columns,
+				primary_key,
+			};
+
+			result.push(ringbuffer_def);
 		}
 
 		Ok(result)

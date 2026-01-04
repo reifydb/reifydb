@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{MultiVersionValues, NamespaceId, NamespaceTableKey, TableDef, TableId, TableKey};
+use futures_util::StreamExt;
+use reifydb_core::interface::{NamespaceId, NamespaceTableKey, TableDef, TableId, TableKey};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
@@ -40,16 +41,22 @@ impl CatalogStore {
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceTableKey::full_scan(namespace), 1024).await?;
-		let Some(table) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+		let mut stream = txn.range(NamespaceTableKey::full_scan(namespace), 1024)?;
+
+		let mut found_table = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
 			if name == table_name {
-				Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)))
-			} else {
-				None
+				found_table = Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)));
+				break;
 			}
-		}) else {
+		}
+
+		drop(stream);
+
+		let Some(table) = found_table else {
 			return Ok(None);
 		};
 

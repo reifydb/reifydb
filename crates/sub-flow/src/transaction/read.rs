@@ -7,7 +7,7 @@ use std::{
 };
 
 use async_stream::try_stream;
-use futures_util::{Stream, StreamExt};
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{Key, MultiVersionValues},
@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::MultiVersionBatch;
 
-use super::{FlowTransaction, Pending, iter_range::collect_batch};
+use super::{FlowTransaction, Pending};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then querying multi-version store
@@ -60,61 +60,14 @@ impl FlowTransaction {
 		query.contains_key(key).await
 	}
 
-	/// Range query
-	pub async fn range(&mut self, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
-		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-
-		let query = match range.start.as_ref() {
-			Included(start) | Excluded(start) => {
-				if Self::is_flow_state_key(start) {
-					&mut self.state_query
-				} else {
-					&mut self.primitive_query
-				}
-			}
-			Unbounded => &mut self.primitive_query,
-		};
-		let committed_batch = query.range_batch(range, 1024).await?;
-
-		Ok(collect_batch(pending, committed_batch, self.version))
-	}
-
-	/// Range query with batching
-	pub async fn range_batched(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-
-		let query = match range.start.as_ref() {
-			Included(start) | Excluded(start) => {
-				if Self::is_flow_state_key(start) {
-					&mut self.state_query
-				} else {
-					&mut self.primitive_query
-				}
-			}
-			Unbounded => &mut self.primitive_query,
-		};
-		let committed_batch = query.range_batch(range, batch_size).await?;
-
-		Ok(collect_batch(pending, committed_batch, self.version))
-	}
-
 	/// Prefix scan
 	pub async fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::prefix(prefix);
-		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-
-		let query = if Self::is_flow_state_key(prefix) {
-			&mut self.state_query
-		} else {
-			&mut self.primitive_query
-		};
-		let committed_batch = query.prefix(prefix).await?;
-
-		Ok(collect_batch(pending, committed_batch, self.version))
+		let items: Vec<_> = self.range(range, 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	fn is_flow_state_key(key: &EncodedKey) -> bool {
@@ -134,7 +87,7 @@ impl FlowTransaction {
 	/// unique logical keys are collected. The stream yields individual entries
 	/// and maintains cursor state internally. Pending writes are merged with
 	/// committed storage data.
-	pub fn range_stream(
+	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
@@ -157,7 +110,7 @@ impl FlowTransaction {
 			Unbounded => &self.primitive_query,
 		};
 
-		let storage_stream = query.range_stream(range, batch_size);
+		let storage_stream = query.range(range, batch_size);
 		let version = self.version;
 
 		Box::pin(flow_merge_pending_with_stream(pending, storage_stream, version))
@@ -168,7 +121,7 @@ impl FlowTransaction {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// in reverse key order and maintains cursor state internally.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
@@ -192,7 +145,7 @@ impl FlowTransaction {
 			Unbounded => &self.primitive_query,
 		};
 
-		let storage_stream = query.range_rev_stream(range, batch_size);
+		let storage_stream = query.range_rev(range, batch_size);
 		let version = self.version;
 
 		Box::pin(flow_merge_pending_with_stream_rev(pending, storage_stream, version))
@@ -518,8 +471,8 @@ mod tests {
 		let parent = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
 
-		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		assert!(iter.items.into_iter().next().is_none());
+		let mut stream = txn.range(EncodedKeyRange::all(), 1024);
+		assert!(stream.next().await.is_none());
 	}
 
 	#[tokio::test]
@@ -531,8 +484,11 @@ mod tests {
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		let items: Vec<_> = iter.items.into_iter().collect();
+		let mut stream = txn.range(EncodedKeyRange::all(), 1024);
+		let mut items = Vec::new();
+		while let Some(result) = stream.next().await {
+			items.push(result.unwrap());
+		}
 
 		// Should be in sorted order
 		assert_eq!(items.len(), 3);
@@ -550,8 +506,11 @@ mod tests {
 		txn.remove(&make_key("b")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let iter = txn.range(EncodedKeyRange::all()).await.unwrap();
-		let items: Vec<_> = iter.items.into_iter().collect();
+		let mut stream = txn.range(EncodedKeyRange::all(), 1024);
+		let mut items = Vec::new();
+		while let Some(result) = stream.next().await {
+			items.push(result.unwrap());
+		}
 
 		// Should only have 2 items (remove filtered out)
 		assert_eq!(items.len(), 2);
@@ -565,8 +524,8 @@ mod tests {
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
-		let iter = txn.range(range).await.unwrap();
-		assert!(iter.items.into_iter().next().is_none());
+		let mut stream = txn.range(range, 1024);
+		assert!(stream.next().await.is_none());
 	}
 
 	#[tokio::test]
@@ -580,8 +539,11 @@ mod tests {
 		txn.set(&make_key("d"), make_value("4")).unwrap();
 
 		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
-		let iter = txn.range(range).await.unwrap();
-		let items: Vec<_> = iter.items.into_iter().collect();
+		let mut stream = txn.range(range, 1024);
+		let mut items = Vec::new();
+		while let Some(result) = stream.next().await {
+			items.push(result.unwrap());
+		}
 
 		// Should only include b and c (not d, exclusive end)
 		assert_eq!(items.len(), 2);

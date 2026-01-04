@@ -50,10 +50,10 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included};
 
 	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, interface::FlowNodeId, key::FlowNodeStateKey, util::CowVec};
+	use reifydb_core::{CommitVersion, interface::FlowNodeId, util::CowVec};
 
 	use super::*;
-	use crate::{Operator, operator::stateful::test_utils::test::*, transaction::FlowTransaction};
+	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
 	// Test implementation of SimpleStatefulOperator
 	impl RawStatefulOperator for TestOperator {}
@@ -148,20 +148,14 @@ mod tests {
 		}
 
 		// Verify entries exist
-		let count = {
-			let range = FlowNodeStateKey::node_range(operator.id());
-			txn.range(range).await.unwrap().items.into_iter().count()
-		};
+		let count = operator.state_scan(&mut txn).await.unwrap().count();
 		assert_eq!(count, 5);
 
 		// Clear all
 		operator.state_clear(&mut txn).await.unwrap();
 
 		// Verify all cleared
-		let count = {
-			let range = FlowNodeStateKey::node_range(operator.id());
-			txn.range(range).await.unwrap().items.into_iter().count()
-		};
+		let count = operator.state_scan(&mut txn).await.unwrap().count();
 		assert_eq!(count, 0);
 	}
 

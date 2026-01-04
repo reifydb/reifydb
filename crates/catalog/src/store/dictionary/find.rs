@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
-	interface::{DictionaryDef, DictionaryId, MultiVersionValues, NamespaceId},
+	interface::{DictionaryDef, DictionaryId, NamespaceId},
 	key::{DictionaryKey, NamespaceDictionaryKey},
 };
 use reifydb_transaction::IntoStandardTransaction;
@@ -46,16 +47,24 @@ impl CatalogStore {
 	) -> crate::Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceDictionaryKey::full_scan(namespace), 1024).await?;
-		let Some(dictionary_id) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+		let mut stream = txn.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+
+		let mut found_dictionary_id = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let dictionary_name = dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
 			if name == dictionary_name {
-				Some(DictionaryId(dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID)))
-			} else {
-				None
+				found_dictionary_id = Some(DictionaryId(
+					dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID),
+				));
+				break;
 			}
-		}) else {
+		}
+
+		drop(stream);
+
+		let Some(dictionary_id) = found_dictionary_id else {
 			return Ok(None);
 		};
 

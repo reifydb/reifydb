@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{Key, NamespaceId, ViewDef, ViewKey, ViewKind};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -11,41 +12,50 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
-		let batch = txn.range_batch(ViewKey::full_scan(), 1024).await?;
+		// Collect view data first to avoid holding stream borrow
+		let mut view_data = Vec::new();
+		{
+			let mut stream = txn.range(ViewKey::full_scan(), 1024)?;
+			while let Some(entry) = stream.next().await {
+				let entry = entry?;
+				if let Some(key) = Key::decode(&entry.key) {
+					if let Key::View(view_key) = key {
+						let view_id = view_key.view;
 
-		for entry in batch.items {
-			if let Some(key) = Key::decode(&entry.key) {
-				if let Key::View(view_key) = key {
-					let view_id = view_key.view;
+						let namespace_id = NamespaceId(
+							view::LAYOUT.get_u64(&entry.values, view::NAMESPACE),
+						);
 
-					let namespace_id =
-						NamespaceId(view::LAYOUT.get_u64(&entry.values, view::NAMESPACE));
+						let name = view::LAYOUT.get_utf8(&entry.values, view::NAME).to_string();
 
-					let name = view::LAYOUT.get_utf8(&entry.values, view::NAME).to_string();
+						let kind_value = view::LAYOUT.get_u8(&entry.values, view::KIND);
+						let kind = if kind_value == 0 {
+							ViewKind::Deferred
+						} else {
+							ViewKind::Transactional
+						};
 
-					let kind_value = view::LAYOUT.get_u8(&entry.values, view::KIND);
-					let kind = if kind_value == 0 {
-						ViewKind::Deferred
-					} else {
-						ViewKind::Transactional
-					};
-
-					let primary_key = Self::find_primary_key(&mut txn, view_id).await?;
-
-					let columns = Self::list_columns(&mut txn, view_id).await?;
-
-					let view_def = ViewDef {
-						id: view_id,
-						namespace: namespace_id,
-						name,
-						kind,
-						columns,
-						primary_key,
-					};
-
-					result.push(view_def);
+						view_data.push((view_id, namespace_id, name, kind));
+					}
 				}
 			}
+		}
+
+		// Now fetch additional details for each view
+		for (view_id, namespace_id, name, kind) in view_data {
+			let primary_key = Self::find_primary_key(&mut txn, view_id).await?;
+			let columns = Self::list_columns(&mut txn, view_id).await?;
+
+			let view_def = ViewDef {
+				id: view_id,
+				namespace: namespace_id,
+				name,
+				kind,
+				columns,
+				primary_key,
+			};
+
+			result.push(view_def);
 		}
 
 		Ok(result)

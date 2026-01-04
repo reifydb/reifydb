@@ -71,7 +71,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::stateful::test_utils::test::{MaterializedCatalog, create_test_transaction},
+		operator::stateful::test_utils::test::create_test_transaction,
 		transaction::utils::test::{from_store, make_key, make_value},
 	};
 

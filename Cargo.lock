@@ -1778,6 +1778,7 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "crossbeam-skiplist",
+ "futures-util",
  "once_cell",
  "reifydb-abi",
  "reifydb-core",
@@ -1795,6 +1796,7 @@ name = "reifydb-cdc"
 version = "0.2.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",

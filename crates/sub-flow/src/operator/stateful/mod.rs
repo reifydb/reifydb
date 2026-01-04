@@ -50,6 +50,14 @@ impl StateIterator {
 			position: 0,
 		}
 	}
+
+	/// Create a new StateIterator from pre-decoded items
+	pub fn from_items(items: Vec<(EncodedKey, EncodedValues)>) -> Self {
+		Self {
+			items,
+			position: 0,
+		}
+	}
 }
 
 impl Iterator for StateIterator {

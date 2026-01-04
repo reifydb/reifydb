@@ -57,22 +57,6 @@ impl<'a> StandardTransaction<'a> {
 		}
 	}
 
-	/// Get a range batch (async method)
-	pub async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => txn.range_batch(range, batch_size).await,
-			Self::Query(txn) => txn.range_batch(range, batch_size).await,
-		}
-	}
-
-	/// Get a reverse range batch (async method)
-	pub async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		match self {
-			Self::Command(txn) => txn.range_rev_batch(range, batch_size).await,
-			Self::Query(txn) => txn.range_rev_batch(range, batch_size).await,
-		}
-	}
-
 	/// Get a prefix batch (async method)
 	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		match self {
@@ -98,26 +82,26 @@ impl<'a> StandardTransaction<'a> {
 	}
 
 	/// Create a streaming iterator for forward range queries.
-	pub fn range_stream(
+	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
 		match self {
-			StandardTransaction::Command(txn) => txn.range_stream(range, batch_size),
-			StandardTransaction::Query(txn) => Ok(txn.range_stream(range, batch_size)),
+			StandardTransaction::Command(txn) => txn.range(range, batch_size),
+			StandardTransaction::Query(txn) => Ok(txn.range(range, batch_size)),
 		}
 	}
 
 	/// Create a streaming iterator for reverse range queries.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
 		match self {
-			StandardTransaction::Command(txn) => txn.range_rev_stream(range, batch_size),
-			StandardTransaction::Query(txn) => Ok(txn.range_rev_stream(range, batch_size)),
+			StandardTransaction::Command(txn) => txn.range_rev(range, batch_size),
+			StandardTransaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
 		}
 	}
 }
@@ -155,30 +139,6 @@ pub trait IntoStandardTransaction: Send {
 		Self: Sized,
 	{
 		self.into_standard_transaction().contains_key(key).await
-	}
-
-	/// Get a range batch (async method)
-	async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch>
-	where
-		Self: Sized,
-	{
-		self.into_standard_transaction().range_batch(range, batch_size).await
-	}
-
-	/// Get a range batch with default batch size (1000)
-	async fn range(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch>
-	where
-		Self: Sized,
-	{
-		self.range_batch(range, 1000).await
-	}
-
-	/// Get a reverse range batch (async method)
-	async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch>
-	where
-		Self: Sized,
-	{
-		self.into_standard_transaction().range_rev_batch(range, batch_size).await
 	}
 
 	/// Get a prefix batch (async method)

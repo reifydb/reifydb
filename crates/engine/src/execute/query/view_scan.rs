@@ -79,7 +79,7 @@ impl QueryNode for ViewScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let mut stream = rx.range_stream(range, batch_size as usize)?;
+		let mut stream = rx.range(range, batch_size as usize)?;
 		for _ in 0..batch_size {
 			match stream.next().await {
 				Some(Ok(multi)) => {

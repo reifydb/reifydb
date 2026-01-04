@@ -11,6 +11,7 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
 
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
@@ -262,20 +263,28 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut kvs: Vec<(EncodedKey, Vec<u8>)> = Vec::new();
 				match &mut t {
 					TransactionHandle::Query(rx) => {
-						let batch = self
+						let items: Vec<_> = self
 							.runtime
-							.block_on(async { rx.range(EncodedKeyRange::all()).await })
+							.block_on(async {
+								rx.range(EncodedKeyRange::all(), 1024)
+									.try_collect()
+									.await
+							})
 							.unwrap();
-						for multi in batch.items {
+						for multi in items {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
 					TransactionHandle::Command(tx) => {
-						let batch = self
+						let items: Vec<_> = self
 							.runtime
-							.block_on(async { tx.range(EncodedKeyRange::all()).await })
+							.block_on(async {
+								tx.range(EncodedKeyRange::all(), 1024)
+									.try_collect()
+									.await
+							})
 							.unwrap();
-						for item in batch.items {
+						for item in items {
 							kvs.push((item.key.clone(), item.values.to_vec()));
 						}
 					}
@@ -303,32 +312,40 @@ impl<'a> testscript::Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Query(rx) => {
 						if !reverse {
-							let batch = self
+							let items: Vec<_> = self
 								.runtime
-								.block_on(async { rx.range(range).await })
+								.block_on(async {
+									rx.range(range, 1024).try_collect().await
+								})
 								.unwrap();
-							print_rx(&mut output, batch.items.into_iter())
+							print_rx(&mut output, items.into_iter())
 						} else {
-							let batch = self
+							let items: Vec<_> = self
 								.runtime
-								.block_on(async { rx.range_rev(range).await })
+								.block_on(async {
+									rx.range_rev(range, 1024).try_collect().await
+								})
 								.unwrap();
-							print_rx(&mut output, batch.items.into_iter())
+							print_rx(&mut output, items.into_iter())
 						}
 					}
 					TransactionHandle::Command(tx) => {
 						if !reverse {
-							let batch = self
+							let items: Vec<_> = self
 								.runtime
-								.block_on(async { tx.range(range).await })
+								.block_on(async {
+									tx.range(range, 1024).try_collect().await
+								})
 								.unwrap();
-							print_rx(&mut output, batch.items.into_iter())
+							print_rx(&mut output, items.into_iter())
 						} else {
-							let batch = self
+							let items: Vec<_> = self
 								.runtime
-								.block_on(async { tx.range_rev(range).await })
+								.block_on(async {
+									tx.range_rev(range, 1024).try_collect().await
+								})
 								.unwrap();
-							print_rx(&mut output, batch.items.into_iter())
+							print_rx(&mut output, items.into_iter())
 						}
 					}
 				}

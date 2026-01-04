@@ -12,15 +12,12 @@
 use std::{ops::RangeBounds, pin::Pin};
 
 use async_stream::try_stream;
-use futures_util::{Stream, StreamExt};
+use futures_util::{Stream, StreamExt, TryStreamExt};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::{
-	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
-	MultiVersionRangeRev,
-};
+use reifydb_store_transaction::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_type::{Error, util::hex};
 use tokio::spawn;
 use tracing::instrument;
@@ -147,71 +144,20 @@ impl CommandTransaction {
 		self.tm.remove(key)
 	}
 
-	/// Fetch a batch of values for the given range, merging pending writes with committed data.
-	pub async fn range_batch(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let version = self.tm.version();
-		let (mut marker, pw) = self.tm.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
-
-		marker.mark_range(range.clone());
-
-		// Get pending writes in the range
-		let pending: Vec<_> = pw.range((start, end)).collect();
-
-		// Get committed batch
-		let committed = MultiVersionRange::range_batch(&self.engine.store, range, version, batch_size).await?;
-
-		// Merge pending writes with committed data
-		let merged = merge_pending_with_committed(pending, committed);
-
-		Ok(merged)
-	}
-
-	pub async fn range(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		self.range_batch(range, 1024).await
-	}
-
-	/// Fetch a batch of values in reverse order, merging pending writes with committed data.
-	pub async fn range_rev_batch(
-		&mut self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let version = self.tm.version();
-		let (mut marker, pw) = self.tm.marker_with_pending_writes();
-		let start = range.start_bound();
-		let end = range.end_bound();
-
-		marker.mark_range(range.clone());
-
-		// Get pending writes in the range (reversed)
-		let pending: Vec<_> = pw.range((start, end)).rev().collect();
-
-		// Get committed batch in reverse
-		let committed =
-			MultiVersionRangeRev::range_rev_batch(&self.engine.store, range, version, batch_size).await?;
-
-		// Merge pending writes with committed data (in reverse order)
-		let merged = merge_pending_with_committed_rev(pending, committed);
-
-		Ok(merged)
-	}
-
-	pub async fn range_rev(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		self.range_rev_batch(range, 1024).await
-	}
-
 	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		self.range(EncodedKeyRange::prefix(prefix)).await
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		self.range_rev(EncodedKeyRange::prefix(prefix)).await
+		let items: Vec<_> = self.range_rev(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	/// Create a streaming iterator for forward range queries, merging pending writes.
@@ -220,7 +166,7 @@ impl CommandTransaction {
 	/// unique logical keys are collected. The stream yields individual entries
 	/// and maintains cursor state internally. Pending writes are merged with
 	/// committed storage data.
-	pub fn range_stream(
+	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
@@ -236,7 +182,7 @@ impl CommandTransaction {
 		let pending: Vec<(EncodedKey, Pending)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_stream = self.engine.store.range_stream(range, version, batch_size);
+		let storage_stream = self.engine.store.range(range, version, batch_size);
 
 		Box::pin(merge_pending_with_stream(pending, storage_stream, false))
 	}
@@ -246,7 +192,7 @@ impl CommandTransaction {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// in reverse key order and maintains cursor state internally.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
@@ -262,7 +208,7 @@ impl CommandTransaction {
 		let pending: Vec<(EncodedKey, Pending)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_stream = self.engine.store.range_rev_stream(range, version, batch_size);
+		let storage_stream = self.engine.store.range_rev(range, version, batch_size);
 
 		Box::pin(merge_pending_with_stream(pending, storage_stream, true))
 	}
@@ -271,144 +217,6 @@ impl CommandTransaction {
 use reifydb_core::interface::MultiVersionValues;
 
 use crate::multi::types::Pending;
-
-/// Merge pending writes with committed data in ascending key order.
-fn merge_pending_with_committed(
-	pending: Vec<(&EncodedKey, &Pending)>,
-	committed: MultiVersionBatch,
-) -> MultiVersionBatch {
-	use std::cmp::Ordering;
-
-	let mut result = Vec::new();
-	let mut pending_iter = pending.into_iter().peekable();
-	let mut committed_iter = committed.items.into_iter().peekable();
-
-	loop {
-		match (pending_iter.peek(), committed_iter.peek()) {
-			(Some((pending_key, _)), Some(committed)) => {
-				match (*pending_key).cmp(&committed.key) {
-					Ordering::Less => {
-						// Pending key is smaller, yield it
-						let (key, value) = pending_iter.next().unwrap();
-						if let Some(values) = value.values() {
-							result.push(MultiVersionValues {
-								key: key.clone(),
-								values: values.clone(),
-								version: value.version,
-							});
-						}
-					}
-					Ordering::Equal => {
-						// Keys match, prefer pending (skip committed)
-						committed_iter.next();
-						let (key, value) = pending_iter.next().unwrap();
-						if let Some(values) = value.values() {
-							result.push(MultiVersionValues {
-								key: key.clone(),
-								values: values.clone(),
-								version: value.version,
-							});
-						}
-					}
-					Ordering::Greater => {
-						// Committed key is smaller, yield it
-						result.push(committed_iter.next().unwrap());
-					}
-				}
-			}
-			(Some(_), None) => {
-				// Only pending left
-				let (key, value) = pending_iter.next().unwrap();
-				if let Some(values) = value.values() {
-					result.push(MultiVersionValues {
-						key: key.clone(),
-						values: values.clone(),
-						version: value.version,
-					});
-				}
-			}
-			(None, Some(_)) => {
-				// Only committed left
-				result.push(committed_iter.next().unwrap());
-			}
-			(None, None) => break,
-		}
-	}
-
-	MultiVersionBatch {
-		items: result,
-		has_more: committed.has_more,
-	}
-}
-
-/// Merge pending writes with committed data in descending key order.
-fn merge_pending_with_committed_rev(
-	pending: Vec<(&EncodedKey, &Pending)>,
-	committed: MultiVersionBatch,
-) -> MultiVersionBatch {
-	use std::cmp::Ordering;
-
-	let mut result = Vec::new();
-	let mut pending_iter = pending.into_iter().peekable();
-	let mut committed_iter = committed.items.into_iter().peekable();
-
-	loop {
-		match (pending_iter.peek(), committed_iter.peek()) {
-			(Some((pending_key, _)), Some(committed)) => {
-				match (*pending_key).cmp(&committed.key) {
-					Ordering::Greater => {
-						// Pending key is larger (comes first in reverse), yield it
-						let (key, value) = pending_iter.next().unwrap();
-						if let Some(values) = value.values() {
-							result.push(MultiVersionValues {
-								key: key.clone(),
-								values: values.clone(),
-								version: value.version,
-							});
-						}
-					}
-					Ordering::Equal => {
-						// Keys match, prefer pending (skip committed)
-						committed_iter.next();
-						let (key, value) = pending_iter.next().unwrap();
-						if let Some(values) = value.values() {
-							result.push(MultiVersionValues {
-								key: key.clone(),
-								values: values.clone(),
-								version: value.version,
-							});
-						}
-					}
-					Ordering::Less => {
-						// Committed key is larger (comes first in reverse), yield it
-						result.push(committed_iter.next().unwrap());
-					}
-				}
-			}
-			(Some(_), None) => {
-				// Only pending left
-				let (key, value) = pending_iter.next().unwrap();
-				if let Some(values) = value.values() {
-					result.push(MultiVersionValues {
-						key: key.clone(),
-						values: values.clone(),
-						version: value.version,
-					});
-				}
-			}
-			(None, Some(_)) => {
-				// Only committed left
-				result.push(committed_iter.next().unwrap());
-			}
-			(None, None) => break,
-		}
-	}
-
-	MultiVersionBatch {
-		items: result,
-		has_more: committed.has_more,
-	}
-}
 
 /// Merge pending writes with a storage stream.
 fn merge_pending_with_stream<'a, S>(

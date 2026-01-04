@@ -11,6 +11,7 @@
 
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
@@ -19,8 +20,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	HotConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-	StandardTransactionStore, TransactionStoreConfig, hot::HotStorage,
+	HotConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, StandardTransactionStore,
+	TransactionStoreConfig, hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -112,15 +113,21 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = self.runtime.block_on(async {
-						self.store.range(EncodedKeyRange::all(), version).await
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store
+							.range(EncodedKeyRange::all(), version, 1024)
+							.try_collect()
+							.await
 					})?;
-					print(&mut output, batch.items.into_iter())
+					print(&mut output, items.into_iter())
 				} else {
-					let batch = self.runtime.block_on(async {
-						self.store.range_rev(EncodedKeyRange::all(), version).await
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store
+							.range_rev(EncodedKeyRange::all(), version, 1024)
+							.try_collect()
+							.await
 					})?;
-					print(&mut output, batch.items.into_iter())
+					print(&mut output, items.into_iter())
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
@@ -134,15 +141,15 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.range(range, version).await })?;
-					print(&mut output, batch.items.into_iter())
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store.range(range, version, 1024).try_collect().await
+					})?;
+					print(&mut output, items.into_iter())
 				} else {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.range_rev(range, version).await })?;
-					print(&mut output, batch.items.into_iter())
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store.range_rev(range, version, 1024).try_collect().await
+					})?;
+					print(&mut output, items.into_iter())
 				};
 			}
 
@@ -155,16 +162,17 @@ impl testscript::Runner for Runner {
 					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
 				args.reject_rest()?;
 
+				let range = EncodedKeyRange::prefix(&prefix.0);
 				if !reverse {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.prefix(&prefix, version).await })?;
-					print(&mut output, batch.items.into_iter())
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store.range(range, version, 1024).try_collect().await
+					})?;
+					print(&mut output, items.into_iter())
 				} else {
-					let batch = self
-						.runtime
-						.block_on(async { self.store.prefix_rev(&prefix, version).await })?;
-					print(&mut output, batch.items.into_iter())
+					let items: Vec<_> = self.runtime.block_on(async {
+						self.store.range_rev(range, version, 1024).try_collect().await
+					})?;
+					print(&mut output, items.into_iter())
 				};
 			}
 

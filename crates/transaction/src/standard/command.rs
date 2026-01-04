@@ -320,26 +320,6 @@ impl StandardCommandTransaction {
 		self.cmd.as_mut().unwrap().contains_key(key).await
 	}
 
-	/// Get a range batch with default batch size (1000)
-	#[inline]
-	pub async fn range(&mut self, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
-		self.range_batch(range, 1000).await
-	}
-
-	/// Get a range batch
-	#[inline]
-	pub async fn range_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().range_batch(range, batch_size).await
-	}
-
-	/// Get a reverse range batch
-	#[inline]
-	pub async fn range_rev_batch(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<MultiVersionBatch> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().range_rev_batch(range, batch_size).await
-	}
-
 	/// Get a prefix batch
 	#[inline]
 	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
@@ -378,24 +358,24 @@ impl StandardCommandTransaction {
 
 	/// Create a streaming iterator for forward range queries.
 	#[inline]
-	pub fn range_stream(
+	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_stream(range, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
 
 	/// Create a streaming iterator for reverse range queries.
 	#[inline]
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().range_rev_stream(range, batch_size))
+		Ok(self.cmd.as_mut().unwrap().range_rev(range, batch_size))
 	}
 }
 

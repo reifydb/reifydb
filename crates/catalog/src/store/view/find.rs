@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{MultiVersionValues, NamespaceId, NamespaceViewKey, ViewDef, ViewId, ViewKey, ViewKind};
+use futures_util::StreamExt;
+use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewDef, ViewId, ViewKey, ViewKind};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{
@@ -44,16 +45,22 @@ impl CatalogStore {
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceViewKey::full_scan(namespace), 1024).await?;
-		let Some(view) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+		let mut stream = txn.range(NamespaceViewKey::full_scan(namespace), 1024)?;
+
+		let mut found_view = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
 			if name == view_name {
-				Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
-			} else {
-				None
+				found_view = Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)));
+				break;
 			}
-		}) else {
+		}
+
+		drop(stream);
+
+		let Some(view) = found_view else {
 			return Ok(None);
 		};
 

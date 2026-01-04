@@ -393,7 +393,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_range_rev_streaming_pagination() {
+	async fn test_range_reving_pagination() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Insert 10 entries

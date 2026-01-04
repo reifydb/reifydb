@@ -11,7 +11,7 @@
 
 use std::pin::Pin;
 
-use futures_util::Stream;
+use futures_util::{Stream, TryStreamExt};
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
 use reifydb_store_transaction::MultiVersionBatch;
 
@@ -57,41 +57,35 @@ impl QueryTransaction {
 	}
 
 	pub async fn scan(&self) -> crate::Result<MultiVersionBatch> {
-		self.range(EncodedKeyRange::all()).await
+		let items: Vec<_> = self.range(EncodedKeyRange::all(), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	pub async fn scan_rev(&self) -> crate::Result<MultiVersionBatch> {
-		self.range_rev(EncodedKeyRange::all()).await
-	}
-
-	pub async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<MultiVersionBatch> {
-		let version = self.tm.version();
-		Ok(self.engine.range_batch(range, version, batch_size).await?)
-	}
-
-	pub async fn range(&self, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
-		self.range_batch(range, 1024).await
-	}
-
-	pub async fn range_rev_batch(
-		&self,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> crate::Result<MultiVersionBatch> {
-		let version = self.tm.version();
-		Ok(self.engine.range_rev_batch(range, version, batch_size).await?)
-	}
-
-	pub async fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
-		self.range_rev_batch(range, 1024).await
+		let items: Vec<_> = self.range_rev(EncodedKeyRange::all(), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	pub async fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		self.range(EncodedKeyRange::prefix(prefix)).await
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	pub async fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		self.range_rev(EncodedKeyRange::prefix(prefix)).await
+		let items: Vec<_> = self.range_rev(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	/// Create a streaming iterator for forward range queries.
@@ -99,13 +93,13 @@ impl QueryTransaction {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// and maintains cursor state internally.
-	pub fn range_stream(
+	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
 		let version = self.tm.version();
-		Box::pin(self.engine.store.range_stream(range, version, batch_size))
+		Box::pin(self.engine.store.range(range, version, batch_size))
 	}
 
 	/// Create a streaming iterator for reverse range queries.
@@ -113,12 +107,12 @@ impl QueryTransaction {
 	/// This properly handles high version density by scanning until batch_size
 	/// unique logical keys are collected. The stream yields individual entries
 	/// in reverse key order and maintains cursor state internally.
-	pub fn range_rev_stream(
+	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
 		let version = self.tm.version();
-		Box::pin(self.engine.store.range_rev_stream(range, version, batch_size))
+		Box::pin(self.engine.store.range_rev(range, version, batch_size))
 	}
 }

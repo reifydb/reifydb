@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, NamespaceRingBufferKey, RingBufferDef, RingBufferId, RingBufferKey,
-	RingBufferMetadata, RingBufferMetadataKey,
+	NamespaceId, NamespaceRingBufferKey, RingBufferDef, RingBufferId, RingBufferKey, RingBufferMetadata,
+	RingBufferMetadataKey,
 };
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -68,18 +68,28 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
+		use futures_util::StreamExt;
+
 		let name = name.as_ref();
 		let mut txn = rx.into_standard_transaction();
-		let batch = txn.range_batch(NamespaceRingBufferKey::full_scan(namespace), 1024).await?;
-		let Some(ringbuffer) = batch.items.into_iter().find_map(|multi: MultiVersionValues| {
+		let mut stream = txn.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
+
+		let mut found_ringbuffer = None;
+		while let Some(entry) = stream.next().await {
+			let multi = entry?;
 			let row = &multi.values;
 			let ringbuffer_name = ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME);
 			if name == ringbuffer_name {
-				Some(RingBufferId(ringbuffer_namespace::LAYOUT.get_u64(row, ringbuffer_namespace::ID)))
-			} else {
-				None
+				found_ringbuffer = Some(RingBufferId(
+					ringbuffer_namespace::LAYOUT.get_u64(row, ringbuffer_namespace::ID),
+				));
+				break;
 			}
-		}) else {
+		}
+
+		drop(stream);
+
+		let Some(ringbuffer) = found_ringbuffer else {
 			return Ok(None);
 		};
 

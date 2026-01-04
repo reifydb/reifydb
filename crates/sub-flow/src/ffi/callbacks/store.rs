@@ -17,11 +17,13 @@
 
 use std::{ops::Bound, slice::from_raw_parts};
 
+use futures_util::StreamExt;
 use reifydb_abi::{
 	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
 	FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI,
 };
 use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
+use reifydb_store_transaction::MultiVersionBatch;
 use tokio::{runtime::Handle, task::block_in_place};
 
 use super::{
@@ -241,7 +243,19 @@ pub(super) extern "C" fn host_store_range(
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 
 		// Use block_in_place to call async methods from sync FFI context
-		let result = block_in_place(|| Handle::current().block_on(flow_txn.range(range)));
+		let result: Result<MultiVersionBatch, _> = block_in_place(|| {
+			Handle::current().block_on(async {
+				let mut stream = flow_txn.range(range, 1024);
+				let mut items = Vec::new();
+				while let Some(res) = stream.next().await {
+					items.push(res?);
+				}
+				Ok::<_, reifydb_core::Error>(MultiVersionBatch {
+					items,
+					has_more: false,
+				})
+			})
+		});
 
 		match result {
 			Ok(batch) => {

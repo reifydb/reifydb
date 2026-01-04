@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::FlowNodeId,
@@ -56,7 +57,15 @@ impl FlowTransaction {
 	))]
 	pub async fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
-		self.range(range).await
+		let mut stream = self.range(range, 1024);
+		let mut items = Vec::new();
+		while let Some(result) = stream.next().await {
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	/// Range query on state for a specific flow node
@@ -69,7 +78,15 @@ impl FlowTransaction {
 		range: EncodedKeyRange,
 	) -> crate::Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-		self.range(prefixed_range).await
+		let mut stream = self.range(prefixed_range, 1024);
+		let mut items = Vec::new();
+		while let Some(result) = stream.next().await {
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	/// Clear all state for a specific flow node
@@ -79,8 +96,15 @@ impl FlowTransaction {
 	))]
 	pub async fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
 		let range = FlowNodeStateKey::node_range(id);
-		let batch = self.range(range).await?;
-		let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
+		let keys_to_remove = {
+			let mut stream = self.range(range, 1024);
+			let mut keys = Vec::new();
+			while let Some(result) = stream.next().await {
+				let multi = result?;
+				keys.push(multi.key);
+			}
+			keys
+		};
 
 		let count = keys_to_remove.len();
 		for key in keys_to_remove {

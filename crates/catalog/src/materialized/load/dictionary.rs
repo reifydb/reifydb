@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{DictionaryDef, DictionaryId, DictionaryKey, MultiVersionValues, NamespaceId};
 use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
@@ -16,9 +17,10 @@ pub(crate) async fn load_dictionaries(
 ) -> crate::Result<()> {
 	let mut txn = rx.into_standard_transaction();
 	let range = DictionaryKey::full_scan();
-	let batch = txn.range_batch(range, 1024).await?;
+	let mut stream = txn.range(range, 1024)?;
 
-	for multi in batch.items {
+	while let Some(entry) = stream.next().await {
+		let multi = entry?;
 		let version = multi.version;
 		let dict_def = convert_dictionary(multi);
 		catalog.set_dictionary(dict_def.id, version, Some(dict_def));

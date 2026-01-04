@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::FlowNodeId,
@@ -87,8 +88,17 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 /// Scan all keys for this operator
 pub async fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
-	let batch = txn.range(range).await?;
-	Ok(super::StateIterator::new(batch))
+	let mut stream = txn.range(range, 1024);
+	let mut items = Vec::new();
+	while let Some(result) = stream.next().await {
+		let multi = result?;
+		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+			items.push((EncodedKey::new(state_key.key), multi.values));
+		} else {
+			items.push((multi.key, multi.values));
+		}
+	}
+	Ok(super::StateIterator::from_items(items))
 }
 
 /// Range query between keys
@@ -97,15 +107,32 @@ pub async fn state_range(
 	txn: &mut FlowTransaction,
 	range: EncodedKeyRange,
 ) -> crate::Result<super::StateIterator> {
-	let batch = txn.range(range.with_prefix(FlowNodeStateKey::encoded(id, vec![]))).await?;
-	Ok(super::StateIterator::new(batch))
+	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
+	let mut stream = txn.range(prefixed_range, 1024);
+	let mut items = Vec::new();
+	while let Some(result) = stream.next().await {
+		let multi = result?;
+		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+			items.push((EncodedKey::new(state_key.key), multi.values));
+		} else {
+			items.push((multi.key, multi.values));
+		}
+	}
+	Ok(super::StateIterator::from_items(items))
 }
 
 /// Clear all state for this operator
 pub async fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
-	let batch = txn.range(range).await?;
-	let keys_to_remove: Vec<_> = batch.items.into_iter().map(|multi| multi.key).collect();
+	let keys_to_remove = {
+		let mut stream = txn.range(range, 1024);
+		let mut keys = Vec::new();
+		while let Some(result) = stream.next().await {
+			let multi = result?;
+			keys.push(multi.key);
+		}
+		keys
+	};
 
 	for key in keys_to_remove {
 		txn.remove(&key)?;
@@ -259,6 +286,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_state_range_open_ended() {
+		use futures_util::StreamExt;
+
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
@@ -270,20 +299,36 @@ mod tests {
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
-		let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
-		let entries: Vec<_> = txn.range(prefixed_range).await.unwrap().items.into_iter().collect();
+		let entries = {
+			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
+			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
+			let mut stream = txn.range(prefixed_range, 1024);
+			let mut entries = Vec::new();
+			while let Some(result) = stream.next().await {
+				entries.push(result.unwrap());
+			}
+			entries
+		};
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
 		// Test with no end (to end)
-		let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
-		let entries: Vec<_> = txn.range(prefixed_range).await.unwrap().items.into_iter().collect();
+		let entries = {
+			let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
+			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
+			let mut stream = txn.range(prefixed_range, 1024);
+			let mut entries = Vec::new();
+			while let Some(result) = stream.next().await {
+				entries.push(result.unwrap());
+			}
+			entries
+		};
 		assert_eq!(entries.len(), 2); // range_3, range_4
 	}
 
 	#[tokio::test]
 	async fn test_state_clear() {
+		use futures_util::StreamExt;
+
 		let mut txn = create_test_transaction().await;
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
 		let node_id = FlowNodeId(1);
@@ -298,7 +343,13 @@ mod tests {
 		// Verify entries exist
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
-			txn.range(range).await.unwrap().items.into_iter().count()
+			let mut stream = txn.range(range, 1024);
+			let mut count = 0;
+			while let Some(result) = stream.next().await {
+				let _ = result.unwrap();
+				count += 1;
+			}
+			count
 		};
 		assert_eq!(count, 3);
 
@@ -308,7 +359,13 @@ mod tests {
 		// Verify all entries are removed
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
-			txn.range(range).await.unwrap().items.into_iter().count()
+			let mut stream = txn.range(range, 1024);
+			let mut count = 0;
+			while let Some(result) = stream.next().await {
+				let _ = result.unwrap();
+				count += 1;
+			}
+			count
 		};
 		assert_eq!(count, 0);
 	}

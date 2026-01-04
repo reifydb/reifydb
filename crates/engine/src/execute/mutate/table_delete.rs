@@ -3,6 +3,7 @@
 
 use std::{collections::Bound::Included, sync::Arc};
 
+use futures_util::TryStreamExt;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
@@ -153,13 +154,16 @@ impl Executor {
 			// Get primary key info if table has one
 			let pk_def = primary_key::get_primary_key(txn, &table).await?;
 
-			let batch = txn
-				.range(EncodedKeyRange::new(
-					Included(range.start().unwrap()),
-					Included(range.end().unwrap()),
-				))
+			let rows: Vec<_> = txn
+				.range(
+					EncodedKeyRange::new(
+						Included(range.start().unwrap()),
+						Included(range.end().unwrap()),
+					),
+					1024,
+				)?
+				.try_collect()
 				.await?;
-			let rows = batch.items;
 
 			for multi in rows {
 				// Remove primary key index entry if table has
