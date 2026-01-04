@@ -10,7 +10,7 @@ use std::{collections::HashMap, ops::Bound};
 use async_trait::async_trait;
 use reifydb_type::Result;
 
-use crate::tier::{RangeBatch, Store, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, Store, TierBackend, TierStorage};
 
 /// Cold storage tier.
 ///
@@ -29,21 +29,23 @@ impl TierStorage for ColdStorage {
 		match *self {}
 	}
 
-	async fn range_batch(
+	async fn range_next(
 		&self,
 		_table: Store,
-		_start: Bound<Vec<u8>>,
-		_end: Bound<Vec<u8>>,
+		_cursor: &mut RangeCursor,
+		_start: Bound<&[u8]>,
+		_end: Bound<&[u8]>,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}
 	}
 
-	async fn range_rev_batch(
+	async fn range_rev_next(
 		&self,
 		_table: Store,
-		_start: Bound<Vec<u8>>,
-		_end: Bound<Vec<u8>>,
+		_cursor: &mut RangeCursor,
+		_start: Bound<&[u8]>,
+		_end: Bound<&[u8]>,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}

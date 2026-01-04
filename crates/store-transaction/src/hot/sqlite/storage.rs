@@ -22,7 +22,7 @@ use super::{
 	query::build_range_query,
 	tables::table_id_to_name,
 };
-use crate::tier::{RangeBatch, RawEntry, Store, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, RawEntry, Store, TierBackend, TierStorage};
 
 /// SQLite-based primitive storage implementation.
 ///
@@ -191,22 +191,33 @@ impl TierStorage for SqlitePrimitiveStorage {
 		.map_err(|e| error!(internal(format!("Failed to write_all: {}", e))))
 	}
 
-	#[instrument(name = "store::sqlite::range_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_batch(
+	#[instrument(name = "store::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	async fn range_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
+		if cursor.exhausted {
+			return Ok(RangeBatch::empty());
+		}
+
 		let table_name = table_id_to_name(table);
+
+		// Determine effective start bound based on cursor state
+		let effective_start: Bound<Vec<u8>> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.clone()),
+			None => bound_to_owned(start),
+		};
+		let end_owned = bound_to_owned(end);
 
 		let conn = self.inner.conn.read().await;
 		let result = conn
 			.call(move |conn| -> rusqlite::Result<RangeBatch> {
-				// Build query with limit + 1 to detect has_more
-				let start_ref = bound_as_ref(&start);
-				let end_ref = bound_as_ref(&end);
+				let start_ref = bound_as_ref(&effective_start);
+				let end_ref = bound_as_ref(&end_owned);
 				let (query, params) =
 					build_range_query(&table_name, start_ref, end_ref, false, batch_size + 1);
 
@@ -240,28 +251,51 @@ impl TierStorage for SqlitePrimitiveStorage {
 			.await;
 
 		match result {
-			Ok(batch) => Ok(batch),
-			Err(e) if e.to_string().contains("no such table") => Ok(RangeBatch::empty()),
+			Ok(batch) => {
+				// Update cursor
+				if let Some(last_entry) = batch.entries.last() {
+					cursor.last_key = Some(last_entry.key.clone());
+				}
+				if !batch.has_more {
+					cursor.exhausted = true;
+				}
+				Ok(batch)
+			}
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				Ok(RangeBatch::empty())
+			}
 			Err(e) => Err(error!(internal(format!("Failed to query range: {}", e)))),
 		}
 	}
 
-	#[instrument(name = "store::sqlite::range_rev_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_rev_batch(
+	#[instrument(name = "store::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
+	async fn range_rev_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
+		if cursor.exhausted {
+			return Ok(RangeBatch::empty());
+		}
+
 		let table_name = table_id_to_name(table);
+
+		// For reverse iteration, effective end bound based on cursor
+		let start_owned = bound_to_owned(start);
+		let effective_end: Bound<Vec<u8>> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.clone()),
+			None => bound_to_owned(end),
+		};
 
 		let conn = self.inner.conn.read().await;
 		let result = conn
 			.call(move |conn| -> rusqlite::Result<RangeBatch> {
-				// Build query with limit + 1 to detect has_more
-				let start_ref = bound_as_ref(&start);
-				let end_ref = bound_as_ref(&end);
+				let start_ref = bound_as_ref(&start_owned);
+				let end_ref = bound_as_ref(&effective_end);
 				let (query, params) =
 					build_range_query(&table_name, start_ref, end_ref, true, batch_size + 1);
 
@@ -295,8 +329,20 @@ impl TierStorage for SqlitePrimitiveStorage {
 			.await;
 
 		match result {
-			Ok(batch) => Ok(batch),
-			Err(e) if e.to_string().contains("no such table") => Ok(RangeBatch::empty()),
+			Ok(batch) => {
+				// Update cursor
+				if let Some(last_entry) = batch.entries.last() {
+					cursor.last_key = Some(last_entry.key.clone());
+				}
+				if !batch.has_more {
+					cursor.exhausted = true;
+				}
+				Ok(batch)
+			}
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				Ok(RangeBatch::empty())
+			}
 			Err(e) => Err(error!(internal(format!("Failed to query range: {}", e)))),
 		}
 	}
@@ -347,6 +393,15 @@ fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {
 		Bound::Included(v) => Bound::Included(v.as_slice()),
 		Bound::Excluded(v) => Bound::Excluded(v.as_slice()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+/// Convert Bound<&[u8]> to Bound<Vec<u8>>
+fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
+	match bound {
+		Bound::Included(v) => Bound::Included(v.to_vec()),
+		Bound::Excluded(v) => Bound::Excluded(v.to_vec()),
 		Bound::Unbounded => Bound::Unbounded,
 	}
 }
@@ -434,42 +489,51 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_range_batch() {
+	async fn test_range_next() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
 		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
 		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
 
-		let batch = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let mut cursor = RangeCursor::new();
+		let batch = storage
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.await
+			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
+		assert!(cursor.exhausted);
 		assert_eq!(batch.entries[0].key, b"a".to_vec());
 		assert_eq!(batch.entries[1].key, b"b".to_vec());
 		assert_eq!(batch.entries[2].key, b"c".to_vec());
 	}
 
 	#[tokio::test]
-	async fn test_range_rev_batch() {
+	async fn test_range_rev_next() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
 		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
 		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
 
-		let batch =
-			storage.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let mut cursor = RangeCursor::new();
+		let batch = storage
+			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.await
+			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
+		assert!(cursor.exhausted);
 		assert_eq!(batch.entries[0].key, b"c".to_vec());
 		assert_eq!(batch.entries[1].key, b"b".to_vec());
 		assert_eq!(batch.entries[2].key, b"a".to_vec());
 	}
 
 	#[tokio::test]
-	async fn test_range_batch_pagination() {
+	async fn test_range_streaming_pagination() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		// Insert 10 entries
@@ -479,27 +543,34 @@ mod tests {
 				.unwrap();
 		}
 
+		// Use a single cursor to stream through all entries
+		let mut cursor = RangeCursor::new();
+
 		// First batch of 3
-		let batch1 = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+		let batch1 = storage
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.await
+			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
+		assert!(!cursor.exhausted);
 		assert_eq!(batch1.entries[0].key, vec![0]);
 		assert_eq!(batch1.entries[2].key, vec![2]);
 
-		// Next batch using last key
-		let last_key = batch1.entries.last().unwrap().key.clone();
+		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
-			.range_batch(Store::Multi, Bound::Excluded(last_key), Bound::Unbounded, 3)
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
+		assert!(!cursor.exhausted);
 		assert_eq!(batch2.entries[0].key, vec![3]);
 		assert_eq!(batch2.entries[2].key, vec![5]);
 	}
 
 	#[tokio::test]
-	async fn test_range_rev_batch_pagination() {
+	async fn test_range_rev_streaming_pagination() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		// Insert 10 entries
@@ -509,22 +580,28 @@ mod tests {
 				.unwrap();
 		}
 
+		// Use a single cursor to stream in reverse
+		let mut cursor = RangeCursor::new();
+
 		// First batch of 3 (reverse)
-		let batch1 =
-			storage.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+		let batch1 = storage
+			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.await
+			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
+		assert!(!cursor.exhausted);
 		assert_eq!(batch1.entries[0].key, vec![9]);
 		assert_eq!(batch1.entries[2].key, vec![7]);
 
-		// Next batch using last key (reverse continues from before last key)
-		let last_key = batch1.entries.last().unwrap().key.clone();
+		// Second batch
 		let batch2 = storage
-			.range_rev_batch(Store::Multi, Bound::Unbounded, Bound::Excluded(last_key), 3)
+			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
+		assert!(!cursor.exhausted);
 		assert_eq!(batch2.entries[0].key, vec![6]);
 		assert_eq!(batch2.entries[2].key, vec![4]);
 	}
@@ -543,8 +620,12 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		// Should return empty batch for non-existent table, not error
-		let batch = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let mut cursor = RangeCursor::new();
+		let batch = storage
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.await
+			.unwrap();
 		assert!(batch.entries.is_empty());
-		assert!(!batch.has_more);
+		assert!(cursor.exhausted);
 	}
 }

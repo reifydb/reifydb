@@ -18,7 +18,7 @@ use super::StandardTransactionStore;
 use crate::{
 	SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	tier::{Store, TierStorage},
+	tier::{RangeCursor, Store, TierStorage},
 };
 
 #[async_trait]
@@ -137,20 +137,29 @@ impl SingleVersionRange for StandardTransactionStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		// Helper to process a batch from a tier
-		async fn process_tier_batch<S: TierStorage>(
+		// Helper to process all batches from a tier until exhausted
+		async fn process_tier<S: TierStorage>(
 			storage: &S,
 			table: Store,
-			start: Bound<Vec<u8>>,
-			end: Bound<Vec<u8>>,
-			batch_size: u64,
+			start: &Bound<Vec<u8>>,
+			end: &Bound<Vec<u8>>,
 			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
 		) -> crate::Result<()> {
-			let batch = storage.range_batch(table, start, end, batch_size as usize).await?;
+			let mut cursor = RangeCursor::new();
 
-			for entry in batch.entries {
-				// Only insert if not already present (first tier wins)
-				all_entries.entry(entry.key).or_insert(entry.value);
+			loop {
+				let batch = storage
+					.range_next(table, &mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)
+					.await?;
+
+				for entry in batch.entries {
+					// Only insert if not already present (first tier wins)
+					all_entries.entry(entry.key).or_insert(entry.value);
+				}
+
+				if cursor.exhausted {
+					break;
+				}
 			}
 
 			Ok(())
@@ -158,15 +167,13 @@ impl SingleVersionRange for StandardTransactionStore {
 
 		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			process_tier_batch(hot, table, start.clone(), end.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier(hot, table, &start, &end, &mut all_entries).await?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier_batch(warm, table, start.clone(), end.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier(warm, table, &start, &end, &mut all_entries).await?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier_batch(cold, table, start, end, batch_size, &mut all_entries).await?;
+			process_tier(cold, table, &start, &end, &mut all_entries).await?;
 		}
 
 		// Convert to SingleVersionValues, filtering out tombstones
@@ -199,20 +206,35 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		// Helper to process a reverse batch from a tier
-		async fn process_tier_batch_rev<S: TierStorage>(
+		// Helper to process all reverse batches from a tier until exhausted
+		async fn process_tier_rev<S: TierStorage>(
 			storage: &S,
 			table: Store,
-			start: Bound<Vec<u8>>,
-			end: Bound<Vec<u8>>,
-			batch_size: u64,
+			start: &Bound<Vec<u8>>,
+			end: &Bound<Vec<u8>>,
 			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
 		) -> crate::Result<()> {
-			let batch = storage.range_rev_batch(table, start, end, batch_size as usize).await?;
+			let mut cursor = RangeCursor::new();
 
-			for entry in batch.entries {
-				// Only insert if not already present (first tier wins)
-				all_entries.entry(entry.key).or_insert(entry.value);
+			loop {
+				let batch = storage
+					.range_rev_next(
+						table,
+						&mut cursor,
+						bound_as_ref(start),
+						bound_as_ref(end),
+						4096,
+					)
+					.await?;
+
+				for entry in batch.entries {
+					// Only insert if not already present (first tier wins)
+					all_entries.entry(entry.key).or_insert(entry.value);
+				}
+
+				if cursor.exhausted {
+					break;
+				}
 			}
 
 			Ok(())
@@ -220,15 +242,13 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 
 		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			process_tier_batch_rev(hot, table, start.clone(), end.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier_rev(hot, table, &start, &end, &mut all_entries).await?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier_batch_rev(warm, table, start.clone(), end.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier_rev(warm, table, &start, &end, &mut all_entries).await?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier_batch_rev(cold, table, start, end, batch_size, &mut all_entries).await?;
+			process_tier_rev(cold, table, &start, &end, &mut all_entries).await?;
 		}
 
 		// Convert to SingleVersionValues in reverse order, filtering out tombstones
@@ -254,6 +274,15 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 }
 
 impl SingleVersionStore for StandardTransactionStore {}
+
+/// Helper to convert owned Bound to ref
+fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Included(v) => Bound::Included(v.as_slice()),
+		Bound::Excluded(v) => Bound::Excluded(v.as_slice()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
 
 /// Convert EncodedKeyRange to primitive storage bounds (owned for async)
 fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {

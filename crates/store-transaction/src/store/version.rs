@@ -14,7 +14,7 @@ use std::ops::Bound;
 use reifydb_core::CommitVersion;
 use reifydb_type::Result;
 
-use crate::tier::{Store, TierStorage};
+use crate::tier::{RangeCursor, Store, TierStorage};
 
 /// Size of version suffix in bytes (terminator + u64 big-endian)
 pub(crate) const VERSION_SIZE: usize = 10; // 2 bytes terminator + 8 bytes version
@@ -165,7 +165,10 @@ pub async fn get_at_version<S: TierStorage>(
 	let end = encode_versioned_key(key, CommitVersion(0));
 
 	// Forward scan finds newest version first (just need 1 entry)
-	let batch = storage.range_batch(table, Bound::Included(start), Bound::Included(end), 1).await?;
+	let mut cursor = RangeCursor::new();
+	let batch = storage
+		.range_next(table, &mut cursor, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)
+		.await?;
 
 	if let Some(entry) = batch.entries.first() {
 		// Verify this entry is for our key
@@ -196,7 +199,10 @@ pub async fn get_latest_version<S: TierStorage>(
 	let (start, end) = key_version_range(key);
 
 	// Forward scan finds newest version first (just need 1 entry)
-	let batch = storage.range_batch(table, Bound::Included(start), Bound::Included(end), 1).await?;
+	let mut cursor = RangeCursor::new();
+	let batch = storage
+		.range_next(table, &mut cursor, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)
+		.await?;
 
 	if let Some(entry) = batch.entries.first() {
 		if let Some(entry_key) = extract_key(&entry.key) {

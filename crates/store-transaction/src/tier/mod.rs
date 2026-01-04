@@ -62,6 +62,39 @@ impl RangeBatch {
 	}
 }
 
+/// Cursor state for streaming range queries.
+///
+/// Tracks position within a range scan, enabling efficient continuation
+/// across multiple batches without re-scanning from the beginning.
+#[derive(Debug, Clone)]
+pub struct RangeCursor {
+	/// Last key seen in the previous batch (for Bound::Excluded continuation)
+	pub last_key: Option<Vec<u8>>,
+	/// Whether this stream is exhausted
+	pub exhausted: bool,
+}
+
+impl RangeCursor {
+	/// Create a new cursor at the start of a range.
+	pub fn new() -> Self {
+		Self {
+			last_key: None,
+			exhausted: false,
+		}
+	}
+
+	/// Check if the stream is exhausted.
+	pub fn is_exhausted(&self) -> bool {
+		self.exhausted
+	}
+}
+
+impl Default for RangeCursor {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 /// The tier storage trait.
 ///
 /// This is intentionally minimal - just raw bytes in/out.
@@ -84,29 +117,33 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// This ensures durability and atomicity for multi-table commits.
 	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
-	/// Fetch a batch of entries in key order (ascending).
+	/// Fetch the next batch of entries in key order (ascending).
 	///
-	/// Returns up to `batch_size` entries. The `has_more` field indicates
-	/// whether there are more entries after this batch. Use the last key
-	/// from the batch as the `start` bound (excluded) for the next call.
-	async fn range_batch(
+	/// Uses the cursor to track position. On first call, cursor should be new.
+	/// On subsequent calls, pass the same cursor to continue from where left off.
+	/// Returns up to `batch_size` entries. The cursor is updated with the last
+	/// key seen, and `exhausted` is set to true when no more entries remain.
+	async fn range_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
-	/// Fetch a batch of entries in reverse key order (descending).
+	/// Fetch the next batch of entries in reverse key order (descending).
 	///
-	/// Returns up to `batch_size` entries. The `has_more` field indicates
-	/// whether there are more entries after this batch. Use the last key
-	/// from the batch as the `end` bound (excluded) for the next call.
-	async fn range_rev_batch(
+	/// Uses the cursor to track position. On first call, cursor should be new.
+	/// On subsequent calls, pass the same cursor to continue from where left off.
+	/// Returns up to `batch_size` entries. The cursor is updated with the last
+	/// key seen, and `exhausted` is set to true when no more entries remain.
+	async fn range_rev_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 

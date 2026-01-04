@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use reifydb_type::Result;
 
 use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
-use crate::tier::{RangeBatch, Store, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, Store, TierBackend, TierStorage};
 
 /// Hot storage tier.
 ///
@@ -71,30 +71,32 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	async fn range_batch(
+	async fn range_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_batch(table, start, end, batch_size).await,
-			Self::Sqlite(s) => s.range_batch(table, start, end, batch_size).await,
+			Self::Memory(s) => s.range_next(table, cursor, start, end, batch_size).await,
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, batch_size).await,
 		}
 	}
 
 	#[inline]
-	async fn range_rev_batch(
+	async fn range_rev_next(
 		&self,
 		table: Store,
-		start: Bound<Vec<u8>>,
-		end: Bound<Vec<u8>>,
+		cursor: &mut RangeCursor,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_rev_batch(table, start, end, batch_size).await,
-			Self::Sqlite(s) => s.range_rev_batch(table, start, end, batch_size).await,
+			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, batch_size).await,
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, batch_size).await,
 		}
 	}
 
@@ -142,7 +144,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_range_batch_memory() {
+	async fn test_range_next_memory() {
 		let storage = HotStorage::memory().await;
 
 		storage.set(HashMap::from([(
@@ -156,14 +158,19 @@ mod tests {
 		.await
 		.unwrap();
 
-		let batch = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let mut cursor = RangeCursor::new();
+		let batch = storage
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.await
+			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
+		assert!(cursor.exhausted);
 	}
 
 	#[tokio::test]
-	async fn test_range_batch_sqlite() {
+	async fn test_range_next_sqlite() {
 		let storage = HotStorage::sqlite_in_memory().await;
 
 		storage.set(HashMap::from([(
@@ -177,9 +184,14 @@ mod tests {
 		.await
 		.unwrap();
 
-		let batch = storage.range_batch(Store::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
+		let mut cursor = RangeCursor::new();
+		let batch = storage
+			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.await
+			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
+		assert!(cursor.exhausted);
 	}
 }

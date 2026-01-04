@@ -12,7 +12,7 @@ use std::ops::Bound;
 use reifydb_core::CommitVersion;
 
 use super::version::{encode_versioned_key, extract_version, key_version_range};
-use crate::tier::{Store, TierStorage};
+use crate::tier::{RangeCursor, Store, TierStorage};
 
 /// Information about an entry to be dropped.
 #[derive(Debug, Clone)]
@@ -44,12 +44,27 @@ pub(crate) async fn find_keys_to_drop<S: TierStorage>(
 	// Collect all versioned keys for this logical key, including value sizes
 	let mut versioned_entries: Vec<(Vec<u8>, CommitVersion, u64)> = Vec::new();
 
-	let batch = storage.range_batch(table, Bound::Included(start), Bound::Included(end), 1024).await?;
+	let mut cursor = RangeCursor::new();
+	loop {
+		let batch = storage
+			.range_next(
+				table,
+				&mut cursor,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				1024,
+			)
+			.await?;
 
-	for entry in batch.entries {
-		if let Some(entry_version) = extract_version(&entry.key) {
-			let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-			versioned_entries.push((entry.key, entry_version, value_bytes));
+		for entry in batch.entries {
+			if let Some(entry_version) = extract_version(&entry.key) {
+				let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
+				versioned_entries.push((entry.key, entry_version, value_bytes));
+			}
+		}
+
+		if cursor.exhausted {
+			break;
 		}
 	}
 

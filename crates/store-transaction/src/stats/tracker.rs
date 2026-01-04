@@ -22,7 +22,7 @@ use super::{
 };
 use crate::{
 	stats::parser::extract_object_id,
-	tier::{Store, TierStorage},
+	tier::{RangeCursor, Store, TierStorage},
 };
 
 /// Configuration for storage tracking.
@@ -428,17 +428,30 @@ impl StorageTracker {
 			*last = last.saturating_add(1);
 		}
 
-		let batch = storage
-			.range_batch(Store::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
-			.await?;
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch = storage
+				.range_next(
+					Store::Single,
+					&mut cursor,
+					Bound::Included(type_prefix.as_slice()),
+					Bound::Excluded(end_prefix.as_slice()),
+					1000,
+				)
+				.await?;
 
-		for entry in batch.entries {
-			if let Some((tier, kind)) = decode_type_stats_key(&entry.key) {
-				if let Some(value) = entry.value {
-					if let Some(stats) = decode_stats(&value) {
-						by_type.insert((tier, kind), stats);
+			for entry in batch.entries {
+				if let Some((tier, kind)) = decode_type_stats_key(&entry.key) {
+					if let Some(value) = entry.value {
+						if let Some(stats) = decode_stats(&value) {
+							by_type.insert((tier, kind), stats);
+						}
 					}
 				}
+			}
+
+			if cursor.exhausted {
+				break;
 			}
 		}
 
@@ -449,17 +462,30 @@ impl StorageTracker {
 			*last = last.saturating_add(1);
 		}
 
-		let batch = storage
-			.range_batch(Store::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
-			.await?;
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch = storage
+				.range_next(
+					Store::Single,
+					&mut cursor,
+					Bound::Included(object_prefix.as_slice()),
+					Bound::Excluded(end_prefix.as_slice()),
+					1000,
+				)
+				.await?;
 
-		for entry in batch.entries {
-			if let Some((tier, object_id)) = decode_object_stats_key(&entry.key) {
-				if let Some(value) = entry.value {
-					if let Some(stats) = decode_stats(&value) {
-						by_object.insert((tier, object_id), stats);
+			for entry in batch.entries {
+				if let Some((tier, object_id)) = decode_object_stats_key(&entry.key) {
+					if let Some(value) = entry.value {
+						if let Some(stats) = decode_stats(&value) {
+							by_object.insert((tier, object_id), stats);
+						}
 					}
 				}
+			}
+
+			if cursor.exhausted {
+				break;
 			}
 		}
 

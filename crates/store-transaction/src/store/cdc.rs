@@ -9,7 +9,7 @@ use reifydb_core::{CommitVersion, CowVec, interface::Cdc, value::encoded::Encode
 use crate::{
 	CdcStore, StandardTransactionStore,
 	cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, InternalCdc, codec::decode_internal_cdc, converter::CdcConverter},
-	tier::{Store, TierStorage},
+	tier::{RangeCursor, Store, TierStorage},
 };
 
 /// Encode a version as a key for CDC storage
@@ -87,60 +87,79 @@ impl CdcRange for StandardTransactionStore {
 		let mut all_entries: BTreeMap<CommitVersion, InternalCdc> = BTreeMap::new();
 
 		let (start_key, end_key) = make_cdc_range_bounds(start, end);
+		let batch_size = batch_size as usize;
 
-		// Helper to process a batch from a tier
-		async fn process_tier_batch<S: TierStorage>(
+		// Helper to process batches from a tier until exhausted or enough entries
+		async fn process_tier<S: TierStorage>(
 			storage: &S,
-			start: Bound<Vec<u8>>,
-			end: Bound<Vec<u8>>,
-			batch_size: u64,
+			start_key: Bound<&[u8]>,
+			end_key: Bound<&[u8]>,
 			all_entries: &mut BTreeMap<CommitVersion, InternalCdc>,
 		) -> reifydb_type::Result<()> {
-			let batch = storage.range_batch(Store::Cdc, start, end, batch_size as usize).await?;
+			let mut cursor = RangeCursor::new();
 
-			for entry in batch.entries {
-				if let Some(version) = key_to_version(&entry.key) {
-					if let Some(value) = entry.value {
-						let encoded = EncodedValues(CowVec::new(value));
-						if let Ok(internal) = decode_internal_cdc(&encoded) {
-							// Only insert if not already present (first tier wins)
-							all_entries.entry(version).or_insert(internal);
+			loop {
+				let batch =
+					storage.range_next(Store::Cdc, &mut cursor, start_key, end_key, 4096).await?;
+
+				for entry in batch.entries {
+					if let Some(version) = key_to_version(&entry.key) {
+						if let Some(value) = entry.value {
+							let encoded = EncodedValues(CowVec::new(value));
+							if let Ok(internal) = decode_internal_cdc(&encoded) {
+								// Only insert if not already present (first tier wins)
+								all_entries.entry(version).or_insert(internal);
+							}
 						}
 					}
+				}
+
+				if cursor.exhausted {
+					break;
 				}
 			}
 
 			Ok(())
 		}
 
+		let start_bound = bound_as_ref(&start_key);
+		let end_bound = bound_as_ref(&end_key);
+
 		// Process each tier (first one with a value for a version wins)
 		if let Some(hot) = &self.hot {
-			process_tier_batch(hot, start_key.clone(), end_key.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier(hot, start_bound, end_bound, &mut all_entries).await?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier_batch(warm, start_key.clone(), end_key.clone(), batch_size, &mut all_entries)
-				.await?;
+			process_tier(warm, start_bound, end_bound, &mut all_entries).await?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier_batch(cold, start_key, end_key, batch_size, &mut all_entries).await?;
+			process_tier(cold, start_bound, end_bound, &mut all_entries).await?;
 		}
 
 		// Convert to public Cdc
 		let mut items: Vec<Cdc> = Vec::new();
-		for (_, internal) in all_entries.into_iter().take(batch_size as usize) {
+		for (_, internal) in all_entries.into_iter().take(batch_size) {
 			match internal_to_public_cdc(internal, self).await {
 				Ok(cdc) => items.push(cdc),
 				Err(err) => unreachable!("cdc conversion should never fail: {}", err),
 			}
 		}
 
-		let has_more = items.len() >= batch_size as usize;
+		let has_more = items.len() >= batch_size;
 
 		Ok(CdcBatch {
 			items,
 			has_more,
 		})
+	}
+}
+
+/// Helper to convert owned Bound to ref
+fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Included(v) => Bound::Included(v.as_slice()),
+		Bound::Excluded(v) => Bound::Excluded(v.as_slice()),
+		Bound::Unbounded => Bound::Unbounded,
 	}
 }
 
