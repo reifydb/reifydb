@@ -357,7 +357,185 @@ impl PlanCompiler {
 				alias,
 				..
 			} => alias.to_string(),
-			_ => "<expr>".to_string(),
+			_ => stringify_plan_expr(expr),
+		}
+	}
+}
+
+/// Recursively stringify a PlanExpr to create a column name.
+/// Similar to legacy `simplified_name()` function.
+fn stringify_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> String {
+	match expr {
+		// Literals
+		PlanExpr::LiteralUndefined(_) => "undefined".to_string(),
+		PlanExpr::LiteralBool(value, _) => value.to_string(),
+		PlanExpr::LiteralInt(value, _) => value.to_string(),
+		PlanExpr::LiteralFloat(value, _) => value.to_string(),
+		PlanExpr::LiteralString(value, _) => value.to_string(),
+		PlanExpr::LiteralBytes(value, _) => format!("{:?}", value),
+
+		// Identifiers
+		PlanExpr::Column(col) => col.name().to_string(),
+		PlanExpr::Variable(var) => var.name.to_string(),
+		PlanExpr::Rownum(_) => "rownum".to_string(),
+		PlanExpr::Wildcard(_) => "*".to_string(),
+
+		// Binary operators
+		PlanExpr::Binary {
+			op,
+			left,
+			right,
+			..
+		} => {
+			let left_str = stringify_plan_expr(left);
+			let right_str = stringify_plan_expr(right);
+			let op_str = match op {
+				BinaryPlanOp::Add => "+",
+				BinaryPlanOp::Sub => "-",
+				BinaryPlanOp::Mul => "*",
+				BinaryPlanOp::Div => "/",
+				BinaryPlanOp::Rem => "%",
+				BinaryPlanOp::Eq => "==",
+				BinaryPlanOp::Ne => "!=",
+				BinaryPlanOp::Lt => "<",
+				BinaryPlanOp::Le => "<=",
+				BinaryPlanOp::Gt => ">",
+				BinaryPlanOp::Ge => ">=",
+				BinaryPlanOp::And => "and",
+				BinaryPlanOp::Or => "or",
+				BinaryPlanOp::Xor => "xor",
+				BinaryPlanOp::Concat => "||",
+			};
+			format!("{}{}{}", left_str, op_str, right_str)
+		}
+
+		// Unary operators
+		PlanExpr::Unary {
+			op,
+			operand,
+			..
+		} => {
+			let operand_str = stringify_plan_expr(operand);
+			match op {
+				UnaryPlanOp::Not => format!("!{}", operand_str),
+				UnaryPlanOp::Neg => format!("-{}", operand_str),
+				UnaryPlanOp::Plus => format!("+{}", operand_str),
+			}
+		}
+
+		// Complex expressions
+		PlanExpr::Between {
+			expr,
+			low,
+			high,
+			..
+		} => {
+			format!(
+				"{} BETWEEN {} AND {}",
+				stringify_plan_expr(expr),
+				stringify_plan_expr(low),
+				stringify_plan_expr(high)
+			)
+		}
+
+		PlanExpr::In {
+			expr,
+			list,
+			..
+		} => {
+			let items = list.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("{} IN ({})", stringify_plan_expr(expr), items)
+		}
+
+		PlanExpr::Cast {
+			expr,
+			..
+		} => {
+			// For cast, just use the inner expression name
+			stringify_plan_expr(expr)
+		}
+
+		PlanExpr::Call {
+			function,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", function.name, args)
+		}
+
+		PlanExpr::Aggregate {
+			function,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", function.name, args)
+		}
+
+		PlanExpr::Conditional {
+			condition,
+			then_expr,
+			else_expr,
+			..
+		} => {
+			format!(
+				"if({},{},{})",
+				stringify_plan_expr(condition),
+				stringify_plan_expr(then_expr),
+				stringify_plan_expr(else_expr)
+			)
+		}
+
+		PlanExpr::Subquery(_) => "subquery".to_string(),
+		PlanExpr::Exists {
+			..
+		} => "exists".to_string(),
+		PlanExpr::InSubquery {
+			..
+		} => "in_subquery".to_string(),
+
+		PlanExpr::List(items, _) => {
+			let items_str =
+				items.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("[{}]", items_str)
+		}
+
+		PlanExpr::Tuple(items, _) => {
+			let items_str =
+				items.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("({})", items_str)
+		}
+
+		PlanExpr::Record(fields, _) => {
+			let fields_str = fields
+				.iter()
+				.map(|(name, expr)| format!("{}:{}", name, stringify_plan_expr(expr)))
+				.collect::<Vec<_>>()
+				.join(",");
+			format!("{{{}}}", fields_str)
+		}
+
+		PlanExpr::Alias {
+			alias,
+			..
+		} => alias.to_string(),
+
+		PlanExpr::FieldAccess {
+			base,
+			field,
+			..
+		} => {
+			format!("{}.{}", stringify_plan_expr(base), field)
+		}
+
+		PlanExpr::CallScriptFunction {
+			name,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", name, args)
 		}
 	}
 }

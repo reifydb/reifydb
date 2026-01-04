@@ -13,7 +13,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
-	CommitVersion, Frame,
+	CommitVersion, ComputePool, Frame,
 	event::{Event, EventBus},
 	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
 	ioc::IocContainer,
@@ -26,7 +26,11 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	Error, Fragment, TypeConstraint,
-	diagnostic::{catalog::namespace_not_found, engine::parallel_execution_error},
+	diagnostic::{self, catalog::namespace_not_found, engine::parallel_execution_error},
+};
+use reifydb_vm::{
+	collect,
+	vmcore::{VmContext, VmState},
 };
 use tokio::spawn;
 use tokio_util::sync::CancellationToken;
@@ -101,6 +105,112 @@ impl StandardEngine {
 		spawn(execute_query(engine, identity, rql, params, sender, cancel_token));
 
 		Box::pin(stream)
+	}
+
+	#[instrument(name = "engine::query_new", level = "info", skip(self, _params), fields(rql = %rql))]
+	pub async fn query_new_as(
+		&self,
+		_identity: &Identity,
+		rql: &str,
+		_params: Params,
+	) -> Result<Vec<Frame>, Error> {
+		let engine = self.clone();
+		let catalog = self.catalog();
+		let rql = rql.to_string();
+		let rql_for_errors = rql.clone();
+
+		// Run the entire operation in spawn_blocking to handle !Send types
+		// The VM's step() function uses #[async_recursion(?Send)], making the entire execution !Send
+		let result = tokio::task::spawn_blocking(move || {
+			// Run async code in blocking context using block_on
+			tokio::runtime::Handle::current().block_on(async move {
+				// Create transaction for compilation
+				let mut compile_tx = match engine.begin_query().await {
+					Ok(tx) => tx,
+					Err(e) => {
+						return Err(format!(
+							"Failed to begin transaction for compilation: {}",
+							e
+						));
+					}
+				};
+
+				// Step 1: Compile the script
+				let program = match reifydb_vm::compile_script(&rql, &catalog, &mut compile_tx).await {
+					Ok(prog) => prog,
+					Err(e) => {
+						return Err(format!("Compilation failed: {}", e));
+					}
+				};
+
+				// Step 2: Create a new transaction for execution
+				let mut exec_tx = match engine.begin_query().await {
+					Ok(tx) => tx,
+					Err(e) => {
+						return Err(format!(
+							"Failed to begin transaction for execution: {}",
+							e
+						));
+					}
+				};
+
+				// Step 3: Execute the bytecode
+				let context = Arc::new(VmContext::with_catalog(catalog));
+				let mut vm = VmState::new(program, context);
+
+				let pipeline = match vm.execute(&mut exec_tx).await {
+					Ok(Some(p)) => p,
+					Ok(None) => {
+						return Err("Query produced no result".to_string());
+					}
+					Err(e) => {
+						return Err(format!("Execution failed: {}", e));
+					}
+				};
+
+				// Step 4: Collect results
+				match collect(pipeline).await {
+					Ok(columns) => Ok(Frame::from(columns)),
+					Err(e) => Err(format!("Collection failed: {}", e)),
+				}
+			})
+		})
+		.await;
+
+		// Handle the result
+		match result {
+			Ok(Ok(frame)) => Ok(vec![frame]),
+			Ok(Err(msg)) => {
+				let diagnostic = diagnostic::Diagnostic {
+					code: "VM_ERROR".to_string(),
+					statement: Some(rql_for_errors),
+					message: msg,
+					column: None,
+					fragment: Fragment::default(),
+					label: None,
+					help: None,
+					notes: Vec::new(),
+					cause: None,
+					operator_chain: None,
+				};
+				Err(Error(diagnostic))
+			}
+			Err(e) => {
+				let diagnostic = diagnostic::Diagnostic {
+					code: "VM_ERROR".to_string(),
+					statement: Some(rql_for_errors.clone()),
+					message: format!("Task error: {}", e),
+					column: None,
+					fragment: Fragment::default(),
+					label: None,
+					help: None,
+					notes: Vec::new(),
+					cause: None,
+					operator_chain: None,
+				};
+				Err(Error(diagnostic))
+			}
+		}
 	}
 }
 
@@ -247,6 +357,127 @@ async fn execute_query_sequential(
 	}
 }
 
+/// Execute a query using VM-based bytecode execution.
+/// Runs the entire operation (compile + execute + collect) in a blocking thread to avoid Send issues.
+async fn execute_query_vm_blocking(
+	engine: StandardEngine,
+	_identity: Identity,
+	rql: String,
+	_params: Params,
+	sender: FrameSender,
+	cancel_token: CancellationToken,
+) {
+	// Check for cancellation before starting
+	if cancel_token.is_cancelled() {
+		return;
+	}
+
+	// Get catalog for compilation and execution
+	let catalog = engine.catalog();
+
+	// Clone rql for error reporting (since it will be moved into the closure)
+	let rql_for_errors = rql.clone();
+
+	// Run the entire operation in spawn_blocking to handle !Send types
+	// The VM's step() function uses #[async_recursion(?Send)], making the entire execution !Send
+	let result = tokio::task::spawn_blocking(move || {
+		// Run async code in blocking context using block_on
+		tokio::runtime::Handle::current().block_on(async move {
+			// Create transaction for compilation
+			let mut compile_tx = match engine.begin_query().await {
+				Ok(tx) => tx,
+				Err(e) => {
+					return Err(format!("Failed to begin transaction for compilation: {}", e));
+				}
+			};
+
+			// Step 1: Compile the script
+			let program = match reifydb_vm::compile_script(&rql, &catalog, &mut compile_tx).await {
+				Ok(prog) => prog,
+				Err(e) => {
+					return Err(format!("Compilation failed: {}", e));
+				}
+			};
+
+			// Step 2: Create a new transaction for execution
+			let mut exec_tx = match engine.begin_query().await {
+				Ok(tx) => tx,
+				Err(e) => {
+					return Err(format!("Failed to begin transaction for execution: {}", e));
+				}
+			};
+
+			// Step 3: Execute the bytecode
+			let context = Arc::new(VmContext::with_catalog(catalog));
+			let mut vm = VmState::new(program, context);
+
+			let pipeline = match vm.execute(&mut exec_tx).await {
+				Ok(Some(p)) => p,
+				Ok(None) => {
+					// No result produced (e.g., just variable declarations)
+					return Ok(None);
+				}
+				Err(e) => {
+					return Err(format!("Execution failed: {}", e));
+				}
+			};
+
+			// Step 4: Collect results
+			match collect(pipeline).await {
+				Ok(columns) => Ok(Some(Frame::from(columns))),
+				Err(e) => Err(format!("Collection failed: {}", e)),
+			}
+		})
+	})
+	.await;
+
+	// Handle the result and send to stream
+	match result {
+		Ok(Ok(Some(frame))) => {
+			let _ = sender.send(Ok(frame)).await;
+		}
+		Ok(Ok(None)) => {
+			// No result - stream ends naturally
+		}
+		Ok(Err(msg)) => {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: msg,
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			let _ = sender.try_send(Err(StreamError::query_with_statement(
+				Error(diagnostic),
+				rql_for_errors.clone(),
+			)));
+		}
+		Err(e) => {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Task error: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			let _ = sender.try_send(Err(StreamError::query_with_statement(
+				Error(diagnostic),
+				rql_for_errors.clone(),
+			)));
+		}
+	}
+}
+
 /// Execute independent statements in parallel.
 ///
 /// Each statement gets its own transaction at the same snapshot version,
@@ -383,6 +614,7 @@ pub struct EngineInner {
 	interceptors: Box<dyn InterceptorFactory>,
 	catalog: MaterializedCatalog,
 	flow_operator_store: FlowOperatorStore,
+	compute_pool: ComputePool,
 }
 
 impl StandardEngine {
@@ -433,6 +665,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
+			compute_pool: ComputePool::new(4, 16), // 4 threads, max 16 in-flight
 		}))
 	}
 

@@ -15,6 +15,7 @@ reifydb-core = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-hash = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-rqlv2 = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
@@ -32,3 +33,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
 indexmap = { workspace = true }
+bumpalo = { workspace = true }

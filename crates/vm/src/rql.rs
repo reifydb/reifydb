@@ -36,7 +36,7 @@ use reifydb_rqlv2::{
 	plan::compile::{PlanError, plan},
 	token::{LexError, tokenize},
 };
-use reifydb_transaction::{StandardCommandTransaction, StandardTransaction};
+use reifydb_transaction::IntoStandardTransaction;
 use thiserror::Error;
 
 use crate::{
@@ -100,10 +100,10 @@ pub enum RqlError {
 ///     &mut tx
 /// ).await?;
 /// ```
-pub async fn compile_script(
+pub async fn compile_script<T: IntoStandardTransaction>(
 	source: &str,
 	catalog: &Catalog,
-	tx: &mut StandardCommandTransaction,
+	tx: &mut T,
 ) -> Result<Arc<CompiledProgram>, RqlError> {
 	// Create bump allocator for AST (transient - dropped after compilation)
 	let bump = Bump::new();
@@ -161,10 +161,10 @@ pub async fn compile_script(
 ///     &mut tx
 /// ).await?;
 /// ```
-pub async fn execute_program(
+pub async fn execute_program<T: IntoStandardTransaction>(
 	program: Arc<CompiledProgram>,
 	catalog: Catalog,
-	tx: &mut StandardCommandTransaction,
+	tx: &mut T,
 ) -> Result<Option<Pipeline>, RqlError> {
 	// Create VM context with catalog
 	let context = Arc::new(VmContext::with_catalog(catalog));
@@ -172,9 +172,8 @@ pub async fn execute_program(
 	// Create VM state
 	let mut vm = VmState::new(program, context);
 
-	// Convert to StandardTransaction and execute (provides catalog access)
-	let mut std_tx: StandardTransaction = tx.into();
-	let result = vm.execute(&mut std_tx).await?;
+	// Execute using the trait method
+	let result = vm.execute(tx).await?;
 
 	Ok(result)
 }

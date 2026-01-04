@@ -6,13 +6,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_recursion::async_recursion;
-use reifydb_core::value::column::{ColumnData, Columns};
+use reifydb_core::{
+	util::CowVec,
+	value::column::{Column, ColumnData, Columns},
+};
 use reifydb_rqlv2::{
 	bytecode::{BytecodeReader, CompiledProgram, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
-use reifydb_transaction::StandardTransaction;
-use reifydb_type::Value;
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_type::{Fragment, RowNumber, Value};
 
 use super::{
 	builtin::BuiltinRegistry,
@@ -40,9 +43,11 @@ pub enum DispatchResult {
 
 impl VmState {
 	/// Execute the program until halt or yield.
-	pub async fn execute<'a>(&mut self, rx: &mut StandardTransaction<'a>) -> Result<Option<Pipeline>> {
+	pub async fn execute<T: IntoStandardTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
+		let mut std_tx = tx.into_standard_transaction();
+
 		loop {
-			let result = self.step(Some(rx)).await?;
+			let result = self.step(Some(&mut std_tx)).await?;
 			match result {
 				DispatchResult::Continue => continue,
 				DispatchResult::Halt => break,
@@ -280,6 +285,45 @@ impl VmState {
 				let next_ip = reader.position();
 				let pipeline: Pipeline = Box::pin(futures_util::stream::empty());
 				self.push_pipeline(pipeline)?;
+				self.ip = next_ip;
+			}
+
+			Opcode::EvalMapWithoutInput | Opcode::EvalExpandWithoutInput => {
+				let next_ip = reader.position();
+
+				// Pop extension spec from operand stack
+				let spec_value = self.pop_operand()?;
+				let extensions = self.resolve_extension_spec(&spec_value)?;
+
+				// Create evaluation context
+				let eval_ctx = self.capture_scope_context();
+
+				// Create empty columns with row_count=1
+				// The row_numbers trick: row_count() checks row_numbers first, so setting
+				// row_numbers to [RowNumber(0)] gives us row_count=1 even with 0 columns
+				let empty_with_one_row = Columns {
+					row_numbers: CowVec::new(vec![RowNumber(0)]),
+					columns: CowVec::new(vec![]),
+				};
+
+				// Evaluate each expression to create result columns
+				let mut result_columns = Vec::new();
+				for (name, compiled_expr) in extensions {
+					// Evaluate expression with row_count=1
+					let column = compiled_expr.eval(&empty_with_one_row, &eval_ctx).await?;
+
+					// Rename the column to the specified name
+					let renamed = Column::new(Fragment::from(name), column.data().clone());
+					result_columns.push(renamed);
+				}
+
+				// Create a single-row Columns from the evaluated expressions
+				let columns = Columns::new(result_columns);
+
+				// Create a pipeline from the columns
+				let pipeline = pipeline::from_columns(columns);
+				self.push_pipeline(pipeline)?;
+
 				self.ip = next_ip;
 			}
 
@@ -922,6 +966,13 @@ impl VmState {
 				let extensions = self.resolve_extension_spec(&spec)?;
 				let eval_ctx = self.capture_scope_context();
 				ProjectOp::extend_with_context(extensions, eval_ctx).apply(pipeline)
+			}
+
+			OperatorKind::Map => {
+				let spec = self.pop_operand()?;
+				let extensions = self.resolve_extension_spec(&spec)?;
+				let eval_ctx = self.capture_scope_context();
+				ProjectOp::replace_with_context(extensions, eval_ctx).apply(pipeline)
 			}
 
 			OperatorKind::Take => {
