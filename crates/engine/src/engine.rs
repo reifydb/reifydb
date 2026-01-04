@@ -114,92 +114,73 @@ impl StandardEngine {
 		rql: &str,
 		_params: Params,
 	) -> Result<Vec<Frame>, Error> {
-		let engine = self.clone();
 		let catalog = self.catalog();
 		let rql = rql.to_string();
 		let rql_for_errors = rql.clone();
 
-		// Run the entire operation in spawn_blocking to handle !Send types
-		// The VM's step() function uses #[async_recursion(?Send)], making the entire execution !Send
-		let result = tokio::task::spawn_blocking(move || {
-			// Run async code in blocking context using block_on
-			tokio::runtime::Handle::current().block_on(async move {
-				// Create transaction for compilation
-				let mut compile_tx = match engine.begin_query().await {
-					Ok(tx) => tx,
-					Err(e) => {
-						return Err(format!(
-							"Failed to begin transaction for compilation: {}",
-							e
-						));
-					}
-				};
+		// Create transaction for compilation
+		let mut compile_tx = self.begin_query().await.map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Failed to begin transaction for compilation: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
 
-				// Step 1: Compile the script
-				let program = match reifydb_vm::compile_script(&rql, &catalog, &mut compile_tx).await {
-					Ok(prog) => prog,
-					Err(e) => {
-						return Err(format!("Compilation failed: {}", e));
-					}
-				};
+		// Step 1: Compile the script
+		let program = reifydb_vm::compile_script(&rql, &catalog, &mut compile_tx).await.map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Compilation failed: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
 
-				// Step 2: Create a new transaction for execution
-				let mut exec_tx = match engine.begin_query().await {
-					Ok(tx) => tx,
-					Err(e) => {
-						return Err(format!(
-							"Failed to begin transaction for execution: {}",
-							e
-						));
-					}
-				};
+		// Step 2: Create a new transaction for execution
+		let mut exec_tx = self.begin_query().await.map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Failed to begin transaction for execution: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
 
-				// Step 3: Execute the bytecode
-				let context = Arc::new(VmContext::with_catalog(catalog));
-				let mut vm = VmState::new(program, context);
+		// Step 3: Execute the bytecode
+		let context = Arc::new(VmContext::with_catalog(catalog));
+		let mut vm = VmState::new(program, context);
 
-				let pipeline = match vm.execute(&mut exec_tx).await {
-					Ok(Some(p)) => p,
-					Ok(None) => {
-						return Err("Query produced no result".to_string());
-					}
-					Err(e) => {
-						return Err(format!("Execution failed: {}", e));
-					}
-				};
-
-				// Step 4: Collect results
-				match collect(pipeline).await {
-					Ok(columns) => Ok(Frame::from(columns)),
-					Err(e) => Err(format!("Collection failed: {}", e)),
-				}
-			})
-		})
-		.await;
-
-		// Handle the result
-		match result {
-			Ok(Ok(frame)) => Ok(vec![frame]),
-			Ok(Err(msg)) => {
-				let diagnostic = diagnostic::Diagnostic {
-					code: "VM_ERROR".to_string(),
-					statement: Some(rql_for_errors),
-					message: msg,
-					column: None,
-					fragment: Fragment::default(),
-					label: None,
-					help: None,
-					notes: Vec::new(),
-					cause: None,
-					operator_chain: None,
-				};
-				Err(Error(diagnostic))
-			}
-			Err(e) => {
+		let pipeline = vm
+			.execute(&mut exec_tx)
+			.await
+			.map_err(|e| {
 				let diagnostic = diagnostic::Diagnostic {
 					code: "VM_ERROR".to_string(),
 					statement: Some(rql_for_errors.clone()),
-					message: format!("Task error: {}", e),
+					message: format!("Execution failed: {}", e),
 					column: None,
 					fragment: Fragment::default(),
 					label: None,
@@ -208,9 +189,42 @@ impl StandardEngine {
 					cause: None,
 					operator_chain: None,
 				};
-				Err(Error(diagnostic))
-			}
-		}
+				Error(diagnostic)
+			})?
+			.ok_or_else(|| {
+				let diagnostic = diagnostic::Diagnostic {
+					code: "VM_ERROR".to_string(),
+					statement: Some(rql_for_errors.clone()),
+					message: "Query produced no result".to_string(),
+					column: None,
+					fragment: Fragment::default(),
+					label: None,
+					help: None,
+					notes: Vec::new(),
+					cause: None,
+					operator_chain: None,
+				};
+				Error(diagnostic)
+			})?;
+
+		// Step 4: Collect results
+		let columns = collect(pipeline).await.map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Collection failed: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
+
+		Ok(vec![Frame::from(columns)])
 	}
 }
 

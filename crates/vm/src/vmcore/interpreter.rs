@@ -62,7 +62,7 @@ impl VmState {
 	/// Execute a single instruction.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
-	#[async_recursion(?Send)]
+	#[async_recursion]
 	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
 		// Helper macros for reading operands
 		macro_rules! read_u8 {

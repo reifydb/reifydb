@@ -19,10 +19,10 @@ use super::eval::EvalContext;
 use crate::error::Result;
 
 /// Future type for expression evaluation.
-pub type ExprFuture<'a> = Pin<Box<dyn Future<Output = Result<Column>> + Send + 'a>>;
+pub type ExprFuture<'a> = Pin<Box<dyn Future<Output = Result<Column>> + Send + Sync + 'a>>;
 
 /// Future type for filter evaluation.
-pub type FilterFuture<'a> = Pin<Box<dyn Future<Output = Result<BitVec>> + Send + 'a>>;
+pub type FilterFuture<'a> = Pin<Box<dyn Future<Output = Result<BitVec>> + Send + Sync + 'a>>;
 
 /// Pre-compiled expression that evaluates to a Column asynchronously.
 ///
