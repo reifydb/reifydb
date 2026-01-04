@@ -1895,6 +1895,7 @@ dependencies = [
  "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
+ "reifydb-vm",
  "serde",
  "serde_json",
  "tokio",

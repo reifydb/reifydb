@@ -36,6 +36,7 @@ use reifydb_rqlv2::{
 	plan::compile::{PlanError, plan},
 	token::{LexError, tokenize},
 };
+use reifydb_transaction::{StandardCommandTransaction, StandardTransaction};
 use thiserror::Error;
 
 use crate::{
@@ -102,7 +103,7 @@ pub enum RqlError {
 pub async fn compile_script(
 	source: &str,
 	catalog: &Catalog,
-	tx: &mut reifydb_engine::StandardCommandTransaction,
+	tx: &mut StandardCommandTransaction,
 ) -> Result<Arc<CompiledProgram>, RqlError> {
 	// Create bump allocator for AST (transient - dropped after compilation)
 	let bump = Bump::new();
@@ -163,7 +164,7 @@ pub async fn compile_script(
 pub async fn execute_program(
 	program: Arc<CompiledProgram>,
 	catalog: Catalog,
-	tx: &mut reifydb_engine::StandardCommandTransaction,
+	tx: &mut StandardCommandTransaction,
 ) -> Result<Option<Pipeline>, RqlError> {
 	// Create VM context with catalog
 	let context = Arc::new(VmContext::with_catalog(catalog));
@@ -172,7 +173,7 @@ pub async fn execute_program(
 	let mut vm = VmState::new(program, context);
 
 	// Convert to StandardTransaction and execute (provides catalog access)
-	let mut std_tx: reifydb_engine::StandardTransaction = tx.into();
+	let mut std_tx: StandardTransaction = tx.into();
 	let result = vm.execute(&mut std_tx).await?;
 
 	Ok(result)

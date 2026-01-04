@@ -21,7 +21,7 @@ pub use ast::{DslAst, ExprAst, PipelineAst, StageAst};
 pub use compile::{CompileError, DslCompiler, SourceRegistry};
 pub use lexer::{LexError, Lexer};
 pub use parser::{ParseError, Parser};
-use reifydb_engine::StandardTransaction;
+use reifydb_transaction::StandardTransaction;
 use thiserror::Error;
 pub use token::{Span, Token, TokenKind};
 

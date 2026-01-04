@@ -30,6 +30,7 @@ pub use evaluate::{
 	column::{StandardColumnEvaluator, cast::cast_column_data},
 };
 pub use reifydb_transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
+pub use reifydb_vm::{VmConfig, VmContext, VmState};
 
 pub struct EngineVersion;
 

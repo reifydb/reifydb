@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{EncodableKey, MultiVersionValues, NamespaceId, RowKey, RowKeyRange, TableDef},
 	value::encoded::EncodedValuesLayout,
 };
-use reifydb_engine::StandardTransaction;
+use reifydb_transaction::StandardTransaction;
 use reifydb_type::{Fragment, Type};
 
 use crate::error::{Result, VmError};

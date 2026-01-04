@@ -14,7 +14,6 @@ trace = []
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-engine = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-transaction = { workspace = true }
@@ -28,5 +27,6 @@ tokio-stream = { workspace = true }
 thiserror = "2.0"
 
 [dev-dependencies]
+reifydb-engine = { workspace = true}
 reifydb-store-transaction = { path = "../store-transaction" }
 reifydb-transaction = { path = "../transaction" }

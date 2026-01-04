@@ -7,11 +7,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_recursion::async_recursion;
 use reifydb_core::value::column::{ColumnData, Columns};
-use reifydb_engine::StandardTransaction;
 use reifydb_rqlv2::{
 	bytecode::{BytecodeReader, CompiledProgram, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
+use reifydb_transaction::StandardTransaction;
 use reifydb_type::Value;
 
 use super::{

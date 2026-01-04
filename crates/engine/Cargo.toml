@@ -18,6 +18,7 @@ reifydb-rql = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-vm = { workspace = true }
 
 tracing = { workspace = true }
 postcard = { workspace = true }
