@@ -4,21 +4,27 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reifydb_catalog::store::subscription::subscription_delta;
 use reifydb_core::{
-	interface::{FlowNodeId, ResolvedSubscription},
-	key::SubscriptionDeltaKey,
+	interface::{
+		FlowNodeId, IMPLICIT_COLUMN_OP, IMPLICIT_COLUMN_SEQUENCE, IMPLICIT_COLUMN_VERSION, ResolvedSubscription,
+	},
+	key::SubscriptionRowKey,
 	value::{
-		column::Columns,
-		encoded::{EncodedValues, EncodedValuesNamedLayout},
+		column::{Column, ColumnData, Columns},
+		encoded::EncodedValuesNamedLayout,
 	},
 };
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::{Fragment, RowNumber};
 
-use super::coerce_subscription_columns;
+use super::{coerce_subscription_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+
+/// Operation type constants
+const OP_INSERT: u8 = 0;
+const OP_UPDATE: u8 = 1;
+const OP_DELETE: u8 = 2;
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
@@ -36,35 +42,33 @@ impl SinkSubscriptionOperator {
 		}
 	}
 
-	/// Encode row values into a blob for storage
-	fn encode_row_values(columns: &Columns, row_idx: usize, layout: &EncodedValuesNamedLayout) -> Vec<u8> {
-		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
-		let mut encoded = layout.allocate();
-		layout.set_values(&mut encoded, &values);
-		encoded.to_vec()
-	}
+	/// Add implicit columns (_op, _version, _sequence) to the columns
+	fn add_implicit_columns(columns: &Columns, op: u8, version: u64, sequence: u16) -> Columns {
+		let row_count = columns.row_count();
 
-	/// Create a delta entry with op, pre, and post blobs
-	fn create_delta_entry(op: u8, pre: Option<Vec<u8>>, post: Option<Vec<u8>>) -> EncodedValues {
-		let layout = &*subscription_delta::LAYOUT;
-		let mut encoded = layout.allocate();
+		// Clone existing columns
+		let mut all_columns: Vec<Column> = columns.iter().cloned().collect();
 
-		// Set op
-		layout.set_u8(&mut encoded, subscription_delta::OP, op);
+		// Add implicit _op column
+		all_columns.push(Column {
+			name: Fragment::internal(IMPLICIT_COLUMN_OP),
+			data: ColumnData::uint1(vec![op; row_count]),
+		});
 
-		// Set pre (null for Insert)
-		match pre {
-			Some(bytes) => layout.set_blob(&mut encoded, subscription_delta::PRE, &bytes.into()),
-			None => layout.set_undefined(&mut encoded, subscription_delta::PRE),
-		}
+		// Add implicit _version column
+		all_columns.push(Column {
+			name: Fragment::internal(IMPLICIT_COLUMN_VERSION),
+			data: ColumnData::uint8(vec![version; row_count]),
+		});
 
-		// Set post (null for Delete)
-		match post {
-			Some(bytes) => layout.set_blob(&mut encoded, subscription_delta::POST, &bytes.into()),
-			None => layout.set_undefined(&mut encoded, subscription_delta::POST),
-		}
+		// Add implicit _sequence column
+		all_columns.push(Column {
+			name: Fragment::internal(IMPLICIT_COLUMN_SEQUENCE),
+			data: ColumnData::uint2(vec![sequence; row_count]),
+		});
 
-		encoded
+		// Preserve row numbers
+		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
 	}
 }
 
@@ -91,55 +95,51 @@ impl Operator for SinkSubscriptionOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// Coerce columns to match subscription schema types
-					let coerced = coerce_subscription_columns(post, self.subscription.columns())?;
-					let row_count = coerced.row_count();
+					// Coerce columns to match subscription schema types (user columns only)
+					let coerced = coerce_subscription_columns(post, &subscription_def.columns)?;
 
+					// Add implicit columns
+					let with_implicit = Self::add_implicit_columns(
+						&coerced,
+						OP_INSERT,
+						change.version.0,
+						sequence,
+					);
+
+					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let post_bytes = Self::encode_row_values(&coerced, row_idx, &layout);
-						let delta = Self::create_delta_entry(
-							subscription_delta::OP_INSERT,
-							None,
-							Some(post_bytes),
-						);
+						let (row_number, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &layout);
 
-						let key = SubscriptionDeltaKey::encoded(
-							subscription_def.id,
-							change.version,
-							sequence,
-						);
-						txn.set(&key, delta)?;
+						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						txn.set(&key, encoded)?;
 
 						sequence = sequence.wrapping_add(1);
 					}
 				}
 				FlowDiff::Update {
-					pre,
+					pre: _pre,
 					post,
 				} => {
-					// Coerce columns to match subscription schema types
-					let coerced_pre =
-						coerce_subscription_columns(pre, self.subscription.columns())?;
-					let coerced_post =
-						coerce_subscription_columns(post, self.subscription.columns())?;
-					let row_count = coerced_post.row_count();
+					// For updates, we store only the post-state with operation type UPDATE
+					// The row is updated in place at the same row number
+					let coerced = coerce_subscription_columns(post, &subscription_def.columns)?;
 
+					// Add implicit columns
+					let with_implicit = Self::add_implicit_columns(
+						&coerced,
+						OP_UPDATE,
+						change.version.0,
+						sequence,
+					);
+
+					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let pre_bytes = Self::encode_row_values(&coerced_pre, row_idx, &layout);
-						let post_bytes =
-							Self::encode_row_values(&coerced_post, row_idx, &layout);
-						let delta = Self::create_delta_entry(
-							subscription_delta::OP_UPDATE,
-							Some(pre_bytes),
-							Some(post_bytes),
-						);
+						let (row_number, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &layout);
 
-						let key = SubscriptionDeltaKey::encoded(
-							subscription_def.id,
-							change.version,
-							sequence,
-						);
-						txn.set(&key, delta)?;
+						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						txn.set(&key, encoded)?;
 
 						sequence = sequence.wrapping_add(1);
 					}
@@ -147,24 +147,25 @@ impl Operator for SinkSubscriptionOperator {
 				FlowDiff::Remove {
 					pre,
 				} => {
-					// Coerce columns to match subscription schema types
-					let coerced = coerce_subscription_columns(pre, self.subscription.columns())?;
-					let row_count = coerced.row_count();
+					// For deletes, we store the pre-state with operation type DELETE
+					// The row is updated in place to mark it as deleted
+					let coerced = coerce_subscription_columns(pre, &subscription_def.columns)?;
 
+					// Add implicit columns
+					let with_implicit = Self::add_implicit_columns(
+						&coerced,
+						OP_DELETE,
+						change.version.0,
+						sequence,
+					);
+
+					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let pre_bytes = Self::encode_row_values(&coerced, row_idx, &layout);
-						let delta = Self::create_delta_entry(
-							subscription_delta::OP_DELETE,
-							Some(pre_bytes),
-							None,
-						);
+						let (row_number, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &layout);
 
-						let key = SubscriptionDeltaKey::encoded(
-							subscription_def.id,
-							change.version,
-							sequence,
-						);
-						txn.set(&key, delta)?;
+						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						txn.set(&key, encoded)?;
 
 						sequence = sequence.wrapping_add(1);
 					}

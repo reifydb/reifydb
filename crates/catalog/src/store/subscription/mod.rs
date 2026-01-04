@@ -9,4 +9,3 @@ pub mod layout;
 mod list;
 
 pub use create::{SubscriptionColumnToCreate, SubscriptionToCreate};
-pub use layout::subscription_delta;

@@ -34,7 +34,7 @@ pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use subscription::SubscriptionKey;
 pub use subscription_column::SubscriptionColumnKey;
-pub use subscription_delta::SubscriptionDeltaKey;
+pub use subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange};
 pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
@@ -71,7 +71,7 @@ mod row;
 mod row_sequence;
 mod subscription;
 mod subscription_column;
-mod subscription_delta;
+mod subscription_row;
 mod system_sequence;
 mod system_version;
 mod table;
@@ -114,7 +114,7 @@ pub enum Key {
 	NamespaceDictionary(NamespaceDictionaryKey),
 	Subscription(SubscriptionKey),
 	SubscriptionColumn(SubscriptionColumnKey),
-	SubscriptionDelta(SubscriptionDeltaKey),
+	SubscriptionRow(SubscriptionRowKey),
 }
 
 impl Key {
@@ -154,7 +154,7 @@ impl Key {
 			Key::NamespaceDictionary(key) => key.encode(),
 			Key::Subscription(key) => key.encode(),
 			Key::SubscriptionColumn(key) => key.encode(),
-			Key::SubscriptionDelta(key) => key.encode(),
+			Key::SubscriptionRow(key) => key.encode(),
 		}
 	}
 }
@@ -264,7 +264,7 @@ impl Key {
 			KeyKind::SubscriptionColumn => {
 				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
 			}
-			KeyKind::SubscriptionDelta => SubscriptionDeltaKey::decode(&key).map(Self::SubscriptionDelta),
+			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
 		}
 	}
 }
