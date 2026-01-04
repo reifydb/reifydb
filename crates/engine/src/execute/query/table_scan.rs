@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey, LazyBatch, LazyColumnMeta,
@@ -16,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::{DictionaryEntryId, Fragment, Type};
-use tracing::{debug_span, instrument};
+use tracing::instrument;
 
 use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
@@ -114,32 +115,36 @@ impl QueryNode for TableScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let multi_rows: Vec<_> = {
-			let _span = debug_span!("range_batch", batch_size);
-			let batch = rx.range_batch(range, batch_size).await?;
-			drop(_span);
-			batch.items.into_iter().take(batch_size as usize).collect()
-		};
+		// Use streaming API which properly handles version density at storage level
+		let mut stream = rx.range_stream(range, batch_size as usize)?;
 
-		{
-			for multi in multi_rows.into_iter() {
-				if let Some(key) = RowKey::decode(&multi.key) {
-					batch_rows.push(multi.values);
-					row_numbers.push(key.row);
-					new_last_key = Some(multi.key);
+		// Consume up to batch_size items from the stream
+		for _ in 0..batch_size {
+			match stream.next().await {
+				Some(Ok(multi)) => {
+					if let Some(key) = RowKey::decode(&multi.key) {
+						batch_rows.push(multi.values);
+						row_numbers.push(key.row);
+						new_last_key = Some(multi.key);
+					}
+				}
+				Some(Err(e)) => return Err(e.into()),
+				None => {
+					self.exhausted = true;
+					break;
 				}
 			}
 		}
 
-		// Instrumentation: identify the 60ms gap between decode_row_keys and create_storage_columns
-		{
-			if batch_rows.is_empty() {
-				self.exhausted = true;
-				return Ok(None);
-			}
+		// Drop the stream to release the borrow on rx before dictionary decoding
+		drop(stream);
 
-			self.last_key = new_last_key;
+		if batch_rows.is_empty() {
+			self.exhausted = true;
+			return Ok(None);
 		}
+
+		self.last_key = new_last_key;
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
 		let storage_columns: Vec<Column> = {
@@ -189,21 +194,26 @@ impl QueryNode for TableScanNode {
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
-		let multi_rows: Vec<_> = {
-			let _span = debug_span!("range_batch", batch_size);
-			let batch = rx.range_batch(range, batch_size).await?;
-			drop(_span);
-			batch.items.into_iter().take(batch_size as usize).collect()
-		};
+		let mut stream = rx.range_stream(range, batch_size as usize)?;
 
-		let mut encoded_rows = Vec::with_capacity(multi_rows.len());
-		let mut row_numbers = Vec::with_capacity(multi_rows.len());
+		let mut encoded_rows = Vec::with_capacity(batch_size as usize);
+		let mut row_numbers = Vec::with_capacity(batch_size as usize);
 
-		for multi in multi_rows.into_iter() {
-			if let Some(key) = RowKey::decode(&multi.key) {
-				encoded_rows.push(multi.values);
-				row_numbers.push(key.row);
-				self.last_key = Some(multi.key);
+		// Consume up to batch_size items from the stream
+		for _ in 0..batch_size {
+			match stream.next().await {
+				Some(Ok(multi)) => {
+					if let Some(key) = RowKey::decode(&multi.key) {
+						encoded_rows.push(multi.values);
+						row_numbers.push(key.row);
+						self.last_key = Some(multi.key);
+					}
+				}
+				Some(Err(e)) => return Err(e.into()),
+				None => {
+					self.exhausted = true;
+					break;
+				}
 			}
 		}
 

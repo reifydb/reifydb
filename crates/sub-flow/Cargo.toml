@@ -21,7 +21,9 @@ reifydb-sub-api = { workspace = true }
 reifydb-transaction = {workspace = true}
 reifydb-type = { workspace = true }
 
+async-stream = { workspace = true }
 async-trait = { workspace = true }
+futures-util = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true}
 serde_json = { workspace = true }

@@ -9,7 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
+use std::pin::Pin;
+
+use futures_util::Stream;
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
 use reifydb_store_transaction::MultiVersionBatch;
 
 use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
@@ -89,5 +92,33 @@ impl QueryTransaction {
 
 	pub async fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
 		self.range_rev(EncodedKeyRange::prefix(prefix)).await
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// and maintains cursor state internally.
+	pub fn range_stream(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		let version = self.tm.version();
+		Box::pin(self.engine.store.range_stream(range, version, batch_size))
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// in reverse key order and maintains cursor state internally.
+	pub fn range_rev_stream(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		let version = self.tm.version();
+		Box::pin(self.engine.store.range_rev_stream(range, version, batch_size))
 	}
 }

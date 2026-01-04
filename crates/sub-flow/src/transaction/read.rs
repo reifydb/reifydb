@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::{
+	ops::Bound::{Excluded, Included, Unbounded},
+	pin::Pin,
+};
 
-use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Key, key::KeyKind, value::encoded::EncodedValues};
+use async_stream::try_stream;
+use futures_util::{Stream, StreamExt};
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
+	interface::{Key, MultiVersionValues},
+	key::KeyKind,
+	value::encoded::EncodedValues,
+};
 use reifydb_store_transaction::MultiVersionBatch;
 
-use super::{FlowTransaction, iter_range::collect_batch};
+use super::{FlowTransaction, Pending, iter_range::collect_batch};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then querying multi-version store
@@ -115,6 +125,231 @@ impl FlowTransaction {
 				KeyKind::FlowNodeInternalState => true,
 				_ => false,
 			},
+		}
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// and maintains cursor state internally. Pending writes are merged with
+	/// committed storage data.
+	pub fn range_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		// Collect pending writes in range as owned data
+		let pending: Vec<(EncodedKey, Pending)> = self
+			.pending
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect();
+
+		let query = match range.start.as_ref() {
+			Included(start) | Excluded(start) => {
+				if Self::is_flow_state_key(start) {
+					&self.state_query
+				} else {
+					&self.primitive_query
+				}
+			}
+			Unbounded => &self.primitive_query,
+		};
+
+		let storage_stream = query.range_stream(range, batch_size);
+		let version = self.version;
+
+		Box::pin(flow_merge_pending_with_stream(pending, storage_stream, version))
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// in reverse key order and maintains cursor state internally.
+	pub fn range_rev_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		// Collect pending writes in range as owned data (reversed)
+		let pending: Vec<(EncodedKey, Pending)> = self
+			.pending
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect();
+
+		let query = match range.start.as_ref() {
+			Included(start) | Excluded(start) => {
+				if Self::is_flow_state_key(start) {
+					&self.state_query
+				} else {
+					&self.primitive_query
+				}
+			}
+			Unbounded => &self.primitive_query,
+		};
+
+		let storage_stream = query.range_rev_stream(range, batch_size);
+		let version = self.version;
+
+		Box::pin(flow_merge_pending_with_stream_rev(pending, storage_stream, version))
+	}
+}
+
+/// Merge pending writes with a storage stream for FlowTransaction (forward order).
+fn flow_merge_pending_with_stream<'a, S>(
+	pending: Vec<(EncodedKey, Pending)>,
+	storage_stream: S,
+	version: reifydb_core::CommitVersion,
+) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + 'a
+where
+	S: Stream<Item = reifydb_type::Result<MultiVersionValues>> + Send + 'a,
+{
+	try_stream! {
+		use std::cmp::Ordering;
+
+		let mut storage_stream = std::pin::pin!(storage_stream);
+		let mut pending_iter = pending.into_iter().peekable();
+		let mut next_storage: Option<MultiVersionValues> = None;
+
+		loop {
+			// Fetch next storage item if needed
+			if next_storage.is_none() {
+				next_storage = match storage_stream.next().await {
+					Some(Ok(v)) => Some(v),
+					Some(Err(e)) => { Err(e)?; None }
+					None => None,
+				};
+			}
+
+			match (pending_iter.peek(), &next_storage) {
+				(Some((pending_key, _)), Some(storage_val)) => {
+					let cmp = pending_key.cmp(&storage_val.key);
+
+					if matches!(cmp, Ordering::Less) {
+						// Pending key comes first
+						let (key, value) = pending_iter.next().unwrap();
+						if let Pending::Set(values) = value {
+							yield MultiVersionValues {
+								key,
+								values,
+								version,
+							};
+						}
+						// Pending::Remove = skip (tombstone)
+					} else if matches!(cmp, Ordering::Equal) {
+						// Same key - pending shadows storage
+						let (key, value) = pending_iter.next().unwrap();
+						next_storage = None; // Consume storage entry
+						if let Pending::Set(values) = value {
+							yield MultiVersionValues {
+								key,
+								values,
+								version,
+							};
+						}
+					} else {
+						// Storage key comes first
+						yield next_storage.take().unwrap();
+					}
+				}
+				(Some(_), None) => {
+					// Only pending left
+					let (key, value) = pending_iter.next().unwrap();
+					if let Pending::Set(values) = value {
+						yield MultiVersionValues {
+							key,
+							values,
+							version,
+						};
+					}
+				}
+				(None, Some(_)) => {
+					// Only storage left
+					yield next_storage.take().unwrap();
+				}
+				(None, None) => break,
+			}
+		}
+	}
+}
+
+/// Merge pending writes with a storage stream for FlowTransaction (reverse order).
+fn flow_merge_pending_with_stream_rev<'a, S>(
+	pending: Vec<(EncodedKey, Pending)>,
+	storage_stream: S,
+	version: reifydb_core::CommitVersion,
+) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + 'a
+where
+	S: Stream<Item = reifydb_type::Result<MultiVersionValues>> + Send + 'a,
+{
+	try_stream! {
+		use std::cmp::Ordering;
+
+		let mut storage_stream = std::pin::pin!(storage_stream);
+		let mut pending_iter = pending.into_iter().peekable();
+		let mut next_storage: Option<MultiVersionValues> = None;
+
+		loop {
+			// Fetch next storage item if needed
+			if next_storage.is_none() {
+				next_storage = match storage_stream.next().await {
+					Some(Ok(v)) => Some(v),
+					Some(Err(e)) => { Err(e)?; None }
+					None => None,
+				};
+			}
+
+			match (pending_iter.peek(), &next_storage) {
+				(Some((pending_key, _)), Some(storage_val)) => {
+					let cmp = pending_key.cmp(&storage_val.key);
+
+					if matches!(cmp, Ordering::Greater) {
+						// Reverse: Pending key is larger (comes first in reverse)
+						let (key, value) = pending_iter.next().unwrap();
+						if let Pending::Set(values) = value {
+							yield MultiVersionValues {
+								key,
+								values,
+								version,
+							};
+						}
+					} else if matches!(cmp, Ordering::Equal) {
+						// Same key - pending shadows storage
+						let (key, value) = pending_iter.next().unwrap();
+						next_storage = None; // Consume storage entry
+						if let Pending::Set(values) = value {
+							yield MultiVersionValues {
+								key,
+								values,
+								version,
+							};
+						}
+					} else {
+						// Storage key comes first in reverse order
+						yield next_storage.take().unwrap();
+					}
+				}
+				(Some(_), None) => {
+					// Only pending left
+					let (key, value) = pending_iter.next().unwrap();
+					if let Pending::Set(values) = value {
+						yield MultiVersionValues {
+							key,
+							values,
+							version,
+						};
+					}
+				}
+				(None, Some(_)) => {
+					// Only storage left
+					yield next_storage.take().unwrap();
+				}
+				(None, None) => break,
+			}
 		}
 	}
 }

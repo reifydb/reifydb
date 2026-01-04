@@ -19,6 +19,7 @@ rusqlite = { workspace = true, features = ["bundled"] }
 tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
+async-stream = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
 

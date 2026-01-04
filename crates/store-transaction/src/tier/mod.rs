@@ -117,7 +117,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// This ensures durability and atomicity for multi-table commits.
 	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
-	/// Fetch the next batch of entries in key order (ascending).
+	/// Fetch the next batch of entries in key order (descending).
 	///
 	/// Uses the cursor to track position. On first call, cursor should be new.
 	/// On subsequent calls, pass the same cursor to continue from where left off.
@@ -132,7 +132,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
-	/// Fetch the next batch of entries in reverse key order (descending).
+	/// Fetch the next batch of entries in reverse key order (ascending).
 	///
 	/// Uses the cursor to track position. On first call, cursor should be new.
 	/// On subsequent calls, pass the same cursor to continue from where left off.

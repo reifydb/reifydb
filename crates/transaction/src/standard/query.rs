@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::pin::Pin;
+
+use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
@@ -96,6 +99,26 @@ impl StandardQueryTransaction {
 	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.multi.read_as_of_version_exclusive(version);
 		Ok(())
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	#[inline]
+	pub fn range_stream(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
+		self.multi.range_stream(range, batch_size)
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	#[inline]
+	pub fn range_rev_stream(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
+		self.multi.range_rev_stream(range, batch_size)
 	}
 
 	/// Execute a function with query access to the single transaction.

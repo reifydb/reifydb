@@ -19,13 +19,14 @@ mod single;
 pub mod stats;
 mod store;
 
-use std::collections::Bound;
+use std::{collections::Bound, pin::Pin};
 
 use async_trait::async_trait;
 pub use cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, CdcStore};
 pub use config::{
 	ColdConfig, HotConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig, WarmConfig,
 };
+use futures_util::Stream;
 pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
@@ -142,6 +143,45 @@ impl MultiVersionRangeRev for TransactionStore {
 		match self {
 			TransactionStore::Standard(store) => {
 				MultiVersionRangeRev::range_rev_batch(store, range, version, batch_size).await
+			}
+		}
+	}
+}
+
+/// Stream type for multi-version range results.
+pub type MultiVersionRangeStream<'a> = Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + 'a>>;
+
+impl TransactionStore {
+	/// Create a streaming iterator for forward range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// and maintains cursor state internally.
+	pub fn range_stream(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: usize,
+	) -> MultiVersionRangeStream<'_> {
+		match self {
+			TransactionStore::Standard(store) => Box::pin(store.range_stream(range, version, batch_size)),
+		}
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// in reverse key order and maintains cursor state internally.
+	pub fn range_rev_stream(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: usize,
+	) -> MultiVersionRangeStream<'_> {
+		match self {
+			TransactionStore::Standard(store) => {
+				Box::pin(store.range_rev_stream(range, version, batch_size))
 			}
 		}
 	}

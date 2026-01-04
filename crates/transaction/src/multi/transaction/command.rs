@@ -9,8 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::ops::RangeBounds;
+use std::{ops::RangeBounds, pin::Pin};
 
+use async_stream::try_stream;
+use futures_util::{Stream, StreamExt};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
@@ -211,6 +213,59 @@ impl CommandTransaction {
 	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
 		self.range_rev(EncodedKeyRange::prefix(prefix)).await
 	}
+
+	/// Create a streaming iterator for forward range queries, merging pending writes.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// and maintains cursor state internally. Pending writes are merged with
+	/// committed storage data.
+	pub fn range_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		let version = self.tm.version();
+		let (mut marker, pw) = self.tm.marker_with_pending_writes();
+		let start = range.start_bound();
+		let end = range.end_bound();
+
+		marker.mark_range(range.clone());
+
+		// Collect pending writes in range as owned data
+		let pending: Vec<(EncodedKey, Pending)> =
+			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
+
+		let storage_stream = self.engine.store.range_stream(range, version, batch_size);
+
+		Box::pin(merge_pending_with_stream(pending, storage_stream, false))
+	}
+
+	/// Create a streaming iterator for reverse range queries, merging pending writes.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// in reverse key order and maintains cursor state internally.
+	pub fn range_rev_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+		let version = self.tm.version();
+		let (mut marker, pw) = self.tm.marker_with_pending_writes();
+		let start = range.start_bound();
+		let end = range.end_bound();
+
+		marker.mark_range(range.clone());
+
+		// Collect pending writes in range as owned data (reversed)
+		let pending: Vec<(EncodedKey, Pending)> =
+			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+		let storage_stream = self.engine.store.range_rev_stream(range, version, batch_size);
+
+		Box::pin(merge_pending_with_stream(pending, storage_stream, true))
+	}
 }
 
 use reifydb_core::interface::MultiVersionValues;
@@ -352,5 +407,90 @@ fn merge_pending_with_committed_rev(
 	MultiVersionBatch {
 		items: result,
 		has_more: committed.has_more,
+	}
+}
+
+/// Merge pending writes with a storage stream.
+fn merge_pending_with_stream<'a, S>(
+	pending: Vec<(EncodedKey, Pending)>,
+	storage_stream: S,
+	reverse: bool,
+) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + 'a
+where
+	S: Stream<Item = reifydb_type::Result<MultiVersionValues>> + Send + 'a,
+{
+	try_stream! {
+		use std::cmp::Ordering;
+
+		let mut storage_stream = std::pin::pin!(storage_stream);
+		let mut pending_iter = pending.into_iter().peekable();
+		let mut next_storage: Option<MultiVersionValues> = None;
+
+		loop {
+			// Fetch next storage item if needed
+			if next_storage.is_none() {
+				next_storage = match storage_stream.next().await {
+					Some(Ok(v)) => Some(v),
+					Some(Err(e)) => { Err(e)?; None }
+					None => None,
+				};
+			}
+
+			match (pending_iter.peek(), &next_storage) {
+				(Some((pending_key, _)), Some(storage_val)) => {
+					let cmp = pending_key.cmp(&storage_val.key);
+					let should_yield_pending = if reverse {
+						// Reverse: larger keys first
+						matches!(cmp, Ordering::Greater)
+					} else {
+						// Forward: smaller keys first
+						matches!(cmp, Ordering::Less)
+					};
+
+					if should_yield_pending {
+						// Pending key comes first
+						let (key, value) = pending_iter.next().unwrap();
+						if let Some(values) = value.values() {
+							yield MultiVersionValues {
+								key,
+								values: values.clone(),
+								version: value.version,
+							};
+						}
+						// Tombstone: skip (don't yield)
+					} else if matches!(cmp, Ordering::Equal) {
+						// Same key - pending shadows storage
+						let (key, value) = pending_iter.next().unwrap();
+						next_storage = None; // Consume storage entry
+						if let Some(values) = value.values() {
+							yield MultiVersionValues {
+								key,
+								values: values.clone(),
+								version: value.version,
+							};
+						}
+					} else {
+						// Storage key comes first
+						yield next_storage.take().unwrap();
+					}
+				}
+				(Some(_), None) => {
+					// Only pending left
+					let (key, value) = pending_iter.next().unwrap();
+					if let Some(values) = value.values() {
+						yield MultiVersionValues {
+							key,
+							values: values.clone(),
+							version: value.version,
+						};
+					}
+				}
+				(None, Some(_)) => {
+					// Only storage left
+					yield next_storage.take().unwrap();
+				}
+				(None, None) => break,
+			}
+		}
 	}
 }

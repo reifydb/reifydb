@@ -6,8 +6,10 @@ use std::{
 	ops::{Bound, RangeBounds},
 };
 
+use async_stream::try_stream;
 use async_trait::async_trait;
 use drop::find_keys_to_drop;
+use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
 	util::clock::now_millis, value::encoded::EncodedValues,
@@ -599,6 +601,56 @@ impl StandardTransactionStore {
 		}
 
 		Ok(true)
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// and maintains cursor state internally.
+	pub fn range_stream(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: usize,
+	) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + '_ {
+		try_stream! {
+			let mut cursor = MultiVersionRangeCursor::new();
+			loop {
+				let batch = self.range_next(&mut cursor, range.clone(), version, batch_size as u64).await?;
+				for item in batch.items {
+					yield item;
+				}
+				if cursor.exhausted || !batch.has_more {
+					break;
+				}
+			}
+		}
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	///
+	/// This properly handles high version density by scanning until batch_size
+	/// unique logical keys are collected. The stream yields individual entries
+	/// in reverse key order and maintains cursor state internally.
+	pub fn range_rev_stream(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: usize,
+	) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + '_ {
+		try_stream! {
+			let mut cursor = MultiVersionRangeCursor::new();
+			loop {
+				let batch = self.range_rev_next(&mut cursor, range.clone(), version, batch_size as u64).await?;
+				for item in batch.items {
+					yield item;
+				}
+				if cursor.exhausted || !batch.has_more {
+					break;
+				}
+			}
+		}
 	}
 }
 

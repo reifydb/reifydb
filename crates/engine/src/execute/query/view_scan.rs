@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey,
 	interface::{EncodableKey, RowKey, RowKeyRange, resolved::ResolvedView},
@@ -78,14 +79,21 @@ impl QueryNode for ViewScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let batch = rx.range_batch(range, batch_size).await?;
-		let multi_rows: Vec<_> = batch.items.into_iter().take(batch_size as usize).collect();
-
-		for multi in multi_rows.into_iter() {
-			if let Some(key) = RowKey::decode(&multi.key) {
-				batch_rows.push(multi.values);
-				row_numbers.push(key.row);
-				new_last_key = Some(multi.key);
+		let mut stream = rx.range_stream(range, batch_size as usize)?;
+		for _ in 0..batch_size {
+			match stream.next().await {
+				Some(Ok(multi)) => {
+					if let Some(key) = RowKey::decode(&multi.key) {
+						batch_rows.push(multi.values);
+						row_numbers.push(key.row);
+						new_last_key = Some(multi.key);
+					}
+				}
+				Some(Err(e)) => return Err(e.into()),
+				None => {
+					self.exhausted = true;
+					break;
+				}
 			}
 		}
 

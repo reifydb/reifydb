@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::mem::take;
+use std::{mem::take, pin::Pin};
 
+use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
@@ -373,6 +374,28 @@ impl StandardCommandTransaction {
 	pub async fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	#[inline]
+	pub fn range_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_stream(range, batch_size))
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	#[inline]
+	pub fn range_rev_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_rev_stream(range, batch_size))
 	}
 }
 

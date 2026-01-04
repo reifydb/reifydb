@@ -16,6 +16,7 @@ reifydb-core = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 futures-util = { workspace = true }

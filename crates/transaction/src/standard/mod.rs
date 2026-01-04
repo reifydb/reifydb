@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::pin::Pin;
+
+use futures_util::Stream;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
 use reifydb_store_transaction::MultiVersionBatch;
 use reifydb_type::Result;
@@ -91,6 +94,30 @@ impl<'a> StandardTransaction<'a> {
 		match self {
 			StandardTransaction::Command(txn) => txn.read_as_of_version_exclusive(version).await,
 			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
+		}
+	}
+
+	/// Create a streaming iterator for forward range queries.
+	pub fn range_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+		match self {
+			StandardTransaction::Command(txn) => txn.range_stream(range, batch_size),
+			StandardTransaction::Query(txn) => Ok(txn.range_stream(range, batch_size)),
+		}
+	}
+
+	/// Create a streaming iterator for reverse range queries.
+	pub fn range_rev_stream(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: usize,
+	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+		match self {
+			StandardTransaction::Command(txn) => txn.range_rev_stream(range, batch_size),
+			StandardTransaction::Query(txn) => Ok(txn.range_rev_stream(range, batch_size)),
 		}
 	}
 }
