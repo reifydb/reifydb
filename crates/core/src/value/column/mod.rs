@@ -11,6 +11,7 @@ pub mod headers;
 #[allow(dead_code, unused_variables)]
 pub mod pool;
 pub mod push;
+mod row;
 mod transform;
 mod view;
 
