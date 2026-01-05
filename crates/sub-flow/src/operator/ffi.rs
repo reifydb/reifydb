@@ -15,6 +15,7 @@ use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
 use tokio::sync::RwLock;
+use tracing::{Span, debug_span, instrument};
 
 use crate::{
 	Result,
@@ -92,17 +93,33 @@ impl Operator for FFIOperator {
 		self.operator_id
 	}
 
+	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
+		operator_id = self.operator_id.0,
+		input_diff_count = change.diffs.len(),
+		output_diff_count = tracing::field::Empty,
+		marshal_time_us = tracing::field::Empty,
+		ffi_call_time_us = tracing::field::Empty,
+		unmarshal_time_us = tracing::field::Empty,
+		total_time_ms = tracing::field::Empty
+	))]
 	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> Result<FlowChange> {
+		let total_start = std::time::Instant::now();
+
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.write().await;
 
-		// Marshal the flow change
+		// Phase 1: Marshal the flow change
+		let marshal_span = debug_span!("flow::ffi::marshal");
+		let _marshal_guard = marshal_span.enter();
+		let marshal_start = std::time::Instant::now();
 		let ffi_input = marshaller.marshal_flow_change(&change);
+		let marshal_us = marshal_start.elapsed().as_micros() as u64;
+		drop(_marshal_guard);
 
 		// Create output holder
 		let mut ffi_output = reifydb_abi::FlowChangeFFI::empty();
@@ -111,9 +128,16 @@ impl Operator for FFIOperator {
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_abi::ContextFFI;
 
+		// Phase 2: Call FFI vtable
+		let ffi_span = debug_span!("flow::ffi::vtable_call");
+		let _ffi_guard = ffi_span.enter();
+		let ffi_start = std::time::Instant::now();
+
 		let result = catch_unwind(AssertUnwindSafe(|| {
 			(self.vtable.apply)(self.instance, ffi_ctx_ptr, &ffi_input, &mut ffi_output)
 		}));
+		let ffi_us = ffi_start.elapsed().as_micros() as u64;
+		drop(_ffi_guard);
 
 		// Handle panics from FFI code
 		let result_code = match result {
@@ -130,11 +154,22 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		// Unmarshal the output
+		// Phase 3: Unmarshal the output
+		let unmarshal_span = debug_span!("flow::ffi::unmarshal");
+		let _unmarshal_guard = unmarshal_span.enter();
+		let unmarshal_start = std::time::Instant::now();
 		let output_change = marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
+		let unmarshal_us = unmarshal_start.elapsed().as_micros() as u64;
+		drop(_unmarshal_guard);
 
 		// Clear the marshaller's arena after operation
 		marshaller.clear();
+
+		Span::current().record("output_diff_count", output_change.diffs.len());
+		Span::current().record("marshal_time_us", marshal_us);
+		Span::current().record("ffi_call_time_us", ffi_us);
+		Span::current().record("unmarshal_time_us", unmarshal_us);
+		Span::current().record("total_time_ms", total_start.elapsed().as_millis() as u64);
 
 		Ok(output_change)
 	}

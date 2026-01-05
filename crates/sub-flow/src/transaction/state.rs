@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_store_transaction::MultiVersionBatch;
-use tracing::instrument;
+use tracing::{Span, debug_span, instrument};
 
 use super::FlowTransaction;
 
@@ -18,13 +18,16 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
-		found
+		found = tracing::field::Empty,
+		query_time_us = tracing::field::Empty
 	))]
 	pub async fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+		let query_start = std::time::Instant::now();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		let result = self.get(&encoded_key).await?;
-		tracing::Span::current().record("found", result.is_some());
+		Span::current().record("found", result.is_some());
+		Span::current().record("query_time_us", query_start.elapsed().as_micros() as u64);
 		Ok(result)
 	}
 
@@ -53,15 +56,20 @@ impl FlowTransaction {
 
 	/// Scan all state for a specific flow node
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
-		node_id = id.0
+		node_id = id.0,
+		result_count = tracing::field::Empty,
+		scan_time_ms = tracing::field::Empty
 	))]
 	pub async fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<MultiVersionBatch> {
+		let scan_start = std::time::Instant::now();
 		let range = FlowNodeStateKey::node_range(id);
 		let mut stream = self.range(range, 1024);
 		let mut items = Vec::new();
 		while let Some(result) = stream.next().await {
 			items.push(result?);
 		}
+		Span::current().record("result_count", items.len());
+		Span::current().record("scan_time_ms", scan_start.elapsed().as_millis() as u64);
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -92,9 +100,19 @@ impl FlowTransaction {
 	/// Clear all state for a specific flow node
 	#[instrument(name = "flow::state::clear", level = "debug", skip(self), fields(
 		node_id = id.0,
-		removed_count
+		keys_removed = tracing::field::Empty,
+		scan_time_ms = tracing::field::Empty,
+		remove_time_ms = tracing::field::Empty,
+		total_time_ms = tracing::field::Empty
 	))]
 	pub async fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
+		let total_start = std::time::Instant::now();
+
+		// Phase 1: Scan to collect all keys
+		let scan_span = debug_span!("flow::state::clear::scan");
+		let _scan_guard = scan_span.enter();
+		let scan_start = std::time::Instant::now();
+
 		let range = FlowNodeStateKey::node_range(id);
 		let keys_to_remove = {
 			let mut stream = self.range(range, 1024);
@@ -105,13 +123,25 @@ impl FlowTransaction {
 			}
 			keys
 		};
+		let scan_ms = scan_start.elapsed().as_millis() as u64;
+		drop(_scan_guard);
+
+		// Phase 2: Remove all collected keys
+		let remove_span = debug_span!("flow::state::clear::remove");
+		let _remove_guard = remove_span.enter();
+		let remove_start = std::time::Instant::now();
 
 		let count = keys_to_remove.len();
 		for key in keys_to_remove {
 			self.remove(&key)?;
 		}
+		let remove_ms = remove_start.elapsed().as_millis() as u64;
+		drop(_remove_guard);
 
-		tracing::Span::current().record("removed_count", count);
+		Span::current().record("keys_removed", count);
+		Span::current().record("scan_time_ms", scan_ms);
+		Span::current().record("remove_time_ms", remove_ms);
+		Span::current().record("total_time_ms", total_start.elapsed().as_millis() as u64);
 		Ok(())
 	}
 

@@ -19,7 +19,7 @@ use reifydb_rql::flow::{Flow, FlowNodeType};
 use reifydb_sdk::FlowChangeOrigin;
 use tokio::{select, sync::broadcast, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{Span, debug, error, info, instrument, warn};
 
 use crate::{FlowEngine, FlowTransaction, coordinator::VersionBroadcast, provider::FlowChangeProvider};
 
@@ -80,7 +80,6 @@ impl FlowConsumer {
 		})
 	}
 
-	/// Processing loop that listens for version broadcasts.
 	async fn processing_loop(
 		flow_id: FlowId,
 		sources: HashSet<PrimitiveId>,
@@ -120,70 +119,34 @@ impl FlowConsumer {
 								continue; // Nothing to process
 							}
 
-							// Single parent transaction for entire batch
-							let mut txn = match engine.begin_command().await {
-								Ok(t) => t,
+							// Call instrumented batch processing function
+							match Self::process_batch(
+								flow_id,
+								start_version,
+								end_version,
+								&sources,
+								&engine,
+								&flow_engine,
+								&provider,
+								&consumer_id,
+								current_version,
+							)
+							.await
+							{
+								Ok(final_version) => {
+									current_version = final_version;
+								}
 								Err(e) => {
 									error!(
 										flow_id = flow_id.0,
+										start_version = start_version,
+										end_version = end_version,
 										error = %e,
-										"failed to begin transaction"
+										"failed to process batch"
 									);
-									continue;
+									// Continue processing next batch despite error
 								}
-							};
-							let catalog = engine.catalog();
-
-							let mut final_version = current_version;
-							let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
-
-							for version in start_version..=end_version {
-								let version = CommitVersion(version);
-								flow_txn.update_version(version);
-
-								if let Err(e) = Self::process_version(
-									flow_id,
-									&sources,
-									&mut flow_txn,
-									&flow_engine,
-									&provider,
-									version,
-								).await {
-									error!(
-										flow_id = flow_id.0,
-										version = version.0,
-										error = %e,
-										"failed to process version"
-									);
-								}
-
-								final_version = version;
 							}
-
-							flow_txn.commit(&mut txn).await.unwrap(); // should never happen
-
-							if let Err(e) = CdcCheckpoint::persist(&mut txn, &consumer_id, final_version).await {
-								error!(
-									flow_id = flow_id.0,
-									version = final_version.0,
-									error = %e,
-									"failed to persist checkpoint"
-								);
-
-								txn.rollback().ok();
-								return;
-							}
-
-							if let Err(e) = txn.commit().await {
-								error!(
-									flow_id = flow_id.0,
-									error = %e,
-									"failed to commit transaction"
-								);
-								continue;
-							}
-
-							current_version = final_version;
 						}
 						Err(Lagged(skipped)) => {
 							warn!(
@@ -205,6 +168,13 @@ impl FlowConsumer {
 	}
 
 	/// Process a single version by fetching from provider and applying changes.
+	#[instrument(name = "flow::consumer::process_version", level = "debug", skip_all, fields(
+		flow_id = flow_id.0,
+		version = version.0,
+		source_count = sources.len(),
+		relevant_changes = tracing::field::Empty,
+		process_time_us = tracing::field::Empty
+	))]
 	async fn process_version(
 		flow_id: FlowId,
 		sources: &HashSet<PrimitiveId>,
@@ -213,8 +183,12 @@ impl FlowConsumer {
 		provider: &FlowChangeProvider,
 		version: CommitVersion,
 	) -> Result<()> {
+		let process_start = std::time::Instant::now();
+
 		// Early return if no sources were affected at this version
 		let Some(all_changes) = provider.get_changes(version, sources).await? else {
+			Span::current().record("relevant_changes", 0);
+			Span::current().record("process_time_us", process_start.elapsed().as_micros() as u64);
 			return Ok(());
 		};
 
@@ -228,15 +202,90 @@ impl FlowConsumer {
 			.collect();
 
 		if relevant.is_empty() {
+			Span::current().record("relevant_changes", 0);
+			Span::current().record("process_time_us", process_start.elapsed().as_micros() as u64);
 			return Ok(());
 		}
+
+		Span::current().record("relevant_changes", relevant.len());
 
 		for change in relevant {
 			flow_engine.process(flow_txn, change, flow_id).await?;
 		}
 
+		Span::current().record("process_time_us", process_start.elapsed().as_micros() as u64);
+
 		debug!(flow_id = flow_id.0, version = version.0, "processed version");
 		Ok(())
+	}
+
+	/// Process a batch of versions
+	#[instrument(name = "flow::batch", level = "info", skip_all, fields(
+		flow_id = flow_id.0,
+		start_version = start_version,
+		end_version = end_version,
+		batch_size = end_version - start_version + 1,
+		versions_processed = tracing::field::Empty,
+		txn_begin_ms = tracing::field::Empty,
+		flow_txn_init_ms = tracing::field::Empty,
+		processing_ms = tracing::field::Empty,
+		flow_commit_ms = tracing::field::Empty,
+		parent_commit_ms = tracing::field::Empty,
+		total_ms = tracing::field::Empty
+	))]
+	async fn process_batch(
+		flow_id: FlowId,
+		start_version: u64,
+		end_version: u64,
+		sources: &HashSet<PrimitiveId>,
+		engine: &StandardEngine,
+		flow_engine: &FlowEngine,
+		provider: &FlowChangeProvider,
+		consumer_id: &CdcConsumerId,
+		current_version: CommitVersion,
+	) -> crate::Result<CommitVersion> {
+		let batch_start = std::time::Instant::now();
+
+		// Single parent transaction for entire batch
+		let txn_begin_start = std::time::Instant::now();
+		let mut txn = engine.begin_command().await?;
+		Span::current().record("txn_begin_ms", txn_begin_start.elapsed().as_millis() as u64);
+
+		let catalog = engine.catalog();
+
+		let flow_txn_init_start = std::time::Instant::now();
+		let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
+		Span::current().record("flow_txn_init_ms", flow_txn_init_start.elapsed().as_millis() as u64);
+
+		let processing_start = std::time::Instant::now();
+		let mut final_version = current_version;
+		let mut versions_processed = 0;
+
+		for version in start_version..=end_version {
+			let version = CommitVersion(version);
+			flow_txn.update_version(version);
+
+			Self::process_version(flow_id, sources, &mut flow_txn, flow_engine, provider, version).await?;
+
+			final_version = version;
+			versions_processed += 1;
+		}
+		Span::current().record("processing_ms", processing_start.elapsed().as_millis() as u64);
+
+		let flow_commit_start = std::time::Instant::now();
+		flow_txn.commit(&mut txn).await?;
+		Span::current().record("flow_commit_ms", flow_commit_start.elapsed().as_millis() as u64);
+
+		CdcCheckpoint::persist(&mut txn, consumer_id, final_version).await?;
+
+		let parent_commit_start = std::time::Instant::now();
+		txn.commit().await?;
+		Span::current().record("parent_commit_ms", parent_commit_start.elapsed().as_millis() as u64);
+
+		Span::current().record("versions_processed", versions_processed);
+		Span::current().record("total_ms", batch_start.elapsed().as_millis() as u64);
+
+		Ok(final_version)
 	}
 
 	/// Load the checkpoint for this flow consumer.

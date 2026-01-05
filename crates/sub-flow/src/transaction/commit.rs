@@ -4,7 +4,7 @@
 use diagnostic::flow::flow_transaction_keyspace_overlap;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{diagnostic, return_error, util::hex};
-use tracing::instrument;
+use tracing::{Span, debug_span, instrument};
 
 use super::{FlowTransaction, Pending};
 
@@ -25,12 +25,18 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::transaction::commit", level = "debug", skip(self, parent), fields(
 		pending_count = self.pending.len(),
-		writes,
-		removes
+		set_count = tracing::field::Empty,
+		remove_count = tracing::field::Empty,
+		validation_time_us = tracing::field::Empty,
+		merge_time_ms = tracing::field::Empty
 	))]
 	pub async fn commit(&mut self, parent: &mut StandardCommandTransaction) -> crate::Result<()> {
-		// Check for any overlapping keys with the parent's pending writes.
+		// Phase 1: Validation - Check for any overlapping keys with the parent's pending writes.
 		// This enforces that FlowTransactions operate on non-overlapping keyspaces.
+		let validation_span = debug_span!("flow::commit::validate");
+		let _validation_guard = validation_span.enter();
+		let validation_start = std::time::Instant::now();
+
 		{
 			let parent_pending = parent.pending_writes();
 			for (key, _) in self.pending.iter_sorted() {
@@ -40,6 +46,13 @@ impl FlowTransaction {
 				}
 			}
 		}
+		let validation_us = validation_start.elapsed().as_micros() as u64;
+		drop(_validation_guard);
+
+		// Phase 2: Merge pending writes to parent
+		let merge_span = debug_span!("flow::commit::merge");
+		let _merge_guard = merge_span.enter();
+		let merge_start = std::time::Instant::now();
 
 		let mut set_count = 0;
 		let mut remove_count = 0;
@@ -55,9 +68,13 @@ impl FlowTransaction {
 				}
 			}
 		}
+		let merge_ms = merge_start.elapsed().as_millis() as u64;
+		drop(_merge_guard);
 
-		tracing::Span::current().record("sets", set_count);
-		tracing::Span::current().record("removes", remove_count);
+		Span::current().record("set_count", set_count);
+		Span::current().record("remove_count", remove_count);
+		Span::current().record("validation_time_us", validation_us);
+		Span::current().record("merge_time_ms", merge_ms);
 
 		self.pending.clear();
 		Ok(())

@@ -35,7 +35,9 @@ async fn async_main() {
 				.endpoint("http://localhost:4317")
 				.sample_ratio(1.0)
 				.scheduled_delay(Duration::from_millis(500)),
-			|t| t.with_filter("trace"),
+			|t| t
+				.without_console()  // Disable console logging for better performance
+				.with_filter("trace"),  // Only affects OpenTelemetry layer
 		)
 		.with_flow(|flow| flow)
 		// .with_admin(AdminConfig::default())

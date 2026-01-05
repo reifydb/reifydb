@@ -6,18 +6,26 @@ use std::{future::Future, pin::Pin};
 use reifydb_core::interface::FlowId;
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
 use reifydb_sdk::{FlowChange, FlowChangeOrigin};
-use tracing::{instrument, trace_span};
+use tracing::{Span, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
-	#[instrument(name = "flow::process", level = "debug", skip(self, txn), fields(flow_id = ?flow_id, origin = ?change.origin, version = change.version.0, diff_count = change.diffs.len()))]
+	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn), fields(
+		flow_id = ?flow_id,
+		origin = ?change.origin,
+		version = change.version.0,
+		diff_count = change.diffs.len(),
+		nodes_processed = tracing::field::Empty
+	))]
 	pub async fn process(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		flow_id: FlowId,
 	) -> crate::Result<()> {
+		let mut nodes_processed = 0;
+
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
 				let node_registrations = {
@@ -52,6 +60,7 @@ impl FlowEngine {
 								),
 							)
 							.await?;
+							nodes_processed += 1;
 						}
 					}
 				}
@@ -69,30 +78,48 @@ impl FlowEngine {
 
 				if let Some((flow, node)) = flow_and_node {
 					self.process_change(txn, &flow, &node, change).await?;
+					nodes_processed += 1;
 				}
 			}
 		}
+
+		Span::current().record("nodes_processed", nodes_processed);
 		Ok(())
 	}
 
-	#[instrument(name = "flow::apply", level = "trace", skip(self, txn), fields(node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
+	#[instrument(name = "flow::engine::apply", level = "trace", skip(self, txn), fields(
+		node_id = ?node.id,
+		node_type = ?node.ty,
+		input_diffs = change.diffs.len(),
+		output_diffs = tracing::field::Empty,
+		lock_wait_us = tracing::field::Empty,
+		apply_time_us = tracing::field::Empty
+	))]
 	async fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
+		let lock_start = std::time::Instant::now();
 		let operator = self.inner.operators.read().await.get(&node.id).unwrap().clone();
-		{
-			let _span = trace_span!("flow::operator_apply", node_id = ?node.id, operator_type = ?node.ty)
-				.entered();
-		}
+		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
+
+		let apply_start = std::time::Instant::now();
 		let result = operator.apply(txn, change, &self.inner.evaluator).await?;
-		tracing::Span::current().record("output_diffs", result.diffs.len());
+		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
+		Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
 	}
 
-	#[instrument(name = "flow::process::change", level = "trace", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
+	#[instrument(name = "flow::engine::process_change", level = "trace", skip(self, txn, flow), fields(
+		flow_id = ?flow.id,
+		node_id = ?node.id,
+		input_diffs = change.diffs.len(),
+		output_diffs = tracing::field::Empty,
+		downstream_count = node.outputs.len(),
+		propagation_time_us = tracing::field::Empty
+	))]
 	fn process_change<'a>(
 		&'a self,
 		txn: &'a mut FlowTransaction,
@@ -108,11 +135,12 @@ impl FlowEngine {
 				SourceInlineData {} => unimplemented!(),
 				_ => {
 					let result = self.apply(txn, node, change).await?;
-					tracing::Span::current().record("output_diffs", result.diffs.len());
+					Span::current().record("output_diffs", result.diffs.len());
 					result
 				}
 			};
 
+			let propagation_start = std::time::Instant::now();
 			if changes.is_empty() {
 			} else if changes.len() == 1 {
 				let output_id = changes[0];
@@ -130,6 +158,7 @@ impl FlowEngine {
 				}
 				self.process_change(txn, flow, flow.get_node(last).unwrap(), change).await?;
 			}
+			Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);
 
 			Ok(())
 		})

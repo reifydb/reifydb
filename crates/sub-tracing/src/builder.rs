@@ -53,6 +53,24 @@ impl TracingBuilder {
 		self
 	}
 
+	/// Disable console logging entirely
+	///
+	/// This is useful when you only want OpenTelemetry tracing without
+	/// the performance overhead of console output.
+	///
+	/// # Example
+	/// ```ignore
+	/// TracingBuilder::new()
+	///     .without_console()  // Disable console output
+	///     .with_layer(otel_layer)  // Only use OpenTelemetry
+	///     .with_filter("trace")  // Can still filter what spans are recorded
+	///     .build()
+	/// ```
+	pub fn without_console(mut self) -> Self {
+		self.console_config = None;
+		self
+	}
+
 	/// Set the log filter using tracing_subscriber's EnvFilter syntax
 	///
 	/// # Examples
@@ -120,22 +138,31 @@ impl TracingBuilder {
 				EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
 			});
 
-		// Build the console layer
-		let console_config = self.console_config.unwrap_or_default();
+		// Build subscriber with external layer and filter
+		let subscriber = tracing_subscriber::registry().with(self.external_layer).with(filter);
 
-		let fmt_layer = fmt::layer()
-			.with_ansi(console_config.use_color())
-			.with_target(true)
-			.with_thread_ids(true)
-			.with_thread_names(true)
-			.with_file(true)
-			.with_line_number(true)
-			.with_span_events(FmtSpan::FULL);
+		// Conditionally create console layer
+		let fmt_layer = if let Some(console_config) = self.console_config {
+			let span_events = if self.with_spans {
+				FmtSpan::NEW | FmtSpan::CLOSE
+			} else {
+				FmtSpan::NONE
+			};
 
-		// Build the subscriber with all layers
-		// Note: External layer must be added first while we're still on bare Registry,
-		// because Box<dyn Layer<Registry>> only works with Registry, not Layered types
-		let subscriber = tracing_subscriber::registry().with(self.external_layer).with(filter).with(fmt_layer);
+			Some(fmt::layer()
+				.with_ansi(console_config.use_color())
+				.with_target(true)
+				.with_thread_ids(false)
+				.with_thread_names(true)
+				.with_file(true)
+				.with_line_number(true)
+				.with_span_events(span_events))
+		} else {
+			None
+		};
+
+		// Add the console layer (or None if disabled)
+		let subscriber = subscriber.with(fmt_layer);
 
 		// Initialize the global subscriber
 		// Note: This will fail silently if a subscriber is already set
