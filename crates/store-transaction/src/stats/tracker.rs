@@ -22,7 +22,7 @@ use super::{
 };
 use crate::{
 	stats::parser::extract_object_id,
-	tier::{RangeCursor, Store, TierStorage},
+	tier::{EntryKind, RangeCursor, TierStorage},
 };
 
 /// Configuration for storage tracking.
@@ -378,7 +378,7 @@ impl StorageTracker {
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
 	pub async fn checkpoint<S: TierStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
-		storage.ensure_table(Store::Single).await?;
+		storage.ensure_table(EntryKind::Single).await?;
 
 		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
 			let inner = self.inner.read().unwrap();
@@ -403,7 +403,7 @@ impl StorageTracker {
 		};
 
 		// Batch write all entries
-		storage.set(HashMap::from([(Store::Single, entries)])).await?;
+		storage.set(HashMap::from([(EntryKind::Single, entries)])).await?;
 
 		// Reset checkpoint timer
 		{
@@ -432,7 +432,7 @@ impl StorageTracker {
 		loop {
 			let batch = storage
 				.range_next(
-					Store::Single,
+					EntryKind::Single,
 					&mut cursor,
 					Bound::Included(type_prefix.as_slice()),
 					Bound::Excluded(end_prefix.as_slice()),
@@ -466,7 +466,7 @@ impl StorageTracker {
 		loop {
 			let batch = storage
 				.range_next(
-					Store::Single,
+					EntryKind::Single,
 					&mut cursor,
 					Bound::Included(object_prefix.as_slice()),
 					Bound::Excluded(end_prefix.as_slice()),

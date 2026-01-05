@@ -28,10 +28,7 @@ impl FlowEngine {
 
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
-				let node_registrations = {
-					let sources = self.inner.sources.read().await;
-					sources.get(&source).cloned()
-				};
+				let node_registrations = self.inner.sources.get(&source).map(|r| r.clone());
 
 				if let Some(node_registrations) = node_registrations {
 					for (registered_flow_id, node_id) in node_registrations {
@@ -102,7 +99,7 @@ impl FlowEngine {
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
 		let lock_start = std::time::Instant::now();
-		let operator = self.inner.operators.read().await.get(&node.id).unwrap().clone();
+		let operator = self.inner.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		let apply_start = std::time::Instant::now();

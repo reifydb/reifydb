@@ -8,11 +8,9 @@
 //! Flow consumers request changes on-demand, and the provider handles caching
 //! with request coalescing to prevent duplicate fetches.
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
+use dashmap::DashMap;
 use reifydb_core::{
 	CommitVersion,
 	interface::{CdcChange, PrimitiveId},
@@ -22,7 +20,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 use reifydb_sdk::FlowChange;
 use reifydb_transaction::cdc::CdcQueryTransaction;
-use tokio::sync::{Mutex, RwLock, watch};
+use tokio::sync::{Mutex, watch};
 use tracing::warn;
 
 use crate::{catalog::FlowCatalog, convert::convert_cdc_to_flow_change};
@@ -53,7 +51,7 @@ pub struct FlowChangeProvider {
 
 	/// In-flight fetches: prevents duplicate fetches for same version.
 	/// Maps version to a channel that will receive the result.
-	in_flight: RwLock<HashMap<CommitVersion, watch::Receiver<Option<CachedVersion>>>>,
+	in_flight: DashMap<CommitVersion, watch::Receiver<Option<CachedVersion>>>,
 
 	/// Catalog cache for source metadata (shared across fetches).
 	catalog_cache: FlowCatalog,
@@ -67,7 +65,7 @@ impl FlowChangeProvider {
 		Self {
 			engine,
 			cache: Mutex::new(LruCache::new(10_000)),
-			in_flight: RwLock::new(HashMap::new()),
+			in_flight: DashMap::new(),
 			catalog_cache,
 		}
 	}
@@ -107,45 +105,36 @@ impl FlowChangeProvider {
 		sources: &HashSet<PrimitiveId>,
 	) -> crate::Result<Option<Arc<VersionChanges>>> {
 		// Check if another task is already fetching this version
-		{
-			let in_flight = self.in_flight.read().await;
-			if let Some(receiver) = in_flight.get(&version) {
-				let mut rx = receiver.clone();
-				drop(in_flight);
+		if let Some(receiver) = self.in_flight.get(&version) {
+			let mut rx = receiver.clone();
+			drop(receiver); // Release DashMap ref before await
 
-				rx.changed().await.ok();
-				if let Some(cached) = rx.borrow().clone() {
-					if cached.primitives.is_disjoint(sources) {
-						return Ok(None);
-					}
-					return Ok(Some(cached.changes));
+			rx.changed().await.ok();
+			if let Some(cached) = rx.borrow().clone() {
+				if cached.primitives.is_disjoint(sources) {
+					return Ok(None);
 				}
+				return Ok(Some(cached.changes));
 			}
 		}
 
 		let (tx, rx) = watch::channel(None);
-		{
-			let mut in_flight = self.in_flight.write().await;
 
-			// Double-check: another task might have started while we were waiting for write lock
-			if let Some(receiver) = in_flight.get(&version) {
-				let mut rx = receiver.clone();
-				drop(in_flight);
+		// Double-check: another task might have started while we were waiting
+		if let Some(receiver) = self.in_flight.get(&version) {
+			let mut rx = receiver.clone();
+			drop(receiver); // Release DashMap ref before await
 
-				rx.changed().await.ok();
-				if let Some(cached) = rx.borrow().clone() {
-					if cached.primitives.is_disjoint(sources) {
-						return Ok(None);
-					}
-					return Ok(Some(cached.changes));
+			rx.changed().await.ok();
+			if let Some(cached) = rx.borrow().clone() {
+				if cached.primitives.is_disjoint(sources) {
+					return Ok(None);
 				}
-				// Re-acquire write lock after checking
-				let mut in_flight = self.in_flight.write().await;
-				in_flight.insert(version, rx);
-			} else {
-				in_flight.insert(version, rx);
+				return Ok(Some(cached.changes));
 			}
 		}
+
+		self.in_flight.insert(version, rx);
 
 		// Perform the actual fetch and decode
 		let result = self.do_fetch_and_decode(version).await;
@@ -175,10 +164,7 @@ impl FlowChangeProvider {
 				tx.send(Some(cached)).ok();
 
 				// Clean up in-flight
-				{
-					let mut in_flight = self.in_flight.write().await;
-					in_flight.remove(&version);
-				}
+				self.in_flight.remove(&version);
 
 				// Check intersection for current request
 				if primitives.is_disjoint(sources) {
@@ -189,8 +175,7 @@ impl FlowChangeProvider {
 			}
 			Err(e) => {
 				// Clean up in-flight on error (don't cache failures)
-				let mut in_flight = self.in_flight.write().await;
-				in_flight.remove(&version);
+				self.in_flight.remove(&version);
 				Err(e)
 			}
 		}

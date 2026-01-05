@@ -9,4 +9,4 @@ pub mod storage;
 
 pub use storage::HotStorage;
 
-pub use crate::tier::{RangeBatch, RawEntry, Store, TierBackend, TierStorage};
+pub use crate::tier::{EntryKind, RangeBatch, RawEntry, TierBackend, TierStorage};

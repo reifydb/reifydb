@@ -25,9 +25,9 @@ use super::{
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
-	hot::{Store::Multi, delta_optimizer::optimize_deltas},
+	hot::{EntryKind::Multi, delta_optimizer::optimize_deltas},
 	stats::{PreVersionInfo, Tier},
-	tier::{RangeCursor, Store, TierStorage},
+	tier::{EntryKind, RangeCursor, TierStorage},
 };
 
 /// Fixed chunk size for internal tier scans.
@@ -194,7 +194,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		})?;
 
 		// Batch deltas by table for efficient storage writes
-		let mut batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
+		let mut batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
 
 		for delta in all_deltas.iter() {
 			let table = classify_key(delta.key());
@@ -279,7 +279,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		};
 
 		if let Some((cdc_key, encoded)) = cdc_data {
-			batches.entry(Store::Cdc).or_default().push((cdc_key, Some(encoded)));
+			batches.entry(EntryKind::Cdc).or_default().push((cdc_key, Some(encoded)));
 		}
 
 		storage.set(batches).await?;
@@ -295,9 +295,9 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 impl StandardTransactionStore {
 	/// Get information about the previous value of a key for stats tracking .
-	async fn get_previous_value_info(&self, table: Store, key: &[u8]) -> Option<PreVersionInfo> {
+	async fn get_previous_value_info(&self, table: EntryKind, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
-		async fn get_value<S: TierStorage>(storage: &S, table: Store, key: &[u8]) -> Option<(u64, u64)> {
+		async fn get_value<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Option<(u64, u64)> {
 			match get_at_version(storage, table, key, CommitVersion(u64::MAX)).await {
 				Ok(VersionedGetResult::Value {
 					value,
@@ -540,7 +540,7 @@ impl StandardTransactionStore {
 	/// Returns true if any entries were processed (i.e., made progress).
 	async fn scan_tier_chunk<S: TierStorage>(
 		storage: &S,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: &[u8],
 		end: &[u8],
@@ -754,7 +754,7 @@ impl StandardTransactionStore {
 	/// Returns true if any entries were processed (i.e., made progress).
 	async fn scan_tier_chunk_rev<S: TierStorage>(
 		storage: &S,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: &[u8],
 		end: &[u8],
@@ -812,7 +812,7 @@ impl StandardTransactionStore {
 impl MultiVersionStore for StandardTransactionStore {}
 
 /// Classify a range to determine which table it belongs to.
-fn classify_key_range(range: &EncodedKeyRange) -> Store {
+fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
 	use super::router::classify_range;
 
 	classify_range(range).unwrap_or(Multi)

@@ -113,7 +113,7 @@ impl FlowConsumer {
 					match result {
 						Ok(broadcast) => {
 							let start_version = current_version.0 + 1;
-							let end_version = broadcast.version.0.min(start_version + 99);
+							let end_version = broadcast.version.0.min(start_version + 999);
 
 							if start_version > end_version {
 								continue; // Nothing to process

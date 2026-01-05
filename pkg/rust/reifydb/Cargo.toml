@@ -35,8 +35,7 @@ reifydb-sub-server-ws = { workspace = true, optional = true }
 async-trait = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
-
-# Dependencies for with_tracing_otel() method
+num_cpus = {workspace = true}
 opentelemetry = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 

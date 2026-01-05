@@ -16,7 +16,7 @@ use reifydb_type::Result;
 ///
 /// The store layer routes keys to the appropriate storage based on key type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Store {
+pub enum EntryKind {
 	/// Multi-version storage for general data
 	Multi,
 	/// Single-version storage (no version history)
@@ -104,10 +104,10 @@ impl Default for RangeCursor {
 #[async_trait]
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
-	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>>;
+	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
 	/// Check if a key exists in storage.
-	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		Ok(self.get(table, key).await?.is_some())
 	}
 
@@ -115,7 +115,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
+	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
 	/// Fetch the next batch of entries in key order (descending).
 	///
@@ -125,7 +125,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// key seen, and `exhausted` is set to true when no more entries remain.
 	async fn range_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -140,7 +140,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// key seen, and `exhausted` is set to true when no more entries remain.
 	async fn range_rev_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -151,10 +151,10 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// For memory backends this is typically a no-op.
 	/// For SQL backends this may create tables.
-	async fn ensure_table(&self, table: Store) -> Result<()>;
+	async fn ensure_table(&self, table: EntryKind) -> Result<()>;
 
 	/// Delete all entries in a table.
-	async fn clear_table(&self, table: Store) -> Result<()>;
+	async fn clear_table(&self, table: EntryKind) -> Result<()>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

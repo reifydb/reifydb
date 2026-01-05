@@ -11,7 +11,7 @@ use std::{future::Future, pin::Pin, sync::OnceLock};
 use cleanup::cleanup_old_windows;
 use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
 use tokio::sync::{Mutex, RwLock};
-use tracing::instrument;
+use tracing::{Span, instrument};
 
 use crate::multi::{
 	conflict::ConflictManager,
@@ -185,7 +185,23 @@ where
 	}
 
 	/// Efficient conflict detection using time windows and key indexing
-	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(%version))]
+	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(
+		%version,
+		read_keys = tracing::field::Empty,
+		write_keys = tracing::field::Empty,
+		relevant_windows = tracing::field::Empty,
+		windows_checked = tracing::field::Empty,
+		txns_checked = tracing::field::Empty,
+		inner_read_lock_us = tracing::field::Empty,
+		find_windows_us = tracing::field::Empty,
+		conflict_check_us = tracing::field::Empty,
+		version_lock_us = tracing::field::Empty,
+		clock_next_us = tracing::field::Empty,
+		inner_write_lock_us = tracing::field::Empty,
+		add_txn_us = tracing::field::Empty,
+		cleanup_us = tracing::field::Empty,
+		has_conflict = tracing::field::Empty
+	))]
 	pub(crate) async fn new_commit(
 		&self,
 		done_read: &mut bool,
@@ -194,15 +210,20 @@ where
 	) -> crate::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
+		let lock_start = std::time::Instant::now();
 		let inner = self.inner.read().await;
+		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
 
 		// Get keys involved in this transaction for efficient filtering
 		// Use references to avoid cloning
 		let read_keys = conflicts.get_read_keys();
 		let write_keys = conflicts.get_write_keys();
+		Span::current().record("read_keys", read_keys.len());
+		Span::current().record("write_keys", write_keys.len());
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
+		let find_start = std::time::Instant::now();
 		let relevant_windows: Vec<CommitVersion> = if !has_keys {
 			// If no specific keys, we need to check recent windows
 			// for range/all operations
@@ -233,10 +254,16 @@ where
 				windows.into_iter().collect()
 			}
 		};
+		Span::current().record("find_windows_us", find_start.elapsed().as_micros() as u64);
+		Span::current().record("relevant_windows", relevant_windows.len());
 
 		// Check for conflicts only in relevant windows
+		let conflict_start = std::time::Instant::now();
+		let mut windows_checked = 0u64;
+		let mut txns_checked = 0u64;
 		for window_version in &relevant_windows {
 			if let Some(window) = inner.time_windows.get(window_version) {
+				windows_checked += 1;
 				// OPTIMIZATION: Early skip if all transactions in window are older
 				// than our read version - no need to acquire lock
 				if window.max_version <= version {
@@ -267,6 +294,7 @@ where
 				// Check conflicts with transactions in this
 				// window
 				for committed_txn in &window.transactions {
+					txns_checked += 1;
 					// Skip transactions that committed
 					// before we started reading
 					if committed_txn.version <= version {
@@ -275,12 +303,22 @@ where
 
 					if let Some(old_conflicts) = &committed_txn.conflict_manager {
 						if conflicts.has_conflict(old_conflicts) {
+							Span::current().record(
+								"conflict_check_us",
+								conflict_start.elapsed().as_micros() as u64,
+							);
+							Span::current().record("windows_checked", windows_checked);
+							Span::current().record("txns_checked", txns_checked);
+							Span::current().record("has_conflict", true);
 							return Ok(CreateCommitResult::Conflict(conflicts));
 						}
 					}
 				}
 			}
 		}
+		Span::current().record("conflict_check_us", conflict_start.elapsed().as_micros() as u64);
+		Span::current().record("windows_checked", windows_checked);
+		Span::current().record("txns_checked", txns_checked);
 
 		// Release read lock and acquire write lock for commit
 		drop(inner);
@@ -293,14 +331,18 @@ where
 
 		// Get commit version with minimal locking
 		let commit_version = {
+			let version_lock_start = std::time::Instant::now();
 			let _version_guard = self.version_lock.lock().await;
+			Span::current().record("version_lock_us", version_lock_start.elapsed().as_micros() as u64);
 
 			let clock = {
 				let inner = self.inner.read().await;
 				inner.clock.clone()
 			};
 
+			let clock_start = std::time::Instant::now();
 			let version = clock.next().await?;
+			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
 			// TEST HOOK: Inject behavior between version allocation and begin()
 			// This runs INSIDE the version_lock, so with the fix applied, other
@@ -324,16 +366,23 @@ where
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
+			let write_lock_start = std::time::Instant::now();
 			let mut inner = self.inner.write().await;
+			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
+
+			let add_start = std::time::Instant::now();
 			inner.add_committed_transaction(commit_version, conflicts);
+			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
 			inner.time_windows.len() > CLEANUP_THRESHOLD
 		};
 
 		if needs_cleanup {
+			let cleanup_start = std::time::Instant::now();
 			let mut inner = self.inner.write().await;
 			let inner = &mut *inner;
 			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
+			Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
 		}
 
 		// DO NOT call done() here - watermark should only advance AFTER storage write completes

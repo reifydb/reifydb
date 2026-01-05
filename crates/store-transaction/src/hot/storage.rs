@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use reifydb_type::Result;
 
 use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
-use crate::tier::{RangeBatch, RangeCursor, Store, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.
 ///
@@ -47,7 +47,7 @@ impl HotStorage {
 #[async_trait]
 impl TierStorage for HotStorage {
 	#[inline]
-	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(table, key).await,
 			Self::Sqlite(s) => s.get(table, key).await,
@@ -55,7 +55,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		match self {
 			Self::Memory(s) => s.contains(table, key).await,
 			Self::Sqlite(s) => s.contains(table, key).await,
@@ -63,7 +63,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(batches).await,
 			Self::Sqlite(s) => s.set(batches).await,
@@ -73,7 +73,7 @@ impl TierStorage for HotStorage {
 	#[inline]
 	async fn range_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -88,7 +88,7 @@ impl TierStorage for HotStorage {
 	#[inline]
 	async fn range_rev_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -101,7 +101,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	async fn ensure_table(&self, table: Store) -> Result<()> {
+	async fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.ensure_table(table).await,
 			Self::Sqlite(s) => s.ensure_table(table).await,
@@ -109,7 +109,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	async fn clear_table(&self, table: Store) -> Result<()> {
+	async fn clear_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(table).await,
 			Self::Sqlite(s) => s.clear_table(table).await,
@@ -127,20 +127,20 @@ mod tests {
 	async fn test_memory_backend() {
 		let storage = HotStorage::memory().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
 			.await
 			.unwrap();
-		assert_eq!(storage.get(Store::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
 	#[tokio::test]
 	async fn test_sqlite_backend() {
 		let storage = HotStorage::sqlite_in_memory().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
 			.await
 			.unwrap();
-		assert_eq!(storage.get(Store::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"value".to_vec()));
 	}
 
 	#[tokio::test]
@@ -148,7 +148,7 @@ mod tests {
 		let storage = HotStorage::memory().await;
 
 		storage.set(HashMap::from([(
-			Store::Multi,
+			EntryKind::Multi,
 			vec![
 				(b"a".to_vec(), Some(b"1".to_vec())),
 				(b"b".to_vec(), Some(b"2".to_vec())),
@@ -160,7 +160,7 @@ mod tests {
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 
@@ -174,7 +174,7 @@ mod tests {
 		let storage = HotStorage::sqlite_in_memory().await;
 
 		storage.set(HashMap::from([(
-			Store::Multi,
+			EntryKind::Multi,
 			vec![
 				(b"a".to_vec(), Some(b"1".to_vec())),
 				(b"b".to_vec(), Some(b"2".to_vec())),
@@ -186,7 +186,7 @@ mod tests {
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 

@@ -12,6 +12,7 @@ reifydb-core = { workspace = true }
 reifydb-testing = { workspace = true }
 reifydb-type = { workspace = true }
 
+dashmap = { workspace = true }
 indexmap = { workspace = true }
 tracing = { workspace = true }
 

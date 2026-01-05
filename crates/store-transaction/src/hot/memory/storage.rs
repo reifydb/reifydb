@@ -3,30 +3,33 @@
 
 //! Memory implementation of PrimitiveStorage.
 //!
-//! Uses BTreeMap for ordered key-value storage with RwLock for thread safety.
+//! Uses DashMap for per-table sharding and BTreeMap for ordered key-value storage.
 
-use std::{collections::HashMap, ops::Bound, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+	sync::Arc,
+};
 
 use async_trait::async_trait;
 use reifydb_type::Result;
 use tokio::sync::RwLock;
 use tracing::instrument;
 
-use super::tables::Tables;
-use crate::tier::{RangeBatch, RangeCursor, RawEntry, Store, TierBackend, TierStorage};
+use super::entry::{Entries, Entry, entry_id_to_key};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
-/// Stores data in BTreeMaps with RwLock for concurrent access.
-/// Uses direct writes for maximum performance.
+/// Uses DashMap for per-table sharding with RwLock per table for concurrent access.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
 }
 
 struct MemoryPrimitiveStorageInner {
-	/// Storage for each table type
-	tables: RwLock<Tables>,
+	/// Storage for each type
+	entries: Entries,
 }
 
 impl MemoryPrimitiveStorage {
@@ -34,40 +37,61 @@ impl MemoryPrimitiveStorage {
 	pub async fn new() -> Self {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
-				tables: RwLock::new(Tables::default()),
+				entries: Entries::default(),
 			}),
 		}
+	}
+
+	/// Get or create a table entry, returning a cloned Arc for async use
+	fn get_or_create_table(&self, table: EntryKind) -> Entry {
+		let table_key = entry_id_to_key(table);
+		self.inner
+			.entries
+			.data
+			.entry(table_key)
+			.or_insert_with(|| Arc::new(RwLock::new(BTreeMap::new())))
+			.value()
+			.clone()
 	}
 }
 
 #[async_trait]
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>> {
-		let tables = self.inner.tables.read().await;
-		if let Some(table_data) = tables.get_table(table) {
-			Ok(table_data.get(key).cloned().flatten())
-		} else {
-			Ok(None)
-		}
+	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+		let table_key = entry_id_to_key(table);
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => return Ok(None),
+		};
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read().await;
+		Ok(table_data.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
-	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
-		let tables = self.inner.tables.read().await;
-		if let Some(table_data) = tables.get_table(table) {
-			// Key exists and is not a tombstone
-			Ok(table_data.get(key).map_or(false, |v| v.is_some()))
-		} else {
-			Ok(false)
-		}
+	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+		let table_key = entry_id_to_key(table);
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => return Ok(false),
+		};
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read().await;
+		// Key exists and is not a tombstone
+		Ok(table_data.get(key).map_or(false, |v| v.is_some()))
 	}
 
-	#[instrument(name = "store::memory::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
-		let mut guard = self.inner.tables.write().await;
-		for (table, entries) in batches {
-			let table_data = guard.get_table_mut(table);
+	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(table_count = batches.len()))]
+	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+		// Sort tables by key to ensure consistent lock acquisition order across concurrent operations.
+		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
+		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
+		sorted_batches.sort_by(|(a, _), (b, _)| entry_id_to_key(*a).cmp(&entry_id_to_key(*b)));
+
+		for (table, entries) in sorted_batches {
+			let table_entry = self.get_or_create_table(table);
+			let mut table_data = table_entry.write().await;
 			for (key, value) in entries {
 				table_data.insert(key, value);
 			}
@@ -78,7 +102,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -88,55 +112,61 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let tables = self.inner.tables.read().await;
-		if let Some(table_data) = tables.get_table(table) {
-			// Determine effective start bound based on cursor state
-			let effective_start: Bound<&[u8]> = match &cursor.last_key {
-				Some(last) => Bound::Excluded(last.as_slice()),
-				None => start,
-			};
-
-			let range_bounds = make_range_bounds_ref(effective_start, end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			let entries: Vec<RawEntry> = table_data
-				.range::<[u8], _>(range_bounds)
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect();
-
-			let has_more = entries.len() > batch_size;
-			let entries: Vec<RawEntry> = if has_more {
-				entries.into_iter().take(batch_size).collect()
-			} else {
-				entries
-			};
-
-			// Update cursor
-			if let Some(last_entry) = entries.last() {
-				cursor.last_key = Some(last_entry.key.clone());
-			}
-			if !has_more {
+		let table_key = entry_id_to_key(table);
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => {
 				cursor.exhausted = true;
+				return Ok(RangeBatch::empty());
 			}
+		};
 
-			Ok(RangeBatch {
-				entries,
-				has_more,
+		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read().await;
+
+		// Determine effective start bound based on cursor state
+		let effective_start: Bound<&[u8]> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => start,
+		};
+
+		let range_bounds = make_range_bounds_ref(effective_start, end);
+
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = table_data
+			.range::<[u8], _>(range_bounds)
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
 			})
+			.collect();
+
+		let has_more = entries.len() > batch_size;
+		let entries: Vec<RawEntry> = if has_more {
+			entries.into_iter().take(batch_size).collect()
 		} else {
-			cursor.exhausted = true;
-			Ok(RangeBatch::empty())
+			entries
+		};
+
+		// Update cursor
+		if let Some(last_entry) = entries.last() {
+			cursor.last_key = Some(last_entry.key.clone());
 		}
+		if !has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(RangeBatch {
+			entries,
+			has_more,
+		})
 	}
 
 	#[instrument(name = "store::memory::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_rev_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -146,64 +176,74 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let tables = self.inner.tables.read().await;
-		if let Some(table_data) = tables.get_table(table) {
-			// For reverse iteration, effective end bound based on cursor
-			let effective_end: Bound<&[u8]> = match &cursor.last_key {
-				Some(last) => Bound::Excluded(last.as_slice()),
-				None => end,
-			};
-
-			let range_bounds = make_range_bounds_ref(start, effective_end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			let entries: Vec<RawEntry> = table_data
-				.range::<[u8], _>(range_bounds)
-				.rev()
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect();
-
-			let has_more = entries.len() > batch_size;
-			let entries: Vec<RawEntry> = if has_more {
-				entries.into_iter().take(batch_size).collect()
-			} else {
-				entries
-			};
-
-			// Update cursor
-			if let Some(last_entry) = entries.last() {
-				cursor.last_key = Some(last_entry.key.clone());
-			}
-			if !has_more {
+		let table_key = entry_id_to_key(table);
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => {
 				cursor.exhausted = true;
+				return Ok(RangeBatch::empty());
 			}
+		};
 
-			Ok(RangeBatch {
-				entries,
-				has_more,
+		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read().await;
+
+		// For reverse iteration, effective end bound based on cursor
+		let effective_end: Bound<&[u8]> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => end,
+		};
+
+		let range_bounds = make_range_bounds_ref(start, effective_end);
+
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = table_data
+			.range::<[u8], _>(range_bounds)
+			.rev()
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
 			})
+			.collect();
+
+		let has_more = entries.len() > batch_size;
+		let entries: Vec<RawEntry> = if has_more {
+			entries.into_iter().take(batch_size).collect()
 		} else {
-			cursor.exhausted = true;
-			Ok(RangeBatch::empty())
+			entries
+		};
+
+		// Update cursor
+		if let Some(last_entry) = entries.last() {
+			cursor.last_key = Some(last_entry.key.clone());
 		}
+		if !has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(RangeBatch {
+			entries,
+			has_more,
+		})
 	}
 
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
-	async fn ensure_table(&self, table: Store) -> Result<()> {
-		// For memory backend, tables are created on-demand, so this is a no-op
-		let mut tables = self.inner.tables.write().await;
-		let _ = tables.get_table_mut(table);
+	async fn ensure_table(&self, table: EntryKind) -> Result<()> {
+		// Use get_or_create to ensure table exists
+		let _ = self.get_or_create_table(table);
 		Ok(())
 	}
 
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
-	async fn clear_table(&self, table: Store) -> Result<()> {
-		let mut guard = self.inner.tables.write().await;
-		let table_data = guard.get_table_mut(table);
+	async fn clear_table(&self, table: EntryKind) -> Result<()> {
+		let table_key = entry_id_to_key(table);
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => return Ok(()),
+		};
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let mut table_data = table_entry.write().await;
 		table_data.clear();
 		Ok(())
 	}
@@ -227,34 +267,34 @@ mod tests {
 		let storage = MemoryPrimitiveStorage::new().await;
 
 		// Put and get
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
 			.await
 			.unwrap();
-		let value = storage.get(Store::Multi, b"key1").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key1").await.unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(Store::Multi, b"key1").await.unwrap());
-		assert!(!storage.contains(Store::Multi, b"nonexistent").await.unwrap());
+		assert!(storage.contains(EntryKind::Multi, b"key1").await.unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").await.unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
-		assert!(!storage.contains(Store::Multi, b"key1").await.unwrap());
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
+		assert!(!storage.contains(EntryKind::Multi, b"key1").await.unwrap());
 	}
 
 	#[tokio::test]
 	async fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
 			.await
 			.unwrap();
-		storage.set(HashMap::from([(Store::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
 			.await
 			.unwrap();
 
-		assert_eq!(storage.get(Store::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(Store::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
 	}
 
 	#[tokio::test]
@@ -267,33 +307,39 @@ mod tests {
 		let source2 = PrimitiveId::Table(CoreTableId(2));
 
 		storage.set(HashMap::from([(
-			Store::Source(source1),
+			EntryKind::Source(source1),
 			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 		storage.set(HashMap::from([(
-			Store::Source(source2),
+			EntryKind::Source(source2),
 			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 
-		assert_eq!(storage.get(Store::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(Store::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
 	}
 
 	#[tokio::test]
 	async fn test_range_next() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 
@@ -309,13 +355,19 @@ mod tests {
 	async fn test_range_rev_next() {
 		let storage = MemoryPrimitiveStorage::new().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 
@@ -333,7 +385,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
@@ -343,7 +395,7 @@ mod tests {
 
 		// First batch of 3
 		let batch1 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
@@ -354,7 +406,7 @@ mod tests {
 
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
@@ -365,7 +417,7 @@ mod tests {
 
 		// Third batch of 3
 		let batch3 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch3.entries.len(), 3);
@@ -376,7 +428,7 @@ mod tests {
 
 		// Fourth batch - only 1 entry remaining
 		let batch4 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch4.entries.len(), 1);
@@ -386,7 +438,7 @@ mod tests {
 
 		// Fifth call - exhausted
 		let batch5 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert!(batch5.entries.is_empty());
@@ -398,7 +450,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
@@ -408,7 +460,7 @@ mod tests {
 
 		// First batch of 3 (reverse)
 		let batch1 = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
@@ -419,7 +471,7 @@ mod tests {
 
 		// Second batch
 		let batch2 = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);

@@ -12,6 +12,7 @@ use std::{
 	sync::Arc,
 };
 
+use dashmap::DashMap;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	CommitVersion, Error,
@@ -37,10 +38,10 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
 	pub(crate) registry: TransformOperatorRegistry,
-	pub(crate) operators: RwLock<HashMap<FlowNodeId, Arc<Operators>>>,
+	pub(crate) operators: DashMap<FlowNodeId, Arc<Operators>>,
 	pub(crate) flows: RwLock<HashMap<FlowId, Flow>>,
-	pub(crate) sources: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
-	pub(crate) sinks: RwLock<HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>>,
+	pub(crate) sources: DashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: DashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
@@ -82,10 +83,10 @@ impl FlowEngine {
 				evaluator,
 				executor,
 				registry,
-				operators: RwLock::new(HashMap::new()),
+				operators: DashMap::new(),
 				flows: RwLock::new(HashMap::new()),
-				sources: RwLock::new(HashMap::new()),
-				sinks: RwLock::new(HashMap::new()),
+				sources: DashMap::new(),
+				sinks: DashMap::new(),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
 				event_bus,
 				flow_creation_versions: RwLock::new(HashMap::new()),
@@ -202,10 +203,10 @@ impl FlowEngine {
 
 	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
 	pub async fn clear(&self) {
-		self.inner.operators.write().await.clear();
+		self.inner.operators.clear();
 		self.inner.flows.write().await.clear();
-		self.inner.sources.write().await.clear();
-		self.inner.sinks.write().await.clear();
+		self.inner.sources.clear();
+		self.inner.sinks.clear();
 		self.inner.analyzer.write().await.clear();
 		self.inner.flow_creation_versions.write().await.clear();
 	}

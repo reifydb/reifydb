@@ -14,7 +14,7 @@ use std::ops::Bound;
 use reifydb_core::CommitVersion;
 use reifydb_type::Result;
 
-use crate::tier::{RangeCursor, Store, TierStorage};
+use crate::tier::{EntryKind, RangeCursor, TierStorage};
 
 /// Size of version suffix in bytes (terminator + u64 big-endian)
 pub(crate) const VERSION_SIZE: usize = 10; // 2 bytes terminator + 8 bytes version
@@ -155,7 +155,7 @@ pub enum VersionedGetResult {
 /// Get the latest version of a key at or before the given version.
 pub async fn get_at_version<S: TierStorage>(
 	storage: &S,
-	table: Store,
+	table: EntryKind,
 	key: &[u8],
 	version: CommitVersion,
 ) -> Result<VersionedGetResult> {
@@ -193,7 +193,7 @@ pub async fn get_at_version<S: TierStorage>(
 #[allow(dead_code)]
 pub async fn get_latest_version<S: TierStorage>(
 	storage: &S,
-	table: Store,
+	table: EntryKind,
 	key: &[u8],
 ) -> Result<Option<CommitVersion>> {
 	let (start, end) = key_version_range(key);

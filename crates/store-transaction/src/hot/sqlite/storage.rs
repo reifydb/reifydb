@@ -22,7 +22,7 @@ use super::{
 	query::build_range_query,
 	tables::table_id_to_name,
 };
-use crate::tier::{RangeBatch, RangeCursor, RawEntry, Store, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// SQLite-based primitive storage implementation.
 ///
@@ -91,7 +91,7 @@ impl SqlitePrimitiveStorage {
 #[async_trait]
 impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
-	async fn get(&self, table: Store, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let table_name = table_id_to_name(table);
 		let key = key.to_vec();
 
@@ -120,7 +120,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 
 	#[instrument(name = "store::sqlite::contains", level = "trace", skip(self), fields(table = ?table, key_len = key.len()), ret)]
-	async fn contains(&self, table: Store, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		let table_name = table_id_to_name(table);
 		let key = key.to_vec();
 
@@ -149,7 +149,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 
 	#[instrument(name = "store::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	async fn set(&self, batches: HashMap<Store, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}
@@ -194,7 +194,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -272,7 +272,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	async fn range_rev_next(
 		&self,
-		table: Store,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
@@ -347,7 +347,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	async fn ensure_table(&self, table: Store) -> Result<()> {
+	async fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		let table_name = table_id_to_name(table);
 
 		let conn = self.inner.conn.write().await;
@@ -368,7 +368,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		.map_err(|e| error!(internal(format!("Failed to ensure table: {}", e))))
 	}
 
-	async fn clear_table(&self, table: Store) -> Result<()> {
+	async fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_name = table_id_to_name(table);
 
 		let conn = self.inner.conn.write().await;
@@ -432,34 +432,34 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		// Put and get
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
 			.await
 			.unwrap();
-		let value = storage.get(Store::Multi, b"key1").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key1").await.unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(Store::Multi, b"key1").await.unwrap());
-		assert!(!storage.contains(Store::Multi, b"nonexistent").await.unwrap());
+		assert!(storage.contains(EntryKind::Multi, b"key1").await.unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").await.unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
-		assert!(!storage.contains(Store::Multi, b"key1").await.unwrap());
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
+		assert!(!storage.contains(EntryKind::Multi, b"key1").await.unwrap());
 	}
 
 	#[tokio::test]
 	async fn test_separate_tables() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
 			.await
 			.unwrap();
-		storage.set(HashMap::from([(Store::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
 			.await
 			.unwrap();
 
-		assert_eq!(storage.get(Store::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(Store::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
 	}
 
 	#[tokio::test]
@@ -472,33 +472,39 @@ mod tests {
 		let source2 = PrimitiveId::Table(CoreTableId(2));
 
 		storage.set(HashMap::from([(
-			Store::Source(source1),
+			EntryKind::Source(source1),
 			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 		storage.set(HashMap::from([(
-			Store::Source(source2),
+			EntryKind::Source(source2),
 			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
 		)]))
 		.await
 		.unwrap();
 
-		assert_eq!(storage.get(Store::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(Store::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
 	}
 
 	#[tokio::test]
 	async fn test_range_next() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 
@@ -514,13 +520,19 @@ mod tests {
 	async fn test_range_rev_next() {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
-		storage.set(HashMap::from([(Store::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).await.unwrap();
-		storage.set(HashMap::from([(Store::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).await.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
+			.await
+			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
+			.await
+			.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 
@@ -538,7 +550,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
@@ -548,7 +560,7 @@ mod tests {
 
 		// First batch of 3
 		let batch1 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
@@ -559,7 +571,7 @@ mod tests {
 
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
@@ -575,7 +587,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(Store::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
 				.await
 				.unwrap();
 		}
@@ -585,7 +597,7 @@ mod tests {
 
 		// First batch of 3 (reverse)
 		let batch1 = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
@@ -596,7 +608,7 @@ mod tests {
 
 		// Second batch
 		let batch2 = storage
-			.range_rev_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
+			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
 			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
@@ -611,7 +623,7 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory().await;
 
 		// Should return None for non-existent table, not error
-		let value = storage.get(Store::Multi, b"key").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key").await.unwrap();
 		assert_eq!(value, None);
 	}
 
@@ -622,7 +634,7 @@ mod tests {
 		// Should return empty batch for non-existent table, not error
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(Store::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
 			.await
 			.unwrap();
 		assert!(batch.entries.is_empty());
