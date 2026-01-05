@@ -7,6 +7,7 @@ pub mod namespace;
 pub mod operator_retention_policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
+pub mod ringbuffer;
 pub mod table;
 pub mod view;
 
@@ -17,6 +18,7 @@ pub(crate) use operator_retention_policy::load_operator_retention_policies;
 pub(crate) use primary_key::load_primary_keys;
 pub(crate) use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::IntoStandardTransaction;
+pub(crate) use ringbuffer::load_ringbuffers;
 pub(crate) use table::load_tables;
 pub(crate) use view::load_views;
 
@@ -40,6 +42,7 @@ impl MaterializedCatalogLoader {
 		load_tables(&mut txn, catalog).await?;
 		load_views(&mut txn, catalog).await?;
 		load_flows(&mut txn, catalog).await?;
+		load_ringbuffers(&mut txn, catalog).await?;
 
 		// Load retention policies
 		load_source_retention_policies(&mut txn, catalog).await?;

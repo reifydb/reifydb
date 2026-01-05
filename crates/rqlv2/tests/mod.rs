@@ -66,16 +66,10 @@ impl testscript::Runner for Runner {
 					return Err(Box::new(parse_result.errors[0].clone()) as Box<dyn Error>);
 				}
 
-				// Compile to plan
-				let runtime = self.runtime.as_ref().unwrap();
-				let result = runtime.block_on(async {
-					let mut tx =
-						engine.begin_query().await.map_err(|e| format!("tx error: {}", e))?;
-					let plans = compile_plan(&bump, &catalog, &mut tx, parse_result.program)
-						.await
-						.map_err(|e| format!("plan error: {}", e))?;
-					Ok::<_, String>(explain_plans(plans))
-				})?;
+				// Compile to plan (synchronous, uses materialized catalog)
+				let plans = compile_plan(&bump, &catalog.materialized, parse_result.program)
+					.map_err(|e| format!("plan error: {}", e))?;
+				let result = explain_plans(plans);
 
 				write!(output, "{}", result)?;
 			}
@@ -102,21 +96,15 @@ impl testscript::Runner for Runner {
 					return Err(Box::new(parse_result.errors[0].clone()) as Box<dyn Error>);
 				}
 
-				// Compile to plan
-				let runtime = self.runtime.as_ref().unwrap();
-				let result = runtime.block_on(async {
-					let mut tx =
-						engine.begin_query().await.map_err(|e| format!("tx error: {}", e))?;
-					let plans = compile_plan(&bump, &catalog, &mut tx, parse_result.program)
-						.await
-						.map_err(|e| format!("plan error: {}", e))?;
+				// Compile to plan (synchronous, uses materialized catalog)
+				let plans = compile_plan(&bump, &catalog.materialized, parse_result.program)
+					.map_err(|e| format!("plan error: {}", e))?;
 
-					// Compile plans to bytecode
-					let program = PlanCompiler::compile(plans)
-						.map_err(|e| format!("bytecode compile error: {}", e))?;
+				// Compile plans to bytecode
+				let program = PlanCompiler::compile(plans)
+					.map_err(|e| format!("bytecode compile error: {}", e))?;
 
-					Ok::<_, String>(explain_bytecode(&program))
-				})?;
+				let result = explain_bytecode(&program);
 
 				write!(output, "{}", result)?;
 			}

@@ -91,7 +91,7 @@ async fn test_data_insertion() {
 	// Just scan the table, no filter
 	let script = r#"from test.users"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	let pipeline = execute_program(program, catalog.clone(), &mut tx).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
@@ -121,7 +121,7 @@ async fn test_basic_filter_int() {
 	// Filter with integer comparison (same pattern as explore.rs)
 	let script = r#"from test.users | filter age > 20"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	let pipeline = execute_program(program, catalog.clone(), &mut tx).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
@@ -154,7 +154,7 @@ async fn test_basic_filter_string_eq() {
 	// Filter with string equality
 	let script = r#"from test.users | filter status == "active""#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	let pipeline = execute_program(program, catalog.clone(), &mut tx).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
@@ -187,7 +187,7 @@ async fn test_in_inline_list_integers() {
 	// Should return: Alice, Charlie, Eve (3 users)
 	let script = r#"from test.users | filter id in [1, 3, 5]"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	let pipeline = execute_program(program, catalog.clone(), &mut tx).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
@@ -220,7 +220,7 @@ async fn test_not_in_inline_list() {
 	// Should return: Alice(1), Charlie(3), Eve(5) = 3 users
 	let script = r#"from test.users | filter id not in [2, 4]"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	let pipeline = execute_program(program, catalog.clone(), &mut tx).await.expect("execute failed");
 	let result = collect(pipeline.unwrap()).await.expect("collect failed");
 
@@ -247,7 +247,7 @@ async fn test_exists_syntax_parses() {
 	let script = r#"from test.users | filter exists(from test.orders | filter user_id == 1)"#;
 
 	// This should compile without error
-	let result = compile_script(script, &catalog, &mut tx).await;
+	let result = compile_script(script, &catalog.materialized);
 	assert!(result.is_ok(), "EXISTS syntax should parse: {:?}", result.err());
 }
 
@@ -266,7 +266,7 @@ async fn test_not_exists_syntax_parses() {
 	// Just test that the syntax parses
 	let script = r#"from test.users | filter not exists(from test.orders | filter user_id == 1)"#;
 
-	let result = compile_script(script, &catalog, &mut tx).await;
+	let result = compile_script(script, &catalog.materialized);
 	assert!(result.is_ok(), "NOT EXISTS syntax should parse: {:?}", result.err());
 }
 
@@ -289,6 +289,6 @@ async fn test_in_subquery_syntax_parses() {
 	// Just test that the syntax parses
 	let script = r#"from test.users | filter id in (from test.active_users | select {id})"#;
 
-	let result = compile_script(script, &catalog, &mut tx).await;
+	let result = compile_script(script, &catalog.materialized);
 	assert!(result.is_ok(), "IN with subquery syntax should parse: {:?}", result.err());
 }

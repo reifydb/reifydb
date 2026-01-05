@@ -4,7 +4,6 @@
 //! Variable scope management.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_transaction::IntoStandardTransaction;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
@@ -17,7 +16,7 @@ pub(super) struct Scope<'bump> {
 	pub(super) variables: BumpVec<'bump, (&'bump str, u32)>,
 }
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
 	/// Push a new variable scope.
 	pub(super) fn push_scope(&mut self) {
 		self.scopes.push(Scope {

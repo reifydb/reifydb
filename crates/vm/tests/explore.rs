@@ -89,7 +89,7 @@ async fn explore() {
     "#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -214,7 +214,7 @@ async fn test_function_declaration_and_call() {
 	let script = "fn get_top_scorers() { from test.users | sort { score: asc } | take 3 }; get_top_scorers()";
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== FUNCTION TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Script functions: {:?}", program.script_functions);
@@ -296,7 +296,7 @@ async fn test_dollar_variable_declaration() {
 	let script = "let $adults = from test.users | filter age >= 18; $adults | map { name, age }";
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== DOLLAR VARIABLE TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -382,7 +382,7 @@ async fn test_if_else_if_else() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== IF/ELSE-IF/ELSE TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -463,7 +463,7 @@ async fn test_loop_break() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== LOOP/BREAK TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -544,7 +544,7 @@ async fn test_for_in_iteration() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== FOR IN ITERATION TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -615,7 +615,7 @@ async fn test_loop_count_to_10() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== LOOP COUNT TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Bytecode ({} bytes): {:?}", program.bytecode.len(), program.bytecode);
@@ -662,7 +662,7 @@ async fn test_for_in_field_access() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== FOR..IN FIELD ACCESS TEST BYTECODE ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Sources: {:?}", program.sources);
@@ -707,7 +707,7 @@ async fn test_bare_literal_expression_compiles() {
 		from test.users | filter age > get_in_age() | take 1
 	"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("Constants: {:?}", program.constants);
 	println!("Bytecode: {:?}", program.bytecode);
@@ -749,7 +749,7 @@ async fn test_bare_literal_expression_in_filter() {
 	"#;
 
 	// Debug: compile and show bytecode
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== BARE LITERAL IN FILTER TEST ===");
 	println!("Constants: {:?}", program.constants);
 	println!("Script Functions: {:?}", program.script_functions);
@@ -831,7 +831,7 @@ async fn test_arithmetic_expression_in_filter() {
 		from test.users | filter age > calculate_threshold() | map { name, age }
 	"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== ARITHMETIC IN FILTER TEST ===");
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("=================================\n");
@@ -880,7 +880,7 @@ async fn test_parenthesized_expression_in_filter() {
 		from test.users | filter age > compute_limit() | map { name, age }
 	"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== PARENTHESIZED IN FILTER TEST ===");
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("====================================\n");
@@ -930,7 +930,7 @@ async fn test_variable_expression_in_filter() {
 		from test.users | filter age > double_base() | map { name, age }
 	"#;
 
-	let program = compile_script(script, &catalog, &mut tx).await.expect("compile failed");
+	let program = compile_script(script, &catalog.materialized).expect("compile failed");
 	println!("\n=== VARIABLE IN FILTER TEST ===");
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("===============================\n");

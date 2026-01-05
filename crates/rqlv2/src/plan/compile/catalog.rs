@@ -5,7 +5,6 @@
 
 use bumpalo::collections::Vec as BumpVec;
 use reifydb_core::interface::ColumnDef;
-use reifydb_transaction::IntoStandardTransaction;
 
 use super::core::{DEFAULT_NAMESPACE, PlanError, PlanErrorKind, Planner, Result};
 use crate::{
@@ -13,47 +12,33 @@ use crate::{
 	token::Span,
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
 	/// Resolve a namespace by name, defaulting to "default" if not specified.
-	pub(super) async fn resolve_namespace(
-		&mut self,
-		name: Option<&str>,
-		span: Span,
-	) -> Result<&'bump Namespace<'bump>> {
+	pub(super) fn resolve_namespace(&mut self, name: Option<&str>, span: Span) -> Result<&'bump Namespace<'bump>> {
 		let ns_name = name.unwrap_or(DEFAULT_NAMESPACE);
-		let ns_def = self.catalog.find_namespace_by_name(self.tx, ns_name).await.map_err(|e| PlanError {
-			kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
+		let ns_def = self.catalog.find_namespace_by_name(ns_name).ok_or_else(|| PlanError {
+			kind: PlanErrorKind::NamespaceNotFound(ns_name.to_string()),
 			span,
 		})?;
 
-		match ns_def {
-			Some(def) => Ok(self.bump.alloc(Namespace {
-				id: def.id,
-				name: self.bump.alloc_str(&def.name),
-				span,
-			})),
-			None => Err(PlanError {
-				kind: PlanErrorKind::NamespaceNotFound(ns_name.to_string()),
-				span,
-			}),
-		}
+		Ok(self.bump.alloc(Namespace {
+			id: ns_def.id,
+			name: self.bump.alloc_str(&ns_def.name),
+			span,
+		}))
 	}
 
 	/// Resolve a primitive data source (table, view, ring buffer, dictionary).
-	pub(super) async fn resolve_primitive(
+	pub(super) fn resolve_primitive(
 		&mut self,
 		namespace: Option<&str>,
 		name: &str,
 		span: Span,
 	) -> Result<Primitive<'bump>> {
-		let ns = self.resolve_namespace(namespace, span).await?;
+		let ns = self.resolve_namespace(namespace, span)?;
 
 		// Try table first
-		if let Some(table_def) =
-			self.catalog.find_table_by_name(self.tx, ns.id, name).await.map_err(|e| PlanError {
-				kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-				span,
-			})? {
+		if let Some(table_def) = self.catalog.find_table_by_name(ns.id, name) {
 			let columns = self.resolve_columns(&table_def.columns, span);
 			let table = self.bump.alloc(Table {
 				id: table_def.id,
@@ -66,11 +51,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 
 		// Try ring buffer
-		if let Some(rb_def) =
-			self.catalog.find_ringbuffer_by_name(self.tx, ns.id, name).await.map_err(|e| PlanError {
-				kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-				span,
-			})? {
+		if let Some(rb_def) = self.catalog.find_ringbuffer_by_name(ns.id, name) {
 			let columns = self.resolve_columns(&rb_def.columns, span);
 			let rb = self.bump.alloc(RingBuffer {
 				id: rb_def.id,
@@ -84,11 +65,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 
 		// Try view
-		if let Some(view_def) =
-			self.catalog.find_view_by_name(self.tx, ns.id, name).await.map_err(|e| PlanError {
-				kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-				span,
-			})? {
+		if let Some(view_def) = self.catalog.find_view_by_name(ns.id, name) {
 			let columns = self.resolve_columns(&view_def.columns, span);
 			let view = self.bump.alloc(View {
 				id: view_def.id,
@@ -101,11 +78,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 
 		// Try dictionary
-		if let Some(dict_def) =
-			self.catalog.find_dictionary_by_name(self.tx, ns.id, name).await.map_err(|e| PlanError {
-				kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-				span,
-			})? {
+		if let Some(dict_def) = self.catalog.find_dictionary_by_name(ns.id, name) {
 			let dict = self.bump.alloc(Dictionary {
 				id: dict_def.id,
 				namespace: ns,
@@ -138,26 +111,18 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		resolved.into_bump_slice()
 	}
 
-	pub(super) async fn resolve_table(
+	pub(super) fn resolve_table(
 		&mut self,
 		namespace: Option<&str>,
 		name: &str,
 		span: Span,
 	) -> Result<&'bump Table<'bump>> {
-		let ns = self.resolve_namespace(namespace, span).await?;
+		let ns = self.resolve_namespace(namespace, span)?;
 
-		let table_def = self
-			.catalog
-			.find_table_by_name(self.tx, ns.id, name)
-			.await
-			.map_err(|e| PlanError {
-				kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-				span,
-			})?
-			.ok_or_else(|| PlanError {
-				kind: PlanErrorKind::TableNotFound(name.to_string()),
-				span,
-			})?;
+		let table_def = self.catalog.find_table_by_name(ns.id, name).ok_or_else(|| PlanError {
+			kind: PlanErrorKind::TableNotFound(name.to_string()),
+			span,
+		})?;
 
 		let columns = self.resolve_columns(&table_def.columns, span);
 		Ok(self.bump.alloc(Table {

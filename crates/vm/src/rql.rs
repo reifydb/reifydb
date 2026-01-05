@@ -16,9 +16,8 @@
 //!         let $users = scan users | filter age > 18
 //!         $users | select [name, email]
 //!     "#,
-//!     &catalog,
-//!     &mut tx
-//! ).await?;
+//!     &catalog.materialized,
+//! )?;
 //!
 //! let pipeline = execute_program(program, registry, catalog, &mut tx).await?;
 //! ```
@@ -26,7 +25,7 @@
 use std::sync::Arc;
 
 use bumpalo::Bump;
-use reifydb_catalog::Catalog;
+use reifydb_catalog::{Catalog, MaterializedCatalog};
 use reifydb_rqlv2::{
 	ast::parse::{ParseError, Parser},
 	bytecode::{
@@ -97,15 +96,10 @@ pub enum RqlError {
 /// let program = compile_script(
 ///     "let $users = scan users | filter age > 18\n$users",
 ///     &catalog,
-///     &mut tx
-/// ).await?;
+/// )?;
 /// ```
-pub async fn compile_script<T: IntoStandardTransaction>(
-	source: &str,
-	catalog: &Catalog,
-	tx: &mut T,
-) -> Result<CompiledProgram, RqlError> {
-	// Create bump allocator for AST (transient - dropped after compilation)
+pub fn compile_script(source: &str, catalog: &MaterializedCatalog) -> Result<CompiledProgram, RqlError> {
+	// Create bump allocator for AST
 	let bump = Bump::new();
 
 	// Step 1: Tokenize
@@ -122,7 +116,7 @@ pub async fn compile_script<T: IntoStandardTransaction>(
 	let program_ast = parse_result.program;
 
 	// Step 3: Compile AST to Plan (requires catalog for table resolution)
-	let plans = plan(&bump, catalog, tx, program_ast).await?;
+	let plans = plan(&bump, catalog, program_ast)?;
 
 	if plans.is_empty() {
 		return Err(RqlError::EmptyProgram);

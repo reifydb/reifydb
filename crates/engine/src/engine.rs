@@ -13,7 +13,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_core::{
-	CommitVersion, ComputePool, Frame,
+	CommitVersion, Frame,
 	event::{Event, EventBus},
 	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
 	ioc::IocContainer,
@@ -194,25 +194,8 @@ impl StandardEngine {
 		let rql = rql.to_string();
 		let rql_for_errors = rql.clone();
 
-		// Create transaction for compilation
-		let mut compile_tx = self.begin_query().await.map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Failed to begin transaction for compilation: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
-
-		// Step 1: Compile the script
-		let program = reifydb_vm::compile_script(&rql, &catalog, &mut compile_tx).await.map_err(|e| {
+		// Step 1: Compile the script (synchronous, uses materialized catalog)
+		let program = reifydb_vm::compile_script(&rql, &catalog.materialized).map_err(|e| {
 			let diagnostic = diagnostic::Diagnostic {
 				code: "VM_ERROR".to_string(),
 				statement: Some(rql_for_errors.clone()),
@@ -583,7 +566,6 @@ pub struct Inner {
 	interceptors: Box<dyn InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
-	compute_pool: ComputePool,
 }
 
 impl StandardEngine {
@@ -632,7 +614,6 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
-			compute_pool: ComputePool::new(4, 16), // 4 threads, max 16 in-flight
 		}))
 	}
 

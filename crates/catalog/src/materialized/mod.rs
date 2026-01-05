@@ -8,6 +8,7 @@ mod namespace;
 mod operator_retention_policy;
 mod primary_key;
 mod primitive_retention_policy;
+mod ringbuffer;
 mod table;
 mod view;
 
@@ -17,7 +18,8 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
-		PrimaryKeyId, PrimitiveId, TableDef, TableId, VTableDef, VTableId, ViewDef, ViewId,
+		PrimaryKeyId, PrimitiveId, RingBufferDef, RingBufferId, TableDef, TableId, VTableDef, VTableId,
+		ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -31,6 +33,7 @@ pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
+pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -66,6 +69,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
 	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
+	/// MultiVersion ringbuffer definitions indexed by ringbuffer ID
+	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBufferDef>,
+	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
+	pub(crate) ringbuffers_by_name: SkipMap<(NamespaceId, String), RingBufferId>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -113,6 +120,8 @@ impl MaterializedCatalog {
 			operator_retention_policies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
+			ringbuffers: SkipMap::new(),
+			ringbuffers_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

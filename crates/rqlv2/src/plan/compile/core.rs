@@ -4,8 +4,7 @@
 //! Core planner types and entry point.
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_catalog::Catalog;
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_catalog::MaterializedCatalog;
 use tracing::instrument;
 
 use super::scope::Scope;
@@ -15,11 +14,10 @@ use crate::{
 	token::Span,
 };
 
-/// Planner context - holds bump allocator, catalog, and transaction.
-pub(super) struct Planner<'bump, 'cat, T> {
+/// Planner context - holds bump allocator and catalog.
+pub(super) struct Planner<'bump, 'cat> {
 	pub(super) bump: &'bump Bump,
-	pub(super) catalog: &'cat Catalog,
-	pub(super) tx: &'cat mut T,
+	pub(super) catalog: &'cat MaterializedCatalog,
 	pub(super) scopes: BumpVec<'bump, Scope<'bump>>,
 	pub(super) next_variable_id: u32,
 	/// Script function names that have been defined.
@@ -84,22 +82,20 @@ impl std::error::Error for PlanError {}
 pub(super) const DEFAULT_NAMESPACE: &str = "default";
 
 /// Compile a program to a plan.
-#[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, tx, program))]
-pub async fn plan<'bump, T: IntoStandardTransaction>(
+#[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, program))]
+pub fn plan<'bump>(
 	bump: &'bump Bump,
-	catalog: &Catalog,
-	tx: &mut T,
+	catalog: &MaterializedCatalog,
 	program: Program<'bump>,
 ) -> Result<&'bump [Plan<'bump>]> {
 	let mut planner = Planner {
 		bump,
 		catalog,
-		tx,
 		scopes: BumpVec::new_in(bump),
 		next_variable_id: 0,
 		script_functions: BumpVec::new_in(bump),
 		variable_schemas: BumpVec::new_in(bump),
 	};
 	planner.push_scope();
-	planner.compile_program(program).await
+	planner.compile_program(program)
 }
