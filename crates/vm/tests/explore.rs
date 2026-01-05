@@ -2,16 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 
 use futures_util::TryStreamExt;
-use reifydb_catalog::{Catalog, MaterializedCatalog};
+use reifydb_catalog::Catalog;
 use reifydb_core::{event::EventBus, interface::Identity, ioc::IocContainer, value::column::Columns};
 use reifydb_engine::StandardEngine;
+use reifydb_rqlv2::compile_script;
 use reifydb_store_transaction::TransactionStore;
 use reifydb_transaction::{
 	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
 	single::TransactionSingle,
 };
 use reifydb_type::Params;
-use reifydb_vm::{collect, compile_script, execute_program};
+use reifydb_vm::{collect, execute_program};
 
 async fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory().await;
@@ -695,7 +696,6 @@ async fn test_bare_literal_expression_compiles() {
 	)
 	.await;
 
-	let mut tx = engine.begin_command().await.unwrap();
 	let catalog = engine.catalog();
 
 	// Function with bare literal as implicit return

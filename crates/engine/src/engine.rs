@@ -20,6 +20,7 @@ use reifydb_core::{
 };
 use reifydb_function::{Functions, math, series, subscription};
 use reifydb_rql::ast;
+use reifydb_rqlv2::compile_script;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
 	multi::TransactionMultiVersion, single::TransactionSingle,
@@ -194,22 +195,7 @@ impl StandardEngine {
 		let rql = rql.to_string();
 		let rql_for_errors = rql.clone();
 
-		// Step 1: Compile the script (synchronous, uses materialized catalog)
-		let program = reifydb_vm::compile_script(&rql, &catalog.materialized).map_err(|e| {
-			let diagnostic = diagnostic::Diagnostic {
-				code: "VM_ERROR".to_string(),
-				statement: Some(rql_for_errors.clone()),
-				message: format!("Compilation failed: {}", e),
-				column: None,
-				fragment: Fragment::default(),
-				label: None,
-				help: None,
-				notes: Vec::new(),
-				cause: None,
-				operator_chain: None,
-			};
-			Error(diagnostic)
-		})?;
+		let program = compile_script(&rql, &catalog.materialized)?;
 
 		// Step 2: Create a new transaction for execution
 		let mut exec_tx = self.begin_query().await.map_err(|e| {

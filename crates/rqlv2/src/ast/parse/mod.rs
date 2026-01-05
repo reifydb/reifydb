@@ -27,6 +27,7 @@ pub use pratt::Precedence;
 use super::{Expr, Program, Statement};
 use crate::{
 	ast::expr::BinaryOp,
+	error::RqlError,
 	token::{EOF_TOKEN, Keyword, Operator, Punctuation, Span, Token, TokenKind},
 };
 
@@ -34,6 +35,31 @@ use crate::{
 pub struct ParseResult<'bump> {
 	pub program: Program<'bump>,
 	pub errors: &'bump [ParseError],
+}
+
+/// Parse RQL source into a Program AST.
+///
+/// # Arguments
+///
+/// * `bump` - The bump allocator for AST nodes
+/// * `tokens` - The token stream from lexer
+/// * `source` - The original source code
+///
+/// # Returns
+///
+/// A `Program` AST node, or an `RqlError` if parsing fails.
+pub fn parse<'bump>(
+	bump: &'bump Bump,
+	tokens: &'bump [crate::token::Token],
+	source: &str,
+) -> Result<Program<'bump>, RqlError> {
+	let parse_result = Parser::new(bump, tokens, source).parse();
+
+	if !parse_result.errors.is_empty() {
+		return Err(RqlError::Parse(parse_result.errors.to_vec()));
+	}
+
+	Ok(parse_result.program)
 }
 
 /// Parser for RQL v2.

@@ -12,12 +12,13 @@ use futures_util::TryStreamExt;
 use reifydb_catalog::Catalog;
 use reifydb_core::{event::EventBus, interface::Identity, ioc::IocContainer};
 use reifydb_engine::StandardEngine;
+use reifydb_rqlv2::compile_script;
 use reifydb_store_transaction::TransactionStore;
 use reifydb_transaction::{
 	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
 	single::TransactionSingle,
 };
-use reifydb_vm::{collect, compile_script, execute_program};
+use reifydb_vm::{collect, execute_program};
 
 async fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory().await;

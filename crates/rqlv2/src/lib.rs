@@ -9,9 +9,61 @@
 //! - Unified execution plan via the [`plan`] module
 //! - Bytecode compilation and encoding via the [`bytecode`] module
 //! - Compiled expressions via the [`expression`] module
+//! - RQL compilation pipeline via [`compile_script`]
 
 pub mod ast;
 pub mod bytecode;
+pub mod error;
 pub mod expression;
 pub mod plan;
 pub mod token;
+
+use ast::parse::parse;
+use bumpalo::Bump;
+pub use bytecode::CompiledProgram;
+use bytecode::compile::PlanCompiler;
+pub use error::RqlError;
+use plan::compile::plan;
+use reifydb_catalog::MaterializedCatalog;
+use token::tokenize;
+
+/// Compile an RQL script to bytecode.
+///
+/// This function performs the complete RQLv2 compilation pipeline:
+/// 1. Tokenize the source
+/// 2. Parse into AST
+/// 3. Compile AST to Plan (requires catalog for table/view lookups)
+/// 4. Compile Plan to bytecode
+///
+/// # Arguments
+///
+/// * `source` - The RQL source code
+/// * `catalog` - Materialized catalog for resolving tables, views, etc.
+///
+/// # Returns
+///
+/// A `CompiledProgram` ready for execution, or an `RqlError` on failure.
+///
+/// # Example
+///
+/// ```ignore
+/// use reifydb_rqlv2::compile_script;
+///
+/// let program = compile_script(
+///     "let $users = scan users | filter age > 18\n$users",
+///     &catalog,
+/// )?;
+/// ```
+pub fn compile_script(source: &str, catalog: &MaterializedCatalog) -> Result<CompiledProgram, RqlError> {
+	let bump = Bump::new();
+
+	let token_result = tokenize(source, &bump)?;
+	let program = parse(&bump, &token_result.tokens, source)?;
+	let plans = plan(&bump, catalog, program)?;
+
+	if plans.is_empty() {
+		return Err(RqlError::EmptyProgram);
+	}
+
+	PlanCompiler::compile(plans)
+}

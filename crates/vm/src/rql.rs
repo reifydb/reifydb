@@ -24,111 +24,15 @@
 
 use std::sync::Arc;
 
-use bumpalo::Bump;
-use reifydb_catalog::{Catalog, MaterializedCatalog};
-use reifydb_rqlv2::{
-	ast::parse::{ParseError, Parser},
-	bytecode::{
-		CompiledProgram,
-		compile::{CompileError, PlanCompiler},
-	},
-	plan::compile::{PlanError, plan},
-	token::{LexError, tokenize},
-};
+use reifydb_catalog::Catalog;
+use reifydb_rqlv2::CompiledProgram;
 use reifydb_transaction::IntoStandardTransaction;
-use thiserror::Error;
 
 use crate::{
 	error::VmError,
 	pipeline::Pipeline,
 	vmcore::{VmContext, VmState},
 };
-
-/// Combined error type for RQL operations.
-#[derive(Debug, Error)]
-pub enum RqlError {
-	/// Lexer error during tokenization.
-	#[error("lexer error: {0}")]
-	Lex(#[from] LexError),
-
-	/// Parse errors (can be multiple).
-	#[error("parse errors: {0:?}")]
-	Parse(Vec<ParseError>),
-
-	/// Plan compilation error.
-	#[error("plan error: {0}")]
-	Plan(#[from] PlanError),
-
-	/// Bytecode compilation error.
-	#[error("compile error: {0}")]
-	Compile(#[from] CompileError),
-
-	/// VM execution error.
-	#[error("vm error: {0}")]
-	Vm(#[from] VmError),
-
-	/// Empty program (no statements to execute).
-	#[error("empty program")]
-	EmptyProgram,
-}
-
-/// Compile an RQL script to bytecode with catalog access.
-///
-/// This function performs the complete RQLv2 compilation pipeline:
-/// 1. Tokenize the source
-/// 2. Parse into AST
-/// 3. Compile AST to Plan (requires catalog for table/view lookups)
-/// 4. Compile Plan to bytecode
-///
-/// # Arguments
-///
-/// * `source` - The RQL source code
-/// * `catalog` - Catalog for resolving tables, views, etc.
-/// * `tx` - Transaction for catalog access
-///
-/// # Returns
-///
-/// A `CompiledProgram` ready for execution, or an `RqlError` on failure.
-///
-/// # Example
-///
-/// ```ignore
-/// let program = compile_script(
-///     "let $users = scan users | filter age > 18\n$users",
-///     &catalog,
-/// )?;
-/// ```
-pub fn compile_script(source: &str, catalog: &MaterializedCatalog) -> Result<CompiledProgram, RqlError> {
-	// Create bump allocator for AST
-	let bump = Bump::new();
-
-	// Step 1: Tokenize
-	let token_result = tokenize(source, &bump)?;
-
-	// Step 2: Parse to AST
-	let parse_result = Parser::new(&bump, &token_result.tokens, source).parse();
-
-	// Check for parse errors
-	if !parse_result.errors.is_empty() {
-		return Err(RqlError::Parse(parse_result.errors.to_vec()));
-	}
-
-	let program_ast = parse_result.program;
-
-	// Step 3: Compile AST to Plan (requires catalog for table resolution)
-	let plans = plan(&bump, catalog, program_ast)?;
-
-	if plans.is_empty() {
-		return Err(RqlError::EmptyProgram);
-	}
-
-	// Step 4: Compile all plans to bytecode
-	// For multi-statement programs (e.g., let bindings + query), we need to compile all plans
-	// sequentially so that variable declarations in earlier statements are available in later ones
-	let compiled_program = PlanCompiler::compile(plans)?;
-
-	Ok(compiled_program)
-}
 
 /// Execute a compiled bytecode program with catalog access.
 ///
@@ -159,7 +63,7 @@ pub async fn execute_program<T: IntoStandardTransaction>(
 	program: CompiledProgram,
 	catalog: Catalog,
 	tx: &mut T,
-) -> Result<Option<Pipeline>, RqlError> {
+) -> Result<Option<Pipeline>, VmError> {
 	// Create VM context with catalog
 	let context = Arc::new(VmContext::with_catalog(catalog));
 

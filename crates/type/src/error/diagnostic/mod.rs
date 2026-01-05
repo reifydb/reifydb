@@ -129,3 +129,13 @@ impl Diagnostic {
 		}
 	}
 }
+
+/// Trait for converting error types into Diagnostic.
+///
+/// Implement this trait to provide rich diagnostic information for custom error types.
+/// The trait consumes the error (takes `self` by value) to allow moving owned data
+/// into the diagnostic.
+pub trait IntoDiagnostic {
+	/// Convert self into a Diagnostic with error code, message, fragment, and other metadata.
+	fn into_diagnostic(self) -> Diagnostic;
+}

@@ -44,7 +44,7 @@ pub use reifydb_rqlv2::bytecode::{
 	Opcode,
 	OperatorKind,
 };
-pub use rql::{RqlError, compile_script, execute_program};
+pub use rql::execute_program;
 #[cfg(feature = "trace")]
 pub use vmcore::{TraceEntry, VmTracer};
 pub use vmcore::{VmConfig, VmContext, VmState};

@@ -10,6 +10,7 @@ use tracing::instrument;
 use super::scope::Scope;
 use crate::{
 	ast::Program,
+	error::RqlError,
 	plan::{OutputSchema, Plan},
 	token::Span,
 };
@@ -87,7 +88,7 @@ pub fn plan<'bump>(
 	bump: &'bump Bump,
 	catalog: &MaterializedCatalog,
 	program: Program<'bump>,
-) -> Result<&'bump [Plan<'bump>]> {
+) -> std::result::Result<&'bump [Plan<'bump>], RqlError> {
 	let mut planner = Planner {
 		bump,
 		catalog,
@@ -97,5 +98,5 @@ pub fn plan<'bump>(
 		variable_schemas: BumpVec::new_in(bump),
 	};
 	planner.push_scope();
-	planner.compile_program(program)
+	planner.compile_program(program).map_err(RqlError::Plan)
 }

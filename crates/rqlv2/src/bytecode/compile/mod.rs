@@ -20,6 +20,7 @@ use crate::{
 			SubqueryDef,
 		},
 	},
+	error::RqlError,
 	plan::Plan,
 	token::Span,
 };
@@ -121,10 +122,10 @@ impl PlanCompiler {
 	/// (e.g., let bindings, multiple queries). All plans are compiled sequentially into the
 	/// same bytecode program, allowing variable declarations in earlier plans to be referenced
 	/// in later plans.
-	pub fn compile<'bump>(plans: &[Plan<'bump>]) -> Result<CompiledProgram> {
+	pub fn compile<'bump>(plans: &[Plan<'bump>]) -> std::result::Result<CompiledProgram, RqlError> {
 		let mut compiler = Self::new();
 		for plan in plans {
-			compiler.compile_plan(plan)?;
+			compiler.compile_plan(plan).map_err(RqlError::Compile)?;
 		}
 		compiler.writer.emit_opcode(Opcode::Halt);
 		compiler.finalize_script_functions();

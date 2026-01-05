@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 
 use bumpalo::Bump;
 
-use super::{LexError, LiteralKind, TokenKind, tokenize};
+use super::{LiteralKind, TokenKind, tokenize};
+use crate::error::RqlError;
 
 /// Explain tokenization by showing all tokens grouped by line.
 ///
@@ -16,8 +17,8 @@ use super::{LexError, LiteralKind, TokenKind, tokenize};
 /// # Returns
 ///
 /// A formatted string showing all tokens organized by line number,
-/// or a `LexError` if tokenization fails.
-pub fn explain_tokenize(source: &str) -> Result<String, LexError> {
+/// or an `RqlError` if tokenization fails.
+pub fn explain_tokenize(source: &str) -> Result<String, RqlError> {
 	let bump = Bump::new();
 	let result = tokenize(source, &bump)?;
 

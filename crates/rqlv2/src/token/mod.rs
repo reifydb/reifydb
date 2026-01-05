@@ -28,6 +28,8 @@ pub use punctuation::Punctuation;
 pub use span::{Span, Spanned};
 pub use token::{Token, TokenKind};
 
+use crate::error::RqlError;
+
 /// Static EOF token
 pub const EOF_TOKEN: Token = Token {
 	kind: TokenKind::Eof,
@@ -48,10 +50,10 @@ pub const EOF_TOKEN: Token = Token {
 ///
 /// # Returns
 ///
-/// A `TokenizeResult` containing the tokens and source, or a `LexError` if
+/// A `TokenizeResult` containing the tokens and source, or an `RqlError` if
 /// tokenization fails.
-pub fn tokenize<'bump>(source: &str, bump: &'bump Bump) -> Result<TokenizeResult<'bump>, LexError> {
-	Lexer::new(source, bump).tokenize()
+pub fn tokenize<'bump>(source: &str, bump: &'bump Bump) -> Result<TokenizeResult<'bump>, RqlError> {
+	Lexer::new(source, bump).tokenize().map_err(RqlError::Lex)
 }
 
 #[cfg(test)]
