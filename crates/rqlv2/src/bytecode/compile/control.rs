@@ -163,7 +163,7 @@ impl PlanCompiler {
 		self.writer.emit_u16(len_var);
 
 		// Initialize index = 0
-		let zero_const = self.program.add_constant(Constant::Int(0));
+		let zero_const = self.builder.add_constant(Constant::Int(0));
 		self.writer.emit_opcode(Opcode::PushConst);
 		self.writer.emit_u16(zero_const);
 		self.writer.emit_opcode(Opcode::StoreInternalVar);
@@ -214,7 +214,7 @@ impl PlanCompiler {
 		// Increment index
 		self.writer.emit_opcode(Opcode::LoadInternalVar);
 		self.writer.emit_u16(idx_var);
-		let one_const = self.program.add_constant(Constant::Int(1));
+		let one_const = self.builder.add_constant(Constant::Int(1));
 		self.writer.emit_opcode(Opcode::PushConst);
 		self.writer.emit_u16(one_const);
 		self.writer.emit_opcode(Opcode::IntAdd);

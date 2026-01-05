@@ -104,7 +104,7 @@ pub async fn compile_script<T: IntoStandardTransaction>(
 	source: &str,
 	catalog: &Catalog,
 	tx: &mut T,
-) -> Result<Arc<CompiledProgram>, RqlError> {
+) -> Result<CompiledProgram, RqlError> {
 	// Create bump allocator for AST (transient - dropped after compilation)
 	let bump = Bump::new();
 
@@ -131,9 +131,9 @@ pub async fn compile_script<T: IntoStandardTransaction>(
 	// Step 4: Compile all plans to bytecode
 	// For multi-statement programs (e.g., let bindings + query), we need to compile all plans
 	// sequentially so that variable declarations in earlier statements are available in later ones
-	let compiled_program = PlanCompiler::compile_all(plans)?;
+	let compiled_program = PlanCompiler::compile(plans)?;
 
-	Ok(Arc::new(compiled_program))
+	Ok(compiled_program)
 }
 
 /// Execute a compiled bytecode program with catalog access.
@@ -162,7 +162,7 @@ pub async fn compile_script<T: IntoStandardTransaction>(
 /// ).await?;
 /// ```
 pub async fn execute_program<T: IntoStandardTransaction>(
-	program: Arc<CompiledProgram>,
+	program: CompiledProgram,
 	catalog: Catalog,
 	tx: &mut T,
 ) -> Result<Option<Pipeline>, RqlError> {

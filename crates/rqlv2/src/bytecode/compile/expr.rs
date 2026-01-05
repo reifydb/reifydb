@@ -17,43 +17,43 @@ impl PlanCompiler {
 		match expr {
 			PlanExpr::LiteralUndefined(span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Undefined);
+				let const_index = self.builder.add_constant(Constant::Undefined);
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralBool(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Bool(*value));
+				let const_index = self.builder.add_constant(Constant::Bool(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralInt(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Int(*value));
+				let const_index = self.builder.add_constant(Constant::Int(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralFloat(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Float(*value));
+				let const_index = self.builder.add_constant(Constant::Float(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralString(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::String(value.to_string()));
+				let const_index = self.builder.add_constant(Constant::String(value.to_string()));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralBytes(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Bytes(value.to_vec()));
+				let const_index = self.builder.add_constant(Constant::Bytes(value.to_vec()));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::Column(col) => {
 				self.record_span(col.span());
-				let name_index = self.program.add_constant(Constant::String(col.name().to_string()));
+				let name_index = self.builder.add_constant(Constant::String(col.name().to_string()));
 				self.writer.emit_opcode(Opcode::PushColRef);
 				self.writer.emit_u16(name_index);
 			}
@@ -165,7 +165,7 @@ impl PlanCompiler {
 				self.record_span(*span);
 				// Expand to: expr = v1 OR expr = v2 OR ...
 				if list.is_empty() {
-					let const_index = self.program.add_constant(Constant::Bool(*negated));
+					let const_index = self.builder.add_constant(Constant::Bool(*negated));
 					self.writer.emit_opcode(Opcode::PushConst);
 					self.writer.emit_u16(const_index);
 				} else {
@@ -203,7 +203,7 @@ impl PlanCompiler {
 					self.compile_expr(arg)?;
 				}
 				// Store function name in constant pool and emit call
-				let name_index = self.program.add_constant(Constant::String(function.name.to_string()));
+				let name_index = self.builder.add_constant(Constant::String(function.name.to_string()));
 				self.writer.emit_opcode(Opcode::CallBuiltin);
 				self.writer.emit_u16(name_index);
 				self.writer.emit_u8(arguments.len() as u8);
@@ -320,7 +320,7 @@ impl PlanCompiler {
 				// Compile base expression (pushes value onto stack)
 				self.compile_expr(base)?;
 				// Get field from the value on stack
-				let field_index = self.program.add_constant(Constant::String(field.to_string()));
+				let field_index = self.builder.add_constant(Constant::String(field.to_string()));
 				self.writer.emit_opcode(Opcode::GetField);
 				self.writer.emit_u16(field_index);
 			}

@@ -3,6 +3,9 @@
 
 //! Compiled program structure for bytecode execution.
 
+use std::{ops::Deref, sync::Arc};
+
+use super::opcode::ObjectType;
 use crate::{
 	expression::{CompiledExpr, CompiledFilter},
 	token::Span,
@@ -84,14 +87,12 @@ impl SourceMap {
 	}
 }
 
-/// A compiled program ready for VM execution.
+/// Inner data structure for a compiled program.
 ///
-/// This struct is designed to be:
-/// - Heap-allocated (uses `Vec<T>`, not bump allocation)
-/// - Long-lived (suitable for prepared statement caching)
-/// - Reusable (can be executed multiple times with different parameters)
+/// This contains all the actual program data and is wrapped in an Arc
+/// by CompiledProgram for cheap cloning.
 #[derive(Debug, Clone)]
-pub struct CompiledProgram {
+pub struct Inner {
 	/// Raw bytecode.
 	pub bytecode: Vec<u8>,
 
@@ -135,6 +136,18 @@ pub struct CompiledProgram {
 	pub script_functions: Vec<ScriptFunctionDef>,
 }
 
+/// A compiled program ready for VM execution.
+///
+/// This struct is designed to be:
+/// - Cheap to clone (uses Arc internally)
+/// - Long-lived (suitable for prepared statement caching)
+/// - Reusable (can be executed multiple times with different parameters)
+/// - Immutable after construction (built via CompiledProgramBuilder)
+#[derive(Debug, Clone)]
+pub struct CompiledProgram {
+	inner: Arc<Inner>,
+}
+
 /// A constant value in the program.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
@@ -146,8 +159,38 @@ pub enum Constant {
 	Bytes(Vec<u8>),
 }
 
-impl CompiledProgram {
-	/// Create a new empty program.
+impl Deref for CompiledProgram {
+	type Target = Inner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.inner
+	}
+}
+
+/// Builder for constructing a CompiledProgram.
+///
+/// Use this to build up a program incrementally during compilation,
+/// then call `build()` to create the final immutable CompiledProgram.
+#[derive(Debug)]
+pub struct CompiledProgramBuilder {
+	pub bytecode: Vec<u8>,
+	pub constants: Vec<Constant>,
+	pub sources: Vec<SourceDef>,
+	pub source_map: SourceMap,
+	pub column_lists: Vec<Vec<String>>,
+	pub sort_specs: Vec<SortSpec>,
+	pub extension_specs: Vec<Vec<(String, u16)>>,
+	pub subqueries: Vec<SubqueryDef>,
+	pub ddl_defs: Vec<DdlDef>,
+	pub dml_targets: Vec<DmlTarget>,
+	pub compiled_exprs: Vec<CompiledExpr>,
+	pub compiled_filters: Vec<CompiledFilter>,
+	pub entry_point: usize,
+	pub script_functions: Vec<ScriptFunctionDef>,
+}
+
+impl CompiledProgramBuilder {
+	/// Create a new empty program builder.
 	pub fn new() -> Self {
 		Self {
 			bytecode: Vec::new(),
@@ -165,6 +208,45 @@ impl CompiledProgram {
 			entry_point: 0,
 			script_functions: Vec::new(),
 		}
+	}
+
+	/// Build the final CompiledProgram.
+	///
+	/// This consumes the builder and wraps the data in an Arc for cheap cloning.
+	pub fn build(self) -> CompiledProgram {
+		CompiledProgram {
+			inner: Arc::new(Inner {
+				bytecode: self.bytecode,
+				constants: self.constants,
+				sources: self.sources,
+				source_map: self.source_map,
+				column_lists: self.column_lists,
+				sort_specs: self.sort_specs,
+				extension_specs: self.extension_specs,
+				subqueries: self.subqueries,
+				ddl_defs: self.ddl_defs,
+				dml_targets: self.dml_targets,
+				compiled_exprs: self.compiled_exprs,
+				compiled_filters: self.compiled_filters,
+				entry_point: self.entry_point,
+				script_functions: self.script_functions,
+			}),
+		}
+	}
+
+	/// Get mutable access to the bytecode vector.
+	pub fn bytecode_mut(&mut self) -> &mut Vec<u8> {
+		&mut self.bytecode
+	}
+
+	/// Set the entry point offset.
+	pub fn set_entry_point(&mut self, entry_point: usize) {
+		self.entry_point = entry_point;
+	}
+
+	/// Get mutable access to the source map.
+	pub fn source_map_mut(&mut self) -> &mut SourceMap {
+		&mut self.source_map
 	}
 
 	/// Add a constant and return its index.
@@ -257,7 +339,7 @@ impl CompiledProgram {
 	}
 }
 
-impl Default for CompiledProgram {
+impl Default for CompiledProgramBuilder {
 	fn default() -> Self {
 		Self::new()
 	}
@@ -443,7 +525,7 @@ pub struct AlterSequenceDef {
 /// Drop definition.
 #[derive(Debug, Clone)]
 pub struct DropDef {
-	pub object_type: super::opcode::ObjectType,
+	pub object_type: ObjectType,
 	pub name: String,
 	pub if_exists: bool,
 }
@@ -455,7 +537,7 @@ pub struct DmlTarget {
 	pub target_type: DmlTargetType,
 	/// Target name (table, ring buffer, or dictionary).
 	pub name: String,
-	/// Columns for INSERT (if specified).
+	/// Column names.
 	pub columns: Option<Vec<String>>,
 }
 

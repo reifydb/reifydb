@@ -25,8 +25,8 @@ pub use explain::explain_bytecode;
 pub use instruction::{BytecodeReader, BytecodeWriter};
 pub use opcode::{ObjectType, Opcode, OperatorKind};
 pub use program::{
-	AlterSequenceDef, AlterTableAction, AlterTableDef, ColumnDef, CompiledProgram, Constant, CreateDictionaryDef,
-	CreateIndexDef, CreateNamespaceDef, CreateRingBufferDef, CreateSequenceDef, CreateTableDef, CreateViewDef,
-	DdlDef, DmlTarget, DmlTargetType, DropDef, NullsOrder, SortDirection, SortKey, SortSpec, SourceDef, SourceMap,
-	SourceMapEntry, SubqueryDef,
+	AlterSequenceDef, AlterTableAction, AlterTableDef, ColumnDef, CompiledProgram, CompiledProgramBuilder,
+	Constant, CreateDictionaryDef, CreateIndexDef, CreateNamespaceDef, CreateRingBufferDef, CreateSequenceDef,
+	CreateTableDef, CreateViewDef, DdlDef, DmlTarget, DmlTargetType, DropDef, NullsOrder, SortDirection, SortKey,
+	SortSpec, SourceDef, SourceMap, SourceMapEntry, SubqueryDef,
 };

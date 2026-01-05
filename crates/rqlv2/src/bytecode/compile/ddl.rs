@@ -24,7 +24,7 @@ impl PlanCompiler {
 					name: n.name.to_string(),
 					if_not_exists: n.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateNamespace);
 				self.writer.emit_u16(index);
 			}
@@ -48,7 +48,7 @@ impl PlanCompiler {
 						.map(|pk| pk.iter().map(|c| (*c).to_string()).collect()),
 					if_not_exists: t.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateTable);
 				self.writer.emit_u16(index);
 			}
@@ -64,7 +64,7 @@ impl PlanCompiler {
 					query_bytecode_offset: query_offset,
 					if_not_exists: v.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateView);
 				self.writer.emit_u16(index);
 			}
@@ -76,7 +76,7 @@ impl PlanCompiler {
 					columns: i.columns.iter().map(|c| c.column.name.to_string()).collect(),
 					unique: i.unique,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateIndex);
 				self.writer.emit_u16(index);
 			}
@@ -89,7 +89,7 @@ impl PlanCompiler {
 					increment: s.increment.unwrap_or(1),
 					if_not_exists: s.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateSequence);
 				self.writer.emit_u16(index);
 			}
@@ -111,7 +111,7 @@ impl PlanCompiler {
 					capacity: rb.capacity,
 					if_not_exists: rb.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateRingBuffer);
 				self.writer.emit_u16(index);
 			}
@@ -124,7 +124,7 @@ impl PlanCompiler {
 					value_type: format!("{:?}", d.value_type),
 					if_not_exists: d.if_not_exists,
 				});
-				let index = self.program.add_ddl_def(def);
+				let index = self.builder.add_ddl_def(def);
 				self.writer.emit_opcode(Opcode::CreateDictionary);
 				self.writer.emit_u16(index);
 			}
@@ -171,7 +171,7 @@ impl PlanCompiler {
 			if_exists: node.if_exists,
 		});
 
-		let index = self.program.add_ddl_def(def);
+		let index = self.builder.add_ddl_def(def);
 		self.writer.emit_opcode(Opcode::DropObject);
 		self.writer.emit_u16(index);
 		self.writer.emit_u8(object_type as u8);

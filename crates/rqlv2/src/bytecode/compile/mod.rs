@@ -15,7 +15,10 @@ use crate::{
 	bytecode::{
 		instruction::BytecodeWriter,
 		opcode::Opcode,
-		program::{CompiledProgram, ScriptFunctionDef, SourceMap, SourceMapEntry, SubqueryDef},
+		program::{
+			CompiledProgram, CompiledProgramBuilder, ScriptFunctionDef, SourceMap, SourceMapEntry,
+			SubqueryDef,
+		},
 	},
 	plan::Plan,
 	token::Span,
@@ -77,7 +80,7 @@ pub(crate) struct LoopContext {
 
 /// Plan compiler that transforms a Plan into bytecode.
 pub struct PlanCompiler {
-	pub(crate) program: CompiledProgram,
+	pub(crate) builder: CompiledProgramBuilder,
 	pub(crate) writer: BytecodeWriter,
 	/// Source map entries being built.
 	pub(crate) source_map_entries: Vec<SourceMapEntry>,
@@ -95,7 +98,7 @@ impl PlanCompiler {
 	/// Create a new plan compiler.
 	pub fn new() -> Self {
 		Self {
-			program: CompiledProgram::new(),
+			builder: CompiledProgramBuilder::new(),
 			writer: BytecodeWriter::new(),
 			source_map_entries: Vec::new(),
 			loop_contexts: Vec::new(),
@@ -112,33 +115,22 @@ impl PlanCompiler {
 		id
 	}
 
-	/// Compile a plan into a program.
-	pub fn compile<'bump>(plan: &Plan<'bump>) -> Result<CompiledProgram> {
-		let mut compiler = Self::new();
-		compiler.compile_plan(plan)?;
-		compiler.writer.emit_opcode(Opcode::Halt);
-		compiler.finalize_script_functions();
-		compiler.program.bytecode = compiler.writer.finish();
-		compiler.program.source_map = SourceMap::from_entries(compiler.source_map_entries);
-		Ok(compiler.program)
-	}
-
 	/// Compile multiple plans into a single program.
 	///
 	/// This is used for multi-statement programs where each statement becomes a separate plan
 	/// (e.g., let bindings, multiple queries). All plans are compiled sequentially into the
 	/// same bytecode program, allowing variable declarations in earlier plans to be referenced
 	/// in later plans.
-	pub fn compile_all<'bump>(plans: &[Plan<'bump>]) -> Result<CompiledProgram> {
+	pub fn compile<'bump>(plans: &[Plan<'bump>]) -> Result<CompiledProgram> {
 		let mut compiler = Self::new();
 		for plan in plans {
 			compiler.compile_plan(plan)?;
 		}
 		compiler.writer.emit_opcode(Opcode::Halt);
 		compiler.finalize_script_functions();
-		compiler.program.bytecode = compiler.writer.finish();
-		compiler.program.source_map = SourceMap::from_entries(compiler.source_map_entries);
-		Ok(compiler.program)
+		*compiler.builder.bytecode_mut() = compiler.writer.finish();
+		*compiler.builder.source_map_mut() = SourceMap::from_entries(compiler.source_map_entries);
+		Ok(compiler.builder.build())
 	}
 
 	/// Record a span at the current bytecode position.
@@ -157,7 +149,7 @@ impl PlanCompiler {
 		// Save current state
 		let saved_writer = std::mem::replace(&mut self.writer, BytecodeWriter::new());
 		let saved_source_map = std::mem::take(&mut self.source_map_entries);
-		let saved_program = std::mem::replace(&mut self.program, CompiledProgram::new());
+		let saved_builder = std::mem::replace(&mut self.builder, CompiledProgramBuilder::new());
 
 		// Compile the subquery plan into the new writer
 		self.compile_plan(plan)?;
@@ -166,14 +158,14 @@ impl PlanCompiler {
 
 		// Extract the compiled subquery
 		let subquery_bytecode = self.writer.to_vec();
-		let subquery_constants = std::mem::take(&mut self.program.constants);
-		let subquery_sources = std::mem::take(&mut self.program.sources);
+		let subquery_constants = std::mem::take(&mut self.builder.constants);
+		let subquery_sources = std::mem::take(&mut self.builder.sources);
 		let subquery_source_map = SourceMap::from_entries(std::mem::take(&mut self.source_map_entries));
 
 		// Restore state
 		self.writer = saved_writer;
 		self.source_map_entries = saved_source_map;
-		self.program = saved_program;
+		self.builder = saved_builder;
 
 		// Create the subquery definition
 		let subquery_def = SubqueryDef {
@@ -184,8 +176,8 @@ impl PlanCompiler {
 			source_map: subquery_source_map,
 		};
 
-		// Add to program and return index
-		Ok(self.program.add_subquery(subquery_def))
+		// Add to builder and return index
+		Ok(self.builder.add_subquery(subquery_def))
 	}
 
 	/// Finalize script functions by appending their bytecode to the main program.
@@ -194,7 +186,7 @@ impl PlanCompiler {
 			let offset = self.writer.position();
 			let len = bytecode.len();
 			self.writer.append(&bytecode);
-			self.program.add_script_function(ScriptFunctionDef {
+			self.builder.add_script_function(ScriptFunctionDef {
 				name,
 				bytecode_offset: offset,
 				bytecode_len: len,

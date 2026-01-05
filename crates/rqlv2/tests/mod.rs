@@ -112,7 +112,7 @@ impl testscript::Runner for Runner {
 						.map_err(|e| format!("plan error: {}", e))?;
 
 					// Compile plans to bytecode
-					let program = PlanCompiler::compile_all(plans)
+					let program = PlanCompiler::compile(plans)
 						.map_err(|e| format!("bytecode compile error: {}", e))?;
 
 					Ok::<_, String>(explain_bytecode(&program))

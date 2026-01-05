@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_rqlv2::{
-	bytecode::{BytecodeReader, CompiledProgram, Opcode, OperatorKind, SubqueryDef},
+	bytecode::{BytecodeReader, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
 use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
@@ -1026,27 +1026,21 @@ impl VmState {
 		subquery_def: &SubqueryDef,
 		rx: Option<&mut StandardTransaction<'a>>,
 	) -> Result<Columns> {
-		// Create a CompiledProgram from the subquery definition
-		let subquery_program = CompiledProgram {
-			bytecode: subquery_def.bytecode.clone(),
-			constants: subquery_def.constants.clone(),
-			sources: subquery_def.sources.clone(),
-			source_map: subquery_def.source_map.clone(),
-			// Subqueries don't have their own nested subqueries, column lists, etc.
-			column_lists: Vec::new(),
-			sort_specs: Vec::new(),
-			extension_specs: Vec::new(),
-			subqueries: Vec::new(),
-			ddl_defs: Vec::new(),
-			dml_targets: Vec::new(),
-			compiled_exprs: Vec::new(),
-			compiled_filters: Vec::new(),
-			entry_point: 0,
-			script_functions: Vec::new(),
-		};
+		// Create a CompiledProgram from the subquery definition using the builder
+		use reifydb_rqlv2::bytecode::CompiledProgramBuilder;
+
+		let mut builder = CompiledProgramBuilder::new();
+		builder.bytecode = subquery_def.bytecode.clone();
+		builder.constants = subquery_def.constants.clone();
+		builder.sources = subquery_def.sources.clone();
+		builder.source_map = subquery_def.source_map.clone();
+		// Subqueries don't have their own nested subqueries, column lists, etc.
+		// (These are already initialized as empty by CompiledProgramBuilder::new())
+
+		let subquery_program = builder.build();
 
 		// Create a new VM state for the subquery
-		let mut subquery_vm = VmState::new(Arc::new(subquery_program), self.context.clone());
+		let mut subquery_vm = VmState::new(subquery_program, self.context.clone());
 
 		// Execute the subquery - it should end with Collect which pushes a Frame
 		if let Some(rx) = rx {
