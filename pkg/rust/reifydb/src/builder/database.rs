@@ -183,7 +183,7 @@ impl DatabaseBuilder {
 
 		// Create and register Compiler (requires ComputePool to be registered first)
 		let compute_pool = self.ioc.resolve::<ComputePool>()?;
-		let compiler = reifydb_rqlv2::Compiler::new(compute_pool, materialized_catalog.clone());
+		let compiler = reifydb_rqlv2::Compiler::new(compute_pool, catalog.clone());
 		self.ioc = self.ioc.register(compiler);
 
 		let functions = if let Some(configurator) = self.functions_configurator {

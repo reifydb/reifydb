@@ -8,7 +8,7 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_core::{ComputePool, event::EventBus, ioc::IocContainer, util::mock_time_set};
+use reifydb_core::{ComputePool, event::EventBus, ioc::IocContainer};
 use reifydb_store_transaction::TransactionStore;
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
@@ -97,7 +97,7 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 /// - Returns a fully configured StandardEngine ready for testing
 pub async fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
-	mock_time_set(1000);
+	reifydb_core::util::mock_time_set(1000);
 
 	let store = TransactionStore::testing_memory().await;
 	let eventbus = EventBus::new();

@@ -6,7 +6,7 @@
 //! Flow consumers listen for version broadcasts from the Coordinator and fetch
 //! decoded changes from the shared FlowChangeProvider, filtering for their sources.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 
 use broadcast::error::{RecvError, RecvError::Lagged};
 use reifydb_cdc::CdcCheckpoint;
@@ -183,7 +183,7 @@ impl FlowConsumer {
 		provider: &FlowChangeProvider,
 		version: CommitVersion,
 	) -> Result<()> {
-		let process_start = std::time::Instant::now();
+		let process_start = Instant::now();
 
 		// Early return if no sources were affected at this version
 		let Some(all_changes) = provider.get_changes(version, sources).await? else {
@@ -244,20 +244,20 @@ impl FlowConsumer {
 		consumer_id: &CdcConsumerId,
 		current_version: CommitVersion,
 	) -> crate::Result<CommitVersion> {
-		let batch_start = std::time::Instant::now();
+		let batch_start = Instant::now();
 
 		// Single parent transaction for entire batch
-		let txn_begin_start = std::time::Instant::now();
+		let txn_begin_start = Instant::now();
 		let mut txn = engine.begin_command().await?;
 		Span::current().record("txn_begin_ms", txn_begin_start.elapsed().as_millis() as u64);
 
 		let catalog = engine.catalog();
 
-		let flow_txn_init_start = std::time::Instant::now();
+		let flow_txn_init_start = Instant::now();
 		let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
 		Span::current().record("flow_txn_init_ms", flow_txn_init_start.elapsed().as_millis() as u64);
 
-		let processing_start = std::time::Instant::now();
+		let processing_start = Instant::now();
 		let mut final_version = current_version;
 		let mut versions_processed = 0;
 
@@ -272,13 +272,13 @@ impl FlowConsumer {
 		}
 		Span::current().record("processing_ms", processing_start.elapsed().as_millis() as u64);
 
-		let flow_commit_start = std::time::Instant::now();
+		let flow_commit_start = Instant::now();
 		flow_txn.commit(&mut txn).await?;
 		Span::current().record("flow_commit_ms", flow_commit_start.elapsed().as_millis() as u64);
 
 		CdcCheckpoint::persist(&mut txn, consumer_id, final_version).await?;
 
-		let parent_commit_start = std::time::Instant::now();
+		let parent_commit_start = Instant::now();
 		txn.commit().await?;
 		Span::current().record("parent_commit_ms", parent_commit_start.elapsed().as_millis() as u64);
 

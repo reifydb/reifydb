@@ -65,7 +65,10 @@ impl Coordinator {
 	) -> Self {
 		let shutdown = CancellationToken::new();
 		let (version_tx, _) = broadcast::channel(1024);
-		let provider = Arc::new(FlowChangeProvider::new(engine.clone()));
+
+		// Spawn provider with its own version broadcast subscription for pre-fetching
+		let provider =
+			FlowChangeProvider::spawn(engine.clone(), version_tx.subscribe(), shutdown.child_token());
 
 		Self {
 			engine,
