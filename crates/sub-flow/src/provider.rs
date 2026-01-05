@@ -8,9 +8,17 @@
 //! Flow consumers request changes on-demand, and the provider handles caching
 //! with request coalescing to prevent duplicate fetches.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
-use reifydb_core::{CommitVersion, interface::CdcChange, key::Key, util::LruCache};
+use reifydb_core::{
+	CommitVersion,
+	interface::{CdcChange, PrimitiveId},
+	key::Key,
+	util::LruCache,
+};
 use reifydb_engine::StandardEngine;
 use reifydb_sdk::FlowChange;
 use reifydb_transaction::cdc::CdcQueryTransaction;
@@ -22,6 +30,13 @@ use crate::{catalog::FlowCatalog, convert::convert_cdc_to_flow_change};
 /// All decoded changes for a single commit version.
 pub type VersionChanges = Vec<FlowChange>;
 
+/// Cache entry: changes + set of affected primitives.
+#[derive(Clone)]
+struct CachedVersion {
+	changes: Arc<VersionChanges>,
+	primitives: HashSet<PrimitiveId>,
+}
+
 /// Shared provider for decoded FlowChanges.
 ///
 /// This is a passive component - it does not poll. It serves and stores
@@ -32,13 +47,13 @@ pub struct FlowChangeProvider {
 	/// Engine for fetching CDC and creating transactions.
 	engine: StandardEngine,
 
-	/// LRU cache: version -> decoded changes.
+	/// LRU cache: version -> decoded changes + affected primitives.
 	/// Protected by Mutex for async-safe access with interior mutability.
-	cache: Mutex<LruCache<CommitVersion, Arc<VersionChanges>>>,
+	cache: Mutex<LruCache<CommitVersion, CachedVersion>>,
 
 	/// In-flight fetches: prevents duplicate fetches for same version.
 	/// Maps version to a channel that will receive the result.
-	in_flight: RwLock<HashMap<CommitVersion, watch::Receiver<Option<Arc<VersionChanges>>>>>,
+	in_flight: RwLock<HashMap<CommitVersion, watch::Receiver<Option<CachedVersion>>>>,
 
 	/// Catalog cache for source metadata (shared across fetches).
 	catalog_cache: FlowCatalog,
@@ -57,27 +72,41 @@ impl FlowChangeProvider {
 		}
 	}
 
-	/// Get decoded changes for a specific version.
+	/// Get decoded changes for a specific version if any sources match.
 	///
-	/// On cache hit: returns immediately.
+	/// Returns `Ok(None)` if no changes affect the provided sources.
+	/// On cache hit: checks primitives intersection and returns immediately.
 	/// On cache miss: fetches CDC, decodes, caches, and returns.
 	///
 	/// Concurrent requests for the same version will coalesce (only one fetch).
-	pub async fn get_changes(&self, version: CommitVersion) -> crate::Result<Arc<VersionChanges>> {
+	pub async fn get_changes(
+		&self,
+		version: CommitVersion,
+		sources: &HashSet<PrimitiveId>,
+	) -> crate::Result<Option<Arc<VersionChanges>>> {
 		// Fast path: check cache
 		{
 			let mut cache = self.cache.lock().await;
-			if let Some(changes) = cache.get(&version) {
-				return Ok(Arc::clone(changes));
+			if let Some(cached) = cache.get(&version) {
+				// Check if any sources intersect with cached primitives
+				if cached.primitives.is_disjoint(sources) {
+					return Ok(None);
+				}
+				return Ok(Some(Arc::clone(&cached.changes)));
 			}
 		}
 
 		// Slow path: need to fetch and decode
-		self.fetch_and_cache(version).await
+		self.fetch_and_cache(version, sources).await
 	}
 
 	/// Internal: fetch CDC, decode, and cache with request coalescing.
-	async fn fetch_and_cache(&self, version: CommitVersion) -> crate::Result<Arc<VersionChanges>> {
+	async fn fetch_and_cache(
+		&self,
+		version: CommitVersion,
+		sources: &HashSet<PrimitiveId>,
+	) -> crate::Result<Option<Arc<VersionChanges>>> {
+		// Check if another task is already fetching this version
 		{
 			let in_flight = self.in_flight.read().await;
 			if let Some(receiver) = in_flight.get(&version) {
@@ -85,8 +114,11 @@ impl FlowChangeProvider {
 				drop(in_flight);
 
 				rx.changed().await.ok();
-				if let Some(result) = rx.borrow().clone() {
-					return Ok(result);
+				if let Some(cached) = rx.borrow().clone() {
+					if cached.primitives.is_disjoint(sources) {
+						return Ok(None);
+					}
+					return Ok(Some(cached.changes));
 				}
 			}
 		}
@@ -101,8 +133,11 @@ impl FlowChangeProvider {
 				drop(in_flight);
 
 				rx.changed().await.ok();
-				if let Some(result) = rx.borrow().clone() {
-					return Ok(result);
+				if let Some(cached) = rx.borrow().clone() {
+					if cached.primitives.is_disjoint(sources) {
+						return Ok(None);
+					}
+					return Ok(Some(cached.changes));
 				}
 				// Re-acquire write lock after checking
 				let mut in_flight = self.in_flight.write().await;
@@ -117,17 +152,27 @@ impl FlowChangeProvider {
 
 		// Store result and clean up
 		match result {
-			Ok(changes) => {
+			Ok((changes, primitives)) => {
 				let arc_changes = Arc::new(changes);
+				let cached = CachedVersion {
+					changes: Arc::clone(&arc_changes),
+					primitives: primitives.clone(),
+				};
 
 				// Cache the result
 				{
 					let mut cache = self.cache.lock().await;
-					cache.put(version, Arc::clone(&arc_changes));
+					cache.put(
+						version,
+						CachedVersion {
+							changes: Arc::clone(&arc_changes),
+							primitives: primitives.clone(),
+						},
+					);
 				}
 
 				// Notify waiters
-				tx.send(Some(Arc::clone(&arc_changes))).ok();
+				tx.send(Some(cached)).ok();
 
 				// Clean up in-flight
 				{
@@ -135,7 +180,12 @@ impl FlowChangeProvider {
 					in_flight.remove(&version);
 				}
 
-				Ok(arc_changes)
+				// Check intersection for current request
+				if primitives.is_disjoint(sources) {
+					Ok(None)
+				} else {
+					Ok(Some(arc_changes))
+				}
 			}
 			Err(e) => {
 				// Clean up in-flight on error (don't cache failures)
@@ -147,7 +197,11 @@ impl FlowChangeProvider {
 	}
 
 	/// Actually fetch CDC and decode to FlowChanges.
-	async fn do_fetch_and_decode(&self, version: CommitVersion) -> crate::Result<VersionChanges> {
+	/// Returns changes and the set of primitives that were affected.
+	async fn do_fetch_and_decode(
+		&self,
+		version: CommitVersion,
+	) -> crate::Result<(VersionChanges, HashSet<PrimitiveId>)> {
 		// Begin query transaction at the version for dictionary decoding
 		let mut query_txn = self.engine.begin_query_at_version(version).await?;
 
@@ -159,18 +213,22 @@ impl FlowChangeProvider {
 			Some(cdc) => cdc,
 			None => {
 				// No CDC at this version - return empty
-				return Ok(Vec::new());
+				return Ok((Vec::new(), HashSet::new()));
 			}
 		};
 
-		// Decode all changes
+		// Decode all changes and track affected primitives
 		let mut all_changes = Vec::new();
+		let mut primitives = HashSet::new();
 
 		for cdc_change in &cdc.changes {
 			// Only process Row keys (data events)
 			if let Some(Key::Row(row_key)) = Key::decode(cdc_change.key()) {
 				let source_id = row_key.primitive;
 				let row_number = row_key.row;
+
+				// Track this primitive
+				primitives.insert(source_id);
 
 				// Skip Delete events with no pre-image (would result in empty encoded values)
 				if let CdcChange::Delete {
@@ -207,6 +265,6 @@ impl FlowChangeProvider {
 			}
 		}
 
-		Ok(all_changes)
+		Ok((all_changes, primitives))
 	}
 }

@@ -213,7 +213,10 @@ impl FlowConsumer {
 		provider: &FlowChangeProvider,
 		version: CommitVersion,
 	) -> Result<()> {
-		let all_changes = provider.get_changes(version).await?;
+		// Early return if no sources were affected at this version
+		let Some(all_changes) = provider.get_changes(version, sources).await? else {
+			return Ok(());
+		};
 
 		let relevant: Vec<_> = all_changes
 			.iter()
