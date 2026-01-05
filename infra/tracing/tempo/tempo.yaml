@@ -1,0 +1,63 @@
+server:
+  http_listen_port: 3200
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m               # Cut blocks after 5m
+  max_block_bytes: 1_000_000           # ~1MB blocks
+
+compactor:
+  compaction:
+    block_retention: 168h              # 7 days retention
+
+storage:
+  trace:
+    backend: local                     # Use local filesystem
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+    pool:
+      max_workers: 100
+      queue_depth: 10000
+
+querier:
+  frontend_worker:
+    frontend_address: tempo:9095
+
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+  trace_by_id:
+    duration_slo: 5s
+
+overrides:
+  defaults:
+    ingestion:
+      # Rate Limiting (50x increase for development)
+      rate_limit_bytes: 750000000          # 750 MB/s (was 15 MB/s)
+      burst_size_bytes: 1000000000         # 1 GB burst (was 20 MB)
+
+      # Trace Quotas
+      max_traces_per_user: 500000          # 500k concurrent traces (was 10k)
+      max_global_traces_per_user: 0        # Disable global limit (development-safe)
+
+    global:
+      max_bytes_per_trace: 2000000000      # 2 GB per trace (was 5 MB)
+
+    read:
+      max_bytes_per_tag_values_query: 10485760  # 10 MB query results
+
+    # Metrics Generator
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

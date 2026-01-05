@@ -1,0 +1,12 @@
+# Environment files
+.env
+
+# Volume data (if using bind mounts instead of named volumes)
+tempo-data/
+grafana-data/
+
+# Grafana state
+grafana/grafana.db
+
+# Logs
+*.log

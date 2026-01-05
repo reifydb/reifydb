@@ -1,0 +1,25 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    uid: tempo
+    isDefault: true
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        # Future: configure correlation with logs if added
+        datasourceUid: null
+      tracesToMetrics:
+        # Future: configure correlation with metrics if added
+        datasourceUid: null
+      serviceMap:
+        datasourceUid: tempo
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: null
