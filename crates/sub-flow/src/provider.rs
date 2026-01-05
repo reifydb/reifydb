@@ -23,7 +23,7 @@ use reifydb_sdk::FlowChange;
 use reifydb_transaction::cdc::CdcQueryTransaction;
 use tokio::{
 	select,
-	sync::{Mutex, broadcast, watch},
+	sync::{broadcast, watch},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{Span, debug, instrument, warn};
@@ -51,8 +51,8 @@ pub struct FlowChangeProvider {
 	engine: StandardEngine,
 
 	/// LRU cache: version -> decoded changes + affected primitives.
-	/// Protected by Mutex for async-safe access with interior mutability.
-	cache: Mutex<LruCache<CommitVersion, CachedVersion>>,
+	/// Thread-safe via DashMap internally.
+	cache: LruCache<CommitVersion, CachedVersion>,
 
 	/// In-flight fetches: prevents duplicate fetches for same version.
 	/// Maps version to a channel that will receive the result.
@@ -76,7 +76,7 @@ impl FlowChangeProvider {
 
 		let provider = Arc::new(Self {
 			engine,
-			cache: Mutex::new(LruCache::new(10_000)),
+			cache: LruCache::new(10_000),
 			in_flight: DashMap::new(),
 			catalog_cache,
 		});
@@ -108,18 +108,15 @@ impl FlowChangeProvider {
 		sources: &HashSet<PrimitiveId>,
 	) -> crate::Result<Option<Arc<VersionChanges>>> {
 		// Fast path: check cache
-		{
-			let cache = self.cache.lock().await;
-			if let Some(cached) = cache.get(&version).await {
-				Span::current().record("cache_hit", true);
-				// Check if any sources intersect with cached primitives
-				if cached.primitives.is_disjoint(sources) {
-					Span::current().record("result", "cache_hit_disjoint");
-					return Ok(None);
-				}
-				Span::current().record("result", "cache_hit");
-				return Ok(Some(Arc::clone(&cached.changes)));
+		if let Some(cached) = self.cache.get(&version) {
+			Span::current().record("cache_hit", true);
+			// Check if any sources intersect with cached primitives
+			if cached.primitives.is_disjoint(sources) {
+				Span::current().record("result", "cache_hit_disjoint");
+				return Ok(None);
 			}
+			Span::current().record("result", "cache_hit");
+			return Ok(Some(Arc::clone(&cached.changes)));
 		}
 		Span::current().record("cache_hit", false);
 
@@ -183,17 +180,13 @@ impl FlowChangeProvider {
 				};
 
 				// Cache the result
-				{
-					let cache = self.cache.lock().await;
-					cache.put(
-						version,
-						CachedVersion {
-							changes: Arc::clone(&arc_changes),
-							primitives: primitives.clone(),
-						},
-					)
-					.await;
-				}
+				self.cache.put(
+					version,
+					CachedVersion {
+						changes: Arc::clone(&arc_changes),
+						primitives: primitives.clone(),
+					},
+				);
 
 				// Notify waiters
 				tx.send(Some(cached)).ok();
@@ -342,12 +335,9 @@ impl FlowChangeProvider {
 	))]
 	async fn prefetch_version(&self, version: CommitVersion) -> crate::Result<()> {
 		// Check if already cached
-		{
-			let cache = self.cache.lock().await;
-			if cache.contains_key(&version).await {
-				Span::current().record("already_cached", true);
-				return Ok(());
-			}
+		if self.cache.contains_key(&version) {
+			Span::current().record("already_cached", true);
+			return Ok(());
 		}
 		Span::current().record("already_cached", false);
 
@@ -355,15 +345,13 @@ impl FlowChangeProvider {
 		let (changes, primitives) = self.do_fetch_and_decode(version).await?;
 
 		let arc_changes = Arc::new(changes);
-		let cache = self.cache.lock().await;
-		cache.put(
+		self.cache.put(
 			version,
 			CachedVersion {
 				changes: arc_changes,
 				primitives,
 			},
-		)
-		.await;
+		);
 
 		Ok(())
 	}

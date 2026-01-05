@@ -16,7 +16,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::load_flow;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{Instrument, debug, debug_span, error, instrument};
 
 use crate::{
 	FlowEngine, flow::FlowConsumer, provider::FlowChangeProvider, registry::FlowConsumerRegistry,
@@ -134,6 +134,9 @@ impl Coordinator {
 
 #[async_trait]
 impl CdcConsume for CoordinatorConsumer {
+	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, txn, cdcs), fields(
+		cdc_count = cdcs.len(),
+	))]
 	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		for cdc in cdcs {
 			let version = cdc.version;
@@ -145,7 +148,6 @@ impl CdcConsume for CoordinatorConsumer {
 				}
 			}
 
-			// Process flow creation events
 			for change in &cdc.changes {
 				// Check key kind first (fast path)
 				if let Some(kind) = Key::kind(change.key()) {
@@ -196,7 +198,7 @@ impl CdcConsume for CoordinatorConsumer {
 											) {
 												Ok(consumer) => {
 													self.registry.register(flow_id, consumer).await;
-													info!(flow_id = flow_id.0, "spawned flow consumer");
+													debug!(flow_id = flow_id.0, "spawned flow consumer");
 												}
 												Err(e) => {
 													error!(flow_id = flow_id.0, error = %e, "failed to spawn flow consumer");

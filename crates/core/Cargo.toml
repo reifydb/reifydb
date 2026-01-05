@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Core database interfaces and data structures for ReifyDB"
 
 [dependencies]
+dashmap = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }
 crossbeam-skiplist = { workspace = true }

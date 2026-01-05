@@ -1879,6 +1879,7 @@ dependencies = [
  "async-trait",
  "bigdecimal",
  "crossbeam-skiplist",
+ "dashmap",
  "futures-util",
  "indexmap",
  "num-bigint",

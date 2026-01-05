@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::{ComputePool, util::lru::LruCache};
+use reifydb_core::{ComputePool, util::LruCache};
 use reifydb_hash::{Hash128, xxh3_128};
 
 use crate::{CompiledProgram, RqlError, compile_script};
@@ -38,7 +38,7 @@ impl Compiler {
 
 	pub async fn compile(&self, source: &str) -> Result<CompiledProgram, RqlError> {
 		let cache_key = xxh3_128(source.as_bytes());
-		if let Some(program) = self.inner.cache.get(&cache_key).await {
+		if let Some(program) = self.inner.cache.get(&cache_key) {
 			return Ok(program);
 		}
 
@@ -61,13 +61,13 @@ impl Compiler {
 		})??;
 
 		// Insert into cache
-		self.inner.cache.put(cache_key, program.clone()).await;
+		self.inner.cache.put(cache_key, program.clone());
 
 		Ok(program)
 	}
 
-	pub async fn clear_cache(&self) {
-		self.inner.cache.clear().await;
+	pub fn clear_cache(&self) {
+		self.inner.cache.clear();
 	}
 
 	pub fn cache_len(&self) -> usize {

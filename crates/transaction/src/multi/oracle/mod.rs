@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
+	time::Instant,
 };
 #[cfg(test)]
 use std::{future::Future, pin::Pin, sync::OnceLock};
@@ -210,7 +211,7 @@ where
 	) -> crate::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
-		let lock_start = std::time::Instant::now();
+		let lock_start = Instant::now();
 		let inner = self.inner.read().await;
 		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
 
@@ -223,7 +224,7 @@ where
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
-		let find_start = std::time::Instant::now();
+		let find_start = Instant::now();
 		let relevant_windows: Vec<CommitVersion> = if !has_keys {
 			// If no specific keys, we need to check recent windows
 			// for range/all operations
@@ -258,7 +259,7 @@ where
 		Span::current().record("relevant_windows", relevant_windows.len());
 
 		// Check for conflicts only in relevant windows
-		let conflict_start = std::time::Instant::now();
+		let conflict_start = Instant::now();
 		let mut windows_checked = 0u64;
 		let mut txns_checked = 0u64;
 		for window_version in &relevant_windows {
@@ -331,7 +332,7 @@ where
 
 		// Get commit version with minimal locking
 		let commit_version = {
-			let version_lock_start = std::time::Instant::now();
+			let version_lock_start = Instant::now();
 			let _version_guard = self.version_lock.lock().await;
 			Span::current().record("version_lock_us", version_lock_start.elapsed().as_micros() as u64);
 
@@ -340,7 +341,7 @@ where
 				inner.clock.clone()
 			};
 
-			let clock_start = std::time::Instant::now();
+			let clock_start = Instant::now();
 			let version = clock.next().await?;
 			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
@@ -366,11 +367,11 @@ where
 
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
-			let write_lock_start = std::time::Instant::now();
+			let write_lock_start = Instant::now();
 			let mut inner = self.inner.write().await;
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
-			let add_start = std::time::Instant::now();
+			let add_start = Instant::now();
 			inner.add_committed_transaction(commit_version, conflicts);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
@@ -378,7 +379,7 @@ where
 		};
 
 		if needs_cleanup {
-			let cleanup_start = std::time::Instant::now();
+			let cleanup_start = Instant::now();
 			let mut inner = self.inner.write().await;
 			let inner = &mut *inner;
 			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);

@@ -113,7 +113,7 @@ impl FlowConsumer {
 					match result {
 						Ok(broadcast) => {
 							let start_version = current_version.0 + 1;
-							let end_version = broadcast.version.0.min(start_version + 999);
+							let end_version = broadcast.version.0.min(start_version + 9);
 
 							if start_version > end_version {
 								continue; // Nothing to process
@@ -201,13 +201,12 @@ impl FlowConsumer {
 			.cloned()
 			.collect();
 
+		Span::current().record("relevant_changes", relevant.len());
+
 		if relevant.is_empty() {
-			Span::current().record("relevant_changes", 0);
 			Span::current().record("process_time_us", process_start.elapsed().as_micros() as u64);
 			return Ok(());
 		}
-
-		Span::current().record("relevant_changes", relevant.len());
 
 		for change in relevant {
 			flow_engine.process(flow_txn, change, flow_id).await?;
@@ -249,13 +248,13 @@ impl FlowConsumer {
 		// Single parent transaction for entire batch
 		let txn_begin_start = Instant::now();
 		let mut txn = engine.begin_command().await?;
-		Span::current().record("txn_begin_ms", txn_begin_start.elapsed().as_millis() as u64);
+		Span::current().record("txn_begin_us", txn_begin_start.elapsed().as_micros() as u64);
 
 		let catalog = engine.catalog();
 
 		let flow_txn_init_start = Instant::now();
 		let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
-		Span::current().record("flow_txn_init_ms", flow_txn_init_start.elapsed().as_millis() as u64);
+		Span::current().record("flow_txn_init_us", flow_txn_init_start.elapsed().as_micros() as u64);
 
 		let processing_start = Instant::now();
 		let mut final_version = current_version;
@@ -270,17 +269,17 @@ impl FlowConsumer {
 			final_version = version;
 			versions_processed += 1;
 		}
-		Span::current().record("processing_ms", processing_start.elapsed().as_millis() as u64);
+		Span::current().record("processing_us", processing_start.elapsed().as_micros() as u64);
 
 		let flow_commit_start = Instant::now();
 		flow_txn.commit(&mut txn).await?;
-		Span::current().record("flow_commit_ms", flow_commit_start.elapsed().as_millis() as u64);
+		Span::current().record("flow_commit_us", flow_commit_start.elapsed().as_micros() as u64);
 
 		CdcCheckpoint::persist(&mut txn, consumer_id, final_version).await?;
 
 		let parent_commit_start = Instant::now();
 		txn.commit().await?;
-		Span::current().record("parent_commit_ms", parent_commit_start.elapsed().as_millis() as u64);
+		Span::current().record("parent_commit_us", parent_commit_start.elapsed().as_micros() as u64);
 
 		Span::current().record("versions_processed", versions_processed);
 		Span::current().record("total_ms", batch_start.elapsed().as_millis() as u64);
