@@ -8,16 +8,27 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
-	Result,
+	CommitVersion, Result,
 	interface::{Cdc, CdcChange, CdcConsumerId},
 	key::{Key, KeyKind},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::load_flow;
+use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
-use crate::{FlowEngine, flow::FlowConsumer, registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
+use crate::{
+	FlowEngine, flow::FlowConsumer, provider::FlowChangeProvider, registry::FlowConsumerRegistry,
+	tracker::PrimitiveVersionTracker,
+};
+
+/// Message broadcast to flow consumers when new versions are available.
+#[derive(Clone, Debug)]
+pub struct VersionBroadcast {
+	/// The new version that is now safe to process.
+	pub version: CommitVersion,
+}
 
 /// Coordinator that monitors CDC for flow creation and manages flow consumers.
 pub struct Coordinator {
@@ -27,6 +38,8 @@ pub struct Coordinator {
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
 	consumer: Option<PollConsumer<CoordinatorConsumer>>,
 	shutdown: CancellationToken,
+	version_tx: broadcast::Sender<VersionBroadcast>,
+	provider: Arc<FlowChangeProvider>,
 }
 
 /// Implementation of CDC consume logic for the coordinator.
@@ -36,6 +49,10 @@ struct CoordinatorConsumer {
 	registry: Arc<FlowConsumerRegistry>,
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
 	shutdown: CancellationToken,
+	/// Broadcast channel for notifying consumers of new versions.
+	version_tx: broadcast::Sender<VersionBroadcast>,
+	/// Shared provider for decoded changes.
+	provider: Arc<FlowChangeProvider>,
 }
 
 impl Coordinator {
@@ -47,6 +64,8 @@ impl Coordinator {
 		primitive_tracker: Arc<PrimitiveVersionTracker>,
 	) -> Self {
 		let shutdown = CancellationToken::new();
+		let (version_tx, _) = broadcast::channel(1024);
+		let provider = Arc::new(FlowChangeProvider::new(engine.clone()));
 
 		Self {
 			engine,
@@ -55,12 +74,14 @@ impl Coordinator {
 			primitive_tracker,
 			consumer: None,
 			shutdown,
+			version_tx,
+			provider,
 		}
 	}
 
 	/// Start the coordinator.
 	pub fn start(&mut self) -> Result<()> {
-		info!("starting flow coordinator");
+		debug!("starting flow coordinator");
 
 		// Create consume implementation
 		let consume_impl = CoordinatorConsumer {
@@ -69,6 +90,8 @@ impl Coordinator {
 			registry: self.registry.clone(),
 			primitive_tracker: self.primitive_tracker.clone(),
 			shutdown: self.shutdown.clone(),
+			version_tx: self.version_tx.clone(),
+			provider: Arc::clone(&self.provider),
 		};
 
 		// Configure consumer
@@ -81,13 +104,13 @@ impl Coordinator {
 
 		self.consumer = Some(consumer);
 
-		info!("flow coordinator started");
+		debug!("flow coordinator started");
 		Ok(())
 	}
 
 	/// Shutdown the coordinator gracefully.
 	pub async fn shutdown(&mut self, timeout: Duration) {
-		info!("shutting down flow coordinator");
+		debug!("shutting down flow coordinator");
 
 		// Signal shutdown to all consumers
 		self.shutdown.cancel();
@@ -102,7 +125,7 @@ impl Coordinator {
 		// Shutdown all flow consumers with timeout
 		self.registry.shutdown_all(timeout).await;
 
-		info!("flow coordinator shutdown complete");
+		debug!("flow coordinator shutdown complete");
 	}
 }
 
@@ -169,6 +192,11 @@ impl CdcConsume for CoordinatorConsumer {
 												self.engine.clone(),
 												self.flow_engine
 													.clone(),
+												Arc::clone(
+													&self.provider,
+												),
+												self.version_tx
+													.subscribe(),
 												self.shutdown
 													.child_token(),
 											) {
@@ -199,6 +227,11 @@ impl CdcConsume for CoordinatorConsumer {
 					}
 				}
 			}
+
+			// Broadcast the new version to all flow consumers
+			let _ = self.version_tx.send(VersionBroadcast {
+				version,
+			});
 		}
 
 		Ok(())

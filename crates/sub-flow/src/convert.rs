@@ -79,6 +79,14 @@ pub(crate) async fn create_row(
 	// Get cached source metadata (loads from catalog on cache miss)
 	let metadata = catalog_cache.get_or_load(txn, source_id).await?;
 
+	// Handle empty row bytes - return error if table has columns
+	if row_bytes.is_empty() && !metadata.value_types.is_empty() {
+		return Err(Error(internal!(
+			"Cannot decode empty row bytes for table with {} columns",
+			metadata.value_types.len()
+		)));
+	}
+
 	let raw_encoded = EncodedValues(CowVec::new(row_bytes));
 
 	// If no dictionary columns, return directly with value layout

@@ -169,7 +169,7 @@ impl FlowTransaction {
 	}
 
 	/// Update the transaction to read at a new version
-	pub async fn update_version(&mut self, new_version: CommitVersion) {
+	pub fn update_version(&mut self, new_version: CommitVersion) {
 		self.version = new_version;
 		self.primitive_query.read_as_of_version_inclusive(new_version);
 	}

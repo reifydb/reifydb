@@ -6,6 +6,7 @@
 pub mod builder;
 pub(crate) mod catalog;
 pub(crate) mod config;
+pub(crate) mod convert;
 pub(crate) mod coordinator;
 mod engine;
 pub mod ffi;
@@ -13,8 +14,8 @@ pub(crate) mod flow;
 pub(crate) mod lag;
 #[allow(dead_code)]
 mod operator;
+pub(crate) mod provider;
 pub(crate) mod registry;
-pub(crate) mod routing;
 pub mod subsystem;
 pub(crate) mod tracker;
 pub mod transaction;

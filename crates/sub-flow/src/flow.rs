@@ -1,50 +1,52 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Per-flow CDC consumer that processes source changes from earliest CDC version.
+//! Per-flow consumer that processes source changes via the FlowChangeProvider.
+//!
+//! Flow consumers listen for version broadcasts from the Coordinator and fetch
+//! decoded changes from the shared FlowChangeProvider, filtering for their sources.
 
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
-use async_trait::async_trait;
-use reifydb_cdc::{CdcCheckpoint, CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
+use broadcast::error::{RecvError, RecvError::Lagged};
+use reifydb_cdc::CdcCheckpoint;
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcConsumerId, FlowId, PrimitiveId},
-	key::Key,
+	interface::{CdcConsumerId, FlowId, PrimitiveId},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_engine::StandardEngine;
 use reifydb_rql::flow::{Flow, FlowNodeType};
+use reifydb_sdk::FlowChangeOrigin;
+use tokio::{select, sync::broadcast, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
-use crate::{FlowEngine, FlowTransaction, catalog::FlowCatalog, routing::convert_cdc_to_flow_change};
+use crate::{FlowEngine, FlowTransaction, coordinator::VersionBroadcast, provider::FlowChangeProvider};
 
 /// Per-flow consumer that processes CDC events for its sources.
+///
+/// Listens for version broadcasts from the Coordinator and fetches decoded
+/// changes from the shared FlowChangeProvider. Each consumer filters changes
+/// to only process those relevant to its source primitives.
 pub struct FlowConsumer {
 	flow_id: FlowId,
 	sources: HashSet<PrimitiveId>,
-	consumer: Option<PollConsumer<FlowConsumeImpl>>,
 	shutdown: CancellationToken,
-}
-
-/// Implementation of CDC consume logic for a single flow.
-struct FlowConsumeImpl {
-	flow_id: FlowId,
-	sources: HashSet<PrimitiveId>,
-	engine: StandardEngine,
-	flow_engine: Arc<FlowEngine>,
+	worker: Option<JoinHandle<()>>,
 }
 
 impl FlowConsumer {
 	/// Spawn a new flow consumer for the given flow.
 	///
-	/// The consumer will start processing from CommitVersion(1) and catch up to present.
-	/// Each flow consumer has its own unique consumer ID and maintains its own checkpoint.
+	/// The consumer listens for version broadcasts and fetches decoded changes
+	/// from the provider, filtering for its specific sources.
 	pub fn spawn(
 		flow_id: FlowId,
 		flow: Flow,
 		engine: StandardEngine,
 		flow_engine: Arc<FlowEngine>,
+		provider: Arc<FlowChangeProvider>,
+		version_rx: broadcast::Receiver<VersionBroadcast>,
 		shutdown: CancellationToken,
 	) -> Result<Self> {
 		// Extract source primitives from flow definition
@@ -52,30 +54,193 @@ impl FlowConsumer {
 
 		debug!(flow_id = flow_id.0, sources = sources.len(), "extracted flow sources");
 
-		// Create consume implementation
-		let consume_impl = FlowConsumeImpl {
-			flow_id,
-			sources: sources.clone(),
-			engine: engine.clone(),
-			flow_engine,
+		// Spawn worker task
+		let worker = {
+			let sources = sources.clone();
+			let shutdown = shutdown.clone();
+
+			tokio::spawn(Self::processing_loop(
+				flow_id,
+				sources,
+				engine,
+				flow_engine,
+				provider,
+				version_rx,
+				shutdown,
+			))
 		};
-
-		// Configure consumer
-		let consumer_id = CdcConsumerId::new(&format!("flow-consumer-{}", flow_id.0));
-		let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(1), None);
-
-		// Create and start poll consumer
-		let mut consumer = PollConsumer::new(config, engine, consume_impl);
-		consumer.start()?;
 
 		info!(flow_id = flow_id.0, "flow consumer started");
 
 		Ok(Self {
 			flow_id,
 			sources,
-			consumer: Some(consumer),
 			shutdown,
+			worker: Some(worker),
 		})
+	}
+
+	/// Processing loop that listens for version broadcasts.
+	async fn processing_loop(
+		flow_id: FlowId,
+		sources: HashSet<PrimitiveId>,
+		engine: StandardEngine,
+		flow_engine: Arc<FlowEngine>,
+		provider: Arc<FlowChangeProvider>,
+		mut version_rx: broadcast::Receiver<VersionBroadcast>,
+		shutdown: CancellationToken,
+	) {
+		// Get initial checkpoint
+		let mut current_version = match Self::load_checkpoint(&engine, flow_id).await {
+			Ok(v) => v,
+			Err(e) => {
+				error!(flow_id = flow_id.0, error = %e, "failed to load checkpoint, starting from 0");
+				CommitVersion(0)
+			}
+		};
+
+		debug!(flow_id = flow_id.0, version = current_version.0, "starting from checkpoint");
+
+		let consumer_id = CdcConsumerId::new(&format!("flow-consumer-{}", flow_id.0));
+
+		loop {
+			select! {
+				_ = shutdown.cancelled() => {
+					debug!(flow_id = flow_id.0, "shutdown signal received");
+					break;
+				}
+
+				result = version_rx.recv() => {
+					match result {
+						Ok(broadcast) => {
+							let start_version = current_version.0 + 1;
+							let end_version = broadcast.version.0.min(start_version + 99);
+
+							if start_version > end_version {
+								continue; // Nothing to process
+							}
+
+							// Single parent transaction for entire batch
+							let mut txn = match engine.begin_command().await {
+								Ok(t) => t,
+								Err(e) => {
+									error!(
+										flow_id = flow_id.0,
+										error = %e,
+										"failed to begin transaction"
+									);
+									continue;
+								}
+							};
+							let catalog = engine.catalog();
+
+							let mut final_version = current_version;
+							let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
+
+							for version in start_version..=end_version {
+								let version = CommitVersion(version);
+								flow_txn.update_version(version);
+
+								if let Err(e) = Self::process_version(
+									flow_id,
+									&sources,
+									&mut flow_txn,
+									&flow_engine,
+									&provider,
+									version,
+								).await {
+									error!(
+										flow_id = flow_id.0,
+										version = version.0,
+										error = %e,
+										"failed to process version"
+									);
+								}
+
+								final_version = version;
+							}
+
+							flow_txn.commit(&mut txn).await.unwrap(); // should never happen
+
+							if let Err(e) = CdcCheckpoint::persist(&mut txn, &consumer_id, final_version).await {
+								error!(
+									flow_id = flow_id.0,
+									version = final_version.0,
+									error = %e,
+									"failed to persist checkpoint"
+								);
+
+								txn.rollback().ok();
+								return;
+							}
+
+							if let Err(e) = txn.commit().await {
+								error!(
+									flow_id = flow_id.0,
+									error = %e,
+									"failed to commit transaction"
+								);
+								continue;
+							}
+
+							current_version = final_version;
+						}
+						Err(Lagged(skipped)) => {
+							warn!(
+								flow_id = flow_id.0,
+								skipped = skipped,
+								"version broadcast lagged"
+							);
+						}
+						Err(RecvError::Closed) => {
+							debug!(flow_id = flow_id.0, "broadcast channel closed");
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		debug!(flow_id = flow_id.0, "processing loop exited");
+	}
+
+	/// Process a single version by fetching from provider and applying changes.
+	async fn process_version(
+		flow_id: FlowId,
+		sources: &HashSet<PrimitiveId>,
+		flow_txn: &mut FlowTransaction,
+		flow_engine: &FlowEngine,
+		provider: &FlowChangeProvider,
+		version: CommitVersion,
+	) -> Result<()> {
+		let all_changes = provider.get_changes(version).await?;
+
+		let relevant: Vec<_> = all_changes
+			.iter()
+			.filter(|change| match &change.origin {
+				FlowChangeOrigin::External(source) => sources.contains(source),
+				FlowChangeOrigin::Internal(_) => false,
+			})
+			.cloned()
+			.collect();
+
+		if relevant.is_empty() {
+			return Ok(());
+		}
+
+		for change in relevant {
+			flow_engine.process(flow_txn, change, flow_id).await?;
+		}
+
+		debug!(flow_id = flow_id.0, version = version.0, "processed version");
+		Ok(())
+	}
+
+	/// Load the checkpoint for this flow consumer.
+	async fn load_checkpoint(engine: &StandardEngine, flow_id: FlowId) -> Result<CommitVersion> {
+		let consumer_id = CdcConsumerId::new(&format!("flow-consumer-{}", flow_id.0));
+		let mut txn = engine.begin_query().await?;
+		CdcCheckpoint::fetch(&mut txn, &consumer_id).await
 	}
 
 	/// Shutdown the flow consumer gracefully.
@@ -85,9 +250,9 @@ impl FlowConsumer {
 		// Signal shutdown
 		self.shutdown.cancel();
 
-		// Stop poll consumer
-		if let Some(mut consumer) = self.consumer.take() {
-			consumer.stop()?;
+		// Wait for worker to finish
+		if let Some(worker) = self.worker.take() {
+			worker.abort();
 		}
 
 		info!(flow_id = self.flow_id.0, "flow consumer shutdown complete");
@@ -98,10 +263,7 @@ impl FlowConsumer {
 	///
 	/// This represents how far the flow has processed in the CDC log.
 	pub async fn current_version(&self, engine: &StandardEngine) -> Result<CommitVersion> {
-		let consumer_id = CdcConsumerId::new(&format!("flow-consumer-{}", self.flow_id.0));
-		let mut txn = engine.begin_query().await?;
-		let version = CdcCheckpoint::fetch(&mut txn, &consumer_id).await?;
-		Ok(version)
+		Self::load_checkpoint(engine, self.flow_id).await
 	}
 
 	/// Get the flow ID.
@@ -112,89 +274,6 @@ impl FlowConsumer {
 	/// Get the source primitives for this flow.
 	pub fn sources(&self) -> &HashSet<PrimitiveId> {
 		&self.sources
-	}
-}
-
-#[async_trait]
-impl CdcConsume for FlowConsumeImpl {
-	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
-		let catalog_cache = FlowCatalog::new(self.flow_engine.inner.catalog.clone());
-		let mut flow_txn: Option<FlowTransaction> = None;
-
-		for cdc in cdcs {
-			let version = cdc.version;
-
-			// Collect changes for this flow
-			let mut flow_changes = Vec::new();
-
-			// Create query transaction for row decoding at the CDC event's version
-			let mut query_txn = self.engine.begin_query_at_version(version).await?;
-			for cdc_change in &cdc.changes {
-				// Only process Row keys (data events)
-				if let Some(Key::Row(row_key)) = Key::decode(cdc_change.key()) {
-					let source_id = row_key.primitive;
-					let row_number = row_key.row;
-
-					// Check if this source belongs to our flow
-					if self.sources.contains(&source_id) {
-						// Reuse existing conversion logic from routing.rs
-						match convert_cdc_to_flow_change(
-							&mut query_txn,
-							&catalog_cache,
-							source_id,
-							row_number,
-							&cdc_change.change,
-							version,
-						)
-						.await
-						{
-							Ok(change) => flow_changes.push(change),
-							Err(e) => {
-								warn!(
-									flow_id = self.flow_id.0,
-									source = ?source_id,
-									row = row_number.0,
-									error = %e,
-									"failed to decode row"
-								);
-								continue;
-							}
-						}
-					}
-				}
-			}
-
-			// Drop query transaction before processing
-			drop(query_txn);
-
-			// Process batch if we have any changes
-			if !flow_changes.is_empty() {
-				// Get or create flow transaction, update version for this batch
-				let ft = match &mut flow_txn {
-					Some(ft) => {
-						ft.update_version(version).await;
-						ft
-					}
-					None => {
-						flow_txn =
-							Some(FlowTransaction::new(txn, version, self.engine.catalog())
-								.await);
-						flow_txn.as_mut().unwrap()
-					}
-				};
-
-				for change in flow_changes {
-					self.flow_engine.process(ft, change, self.flow_id).await?;
-				}
-
-				debug!(flow_id = self.flow_id.0, version = version.0, "processed flow changes");
-			}
-		}
-
-		if let Some(mut ft) = flow_txn {
-			ft.commit(txn).await?;
-		}
-		Ok(())
 	}
 }
 
