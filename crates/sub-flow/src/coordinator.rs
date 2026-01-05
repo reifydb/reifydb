@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::load_flow;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::{FlowEngine, flow::FlowConsumer, registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
 
@@ -60,8 +60,6 @@ impl Coordinator {
 
 	/// Start the coordinator.
 	pub fn start(&mut self) -> Result<()> {
-		info!("starting flow coordinator");
-
 		// Create consume implementation
 		let consume_impl = CoordinatorConsumer {
 			engine: self.engine.clone(),
@@ -81,7 +79,6 @@ impl Coordinator {
 
 		self.consumer = Some(consumer);
 
-		info!("flow coordinator started");
 		Ok(())
 	}
 
@@ -136,11 +133,6 @@ impl CdcConsume for CoordinatorConsumer {
 
 								// Check if not already spawned
 								if !self.registry.contains(flow_id).await {
-									debug!(
-										flow_id = flow_id.0,
-										"detected new flow"
-									);
-
 									// Load flow from catalog
 									match load_flow(txn, flow_id).await {
 										Ok(flow) => {
@@ -154,11 +146,7 @@ impl CdcConsume for CoordinatorConsumer {
 												)
 												.await
 											{
-												error!(
-													flow_id = flow_id.0,
-													error = %e,
-													"failed to register flow with engine"
-												);
+												error!(flow_id = flow_id.0, error = %e, "failed to register flow with engine");
 												continue;
 											}
 
@@ -177,20 +165,12 @@ impl CdcConsume for CoordinatorConsumer {
 													info!(flow_id = flow_id.0, "spawned flow consumer");
 												}
 												Err(e) => {
-													error!(
-														flow_id = flow_id.0,
-														error = %e,
-														"failed to spawn flow consumer"
-													);
+													error!(flow_id = flow_id.0, error = %e, "failed to spawn flow consumer");
 												}
 											}
 										}
 										Err(e) => {
-											error!(
-												flow_id = flow_id.0,
-												error = %e,
-												"failed to load flow"
-											);
+											error!(flow_id = flow_id.0, error = %e, "failed to load flow from catalog");
 										}
 									}
 								}

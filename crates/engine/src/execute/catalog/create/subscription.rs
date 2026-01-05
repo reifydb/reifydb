@@ -23,6 +23,11 @@ impl Executor {
 		.await?;
 		txn.track_subscription_def_created(result.clone())?;
 
+		// If AS clause is provided, create and compile a flow for the subscription
+		if let Some(as_clause) = plan.as_clause {
+			self.create_subscription_flow(txn, &result, *as_clause).await?;
+		}
+
 		Ok(Columns::single_row([
 			("subscription_id", Value::Uuid7(Uuid7(result.id.0))),
 			("created", Value::Boolean(true)),

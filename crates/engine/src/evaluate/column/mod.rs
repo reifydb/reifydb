@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_builtin::{Functions, blob, flow_node_type, math, text};
 use reifydb_core::value::column::Column;
+use reifydb_function::{Functions, blob, flow, math, text};
 use reifydb_rql::expression::Expression;
 
 pub(crate) use crate::evaluate::ColumnEvaluationContext;
@@ -43,7 +43,7 @@ impl Default for StandardColumnEvaluator {
 				.register_scalar("blob::b64", blob::BlobB64::new)
 				.register_scalar("blob::b64url", blob::BlobB64url::new)
 				.register_scalar("blob::utf8", blob::BlobUtf8::new)
-				.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
+				.register_scalar("flow::to_json", flow::FlowNodeTypeToJson::new)
 				.register_scalar("text::trim", text::TextTrim::new)
 				.register_scalar("text::upper", text::TextUpper::new)
 				.register_scalar("text::substring", text::TextSubstring::new)
@@ -106,7 +106,7 @@ pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Resu
 			.register_scalar("blob::b64", blob::BlobB64::new)
 			.register_scalar("blob::b64url", blob::BlobB64url::new)
 			.register_scalar("blob::utf8", blob::BlobUtf8::new)
-			.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
+			.register_scalar("flow::to_json", flow::FlowNodeTypeToJson::new)
 			.register_scalar("text::trim", text::TextTrim::new)
 			.register_scalar("text::upper", text::TextUpper::new)
 			.register_scalar("text::substring", text::TextSubstring::new)

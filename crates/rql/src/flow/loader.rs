@@ -39,5 +39,6 @@ pub async fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId)
 	}
 
 	// Build the immutable Flow
-	Ok(builder.build())
+	let flow = builder.build();
+	Ok(flow)
 }

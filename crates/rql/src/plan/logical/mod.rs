@@ -701,6 +701,7 @@ pub struct CreateIndexNode {
 #[derive(Debug)]
 pub struct CreateSubscriptionNode {
 	pub columns: Vec<SubscriptionColumnToCreate>,
+	pub as_clause: Option<AstStatement>,
 }
 
 #[derive(Debug)]

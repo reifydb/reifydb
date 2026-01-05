@@ -5,9 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use reifydb_core::{
-	interface::{
-		FlowNodeId, IMPLICIT_COLUMN_OP, IMPLICIT_COLUMN_SEQUENCE, IMPLICIT_COLUMN_VERSION, ResolvedSubscription,
-	},
+	interface::{FlowNodeId, IMPLICIT_COLUMN_OP, ResolvedSubscription},
 	key::SubscriptionRowKey,
 	value::{
 		column::{Column, ColumnData, Columns},
@@ -42,8 +40,8 @@ impl SinkSubscriptionOperator {
 		}
 	}
 
-	/// Add implicit columns (_op, _version, _sequence) to the columns
-	fn add_implicit_columns(columns: &Columns, op: u8, version: u64, sequence: u16) -> Columns {
+	/// Add implicit columns (_op) to the columns
+	fn add_implicit_columns(columns: &Columns, op: u8) -> Columns {
 		let row_count = columns.row_count();
 
 		// Clone existing columns
@@ -53,18 +51,6 @@ impl SinkSubscriptionOperator {
 		all_columns.push(Column {
 			name: Fragment::internal(IMPLICIT_COLUMN_OP),
 			data: ColumnData::uint1(vec![op; row_count]),
-		});
-
-		// Add implicit _version column
-		all_columns.push(Column {
-			name: Fragment::internal(IMPLICIT_COLUMN_VERSION),
-			data: ColumnData::uint8(vec![version; row_count]),
-		});
-
-		// Add implicit _sequence column
-		all_columns.push(Column {
-			name: Fragment::internal(IMPLICIT_COLUMN_SEQUENCE),
-			data: ColumnData::uint2(vec![sequence; row_count]),
 		});
 
 		// Preserve row numbers
@@ -87,9 +73,6 @@ impl Operator for SinkSubscriptionOperator {
 		let subscription_def = self.subscription.def().clone();
 		let layout: EncodedValuesNamedLayout = (&subscription_def).into();
 
-		// Track sequence number for deltas within this change
-		let mut sequence: u16 = 0;
-
 		for diff in change.diffs.iter() {
 			match diff {
 				FlowDiff::Insert {
@@ -99,12 +82,7 @@ impl Operator for SinkSubscriptionOperator {
 					let coerced = coerce_subscription_columns(post, &subscription_def.columns)?;
 
 					// Add implicit columns
-					let with_implicit = Self::add_implicit_columns(
-						&coerced,
-						OP_INSERT,
-						change.version.0,
-						sequence,
-					);
+					let with_implicit = Self::add_implicit_columns(&coerced, OP_INSERT);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -113,8 +91,6 @@ impl Operator for SinkSubscriptionOperator {
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
-
-						sequence = sequence.wrapping_add(1);
 					}
 				}
 				FlowDiff::Update {
@@ -126,12 +102,7 @@ impl Operator for SinkSubscriptionOperator {
 					let coerced = coerce_subscription_columns(post, &subscription_def.columns)?;
 
 					// Add implicit columns
-					let with_implicit = Self::add_implicit_columns(
-						&coerced,
-						OP_UPDATE,
-						change.version.0,
-						sequence,
-					);
+					let with_implicit = Self::add_implicit_columns(&coerced, OP_UPDATE);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -140,8 +111,6 @@ impl Operator for SinkSubscriptionOperator {
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
-
-						sequence = sequence.wrapping_add(1);
 					}
 				}
 				FlowDiff::Remove {
@@ -152,12 +121,7 @@ impl Operator for SinkSubscriptionOperator {
 					let coerced = coerce_subscription_columns(pre, &subscription_def.columns)?;
 
 					// Add implicit columns
-					let with_implicit = Self::add_implicit_columns(
-						&coerced,
-						OP_DELETE,
-						change.version.0,
-						sequence,
-					);
+					let with_implicit = Self::add_implicit_columns(&coerced, OP_DELETE);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -166,8 +130,6 @@ impl Operator for SinkSubscriptionOperator {
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
-
-						sequence = sequence.wrapping_add(1);
 					}
 				}
 			}

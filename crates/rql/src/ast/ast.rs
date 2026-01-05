@@ -855,6 +855,7 @@ pub struct AstCreateSeries {
 pub struct AstCreateSubscription {
 	pub token: Token,
 	pub columns: Vec<AstColumnToCreate>,
+	pub as_clause: Option<AstStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -142,8 +142,21 @@ pub(crate) fn encode_row_at_index(
 ) -> (RowNumber, EncodedValues) {
 	let row_number = columns.row_numbers[row_idx];
 
-	// Collect values for this row from each column
-	let values: Vec<reifydb_type::Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
+	// Collect values in LAYOUT FIELD ORDER by matching column names
+	// This ensures values are in the same order as layout expects
+	let values: Vec<reifydb_type::Value> = layout
+		.names()
+		.iter()
+		.map(|field_name| {
+			// Find column with matching name
+			let col = columns
+				.iter()
+				.find(|col| col.name.as_ref() == field_name)
+				.unwrap_or_else(|| panic!("Column '{}' not found in Columns", field_name));
+
+			col.data().get_value(row_idx)
+		})
+		.collect();
 
 	// Encode directly
 	let mut encoded = layout.allocate();

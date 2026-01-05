@@ -162,8 +162,12 @@ impl SubscriptionRowKey {
 	}
 
 	pub fn subscription_start(subscription: SubscriptionId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_bytes(subscription.as_bytes());
+		let mut serializer = KeySerializer::with_capacity(26);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_bytes(subscription.as_bytes())
+			.extend_u64(u64::MAX);
 		serializer.to_encoded_key()
 	}
 
@@ -173,7 +177,7 @@ impl SubscriptionRowKey {
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_bytes(subscription.as_bytes())
-			.extend_u64(u64::MAX);
+			.extend_u64(0u64);
 		serializer.to_encoded_key()
 	}
 }
@@ -226,8 +230,9 @@ mod tests {
 		let encoded2 = key2.encode();
 		let encoded3 = key3.encode();
 
-		// Same subscription, different rows - lower row number comes first
-		assert!(encoded1 < encoded2, "row ordering not preserved");
+		// Same subscription, different rows - with descending u64 encoding, higher row numbers encode to
+		// smaller bytes
+		assert!(encoded1 > encoded2, "row ordering not preserved");
 
 		// Different subscriptions - ordering depends on UUID
 		assert!(encoded1 < encoded3, "subscription ordering not preserved");

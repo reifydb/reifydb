@@ -38,6 +38,10 @@ pub(crate) fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::RingBufferMetadata
 		// Index metadata (derived from Row CDC)
 			| KeyKind::Index
+		// Subscriptions are runtime only
+			| KeyKind::Subscription
+			| KeyKind::SubscriptionColumn
+			| KeyKind::SubscriptionRow
 	)
 }
 
@@ -95,7 +99,7 @@ mod tests {
 			KeyKind::StorageTracker => {}
 			KeyKind::FlowVersion => {}
 			KeyKind::Subscription => {}
-			KeyKind::SubscriptionDelta => {}
+			KeyKind::SubscriptionRow => {}
 			KeyKind::SubscriptionColumn => {} /* When adding a new variant, add it here.
 			                                   * The compiler will error if you forget.
 			                                   * Then add a test and update should_exclude_from_cdc() if
@@ -172,8 +176,23 @@ mod tests {
 		assert!(should_exclude_from_cdc(KeyKind::Index));
 	}
 
-	// Tests for KeyKinds that should generate CDC (should return false)
+	// Subscriptions (runtime only)
+	#[test]
+	fn test_exclude_subscription() {
+		assert!(should_exclude_from_cdc(KeyKind::Subscription));
+	}
 
+	#[test]
+	fn test_exclude_subscription_column() {
+		assert!(should_exclude_from_cdc(KeyKind::SubscriptionColumn));
+	}
+
+	#[test]
+	fn test_exclude_subscription_row() {
+		assert!(should_exclude_from_cdc(KeyKind::SubscriptionRow));
+	}
+
+	// Tests for KeyKinds that should generate CDC (should return false)
 	#[test]
 	fn test_include_namespace() {
 		assert!(!should_exclude_from_cdc(KeyKind::Namespace));

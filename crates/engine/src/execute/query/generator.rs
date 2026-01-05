@@ -6,9 +6,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use reifydb_core::{
 	error,
-	interface::{GeneratorContext, GeneratorFunction},
 	value::column::{Columns, headers::ColumnHeaders},
 };
+use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Params, diagnostic::function::generator_not_found};
 
@@ -60,7 +60,7 @@ impl QueryNode for GeneratorNode {
 
 	async fn next<'a>(
 		&mut self,
-		_txn: &mut StandardTransaction<'a>,
+		txn: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
@@ -91,9 +91,16 @@ impl QueryNode for GeneratorNode {
 		}
 		let evaluated_params = Columns::new(evaluated_columns);
 
-		let columns = generator.generate(GeneratorContext {
-			params: evaluated_params,
-		})?;
+		let columns = generator
+			.generate(GeneratorContext {
+				params: evaluated_params,
+				txn: unsafe {
+					std::mem::transmute::<&mut StandardTransaction, &'a mut StandardTransaction<'a>>(
+						txn,
+					)
+				},
+			})
+			.await?;
 
 		self.exhausted = true;
 

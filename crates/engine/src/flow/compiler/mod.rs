@@ -13,7 +13,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	Result,
-	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, ViewDef},
+	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, SubscriptionDef, ViewDef},
 };
 use reifydb_rql::{
 	flow::{Flow, FlowBuilder, FlowEdge, FlowNode, FlowNodeType},
@@ -41,6 +41,16 @@ pub async fn compile_flow(
 ) -> Result<Flow> {
 	let compiler = FlowCompiler::new(flow_id);
 	compiler.compile(txn, plan, sink).await
+}
+
+pub async fn compile_subscription_flow(
+	txn: &mut StandardCommandTransaction,
+	plan: PhysicalPlan,
+	subscription: &SubscriptionDef,
+	flow_id: FlowId,
+) -> Result<Flow> {
+	let compiler = FlowCompiler::new(flow_id);
+	compiler.compile_with_subscription(txn, plan, subscription).await
 }
 
 /// Compiler for converting RQL plans into executable Flows
@@ -150,6 +160,30 @@ impl FlowCompiler {
 
 			self.add_edge(txn, &root_node_id, &result_node).await?;
 		}
+
+		Ok(self.builder.build())
+	}
+
+	/// Compiles a physical plan into a FlowGraph with a subscription sink
+	pub(crate) async fn compile_with_subscription(
+		mut self,
+		txn: &mut StandardCommandTransaction,
+		plan: PhysicalPlan,
+		subscription: &SubscriptionDef,
+	) -> Result<Flow> {
+		let root_node_id = self.compile_plan(txn, plan).await?;
+
+		// Add SinkSubscription node
+		let result_node = self
+			.add_node(
+				txn,
+				FlowNodeType::SinkSubscription {
+					subscription: subscription.id,
+				},
+			)
+			.await?;
+
+		self.add_edge(txn, &root_node_id, &result_node).await?;
 
 		Ok(self.builder.build())
 	}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::interface::{
 	SubscriptionColumnDef, SubscriptionColumnId, SubscriptionColumnKey, SubscriptionDef, SubscriptionId,
 	SubscriptionKey,
@@ -81,10 +82,11 @@ impl CatalogStore {
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<Vec<SubscriptionColumnDef>> {
-		let batch = txn.range_batch(SubscriptionColumnKey::subscription_range(subscription), 256).await?;
+		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
-		let mut columns = Vec::with_capacity(batch.items.len());
-		for multi in batch.items {
+		let mut columns = Vec::new();
+		while let Some(result) = stream.next().await {
+			let multi = result?;
 			let row = &multi.values;
 			let id =
 				SubscriptionColumnId(subscription_column::LAYOUT.get_u64(row, subscription_column::ID));

@@ -4,7 +4,6 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
-use reifydb_builtin::{Functions, FunctionsBuilder, generator, math};
 use reifydb_catalog::{CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
@@ -14,6 +13,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
+use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
@@ -183,7 +183,7 @@ impl DatabaseBuilder {
 				.register_aggregate("math::count", math::aggregate::Count::new)
 				.register_scalar("math::abs", math::scalar::Abs::new)
 				.register_scalar("math::avg", math::scalar::Avg::new)
-				.register_generator("generate_series", generator::GenerateSeries::new);
+				.register_generator("generate_series", series::GenerateSeries::new);
 
 			Some(configurator(default_builder).build())
 		} else {

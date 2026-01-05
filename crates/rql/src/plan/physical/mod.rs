@@ -114,7 +114,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::CreateSubscription(create) => {
-					stack.push(self.compile_create_subscription(create)?);
+					stack.push(Box::pin(self.compile_create_subscription(rx, create)).await?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
@@ -1131,6 +1131,7 @@ pub struct CreateDictionaryNode {
 #[derive(Debug, Clone)]
 pub struct CreateSubscriptionNode {
 	pub columns: Vec<SubscriptionColumnToCreate>,
+	pub as_clause: Option<Box<PhysicalPlan>>,
 }
 
 #[derive(Debug, Clone)]

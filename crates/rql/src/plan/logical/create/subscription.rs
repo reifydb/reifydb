@@ -30,8 +30,12 @@ impl Compiler {
 			});
 		}
 
+		// Pass the AS clause through without compiling it (will be compiled in execution layer)
+		let as_clause = ast.as_clause;
+
 		Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns,
+			as_clause,
 		}))
 	}
 }

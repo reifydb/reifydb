@@ -50,8 +50,6 @@ impl FlowConsumer {
 		// Extract source primitives from flow definition
 		let sources = extract_sources(&flow);
 
-		debug!(flow_id = flow_id.0, sources = sources.len(), "extracted flow sources");
-
 		// Create consume implementation
 		let consume_impl = FlowConsumeImpl {
 			flow_id,
@@ -67,8 +65,6 @@ impl FlowConsumer {
 		// Create and start poll consumer
 		let mut consumer = PollConsumer::new(config, engine, consume_impl);
 		consumer.start()?;
-
-		info!(flow_id = flow_id.0, "flow consumer started");
 
 		Ok(Self {
 			flow_id,
@@ -186,8 +182,6 @@ impl CdcConsume for FlowConsumeImpl {
 				for change in flow_changes {
 					self.flow_engine.process(ft, change, self.flow_id).await?;
 				}
-
-				debug!(flow_id = self.flow_id.0, version = version.0, "processed flow changes");
 			}
 		}
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use futures_util::StreamExt;
 use reifydb_core::{
 	CommitVersion,
 	interface::{Key, SubscriptionDef, SubscriptionKey},
@@ -14,40 +15,51 @@ impl CatalogStore {
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<SubscriptionDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let mut result = Vec::new();
 
-		let batch = txn.range_batch(SubscriptionKey::full_scan(), 1024).await?;
+		// First, collect all subscription IDs and metadata
+		let mut subscription_data = Vec::new();
+		{
+			let mut stream = txn.range(SubscriptionKey::full_scan(), 1024)?;
 
-		for entry in batch.items {
-			if let Some(key) = Key::decode(&entry.key) {
-				if let Key::Subscription(sub_key) = key {
-					let subscription_id = sub_key.subscription;
+			while let Some(result_entry) = stream.next().await {
+				let entry = result_entry?;
+				if let Some(key) = Key::decode(&entry.key) {
+					if let Key::Subscription(sub_key) = key {
+						let subscription_id = sub_key.subscription;
 
-					let acknowledged_version = CommitVersion(
-						subscription::LAYOUT
-							.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
-					);
+						let acknowledged_version =
+							CommitVersion(subscription::LAYOUT.get_u64(
+								&entry.values,
+								subscription::ACKNOWLEDGED_VERSION,
+							));
 
-					// Load columns based on transaction type
-					let columns = match &mut txn {
-						StandardTransaction::Command(cmd) => {
-							Self::list_subscription_columns(cmd, subscription_id).await?
-						}
-						StandardTransaction::Query(_) => vec![],
-					};
-
-					let subscription_def = SubscriptionDef {
-						id: subscription_id,
-						columns,
-						// Subscriptions don't have primary keys (they use UUID v7 as their
-						// identifier)
-						primary_key: None,
-						acknowledged_version,
-					};
-
-					result.push(subscription_def);
+						subscription_data.push((subscription_id, acknowledged_version));
+					}
 				}
 			}
+		} // stream dropped here, releasing the borrow on txn
+
+		// Now load columns for each subscription
+		let mut result = Vec::new();
+		for (subscription_id, acknowledged_version) in subscription_data {
+			// Load columns based on transaction type
+			let columns = match &mut txn {
+				StandardTransaction::Command(cmd) => {
+					Self::list_subscription_columns(cmd, subscription_id).await?
+				}
+				StandardTransaction::Query(_) => vec![],
+			};
+
+			let subscription_def = SubscriptionDef {
+				id: subscription_id,
+				columns,
+				// Subscriptions don't have primary keys (they use UUID v7 as their
+				// identifier)
+				primary_key: None,
+				acknowledged_version,
+			};
+
+			result.push(subscription_def);
 		}
 
 		Ok(result)

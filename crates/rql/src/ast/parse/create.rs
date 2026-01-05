@@ -145,12 +145,52 @@ impl Parser {
 
 	fn parse_subscription(&mut self, token: Token) -> crate::Result<AstCreate> {
 		// Subscriptions don't have names - they're identified only by UUID v7
-		// Syntax: CREATE SUBSCRIPTION { columns... }
+		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
 		let columns = self.parse_columns()?;
+
+		// Parse optional AS clause
+		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
+			// Expect opening curly brace
+			self.consume_operator(Operator::OpenCurly)?;
+
+			// Parse the query nodes inside the AS clause
+			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
+
+			// Parse statements until we hit the closing brace
+			loop {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				query_nodes.push(node);
+
+				// Check for pipe operator or newline as separator between nodes
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					// Try to consume a newline if present (optional)
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
+			}
+
+			// Expect closing curly brace
+			self.consume_operator(Operator::CloseCurly)?;
+
+			Some(crate::ast::AstStatement {
+				nodes: query_nodes,
+				has_pipes,
+			})
+		} else {
+			None
+		};
 
 		Ok(AstCreate::Subscription(AstCreateSubscription {
 			token,
 			columns,
+			as_clause,
 		}))
 	}
 
@@ -172,6 +212,7 @@ impl Parser {
 
 			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
 
 			// Parse statements until we hit the closing brace
 			loop {
@@ -181,6 +222,15 @@ impl Parser {
 
 				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
+
+				// Check for pipe operator or newline as separator between nodes
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					// Try to consume a newline if present (optional)
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
 			}
 
 			// Expect closing curly brace
@@ -188,7 +238,7 @@ impl Parser {
 
 			Some(crate::ast::AstStatement {
 				nodes: query_nodes,
-				has_pipes: false,
+				has_pipes,
 			})
 		} else {
 			None
@@ -232,6 +282,7 @@ impl Parser {
 
 			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
 
 			// Parse statements until we hit the closing brace
 			loop {
@@ -241,6 +292,15 @@ impl Parser {
 
 				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
+
+				// Check for pipe operator or newline as separator between nodes
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					// Try to consume a newline if present (optional)
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
 			}
 
 			// Expect closing curly brace
@@ -248,7 +308,7 @@ impl Parser {
 
 			Some(crate::ast::AstStatement {
 				nodes: query_nodes,
-				has_pipes: false,
+				has_pipes,
 			})
 		} else {
 			None
@@ -668,6 +728,7 @@ impl Parser {
 			self.consume_operator(Operator::OpenCurly)?;
 
 			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
 
 			// Parse statements until we hit the closing brace
 			loop {
@@ -677,17 +738,27 @@ impl Parser {
 
 				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
+
+				// Check for pipe operator or newline as separator between nodes
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					// Try to consume a newline if present (optional)
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
 			}
 
 			self.consume_operator(Operator::CloseCurly)?;
 
 			crate::ast::AstStatement {
 				nodes: query_nodes,
-				has_pipes: false,
+				has_pipes,
 			}
 		} else {
 			// Direct syntax - parse until semicolon or EOF
 			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
 
 			// Parse nodes until we hit a terminator
 			loop {
@@ -703,15 +774,21 @@ impl Parser {
 				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
 
-				// Check if we've consumed everything up to a terminator
-				if self.is_eof() || self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
-					break;
+				if !self.is_eof() {
+					// Check for pipe operator or newline as separator
+					if self.current()?.is_operator(Operator::Pipe) {
+						self.advance()?; // consume the pipe
+						has_pipes = true;
+					} else {
+						// Try to consume a newline if present (optional)
+						self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+					}
 				}
 			}
 
 			crate::ast::AstStatement {
 				nodes: query_nodes,
-				has_pipes: false,
+				has_pipes,
 			}
 		};
 
@@ -729,7 +806,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace, AstCreateRingBuffer,
+		Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace, AstCreateRingBuffer,
 		AstCreateSeries, AstCreateSubscription, AstCreateTable, AstCreateTransactionalView, AstDataType,
 		AstPolicyKind, parse::Parser, tokenize,
 	};
@@ -1738,6 +1815,104 @@ mod tests {
 					}
 					_ => panic!("Expected simple type"),
 				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_with_simple_query() {
+		let tokens =
+			tokenize("CREATE SUBSCRIPTION { id: Int4, name: Utf8 } AS { from test.products }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(columns.len(), 2);
+				assert_eq!(columns[0].name.text(), "id");
+				assert_eq!(columns[1].name.text(), "name");
+
+				assert!(as_clause.is_some(), "AS clause should be present");
+				let as_clause = as_clause.as_ref().unwrap();
+				assert_eq!(as_clause.nodes.len(), 1, "Should have one FROM node");
+
+				// Validate that the node is a FROM node
+				match &as_clause.nodes[0] {
+					Ast::From(_) => {
+						// Expected: FROM node
+					}
+					_ => panic!("Expected FROM node in AS clause"),
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_with_piped_query() {
+		let tokens = tokenize(
+			"CREATE SUBSCRIPTION { id: Int4, price: Float8 } AS { from test.products | filter price > 50 | filter stock > 0 }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(columns.len(), 2);
+
+				assert!(as_clause.is_some(), "AS clause should be present");
+				let as_clause = as_clause.as_ref().unwrap();
+
+				// Should have FROM node followed by filter operations
+				assert!(as_clause.nodes.len() >= 1, "Should have at least FROM node");
+
+				// First node should be FROM
+				match &as_clause.nodes[0] {
+					Ast::From(_) => {
+						// Expected: FROM node
+					}
+					_ => panic!("Expected FROM node as first node in AS clause"),
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_without_as_clause() {
+		// Ensure subscriptions without AS clause still work (backwards compatibility)
+		let tokens = tokenize("CREATE SUBSCRIPTION { value: Float8 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				as_clause,
+				..
+			}) => {
+				assert!(as_clause.is_none(), "AS clause should not be present");
 			}
 			_ => unreachable!("Expected Subscription create"),
 		}
