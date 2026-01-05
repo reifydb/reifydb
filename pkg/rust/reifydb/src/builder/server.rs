@@ -39,6 +39,8 @@ pub struct ServerBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
 }
 
 impl ServerBuilder {
@@ -61,6 +63,8 @@ impl ServerBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
+			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+			otel_tracing_config: None,
 		}
 	}
 
@@ -139,29 +143,8 @@ impl ServerBuilder {
 	where
 		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
 	{
-		use reifydb_sub_api::Subsystem;
-		use tokio::runtime::Handle;
-
-		// Step 1: Create and start the OtelSubsystem early
-		// Note: We need to start synchronously here to get the tracer for the tracing layer.
-		// This requires being called from within a tokio runtime context.
-		let mut otel_subsystem = OtelSubsystem::new(otel_config);
-		Handle::current().block_on(otel_subsystem.start()).expect("Failed to start OpenTelemetry subsystem");
-
-		// Step 2: Get the concrete tracer from the initialized provider
-		let tracer = otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
-
-		// Step 3: Configure tracing with the OpenTelemetry layer
-		self.tracing_configurator = Some(Box::new(move |builder| {
-			let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-			let builder_with_otel = builder.with_layer(otel_layer);
-			tracing_configurator(builder_with_otel)
-		}));
-
-		// Step 4: Store the pre-initialized subsystem to be added during build
-		let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
-		self.subsystem_factories.push(Box::new(factory));
-
+		// Store the config and configurator to be initialized later in build()
+		self.otel_tracing_config = Some((otel_config, Box::new(tracing_configurator)));
 		self
 	}
 
@@ -186,10 +169,44 @@ impl ServerBuilder {
 			database_builder = database_builder.with_compute_pool(pool);
 		}
 
-		// Add configured subsystems using the proper methods
-		#[cfg(feature = "sub_tracing")]
-		if let Some(configurator) = self.tracing_configurator {
-			database_builder = database_builder.with_tracing(configurator);
+		// Handle OpenTelemetry + Tracing integration if configured
+		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+		if let Some((otel_config, tracing_configurator)) = self.otel_tracing_config {
+			use reifydb_sub_api::Subsystem;
+
+			// Step 1: Create and start the OtelSubsystem (async)
+			let mut otel_subsystem = OtelSubsystem::new(otel_config);
+			otel_subsystem.start().await.expect("Failed to start OpenTelemetry subsystem");
+
+			// Step 2: Get the concrete tracer from the initialized provider
+			let tracer =
+				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
+
+			// Step 3: Configure tracing with the OpenTelemetry layer
+			database_builder = database_builder.with_tracing(move |builder| {
+				let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+				let builder_with_otel = builder.with_layer(otel_layer);
+				tracing_configurator(builder_with_otel)
+			});
+
+			// Step 4: Store the pre-initialized subsystem to be added during build
+			let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
+			database_builder = database_builder.add_subsystem_factory(Box::new(factory));
+		} else {
+			// Normal tracing configuration without OpenTelemetry
+			#[cfg(feature = "sub_tracing")]
+			if let Some(configurator) = self.tracing_configurator {
+				database_builder = database_builder.with_tracing(configurator);
+			}
+		}
+
+		// If otel_tracing_config was not set, handle normal tracing
+		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
+		{
+			#[cfg(feature = "sub_tracing")]
+			if let Some(configurator) = self.tracing_configurator {
+				database_builder = database_builder.with_tracing(configurator);
+			}
 		}
 
 		#[cfg(feature = "sub_flow")]

@@ -1440,6 +1440,7 @@ dependencies = [
  "percent-encoding",
  "rand",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -2690,6 +2691,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 

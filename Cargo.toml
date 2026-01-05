@@ -170,10 +170,10 @@ tracing = { version = "0.1.43" }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json", "fmt"] }
 
 # OpenTelemetry - compatible versions
-opentelemetry = "0.31"
-opentelemetry_sdk = "0.31"
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
-tracing-opentelemetry = "0.32"
+opentelemetry = { version = "0.31", features = ["tracing"] }
+opentelemetry_sdk = { version = "0.31",features = ["tokio", "trace"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "tracing", "tokio"] }
+tracing-opentelemetry = { version = "0.32" , features = ["default"]}
 
 libc = { version = "0.2.175" }
 libloading = { version = "0.9" }
@@ -196,7 +196,7 @@ num_cpus = { version = "1.17.0" }
 httparse = { version = "1.10.1" }
 
 # Async runtime and networking (tokio stack)
-tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
 tokio-tungstenite = { version = "0.28.0" }
 tokio-stream = { version = "0.1.17" }
 tokio-util = { version = "0.7.17" }

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb::{WithSubsystem, server, sub_server_http::HttpConfig, sub_server_ws::WsConfig};
+use std::time::Duration;
+
+use reifydb::{
+	WithSubsystem, server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig, sub_server_ws::WsConfig,
+};
 use tracing::{info, info_span};
 
 fn main() {
@@ -25,14 +29,14 @@ async fn async_main() {
 		.unwrap()
 		.with_http(http_config)
 		.with_ws(ws_config)
-		// .with_tracing_otel(
-		// 	OtelConfig::new()
-		// 		.service_name("testcontainer")
-		// 		.endpoint("http://localhost:4317")
-		// 		.sample_ratio(1.0)
-		// 		.scheduled_delay(Duration::from_millis(500)),
-		// 	|t| t.with_filter("trace"),
-		// )
+		.with_tracing_otel(
+			OtelConfig::new()
+				.service_name("testcontainer")
+				.endpoint("http://localhost:4317")
+				.sample_ratio(1.0)
+				.scheduled_delay(Duration::from_millis(500)),
+			|t| t.with_filter("trace"),
+		)
 		.with_flow(|flow| flow)
 		// .with_admin(AdminConfig::default())
 		.build()

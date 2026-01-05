@@ -123,21 +123,14 @@ impl TracingBuilder {
 		// Build the console layer
 		let console_config = self.console_config.unwrap_or_default();
 
-		let span_events = if self.with_spans {
-			FmtSpan::NEW | FmtSpan::CLOSE
-		} else {
-			FmtSpan::NONE
-		};
-
-		// Create the fmt layer with configuration
 		let fmt_layer = fmt::layer()
 			.with_ansi(console_config.use_color())
 			.with_target(true)
-			.with_thread_ids(false)
-			.with_thread_names(false)
+			.with_thread_ids(true)
+			.with_thread_names(true)
 			.with_file(true)
 			.with_line_number(true)
-			.with_span_events(span_events);
+			.with_span_events(FmtSpan::FULL);
 
 		// Build the subscriber with all layers
 		// Note: External layer must be added first while we're still on bare Registry,
