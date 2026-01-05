@@ -6,7 +6,7 @@ use std::sync::Arc;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tokio::{sync::Semaphore, task};
 
-struct ComputePoolInner {
+struct Inner {
 	pool: ThreadPool,
 	permits: Arc<Semaphore>,
 }
@@ -28,7 +28,7 @@ struct ComputePoolInner {
 /// ```
 #[derive(Clone)]
 pub struct ComputePool {
-	inner: Arc<ComputePoolInner>,
+	inner: Arc<Inner>,
 }
 
 impl ComputePool {
@@ -50,7 +50,7 @@ impl ComputePool {
 			.expect("failed to build rayon pool");
 
 		Self {
-			inner: Arc::new(ComputePoolInner {
+			inner: Arc::new(Inner {
 				pool,
 				permits: Arc::new(Semaphore::new(max_in_flight)),
 			}),

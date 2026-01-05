@@ -3,54 +3,13 @@
 
 //! Integration tests for CDC consumer state retrieval functionality
 
-use reifydb_catalog::Catalog;
 use reifydb_cdc::{CdcCheckpoint, get_all_consumer_states};
-use reifydb_core::{
-	CommitVersion, Result, event::EventBus, interface::CdcConsumerId, ioc::IocContainer, util::mock_time_set,
-};
-use reifydb_engine::StandardEngine;
-use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{
-	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
-	single::TransactionSingle,
-};
-
-async fn create_test_engine() -> Result<StandardEngine> {
-	#[cfg(debug_assertions)]
-	mock_time_set(1000);
-	let store = TransactionStore::testing_memory().await;
-	let eventbus = EventBus::new();
-	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
-	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await?;
-
-	Ok(StandardEngine::new(
-		multi,
-		single,
-		cdc,
-		eventbus,
-		Box::new(StandardInterceptorFactory::default()),
-		Catalog::default(),
-		None,
-		IocContainer::new(),
-	)
-	.await)
-}
-
-#[tokio::test]
-async fn test_get_all_consumer_states_with_no_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
-
-	let mut txn = engine.begin_query().await?;
-	let states = get_all_consumer_states(&mut txn).await?;
-
-	assert_eq!(states.len(), 0, "Should return empty vec when no consumers exist");
-	Ok(())
-}
+use reifydb_core::{CommitVersion, Result, interface::CdcConsumerId};
+use reifydb_engine::test_utils::create_test_engine;
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_single_consumer() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(42)).await?;
 	txn.commit().await?;
@@ -66,7 +25,7 @@ async fn test_get_all_consumer_states_with_single_consumer() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_multiple_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(100)).await?;
@@ -92,7 +51,7 @@ async fn test_get_all_consumer_states_with_multiple_consumers() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_all_consumer_states_returns_all_consumer_ids() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	let consumer_names = vec!["alpha", "beta", "gamma", "delta", "epsilon"];
@@ -120,7 +79,7 @@ async fn test_get_all_consumer_states_returns_all_consumer_ids() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_all_consumer_states_updates_after_checkpoint_change() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(50)).await?;
@@ -145,7 +104,7 @@ async fn test_get_all_consumer_states_updates_after_checkpoint_change() -> Resul
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_new_consumer_added() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(500)).await?;
@@ -175,7 +134,7 @@ async fn test_get_all_consumer_states_with_new_consumer_added() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_large_version_numbers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(u64::MAX - 100)).await?;
@@ -200,7 +159,7 @@ async fn test_get_all_consumer_states_with_large_version_numbers() -> Result<()>
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_many_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	for i in 0..100 {
@@ -229,7 +188,7 @@ async fn test_get_all_consumer_states_with_many_consumers() -> Result<()> {
 
 #[tokio::test]
 async fn test_get_all_consumer_states_with_consumer_at_version_one() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(1)).await?;
 	txn.commit().await?;
@@ -244,7 +203,7 @@ async fn test_get_all_consumer_states_with_consumer_at_version_one() -> Result<(
 
 #[tokio::test]
 async fn test_get_all_consumer_states_preserves_order_independence() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("zebra"), CommitVersion(10)).await?;

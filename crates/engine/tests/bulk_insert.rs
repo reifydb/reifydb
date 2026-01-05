@@ -20,34 +20,12 @@ mod transaction;
 mod trusted;
 
 use futures_util::TryStreamExt;
-use reifydb_catalog::Catalog;
-use reifydb_core::{Frame, event::EventBus, interface::Identity, ioc::IocContainer};
+use reifydb_core::{Frame, interface::Identity};
 use reifydb_engine::StandardEngine;
-use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{
-	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
-	single::TransactionSingle,
-};
 
 /// Create a test engine with in-memory storage.
 pub async fn create_test_engine() -> StandardEngine {
-	let store = TransactionStore::testing_memory().await;
-	let eventbus = EventBus::new();
-	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
-	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
-
-	StandardEngine::new(
-		multi,
-		single,
-		cdc,
-		eventbus,
-		Box::new(StandardInterceptorFactory::default()),
-		Catalog::default(),
-		None,
-		IocContainer::new(),
-	)
-	.await
+	reifydb_engine::test_utils::create_test_engine().await
 }
 
 /// Create a namespace via RQL command.

@@ -38,6 +38,10 @@ pub enum RqlError {
 
 	/// Empty program (no statements to execute).
 	EmptyProgram,
+
+	/// Compilation task panicked or was cancelled.
+	/// This can occur when compiling on a ComputePool.
+	CompilationPanicked(String),
 }
 
 impl Display for RqlError {
@@ -57,6 +61,7 @@ impl Display for RqlError {
 			RqlError::Plan(err) => write!(f, "plan error: {}", err),
 			RqlError::Compile(err) => write!(f, "compile error: {}", err),
 			RqlError::EmptyProgram => write!(f, "empty program"),
+			RqlError::CompilationPanicked(msg) => write!(f, "compilation panicked: {}", msg),
 		}
 	}
 }
@@ -69,6 +74,7 @@ impl std::error::Error for RqlError {
 			RqlError::Plan(err) => Some(err),
 			RqlError::Compile(err) => Some(err),
 			RqlError::EmptyProgram => None,
+			RqlError::CompilationPanicked(_) => None,
 		}
 	}
 }
@@ -101,6 +107,7 @@ impl From<RqlError> for reifydb_type::Error {
 			RqlError::Plan(plan_err) => plan_err.into_diagnostic(),
 			RqlError::Compile(compile_err) => compile_err.into_diagnostic(),
 			RqlError::EmptyProgram => empty_program_diagnostic(),
+			RqlError::CompilationPanicked(msg) => compilation_panicked_diagnostic(msg),
 		};
 		reifydb_type::Error(diagnostic)
 	}
@@ -116,6 +123,22 @@ fn empty_program_diagnostic() -> Diagnostic {
 		fragment: Fragment::None,
 		label: Some("program contains no statements".to_string()),
 		help: Some("add at least one statement to the program".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// Create diagnostic for compilation panic error.
+fn compilation_panicked_diagnostic(msg: String) -> Diagnostic {
+	Diagnostic {
+		code: "RQL_006".to_string(),
+		statement: None,
+		message: msg,
+		column: None,
+		fragment: Fragment::None,
+		label: Some("compilation task failed".to_string()),
+		help: Some("this may indicate a compiler bug or resource exhaustion".to_string()),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

@@ -2,23 +2,23 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{
-	CatalogStore,
+	Catalog, CatalogStore, MaterializedCatalog,
 	store::{
 		namespace::NamespaceToCreate,
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_core::event::EventBus;
+use reifydb_core::{ComputePool, event::EventBus, ioc::IocContainer, util::mock_time_set};
 use reifydb_store_transaction::TransactionStore;
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
 	cdc::TransactionCdc,
-	interceptor::Interceptors,
+	interceptor::{Interceptors, StandardInterceptorFactory},
 	single::{TransactionSingle, TransactionSvl},
 };
 use reifydb_type::{Type, TypeConstraint};
 
-use crate::StandardCommandTransaction;
+use crate::{StandardCommandTransaction, StandardEngine};
 
 pub async fn create_test_command_transaction() -> StandardCommandTransaction {
 	let store = TransactionStore::testing_memory().await;
@@ -84,4 +84,52 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 	.unwrap();
 
 	result
+}
+
+/// Create a test StandardEngine with all required dependencies registered.
+///
+/// This function:
+/// - Creates an in-memory transaction store
+/// - Sets up EventBus, Single, CDC, and Multi transactions
+/// - Registers ComputePool with default settings (available CPU cores, 64 max in-flight)
+/// - Registers MaterializedCatalog
+/// - Registers Compiler
+/// - Returns a fully configured StandardEngine ready for testing
+pub async fn create_test_engine() -> StandardEngine {
+	#[cfg(debug_assertions)]
+	mock_time_set(1000);
+
+	let store = TransactionStore::testing_memory().await;
+	let eventbus = EventBus::new();
+	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
+	let cdc = TransactionCdc::new(store.clone());
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
+
+	// Create and register dependencies in IocContainer
+	let mut ioc = IocContainer::new();
+
+	// Register MaterializedCatalog
+	let materialized_catalog = MaterializedCatalog::new();
+	ioc = ioc.register(materialized_catalog.clone());
+
+	// Register ComputePool with sensible defaults
+	let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+	let compute_pool = ComputePool::new(num_threads, 64);
+	ioc = ioc.register(compute_pool.clone());
+
+	// Register Compiler
+	let compiler = reifydb_rqlv2::Compiler::new(compute_pool, materialized_catalog.clone());
+	ioc = ioc.register(compiler);
+
+	StandardEngine::new(
+		multi,
+		single,
+		cdc,
+		eventbus,
+		Box::new(StandardInterceptorFactory::default()),
+		Catalog::new(materialized_catalog),
+		None,
+		ioc,
+	)
+	.await
 }

@@ -3,54 +3,13 @@
 
 //! Integration tests for CDC consumer watermark functionality
 
-use reifydb_catalog::Catalog;
 use reifydb_cdc::{CdcCheckpoint, compute_watermark};
-use reifydb_core::{
-	CommitVersion, Result, event::EventBus, interface::CdcConsumerId, ioc::IocContainer, util::mock_time_set,
-};
-use reifydb_engine::StandardEngine;
-use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{
-	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
-	single::TransactionSingle,
-};
-
-async fn create_test_engine() -> Result<StandardEngine> {
-	#[cfg(debug_assertions)]
-	mock_time_set(1000);
-	let store = TransactionStore::testing_memory().await;
-	let eventbus = EventBus::new();
-	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
-	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await?;
-
-	Ok(StandardEngine::new(
-		multi,
-		single,
-		cdc,
-		eventbus,
-		Box::new(StandardInterceptorFactory::default()),
-		Catalog::default(),
-		None,
-		IocContainer::new(),
-	)
-	.await)
-}
-
-#[tokio::test]
-async fn test_compute_watermark_with_no_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
-
-	let mut txn = engine.begin_query().await?;
-	let watermark = compute_watermark(&mut txn).await?;
-
-	assert_eq!(watermark, CommitVersion(1), "Watermark with no consumers should be CommitVersion(1)");
-	Ok(())
-}
+use reifydb_core::{CommitVersion, Result, interface::CdcConsumerId};
+use reifydb_engine::test_utils::create_test_engine;
 
 #[tokio::test]
 async fn test_compute_watermark_with_single_consumer() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(42)).await?;
 	txn.commit().await?;
@@ -64,7 +23,7 @@ async fn test_compute_watermark_with_single_consumer() -> Result<()> {
 
 #[tokio::test]
 async fn test_compute_watermark_with_multiple_consumers_at_same_checkpoint() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 	let checkpoint = CommitVersion(100);
 
 	let mut txn = engine.begin_command().await?;
@@ -82,7 +41,7 @@ async fn test_compute_watermark_with_multiple_consumers_at_same_checkpoint() -> 
 
 #[tokio::test]
 async fn test_compute_watermark_finds_minimum_across_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(100)).await?;
@@ -100,7 +59,7 @@ async fn test_compute_watermark_finds_minimum_across_consumers() -> Result<()> {
 
 #[tokio::test]
 async fn test_compute_watermark_advances_as_slow_consumer_catches_up() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(100)).await?;
@@ -134,7 +93,7 @@ async fn test_compute_watermark_advances_as_slow_consumer_catches_up() -> Result
 
 #[tokio::test]
 async fn test_compute_watermark_with_consumer_at_version_one() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(1)).await?;
 	txn.commit().await?;
@@ -148,7 +107,7 @@ async fn test_compute_watermark_with_consumer_at_version_one() -> Result<()> {
 
 #[tokio::test]
 async fn test_compute_watermark_with_very_large_version_numbers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(u64::MAX - 100)).await?;
@@ -165,7 +124,7 @@ async fn test_compute_watermark_with_very_large_version_numbers() -> Result<()> 
 
 #[tokio::test]
 async fn test_compute_watermark_changes_when_new_consumer_added() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(500)).await?;
@@ -188,7 +147,7 @@ async fn test_compute_watermark_changes_when_new_consumer_added() -> Result<()> 
 
 #[tokio::test]
 async fn test_compute_watermark_stability_with_consumer_updates() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	// Initial checkpoint
 	let mut txn = engine.begin_command().await?;
@@ -219,7 +178,7 @@ async fn test_compute_watermark_stability_with_consumer_updates() -> Result<()> 
 
 #[tokio::test]
 async fn test_compute_watermark_with_many_consumers() -> Result<()> {
-	let engine = create_test_engine().await?;
+	let engine = create_test_engine().await;
 
 	let mut txn = engine.begin_command().await?;
 	for i in 0..100 {

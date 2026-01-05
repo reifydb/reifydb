@@ -13,6 +13,7 @@
 
 pub mod ast;
 pub mod bytecode;
+pub mod compiler;
 pub mod error;
 pub mod expression;
 pub mod plan;
@@ -22,6 +23,7 @@ use ast::parse::parse;
 use bumpalo::Bump;
 pub use bytecode::CompiledProgram;
 use bytecode::compile::PlanCompiler;
+pub use compiler::Compiler;
 pub use error::RqlError;
 use plan::compile::plan;
 use reifydb_catalog::MaterializedCatalog;

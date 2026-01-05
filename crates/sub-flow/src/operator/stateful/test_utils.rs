@@ -3,13 +3,10 @@
 
 #[cfg(test)]
 pub mod test {
-	use reifydb_catalog::Catalog;
 	pub use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
 		EncodedKey,
-		event::EventBus,
 		interface::FlowNodeId,
-		ioc::IocContainer,
 		util::CowVec,
 		value::{
 			column::Columns,
@@ -18,11 +15,6 @@ pub mod test {
 	};
 	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardEngine};
 	use reifydb_sdk::FlowChange;
-	use reifydb_store_transaction::TransactionStore;
-	use reifydb_transaction::{
-		cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
-		single::TransactionSingle,
-	};
 	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{
@@ -32,23 +24,7 @@ pub mod test {
 
 	/// Create a test engine with memory storage
 	pub async fn create_test_engine() -> StandardEngine {
-		let store = TransactionStore::testing_memory().await;
-		let eventbus = EventBus::new();
-		let single = TransactionSingle::svl(store.clone(), eventbus.clone());
-		let cdc = TransactionCdc::new(store.clone());
-		let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
-
-		StandardEngine::new(
-			multi,
-			single,
-			cdc,
-			eventbus,
-			Box::new(StandardInterceptorFactory::default()),
-			Catalog::default(),
-			None,
-			IocContainer::new(),
-		)
-		.await
+		reifydb_engine::test_utils::create_test_engine().await
 	}
 
 	/// Test operator implementation for stateful traits

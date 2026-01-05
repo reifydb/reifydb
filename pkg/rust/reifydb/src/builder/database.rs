@@ -15,6 +15,7 @@ use reifydb_core::{
 use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
 use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
+use reifydb_rqlv2;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -162,9 +163,15 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		if let Some(pool) = self.compute_pool {
-			self.ioc = self.ioc.register(pool);
-		}
+		// Ensure ComputePool is always registered (use default if not configured)
+		let compute_pool = if let Some(pool) = self.compute_pool {
+			pool
+		} else {
+			// Default: use available CPU cores for threads, 64 for max in-flight
+			let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+			ComputePool::new(num_threads, 64)
+		};
+		self.ioc = self.ioc.register(compute_pool);
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
@@ -173,6 +180,11 @@ impl DatabaseBuilder {
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog).await?;
+
+		// Create and register Compiler (requires ComputePool to be registered first)
+		let compute_pool = self.ioc.resolve::<ComputePool>()?;
+		let compiler = reifydb_rqlv2::Compiler::new(compute_pool, materialized_catalog.clone());
+		self.ioc = self.ioc.register(compiler);
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()

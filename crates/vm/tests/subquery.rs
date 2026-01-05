@@ -9,38 +9,12 @@
 //! - IN / NOT IN with subqueries (when fully implemented)
 
 use futures_util::TryStreamExt;
-use reifydb_catalog::Catalog;
-use reifydb_core::{event::EventBus, interface::Identity, ioc::IocContainer};
-use reifydb_engine::StandardEngine;
+use reifydb_core::interface::Identity;
+use reifydb_engine::{StandardEngine, test_utils::create_test_engine};
 use reifydb_rqlv2::compile_script;
-use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{
-	cdc::TransactionCdc, interceptor::StandardInterceptorFactory, multi::TransactionMulti,
-	single::TransactionSingle,
-};
 use reifydb_vm::{collect, execute_program};
 
-async fn create_test_engine() -> StandardEngine {
-	let store = TransactionStore::testing_memory().await;
-	let eventbus = EventBus::new();
-	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
-	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
-
-	StandardEngine::new(
-		multi,
-		single,
-		cdc,
-		eventbus,
-		Box::new(StandardInterceptorFactory::default()),
-		Catalog::default(),
-		None,
-		IocContainer::new(),
-	)
-	.await
-}
-
-fn test_identity() -> Identity {
+pub fn test_identity() -> Identity {
 	Identity::root()
 }
 

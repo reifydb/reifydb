@@ -3,7 +3,14 @@
 
 use std::{collections::HashMap, hash::Hash};
 
+use tokio::sync::RwLock;
+
+/// Thread-safe LRU cache with tokio::sync::RwLock
 pub struct LruCache<K, V> {
+	inner: RwLock<LruCacheInner<K, V>>,
+}
+
+struct LruCacheInner<K, V> {
 	map: HashMap<K, usize>,
 	entries: Vec<Entry<K, V>>,
 	head: Option<usize>,
@@ -18,90 +25,93 @@ struct Entry<K, V> {
 	next: Option<usize>,
 }
 
-impl<K: Hash + Eq + Clone, V> LruCache<K, V> {
+impl<K: Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 	pub fn new(capacity: usize) -> Self {
 		assert!(capacity > 0, "LRU cache capacity must be greater than 0");
 		Self {
-			map: HashMap::with_capacity(capacity),
-			entries: Vec::with_capacity(capacity),
-			head: None,
-			tail: None,
-			capacity,
+			inner: RwLock::new(LruCacheInner {
+				map: HashMap::with_capacity(capacity),
+				entries: Vec::with_capacity(capacity),
+				head: None,
+				tail: None,
+				capacity,
+			}),
 		}
 	}
 
-	pub fn get(&mut self, key: &K) -> Option<&V> {
-		if let Some(&idx) = self.map.get(key) {
-			self.move_to_front(idx);
-			Some(&self.entries[idx].value)
+	/// Get a value and update LRU order. Returns cloned value.
+	pub async fn get(&self, key: &K) -> Option<V> {
+		let mut inner = self.inner.write().await;
+		if let Some(&idx) = inner.map.get(key) {
+			inner.move_to_front(idx);
+			Some(inner.entries[idx].value.clone())
 		} else {
 			None
 		}
 	}
 
-	pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-		if let Some(&idx) = self.map.get(key) {
-			self.move_to_front(idx);
-			Some(&mut self.entries[idx].value)
-		} else {
-			None
-		}
-	}
+	/// Put a value into the cache. Returns old value if key existed.
+	pub async fn put(&self, key: K, value: V) -> Option<V> {
+		let mut inner = self.inner.write().await;
 
-	pub fn put(&mut self, key: K, value: V) -> Option<V> {
-		if let Some(&idx) = self.map.get(&key) {
-			let old_value = std::mem::replace(&mut self.entries[idx].value, value);
-			self.move_to_front(idx);
+		if let Some(&idx) = inner.map.get(&key) {
+			let old_value = std::mem::replace(&mut inner.entries[idx].value, value);
+			inner.move_to_front(idx);
 			return Some(old_value);
 		}
 
-		let evicted = if self.entries.len() >= self.capacity {
-			self.evict_lru()
+		let evicted = if inner.entries.len() >= inner.capacity {
+			inner.evict_lru()
 		} else {
 			None
 		};
 
-		let idx = self.entries.len();
-		self.entries.push(Entry {
+		let idx = inner.entries.len();
+		let old_head = inner.head;
+
+		inner.entries.push(Entry {
 			key: key.clone(),
 			value,
 			prev: None,
-			next: self.head,
+			next: old_head,
 		});
 
-		if let Some(old_head) = self.head {
-			self.entries[old_head].prev = Some(idx);
+		if let Some(old_head_idx) = old_head {
+			inner.entries[old_head_idx].prev = Some(idx);
 		}
 
-		self.head = Some(idx);
+		inner.head = Some(idx);
 
-		if self.tail.is_none() {
-			self.tail = Some(idx);
+		if inner.tail.is_none() {
+			inner.tail = Some(idx);
 		}
 
-		self.map.insert(key, idx);
+		inner.map.insert(key, idx);
 		evicted
 	}
 
-	pub fn remove(&mut self, key: &K) -> Option<V> {
-		if let Some(idx) = self.map.remove(key) {
-			self.unlink(idx);
-			let entry = self.entries.swap_remove(idx);
+	/// Remove a value from the cache.
+	pub async fn remove(&self, key: &K) -> Option<V> {
+		let mut inner = self.inner.write().await;
 
-			if idx < self.entries.len() {
-				let moved_key = self.entries[idx].key.clone();
-				self.map.insert(moved_key, idx);
+		if let Some(idx) = inner.map.remove(key) {
+			inner.unlink(idx);
+			let entry = inner.entries.swap_remove(idx);
 
-				if let Some(prev) = self.entries[idx].prev {
-					self.entries[prev].next = Some(idx);
+			if idx < inner.entries.len() {
+				let moved_key = inner.entries[idx].key.clone();
+				inner.map.insert(moved_key, idx);
+
+				if let Some(prev) = inner.entries[idx].prev {
+					inner.entries[prev].next = Some(idx);
 				} else {
-					self.head = Some(idx);
+					inner.head = Some(idx);
 				}
 
-				if let Some(next) = self.entries[idx].next {
-					self.entries[next].prev = Some(idx);
+				if let Some(next) = inner.entries[idx].next {
+					inner.entries[next].prev = Some(idx);
 				} else {
-					self.tail = Some(idx);
+					inner.tail = Some(idx);
 				}
 			}
 
@@ -111,36 +121,44 @@ impl<K: Hash + Eq + Clone, V> LruCache<K, V> {
 		}
 	}
 
-	pub fn contains_key(&self, key: &K) -> bool {
-		self.map.contains_key(key)
+	/// Check if cache contains a key (read-only, doesn't update LRU order).
+	pub async fn contains_key(&self, key: &K) -> bool {
+		let inner = self.inner.read().await;
+		inner.map.contains_key(key)
 	}
 
-	pub fn clear(&mut self) {
-		self.map.clear();
-		self.entries.clear();
-		self.head = None;
-		self.tail = None;
+	/// Clear all entries from the cache.
+	pub async fn clear(&self) {
+		let mut inner = self.inner.write().await;
+		inner.map.clear();
+		inner.entries.clear();
+		inner.head = None;
+		inner.tail = None;
 	}
 
+	/// Get the current number of entries (read-only).
+	///
+	/// Note: This uses try_read() and returns 0 if the lock is currently held.
+	/// For accurate counts in async contexts, consider using an async method if needed.
 	pub fn len(&self) -> usize {
-		self.entries.len()
+		self.inner.try_read().map(|guard| guard.entries.len()).unwrap_or(0)
 	}
 
+	/// Check if the cache is empty (read-only).
 	pub fn is_empty(&self) -> bool {
-		self.entries.is_empty()
+		self.len() == 0
 	}
 
+	/// Get the capacity of the cache (read-only).
 	pub fn capacity(&self) -> usize {
-		self.capacity
+		self.inner.try_read().map(|guard| guard.capacity).unwrap_or(0)
 	}
+}
 
-	pub fn iter(&self) -> LruIter<'_, K, V> {
-		LruIter {
-			entries: &self.entries,
-			current: self.head,
-		}
-	}
-
+impl<K, V> LruCacheInner<K, V>
+where
+	K: Hash + Eq + Clone,
+{
 	fn move_to_front(&mut self, idx: usize) {
 		if self.head == Some(idx) {
 			return;
@@ -183,29 +201,32 @@ impl<K: Hash + Eq + Clone, V> LruCache<K, V> {
 	fn evict_lru(&mut self) -> Option<V> {
 		if let Some(tail_idx) = self.tail {
 			let key = self.entries[tail_idx].key.clone();
-			self.remove(&key)
-		} else {
-			None
+
+			if let Some(idx) = self.map.remove(&key) {
+				self.unlink(idx);
+				let entry = self.entries.swap_remove(idx);
+
+				if idx < self.entries.len() {
+					let moved_key = self.entries[idx].key.clone();
+					self.map.insert(moved_key, idx);
+
+					if let Some(prev) = self.entries[idx].prev {
+						self.entries[prev].next = Some(idx);
+					} else {
+						self.head = Some(idx);
+					}
+
+					if let Some(next) = self.entries[idx].next {
+						self.entries[next].prev = Some(idx);
+					} else {
+						self.tail = Some(idx);
+					}
+				}
+
+				return Some(entry.value);
+			}
 		}
-	}
-}
-
-pub struct LruIter<'a, K, V> {
-	entries: &'a [Entry<K, V>],
-	current: Option<usize>,
-}
-
-impl<'a, K, V> Iterator for LruIter<'a, K, V> {
-	type Item = (&'a K, &'a V);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(idx) = self.current {
-			let entry = &self.entries[idx];
-			self.current = entry.next;
-			Some((&entry.key, &entry.value))
-		} else {
-			None
-		}
+		None
 	}
 }
 
@@ -213,103 +234,88 @@ impl<'a, K, V> Iterator for LruIter<'a, K, V> {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_basic_operations() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_basic_operations() {
+		let cache = LruCache::new(2);
 
-		assert_eq!(cache.put(1, "a"), None);
-		assert_eq!(cache.put(2, "b"), None);
-		assert_eq!(cache.get(&1), Some(&"a"));
-		assert_eq!(cache.get(&2), Some(&"b"));
+		assert_eq!(cache.put(1, "a").await, None);
+		assert_eq!(cache.put(2, "b").await, None);
+		assert_eq!(cache.get(&1).await, Some("a"));
+		assert_eq!(cache.get(&2).await, Some("b"));
 		assert_eq!(cache.len(), 2);
 	}
 
-	#[test]
-	fn test_eviction() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_eviction() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		cache.put(2, "b");
-		let evicted = cache.put(3, "c");
+		cache.put(1, "a").await;
+		cache.put(2, "b").await;
+		let evicted = cache.put(3, "c").await;
 
 		assert_eq!(evicted, Some("a"));
-		assert_eq!(cache.get(&1), None);
-		assert_eq!(cache.get(&2), Some(&"b"));
-		assert_eq!(cache.get(&3), Some(&"c"));
+		assert_eq!(cache.get(&1).await, None);
+		assert_eq!(cache.get(&2).await, Some("b"));
+		assert_eq!(cache.get(&3).await, Some("c"));
 	}
 
-	#[test]
-	fn test_lru_order() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_lru_order() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		cache.put(2, "b");
-		cache.get(&1);
-		cache.put(3, "c");
+		cache.put(1, "a").await;
+		cache.put(2, "b").await;
+		cache.get(&1).await;
+		cache.put(3, "c").await;
 
-		assert_eq!(cache.get(&1), Some(&"a"));
-		assert_eq!(cache.get(&2), None);
-		assert_eq!(cache.get(&3), Some(&"c"));
+		assert_eq!(cache.get(&1).await, Some("a"));
+		assert_eq!(cache.get(&2).await, None);
+		assert_eq!(cache.get(&3).await, Some("c"));
 	}
 
-	#[test]
-	fn test_update_existing() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_update_existing() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		let old = cache.put(1, "b");
+		cache.put(1, "a").await;
+		let old = cache.put(1, "b").await;
 
 		assert_eq!(old, Some("a"));
-		assert_eq!(cache.get(&1), Some(&"b"));
+		assert_eq!(cache.get(&1).await, Some("b"));
 		assert_eq!(cache.len(), 1);
 	}
 
-	#[test]
-	fn test_remove() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_remove() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		cache.put(2, "b");
-		let removed = cache.remove(&1);
+		cache.put(1, "a").await;
+		cache.put(2, "b").await;
+		let removed = cache.remove(&1).await;
 
 		assert_eq!(removed, Some("a"));
-		assert_eq!(cache.get(&1), None);
+		assert_eq!(cache.get(&1).await, None);
 		assert_eq!(cache.len(), 1);
 	}
 
-	#[test]
-	fn test_clear() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_clear() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		cache.put(2, "b");
-		cache.clear();
+		cache.put(1, "a").await;
+		cache.put(2, "b").await;
+		cache.clear().await;
 
 		assert_eq!(cache.len(), 0);
 		assert!(cache.is_empty());
 	}
 
-	#[test]
-	fn test_contains_key() {
-		let mut cache = LruCache::new(2);
+	#[tokio::test]
+	async fn test_contains_key() {
+		let cache = LruCache::new(2);
 
-		cache.put(1, "a");
-		assert!(cache.contains_key(&1));
-		assert!(!cache.contains_key(&2));
-	}
-
-	#[test]
-	fn test_iter() {
-		let mut cache = LruCache::new(3);
-
-		cache.put(1, "a");
-		cache.put(2, "b");
-		cache.put(3, "c");
-		cache.get(&1);
-
-		let items: Vec<_> = cache.iter().collect();
-		assert_eq!(items[0], (&1, &"a"));
-		assert_eq!(items[1], (&3, &"c"));
-		assert_eq!(items[2], (&2, &"b"));
+		cache.put(1, "a").await;
+		assert!(cache.contains_key(&1).await);
+		assert!(!cache.contains_key(&2).await);
 	}
 }

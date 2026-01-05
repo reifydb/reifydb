@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_function::{Functions, math, series, subscription};
 use reifydb_rql::ast;
-use reifydb_rqlv2::compile_script;
+use reifydb_rqlv2::Compiler;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
 	multi::TransactionMultiVersion, single::TransactionSingle,
@@ -195,7 +195,7 @@ impl StandardEngine {
 		let rql = rql.to_string();
 		let rql_for_errors = rql.clone();
 
-		let program = compile_script(&rql, &catalog.materialized)?;
+		let program = self.compiler.compile(&rql).await?;
 
 		// Step 2: Create a new transaction for execution
 		let mut exec_tx = self.begin_query().await.map_err(|e| {
@@ -552,6 +552,7 @@ pub struct Inner {
 	interceptors: Box<dyn InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
+	compiler: Compiler,
 }
 
 impl StandardEngine {
@@ -586,6 +587,8 @@ impl StandardEngine {
 
 		let stats_tracker = multi.store().stats_tracker().clone();
 
+		let compiler = ioc.resolve::<Compiler>().expect("Compiler must be registered in IocContainer");
+
 		Self(Arc::new(Inner {
 			multi,
 			single,
@@ -601,6 +604,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
+			compiler,
 		}))
 	}
 
