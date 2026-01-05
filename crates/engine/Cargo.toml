@@ -9,7 +9,7 @@ description = "Query execution and processing engine for ReifyDB"
 
 [dependencies]
 reifydb-auth = { workspace = true }
-reifydb-builtin = { workspace = true }
+reifydb-function = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-abi = { workspace = true }

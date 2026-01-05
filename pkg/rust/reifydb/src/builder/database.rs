@@ -4,7 +4,6 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
-use reifydb_builtin::{Functions, FunctionsBuilder, generator, math};
 use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
@@ -14,6 +13,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
+use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
@@ -166,13 +166,13 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(pool);
 		}
 
-		let materialized_catalog = self.ioc.resolve::<MaterializedCatalog>()?;
+		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
 		let single = self.ioc.resolve::<TransactionSingle>()?;
 		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &cdc, &materialized_catalog).await?;
+		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog).await?;
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
@@ -183,7 +183,7 @@ impl DatabaseBuilder {
 				.register_aggregate("math::count", math::aggregate::Count::new)
 				.register_scalar("math::abs", math::scalar::Abs::new)
 				.register_scalar("math::avg", math::scalar::Avg::new)
-				.register_generator("generate_series", generator::GenerateSeries::new);
+				.register_generator("generate_series", series::GenerateSeries::new);
 
 			Some(configurator(default_builder).build())
 		} else {
@@ -196,7 +196,7 @@ impl DatabaseBuilder {
 			cdc.clone(),
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog),
 			functions,
 			self.ioc.clone(),
 		)

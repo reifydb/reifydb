@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	error,
-	interface::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext},
 	value::column::{Column, ColumnData, Columns, GroupByView},
 };
+use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext};
 use reifydb_rql::expression::{CallExpression, Expression};
 use reifydb_type::{Fragment, Value, diagnostic::function};
 

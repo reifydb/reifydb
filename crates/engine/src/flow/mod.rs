@@ -8,4 +8,4 @@
 
 mod compiler;
 
-pub use compiler::compile_flow;
+pub use compiler::{compile_flow, compile_subscription_flow};

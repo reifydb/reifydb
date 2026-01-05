@@ -8,7 +8,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionValues, NamespaceDef, NamespaceId,
-		RingBufferDef, RingBufferId, TableDef, TableId, ViewDef, ViewId,
+		RingBufferDef, RingBufferId, SubscriptionDef, SubscriptionId, TableDef, TableId, ViewDef, ViewId,
 	},
 };
 use reifydb_store_transaction::MultiVersionBatch;
@@ -20,8 +20,8 @@ use crate::{
 	cdc::TransactionCdc,
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalTableChanges,
-		TransactionalViewChanges,
+		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
+		TransactionalTableChanges, TransactionalViewChanges,
 	},
 	multi::QueryTransaction,
 	single::{SvlQueryTransaction, TransactionSingle},
@@ -259,6 +259,16 @@ impl TransactionalViewChanges for StandardQueryTransaction {
 	}
 
 	fn is_view_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSubscriptionChanges for StandardQueryTransaction {
+	fn find_subscription(&self, _id: SubscriptionId) -> Option<&SubscriptionDef> {
+		None
+	}
+
+	fn is_subscription_deleted(&self, _id: SubscriptionId) -> bool {
 		false
 	}
 }

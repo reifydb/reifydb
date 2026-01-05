@@ -15,6 +15,7 @@ mod flow;
 mod namespace;
 mod resolve;
 mod ringbuffer;
+mod subscription;
 mod table;
 mod view;
 mod vtable;

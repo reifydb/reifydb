@@ -159,11 +159,6 @@ impl CdcConsume for CoordinatorConsumer {
 
 								// Check if not already spawned
 								if !self.registry.contains(flow_id).await {
-									debug!(
-										flow_id = flow_id.0,
-										"detected new flow"
-									);
-
 									// Load flow from catalog
 									match load_flow(txn, flow_id).await {
 										Ok(flow) => {
@@ -177,11 +172,7 @@ impl CdcConsume for CoordinatorConsumer {
 												)
 												.await
 											{
-												error!(
-													flow_id = flow_id.0,
-													error = %e,
-													"failed to register flow with engine"
-												);
+												error!(flow_id = flow_id.0, error = %e, "failed to register flow with engine");
 												continue;
 											}
 
@@ -205,20 +196,12 @@ impl CdcConsume for CoordinatorConsumer {
 													info!(flow_id = flow_id.0, "spawned flow consumer");
 												}
 												Err(e) => {
-													error!(
-														flow_id = flow_id.0,
-														error = %e,
-														"failed to spawn flow consumer"
-													);
+													error!(flow_id = flow_id.0, error = %e, "failed to spawn flow consumer");
 												}
 											}
 										}
 										Err(e) => {
-											error!(
-												flow_id = flow_id.0,
-												error = %e,
-												"failed to load flow"
-											);
+											error!(flow_id = flow_id.0, error = %e, "failed to load flow from catalog");
 										}
 									}
 								}

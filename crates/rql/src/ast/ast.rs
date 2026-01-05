@@ -712,6 +712,7 @@ pub enum AstCreate {
 	Flow(AstCreateFlow),
 	Namespace(AstCreateNamespace),
 	Series(AstCreateSeries),
+	Subscription(AstCreateSubscription),
 	Table(AstCreateTable),
 	RingBuffer(AstCreateRingBuffer),
 	Dictionary(AstCreateDictionary),
@@ -848,6 +849,15 @@ pub struct AstCreateSeries {
 	pub columns: Vec<AstColumnToCreate>,
 }
 
+/// CREATE SUBSCRIPTION with columns.
+/// Subscriptions are identified only by UUID v7, not by name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateSubscription {
+	pub token: Token,
+	pub columns: Vec<AstColumnToCreate>,
+	pub as_clause: Option<AstStatement>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateTable {
 	pub token: Token,
@@ -957,6 +967,10 @@ impl AstCreate {
 				..
 			}) => token,
 			AstCreate::Index(AstCreateIndex {
+				token,
+				..
+			}) => token,
+			AstCreate::Subscription(AstCreateSubscription {
 				token,
 				..
 			}) => token,

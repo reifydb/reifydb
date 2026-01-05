@@ -29,7 +29,6 @@ use query::{
 	view_scan::ViewScanNode,
 	vtable_scan::VirtualScanNode,
 };
-use reifydb_builtin::{Functions, generator, math};
 use reifydb_catalog::{
 	Catalog,
 	vtable::{UserVTableRegistry, system::FlowOperatorStore},
@@ -40,6 +39,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
+use reifydb_function::{Functions, math, series, subscription};
 
 // Types moved from reifydb-core (formerly in interface/execute.rs)
 
@@ -388,7 +388,8 @@ impl Executor {
 				.register_aggregate("math::count", math::aggregate::Count::new)
 				.register_scalar("math::abs", math::scalar::Abs::new)
 				.register_scalar("math::avg", math::scalar::Avg::new)
-				.register_generator("generate_series", generator::GenerateSeries::new)
+				.register_generator("generate_series", series::GenerateSeries::new)
+				.register_generator("inspect_subscription", subscription::InspectSubscription::new)
 				.build(),
 			FlowOperatorStore::new(),
 			StorageTracker::with_defaults(),
@@ -595,6 +596,7 @@ impl Executor {
 			| PhysicalPlan::CreateRingBuffer(_)
 			| PhysicalPlan::CreateFlow(_)
 			| PhysicalPlan::CreateDictionary(_)
+			| PhysicalPlan::CreateSubscription(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
@@ -640,6 +642,7 @@ impl Executor {
 			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ringbuffer(txn, plan).await?)),
 			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan).await?)),
 			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan).await?)),
+			PhysicalPlan::CreateSubscription(plan) => Ok(Some(self.create_subscription(txn, plan).await?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params).await?)),
 			PhysicalPlan::DeleteRingBuffer(plan) => {
 				Ok(Some(self.delete_ringbuffer(txn, plan, params).await?))

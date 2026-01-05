@@ -32,6 +32,9 @@ pub use retention_policy::{
 pub use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
+pub use subscription::SubscriptionKey;
+pub use subscription_column::SubscriptionColumnKey;
+pub use subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange};
 pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
@@ -66,6 +69,9 @@ mod retention_policy;
 mod ringbuffer;
 mod row;
 mod row_sequence;
+mod subscription;
+mod subscription_column;
+mod subscription_row;
 mod system_sequence;
 mod system_version;
 mod table;
@@ -106,6 +112,9 @@ pub enum Key {
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
 	DictionarySequence(DictionarySequenceKey),
 	NamespaceDictionary(NamespaceDictionaryKey),
+	Subscription(SubscriptionKey),
+	SubscriptionColumn(SubscriptionColumnKey),
+	SubscriptionRow(SubscriptionRowKey),
 }
 
 impl Key {
@@ -143,6 +152,9 @@ impl Key {
 			Key::DictionaryEntryIndex(key) => key.encode(),
 			Key::DictionarySequence(key) => key.encode(),
 			Key::NamespaceDictionary(key) => key.encode(),
+			Key::Subscription(key) => key.encode(),
+			Key::SubscriptionColumn(key) => key.encode(),
+			Key::SubscriptionRow(key) => key.encode(),
 		}
 	}
 }
@@ -248,6 +260,11 @@ impl Key {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None
 			}
+			KeyKind::Subscription => SubscriptionKey::decode(&key).map(Self::Subscription),
+			KeyKind::SubscriptionColumn => {
+				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
+			}
+			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
 		}
 	}
 }

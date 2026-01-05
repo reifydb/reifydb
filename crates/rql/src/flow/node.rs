@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
-	interface::{FlowEdgeId, FlowId, FlowNodeId, TableId, ViewId},
+	interface::{FlowEdgeId, FlowId, FlowNodeId, SubscriptionId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
@@ -56,6 +56,9 @@ pub enum FlowNodeType {
 	},
 	SinkView {
 		view: ViewId,
+	},
+	SinkSubscription {
+		subscription: SubscriptionId,
 	},
 	Window {
 		window_type: WindowType,
@@ -116,9 +119,12 @@ impl FlowNodeType {
 			FlowNodeType::SinkView {
 				..
 			} => 14,
-			FlowNodeType::Window {
+			FlowNodeType::SinkSubscription {
 				..
 			} => 15,
+			FlowNodeType::Window {
+				..
+			} => 16,
 		}
 	}
 }

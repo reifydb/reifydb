@@ -8,6 +8,7 @@ mod index;
 mod namespace;
 mod ringbuffer;
 mod series;
+mod subscription;
 mod table;
 mod transactional;
 
@@ -34,6 +35,7 @@ impl Compiler {
 			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx).await,
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
+			AstCreate::Subscription(node) => self.compile_create_subscription(node),
 		}
 	}
 }

@@ -3,8 +3,8 @@
 
 use OperationType::Delete;
 use reifydb_core::interface::{
-	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, RingBufferDef, RingBufferId, TableDef,
-	TableId, ViewDef, ViewId,
+	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, RingBufferDef, RingBufferId,
+	SubscriptionDef, SubscriptionId, TableDef, TableId, ViewDef, ViewId,
 };
 
 use crate::TransactionId;
@@ -14,6 +14,7 @@ pub trait TransactionalChanges:
 	+ TransactionalFlowChanges
 	+ TransactionalNamespaceChanges
 	+ TransactionalRingBufferChanges
+	+ TransactionalSubscriptionChanges
 	+ TransactionalTableChanges
 	+ TransactionalViewChanges
 {
@@ -79,6 +80,14 @@ pub trait TransactionalViewChanges {
 	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
+/// Trait for querying subscription changes within a transaction.
+/// Note: Subscriptions do NOT have names - they are identified only by ID.
+pub trait TransactionalSubscriptionChanges {
+	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef>;
+
+	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool;
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
@@ -91,6 +100,8 @@ pub struct TransactionalDefChanges {
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
 	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
+	/// All subscription definition changes in order (no coalescing)
+	pub subscription_def: Vec<Change<SubscriptionDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
 	/// All view definition changes in order (no coalescing)
@@ -189,6 +200,21 @@ impl TransactionalDefChanges {
 			op,
 		});
 	}
+
+	pub fn add_subscription_def_change(&mut self, change: Change<SubscriptionDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.subscription_def.push(change);
+		self.log.push(Operation::Subscription {
+			id,
+			op,
+		});
+	}
 }
 
 /// Represents a single change
@@ -230,6 +256,10 @@ pub enum Operation {
 		id: RingBufferId,
 		op: OperationType,
 	},
+	Subscription {
+		id: SubscriptionId,
+		op: OperationType,
+	},
 	Table {
 		id: TableId,
 		op: OperationType,
@@ -248,6 +278,7 @@ impl TransactionalDefChanges {
 			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
+			subscription_def: Vec::new(),
 			table_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
@@ -331,6 +362,7 @@ impl TransactionalDefChanges {
 		self.flow_def.clear();
 		self.namespace_def.clear();
 		self.ringbuffer_def.clear();
+		self.subscription_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();

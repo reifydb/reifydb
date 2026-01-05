@@ -8,6 +8,7 @@ pub mod operator_retention_policy;
 pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod ringbuffer;
+pub mod subscription;
 pub mod table;
 pub mod view;
 
@@ -19,6 +20,7 @@ pub(crate) use primary_key::load_primary_keys;
 pub(crate) use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::IntoStandardTransaction;
 pub(crate) use ringbuffer::load_ringbuffers;
+pub(crate) use subscription::load_subscriptions;
 pub(crate) use table::load_tables;
 pub(crate) use view::load_views;
 
@@ -50,6 +52,9 @@ impl MaterializedCatalogLoader {
 
 		// Load dictionaries
 		load_dictionaries(&mut txn, catalog).await?;
+
+		// Load subscriptions
+		load_subscriptions(&mut txn, catalog).await?;
 
 		Ok(())
 	}

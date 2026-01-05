@@ -8,7 +8,7 @@
 
 use crate::{
 	Result,
-	interface::{DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, TableDef, ViewDef},
+	interface::{DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, SubscriptionDef, TableDef, ViewDef},
 };
 
 /// Trait for tracking table definition changes during a transaction.
@@ -65,12 +65,22 @@ pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> Result<()>;
 }
 
+/// Trait for tracking subscription definition changes during a transaction.
+pub trait CatalogTrackSubscriptionChangeOperations {
+	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> Result<()>;
+
+	fn track_subscription_def_updated(&mut self, pre: SubscriptionDef, post: SubscriptionDef) -> Result<()>;
+
+	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
+	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackViewChangeOperations
 {

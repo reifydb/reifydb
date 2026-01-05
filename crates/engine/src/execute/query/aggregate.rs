@@ -7,11 +7,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use reifydb_builtin::Functions;
-use reifydb_core::{
-	interface::{AggregateFunction, AggregateFunctionContext},
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
+use reifydb_function::{AggregateFunction, AggregateFunctionContext, Functions};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Type, Value, diagnostic};
 use tracing::instrument;

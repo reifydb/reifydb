@@ -9,6 +9,7 @@ mod operator_retention_policy;
 mod primary_key;
 mod primitive_retention_policy;
 mod ringbuffer;
+mod subscription;
 mod table;
 mod view;
 
@@ -18,8 +19,8 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
 		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
-		PrimaryKeyId, PrimitiveId, RingBufferDef, RingBufferId, TableDef, TableId, VTableDef, VTableId,
-		ViewDef, ViewId,
+		PrimaryKeyId, PrimitiveId, RingBufferDef, RingBufferId, SubscriptionDef, SubscriptionId, TableDef,
+		TableId, VTableDef, VTableId, ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -34,6 +35,7 @@ pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
 pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
+pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -73,6 +75,9 @@ pub struct MaterializedCatalogInner {
 	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBufferDef>,
 	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
 	pub(crate) ringbuffers_by_name: SkipMap<(NamespaceId, String), RingBufferId>,
+	/// MultiVersion subscription definitions indexed by subscription ID
+	/// Note: Subscriptions do NOT have names - they are identified only by ID
+	pub(crate) subscriptions: SkipMap<SubscriptionId, MultiVersionSubscriptionDef>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -122,6 +127,7 @@ impl MaterializedCatalog {
 			dictionaries_by_name: SkipMap::new(),
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
+			subscriptions: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

@@ -4,7 +4,6 @@
 use std::{ops::Deref, sync::Arc};
 
 use async_trait::async_trait;
-use reifydb_builtin::{Functions, generator, math};
 use reifydb_catalog::{
 	Catalog, MaterializedCatalog,
 	vtable::{
@@ -19,6 +18,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 	stream::{ChannelFrameStream, FrameSender, SendableFrameStream, StreamError},
 };
+use reifydb_function::{Functions, math, series, subscription};
 use reifydb_rql::ast;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
@@ -588,7 +588,8 @@ impl StandardEngine {
 				.register_aggregate("math::count", math::aggregate::Count::new)
 				.register_scalar("math::abs", math::scalar::Abs::new)
 				.register_scalar("math::avg", math::scalar::Avg::new)
-				.register_generator("generate_series", generator::GenerateSeries::new)
+				.register_generator("generate_series", series::GenerateSeries::new)
+				.register_generator("inspect_subscription", subscription::InspectSubscription::new)
 				.build()
 		});
 

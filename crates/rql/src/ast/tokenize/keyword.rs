@@ -105,6 +105,7 @@ With       => "WITH",
 Namespace => "NAMESPACE",
 Sequence => "SEQUENCE",
 Series  => "SERIES",
+Subscription => "SUBSCRIPTION",
 Table  => "TABLE",
 Ringbuffer => "RINGBUFFER",
 Policy => "POLICY",
@@ -190,6 +191,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("NAMESPACE", Keyword::Namespace);
 	map.insert("SEQUENCE", Keyword::Sequence);
 	map.insert("SERIES", Keyword::Series);
+	map.insert("SUBSCRIPTION", Keyword::Subscription);
 	map.insert("TABLE", Keyword::Table);
 	map.insert("RINGBUFFER", Keyword::Ringbuffer);
 	map.insert("POLICY", Keyword::Policy);
@@ -354,6 +356,7 @@ mod tests {
 	test_keyword_window => (Window, "WINDOW"),
 	test_keyword_namespace => (Namespace, "NAMESPACE"),
 	test_keyword_series => (Series, "SERIES"),
+	test_keyword_subscription => (Subscription, "SUBSCRIPTION"),
 	test_keyword_table => (Table, "TABLE"),
 	test_keyword_ringbuffer => (Ringbuffer, "RINGBUFFER"),
 	test_keyword_policy => (Policy, "POLICY"),
@@ -485,6 +488,7 @@ mod tests {
 	test_not_keyword_window => ( "window"),
 	test_not_keyword_namespace => ( "namespace"),
 	test_not_keyword_series => ( "series"),
+	test_not_keyword_subscription => ( "subscription"),
 	test_not_keyword_table => ( "table"),
 	test_not_keyword_ringbuffer => ( "ringbuffer"),
 	test_not_keyword_policy => ( "policy"),
