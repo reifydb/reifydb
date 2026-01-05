@@ -3,7 +3,7 @@
 
 //! Integration tests for CDC consumer watermark functionality
 
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::Catalog;
 use reifydb_cdc::{CdcCheckpoint, compute_watermark};
 use reifydb_core::{
 	CommitVersion, Result, event::EventBus, interface::CdcConsumerId, ioc::IocContainer, util::mock_time_set,
@@ -30,7 +30,7 @@ async fn create_test_engine() -> Result<StandardEngine> {
 		cdc,
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
-		MaterializedCatalog::new(),
+		Catalog::default(),
 		None,
 		IocContainer::new(),
 	)

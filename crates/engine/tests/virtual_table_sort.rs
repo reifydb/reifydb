@@ -4,7 +4,7 @@
 //! Test sorting on system virtual tables
 
 use futures_util::TryStreamExt;
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::Catalog;
 use reifydb_core::{Frame, event::EventBus, interface::Identity, ioc::IocContainer};
 use reifydb_engine::StandardEngine;
 use reifydb_store_transaction::TransactionStore;
@@ -26,7 +26,7 @@ async fn create_test_engine() -> StandardEngine {
 		cdc,
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
-		MaterializedCatalog::new(),
+		Catalog::default(),
 		None,
 		IocContainer::new(),
 	)

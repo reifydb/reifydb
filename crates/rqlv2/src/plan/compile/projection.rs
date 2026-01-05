@@ -3,15 +3,13 @@
 
 //! Projection compilation helper.
 
-use reifydb_transaction::IntoStandardTransaction;
-
 use super::core::{Planner, Result};
 use crate::{
 	ast::{Expr, expr::BinaryOp},
 	plan::{OutputSchema, node::query::Projection},
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
 	/// Compile a projection (expression with optional alias).
 	pub(super) fn compile_projection(
 		&self,

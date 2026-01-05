@@ -10,7 +10,7 @@ use crate::materialized::{MaterializedCatalog, MultiVersionFlowDef};
 
 impl MaterializedCatalog {
 	/// Find a flow by ID at a specific version
-	pub fn find_flow(&self, flow: FlowId, version: CommitVersion) -> Option<FlowDef> {
+	pub fn find_flow_at(&self, flow: FlowId, version: CommitVersion) -> Option<FlowDef> {
 		self.flows.get(&flow).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -18,10 +18,31 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a flow by name in a namespace at a specific version
-	pub fn find_flow_by_name(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<FlowDef> {
+	pub fn find_flow_by_name_at(
+		&self,
+		namespace: NamespaceId,
+		name: &str,
+		version: CommitVersion,
+	) -> Option<FlowDef> {
 		self.flows_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let flow_id = *entry.value();
-			self.find_flow(flow_id, version)
+			self.find_flow_at(flow_id, version)
+		})
+	}
+
+	/// Find a flow by ID (returns latest version)
+	pub fn find_flow(&self, flow: FlowId) -> Option<FlowDef> {
+		self.flows.get(&flow).and_then(|entry| {
+			let multi = entry.value();
+			multi.get_latest()
+		})
+	}
+
+	/// Find a flow by name in a namespace (returns latest version)
+	pub fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<FlowDef> {
+		self.flows_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
+			let flow_id = *entry.value();
+			self.find_flow(flow_id)
 		})
 	}
 
@@ -69,15 +90,15 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(1), Some(flow.clone()));
 
 		// Find flow at version 1
-		let found = catalog.find_flow(flow_id, CommitVersion(1));
+		let found = catalog.find_flow_at(flow_id, CommitVersion(1));
 		assert_eq!(found, Some(flow.clone()));
 
 		// Find flow at later version (should return same flow)
-		let found = catalog.find_flow(flow_id, CommitVersion(5));
+		let found = catalog.find_flow_at(flow_id, CommitVersion(5));
 		assert_eq!(found, Some(flow));
 
 		// Flow shouldn't exist at version 0
-		let found = catalog.find_flow(flow_id, CommitVersion(0));
+		let found = catalog.find_flow_at(flow_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -92,15 +113,15 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(1), Some(flow.clone()));
 
 		// Find by name
-		let found = catalog.find_flow_by_name(namespace_id, "named_flow", CommitVersion(1));
+		let found = catalog.find_flow_by_name_at(namespace_id, "named_flow", CommitVersion(1));
 		assert_eq!(found, Some(flow));
 
 		// Shouldn't find with wrong name
-		let found = catalog.find_flow_by_name(namespace_id, "wrong_name", CommitVersion(1));
+		let found = catalog.find_flow_by_name_at(namespace_id, "wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_flow_by_name(NamespaceId(2), "named_flow", CommitVersion(1));
+		let found = catalog.find_flow_by_name_at(NamespaceId(2), "named_flow", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -115,8 +136,8 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(1), Some(flow_v1.clone()));
 
 		// Verify initial state
-		assert!(catalog.find_flow_by_name(namespace_id, "old_name", CommitVersion(1)).is_some());
-		assert!(catalog.find_flow_by_name(namespace_id, "new_name", CommitVersion(1)).is_none());
+		assert!(catalog.find_flow_by_name_at(namespace_id, "old_name", CommitVersion(1)).is_some());
+		assert!(catalog.find_flow_by_name_at(namespace_id, "new_name", CommitVersion(1)).is_none());
 
 		// Rename the flow
 		let mut flow_v2 = flow_v1.clone();
@@ -124,19 +145,19 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(2), Some(flow_v2.clone()));
 
 		// Old name should be gone
-		assert!(catalog.find_flow_by_name(namespace_id, "old_name", CommitVersion(2)).is_none());
+		assert!(catalog.find_flow_by_name_at(namespace_id, "old_name", CommitVersion(2)).is_none());
 
 		// New name can be found
 		assert_eq!(
-			catalog.find_flow_by_name(namespace_id, "new_name", CommitVersion(2)),
+			catalog.find_flow_by_name_at(namespace_id, "new_name", CommitVersion(2)),
 			Some(flow_v2.clone())
 		);
 
 		// Historical query at version 1 should still show old name
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(1)), Some(flow_v1));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(1)), Some(flow_v1));
 
 		// Current version should show new name
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(2)), Some(flow_v2));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(2)), Some(flow_v2));
 	}
 
 	#[test]
@@ -151,8 +172,8 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(1), Some(flow_v1.clone()));
 
 		// Verify it's in namespace1
-		assert!(catalog.find_flow_by_name(namespace1, "movable_flow", CommitVersion(1)).is_some());
-		assert!(catalog.find_flow_by_name(namespace2, "movable_flow", CommitVersion(1)).is_none());
+		assert!(catalog.find_flow_by_name_at(namespace1, "movable_flow", CommitVersion(1)).is_some());
+		assert!(catalog.find_flow_by_name_at(namespace2, "movable_flow", CommitVersion(1)).is_none());
 
 		// Move to namespace2
 		let mut flow_v2 = flow_v1.clone();
@@ -160,10 +181,10 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(2), Some(flow_v2.clone()));
 
 		// Should no longer be in namespace1
-		assert!(catalog.find_flow_by_name(namespace1, "movable_flow", CommitVersion(2)).is_none());
+		assert!(catalog.find_flow_by_name_at(namespace1, "movable_flow", CommitVersion(2)).is_none());
 
 		// Should now be in namespace2
-		assert!(catalog.find_flow_by_name(namespace2, "movable_flow", CommitVersion(2)).is_some());
+		assert!(catalog.find_flow_by_name_at(namespace2, "movable_flow", CommitVersion(2)).is_some());
 	}
 
 	#[test]
@@ -177,18 +198,18 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(1), Some(flow.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(1)), Some(flow.clone()));
-		assert!(catalog.find_flow_by_name(namespace_id, "deletable_flow", CommitVersion(1)).is_some());
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(1)), Some(flow.clone()));
+		assert!(catalog.find_flow_by_name_at(namespace_id, "deletable_flow", CommitVersion(1)).is_some());
 
 		// Delete the flow
 		catalog.set_flow(flow_id, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(2)), None);
-		assert!(catalog.find_flow_by_name(namespace_id, "deletable_flow", CommitVersion(2)).is_none());
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(2)), None);
+		assert!(catalog.find_flow_by_name_at(namespace_id, "deletable_flow", CommitVersion(2)).is_none());
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(1)), Some(flow));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(1)), Some(flow));
 	}
 
 	#[test]
@@ -206,9 +227,9 @@ mod tests {
 		catalog.set_flow(FlowId(3), CommitVersion(1), Some(flow3.clone()));
 
 		// All should be findable
-		assert_eq!(catalog.find_flow_by_name(namespace_id, "flow1", CommitVersion(1)), Some(flow1));
-		assert_eq!(catalog.find_flow_by_name(namespace_id, "flow2", CommitVersion(1)), Some(flow2));
-		assert_eq!(catalog.find_flow_by_name(namespace_id, "flow3", CommitVersion(1)), Some(flow3));
+		assert_eq!(catalog.find_flow_by_name_at(namespace_id, "flow1", CommitVersion(1)), Some(flow1));
+		assert_eq!(catalog.find_flow_by_name_at(namespace_id, "flow2", CommitVersion(1)), Some(flow2));
+		assert_eq!(catalog.find_flow_by_name_at(namespace_id, "flow3", CommitVersion(1)), Some(flow3));
 	}
 
 	#[test]
@@ -230,12 +251,12 @@ mod tests {
 		catalog.set_flow(flow_id, CommitVersion(30), Some(flow_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(5)), None);
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(10)), Some(flow_v1.clone()));
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(15)), Some(flow_v1));
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(20)), Some(flow_v2.clone()));
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(25)), Some(flow_v2));
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(30)), Some(flow_v3.clone()));
-		assert_eq!(catalog.find_flow(flow_id, CommitVersion(100)), Some(flow_v3));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(5)), None);
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(10)), Some(flow_v1.clone()));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(15)), Some(flow_v1));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(20)), Some(flow_v2.clone()));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(25)), Some(flow_v2));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(30)), Some(flow_v3.clone()));
+		assert_eq!(catalog.find_flow_at(flow_id, CommitVersion(100)), Some(flow_v3));
 	}
 }

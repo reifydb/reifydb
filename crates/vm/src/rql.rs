@@ -16,9 +16,8 @@
 //!         let $users = scan users | filter age > 18
 //!         $users | select [name, email]
 //!     "#,
-//!     &catalog,
-//!     &mut tx
-//! ).await?;
+//!     &catalog.materialized,
+//! )?;
 //!
 //! let pipeline = execute_program(program, registry, catalog, &mut tx).await?;
 //! ```
@@ -26,7 +25,7 @@
 use std::sync::Arc;
 
 use bumpalo::Bump;
-use reifydb_catalog::Catalog;
+use reifydb_catalog::{Catalog, MaterializedCatalog};
 use reifydb_rqlv2::{
 	ast::parse::{ParseError, Parser},
 	bytecode::{
@@ -36,6 +35,7 @@ use reifydb_rqlv2::{
 	plan::compile::{PlanError, plan},
 	token::{LexError, tokenize},
 };
+use reifydb_transaction::IntoStandardTransaction;
 use thiserror::Error;
 
 use crate::{
@@ -96,15 +96,10 @@ pub enum RqlError {
 /// let program = compile_script(
 ///     "let $users = scan users | filter age > 18\n$users",
 ///     &catalog,
-///     &mut tx
-/// ).await?;
+/// )?;
 /// ```
-pub async fn compile_script(
-	source: &str,
-	catalog: &Catalog,
-	tx: &mut reifydb_engine::StandardCommandTransaction,
-) -> Result<Arc<CompiledProgram>, RqlError> {
-	// Create bump allocator for AST (transient - dropped after compilation)
+pub fn compile_script(source: &str, catalog: &MaterializedCatalog) -> Result<CompiledProgram, RqlError> {
+	// Create bump allocator for AST
 	let bump = Bump::new();
 
 	// Step 1: Tokenize
@@ -121,7 +116,7 @@ pub async fn compile_script(
 	let program_ast = parse_result.program;
 
 	// Step 3: Compile AST to Plan (requires catalog for table resolution)
-	let plans = plan(&bump, catalog, tx, program_ast).await?;
+	let plans = plan(&bump, catalog, program_ast)?;
 
 	if plans.is_empty() {
 		return Err(RqlError::EmptyProgram);
@@ -130,9 +125,9 @@ pub async fn compile_script(
 	// Step 4: Compile all plans to bytecode
 	// For multi-statement programs (e.g., let bindings + query), we need to compile all plans
 	// sequentially so that variable declarations in earlier statements are available in later ones
-	let compiled_program = PlanCompiler::compile_all(plans)?;
+	let compiled_program = PlanCompiler::compile(plans)?;
 
-	Ok(Arc::new(compiled_program))
+	Ok(compiled_program)
 }
 
 /// Execute a compiled bytecode program with catalog access.
@@ -160,10 +155,10 @@ pub async fn compile_script(
 ///     &mut tx
 /// ).await?;
 /// ```
-pub async fn execute_program(
-	program: Arc<CompiledProgram>,
+pub async fn execute_program<T: IntoStandardTransaction>(
+	program: CompiledProgram,
 	catalog: Catalog,
-	tx: &mut reifydb_engine::StandardCommandTransaction,
+	tx: &mut T,
 ) -> Result<Option<Pipeline>, RqlError> {
 	// Create VM context with catalog
 	let context = Arc::new(VmContext::with_catalog(catalog));
@@ -171,9 +166,8 @@ pub async fn execute_program(
 	// Create VM state
 	let mut vm = VmState::new(program, context);
 
-	// Convert to StandardTransaction and execute (provides catalog access)
-	let mut std_tx: reifydb_engine::StandardTransaction = tx.into();
-	let result = vm.execute(&mut std_tx).await?;
+	// Execute using the trait method
+	let result = vm.execute(tx).await?;
 
 	Ok(result)
 }

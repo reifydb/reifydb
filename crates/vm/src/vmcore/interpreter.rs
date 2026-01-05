@@ -6,13 +6,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_recursion::async_recursion;
-use reifydb_core::value::column::{ColumnData, Columns};
-use reifydb_engine::StandardTransaction;
+use reifydb_core::{
+	util::CowVec,
+	value::column::{Column, ColumnData, Columns},
+};
 use reifydb_rqlv2::{
-	bytecode::{BytecodeReader, CompiledProgram, Opcode, OperatorKind, SubqueryDef},
+	bytecode::{BytecodeReader, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
-use reifydb_type::Value;
+use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_type::{Fragment, RowNumber, Value};
 
 use super::{
 	builtin::BuiltinRegistry,
@@ -40,9 +43,11 @@ pub enum DispatchResult {
 
 impl VmState {
 	/// Execute the program until halt or yield.
-	pub async fn execute<'a>(&mut self, rx: &mut StandardTransaction<'a>) -> Result<Option<Pipeline>> {
+	pub async fn execute<T: IntoStandardTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
+		let mut std_tx = tx.into_standard_transaction();
+
 		loop {
-			let result = self.step(Some(rx)).await?;
+			let result = self.step(Some(&mut std_tx)).await?;
 			match result {
 				DispatchResult::Continue => continue,
 				DispatchResult::Halt => break,
@@ -57,7 +62,7 @@ impl VmState {
 	/// Execute a single instruction.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
-	#[async_recursion(?Send)]
+	#[async_recursion]
 	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
 		// Helper macros for reading operands
 		macro_rules! read_u8 {
@@ -280,6 +285,45 @@ impl VmState {
 				let next_ip = reader.position();
 				let pipeline: Pipeline = Box::pin(futures_util::stream::empty());
 				self.push_pipeline(pipeline)?;
+				self.ip = next_ip;
+			}
+
+			Opcode::EvalMapWithoutInput | Opcode::EvalExpandWithoutInput => {
+				let next_ip = reader.position();
+
+				// Pop extension spec from operand stack
+				let spec_value = self.pop_operand()?;
+				let extensions = self.resolve_extension_spec(&spec_value)?;
+
+				// Create evaluation context
+				let eval_ctx = self.capture_scope_context();
+
+				// Create empty columns with row_count=1
+				// The row_numbers trick: row_count() checks row_numbers first, so setting
+				// row_numbers to [RowNumber(0)] gives us row_count=1 even with 0 columns
+				let empty_with_one_row = Columns {
+					row_numbers: CowVec::new(vec![RowNumber(0)]),
+					columns: CowVec::new(vec![]),
+				};
+
+				// Evaluate each expression to create result columns
+				let mut result_columns = Vec::new();
+				for (name, compiled_expr) in extensions {
+					// Evaluate expression with row_count=1
+					let column = compiled_expr.eval(&empty_with_one_row, &eval_ctx).await?;
+
+					// Rename the column to the specified name
+					let renamed = Column::new(Fragment::from(name), column.data().clone());
+					result_columns.push(renamed);
+				}
+
+				// Create a single-row Columns from the evaluated expressions
+				let columns = Columns::new(result_columns);
+
+				// Create a pipeline from the columns
+				let pipeline = pipeline::from_columns(columns);
+				self.push_pipeline(pipeline)?;
+
 				self.ip = next_ip;
 			}
 
@@ -924,6 +968,13 @@ impl VmState {
 				ProjectOp::extend_with_context(extensions, eval_ctx).apply(pipeline)
 			}
 
+			OperatorKind::Map => {
+				let spec = self.pop_operand()?;
+				let extensions = self.resolve_extension_spec(&spec)?;
+				let eval_ctx = self.capture_scope_context();
+				ProjectOp::replace_with_context(extensions, eval_ctx).apply(pipeline)
+			}
+
 			OperatorKind::Take => {
 				let limit = self.pop_operand()?;
 				let n = self.resolve_int(&limit)?;
@@ -975,27 +1026,21 @@ impl VmState {
 		subquery_def: &SubqueryDef,
 		rx: Option<&mut StandardTransaction<'a>>,
 	) -> Result<Columns> {
-		// Create a CompiledProgram from the subquery definition
-		let subquery_program = CompiledProgram {
-			bytecode: subquery_def.bytecode.clone(),
-			constants: subquery_def.constants.clone(),
-			sources: subquery_def.sources.clone(),
-			source_map: subquery_def.source_map.clone(),
-			// Subqueries don't have their own nested subqueries, column lists, etc.
-			column_lists: Vec::new(),
-			sort_specs: Vec::new(),
-			extension_specs: Vec::new(),
-			subqueries: Vec::new(),
-			ddl_defs: Vec::new(),
-			dml_targets: Vec::new(),
-			compiled_exprs: Vec::new(),
-			compiled_filters: Vec::new(),
-			entry_point: 0,
-			script_functions: Vec::new(),
-		};
+		// Create a CompiledProgram from the subquery definition using the builder
+		use reifydb_rqlv2::bytecode::CompiledProgramBuilder;
+
+		let mut builder = CompiledProgramBuilder::new();
+		builder.bytecode = subquery_def.bytecode.clone();
+		builder.constants = subquery_def.constants.clone();
+		builder.sources = subquery_def.sources.clone();
+		builder.source_map = subquery_def.source_map.clone();
+		// Subqueries don't have their own nested subqueries, column lists, etc.
+		// (These are already initialized as empty by CompiledProgramBuilder::new())
+
+		let subquery_program = builder.build();
 
 		// Create a new VM state for the subquery
-		let mut subquery_vm = VmState::new(Arc::new(subquery_program), self.context.clone());
+		let mut subquery_vm = VmState::new(subquery_program, self.context.clone());
 
 		// Execute the subquery - it should end with Collect which pushes a Frame
 		if let Some(rx) = rx {

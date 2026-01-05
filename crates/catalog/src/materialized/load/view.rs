@@ -28,7 +28,7 @@ pub(crate) async fn load_views(
 		let version = multi.version;
 
 		let pk_id = get_view_primary_key_id(&multi);
-		let primary_key = pk_id.and_then(|id| catalog.find_primary_key(id, version));
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let view_def = convert_view(multi, primary_key);
 
 		catalog.set_view(view_def.id, version, Some(view_def));

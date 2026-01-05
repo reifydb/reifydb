@@ -4,7 +4,6 @@
 //! DML operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
@@ -19,13 +18,12 @@ use crate::{
 	},
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
-	pub(super) async fn compile_insert(&mut self, insert_stmt: &InsertStmt<'bump>) -> Result<Plan<'bump>> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
+	pub(super) fn compile_insert(&mut self, insert_stmt: &InsertStmt<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::stmt::dml::InsertSource;
 
 		// Resolve the target
-		let primitive =
-			self.resolve_primitive(insert_stmt.namespace, insert_stmt.table, insert_stmt.span).await?;
+		let primitive = self.resolve_primitive(insert_stmt.namespace, insert_stmt.table, insert_stmt.span)?;
 		let target = match primitive {
 			Primitive::Table(t) => InsertTarget::Table(t),
 			Primitive::RingBuffer(r) => InsertTarget::RingBuffer(r),
@@ -54,7 +52,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 			InsertSource::Query(pipeline) => {
 				// Compile as pipeline
-				let plans = self.compile_statement_body_as_pipeline(pipeline).await?;
+				let plans = self.compile_statement_body_as_pipeline(pipeline)?;
 				if plans.is_empty() {
 					return Err(PlanError {
 						kind: PlanErrorKind::EmptyPipeline,
@@ -92,10 +90,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: insert_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_update(&mut self, update_stmt: &UpdateStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_update(&mut self, update_stmt: &UpdateStmt<'bump>) -> Result<Plan<'bump>> {
 		// Resolve the target
-		let primitive =
-			self.resolve_primitive(update_stmt.namespace, update_stmt.table, update_stmt.span).await?;
+		let primitive = self.resolve_primitive(update_stmt.namespace, update_stmt.table, update_stmt.span)?;
 		let target = match primitive {
 			Primitive::Table(t) => UpdateTarget::Table(t),
 			Primitive::RingBuffer(r) => UpdateTarget::RingBuffer(r),
@@ -150,10 +147,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: update_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_delete(&mut self, delete_stmt: &DeleteStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_delete(&mut self, delete_stmt: &DeleteStmt<'bump>) -> Result<Plan<'bump>> {
 		// Resolve the target
-		let primitive =
-			self.resolve_primitive(delete_stmt.namespace, delete_stmt.table, delete_stmt.span).await?;
+		let primitive = self.resolve_primitive(delete_stmt.namespace, delete_stmt.table, delete_stmt.span)?;
 		let target = match primitive {
 			Primitive::Table(t) => DeleteTarget::Table(t),
 			Primitive::RingBuffer(r) => DeleteTarget::RingBuffer(r),

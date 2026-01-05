@@ -32,7 +32,7 @@ impl PlanCompiler {
 			Primitive::Dictionary(d) => format!("{}.{}", d.namespace.name, d.name),
 		};
 
-		let source_index = self.program.add_source(SourceDef {
+		let source_index = self.builder.add_source(SourceDef {
 			name: source_name,
 			alias: node.alias.map(|s| s.to_string()),
 		});
@@ -46,7 +46,7 @@ impl PlanCompiler {
 		self.record_span(node.span);
 		// For now, treat index scan as regular scan
 		// TODO: Add index hint handling
-		let source_index = self.program.add_source(SourceDef {
+		let source_index = self.builder.add_source(SourceDef {
 			name: format!("{}.{}", node.primitive.namespace.name, node.primitive.name),
 			alias: node.alias.map(|s| s.to_string()),
 		});
@@ -63,7 +63,7 @@ impl PlanCompiler {
 
 		// Compile predicate to CompiledFilter closure
 		let compiled = compile_plan_filter(node.predicate);
-		let filter_index = self.program.add_compiled_filter(compiled);
+		let filter_index = self.builder.add_compiled_filter(compiled);
 
 		// Push compiled filter reference
 		self.writer.emit_opcode(Opcode::PushExpr);
@@ -78,56 +78,71 @@ impl PlanCompiler {
 	pub(crate) fn compile_project<'bump>(&mut self, node: &ProjectNode<'bump>) -> Result<()> {
 		self.record_span(node.span);
 
-		// Compile input if present
-		if let Some(input) = node.input {
-			self.compile_plan(input)?;
+		// Build extension spec with compiled expressions
+		let mut spec = Vec::new();
+		for proj in node.projections.iter() {
+			let name = if let Some(alias) = proj.alias {
+				alias.to_string()
+			} else {
+				// Try to extract column name from expression, or use generic name
+				self.expr_to_column_name(proj.expr)
+			};
+			// Compile expression to CompiledExpr closure
+			let compiled = compile_plan_expr(proj.expr);
+			let expr_index = self.builder.add_compiled_expr(compiled);
+			spec.push((name, expr_index));
 		}
 
-		// Build column list from projections
-		let columns: Vec<String> = node
-			.projections
-			.iter()
-			.map(|p| {
-				if let Some(alias) = p.alias {
-					alias.to_string()
-				} else {
-					// Try to extract column name from expression
-					self.expr_to_column_name(p.expr)
-				}
-			})
-			.collect();
+		let spec_index = self.builder.add_extension_spec(spec);
+		self.writer.emit_opcode(Opcode::PushExtSpec);
+		self.writer.emit_u16(spec_index);
 
-		let col_list_index = self.program.add_column_list(columns);
-		self.writer.emit_opcode(Opcode::PushColList);
-		self.writer.emit_u16(col_list_index);
-		self.writer.emit_opcode(Opcode::Apply);
-		self.writer.emit_u8(OperatorKind::Select as u8);
+		if let Some(input) = node.input {
+			// Normal case: compile input pipeline and project it
+			self.compile_plan(input)?;
+			self.writer.emit_opcode(Opcode::Apply);
+			self.writer.emit_u8(OperatorKind::Map as u8);
+		} else {
+			// Special case: MAP without input
+			// Directly evaluate expressions to create single-row result
+			self.writer.emit_opcode(Opcode::EvalMapWithoutInput);
+		}
+
 		Ok(())
 	}
 
 	pub(crate) fn compile_extend<'bump>(&mut self, node: &ExtendNode<'bump>) -> Result<()> {
 		self.record_span(node.span);
 
-		// Compile input if present
-		if let Some(input) = node.input {
-			self.compile_plan(input)?;
-		}
-
 		// Build extension spec with compiled expressions
 		let mut spec = Vec::new();
 		for ext in node.extensions.iter() {
-			let name = ext.alias.unwrap_or("").to_string();
+			let name = if let Some(alias) = ext.alias {
+				alias.to_string()
+			} else {
+				self.expr_to_column_name(ext.expr)
+			};
 			// Compile expression to CompiledExpr closure
 			let compiled = compile_plan_expr(ext.expr);
-			let expr_index = self.program.add_compiled_expr(compiled);
+			let expr_index = self.builder.add_compiled_expr(compiled);
 			spec.push((name, expr_index));
 		}
 
-		let spec_index = self.program.add_extension_spec(spec);
+		let spec_index = self.builder.add_extension_spec(spec);
 		self.writer.emit_opcode(Opcode::PushExtSpec);
 		self.writer.emit_u16(spec_index);
-		self.writer.emit_opcode(Opcode::Apply);
-		self.writer.emit_u8(OperatorKind::Extend as u8);
+
+		if let Some(input) = node.input {
+			// Normal case: compile input pipeline and extend it
+			self.compile_plan(input)?;
+			self.writer.emit_opcode(Opcode::Apply);
+			self.writer.emit_u8(OperatorKind::Extend as u8);
+		} else {
+			// Special case: EXTEND without input (like MAP)
+			// Directly evaluate expressions to create single-row result
+			self.writer.emit_opcode(Opcode::EvalExpandWithoutInput);
+		}
+
 		Ok(())
 	}
 
@@ -162,7 +177,7 @@ impl PlanCompiler {
 			})
 			.collect();
 
-		let spec_index = self.program.add_sort_spec(SortSpec {
+		let spec_index = self.builder.add_sort_spec(SortSpec {
 			keys,
 		});
 		self.writer.emit_opcode(Opcode::PushSortSpec);
@@ -179,7 +194,7 @@ impl PlanCompiler {
 		self.compile_plan(node.input)?;
 
 		// Push limit constant
-		let const_index = self.program.add_constant(Constant::Int(node.count as i64));
+		let const_index = self.builder.add_constant(Constant::Int(node.count as i64));
 		self.writer.emit_opcode(Opcode::PushConst);
 		self.writer.emit_u16(const_index);
 

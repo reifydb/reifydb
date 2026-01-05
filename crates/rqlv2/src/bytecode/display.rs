@@ -585,6 +585,8 @@ fn decode_operands(
 
 		// No operands
 		Opcode::Inline
+		| Opcode::EvalMapWithoutInput
+		| Opcode::EvalExpandWithoutInput
 		| Opcode::Collect
 		| Opcode::Merge
 		| Opcode::PopPipeline

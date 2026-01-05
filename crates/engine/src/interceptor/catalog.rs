@@ -52,6 +52,16 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_view(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.ringbuffer_def {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|r| r.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_ringbuffer(id, version, change.post.clone());
+		}
+
 		Ok(())
 	}
 }

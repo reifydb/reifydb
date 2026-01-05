@@ -7,7 +7,7 @@ use crate::materialized::{MaterializedCatalog, MultiVersionRetentionPolicy};
 
 impl MaterializedCatalog {
 	/// Find a retention policy for a source at a specific version
-	pub fn find_primitive_retention_policy(
+	pub fn find_primitive_retention_policy_at(
 		&self,
 		source: PrimitiveId,
 		version: CommitVersion,
@@ -15,6 +15,14 @@ impl MaterializedCatalog {
 		self.source_retention_policies.get(&source).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
+		})
+	}
+
+	/// Find a retention policy for a source (returns latest version)
+	pub fn find_primitive_retention_policy(&self, source: PrimitiveId) -> Option<RetentionPolicy> {
+		self.source_retention_policies.get(&source).and_then(|entry| {
+			let multi = entry.value();
+			multi.get_latest()
 		})
 	}
 
@@ -57,15 +65,15 @@ mod tests {
 		catalog.set_primitive_retention_policy(source, CommitVersion(1), Some(policy.clone()));
 
 		// Find policy at version 1
-		let found = catalog.find_primitive_retention_policy(source, CommitVersion(1));
+		let found = catalog.find_primitive_retention_policy_at(source, CommitVersion(1));
 		assert_eq!(found, Some(policy.clone()));
 
 		// Find policy at later version (should return same policy)
-		let found = catalog.find_primitive_retention_policy(source, CommitVersion(5));
+		let found = catalog.find_primitive_retention_policy_at(source, CommitVersion(5));
 		assert_eq!(found, Some(policy));
 
 		// Policy shouldn't exist at version 0
-		let found = catalog.find_primitive_retention_policy(source, CommitVersion(0));
+		let found = catalog.find_primitive_retention_policy_at(source, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -79,7 +87,10 @@ mod tests {
 		catalog.set_primitive_retention_policy(source, CommitVersion(1), Some(policy_v1.clone()));
 
 		// Verify initial state
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(1)), Some(policy_v1.clone()));
+		assert_eq!(
+			catalog.find_primitive_retention_policy_at(source, CommitVersion(1)),
+			Some(policy_v1.clone())
+		);
 
 		// Update policy
 		let policy_v2 = RetentionPolicy::KeepVersions {
@@ -89,11 +100,14 @@ mod tests {
 		catalog.set_primitive_retention_policy(source, CommitVersion(2), Some(policy_v2.clone()));
 
 		// Historical query at version 1 should still show old policy
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(1)), Some(policy_v1));
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(1)), Some(policy_v1));
 
 		// Current version should show new policy
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(2)), Some(policy_v2.clone()));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(10)), Some(policy_v2));
+		assert_eq!(
+			catalog.find_primitive_retention_policy_at(source, CommitVersion(2)),
+			Some(policy_v2.clone())
+		);
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(10)), Some(policy_v2));
 	}
 
 	#[test]
@@ -109,16 +123,16 @@ mod tests {
 		catalog.set_primitive_retention_policy(source, CommitVersion(1), Some(policy.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(1)), Some(policy.clone()));
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(1)), Some(policy.clone()));
 
 		// Delete the policy
 		catalog.set_primitive_retention_policy(source, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(2)), None);
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(2)), None);
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(1)), Some(policy));
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(1)), Some(policy));
 	}
 
 	#[test]
@@ -143,12 +157,21 @@ mod tests {
 		catalog.set_primitive_retention_policy(source, CommitVersion(30), Some(policy_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(5)), None);
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(10)), Some(policy_v1.clone()));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(15)), Some(policy_v1));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(20)), Some(policy_v2.clone()));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(25)), Some(policy_v2));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(30)), Some(policy_v3.clone()));
-		assert_eq!(catalog.find_primitive_retention_policy(source, CommitVersion(100)), Some(policy_v3));
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(5)), None);
+		assert_eq!(
+			catalog.find_primitive_retention_policy_at(source, CommitVersion(10)),
+			Some(policy_v1.clone())
+		);
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(15)), Some(policy_v1));
+		assert_eq!(
+			catalog.find_primitive_retention_policy_at(source, CommitVersion(20)),
+			Some(policy_v2.clone())
+		);
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(25)), Some(policy_v2));
+		assert_eq!(
+			catalog.find_primitive_retention_policy_at(source, CommitVersion(30)),
+			Some(policy_v3.clone())
+		);
+		assert_eq!(catalog.find_primitive_retention_policy_at(source, CommitVersion(100)), Some(policy_v3));
 	}
 }

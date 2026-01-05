@@ -17,7 +17,6 @@ pub mod stack;
 pub mod test_utils;
 pub mod transaction;
 
-// Re-export vtable types from catalog for backward compatibility
 pub mod vtable {
 	pub use reifydb_catalog::vtable::{
 		UserVTable, UserVTableBuilder, UserVTableColumnDef, UserVTableRegistry, VTableContext, VTables, system,
@@ -30,6 +29,7 @@ pub use evaluate::{
 	column::{StandardColumnEvaluator, cast::cast_column_data},
 };
 pub use reifydb_transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
+pub use reifydb_vm::{VmConfig, VmContext, VmState};
 
 pub struct EngineVersion;
 

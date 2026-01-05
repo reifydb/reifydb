@@ -245,7 +245,7 @@ pub struct VmState {
 	pub call_stack: CallStack,
 
 	/// The program being executed.
-	pub program: Arc<CompiledProgram>,
+	pub program: CompiledProgram,
 
 	/// Execution context (sources, config).
 	pub context: Arc<VmContext>,
@@ -269,7 +269,7 @@ pub struct VmState {
 
 impl VmState {
 	/// Create a new VM state.
-	pub fn new(program: Arc<CompiledProgram>, context: Arc<VmContext>) -> Self {
+	pub fn new(program: CompiledProgram, context: Arc<VmContext>) -> Self {
 		let max_call_depth = context.config.max_call_depth;
 		Self {
 			ip: program.entry_point,

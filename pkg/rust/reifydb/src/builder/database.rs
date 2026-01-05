@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
-use reifydb_catalog::{CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
+use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
 	ComputePool, CoreVersion,
@@ -196,7 +196,7 @@ impl DatabaseBuilder {
 			cdc.clone(),
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
-			catalog.clone(),
+			Catalog::new(catalog),
 			functions,
 			self.ioc.clone(),
 		)
@@ -261,11 +261,8 @@ impl DatabaseBuilder {
 			});
 		}
 
-		// Create SystemCatalog with all versions and set it in
-		// MaterializedCatalog This is done after engine creation but
-		// versions will be available via the catalog
 		let system_catalog = SystemCatalog::new(all_versions);
-		catalog.set_system_catalog(system_catalog);
+		self.ioc.register(system_catalog);
 
 		Ok(Database::new(engine, subsystems, self.config, health_monitor))
 	}

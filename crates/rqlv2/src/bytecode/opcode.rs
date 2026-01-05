@@ -87,15 +87,25 @@ pub enum Opcode {
 	/// Pop pipeline from pipeline stack
 	PopPipeline = 0x25,
 
+	/// Evaluate MAP expressions without input and create a single-row pipeline
+	/// Used for MAP {expr} without FROM clause
+	/// Pops extension spec from operand stack, pushes pipeline to pipeline stack
+	EvalMapWithoutInput = 0x26,
+
+	/// Evaluate EXTEND expressions without input and create a single-row pipeline
+	/// Used for EXTEND {expr} without FROM clause
+	/// Pops extension spec from operand stack, pushes pipeline to pipeline stack
+	EvalExpandWithoutInput = 0x27,
+
 	/// Fetch next batch from active scan
 	/// Operand: u16 (source index)
 	/// Pushes batch onto pipeline stack, pushes boolean (has_more) onto operand stack
-	FetchBatch = 0x27,
+	FetchBatch = 0x28,
 
 	/// Check if query is complete (for early termination)
 	/// No operand - pops boolean from operand stack
 	/// Used by TAKE and other limiting operators
-	CheckComplete = 0x28,
+	CheckComplete = 0x29,
 
 	// ─────────────────────────────────────────────────────────────
 	// Control Flow
@@ -345,8 +355,10 @@ impl TryFrom<u8> for Opcode {
 			0x23 => Ok(Opcode::Collect),
 			0x24 => Ok(Opcode::Merge),
 			0x25 => Ok(Opcode::PopPipeline),
-			0x27 => Ok(Opcode::FetchBatch),
-			0x28 => Ok(Opcode::CheckComplete),
+			0x26 => Ok(Opcode::EvalMapWithoutInput),
+			0x27 => Ok(Opcode::EvalExpandWithoutInput),
+			0x28 => Ok(Opcode::FetchBatch),
+			0x29 => Ok(Opcode::CheckComplete),
 			// Control Flow
 			0x40 => Ok(Opcode::Jump),
 			0x41 => Ok(Opcode::JumpIf),
@@ -419,13 +431,14 @@ pub enum OperatorKind {
 	Filter = 0,
 	Select = 1,
 	Extend = 2,
-	Take = 3,
-	Sort = 4,
-	Distinct = 5,
-	Aggregate = 6,
-	JoinInner = 7,
-	JoinLeft = 8,
-	JoinNatural = 9,
+	Map = 3,
+	Take = 4,
+	Sort = 5,
+	Distinct = 6,
+	Aggregate = 7,
+	JoinInner = 8,
+	JoinLeft = 9,
+	JoinNatural = 10,
 }
 
 impl TryFrom<u8> for OperatorKind {
@@ -436,13 +449,14 @@ impl TryFrom<u8> for OperatorKind {
 			0 => Ok(OperatorKind::Filter),
 			1 => Ok(OperatorKind::Select),
 			2 => Ok(OperatorKind::Extend),
-			3 => Ok(OperatorKind::Take),
-			4 => Ok(OperatorKind::Sort),
-			5 => Ok(OperatorKind::Distinct),
-			6 => Ok(OperatorKind::Aggregate),
-			7 => Ok(OperatorKind::JoinInner),
-			8 => Ok(OperatorKind::JoinLeft),
-			9 => Ok(OperatorKind::JoinNatural),
+			3 => Ok(OperatorKind::Map),
+			4 => Ok(OperatorKind::Take),
+			5 => Ok(OperatorKind::Sort),
+			6 => Ok(OperatorKind::Distinct),
+			7 => Ok(OperatorKind::Aggregate),
+			8 => Ok(OperatorKind::JoinInner),
+			9 => Ok(OperatorKind::JoinLeft),
+			10 => Ok(OperatorKind::JoinNatural),
 			_ => Err(value),
 		}
 	}

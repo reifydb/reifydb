@@ -90,10 +90,10 @@ impl std::error::Error for EvalError {}
 pub type EvalResult<T> = std::result::Result<T, EvalError>;
 
 /// Future type for expression evaluation.
-pub type ExprFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<Column>> + Send + 'a>>;
+pub type ExprFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<Column>> + Send + Sync + 'a>>;
 
 /// Future type for filter evaluation.
-pub type FilterFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<BitVec>> + Send + 'a>>;
+pub type FilterFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<BitVec>> + Send + Sync + 'a>>;
 
 /// Pre-compiled expression that evaluates to a Column asynchronously.
 ///

@@ -19,12 +19,12 @@ use crate::vmcore::{VmContext, VmState};
 /// This struct implements `ScriptFunctionCaller` (defined in rqlv2) and is used
 /// to bridge the expression evaluator with the bytecode VM.
 pub struct BytecodeScriptCaller {
-	program: Arc<CompiledProgram>,
+	program: CompiledProgram,
 }
 
 impl BytecodeScriptCaller {
 	/// Create a new bytecode script caller.
-	pub fn new(program: Arc<CompiledProgram>) -> Self {
+	pub fn new(program: CompiledProgram) -> Self {
 		Self {
 			program,
 		}

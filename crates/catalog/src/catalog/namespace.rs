@@ -28,7 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(namespace) = self.materialized.find_namespace(id, cmd.version()) {
+				if let Some(namespace) = self.materialized.find_namespace_at(id, cmd.version()) {
 					return Ok(Some(namespace));
 				}
 
@@ -45,7 +45,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(namespace) = self.materialized.find_namespace(id, qry.version()) {
+				if let Some(namespace) = self.materialized.find_namespace_at(id, qry.version()) {
 					return Ok(Some(namespace));
 				}
 
@@ -84,7 +84,9 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(namespace) = self.materialized.find_namespace_by_name(name, cmd.version()) {
+				if let Some(namespace) =
+					self.materialized.find_namespace_by_name_at(name, cmd.version())
+				{
 					return Ok(Some(namespace));
 				}
 
@@ -98,7 +100,9 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(namespace) = self.materialized.find_namespace_by_name(name, qry.version()) {
+				if let Some(namespace) =
+					self.materialized.find_namespace_by_name_at(name, qry.version())
+				{
 					return Ok(Some(namespace));
 				}
 

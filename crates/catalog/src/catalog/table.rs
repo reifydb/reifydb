@@ -28,7 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table(id, cmd.version()) {
+				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
@@ -42,7 +42,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(table) = self.materialized.find_table(id, qry.version()) {
+				if let Some(table) = self.materialized.find_table_at(id, qry.version()) {
 					return Ok(Some(table));
 				}
 
@@ -79,7 +79,7 @@ impl Catalog {
 
 				// 3. Check MaterializedCatalog
 				if let Some(table) =
-					self.materialized.find_table_by_name(namespace, name, cmd.version())
+					self.materialized.find_table_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(table));
 				}
@@ -98,7 +98,7 @@ impl Catalog {
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(table) =
-					self.materialized.find_table_by_name(namespace, name, qry.version())
+					self.materialized.find_table_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(table));
 				}

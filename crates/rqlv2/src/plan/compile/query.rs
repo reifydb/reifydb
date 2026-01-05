@@ -4,7 +4,6 @@
 //! Query operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
@@ -22,14 +21,13 @@ use crate::{
 	},
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
-	pub(super) async fn compile_from(&mut self, from: &FromExpr<'bump>) -> Result<Plan<'bump>> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
+	pub(super) fn compile_from(&mut self, from: &FromExpr<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::expr::FromExpr;
 
 		match from {
 			FromExpr::Source(source) => {
-				let primitive =
-					self.resolve_primitive(source.namespace, source.name, source.span).await?;
+				let primitive = self.resolve_primitive(source.namespace, source.name, source.span)?;
 				Ok(Plan::Scan(ScanNode {
 					primitive,
 					alias: source.alias.map(|s| self.bump.alloc_str(s) as &'bump str),
@@ -89,13 +87,13 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 	}
 
-	pub(super) async fn compile_filter(
+	pub(super) fn compile_filter(
 		&mut self,
 		filter: &FilterExpr<'bump>,
 		input: &'bump Plan<'bump>,
 	) -> Result<Plan<'bump>> {
 		// Use async version to support subqueries in filter predicates
-		let predicate = self.compile_expr_with_subqueries(filter.predicate, None).await?;
+		let predicate = self.compile_expr_with_subqueries(filter.predicate, None)?;
 		Ok(Plan::Filter(FilterNode {
 			input,
 			predicate,
@@ -103,7 +101,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_map(
+	pub(super) fn compile_map(
 		&mut self,
 		map: &MapExpr<'bump>,
 		input: Option<&'bump Plan<'bump>>,
@@ -119,7 +117,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_extend(
+	pub(super) fn compile_extend(
 		&mut self,
 		extend: &ExtendExpr<'bump>,
 		input: Option<&'bump Plan<'bump>>,
@@ -135,7 +133,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_aggregate(
+	pub(super) fn compile_aggregate(
 		&mut self,
 		agg: &AggregateExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -153,7 +151,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_sort(
+	pub(super) fn compile_sort(
 		&mut self,
 		sort: &SortExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -180,14 +178,14 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 
 	// ========== Schema-aware compilation methods ==========
 
-	pub(super) async fn compile_filter_with_schema(
+	pub(super) fn compile_filter_with_schema(
 		&mut self,
 		filter: &FilterExpr<'bump>,
 		input: &'bump Plan<'bump>,
 		schema: Option<&OutputSchema<'bump>>,
 	) -> Result<Plan<'bump>> {
 		// Use async version to support subqueries in filter predicates
-		let predicate = self.compile_expr_with_subqueries(filter.predicate, schema).await?;
+		let predicate = self.compile_expr_with_subqueries(filter.predicate, schema)?;
 		Ok(Plan::Filter(FilterNode {
 			input,
 			predicate,
@@ -195,7 +193,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(crate) async fn compile_map_with_schema(
+	pub(crate) fn compile_map_with_schema(
 		&mut self,
 		map: &MapExpr<'bump>,
 		input: Option<&'bump Plan<'bump>>,
@@ -212,7 +210,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_extend_with_schema(
+	pub(super) fn compile_extend_with_schema(
 		&mut self,
 		extend: &ExtendExpr<'bump>,
 		input: Option<&'bump Plan<'bump>>,
@@ -229,7 +227,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_aggregate_with_schema(
+	pub(super) fn compile_aggregate_with_schema(
 		&mut self,
 		agg: &AggregateExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -248,7 +246,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_sort_with_schema(
+	pub(super) fn compile_sort_with_schema(
 		&mut self,
 		sort: &SortExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -274,7 +272,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_take(
+	pub(super) fn compile_take(
 		&mut self,
 		take: &TakeExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -299,7 +297,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_distinct(
+	pub(super) fn compile_distinct(
 		&mut self,
 		distinct: &DistinctExpr<'bump>,
 		input: &'bump Plan<'bump>,
@@ -437,16 +435,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 	}
 
-	pub(super) async fn compile_join(
-		&mut self,
-		join: &JoinExpr<'bump>,
-		left: &'bump Plan<'bump>,
-	) -> Result<Plan<'bump>> {
+	pub(super) fn compile_join(&mut self, join: &JoinExpr<'bump>, left: &'bump Plan<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::expr::JoinExpr as AstJoin;
 
 		match join {
 			AstJoin::Inner(inner) => {
-				let right = self.compile_join_source(&inner.source).await?;
+				let right = self.compile_join_source(&inner.source)?;
 				let alias = if inner.alias.is_empty() {
 					None
 				} else {
@@ -465,7 +459,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				}))
 			}
 			AstJoin::Left(left_join) => {
-				let right = self.compile_join_source(&left_join.source).await?;
+				let right = self.compile_join_source(&left_join.source)?;
 				let alias = if left_join.alias.is_empty() {
 					None
 				} else {
@@ -487,7 +481,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				}))
 			}
 			AstJoin::Natural(natural) => {
-				let right = self.compile_join_source(&natural.source).await?;
+				let right = self.compile_join_source(&natural.source)?;
 				let alias = if natural.alias.is_empty() {
 					None
 				} else {
@@ -505,39 +499,29 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 	}
 
 	/// Compile a join source (subquery or primitive reference).
-	fn compile_join_source<'a>(
-		&'a mut self,
-		source: &'a crate::ast::expr::JoinSource<'bump>,
-	) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<&'bump Plan<'bump>>> + 'a>>
-	where
-		'bump: 'a,
-	{
-		Box::pin(async move {
-			use crate::ast::expr::JoinSource;
+	fn compile_join_source(&mut self, source: &crate::ast::expr::JoinSource<'bump>) -> Result<&'bump Plan<'bump>> {
+		use crate::ast::expr::JoinSource;
 
-			match source {
-				JoinSource::SubQuery(expr) => {
-					// Need to compile as a pipeline
-					let plan = self.compile_pipeline_stage(expr, None).await?;
-					Ok(self.bump.alloc(plan) as &'bump Plan<'bump>)
-				}
-				JoinSource::Primitive(prim) => {
-					let primitive = self
-						.resolve_primitive(
-							prim.source.namespace,
-							prim.source.name,
-							prim.source.span,
-						)
-						.await?;
-					let plan = Plan::Scan(ScanNode {
-						primitive,
-						alias: prim.source.alias.map(|s| self.bump.alloc_str(s) as &'bump str),
-						span: prim.source.span,
-					});
-					Ok(self.bump.alloc(plan) as &'bump Plan<'bump>)
-				}
+		match source {
+			JoinSource::SubQuery(expr) => {
+				// Need to compile as a pipeline
+				let plan = self.compile_pipeline_stage(expr, None)?;
+				Ok(self.bump.alloc(plan) as &'bump Plan<'bump>)
 			}
-		})
+			JoinSource::Primitive(prim) => {
+				let primitive = self.resolve_primitive(
+					prim.source.namespace,
+					prim.source.name,
+					prim.source.span,
+				)?;
+				let plan = Plan::Scan(ScanNode {
+					primitive,
+					alias: prim.source.alias.map(|s| self.bump.alloc_str(s) as &'bump str),
+					span: prim.source.span,
+				});
+				Ok(self.bump.alloc(plan) as &'bump Plan<'bump>)
+			}
+		}
 	}
 
 	/// Compile join conditions from join pairs with alias context for qualified column resolution.
@@ -561,26 +545,21 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 
 	/// Compile an expression with alias context for resolving qualified column references.
 	/// Extract identifier name from an expression.
-	pub(super) fn compile_merge<'a>(
-		&'a mut self,
-		merge: &'a MergeExpr<'bump>,
+	pub(super) fn compile_merge(
+		&mut self,
+		merge: &MergeExpr<'bump>,
 		left: &'bump Plan<'bump>,
-	) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Plan<'bump>>> + 'a>>
-	where
-		'bump: 'a,
-	{
-		Box::pin(async move {
-			// Compile the subquery
-			let right = self.compile_pipeline_stage(merge.subquery, None).await?;
-			Ok(Plan::Merge(MergeNode {
-				left,
-				right: self.bump.alloc(right),
-				span: merge.span,
-			}))
-		})
+	) -> Result<Plan<'bump>> {
+		// Compile the subquery
+		let right = self.compile_pipeline_stage(merge.subquery, None)?;
+		Ok(Plan::Merge(MergeNode {
+			left,
+			right: self.bump.alloc(right),
+			span: merge.span,
+		}))
 	}
 
-	pub(super) async fn compile_window(
+	pub(super) fn compile_window(
 		&mut self,
 		window: &WindowExpr<'bump>,
 		input: Option<&'bump Plan<'bump>>,

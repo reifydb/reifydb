@@ -4,7 +4,6 @@
 //! DDL operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_transaction::IntoStandardTransaction;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
@@ -15,8 +14,8 @@ use crate::{
 	},
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
-	pub(super) async fn compile_create(&mut self, create_stmt: &CreateStmt<'bump>) -> Result<Plan<'bump>> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
+	pub(super) fn compile_create(&mut self, create_stmt: &CreateStmt<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::stmt::ddl::CreateStmt as AstCreate;
 
 		match create_stmt {
@@ -27,7 +26,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}))),
 
 			AstCreate::Table(table) => {
-				let namespace = self.resolve_namespace(table.namespace, table.span).await?;
+				let namespace = self.resolve_namespace(table.namespace, table.span)?;
 				let columns = self.compile_column_definitions(table.columns)?;
 
 				Ok(Plan::Create(CreateNode::Table(CreateTableNode {
@@ -41,8 +40,8 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 
 			AstCreate::View(view) => {
-				let namespace = self.resolve_namespace(view.namespace, view.span).await?;
-				let query = self.compile_statement_body_as_pipeline(view.query).await?;
+				let namespace = self.resolve_namespace(view.namespace, view.span)?;
+				let query = self.compile_statement_body_as_pipeline(view.query)?;
 				let query_plan = if query.is_empty() {
 					return Err(PlanError {
 						kind: PlanErrorKind::EmptyPipeline,
@@ -62,7 +61,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 
 			AstCreate::Index(index) => {
-				let table = self.resolve_table(None, index.table, index.span).await?;
+				let table = self.resolve_table(None, index.table, index.span)?;
 				let mut columns = BumpVec::with_capacity_in(index.columns.len(), self.bump);
 				for col_name in index.columns.iter() {
 					// Find the column in the table
@@ -89,7 +88,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			}
 
 			AstCreate::Sequence(seq) => {
-				let namespace = self.resolve_namespace(seq.namespace, seq.span).await?;
+				let namespace = self.resolve_namespace(seq.namespace, seq.span)?;
 
 				Ok(Plan::Create(CreateNode::Sequence(CreateSequenceNode {
 					namespace,
@@ -132,29 +131,23 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}
 		Ok(defs.into_bump_slice())
 	}
-	pub(super) async fn compile_drop(&mut self, drop_stmt: &DropStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_drop(&mut self, drop_stmt: &DropStmt<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::stmt::ddl::DropObjectType;
 
 		let target = match drop_stmt.object_type {
 			DropObjectType::Namespace => DropTarget::Namespace(self.bump.alloc_str(drop_stmt.name)),
 			DropObjectType::Table => {
-				let table =
-					self.resolve_table(drop_stmt.namespace, drop_stmt.name, drop_stmt.span).await?;
+				let table = self.resolve_table(drop_stmt.namespace, drop_stmt.name, drop_stmt.span)?;
 				DropTarget::Table(table)
 			}
 			DropObjectType::View => {
-				let ns = self.resolve_namespace(drop_stmt.namespace, drop_stmt.span).await?;
-				let view_def = self
-					.catalog
-					.find_view_by_name(self.tx, ns.id, drop_stmt.name)
-					.await
-					.map_err(|e| PlanError {
-						kind: PlanErrorKind::Unsupported(format!("catalog error: {}", e)),
-						span: drop_stmt.span,
-					})?
-					.ok_or_else(|| PlanError {
-						kind: PlanErrorKind::ViewNotFound(drop_stmt.name.to_string()),
-						span: drop_stmt.span,
+				let ns = self.resolve_namespace(drop_stmt.namespace, drop_stmt.span)?;
+				let view_def =
+					self.catalog.find_view_by_name(ns.id, drop_stmt.name).ok_or_else(|| {
+						PlanError {
+							kind: PlanErrorKind::ViewNotFound(drop_stmt.name.to_string()),
+							span: drop_stmt.span,
+						}
 					})?;
 
 				let columns = self.resolve_columns(&view_def.columns, drop_stmt.span);
@@ -195,12 +188,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: drop_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_alter(&mut self, alter_stmt: &AlterStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_alter(&mut self, alter_stmt: &AlterStmt<'bump>) -> Result<Plan<'bump>> {
 		use crate::ast::stmt::ddl::{AlterStmt as AstAlter, AlterTableAction as AstAction};
 
 		match alter_stmt {
 			AstAlter::Table(alt) => {
-				let table = self.resolve_table(alt.namespace, alt.name, alt.span).await?;
+				let table = self.resolve_table(alt.namespace, alt.name, alt.span)?;
 
 				let action = match &alt.action {
 					AstAction::AddColumn(col_def) => {

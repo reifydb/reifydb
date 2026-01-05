@@ -28,7 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow(id, cmd.version()) {
+				if let Some(flow) = self.materialized.find_flow_at(id, cmd.version()) {
 					return Ok(Some(flow));
 				}
 
@@ -42,7 +42,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(flow) = self.materialized.find_flow(id, qry.version()) {
+				if let Some(flow) = self.materialized.find_flow_at(id, qry.version()) {
 					return Ok(Some(flow));
 				}
 
@@ -77,7 +77,8 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_by_name(namespace, name, cmd.version())
+				if let Some(flow) =
+					self.materialized.find_flow_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(flow));
 				}
@@ -95,7 +96,8 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(flow) = self.materialized.find_flow_by_name(namespace, name, qry.version())
+				if let Some(flow) =
+					self.materialized.find_flow_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(flow));
 				}

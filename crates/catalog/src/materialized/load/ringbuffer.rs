@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use futures_util::StreamExt;
+use reifydb_core::interface::{
+	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, RingBufferDef, RingBufferId, RingBufferKey,
+};
+use reifydb_transaction::IntoStandardTransaction;
+
+use crate::{
+	MaterializedCatalog,
+	store::ringbuffer::layout::{
+		ringbuffer,
+		ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	},
+};
+
+pub(crate) async fn load_ringbuffers(
+	rx: &mut impl IntoStandardTransaction,
+	catalog: &MaterializedCatalog,
+) -> crate::Result<()> {
+	let mut txn = rx.into_standard_transaction();
+	let range = RingBufferKey::full_scan();
+	let mut stream = txn.range(range, 1024)?;
+
+	while let Some(entry) = stream.next().await {
+		let multi = entry?;
+		let version = multi.version;
+
+		let pk_id = get_ringbuffer_primary_key_id(&multi);
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
+		let ringbuffer_def = convert_ringbuffer(multi, primary_key);
+
+		catalog.set_ringbuffer(ringbuffer_def.id, version, Some(ringbuffer_def));
+	}
+
+	Ok(())
+}
+
+fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> RingBufferDef {
+	let row = multi.values;
+	let id = RingBufferId(ringbuffer::LAYOUT.get_u64(&row, ID));
+	let namespace = NamespaceId(ringbuffer::LAYOUT.get_u64(&row, NAMESPACE));
+	let name = ringbuffer::LAYOUT.get_utf8(&row, NAME).to_string();
+	let capacity = ringbuffer::LAYOUT.get_u64(&row, CAPACITY);
+
+	RingBufferDef {
+		id,
+		name,
+		namespace,
+		columns: vec![],
+		capacity,
+		primary_key,
+	}
+}
+
+fn get_ringbuffer_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
+	let pk_id_raw = ringbuffer::LAYOUT.get_u64(&multi.values, PRIMARY_KEY);
+	if pk_id_raw == 0 {
+		None
+	} else {
+		Some(PrimaryKeyId(pk_id_raw))
+	}
+}

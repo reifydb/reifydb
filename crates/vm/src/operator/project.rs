@@ -41,12 +41,20 @@ impl ProjectOp {
 	}
 
 	/// Create a project that replaces columns entirely
-	#[allow(dead_code)]
 	pub fn replace(extensions: Vec<(String, CompiledExpr)>) -> Self {
 		Self {
 			extensions,
 			keep_input: false,
 			eval_ctx: EvalContext::new(),
+		}
+	}
+
+	/// Create a project with context that replaces columns entirely
+	pub fn replace_with_context(extensions: Vec<(String, CompiledExpr)>, eval_ctx: EvalContext) -> Self {
+		Self {
+			extensions,
+			keep_input: false,
+			eval_ctx,
 		}
 	}
 

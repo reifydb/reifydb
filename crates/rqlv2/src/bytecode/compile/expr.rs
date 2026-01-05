@@ -17,43 +17,43 @@ impl PlanCompiler {
 		match expr {
 			PlanExpr::LiteralUndefined(span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Undefined);
+				let const_index = self.builder.add_constant(Constant::Undefined);
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralBool(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Bool(*value));
+				let const_index = self.builder.add_constant(Constant::Bool(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralInt(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Int(*value));
+				let const_index = self.builder.add_constant(Constant::Int(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralFloat(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Float(*value));
+				let const_index = self.builder.add_constant(Constant::Float(*value));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralString(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::String(value.to_string()));
+				let const_index = self.builder.add_constant(Constant::String(value.to_string()));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::LiteralBytes(value, span) => {
 				self.record_span(*span);
-				let const_index = self.program.add_constant(Constant::Bytes(value.to_vec()));
+				let const_index = self.builder.add_constant(Constant::Bytes(value.to_vec()));
 				self.writer.emit_opcode(Opcode::PushConst);
 				self.writer.emit_u16(const_index);
 			}
 			PlanExpr::Column(col) => {
 				self.record_span(col.span());
-				let name_index = self.program.add_constant(Constant::String(col.name().to_string()));
+				let name_index = self.builder.add_constant(Constant::String(col.name().to_string()));
 				self.writer.emit_opcode(Opcode::PushColRef);
 				self.writer.emit_u16(name_index);
 			}
@@ -165,7 +165,7 @@ impl PlanCompiler {
 				self.record_span(*span);
 				// Expand to: expr = v1 OR expr = v2 OR ...
 				if list.is_empty() {
-					let const_index = self.program.add_constant(Constant::Bool(*negated));
+					let const_index = self.builder.add_constant(Constant::Bool(*negated));
 					self.writer.emit_opcode(Opcode::PushConst);
 					self.writer.emit_u16(const_index);
 				} else {
@@ -203,7 +203,7 @@ impl PlanCompiler {
 					self.compile_expr(arg)?;
 				}
 				// Store function name in constant pool and emit call
-				let name_index = self.program.add_constant(Constant::String(function.name.to_string()));
+				let name_index = self.builder.add_constant(Constant::String(function.name.to_string()));
 				self.writer.emit_opcode(Opcode::CallBuiltin);
 				self.writer.emit_u16(name_index);
 				self.writer.emit_u8(arguments.len() as u8);
@@ -320,7 +320,7 @@ impl PlanCompiler {
 				// Compile base expression (pushes value onto stack)
 				self.compile_expr(base)?;
 				// Get field from the value on stack
-				let field_index = self.program.add_constant(Constant::String(field.to_string()));
+				let field_index = self.builder.add_constant(Constant::String(field.to_string()));
 				self.writer.emit_opcode(Opcode::GetField);
 				self.writer.emit_u16(field_index);
 			}
@@ -357,7 +357,185 @@ impl PlanCompiler {
 				alias,
 				..
 			} => alias.to_string(),
-			_ => "<expr>".to_string(),
+			_ => stringify_plan_expr(expr),
+		}
+	}
+}
+
+/// Recursively stringify a PlanExpr to create a column name.
+/// Similar to legacy `simplified_name()` function.
+fn stringify_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> String {
+	match expr {
+		// Literals
+		PlanExpr::LiteralUndefined(_) => "undefined".to_string(),
+		PlanExpr::LiteralBool(value, _) => value.to_string(),
+		PlanExpr::LiteralInt(value, _) => value.to_string(),
+		PlanExpr::LiteralFloat(value, _) => value.to_string(),
+		PlanExpr::LiteralString(value, _) => value.to_string(),
+		PlanExpr::LiteralBytes(value, _) => format!("{:?}", value),
+
+		// Identifiers
+		PlanExpr::Column(col) => col.name().to_string(),
+		PlanExpr::Variable(var) => var.name.to_string(),
+		PlanExpr::Rownum(_) => "rownum".to_string(),
+		PlanExpr::Wildcard(_) => "*".to_string(),
+
+		// Binary operators
+		PlanExpr::Binary {
+			op,
+			left,
+			right,
+			..
+		} => {
+			let left_str = stringify_plan_expr(left);
+			let right_str = stringify_plan_expr(right);
+			let op_str = match op {
+				BinaryPlanOp::Add => "+",
+				BinaryPlanOp::Sub => "-",
+				BinaryPlanOp::Mul => "*",
+				BinaryPlanOp::Div => "/",
+				BinaryPlanOp::Rem => "%",
+				BinaryPlanOp::Eq => "==",
+				BinaryPlanOp::Ne => "!=",
+				BinaryPlanOp::Lt => "<",
+				BinaryPlanOp::Le => "<=",
+				BinaryPlanOp::Gt => ">",
+				BinaryPlanOp::Ge => ">=",
+				BinaryPlanOp::And => "and",
+				BinaryPlanOp::Or => "or",
+				BinaryPlanOp::Xor => "xor",
+				BinaryPlanOp::Concat => "||",
+			};
+			format!("{}{}{}", left_str, op_str, right_str)
+		}
+
+		// Unary operators
+		PlanExpr::Unary {
+			op,
+			operand,
+			..
+		} => {
+			let operand_str = stringify_plan_expr(operand);
+			match op {
+				UnaryPlanOp::Not => format!("!{}", operand_str),
+				UnaryPlanOp::Neg => format!("-{}", operand_str),
+				UnaryPlanOp::Plus => format!("+{}", operand_str),
+			}
+		}
+
+		// Complex expressions
+		PlanExpr::Between {
+			expr,
+			low,
+			high,
+			..
+		} => {
+			format!(
+				"{} BETWEEN {} AND {}",
+				stringify_plan_expr(expr),
+				stringify_plan_expr(low),
+				stringify_plan_expr(high)
+			)
+		}
+
+		PlanExpr::In {
+			expr,
+			list,
+			..
+		} => {
+			let items = list.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("{} IN ({})", stringify_plan_expr(expr), items)
+		}
+
+		PlanExpr::Cast {
+			expr,
+			..
+		} => {
+			// For cast, just use the inner expression name
+			stringify_plan_expr(expr)
+		}
+
+		PlanExpr::Call {
+			function,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", function.name, args)
+		}
+
+		PlanExpr::Aggregate {
+			function,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", function.name, args)
+		}
+
+		PlanExpr::Conditional {
+			condition,
+			then_expr,
+			else_expr,
+			..
+		} => {
+			format!(
+				"if({},{},{})",
+				stringify_plan_expr(condition),
+				stringify_plan_expr(then_expr),
+				stringify_plan_expr(else_expr)
+			)
+		}
+
+		PlanExpr::Subquery(_) => "subquery".to_string(),
+		PlanExpr::Exists {
+			..
+		} => "exists".to_string(),
+		PlanExpr::InSubquery {
+			..
+		} => "in_subquery".to_string(),
+
+		PlanExpr::List(items, _) => {
+			let items_str =
+				items.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("[{}]", items_str)
+		}
+
+		PlanExpr::Tuple(items, _) => {
+			let items_str =
+				items.iter().map(|item| stringify_plan_expr(item)).collect::<Vec<_>>().join(",");
+			format!("({})", items_str)
+		}
+
+		PlanExpr::Record(fields, _) => {
+			let fields_str = fields
+				.iter()
+				.map(|(name, expr)| format!("{}:{}", name, stringify_plan_expr(expr)))
+				.collect::<Vec<_>>()
+				.join(",");
+			format!("{{{}}}", fields_str)
+		}
+
+		PlanExpr::Alias {
+			alias,
+			..
+		} => alias.to_string(),
+
+		PlanExpr::FieldAccess {
+			base,
+			field,
+			..
+		} => {
+			format!("{}.{}", stringify_plan_expr(base), field)
+		}
+
+		PlanExpr::CallScriptFunction {
+			name,
+			arguments,
+			..
+		} => {
+			let args = arguments.iter().map(|arg| stringify_plan_expr(arg)).collect::<Vec<_>>().join(",");
+			format!("{}({})", name, args)
 		}
 	}
 }

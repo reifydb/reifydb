@@ -34,7 +34,7 @@ impl PlanCompiler {
 			columns: node.columns.map(|cols| cols.iter().map(|c| c.name.to_string()).collect()),
 		};
 
-		let target_index = self.program.add_dml_target(target);
+		let target_index = self.builder.add_dml_target(target);
 		self.writer.emit_opcode(Opcode::InsertRow);
 		self.writer.emit_u16(target_index);
 		Ok(())
@@ -59,7 +59,7 @@ impl PlanCompiler {
 			columns: None,
 		};
 
-		let target_index = self.program.add_dml_target(target);
+		let target_index = self.builder.add_dml_target(target);
 		self.writer.emit_opcode(Opcode::UpdateRow);
 		self.writer.emit_u16(target_index);
 		Ok(())
@@ -84,7 +84,7 @@ impl PlanCompiler {
 			columns: None,
 		};
 
-		let target_index = self.program.add_dml_target(target);
+		let target_index = self.builder.add_dml_target(target);
 		self.writer.emit_opcode(Opcode::DeleteRow);
 		self.writer.emit_u16(target_index);
 		Ok(())

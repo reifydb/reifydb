@@ -41,7 +41,7 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.materialized.find_namespace(NamespaceId(namespace_id), CommitVersion(version)) {
+		match catalog.materialized.find_namespace_at(NamespaceId(namespace_id), CommitVersion(version)) {
 			Some(namespace) => {
 				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
@@ -80,7 +80,7 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.materialized.find_namespace_by_name(name, CommitVersion(version)) {
+		match catalog.materialized.find_namespace_by_name_at(name, CommitVersion(version)) {
 			Some(namespace) => {
 				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
@@ -111,7 +111,7 @@ pub(super) extern "C" fn host_catalog_find_table(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.materialized.find_table(TableId(table_id), CommitVersion(version)) {
+		match catalog.materialized.find_table_at(TableId(table_id), CommitVersion(version)) {
 			Some(table) => {
 				// Marshal to FFI
 				match marshal_table(&table) {
@@ -156,7 +156,11 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 		let catalog = flow_txn.catalog();
 
 		// Query catalog
-		match catalog.materialized.find_table_by_name(NamespaceId(namespace_id), name, CommitVersion(version)) {
+		match catalog.materialized.find_table_by_name_at(
+			NamespaceId(namespace_id),
+			name,
+			CommitVersion(version),
+		) {
 			Some(table) => {
 				// Marshal to FFI
 				match marshal_table(&table) {

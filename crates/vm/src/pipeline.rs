@@ -11,7 +11,7 @@ use crate::error::{Result, VmError};
 /// A pipeline is an async stream of batches.
 /// Each batch can be lazy (encoded) or materialized (decoded).
 /// This is the core data type that flows through all operators.
-pub type Pipeline = Pin<Box<dyn Stream<Item = Result<Batch>> + Send>>;
+pub type Pipeline = Pin<Box<dyn Stream<Item = Result<Batch>> + Send + Sync>>;
 
 /// Collect all batches from a pipeline into a single Columns.
 /// Materializes all lazy batches and merges them together.

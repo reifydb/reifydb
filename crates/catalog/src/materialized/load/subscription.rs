@@ -28,7 +28,7 @@ pub(crate) async fn load_subscriptions(
 		let version = multi.version;
 
 		let pk_id = get_subscription_primary_key_id(&multi);
-		let primary_key = pk_id.and_then(|id| catalog.find_primary_key(id, version));
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let subscription_def = convert_subscription(multi, primary_key);
 
 		catalog.set_subscription(subscription_def.id, version, Some(subscription_def));

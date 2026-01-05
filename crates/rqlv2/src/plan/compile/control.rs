@@ -4,7 +4,6 @@
 //! Control flow operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_transaction::IntoStandardTransaction;
 
 use super::core::{Planner, Result};
 use crate::{
@@ -22,8 +21,8 @@ use crate::{
 	},
 };
 
-impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
-	pub(super) async fn compile_let(&mut self, let_stmt: &LetStmt<'bump>) -> Result<Plan<'bump>> {
+impl<'bump, 'cat> Planner<'bump, 'cat> {
+	pub(super) fn compile_let(&mut self, let_stmt: &LetStmt<'bump>) -> Result<Plan<'bump>> {
 		let var_id = self.declare_variable(let_stmt.name);
 		let variable = self.bump.alloc(Variable {
 			name: self.bump.alloc_str(let_stmt.name),
@@ -35,7 +34,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			LetValue::Expr(expr) => {
 				// Check if expression is a SubQuery - treat as pipeline
 				if let Expr::SubQuery(subquery) = expr {
-					let plan = self.compile_subquery(subquery, None).await?;
+					let plan = self.compile_subquery(subquery, None)?;
 					// Store the schema for this variable
 					let schema = self.build_schema_from_plan(&plan);
 					self.store_variable_schema(var_id, schema);
@@ -47,7 +46,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				}
 			}
 			LetValue::Pipeline(stages) => {
-				let plans = self.compile_statement_body_as_pipeline(stages).await?;
+				let plans = self.compile_statement_body_as_pipeline(stages)?;
 				// Store the schema from the last plan for this variable
 				if let Some(last_plan) = plans.last() {
 					let schema = self.build_schema_from_plan(last_plan);
@@ -63,7 +62,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: let_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_assign(&mut self, assign_stmt: &AssignStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_assign(&mut self, assign_stmt: &AssignStmt<'bump>) -> Result<Plan<'bump>> {
 		let variable = self.resolve_variable(assign_stmt.name, assign_stmt.span)?;
 		let value = self.compile_expr(assign_stmt.value, None)?;
 
@@ -73,12 +72,12 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: assign_stmt.span,
 		}))
 	}
-	pub(super) async fn compile_if(&mut self, if_expr: &IfExpr<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_if(&mut self, if_expr: &IfExpr<'bump>) -> Result<Plan<'bump>> {
 		let condition = self.compile_expr(if_expr.condition, None)?;
 
 		// Compile then branch
 		self.push_scope();
-		let then_branch = self.compile_statement_body(if_expr.then_branch).await?;
+		let then_branch = self.compile_statement_body(if_expr.then_branch)?;
 		self.pop_scope();
 
 		// Compile else-if branches
@@ -86,7 +85,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		for else_if in if_expr.else_ifs {
 			let cond = self.compile_expr(else_if.condition, None)?;
 			self.push_scope();
-			let body = self.compile_statement_body(else_if.body).await?;
+			let body = self.compile_statement_body(else_if.body)?;
 			self.pop_scope();
 			else_ifs.push(PlanElseIfBranch {
 				condition: cond,
@@ -97,7 +96,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		// Compile else branch
 		let else_branch = if let Some(else_body) = if_expr.else_branch {
 			self.push_scope();
-			let body = self.compile_statement_body(else_body).await?;
+			let body = self.compile_statement_body(else_body)?;
 			self.pop_scope();
 			Some(body)
 		} else {
@@ -112,9 +111,9 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: if_expr.span,
 		}))
 	}
-	pub(super) async fn compile_loop(&mut self, loop_expr: &LoopExpr<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_loop(&mut self, loop_expr: &LoopExpr<'bump>) -> Result<Plan<'bump>> {
 		self.push_scope();
-		let body = self.compile_statement_body(loop_expr.body).await?;
+		let body = self.compile_statement_body(loop_expr.body)?;
 		self.pop_scope();
 
 		Ok(Plan::Loop(LoopNode {
@@ -122,7 +121,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: loop_expr.span,
 		}))
 	}
-	pub(super) async fn compile_for(&mut self, for_expr: &ForExpr<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_for(&mut self, for_expr: &ForExpr<'bump>) -> Result<Plan<'bump>> {
 		self.push_scope();
 
 		// Declare the loop variable
@@ -138,7 +137,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			ForIterable::Expr(expr) => {
 				// Check if expression is a SubQuery - treat as pipeline
 				if let Expr::SubQuery(subquery) = expr {
-					let plan = self.compile_subquery(subquery, None).await?;
+					let plan = self.compile_subquery(subquery, None)?;
 					// Store the schema for the loop variable
 					let schema = self.build_schema_from_plan(&plan);
 					self.store_variable_schema(var_id, schema);
@@ -146,7 +145,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 					ForIterableValue::Plan(std::slice::from_ref(self.bump.alloc(plan_ref)))
 				} else if let Expr::From(_) = expr {
 					// Single FROM expression - compile as pipeline stage
-					let plan = self.compile_pipeline_stage(expr, None).await?;
+					let plan = self.compile_pipeline_stage(expr, None)?;
 					let schema = self.build_schema_from_plan(&plan);
 					self.store_variable_schema(var_id, schema);
 					let plan_ref = self.bump.alloc(plan) as &'bump Plan<'bump>;
@@ -157,7 +156,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 				}
 			}
 			ForIterable::Pipeline(stages) => {
-				let plans = self.compile_statement_body_as_pipeline(stages).await?;
+				let plans = self.compile_statement_body_as_pipeline(stages)?;
 				// Store the schema from the last plan for the loop variable
 				if let Some(last_plan) = plans.last() {
 					let schema = self.build_schema_from_plan(last_plan);
@@ -168,7 +167,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		};
 
 		// Compile the body
-		let body = self.compile_statement_body(for_expr.body).await?;
+		let body = self.compile_statement_body(for_expr.body)?;
 
 		self.pop_scope();
 
@@ -179,7 +178,7 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 			span: for_expr.span,
 		}))
 	}
-	pub(super) async fn compile_return(&mut self, return_stmt: &ReturnStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_return(&mut self, return_stmt: &ReturnStmt<'bump>) -> Result<Plan<'bump>> {
 		let value = if let Some(expr) = return_stmt.value {
 			Some(self.compile_expr(expr, None)?)
 		} else {
@@ -192,14 +191,14 @@ impl<'bump, 'cat, T: IntoStandardTransaction> Planner<'bump, 'cat, T> {
 		}))
 	}
 
-	pub(super) async fn compile_def(&mut self, def_stmt: &DefStmt<'bump>) -> Result<Plan<'bump>> {
+	pub(super) fn compile_def(&mut self, def_stmt: &DefStmt<'bump>) -> Result<Plan<'bump>> {
 		// Register the script function name
 		let name = self.bump.alloc_str(def_stmt.name);
 		self.script_functions.push(name);
 
 		// Compile the function body
 		self.push_scope();
-		let body = self.compile_statement_body(def_stmt.body).await?;
+		let body = self.compile_statement_body(def_stmt.body)?;
 		self.pop_scope();
 
 		Ok(Plan::DefineScriptFunction(DefineScriptFunctionNode {

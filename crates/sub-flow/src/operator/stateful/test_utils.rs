@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 pub mod test {
+	use reifydb_catalog::Catalog;
 	pub use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
 		EncodedKey,
@@ -43,7 +44,7 @@ pub mod test {
 			cdc,
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),
-			MaterializedCatalog::new(),
+			Catalog::default(),
 			None,
 			IocContainer::new(),
 		)

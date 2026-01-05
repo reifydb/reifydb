@@ -75,7 +75,7 @@ impl UserVTableColumnDef {
 ///
 /// Implementations must be thread-safe (`Send + Sync`) as the same table instance
 /// may be queried concurrently from multiple transactions.
-pub trait UserVTable: Send + Sync + 'static {
+pub trait UserVTable: Clone + Send + Sync + 'static {
 	/// Return the column definitions for this table.
 	fn definition(&self) -> Vec<UserVTableColumnDef>;
 
