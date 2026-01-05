@@ -11,7 +11,7 @@ use std::{
 
 use Key::Row;
 use async_trait::async_trait;
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::Catalog;
 use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	EncodedKey, Result,
@@ -625,7 +625,7 @@ async fn create_test_engine() -> Result<StandardEngine> {
 		cdc,
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
-		MaterializedCatalog::new(),
+		Catalog::default(),
 		None,
 		IocContainer::new(),
 	)

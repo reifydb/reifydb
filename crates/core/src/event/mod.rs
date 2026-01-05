@@ -10,7 +10,6 @@ use std::{
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-pub mod catalog;
 pub mod flow;
 pub mod lifecycle;
 pub mod transaction;

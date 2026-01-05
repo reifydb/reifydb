@@ -27,7 +27,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary(id, cmd.version()) {
+				if let Some(dict) = self.materialized.find_dictionary_at(id, cmd.version()) {
 					return Ok(Some(dict));
 				}
 
@@ -44,7 +44,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(dict) = self.materialized.find_dictionary(id, qry.version()) {
+				if let Some(dict) = self.materialized.find_dictionary_at(id, qry.version()) {
 					return Ok(Some(dict));
 				}
 
@@ -85,7 +85,7 @@ impl Catalog {
 
 				// 3. Check MaterializedCatalog
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name(namespace, name, cmd.version())
+					self.materialized.find_dictionary_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(dict));
 				}
@@ -104,7 +104,7 @@ impl Catalog {
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name(namespace, name, qry.version())
+					self.materialized.find_dictionary_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(dict));
 				}

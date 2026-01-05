@@ -7,7 +7,7 @@ use crate::materialized::{MaterializedCatalog, MultiVersionRetentionPolicy};
 
 impl MaterializedCatalog {
 	/// Find a retention policy for an operator at a specific version
-	pub fn find_operator_retention_policy(
+	pub fn find_operator_retention_policy_at(
 		&self,
 		operator: FlowNodeId,
 		version: CommitVersion,
@@ -15,6 +15,14 @@ impl MaterializedCatalog {
 		self.operator_retention_policies.get(&operator).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
+		})
+	}
+
+	/// Find a retention policy for an operator (returns latest version)
+	pub fn find_operator_retention_policy(&self, operator: FlowNodeId) -> Option<RetentionPolicy> {
+		self.operator_retention_policies.get(&operator).and_then(|entry| {
+			let multi = entry.value();
+			multi.get_latest()
 		})
 	}
 
@@ -55,15 +63,15 @@ mod tests {
 		catalog.set_operator_retention_policy(operator, CommitVersion(1), Some(policy.clone()));
 
 		// Find policy at version 1
-		let found = catalog.find_operator_retention_policy(operator, CommitVersion(1));
+		let found = catalog.find_operator_retention_policy_at(operator, CommitVersion(1));
 		assert_eq!(found, Some(policy.clone()));
 
 		// Find policy at later version (should return same policy)
-		let found = catalog.find_operator_retention_policy(operator, CommitVersion(5));
+		let found = catalog.find_operator_retention_policy_at(operator, CommitVersion(5));
 		assert_eq!(found, Some(policy));
 
 		// Policy shouldn't exist at version 0
-		let found = catalog.find_operator_retention_policy(operator, CommitVersion(0));
+		let found = catalog.find_operator_retention_policy_at(operator, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -77,7 +85,10 @@ mod tests {
 		catalog.set_operator_retention_policy(operator, CommitVersion(1), Some(policy_v1.clone()));
 
 		// Verify initial state
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(1)), Some(policy_v1.clone()));
+		assert_eq!(
+			catalog.find_operator_retention_policy_at(operator, CommitVersion(1)),
+			Some(policy_v1.clone())
+		);
 
 		// Update policy
 		let policy_v2 = RetentionPolicy::KeepVersions {
@@ -87,11 +98,14 @@ mod tests {
 		catalog.set_operator_retention_policy(operator, CommitVersion(2), Some(policy_v2.clone()));
 
 		// Historical query at version 1 should still show old policy
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(1)), Some(policy_v1));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(1)), Some(policy_v1));
 
 		// Current version should show new policy
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(2)), Some(policy_v2.clone()));
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(10)), Some(policy_v2));
+		assert_eq!(
+			catalog.find_operator_retention_policy_at(operator, CommitVersion(2)),
+			Some(policy_v2.clone())
+		);
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(10)), Some(policy_v2));
 	}
 
 	#[test]
@@ -107,16 +121,16 @@ mod tests {
 		catalog.set_operator_retention_policy(operator, CommitVersion(1), Some(policy.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(1)), Some(policy.clone()));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(1)), Some(policy.clone()));
 
 		// Delete the policy
 		catalog.set_operator_retention_policy(operator, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(2)), None);
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(2)), None);
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(1)), Some(policy));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(1)), Some(policy));
 	}
 
 	#[test]
@@ -141,21 +155,21 @@ mod tests {
 		catalog.set_operator_retention_policy(operator, CommitVersion(30), Some(policy_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(5)), None);
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(5)), None);
 		assert_eq!(
-			catalog.find_operator_retention_policy(operator, CommitVersion(10)),
+			catalog.find_operator_retention_policy_at(operator, CommitVersion(10)),
 			Some(policy_v1.clone())
 		);
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(15)), Some(policy_v1));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(15)), Some(policy_v1));
 		assert_eq!(
-			catalog.find_operator_retention_policy(operator, CommitVersion(20)),
+			catalog.find_operator_retention_policy_at(operator, CommitVersion(20)),
 			Some(policy_v2.clone())
 		);
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(25)), Some(policy_v2));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(25)), Some(policy_v2));
 		assert_eq!(
-			catalog.find_operator_retention_policy(operator, CommitVersion(30)),
+			catalog.find_operator_retention_policy_at(operator, CommitVersion(30)),
 			Some(policy_v3.clone())
 		);
-		assert_eq!(catalog.find_operator_retention_policy(operator, CommitVersion(100)), Some(policy_v3));
+		assert_eq!(catalog.find_operator_retention_policy_at(operator, CommitVersion(100)), Some(policy_v3));
 	}
 }

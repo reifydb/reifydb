@@ -22,8 +22,7 @@ use reifydb_core::{
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
 };
-
-use crate::system::SystemCatalog;
+use reifydb_type::diagnostic::catalog::virtual_table_already_exists;
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -45,47 +44,32 @@ pub struct MaterializedCatalogInner {
 	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespaceDef>,
 	/// Index from namespace name to namespace ID for fast name lookups
 	pub(crate) namespaces_by_name: SkipMap<String, NamespaceId>,
-
 	/// MultiVersion table definitions indexed by table ID
 	pub(crate) tables: SkipMap<TableId, MultiVersionTableDef>,
-	/// Index from (namespace_id, table_name) to table ID for fast name
-	/// lookups
+	/// Index from (namespace_id, table_name) to table ID for fast name lookups
 	pub(crate) tables_by_name: SkipMap<(NamespaceId, String), TableId>,
-
 	/// MultiVersion view definitions indexed by view ID
 	pub(crate) views: SkipMap<ViewId, MultiVersionViewDef>,
-	/// Index from (namespace_id, view_name) to view ID for fast name
-	/// lookups
+	/// Index from (namespace_id, view_name) to view ID for fast name lookups
 	pub(crate) views_by_name: SkipMap<(NamespaceId, String), ViewId>,
-
 	/// MultiVersion flow definitions indexed by flow ID
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
-	/// Index from (namespace_id, flow_name) to flow ID for fast name
-	/// lookups
+	/// Index from (namespace_id, flow_name) to flow ID for fast name lookups
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
-
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
-
 	/// MultiVersion source retention policies indexed by source ID
 	pub(crate) source_retention_policies: SkipMap<PrimitiveId, MultiVersionRetentionPolicy>,
-
 	/// MultiVersion operator retention policies indexed by operator ID
 	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
-
 	/// MultiVersion dictionary definitions indexed by dictionary ID
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
-
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
 	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
-
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
-
-	/// System catalog with version information (None until initialized)
-	pub(crate) system_catalog: Option<SystemCatalog>,
 }
 
 impl std::ops::Deref for MaterializedCatalog {
@@ -131,23 +115,7 @@ impl MaterializedCatalog {
 			dictionaries_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
-			system_catalog: None,
 		}))
-	}
-
-	/// Set the system catalog (called once during database initialization)
-	pub fn set_system_catalog(&self, catalog: SystemCatalog) {
-		// Use unsafe to mutate through Arc (safe because only called
-		// once during init)
-		unsafe {
-			let inner = Arc::as_ptr(&self.0) as *mut MaterializedCatalogInner;
-			(*inner).system_catalog = Some(catalog);
-		}
-	}
-
-	/// Get the system catalog
-	pub fn system_catalog(&self) -> Option<&SystemCatalog> {
-		self.0.system_catalog.as_ref()
 	}
 
 	/// Register a user-defined virtual table
@@ -164,9 +132,7 @@ impl MaterializedCatalog {
 				.get(&def.namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", def.namespace.0));
-			return Err(reifydb_type::Error(
-				reifydb_type::diagnostic::catalog::virtual_table_already_exists(&ns_name, &def.name),
-			));
+			return Err(reifydb_type::Error(virtual_table_already_exists(&ns_name, &def.name)));
 		}
 
 		self.vtable_user.insert(def.id, def.clone());

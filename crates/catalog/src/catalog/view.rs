@@ -28,7 +28,7 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view(id, cmd.version()) {
+				if let Some(view) = self.materialized.find_view_at(id, cmd.version()) {
 					return Ok(Some(view));
 				}
 
@@ -42,7 +42,7 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(view) = self.materialized.find_view(id, qry.version()) {
+				if let Some(view) = self.materialized.find_view_at(id, qry.version()) {
 					return Ok(Some(view));
 				}
 
@@ -77,7 +77,8 @@ impl Catalog {
 				}
 
 				// 3. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_by_name(namespace, name, cmd.version())
+				if let Some(view) =
+					self.materialized.find_view_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(view));
 				}
@@ -95,7 +96,8 @@ impl Catalog {
 			}
 			StandardTransaction::Query(qry) => {
 				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(view) = self.materialized.find_view_by_name(namespace, name, qry.version())
+				if let Some(view) =
+					self.materialized.find_view_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(view));
 				}

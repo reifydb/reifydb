@@ -10,10 +10,22 @@ use crate::materialized::{MaterializedCatalog, MultiVersionPrimaryKeyDef};
 
 impl MaterializedCatalog {
 	/// Find a primary key by ID at a specific version
-	pub fn find_primary_key(&self, primary_key_id: PrimaryKeyId, version: CommitVersion) -> Option<PrimaryKeyDef> {
+	pub fn find_primary_key_at(
+		&self,
+		primary_key_id: PrimaryKeyId,
+		version: CommitVersion,
+	) -> Option<PrimaryKeyDef> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
+		})
+	}
+
+	/// Find a primary key by ID (returns latest version)
+	pub fn find_primary_key(&self, primary_key_id: PrimaryKeyId) -> Option<PrimaryKeyDef> {
+		self.primary_keys.get(&primary_key_id).and_then(|entry| {
+			let multi = entry.value();
+			multi.get_latest()
 		})
 	}
 
@@ -62,16 +74,16 @@ mod tests {
 		catalog.set_primary_key(pk_id, CommitVersion(1), Some(primary_key.clone()));
 
 		// Find primary key at version 1
-		let found = catalog.find_primary_key(pk_id, CommitVersion(1));
+		let found = catalog.find_primary_key_at(pk_id, CommitVersion(1));
 		assert_eq!(found, Some(primary_key.clone()));
 
 		// Find primary key at later version (should return same primary
 		// key)
-		let found = catalog.find_primary_key(pk_id, CommitVersion(5));
+		let found = catalog.find_primary_key_at(pk_id, CommitVersion(5));
 		assert_eq!(found, Some(primary_key));
 
 		// Primary key shouldn't exist at version 0
-		let found = catalog.find_primary_key(pk_id, CommitVersion(0));
+		let found = catalog.find_primary_key_at(pk_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -98,10 +110,10 @@ mod tests {
 		catalog.set_primary_key(pk_id, CommitVersion(2), Some(pk_v2.clone()));
 
 		// Version 1 should have one column
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(1)).unwrap().columns.len(), 1);
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(1)).unwrap().columns.len(), 1);
 
 		// Version 2 should have two columns
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(2)).unwrap().columns.len(), 2);
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(2)).unwrap().columns.len(), 2);
 	}
 
 	#[test]
@@ -114,16 +126,16 @@ mod tests {
 		catalog.set_primary_key(pk_id, CommitVersion(1), Some(primary_key.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(1)), Some(primary_key.clone()));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(1)), Some(primary_key.clone()));
 
 		// Delete the primary key
 		catalog.set_primary_key(pk_id, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(2)), None);
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(2)), None);
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(1)), Some(primary_key));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(1)), Some(primary_key));
 	}
 
 	#[test]
@@ -144,12 +156,12 @@ mod tests {
 		catalog.set_primary_key(pk_id, CommitVersion(30), Some(pk_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(5)), None);
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(10)), Some(pk_v1.clone()));
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(15)), Some(pk_v1));
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(20)), Some(pk_v2.clone()));
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(25)), Some(pk_v2));
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(30)), Some(pk_v3.clone()));
-		assert_eq!(catalog.find_primary_key(pk_id, CommitVersion(100)), Some(pk_v3));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(5)), None);
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(10)), Some(pk_v1.clone()));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(15)), Some(pk_v1));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(20)), Some(pk_v2.clone()));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(25)), Some(pk_v2));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(30)), Some(pk_v3.clone()));
+		assert_eq!(catalog.find_primary_key_at(pk_id, CommitVersion(100)), Some(pk_v3));
 	}
 }
