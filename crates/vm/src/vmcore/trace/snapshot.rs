@@ -3,17 +3,16 @@
 
 //! State snapshot conversion from live VM state.
 
+use reifydb_rqlv2::bytecode::OperatorKind;
+
 use super::entry::{
 	CallFrameSnapshot, ColumnSnapshot, DispatchResultSnapshot, FrameSnapshot, OperandSnapshot, OperatorSnapshot,
 	RecordSnapshot, ScopeSnapshot, StateSnapshot,
 };
-use crate::{
-	bytecode::OperatorKind,
-	vmcore::{
-		call_stack::CallFrame,
-		interpreter::DispatchResult,
-		state::{OperandValue, Record, VmState},
-	},
+use crate::vmcore::{
+	call_stack::CallFrame,
+	interpreter::DispatchResult,
+	state::{OperandValue, Record, VmState},
 };
 
 /// Create a state snapshot from the current VM state.
@@ -132,6 +131,12 @@ pub fn snapshot_operator(kind: OperatorKind) -> OperatorSnapshot {
 		OperatorKind::Extend => OperatorSnapshot::Extend,
 		OperatorKind::Take => OperatorSnapshot::Take,
 		OperatorKind::Sort => OperatorSnapshot::Sort,
+		OperatorKind::Map => unimplemented!(),
+		OperatorKind::Distinct => unimplemented!(),
+		OperatorKind::Aggregate => unimplemented!(),
+		OperatorKind::JoinInner => unimplemented!(),
+		OperatorKind::JoinLeft => unimplemented!(),
+		OperatorKind::JoinNatural => unimplemented!(),
 	}
 }
 

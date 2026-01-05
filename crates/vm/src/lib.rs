@@ -27,25 +27,14 @@
 //!     .await?;
 //! ```
 
-// pub mod builder; // TODO: Update to use RQLv2 expressions
-pub mod bytecode;
-// pub mod compile; // TODO: Update to use RQLv2 expressions
-// pub mod dsl; // TODO: Replace with RQLv2 wrapper
 pub mod error;
-pub mod rql;
-// pub mod expr; // TODO: Remove - using RQLv2 expressions instead
 pub mod operator;
 pub mod pipeline;
+pub mod rql;
 pub mod vmcore;
 
 // Re-exports for convenience
-// pub use builder::PipelineBuilder; // TODO: Update for RQLv2
-// RQLv2 bytecode types (canonical bytecode format)
-// pub use compile::BytecodeCompiler; // TODO: Update for RQLv2
-// pub use dsl::{DslError, SourceRegistry, compile_script, execute_script, execute_script_memory, parse_pipeline};
-// // TODO: Replace with RQLv2
 pub use error::{Result, VmError};
-// pub use expr::{ColumnSchema, Expr, ExprBuilder, col, lit}; // TODO: Remove - using RQLv2 expressions
 pub use operator::{ScanInlineOp, ScanTableOp};
 pub use pipeline::{Pipeline, collect, empty, from_batches, from_columns, from_result};
 pub use reifydb_rqlv2::bytecode::{
