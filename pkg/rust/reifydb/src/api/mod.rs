@@ -15,7 +15,7 @@ pub mod server;
 /// Convenience function to create in-memory storage
 pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = HotStorage::memory().await;
+	let storage = HotStorage::memory();
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(HotConfig {
 			storage,
@@ -34,7 +34,7 @@ pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, E
 /// Convenience function to create SQLite storage
 pub async fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = HotStorage::sqlite(config).await;
+	let storage = HotStorage::sqlite(config);
 	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(HotConfig {
 			storage,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues,
 	value::encoded::EncodedValues,
@@ -48,31 +47,31 @@ impl SingleVersionBatch {
 }
 
 /// Trait for committing deltas to single-version storage.
-#[async_trait]
+
 pub trait SingleVersionCommit: Send + Sync {
 	/// Commit a batch of deltas.
-	async fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()>;
+	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()>;
 }
 
 /// Trait for getting values from single-version storage.
-#[async_trait]
+
 pub trait SingleVersionGet: Send + Sync {
 	/// Get the value for a key.
-	async fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
+	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 }
 
 /// Trait for checking key existence in single-version storage.
-#[async_trait]
+
 pub trait SingleVersionContains: Send + Sync {
 	/// Check if a key exists.
-	async fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
+	fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
 /// Trait for setting values in single-version storage.
-#[async_trait]
+
 pub trait SingleVersionSet: SingleVersionCommit {
 	/// Set a value for a key.
-	async fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
@@ -80,55 +79,53 @@ pub trait SingleVersionSet: SingleVersionCommit {
 				values: values.clone(),
 			}]),
 		)
-		.await
 	}
 }
 
 /// Trait for removing values from single-version storage.
-#[async_trait]
+
 pub trait SingleVersionRemove: SingleVersionCommit {
 	/// Remove a key.
-	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Remove {
 				key: key.clone(),
 			}]),
 		)
-		.await
 	}
 }
 
 /// Trait for forward range queries with batch-fetch pattern.
-#[async_trait]
+
 pub trait SingleVersionRange: Send + Sync {
 	/// Fetch a batch of values in key order (ascending).
-	async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch>;
+	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch>;
 
 	/// Convenience method with default batch size.
-	async fn range(&self, range: EncodedKeyRange) -> crate::Result<SingleVersionBatch> {
-		self.range_batch(range, 1024).await
+	fn range(&self, range: EncodedKeyRange) -> crate::Result<SingleVersionBatch> {
+		self.range_batch(range, 1024)
 	}
 
 	/// Range query with prefix.
-	async fn prefix(&self, prefix: &EncodedKey) -> crate::Result<SingleVersionBatch> {
-		self.range(EncodedKeyRange::prefix(prefix)).await
+	fn prefix(&self, prefix: &EncodedKey) -> crate::Result<SingleVersionBatch> {
+		self.range(EncodedKeyRange::prefix(prefix))
 	}
 }
 
 /// Trait for reverse range queries with batch-fetch pattern.
-#[async_trait]
+
 pub trait SingleVersionRangeRev: Send + Sync {
 	/// Fetch a batch of values in reverse key order (descending).
-	async fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch>;
+	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch>;
 
 	/// Convenience method with default batch size.
-	async fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<SingleVersionBatch> {
-		self.range_rev_batch(range, 1024).await
+	fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<SingleVersionBatch> {
+		self.range_rev_batch(range, 1024)
 	}
 
 	/// Reverse range query with prefix.
-	async fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<SingleVersionBatch> {
-		self.range_rev(EncodedKeyRange::prefix(prefix)).await
+	fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<SingleVersionBatch> {
+		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

@@ -8,7 +8,6 @@ mod layout;
 
 use std::collections::Bound;
 
-use async_trait::async_trait;
 use exclude::should_exclude_from_cdc;
 pub(crate) use reifydb_core::delta::Delta;
 use reifydb_core::{CommitVersion, EncodedKey, interface::Cdc, key::Key};
@@ -40,15 +39,13 @@ impl CdcBatch {
 	}
 }
 
-#[async_trait]
 pub trait CdcGet: Send + Sync {
-	async fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>>;
+	fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>>;
 }
 
-#[async_trait]
 pub trait CdcRange: Send + Sync {
 	/// Fetch a batch of CDC entries in version order (ascending).
-	async fn range_batch(
+	fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
@@ -56,23 +53,18 @@ pub trait CdcRange: Send + Sync {
 	) -> reifydb_type::Result<CdcBatch>;
 
 	/// Convenience method with default batch size.
-	async fn range(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-	) -> reifydb_type::Result<CdcBatch> {
-		self.range_batch(start, end, 1024).await
+	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> reifydb_type::Result<CdcBatch> {
+		self.range_batch(start, end, 1024)
 	}
 
 	/// Scan all CDC entries.
-	async fn scan(&self, batch_size: u64) -> reifydb_type::Result<CdcBatch> {
-		self.range_batch(Bound::Unbounded, Bound::Unbounded, batch_size).await
+	fn scan(&self, batch_size: u64) -> reifydb_type::Result<CdcBatch> {
+		self.range_batch(Bound::Unbounded, Bound::Unbounded, batch_size)
 	}
 }
 
-#[async_trait]
 pub trait CdcCount: Send + Sync {
-	async fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize>;
+	fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize>;
 }
 
 /// Internal representation of CDC change with version references

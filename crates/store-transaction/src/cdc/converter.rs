@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CowVec, Result,
 	interface::{Cdc, CdcChange, CdcSequencedChange},
@@ -15,16 +14,16 @@ use crate::{
 };
 
 /// Trait for converting internal CDC representation to public CDC by resolving values
-#[async_trait]
+
 pub trait CdcConverter {
 	/// Convert an internal CDC (with version references) to a public CDC (with resolved values)
-	async fn convert(&self, internal: InternalCdc) -> Result<Cdc>;
+	fn convert(&self, internal: InternalCdc) -> Result<Cdc>;
 }
 
 /// Implementation for StandardTransactionStore which uses MultiVersionGet
-#[async_trait]
+
 impl CdcConverter for StandardTransactionStore {
-	async fn convert(&self, internal: InternalCdc) -> Result<Cdc> {
+	fn convert(&self, internal: InternalCdc) -> Result<Cdc> {
 		let mut changes = Vec::with_capacity(internal.changes.len());
 
 		for internal_change in internal.changes {
@@ -34,7 +33,7 @@ impl CdcConverter for StandardTransactionStore {
 					post_version,
 				} => {
 					// Fetch the post value at the given version
-					let post = match MultiVersionGet::get(self, key, *post_version).await? {
+					let post = match MultiVersionGet::get(self, key, *post_version)? {
 						Some(mv) => mv.values,
 						None => EncodedValues(CowVec::new(vec![])),
 					};
@@ -49,12 +48,12 @@ impl CdcConverter for StandardTransactionStore {
 					post_version,
 				} => {
 					// Fetch both pre and post values
-					let pre = match MultiVersionGet::get(self, key, *pre_version).await? {
+					let pre = match MultiVersionGet::get(self, key, *pre_version)? {
 						Some(mv) => mv.values,
 						None => EncodedValues(CowVec::new(vec![])),
 					};
 
-					let post = match MultiVersionGet::get(self, key, *post_version).await? {
+					let post = match MultiVersionGet::get(self, key, *post_version)? {
 						Some(mv) => mv.values,
 						None => EncodedValues(CowVec::new(vec![])),
 					};
@@ -70,9 +69,7 @@ impl CdcConverter for StandardTransactionStore {
 					pre_version,
 				} => {
 					// Fetch the pre value
-					let pre = MultiVersionGet::get(self, key, *pre_version)
-						.await?
-						.map(|mv| mv.values);
+					let pre = MultiVersionGet::get(self, key, *pre_version)?.map(|mv| mv.values);
 					CdcChange::Delete {
 						key: key.clone(),
 						pre,

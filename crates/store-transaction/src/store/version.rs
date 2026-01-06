@@ -153,7 +153,7 @@ pub enum VersionedGetResult {
 }
 
 /// Get the latest version of a key at or before the given version.
-pub async fn get_at_version<S: TierStorage>(
+pub fn get_at_version<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
 	key: &[u8],
@@ -166,9 +166,13 @@ pub async fn get_at_version<S: TierStorage>(
 
 	// Forward scan finds newest version first (just need 1 entry)
 	let mut cursor = RangeCursor::new();
-	let batch = storage
-		.range_next(table, &mut cursor, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)
-		.await?;
+	let batch = storage.range_next(
+		table,
+		&mut cursor,
+		Bound::Included(start.as_slice()),
+		Bound::Included(end.as_slice()),
+		1,
+	)?;
 
 	if let Some(entry) = batch.entries.first() {
 		// Verify this entry is for our key
@@ -189,20 +193,20 @@ pub async fn get_at_version<S: TierStorage>(
 	Ok(VersionedGetResult::NotFound)
 }
 
-/// Async version of get_latest_version - get the latest version number for a key (if any exists).
+///  version of get_latest_version - get the latest version number for a key (if any exists).
 #[allow(dead_code)]
-pub async fn get_latest_version<S: TierStorage>(
-	storage: &S,
-	table: EntryKind,
-	key: &[u8],
-) -> Result<Option<CommitVersion>> {
+pub fn get_latest_version<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Result<Option<CommitVersion>> {
 	let (start, end) = key_version_range(key);
 
 	// Forward scan finds newest version first (just need 1 entry)
 	let mut cursor = RangeCursor::new();
-	let batch = storage
-		.range_next(table, &mut cursor, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)
-		.await?;
+	let batch = storage.range_next(
+		table,
+		&mut cursor,
+		Bound::Included(start.as_slice()),
+		Bound::Included(end.as_slice()),
+		1,
+	)?;
 
 	if let Some(entry) = batch.entries.first() {
 		if let Some(entry_key) = extract_key(&entry.key) {

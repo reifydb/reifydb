@@ -19,14 +19,12 @@ mod single;
 pub mod stats;
 mod store;
 
-use std::{collections::Bound, pin::Pin};
+use std::collections::Bound;
 
-use async_trait::async_trait;
 pub use cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, CdcStore};
 pub use config::{
 	ColdConfig, HotConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig, WarmConfig,
 };
-use futures_util::Stream;
 pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
@@ -71,8 +69,8 @@ impl TransactionStore {
 }
 
 impl TransactionStore {
-	pub async fn testing_memory() -> Self {
-		TransactionStore::Standard(StandardTransactionStore::testing_memory().await)
+	pub fn testing_memory() -> Self {
+		TransactionStore::Standard(StandardTransactionStore::testing_memory())
 	}
 
 	/// Get access to the storage tracker.
@@ -84,90 +82,87 @@ impl TransactionStore {
 }
 
 // MultiVersion trait implementations
-#[async_trait]
+
 impl MultiVersionGet for TransactionStore {
 	#[inline]
-	async fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionGet::get(store, key, version).await,
+			TransactionStore::Standard(store) => MultiVersionGet::get(store, key, version),
 		}
 	}
 }
 
-#[async_trait]
 impl MultiVersionContains for TransactionStore {
 	#[inline]
-	async fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionContains::contains(store, key, version).await,
+			TransactionStore::Standard(store) => MultiVersionContains::contains(store, key, version),
 		}
 	}
 }
 
-#[async_trait]
 impl MultiVersionCommit for TransactionStore {
 	#[inline]
-	async fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
-			TransactionStore::Standard(store) => store.commit(deltas, version).await,
+			TransactionStore::Standard(store) => store.commit(deltas, version),
 		}
 	}
 }
 
-/// Stream type for multi-version range results.
-pub type MultiVersionRangeStream<'a> = Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + 'a>>;
+/// Iterator type for multi-version range results.
+pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + 'a>;
 
 impl TransactionStore {
-	/// Create a streaming iterator for forward range queries.
+	/// Create an iterator for forward range queries.
 	///
 	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
+	/// unique logical keys are collected. The iterator yields individual entries
 	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
-	) -> MultiVersionRangeStream<'_> {
+	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			TransactionStore::Standard(store) => Box::pin(store.range(range, version, batch_size)),
+			TransactionStore::Standard(store) => Box::new(store.range(range, version, batch_size)),
 		}
 	}
 
-	/// Create a streaming iterator for reverse range queries.
+	/// Create an iterator for reverse range queries.
 	///
 	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
+	/// unique logical keys are collected. The iterator yields individual entries
 	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
-	) -> MultiVersionRangeStream<'_> {
+	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			TransactionStore::Standard(store) => Box::pin(store.range_rev(range, version, batch_size)),
+			TransactionStore::Standard(store) => Box::new(store.range_rev(range, version, batch_size)),
 		}
 	}
 }
 
 // SingleVersion trait implementations
-#[async_trait]
+
 impl SingleVersionGet for TransactionStore {
 	#[inline]
-	async fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		match self {
-			TransactionStore::Standard(store) => SingleVersionGet::get(store, key).await,
+			TransactionStore::Standard(store) => SingleVersionGet::get(store, key),
 		}
 	}
 }
 
-#[async_trait]
 impl SingleVersionContains for TransactionStore {
 	#[inline]
-	async fn contains(&self, key: &EncodedKey) -> Result<bool> {
+	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		match self {
-			TransactionStore::Standard(store) => SingleVersionContains::contains(store, key).await,
+			TransactionStore::Standard(store) => SingleVersionContains::contains(store, key),
 		}
 	}
 }
@@ -176,72 +171,65 @@ impl SingleVersionSet for TransactionStore {}
 
 impl SingleVersionRemove for TransactionStore {}
 
-#[async_trait]
 impl SingleVersionCommit for TransactionStore {
 	#[inline]
-	async fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
+	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		match self {
-			TransactionStore::Standard(store) => SingleVersionCommit::commit(store, deltas).await,
+			TransactionStore::Standard(store) => SingleVersionCommit::commit(store, deltas),
 		}
 	}
 }
 
-#[async_trait]
 impl SingleVersionRange for TransactionStore {
 	#[inline]
-	async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
+	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		match self {
-			TransactionStore::Standard(store) => {
-				SingleVersionRange::range_batch(store, range, batch_size).await
-			}
+			TransactionStore::Standard(store) => SingleVersionRange::range_batch(store, range, batch_size),
 		}
 	}
 }
 
-#[async_trait]
 impl SingleVersionRangeRev for TransactionStore {
 	#[inline]
-	async fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
+	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		match self {
 			TransactionStore::Standard(store) => {
-				SingleVersionRangeRev::range_rev_batch(store, range, batch_size).await
+				SingleVersionRangeRev::range_rev_batch(store, range, batch_size)
 			}
 		}
 	}
 }
 
 // CDC trait implementations
-#[async_trait]
+
 impl CdcGet for TransactionStore {
 	#[inline]
-	async fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
+	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		match self {
-			TransactionStore::Standard(store) => CdcGet::get(store, version).await,
+			TransactionStore::Standard(store) => CdcGet::get(store, version),
 		}
 	}
 }
 
-#[async_trait]
 impl CdcRange for TransactionStore {
 	#[inline]
-	async fn range_batch(
+	fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> Result<CdcBatch> {
 		match self {
-			TransactionStore::Standard(store) => CdcRange::range_batch(store, start, end, batch_size).await,
+			TransactionStore::Standard(store) => CdcRange::range_batch(store, start, end, batch_size),
 		}
 	}
 }
 
-#[async_trait]
 impl CdcCount for TransactionStore {
 	#[inline]
-	async fn count(&self, version: CommitVersion) -> Result<usize> {
+	fn count(&self, version: CommitVersion) -> Result<usize> {
 		match self {
-			TransactionStore::Standard(store) => CdcCount::count(store, version).await,
+			TransactionStore::Standard(store) => CdcCount::count(store, version),
 		}
 	}
 }

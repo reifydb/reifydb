@@ -3,9 +3,9 @@
 
 mod config;
 mod connection;
+mod entry;
 mod query;
 mod storage;
-mod tables;
 
 pub use config::*;
 pub use storage::SqlitePrimitiveStorage;

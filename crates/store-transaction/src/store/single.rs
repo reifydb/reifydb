@@ -6,7 +6,6 @@ use std::{
 	ops::Bound,
 };
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues,
 	value::encoded::EncodedValues,
@@ -21,16 +20,15 @@ use crate::{
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
 
-#[async_trait]
 impl SingleVersionGet for StandardTransactionStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	async fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		// Single-version storage uses TableId::Single for all keys
 		let table = EntryKind::Single;
 
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			if let Some(value) = hot.get(table, key.as_ref()).await? {
+			if let Some(value) = hot.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -40,7 +38,7 @@ impl SingleVersionGet for StandardTransactionStore {
 
 		// Try warm tier
 		if let Some(warm) = &self.warm {
-			if let Some(value) = warm.get(table, key.as_ref()).await? {
+			if let Some(value) = warm.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -50,7 +48,7 @@ impl SingleVersionGet for StandardTransactionStore {
 
 		// Try cold tier
 		if let Some(cold) = &self.cold {
-			if let Some(value) = cold.get(table, key.as_ref()).await? {
+			if let Some(value) = cold.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -62,26 +60,25 @@ impl SingleVersionGet for StandardTransactionStore {
 	}
 }
 
-#[async_trait]
 impl SingleVersionContains for StandardTransactionStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
-	async fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
+	fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
 		let table = EntryKind::Single;
 
 		if let Some(hot) = &self.hot {
-			if hot.contains(table, key.as_ref()).await? {
+			if hot.contains(table, key.as_ref())? {
 				return Ok(true);
 			}
 		}
 
 		if let Some(warm) = &self.warm {
-			if warm.contains(table, key.as_ref()).await? {
+			if warm.contains(table, key.as_ref())? {
 				return Ok(true);
 			}
 		}
 
 		if let Some(cold) = &self.cold {
-			if cold.contains(table, key.as_ref()).await? {
+			if cold.contains(table, key.as_ref())? {
 				return Ok(true);
 			}
 		}
@@ -90,10 +87,9 @@ impl SingleVersionContains for StandardTransactionStore {
 	}
 }
 
-#[async_trait]
 impl SingleVersionCommit for StandardTransactionStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
-	async fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
+	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
 		let table = EntryKind::Single;
 
 		// Get the hot storage tier (warm and cold are placeholders for now)
@@ -119,7 +115,7 @@ impl SingleVersionCommit for StandardTransactionStore {
 			})
 			.collect();
 
-		storage.set(HashMap::from([(table, entries)])).await?;
+		storage.set(HashMap::from([(table, entries)]))?;
 
 		Ok(())
 	}
@@ -128,17 +124,16 @@ impl SingleVersionCommit for StandardTransactionStore {
 impl SingleVersionSet for StandardTransactionStore {}
 impl SingleVersionRemove for StandardTransactionStore {}
 
-#[async_trait]
 impl SingleVersionRange for StandardTransactionStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
-	async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
+	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = EntryKind::Single;
 		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
 		// Helper to process all batches from a tier until exhausted
-		async fn process_tier<S: TierStorage>(
+		fn process_tier<S: TierStorage>(
 			storage: &S,
 			table: EntryKind,
 			start: &Bound<Vec<u8>>,
@@ -148,9 +143,13 @@ impl SingleVersionRange for StandardTransactionStore {
 			let mut cursor = RangeCursor::new();
 
 			loop {
-				let batch = storage
-					.range_next(table, &mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)
-					.await?;
+				let batch = storage.range_next(
+					table,
+					&mut cursor,
+					bound_as_ref(start),
+					bound_as_ref(end),
+					4096,
+				)?;
 
 				for entry in batch.entries {
 					// Only insert if not already present (first tier wins)
@@ -167,13 +166,13 @@ impl SingleVersionRange for StandardTransactionStore {
 
 		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			process_tier(hot, table, &start, &end, &mut all_entries).await?;
+			process_tier(hot, table, &start, &end, &mut all_entries)?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier(warm, table, &start, &end, &mut all_entries).await?;
+			process_tier(warm, table, &start, &end, &mut all_entries)?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier(cold, table, &start, &end, &mut all_entries).await?;
+			process_tier(cold, table, &start, &end, &mut all_entries)?;
 		}
 
 		// Convert to SingleVersionValues, filtering out tombstones
@@ -197,17 +196,16 @@ impl SingleVersionRange for StandardTransactionStore {
 	}
 }
 
-#[async_trait]
 impl SingleVersionRangeRev for StandardTransactionStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
-	async fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
+	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = EntryKind::Single;
 		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
 		// Helper to process all reverse batches from a tier until exhausted
-		async fn process_tier_rev<S: TierStorage>(
+		fn process_tier_rev<S: TierStorage>(
 			storage: &S,
 			table: EntryKind,
 			start: &Bound<Vec<u8>>,
@@ -217,15 +215,13 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 			let mut cursor = RangeCursor::new();
 
 			loop {
-				let batch = storage
-					.range_rev_next(
-						table,
-						&mut cursor,
-						bound_as_ref(start),
-						bound_as_ref(end),
-						4096,
-					)
-					.await?;
+				let batch = storage.range_rev_next(
+					table,
+					&mut cursor,
+					bound_as_ref(start),
+					bound_as_ref(end),
+					4096,
+				)?;
 
 				for entry in batch.entries {
 					// Only insert if not already present (first tier wins)
@@ -242,13 +238,13 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 
 		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			process_tier_rev(hot, table, &start, &end, &mut all_entries).await?;
+			process_tier_rev(hot, table, &start, &end, &mut all_entries)?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier_rev(warm, table, &start, &end, &mut all_entries).await?;
+			process_tier_rev(warm, table, &start, &end, &mut all_entries)?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier_rev(cold, table, &start, &end, &mut all_entries).await?;
+			process_tier_rev(cold, table, &start, &end, &mut all_entries)?;
 		}
 
 		// Convert to SingleVersionValues in reverse order, filtering out tombstones
@@ -284,7 +280,7 @@ fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	}
 }
 
-/// Convert EncodedKeyRange to primitive storage bounds (owned for async)
+/// Convert EncodedKeyRange to primitive storage bounds (owned for )
 fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {
 	let start = match &range.start {
 		Bound::Included(key) => Bound::Included(key.as_ref().to_vec()),

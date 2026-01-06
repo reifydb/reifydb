@@ -171,7 +171,7 @@ impl Inner {
 
 impl TransactionMulti {
 	pub async fn testing() -> Self {
-		let store = TransactionStore::testing_memory().await;
+		let store = TransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
 			store.clone(),
@@ -234,7 +234,7 @@ impl TransactionMulti {
 		key: &EncodedKey,
 		version: CommitVersion,
 	) -> Result<Option<Committed>, reifydb_type::Error> {
-		Ok(MultiVersionGet::get(&self.store, key, version).await?.map(|sv| sv.into()))
+		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
 	}
 
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
@@ -243,7 +243,7 @@ impl TransactionMulti {
 		key: &EncodedKey,
 		version: CommitVersion,
 	) -> Result<bool, reifydb_type::Error> {
-		MultiVersionContains::contains(&self.store, key, version).await
+		MultiVersionContains::contains(&self.store, key, version)
 	}
 
 	/// Get a reference to the underlying transaction store.

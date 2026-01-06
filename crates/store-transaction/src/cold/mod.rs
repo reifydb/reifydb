@@ -7,7 +7,6 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use async_trait::async_trait;
 use reifydb_type::Result;
 
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -19,17 +18,16 @@ use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 #[derive(Clone)]
 pub enum ColdStorage {}
 
-#[async_trait]
 impl TierStorage for ColdStorage {
-	async fn get(&self, _table: EntryKind, _key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, _table: EntryKind, _key: &[u8]) -> Result<Option<Vec<u8>>> {
 		match *self {}
 	}
 
-	async fn set(&self, _batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, _batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		match *self {}
 	}
 
-	async fn range_next(
+	fn range_next(
 		&self,
 		_table: EntryKind,
 		_cursor: &mut RangeCursor,
@@ -40,7 +38,7 @@ impl TierStorage for ColdStorage {
 		match *self {}
 	}
 
-	async fn range_rev_next(
+	fn range_rev_next(
 		&self,
 		_table: EntryKind,
 		_cursor: &mut RangeCursor,
@@ -51,11 +49,11 @@ impl TierStorage for ColdStorage {
 		match *self {}
 	}
 
-	async fn ensure_table(&self, _table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, _table: EntryKind) -> Result<()> {
 		match *self {}
 	}
 
-	async fn clear_table(&self, _table: EntryKind) -> Result<()> {
+	fn clear_table(&self, _table: EntryKind) -> Result<()> {
 		match *self {}
 	}
 }

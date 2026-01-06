@@ -11,9 +11,8 @@ use std::{
 	sync::Arc,
 };
 
-use async_trait::async_trait;
+use parking_lot::RwLock;
 use reifydb_type::Result;
-use tokio::sync::RwLock;
 use tracing::instrument;
 
 use super::entry::{Entries, Entry, entry_id_to_key};
@@ -34,7 +33,7 @@ struct MemoryPrimitiveStorageInner {
 
 impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::new", level = "debug")]
-	pub async fn new() -> Self {
+	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
 				entries: Entries::default(),
@@ -42,7 +41,7 @@ impl MemoryPrimitiveStorage {
 		}
 	}
 
-	/// Get or create a table entry, returning a cloned Arc for async use
+	/// Get or create a table entry, returning a cloned Arc for  use
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
 		self.inner
@@ -55,35 +54,34 @@ impl MemoryPrimitiveStorage {
 	}
 }
 
-#[async_trait]
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let table_key = entry_id_to_key(table);
 		let table_entry = match self.inner.entries.data.get(&table_key) {
 			Some(entry) => entry.value().clone(),
 			None => return Ok(None),
 		};
 		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read().await;
+		let table_data = table_entry.read();
 		Ok(table_data.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
-	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		let table_key = entry_id_to_key(table);
 		let table_entry = match self.inner.entries.data.get(&table_key) {
 			Some(entry) => entry.value().clone(),
 			None => return Ok(false),
 		};
 		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read().await;
+		let table_data = table_entry.read();
 		// Key exists and is not a tombstone
 		Ok(table_data.get(key).map_or(false, |v| v.is_some()))
 	}
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(table_count = batches.len()))]
-	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		// Sort tables by key to ensure consistent lock acquisition order across concurrent operations.
 		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
 		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
@@ -91,7 +89,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		for (table, entries) in sorted_batches {
 			let table_entry = self.get_or_create_table(table);
-			let mut table_data = table_entry.write().await;
+			let mut table_data = table_entry.write();
 			for (key, value) in entries {
 				table_data.insert(key, value);
 			}
@@ -100,7 +98,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_next(
+	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -122,7 +120,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		};
 
 		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read().await;
+		let table_data = table_entry.read();
 
 		// Determine effective start bound based on cursor state
 		let effective_start: Bound<&[u8]> = match &cursor.last_key {
@@ -164,7 +162,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_rev_next(
+	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -186,7 +184,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		};
 
 		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read().await;
+		let table_data = table_entry.read();
 
 		// For reverse iteration, effective end bound based on cursor
 		let effective_end: Bound<&[u8]> = match &cursor.last_key {
@@ -229,21 +227,21 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
-	async fn ensure_table(&self, table: EntryKind) -> Result<()> {
+	fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		// Use get_or_create to ensure table exists
 		let _ = self.get_or_create_table(table);
 		Ok(())
 	}
 
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
-	async fn clear_table(&self, table: EntryKind) -> Result<()> {
+	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
 		let table_entry = match self.inner.entries.data.get(&table_key) {
 			Some(entry) => entry.value().clone(),
 			None => return Ok(()),
 		};
 		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let mut table_data = table_entry.write().await;
+		let mut table_data = table_entry.write();
 		table_data.clear();
 		Ok(())
 	}
@@ -262,46 +260,43 @@ mod tests {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_basic_operations() {
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Put and get
 		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
-			.await
 			.unwrap();
-		let value = storage.get(EntryKind::Multi, b"key1").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(EntryKind::Multi, b"key1").await.unwrap());
-		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").await.unwrap());
+		assert!(storage.contains(EntryKind::Multi, b"key1").unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
-		assert!(!storage.contains(EntryKind::Multi, b"key1").await.unwrap());
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).unwrap();
+		assert!(!storage.contains(EntryKind::Multi, b"key1").unwrap());
 	}
 
-	#[tokio::test]
-	async fn test_separate_tables() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_separate_tables() {
+		let storage = MemoryPrimitiveStorage::new();
 
 		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
-			.await
 			.unwrap();
 		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
-			.await
 			.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(EntryKind::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap(), Some(b"single".to_vec()));
 	}
 
-	#[tokio::test]
-	async fn test_source_tables() {
+	#[test]
+	fn test_source_tables() {
 		use reifydb_core::interface::PrimitiveId;
 
-		let storage = MemoryPrimitiveStorage::new().await;
+		let storage = MemoryPrimitiveStorage::new();
 
 		let source1 = PrimitiveId::Table(CoreTableId(1));
 		let source2 = PrimitiveId::Table(CoreTableId(2));
@@ -310,37 +305,28 @@ mod tests {
 			EntryKind::Source(source1),
 			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
 		)]))
-		.await
 		.unwrap();
 		storage.set(HashMap::from([(
 			EntryKind::Source(source2),
 			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
 		)]))
-		.await
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
 	}
 
-	#[tokio::test]
-	async fn test_range_next() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_range_next() {
+		let storage = MemoryPrimitiveStorage::new();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.await
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -351,24 +337,17 @@ mod tests {
 		assert_eq!(batch.entries[2].key, b"c".to_vec());
 	}
 
-	#[tokio::test]
-	async fn test_range_rev_next() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_range_rev_next() {
+		let storage = MemoryPrimitiveStorage::new();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.await
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -379,15 +358,13 @@ mod tests {
 		assert_eq!(batch.entries[2].key, b"a".to_vec());
 	}
 
-	#[tokio::test]
-	async fn test_range_streaming_pagination() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_range_streaming_pagination() {
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
-				.await
-				.unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -396,7 +373,6 @@ mod tests {
 		// First batch of 3
 		let batch1 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -407,7 +383,6 @@ mod tests {
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -418,7 +393,6 @@ mod tests {
 		// Third batch of 3
 		let batch3 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch3.entries.len(), 3);
 		assert!(batch3.has_more);
@@ -429,7 +403,6 @@ mod tests {
 		// Fourth batch - only 1 entry remaining
 		let batch4 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch4.entries.len(), 1);
 		assert!(!batch4.has_more);
@@ -439,20 +412,17 @@ mod tests {
 		// Fifth call - exhausted
 		let batch5 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert!(batch5.entries.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_range_reving_pagination() {
-		let storage = MemoryPrimitiveStorage::new().await;
+	#[test]
+	fn test_range_reving_pagination() {
+		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
-				.await
-				.unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
 		}
 
 		// Use a single cursor to stream in reverse
@@ -461,7 +431,6 @@ mod tests {
 		// First batch of 3 (reverse)
 		let batch1 = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -472,7 +441,6 @@ mod tests {
 		// Second batch
 		let batch2 = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);

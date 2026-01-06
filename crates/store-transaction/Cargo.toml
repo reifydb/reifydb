@@ -15,14 +15,10 @@ reifydb-type = { workspace = true }
 dashmap = { workspace = true }
 indexmap = { workspace = true }
 tracing = { workspace = true }
+parking_lot = {workspace = true}
 
 rusqlite = { workspace = true, features = ["bundled"] }
-tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
-async-trait = { workspace = true }
-async-stream = { workspace = true }
-futures-util = { workspace = true }
-tokio = { workspace = true }
 
 [dev-dependencies]
 test_each_file = { workspace = true }

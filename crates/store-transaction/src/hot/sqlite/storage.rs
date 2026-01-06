@@ -9,18 +9,16 @@
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
-use async_trait::async_trait;
+use parking_lot::Mutex;
 use reifydb_type::{Result, diagnostic::internal::internal, error};
-use rusqlite::{Error::QueryReturnedNoRows, params};
-use tokio::sync::RwLock;
-use tokio_rusqlite::Connection;
+use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 
 use super::{
 	SqliteConfig,
 	connection::{connect, convert_flags, resolve_db_path},
+	entry::entry_id_to_name,
 	query::build_range_query,
-	tables::table_id_to_name,
 };
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
@@ -35,8 +33,10 @@ pub struct SqlitePrimitiveStorage {
 }
 
 struct SqlitePrimitiveStorageInner {
-	/// Single connection protected by RwLock for thread-safe access
-	conn: RwLock<Connection>,
+	/// Single connection protected by Mutex for thread-safe access.
+	/// Note: We use Mutex instead of RwLock because rusqlite::Connection
+	/// is Send but not Sync (contains RefCell).
+	conn: Mutex<Connection>,
 }
 
 impl SqlitePrimitiveStorage {
@@ -46,153 +46,118 @@ impl SqlitePrimitiveStorage {
 		page_size = config.page_size,
 		journal_mode = %config.journal_mode.as_str()
 	))]
-	pub async fn new(config: SqliteConfig) -> Self {
+	pub fn new(config: SqliteConfig) -> Self {
 		let db_path = resolve_db_path(config.path);
 		let flags = convert_flags(&config.flags);
 
-		let conn = connect(&db_path, flags).await.expect("Failed to connect to database");
+		let conn = connect(&db_path, flags).expect("Failed to connect to database");
 
 		// Configure SQLite pragmas
-		let page_size = config.page_size;
-		let journal_mode = config.journal_mode.as_str().to_string();
-		let synchronous_mode = config.synchronous_mode.as_str().to_string();
-		let temp_store = config.temp_store.as_str().to_string();
-		let cache_size = config.cache_size;
-		let wal_autocheckpoint = config.wal_autocheckpoint;
-		let mmap_size = config.mmap_size;
-
-		conn.call(move |conn| -> rusqlite::Result<()> {
-			conn.pragma_update(None, "page_size", page_size)?;
-			conn.pragma_update(None, "journal_mode", &journal_mode)?;
-			conn.pragma_update(None, "synchronous", &synchronous_mode)?;
-			conn.pragma_update(None, "temp_store", &temp_store)?;
-			conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
-			conn.pragma_update(None, "cache_size", -(cache_size as i32))?;
-			conn.pragma_update(None, "wal_autocheckpoint", wal_autocheckpoint)?;
-			conn.pragma_update(None, "mmap_size", mmap_size as i64)?;
-			Ok(())
-		})
-		.await
-		.expect("Failed to configure database");
+		conn.pragma_update(None, "page_size", config.page_size).expect("Failed to set page_size");
+		conn.pragma_update(None, "journal_mode", config.journal_mode.as_str())
+			.expect("Failed to set journal_mode");
+		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str())
+			.expect("Failed to set synchronous");
+		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).expect("Failed to set temp_store");
+		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").expect("Failed to set auto_vacuum");
+		conn.pragma_update(None, "cache_size", -(config.cache_size as i32)).expect("Failed to set cache_size");
+		conn.pragma_update(None, "wal_autocheckpoint", config.wal_autocheckpoint)
+			.expect("Failed to set wal_autocheckpoint");
+		conn.pragma_update(None, "mmap_size", config.mmap_size as i64).expect("Failed to set mmap_size");
 
 		Self {
 			inner: Arc::new(SqlitePrimitiveStorageInner {
-				conn: RwLock::new(conn),
+				conn: Mutex::new(conn),
 			}),
 		}
 	}
 
 	/// Create an in-memory SQLite storage for testing.
-	pub async fn in_memory() -> Self {
-		Self::new(SqliteConfig::in_memory()).await
+	pub fn in_memory() -> Self {
+		Self::new(SqliteConfig::in_memory())
 	}
 }
 
-#[async_trait]
 impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
-	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
-		let table_name = table_id_to_name(table);
-		let key = key.to_vec();
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+		let table_name = entry_id_to_name(table);
+		let conn = self.inner.conn.lock();
 
-		let conn = self.inner.conn.read().await;
-		let result = conn
-			.call(move |conn| -> rusqlite::Result<Option<Vec<u8>>> {
-				let result = conn.query_row(
-					&format!("SELECT value FROM \"{}\" WHERE key = ?1", table_name),
-					params![key],
-					|row| row.get::<_, Option<Vec<u8>>>(0),
-				);
-
-				match result {
-					Ok(value) => Ok(value),
-					Err(QueryReturnedNoRows) => Ok(None),
-					Err(e) => Err(e),
-				}
-			})
-			.await;
+		let result = conn.query_row(
+			&format!("SELECT value FROM \"{}\" WHERE key = ?1", table_name),
+			params![key],
+			|row| row.get::<_, Option<Vec<u8>>>(0),
+		);
 
 		match result {
 			Ok(value) => Ok(value),
+			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) if e.to_string().contains("no such table") => Ok(None),
 			Err(e) => Err(error!(internal(format!("Failed to get: {}", e)))),
 		}
 	}
 
 	#[instrument(name = "store::sqlite::contains", level = "trace", skip(self), fields(table = ?table, key_len = key.len()), ret)]
-	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
-		let table_name = table_id_to_name(table);
-		let key = key.to_vec();
+	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+		let table_name = entry_id_to_name(table);
+		let conn = self.inner.conn.lock();
 
-		let conn = self.inner.conn.read().await;
-		let result = conn
-			.call(move |conn| -> rusqlite::Result<bool> {
-				let result = conn.query_row(
-					&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", table_name),
-					params![key],
-					|row| row.get::<_, bool>(0),
-				);
-
-				match result {
-					Ok(has_value) => Ok(has_value),
-					Err(QueryReturnedNoRows) => Ok(false),
-					Err(e) => Err(e),
-				}
-			})
-			.await;
+		let result = conn.query_row(
+			&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", table_name),
+			params![key],
+			|row| row.get::<_, bool>(0),
+		);
 
 		match result {
 			Ok(has_value) => Ok(has_value),
+			Err(QueryReturnedNoRows) => Ok(false),
 			Err(e) if e.to_string().contains("no such table") => Ok(false),
 			Err(e) => Err(error!(internal(format!("Failed to check contains: {}", e)))),
 		}
 	}
 
 	#[instrument(name = "store::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}
 
-		// Convert TableId to table names before moving into closure
-		let table_batches: Vec<(String, Vec<(Vec<u8>, Option<Vec<u8>>)>)> =
-			batches.into_iter().map(|(table, entries)| (table_id_to_name(table), entries)).collect();
+		let conn = self.inner.conn.lock();
+		let tx = conn
+			.unchecked_transaction()
+			.map_err(|e| error!(internal(format!("Failed to start transaction: {}", e))))?;
 
-		let conn = self.inner.conn.write().await;
-		conn.call(move |conn| {
-			let tx = conn.unchecked_transaction()?;
-
-			for (table_name, entries) in &table_batches {
-				let result = insert_entries_in_tx(&tx, table_name, entries);
-				if let Err(e) = result {
-					if e.to_string().contains("no such table") {
-						tx.execute(
-							&format!(
-								"CREATE TABLE IF NOT EXISTS \"{}\" (
-									key BLOB NOT NULL PRIMARY KEY,
-									value BLOB
-								) WITHOUT ROWID",
-								table_name
-							),
-							[],
-						)?;
-						insert_entries_in_tx(&tx, table_name, entries)?;
-					} else {
-						return Err(e);
-					}
+		for (table, entries) in batches {
+			let table_name = entry_id_to_name(table);
+			let result = insert_entries_in_tx(&tx, &table_name, &entries);
+			if let Err(e) = result {
+				if e.to_string().contains("no such table") {
+					tx.execute(
+						&format!(
+							"CREATE TABLE IF NOT EXISTS \"{}\" (
+								key BLOB NOT NULL PRIMARY KEY,
+								value BLOB
+							) WITHOUT ROWID",
+							table_name
+						),
+						[],
+					)
+					.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))?;
+					insert_entries_in_tx(&tx, &table_name, &entries).map_err(|e| {
+						error!(internal(format!("Failed to insert entries: {}", e)))
+					})?;
+				} else {
+					return Err(error!(internal(format!("Failed to insert entries: {}", e))));
 				}
 			}
+		}
 
-			tx.commit()?;
-
-			Ok(())
-		})
-		.await
-		.map_err(|e| error!(internal(format!("Failed to write_all: {}", e))))
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
 	}
 
 	#[instrument(name = "store::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_next(
+	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -204,7 +169,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let table_name = table_id_to_name(table);
+		let table_name = entry_id_to_name(table);
 
 		// Determine effective start bound based on cursor state
 		let effective_start: Bound<Vec<u8>> = match &cursor.last_key {
@@ -213,64 +178,59 @@ impl TierStorage for SqlitePrimitiveStorage {
 		};
 		let end_owned = bound_to_owned(end);
 
-		let conn = self.inner.conn.read().await;
-		let result = conn
-			.call(move |conn| -> rusqlite::Result<RangeBatch> {
-				let start_ref = bound_as_ref(&effective_start);
-				let end_ref = bound_as_ref(&end_owned);
-				let (query, params) =
-					build_range_query(&table_name, start_ref, end_ref, false, batch_size + 1);
+		let conn = self.inner.conn.lock();
 
-				let mut stmt = conn.prepare(&query)?;
+		let start_ref = bound_as_ref(&effective_start);
+		let end_ref = bound_as_ref(&end_owned);
+		let (query, params) = build_range_query(&table_name, start_ref, end_ref, false, batch_size + 1);
 
-				let params_refs: Vec<&dyn rusqlite::ToSql> =
-					params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
-
-				let entries: Vec<RawEntry> = stmt
-					.query_map(params_refs.as_slice(), |row| {
-						Ok(RawEntry {
-							key: row.get(0)?,
-							value: row.get(1)?,
-						})
-					})?
-					.filter_map(|r| r.ok())
-					.collect();
-
-				let has_more = entries.len() > batch_size;
-				let entries = if has_more {
-					entries.into_iter().take(batch_size).collect()
-				} else {
-					entries
-				};
-
-				Ok(RangeBatch {
-					entries,
-					has_more,
-				})
-			})
-			.await;
-
-		match result {
-			Ok(batch) => {
-				// Update cursor
-				if let Some(last_entry) = batch.entries.last() {
-					cursor.last_key = Some(last_entry.key.clone());
-				}
-				if !batch.has_more {
-					cursor.exhausted = true;
-				}
-				Ok(batch)
-			}
+		let mut stmt = match conn.prepare(&query) {
+			Ok(stmt) => stmt,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.exhausted = true;
-				Ok(RangeBatch::empty())
+				return Ok(RangeBatch::empty());
 			}
-			Err(e) => Err(error!(internal(format!("Failed to query range: {}", e)))),
+			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
+		};
+
+		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+
+		let entries: Vec<RawEntry> = stmt
+			.query_map(params_refs.as_slice(), |row| {
+				Ok(RawEntry {
+					key: row.get(0)?,
+					value: row.get(1)?,
+				})
+			})
+			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
+			.filter_map(|r| r.ok())
+			.collect();
+
+		let has_more = entries.len() > batch_size;
+		let entries = if has_more {
+			entries.into_iter().take(batch_size).collect()
+		} else {
+			entries
+		};
+
+		let batch = RangeBatch {
+			entries,
+			has_more,
+		};
+
+		// Update cursor
+		if let Some(last_entry) = batch.entries.last() {
+			cursor.last_key = Some(last_entry.key.clone());
 		}
+		if !batch.has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(batch)
 	}
 
 	#[instrument(name = "store::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
-	async fn range_rev_next(
+	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -282,7 +242,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let table_name = table_id_to_name(table);
+		let table_name = entry_id_to_name(table);
 
 		// For reverse iteration, effective end bound based on cursor
 		let start_owned = bound_to_owned(start);
@@ -291,95 +251,83 @@ impl TierStorage for SqlitePrimitiveStorage {
 			None => bound_to_owned(end),
 		};
 
-		let conn = self.inner.conn.read().await;
-		let result = conn
-			.call(move |conn| -> rusqlite::Result<RangeBatch> {
-				let start_ref = bound_as_ref(&start_owned);
-				let end_ref = bound_as_ref(&effective_end);
-				let (query, params) =
-					build_range_query(&table_name, start_ref, end_ref, true, batch_size + 1);
+		let conn = self.inner.conn.lock();
 
-				let mut stmt = conn.prepare(&query)?;
+		let start_ref = bound_as_ref(&start_owned);
+		let end_ref = bound_as_ref(&effective_end);
+		let (query, params) = build_range_query(&table_name, start_ref, end_ref, true, batch_size + 1);
 
-				let params_refs: Vec<&dyn rusqlite::ToSql> =
-					params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
-
-				let entries: Vec<RawEntry> = stmt
-					.query_map(params_refs.as_slice(), |row| {
-						Ok(RawEntry {
-							key: row.get(0)?,
-							value: row.get(1)?,
-						})
-					})?
-					.filter_map(|r| r.ok())
-					.collect();
-
-				let has_more = entries.len() > batch_size;
-				let entries = if has_more {
-					entries.into_iter().take(batch_size).collect()
-				} else {
-					entries
-				};
-
-				Ok(RangeBatch {
-					entries,
-					has_more,
-				})
-			})
-			.await;
-
-		match result {
-			Ok(batch) => {
-				// Update cursor
-				if let Some(last_entry) = batch.entries.last() {
-					cursor.last_key = Some(last_entry.key.clone());
-				}
-				if !batch.has_more {
-					cursor.exhausted = true;
-				}
-				Ok(batch)
-			}
+		let mut stmt = match conn.prepare(&query) {
+			Ok(stmt) => stmt,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.exhausted = true;
-				Ok(RangeBatch::empty())
+				return Ok(RangeBatch::empty());
 			}
-			Err(e) => Err(error!(internal(format!("Failed to query range: {}", e)))),
+			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
+		};
+
+		let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+
+		let entries: Vec<RawEntry> = stmt
+			.query_map(params_refs.as_slice(), |row| {
+				Ok(RawEntry {
+					key: row.get(0)?,
+					value: row.get(1)?,
+				})
+			})
+			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
+			.filter_map(|r| r.ok())
+			.collect();
+
+		let has_more = entries.len() > batch_size;
+		let entries = if has_more {
+			entries.into_iter().take(batch_size).collect()
+		} else {
+			entries
+		};
+
+		let batch = RangeBatch {
+			entries,
+			has_more,
+		};
+
+		// Update cursor
+		if let Some(last_entry) = batch.entries.last() {
+			cursor.last_key = Some(last_entry.key.clone());
 		}
+		if !batch.has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(batch)
 	}
 
-	async fn ensure_table(&self, table: EntryKind) -> Result<()> {
-		let table_name = table_id_to_name(table);
+	fn ensure_table(&self, table: EntryKind) -> Result<()> {
+		let table_name = entry_id_to_name(table);
+		let conn = self.inner.conn.lock();
 
-		let conn = self.inner.conn.write().await;
-		conn.call(move |conn| -> rusqlite::Result<()> {
-			conn.execute(
-				&format!(
-					"CREATE TABLE IF NOT EXISTS \"{}\" (
-						key   BLOB NOT NULL PRIMARY KEY,
-						value BLOB
-					) WITHOUT ROWID",
-					table_name
-				),
-				[],
-			)
-			.map(|_| ())
-		})
-		.await
+		conn.execute(
+			&format!(
+				"CREATE TABLE IF NOT EXISTS \"{}\" (
+					key   BLOB NOT NULL PRIMARY KEY,
+					value BLOB
+				) WITHOUT ROWID",
+				table_name
+			),
+			[],
+		)
+		.map(|_| ())
 		.map_err(|e| error!(internal(format!("Failed to ensure table: {}", e))))
 	}
 
-	async fn clear_table(&self, table: EntryKind) -> Result<()> {
-		let table_name = table_id_to_name(table);
+	fn clear_table(&self, table: EntryKind) -> Result<()> {
+		let table_name = entry_id_to_name(table);
+		let conn = self.inner.conn.lock();
 
-		let conn = self.inner.conn.write().await;
-		let result = conn
-			.call(move |conn| -> rusqlite::Result<()> {
-				conn.execute(&format!("DELETE FROM \"{}\"", table_name), []).map(|_| ())
-			})
-			.await;
+		let result = conn.execute(&format!("DELETE FROM \"{}\"", table_name), []);
 
 		match result {
-			Ok(()) => Ok(()),
+			Ok(_) => Ok(()),
 			Err(e) if e.to_string().contains("no such table") => Ok(()),
 			Err(e) => Err(error!(internal(format!("Failed to clear table: {}", e)))),
 		}
@@ -427,46 +375,43 @@ mod tests {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_basic_operations() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_basic_operations() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Put and get
 		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
-			.await
 			.unwrap();
-		let value = storage.get(EntryKind::Multi, b"key1").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(EntryKind::Multi, b"key1").await.unwrap());
-		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").await.unwrap());
+		assert!(storage.contains(EntryKind::Multi, b"key1").unwrap());
+		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).await.unwrap();
-		assert!(!storage.contains(EntryKind::Multi, b"key1").await.unwrap());
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).unwrap();
+		assert!(!storage.contains(EntryKind::Multi, b"key1").unwrap());
 	}
 
-	#[tokio::test]
-	async fn test_separate_tables() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_separate_tables() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
-			.await
 			.unwrap();
 		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
-			.await
 			.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(EntryKind::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap(), Some(b"single".to_vec()));
 	}
 
-	#[tokio::test]
-	async fn test_source_tables() {
+	#[test]
+	fn test_source_tables() {
 		use reifydb_core::interface::PrimitiveId;
 
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		let source1 = PrimitiveId::Table(CoreTableId(1));
 		let source2 = PrimitiveId::Table(CoreTableId(2));
@@ -475,37 +420,28 @@ mod tests {
 			EntryKind::Source(source1),
 			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
 		)]))
-		.await
 		.unwrap();
 		storage.set(HashMap::from([(
 			EntryKind::Source(source2),
 			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
 		)]))
-		.await
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
 	}
 
-	#[tokio::test]
-	async fn test_range_next() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_range_next() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.await
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -516,24 +452,17 @@ mod tests {
 		assert_eq!(batch.entries[2].key, b"c".to_vec());
 	}
 
-	#[tokio::test]
-	async fn test_range_rev_next() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_range_rev_next() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])]))
-			.await
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])]))
-			.await
-			.unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.await
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -544,15 +473,13 @@ mod tests {
 		assert_eq!(batch.entries[2].key, b"a".to_vec());
 	}
 
-	#[tokio::test]
-	async fn test_range_streaming_pagination() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_range_streaming_pagination() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
-				.await
-				.unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -561,7 +488,6 @@ mod tests {
 		// First batch of 3
 		let batch1 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -572,7 +498,6 @@ mod tests {
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -581,15 +506,13 @@ mod tests {
 		assert_eq!(batch2.entries[2].key, vec![5]);
 	}
 
-	#[tokio::test]
-	async fn test_range_reving_pagination() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_range_reving_pagination() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])]))
-				.await
-				.unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
 		}
 
 		// Use a single cursor to stream in reverse
@@ -598,7 +521,6 @@ mod tests {
 		// First batch of 3 (reverse)
 		let batch1 = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -609,7 +531,6 @@ mod tests {
 		// Second batch
 		let batch2 = storage
 			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.await
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -618,24 +539,23 @@ mod tests {
 		assert_eq!(batch2.entries[2].key, vec![4]);
 	}
 
-	#[tokio::test]
-	async fn test_get_nonexistent_table() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_get_nonexistent_table() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Should return None for non-existent table, not error
-		let value = storage.get(EntryKind::Multi, b"key").await.unwrap();
+		let value = storage.get(EntryKind::Multi, b"key").unwrap();
 		assert_eq!(value, None);
 	}
 
-	#[tokio::test]
-	async fn test_range_nonexistent_table() {
-		let storage = SqlitePrimitiveStorage::in_memory().await;
+	#[test]
+	fn test_range_nonexistent_table() {
+		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Should return empty batch for non-existent table, not error
 		let mut cursor = RangeCursor::new();
 		let batch = storage
 			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.await
 			.unwrap();
 		assert!(batch.entries.is_empty());
 		assert!(cursor.exhausted);

@@ -8,7 +8,6 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use async_trait::async_trait;
 use reifydb_core::interface::{FlowNodeId, PrimitiveId};
 use reifydb_type::Result;
 
@@ -101,21 +100,21 @@ impl Default for RangeCursor {
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
-#[async_trait]
+
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
-	async fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>>;
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>>;
 
 	/// Check if a key exists in storage.
-	async fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
-		Ok(self.get(table, key).await?.is_some())
+	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
+		Ok(self.get(table, key)?.is_some())
 	}
 
 	/// Write entries to multiple tables atomically.
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	async fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
+	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
 
 	/// Fetch the next batch of entries in key order (descending).
 	///
@@ -123,7 +122,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// On subsequent calls, pass the same cursor to continue from where left off.
 	/// Returns up to `batch_size` entries. The cursor is updated with the last
 	/// key seen, and `exhausted` is set to true when no more entries remain.
-	async fn range_next(
+	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -138,7 +137,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// On subsequent calls, pass the same cursor to continue from where left off.
 	/// Returns up to `batch_size` entries. The cursor is updated with the last
 	/// key seen, and `exhausted` is set to true when no more entries remain.
-	async fn range_rev_next(
+	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -151,10 +150,10 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// For memory backends this is typically a no-op.
 	/// For SQL backends this may create tables.
-	async fn ensure_table(&self, table: EntryKind) -> Result<()>;
+	fn ensure_table(&self, table: EntryKind) -> Result<()>;
 
 	/// Delete all entries in a table.
-	async fn clear_table(&self, table: EntryKind) -> Result<()>;
+	fn clear_table(&self, table: EntryKind) -> Result<()>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

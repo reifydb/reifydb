@@ -99,7 +99,8 @@ impl QueryTransaction {
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
 		let version = self.tm.version();
-		Box::pin(self.engine.store.range(range, version, batch_size))
+		let iter = self.engine.store.range(range, version, batch_size);
+		Box::pin(futures_util::stream::iter(iter))
 	}
 
 	/// Create a streaming iterator for reverse range queries.
@@ -113,6 +114,7 @@ impl QueryTransaction {
 		batch_size: usize,
 	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
 		let version = self.tm.version();
-		Box::pin(self.engine.store.range_rev(range, version, batch_size))
+		let iter = self.engine.store.range_rev(range, version, batch_size);
+		Box::pin(futures_util::stream::iter(iter))
 	}
 }

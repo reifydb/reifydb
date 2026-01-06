@@ -6,7 +6,7 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path, time::Du
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, async_cow_vec,
+	CommitVersion, CowVec, EncodedKey, cow_vec,
 	delta::Delta,
 	interface::{Cdc, CdcChange, CdcSequencedChange},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -18,7 +18,6 @@ use reifydb_store_transaction::{
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
-use tokio::runtime::Runtime;
 
 test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as backend_cdc_memory => test_memory }
 test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as backend_cdc_sqlite => test_sqlite }
@@ -27,22 +26,18 @@ fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 
-	let runtime = Runtime::new().unwrap();
-	let (_config, store) = runtime.block_on(async {
-		let config = TransactionStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory().await,
-				retention_period: Duration::from_secs(300),
-			}),
-			warm: None,
-			cold: None,
-			..Default::default()
-		};
-		let store = StandardTransactionStore::new(config.clone()).unwrap();
-		(config, store)
-	});
+	let config = TransactionStoreConfig {
+		hot: Some(HotConfig {
+			storage: HotStorage::memory(),
+			retention_period: Duration::from_secs(300),
+		}),
+		warm: None,
+		cold: None,
+		..Default::default()
+	};
+	let store = StandardTransactionStore::new(config.clone()).unwrap();
 
-	testscript::run_path(&mut Runner::new(store, runtime), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(store), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
@@ -50,22 +45,18 @@ fn test_sqlite(path: &Path) {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);
 
-		let runtime = Runtime::new().unwrap();
-		let (_config, store) = runtime.block_on(async {
-			let config = TransactionStoreConfig {
-				hot: Some(HotConfig {
-					storage: HotStorage::sqlite_in_memory().await,
-					retention_period: Duration::from_secs(86400),
-				}),
-				warm: None,
-				cold: None,
-				..Default::default()
-			};
-			let store = StandardTransactionStore::new(config.clone()).unwrap();
-			(config, store)
-		});
+		let config = TransactionStoreConfig {
+			hot: Some(HotConfig {
+				storage: HotStorage::sqlite_in_memory(),
+				retention_period: Duration::from_secs(86400),
+			}),
+			warm: None,
+			cold: None,
+			..Default::default()
+		};
+		let store = StandardTransactionStore::new(config.clone()).unwrap();
 
-		testscript::run_path(&mut Runner::new(store, runtime), path)
+		testscript::run_path(&mut Runner::new(store), path)
 	})
 	.expect("test failed")
 }
@@ -76,16 +67,14 @@ pub struct Runner {
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
-	runtime: Runtime,
 }
 
 impl Runner {
-	fn new(store: StandardTransactionStore, runtime: Runtime) -> Self {
+	fn new(store: StandardTransactionStore) -> Self {
 		Self {
 			store,
 			next_version: CommitVersion(1),
 			deltas: Vec::new(),
-			runtime,
 		}
 	}
 
@@ -168,19 +157,15 @@ impl testscript::Runner for Runner {
 				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.runtime.block_on(async {
-					self.store
-						.commit(
-							async_cow_vec![
-								(Delta::Set {
-									key,
-									values
-								})
-							],
-							version,
-						)
-						.await
-				})?;
+				self.store.commit(
+					cow_vec![
+						(Delta::Set {
+							key,
+							values
+						})
+					],
+					version,
+				)?;
 				writeln!(output, "ok")?;
 			}
 
@@ -261,7 +246,7 @@ impl testscript::Runner for Runner {
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.runtime.block_on(async { self.store.commit(deltas, version).await })?;
+					self.store.commit(deltas, version)?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -283,7 +268,7 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid sequence")?;
 				args.reject_rest()?;
 
-				let cdc = self.runtime.block_on(async { CdcGet::get(&self.store, version).await })?;
+				let cdc = CdcGet::get(&self.store, version)?;
 
 				match (cdc, sequence) {
 					(Some(cdc), Some(seq)) => {
@@ -321,14 +306,11 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(
-						&self.store,
-						Bound::Included(start_version),
-						Bound::Included(end_version),
-					)
-					.await
-				})?;
+				let cdcs = CdcRange::range(
+					&self.store,
+					Bound::Included(start_version),
+					Bound::Included(end_version),
+				)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -346,9 +328,7 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Unbounded, Bound::Unbounded).await
-				})?;
+				let cdcs = CdcRange::range(&self.store, Bound::Unbounded, Bound::Unbounded)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -378,14 +358,12 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(
-						&self.store,
-						Bound::Included(start_version),
-						Bound::Included(end_version),
-					)
-					.await
-				})?;
+				let cdcs = CdcRange::range(
+					&self.store,
+					Bound::Included(start_version),
+					Bound::Included(end_version),
+				)?;
+
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -415,14 +393,11 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(
-						&self.store,
-						Bound::Included(start_version),
-						Bound::Excluded(end_version),
-					)
-					.await
-				})?;
+				let cdcs = CdcRange::range(
+					&self.store,
+					Bound::Included(start_version),
+					Bound::Excluded(end_version),
+				)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -452,14 +427,11 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(
-						&self.store,
-						Bound::Excluded(start_version),
-						Bound::Included(end_version),
-					)
-					.await
-				})?;
+				let cdcs = CdcRange::range(
+					&self.store,
+					Bound::Excluded(start_version),
+					Bound::Included(end_version),
+				)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -489,14 +461,11 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(
-						&self.store,
-						Bound::Excluded(start_version),
-						Bound::Excluded(end_version),
-					)
-					.await
-				})?;
+				let cdcs = CdcRange::range(
+					&self.store,
+					Bound::Excluded(start_version),
+					Bound::Excluded(end_version),
+				)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -520,10 +489,8 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Unbounded, Bound::Included(end_version))
-						.await
-				})?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Unbounded, Bound::Included(end_version))?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -547,10 +514,8 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Unbounded, Bound::Excluded(end_version))
-						.await
-				})?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Unbounded, Bound::Excluded(end_version))?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -574,10 +539,8 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Included(start_version), Bound::Unbounded)
-						.await
-				})?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Included(start_version), Bound::Unbounded)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -601,10 +564,8 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Excluded(start_version), Bound::Unbounded)
-						.await
-				})?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Excluded(start_version), Bound::Unbounded)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -622,9 +583,7 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = self.runtime.block_on(async {
-					CdcRange::range(&self.store, Bound::Unbounded, Bound::Unbounded).await
-				})?;
+				let cdcs = CdcRange::range(&self.store, Bound::Unbounded, Bound::Unbounded)?;
 				for cdc in cdcs.items {
 					for change in &cdc.changes {
 						writeln!(
@@ -648,7 +607,7 @@ impl testscript::Runner for Runner {
 					.map_err(|_| "invalid version")?;
 				args.reject_rest()?;
 
-				let count = self.runtime.block_on(async { self.store.count(version).await })?;
+				let count = self.store.count(version)?;
 				writeln!(output, "count: {}", count)?;
 			}
 
@@ -709,8 +668,7 @@ impl testscript::Runner for Runner {
 					});
 				}
 
-				self.runtime
-					.block_on(async { self.store.commit(CowVec::new(deltas), version).await })?;
+				self.store.commit(CowVec::new(deltas), version)?;
 				writeln!(output, "ok")?;
 			}
 

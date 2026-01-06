@@ -33,8 +33,8 @@ impl RetentionCleaner {
 		action: CleanupAction,
 	) -> Result<()> {
 		match action {
-			CleanupAction::Delete => self.delete_handler.cleanup_with_cdc(keys, version).await,
-			CleanupAction::Drop => self.drop_handler.cleanup_silent(keys, version).await,
+			CleanupAction::Delete => self.delete_handler.cleanup_with_cdc(keys, version),
+			CleanupAction::Drop => self.drop_handler.cleanup_silent(keys, version),
 			CleanupAction::Keep => Ok(()),
 		}
 	}

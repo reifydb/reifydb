@@ -65,7 +65,7 @@ impl CommandTransaction {
 			deltas.push(pending.delta.clone());
 		}
 
-		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version).await?;
+		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
@@ -115,7 +115,7 @@ impl CommandTransaction {
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
 			Some(false) => Ok(false),
-			None => MultiVersionContains::contains(&self.engine.store, key, version).await,
+			None => MultiVersionContains::contains(&self.engine.store, key, version),
 		}
 	}
 
@@ -130,7 +130,7 @@ impl CommandTransaction {
 					Ok(None)
 				}
 			}
-			None => Ok(MultiVersionGet::get(&self.engine.store, key, version).await?.map(Into::into)),
+			None => Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into)),
 		}
 	}
 
@@ -182,7 +182,8 @@ impl CommandTransaction {
 		let pending: Vec<(EncodedKey, Pending)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_stream = self.engine.store.range(range, version, batch_size);
+		let storage_iter = self.engine.store.range(range, version, batch_size);
+		let storage_stream = futures_util::stream::iter(storage_iter);
 
 		Box::pin(merge_pending_with_stream(pending, storage_stream, false))
 	}
@@ -208,7 +209,8 @@ impl CommandTransaction {
 		let pending: Vec<(EncodedKey, Pending)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_stream = self.engine.store.range_rev(range, version, batch_size);
+		let storage_iter = self.engine.store.range_rev(range, version, batch_size);
+		let storage_stream = futures_util::stream::iter(storage_iter);
 
 		Box::pin(merge_pending_with_stream(pending, storage_stream, true))
 	}

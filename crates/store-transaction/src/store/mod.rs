@@ -76,10 +76,10 @@ impl Deref for StandardTransactionStore {
 }
 
 impl StandardTransactionStore {
-	pub async fn testing_memory() -> Self {
+	pub fn testing_memory() -> Self {
 		Self::new(TransactionStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotStorage::memory().await,
+				storage: HotStorage::memory(),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

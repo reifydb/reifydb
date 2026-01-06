@@ -376,9 +376,9 @@ impl StorageTracker {
 	/// Persist current stats to storage.
 	///
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
-	pub async fn checkpoint<S: TierStorage>(&self, storage: &S) -> Result<()> {
+	pub fn checkpoint<S: TierStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
-		storage.ensure_table(EntryKind::Single).await?;
+		storage.ensure_table(EntryKind::Single)?;
 
 		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
 			let inner = self.inner.read().unwrap();
@@ -403,7 +403,7 @@ impl StorageTracker {
 		};
 
 		// Batch write all entries
-		storage.set(HashMap::from([(EntryKind::Single, entries)])).await?;
+		storage.set(HashMap::from([(EntryKind::Single, entries)]))?;
 
 		// Reset checkpoint timer
 		{
@@ -417,7 +417,7 @@ impl StorageTracker {
 	/// Restore stats from storage on startup.
 	///
 	/// Loads previously persisted stats from storage using `KeyKind::StorageTracker` keys.
-	pub async fn restore_async<S: TierStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
+	pub fn restore_async<S: TierStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
 		let mut by_type: HashMap<(Tier, KeyKind), StorageStats> = HashMap::new();
 		let mut by_object: HashMap<(Tier, ObjectId), StorageStats> = HashMap::new();
 
@@ -430,15 +430,13 @@ impl StorageTracker {
 
 		let mut cursor = RangeCursor::new();
 		loop {
-			let batch = storage
-				.range_next(
-					EntryKind::Single,
-					&mut cursor,
-					Bound::Included(type_prefix.as_slice()),
-					Bound::Excluded(end_prefix.as_slice()),
-					1000,
-				)
-				.await?;
+			let batch = storage.range_next(
+				EntryKind::Single,
+				&mut cursor,
+				Bound::Included(type_prefix.as_slice()),
+				Bound::Excluded(end_prefix.as_slice()),
+				1000,
+			)?;
 
 			for entry in batch.entries {
 				if let Some((tier, kind)) = decode_type_stats_key(&entry.key) {
@@ -464,15 +462,13 @@ impl StorageTracker {
 
 		let mut cursor = RangeCursor::new();
 		loop {
-			let batch = storage
-				.range_next(
-					EntryKind::Single,
-					&mut cursor,
-					Bound::Included(object_prefix.as_slice()),
-					Bound::Excluded(end_prefix.as_slice()),
-					1000,
-				)
-				.await?;
+			let batch = storage.range_next(
+				EntryKind::Single,
+				&mut cursor,
+				Bound::Included(object_prefix.as_slice()),
+				Bound::Excluded(end_prefix.as_slice()),
+				1000,
+			)?;
 
 			for entry in batch.entries {
 				if let Some((tier, object_id)) = decode_object_stats_key(&entry.key) {
@@ -510,8 +506,9 @@ impl StorageTracker {
 
 #[cfg(test)]
 mod tests {
+	use std::thread::sleep;
+
 	use reifydb_core::interface::PrimitiveId;
-	use tokio::time::sleep;
 
 	use super::*;
 
@@ -686,8 +683,8 @@ mod tests {
 	// Persistence tests
 	// ============================================
 
-	#[tokio::test]
-	async fn test_should_checkpoint_time_based() {
+	#[test]
+	fn test_should_checkpoint_time_based() {
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
@@ -697,18 +694,18 @@ mod tests {
 		assert!(!tracker.should_checkpoint());
 
 		// Wait for checkpoint interval to elapse
-		sleep(Duration::from_millis(60)).await;
+		sleep(Duration::from_millis(60));
 
 		// Now should need checkpoint
 		assert!(tracker.should_checkpoint());
 	}
 
-	#[tokio::test]
-	async fn test_checkpoint_and_restore_roundtrip() {
+	#[test]
+	fn test_checkpoint_and_restore_roundtrip() {
 		use crate::hot::HotStorage;
 
 		// Create a memory storage backend
-		let storage = HotStorage::memory().await;
+		let storage = HotStorage::memory();
 
 		// Create tracker with some data
 		let config = StorageTrackerConfig {
@@ -726,10 +723,10 @@ mod tests {
 		tracker.record_write(Tier::Warm, &key1, key1_bytes, 75, None);
 
 		// Checkpoint
-		tracker.checkpoint(&storage).await.unwrap();
+		tracker.checkpoint(&storage).unwrap();
 
 		// Create a new tracker by restoring from storage
-		let restored = StorageTracker::restore_async(&storage, config).await.unwrap();
+		let restored = StorageTracker::restore_async(&storage, config).unwrap();
 
 		// Verify stats were restored correctly
 		let original_stats = tracker.total_stats();
@@ -756,46 +753,46 @@ mod tests {
 		assert_eq!(original_obj.hot.current_value_bytes, restored_obj.hot.current_value_bytes);
 	}
 
-	#[tokio::test]
-	async fn test_checkpoint_resets_timer() {
+	#[test]
+	fn test_checkpoint_resets_timer() {
 		use crate::hot::HotStorage;
 
-		let storage = HotStorage::memory().await;
+		let storage = HotStorage::memory();
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
 		let tracker = StorageTracker::new(config);
 
 		// Wait for checkpoint interval
-		tokio::time::sleep(Duration::from_millis(60)).await;
+		sleep(Duration::from_millis(60));
 		assert!(tracker.should_checkpoint());
 
 		// Checkpoint should reset the timer
-		tracker.checkpoint(&storage).await.unwrap();
+		tracker.checkpoint(&storage).unwrap();
 
 		// Immediately after checkpoint, should not need another one
 		assert!(!tracker.should_checkpoint());
 
 		// Wait again
-		tokio::time::sleep(Duration::from_millis(60)).await;
+		sleep(Duration::from_millis(60));
 
 		// Should need checkpoint again
 		assert!(tracker.should_checkpoint());
 	}
 
-	#[tokio::test]
-	async fn test_restore_empty_storage() {
+	#[test]
+	fn test_restore_empty_storage() {
 		use crate::hot::HotStorage;
 
 		// Create empty storage
-		let storage = HotStorage::memory().await;
+		let storage = HotStorage::memory();
 
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_secs(10),
 		};
 
 		// Restore should succeed with empty stats
-		let tracker = StorageTracker::restore_async(&storage, config).await.unwrap();
+		let tracker = StorageTracker::restore_async(&storage, config).unwrap();
 		let stats = tracker.total_stats();
 
 		assert_eq!(stats.hot.current_count, 0);

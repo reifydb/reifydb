@@ -3,9 +3,8 @@
 
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
-use futures_util::TryStreamExt;
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
+	CommitVersion, EncodedKey, EncodedKeyRange, cow_vec,
 	delta::Delta,
 	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -17,22 +16,19 @@ use reifydb_store_transaction::{
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
-use tokio::runtime::Runtime;
 
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let runtime = Runtime::new().unwrap();
-	let storage = runtime.block_on(async { HotStorage::memory().await });
-	testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path).expect("test failed")
+	let storage = HotStorage::memory();
+	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let runtime = Runtime::new().unwrap();
-		let storage = runtime.block_on(async { HotStorage::sqlite_in_memory().await });
-		testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path)
+		let storage = HotStorage::sqlite_in_memory();
+		testscript::run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
@@ -41,29 +37,25 @@ fn test_sqlite(path: &Path) {
 pub struct Runner {
 	store: StandardTransactionStore,
 	version: CommitVersion,
-	runtime: Runtime,
 }
 
 impl Runner {
-	fn new_with_runtime(storage: HotStorage, runtime: Runtime) -> Self {
-		let store = runtime.block_on(async {
-			StandardTransactionStore::new(TransactionStoreConfig {
-				hot: Some(HotConfig {
-					storage,
-					retention_period: Duration::from_millis(200),
-				}),
-				warm: None,
-				cold: None,
-				retention: Default::default(),
-				merge_config: Default::default(),
-				stats: Default::default(),
-			})
-			.unwrap()
-		});
+	fn new(storage: HotStorage) -> Self {
+		let store = StandardTransactionStore::new(TransactionStoreConfig {
+			hot: Some(HotConfig {
+				storage,
+				retention_period: Duration::from_millis(200),
+			}),
+			warm: None,
+			cold: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+			stats: Default::default(),
+		})
+		.unwrap();
 		Self {
 			store,
 			version: CommitVersion(0),
-			runtime,
 		}
 	}
 }
@@ -79,10 +71,8 @@ impl testscript::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value = self
-					.runtime
-					.block_on(async { self.store.get(&key, version).await })?
-					.map(|sv: MultiVersionValues| sv.values.to_vec());
+				let value =
+					self.store.get(&key, version)?.map(|sv: MultiVersionValues| sv.values.to_vec());
 
 				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
@@ -92,8 +82,7 @@ impl testscript::Runner for Runner {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains =
-					self.runtime.block_on(async { self.store.contains(&key, version).await })?;
+				let contains = self.store.contains(&key, version)?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -105,20 +94,16 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store
-							.range(EncodedKeyRange::all(), version, 1024)
-							.try_collect()
-							.await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range(EncodedKeyRange::all(), version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store
-							.range_rev(EncodedKeyRange::all(), version, 1024)
-							.try_collect()
-							.await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range_rev(EncodedKeyRange::all(), version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};
 			}
@@ -133,14 +118,16 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store.range(range, version, 1024).try_collect().await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range(range, version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store.range_rev(range, version, 1024).try_collect().await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range_rev(range, version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};
 			}
@@ -156,14 +143,16 @@ impl testscript::Runner for Runner {
 
 				let range = EncodedKeyRange::prefix(&prefix.0);
 				if !reverse {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store.range(range, version, 1024).try_collect().await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range(range, version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
-					let items: Vec<_> = self.runtime.block_on(async {
-						self.store.range_rev(range, version, 1024).try_collect().await
-					})?;
+					let items: Vec<_> = self
+						.store
+						.range_rev(range, version, 1024)
+						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};
 			}
@@ -182,19 +171,15 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.runtime.block_on(async {
-					self.store
-						.commit(
-							async_cow_vec![
-								(Delta::Set {
-									key,
-									values
-								})
-							],
-							version,
-						)
-						.await
-				})?;
+				self.store.commit(
+					cow_vec![
+						(Delta::Set {
+							key,
+							values
+						})
+					],
+					version,
+				)?;
 			}
 
 			// remove KEY [version=VERSION]
@@ -209,18 +194,14 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.runtime.block_on(async {
-					self.store
-						.commit(
-							async_cow_vec![
-								(Delta::Remove {
-									key
-								})
-							],
-							version,
-						)
-						.await
-				})?
+				self.store.commit(
+					cow_vec![
+						(Delta::Remove {
+							key
+						})
+					],
+					version,
+				)?
 			}
 
 			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]
@@ -237,20 +218,16 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.runtime.block_on(async {
-					self.store
-						.commit(
-							async_cow_vec![
-								(Delta::Drop {
-									key,
-									up_to_version,
-									keep_last_versions,
-								})
-							],
-							version,
-						)
-						.await
-				})?;
+				self.store.commit(
+					cow_vec![
+						(Delta::Drop {
+							key,
+							up_to_version,
+							keep_last_versions,
+						})
+					],
+					version,
+				)?;
 			}
 
 			// count_versions KEY - counts how many versions of a key exist
@@ -264,10 +241,8 @@ impl testscript::Runner for Runner {
 				let mut count = 0;
 				let mut prev_value: Option<Vec<u8>> = None;
 				for v in 1..=1000 {
-					let current = self
-						.runtime
-						.block_on(async { self.store.get(&key, CommitVersion(v)).await })?
-						.map(|sv| sv.values.to_vec());
+					let current =
+						self.store.get(&key, CommitVersion(v))?.map(|sv| sv.values.to_vec());
 					if current.is_some() && current != prev_value {
 						count += 1;
 					}

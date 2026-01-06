@@ -176,8 +176,8 @@ mod tests {
     }
 
 
-    #[tokio::test]
-    async fn test_cleanup_expired() {
+    #[test]
+     fn test_cleanup_expired() {
         let mut tracker = TwoStageCleanupTracker::new();
         let key1 = EncodedKey::new(vec![1, 2, 3]);
         let key2 = EncodedKey::new(vec![4, 5, 6]);
@@ -185,7 +185,7 @@ mod tests {
         tracker.mark_for_deletion(key1.clone(), CommitVersion(100));
 
         // Wait a bit
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100));
         tracker.mark_for_deletion(key2.clone(), CommitVersion(200));
 
         // Create policies

@@ -1468,6 +1468,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "parking_lot"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
+dependencies = [
+ "lock_api",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "parking_lot_core"
 version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2041,18 +2051,14 @@ dependencies = [
 name = "reifydb-store-transaction"
 version = "0.2.0"
 dependencies = [
- "async-stream",
- "async-trait",
  "dashmap",
- "futures-util",
  "indexmap",
+ "parking_lot",
  "reifydb-core",
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
  "test_each_file",
- "tokio",
- "tokio-rusqlite",
  "tracing",
  "uuid",
 ]
@@ -2744,17 +2750,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "tokio-rusqlite"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "302563ae4a2127f3d2c105f4f2f0bd7cae3609371755600ebc148e0ccd8510d6"
-dependencies = [
- "crossbeam-channel",
- "rusqlite",
- "tokio",
 ]
 
 [[package]]

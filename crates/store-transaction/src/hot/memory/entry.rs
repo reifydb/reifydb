@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Table storage for memory backend.
-
 use std::{collections::BTreeMap, sync::Arc};
 
 use dashmap::DashMap;
-use tokio::sync::RwLock;
+use parking_lot::RwLock;
 
 use crate::tier::EntryKind;
 
 /// Type alias for the inner table storage (ordered key-value map)
 pub(super) type Inner = BTreeMap<Vec<u8>, Option<Vec<u8>>>;
 
-/// Type alias for a table entry with async-compatible lock
+/// Type alias for a table entry with -compatible lock
 pub(super) type Entry = Arc<RwLock<Inner>>;
 
 /// Convert Store to a unique string key for storage in DashMap

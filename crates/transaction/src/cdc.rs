@@ -65,7 +65,7 @@ impl StandardCdcQueryTransaction {
 #[async_trait]
 impl CdcQueryTransaction for StandardCdcQueryTransaction {
 	async fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		CdcGet::get(&self.store, version).await
+		CdcGet::get(&self.store, version)
 	}
 
 	async fn range_batch(
@@ -74,7 +74,7 @@ impl CdcQueryTransaction for StandardCdcQueryTransaction {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> Result<CdcBatch> {
-		let store_batch = CdcRange::range_batch(&self.store, start, end, batch_size).await?;
+		let store_batch = CdcRange::range_batch(&self.store, start, end, batch_size)?;
 		Ok(CdcBatch {
 			items: store_batch.items,
 			has_more: store_batch.has_more,
@@ -82,6 +82,6 @@ impl CdcQueryTransaction for StandardCdcQueryTransaction {
 	}
 
 	async fn count(&self, version: CommitVersion) -> Result<usize> {
-		CdcCount::count(&self.store, version).await
+		CdcCount::count(&self.store, version)
 	}
 }

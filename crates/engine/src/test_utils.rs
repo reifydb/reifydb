@@ -21,7 +21,7 @@ use reifydb_type::{Type, TypeConstraint};
 use crate::{StandardCommandTransaction, StandardEngine};
 
 pub async fn create_test_command_transaction() -> StandardCommandTransaction {
-	let store = TransactionStore::testing_memory().await;
+	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
@@ -33,7 +33,7 @@ pub async fn create_test_command_transaction() -> StandardCommandTransaction {
 }
 
 pub async fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
-	let store = TransactionStore::testing_memory().await;
+	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
@@ -99,7 +99,7 @@ pub async fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	reifydb_core::util::mock_time_set(1000);
 
-	let store = TransactionStore::testing_memory().await;
+	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());

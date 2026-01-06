@@ -4,12 +4,12 @@
 //! SQLite connection utilities.
 
 use reifydb_type::{Result, diagnostic::internal::internal, error};
-use tokio_rusqlite::Connection;
+use rusqlite::Connection;
 
 use super::DbPath;
 
 /// Connect to a SQLite database asynchronously.
-pub(super) async fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Connection> {
+pub(super) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result<Connection> {
 	fn connection_failed(path: String, error: String) -> String {
 		format!("Failed to connect to database at {}: {}", path, error)
 	}
@@ -22,25 +22,25 @@ pub(super) async fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> Result
 			if is_uri {
 				let uri_flags = flags | rusqlite::OpenFlags::SQLITE_OPEN_URI;
 				let path_string = path_str.to_string();
-				Connection::open_with_flags(path_string, uri_flags).await.map_err(|e| {
+				Connection::open_with_flags(path_string, uri_flags).map_err(|e| {
 					error!(internal(connection_failed(path_str.to_string(), e.to_string())))
 				})
 			} else {
 				let path_clone = path.clone();
-				Connection::open_with_flags(path_clone, flags).await.map_err(|e| {
+				Connection::open_with_flags(path_clone, flags).map_err(|e| {
 					error!(internal(connection_failed(path.display().to_string(), e.to_string())))
 				})
 			}
 		}
 		DbPath::Tmpfs(path) => {
 			let path_clone = path.clone();
-			Connection::open_with_flags(path_clone, flags).await.map_err(|e| {
+			Connection::open_with_flags(path_clone, flags).map_err(|e| {
 				error!(internal(connection_failed(path.display().to_string(), e.to_string())))
 			})
 		}
 		DbPath::Memory(path) => {
 			let path_clone = path.clone();
-			Connection::open_with_flags(path_clone, flags).await.map_err(|e| {
+			Connection::open_with_flags(path_clone, flags).map_err(|e| {
 				error!(internal(connection_failed(path.display().to_string(), e.to_string())))
 			})
 		}

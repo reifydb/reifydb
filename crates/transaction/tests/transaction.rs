@@ -46,7 +46,7 @@ fn test_serializable(path: &Path) {
 	let engine = runtime
 		.block_on(async {
 			// Create store inside runtime context because it spawns a background writer task
-			let store = TransactionStore::testing_memory().await;
+			let store = TransactionStore::testing_memory();
 			let bus = EventBus::default();
 			TransactionMulti::new(
 				store.clone(),

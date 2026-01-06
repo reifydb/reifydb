@@ -3,7 +3,6 @@
 
 use std::{collections::BTreeMap, ops::Bound};
 
-use async_trait::async_trait;
 use reifydb_core::{CommitVersion, CowVec, interface::Cdc, value::encoded::EncodedValues};
 
 use crate::{
@@ -28,14 +27,11 @@ fn key_to_version(key: &[u8]) -> Option<CommitVersion> {
 }
 
 /// Helper function to get InternalCdc from primitive storage
-async fn get_internal_cdc<S: TierStorage>(
-	storage: &S,
-	version: CommitVersion,
-) -> reifydb_type::Result<Option<InternalCdc>> {
+fn get_internal_cdc<S: TierStorage>(storage: &S, version: CommitVersion) -> reifydb_type::Result<Option<InternalCdc>> {
 	let table = EntryKind::Cdc;
 	let key = version_to_key(version);
 
-	if let Some(value) = storage.get(table, &key).await? {
+	if let Some(value) = storage.get(table, &key)? {
 		let encoded = EncodedValues(CowVec::new(value));
 		let internal = decode_internal_cdc(&encoded)?;
 		Ok(Some(internal))
@@ -44,31 +40,30 @@ async fn get_internal_cdc<S: TierStorage>(
 	}
 }
 
-async fn internal_to_public_cdc(internal: InternalCdc, store: &StandardTransactionStore) -> reifydb_type::Result<Cdc> {
-	store.convert(internal).await
+fn internal_to_public_cdc(internal: InternalCdc, store: &StandardTransactionStore) -> reifydb_type::Result<Cdc> {
+	store.convert(internal)
 }
 
-#[async_trait]
 impl CdcGet for StandardTransactionStore {
-	async fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>> {
+	fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>> {
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			if let Some(internal) = get_internal_cdc(hot, version).await? {
-				return Ok(Some(internal_to_public_cdc(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(hot, version)? {
+				return Ok(Some(internal_to_public_cdc(internal, self)?));
 			}
 		}
 
 		// Try warm tier
 		if let Some(warm) = &self.warm {
-			if let Some(internal) = get_internal_cdc(warm, version).await? {
-				return Ok(Some(internal_to_public_cdc(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(warm, version)? {
+				return Ok(Some(internal_to_public_cdc(internal, self)?));
 			}
 		}
 
 		// Try cold tier
 		if let Some(cold) = &self.cold {
-			if let Some(internal) = get_internal_cdc(cold, version).await? {
-				return Ok(Some(internal_to_public_cdc(internal, self).await?));
+			if let Some(internal) = get_internal_cdc(cold, version)? {
+				return Ok(Some(internal_to_public_cdc(internal, self)?));
 			}
 		}
 
@@ -76,9 +71,8 @@ impl CdcGet for StandardTransactionStore {
 	}
 }
 
-#[async_trait]
 impl CdcRange for StandardTransactionStore {
-	async fn range_batch(
+	fn range_batch(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
@@ -90,7 +84,7 @@ impl CdcRange for StandardTransactionStore {
 		let batch_size = batch_size as usize;
 
 		// Helper to process batches from a tier until exhausted or enough entries
-		async fn process_tier<S: TierStorage>(
+		fn process_tier<S: TierStorage>(
 			storage: &S,
 			start_key: Bound<&[u8]>,
 			end_key: Bound<&[u8]>,
@@ -99,9 +93,8 @@ impl CdcRange for StandardTransactionStore {
 			let mut cursor = RangeCursor::new();
 
 			loop {
-				let batch = storage
-					.range_next(EntryKind::Cdc, &mut cursor, start_key, end_key, 4096)
-					.await?;
+				let batch =
+					storage.range_next(EntryKind::Cdc, &mut cursor, start_key, end_key, 4096)?;
 
 				for entry in batch.entries {
 					if let Some(version) = key_to_version(&entry.key) {
@@ -128,19 +121,19 @@ impl CdcRange for StandardTransactionStore {
 
 		// Process each tier (first one with a value for a version wins)
 		if let Some(hot) = &self.hot {
-			process_tier(hot, start_bound, end_bound, &mut all_entries).await?;
+			process_tier(hot, start_bound, end_bound, &mut all_entries)?;
 		}
 		if let Some(warm) = &self.warm {
-			process_tier(warm, start_bound, end_bound, &mut all_entries).await?;
+			process_tier(warm, start_bound, end_bound, &mut all_entries)?;
 		}
 		if let Some(cold) = &self.cold {
-			process_tier(cold, start_bound, end_bound, &mut all_entries).await?;
+			process_tier(cold, start_bound, end_bound, &mut all_entries)?;
 		}
 
 		// Convert to public Cdc
 		let mut items: Vec<Cdc> = Vec::new();
 		for (_, internal) in all_entries.into_iter().take(batch_size) {
-			match internal_to_public_cdc(internal, self).await {
+			match internal_to_public_cdc(internal, self) {
 				Ok(cdc) => items.push(cdc),
 				Err(err) => unreachable!("cdc conversion should never fail: {}", err),
 			}
@@ -164,11 +157,10 @@ fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	}
 }
 
-#[async_trait]
 impl CdcCount for StandardTransactionStore {
-	async fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize> {
+	fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize> {
 		// Get the CDC at this version and count its changes
-		if let Some(cdc) = CdcGet::get(self, version).await? {
+		if let Some(cdc) = CdcGet::get(self, version)? {
 			Ok(cdc.changes.len())
 		} else {
 			Ok(0)

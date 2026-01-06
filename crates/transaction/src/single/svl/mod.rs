@@ -132,7 +132,7 @@ mod tests {
 	}
 
 	async fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(TransactionStore::testing_memory().await, EventBus::default())
+		TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default())
 	}
 
 	#[tokio::test]

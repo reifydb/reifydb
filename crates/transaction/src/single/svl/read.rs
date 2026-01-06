@@ -35,13 +35,13 @@ impl<'a> SvlQueryTransaction<'a> {
 		// Clone the store to avoid holding the lock across await
 		// TransactionStore is Arc-based, so clone is cheap
 		let store = self.inner.store.read().await.clone();
-		SingleVersionGet::get(&store, key).await
+		SingleVersionGet::get(&store, key)
 	}
 
 	pub async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
 		// Clone the store to avoid holding the lock across await
 		let store = self.inner.store.read().await.clone();
-		SingleVersionContains::contains(&store, key).await
+		SingleVersionContains::contains(&store, key)
 	}
 }

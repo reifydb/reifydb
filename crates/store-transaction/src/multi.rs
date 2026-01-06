@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, interface::MultiVersionValues};
 
 /// Composite trait for multi-version storage capabilities.
@@ -35,22 +34,22 @@ impl MultiVersionBatch {
 }
 
 /// Trait for committing deltas to multi-version storage.
-#[async_trait]
+
 pub trait MultiVersionCommit: Send + Sync {
 	/// Commit a batch of deltas at the given version.
-	async fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()>;
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()>;
 }
 
 /// Trait for getting values from multi-version storage.
-#[async_trait]
+
 pub trait MultiVersionGet: Send + Sync {
 	/// Get the value for a key at a specific version.
-	async fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
 }
 
 /// Trait for checking key existence in multi-version storage.
-#[async_trait]
+
 pub trait MultiVersionContains: Send + Sync {
 	/// Check if a key exists at a specific version.
-	async fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
 }

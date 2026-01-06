@@ -8,7 +8,6 @@ use reifydb_core::interface::SingleVersionValues;
 use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
 use tokio::sync::OwnedRwLockWriteGuard;
-use tracing::{Instrument, debug_span};
 
 use super::*;
 
@@ -69,7 +68,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		// Clone the store to avoid holding the lock across await
 		// TransactionStore is Arc-based, so clone is cheap
 		let store = self.inner.store.read().await.clone();
-		SingleVersionGet::get(&store, key).instrument(debug_span!("svl_get_from_store")).await
+		SingleVersionGet::get(&store, key)
 	}
 
 	pub async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
@@ -91,7 +90,7 @@ impl<'a> SvlCommandTransaction<'a> {
 
 		// Clone the store to avoid holding the lock across await
 		let store = self.inner.store.read().await.clone();
-		SingleVersionContains::contains(&store, key).await
+		SingleVersionContains::contains(&store, key)
 	}
 
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
@@ -122,9 +121,7 @@ impl<'a> SvlCommandTransaction<'a> {
 
 		if !deltas.is_empty() {
 			let mut store = self.inner.store.write().await;
-			SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))
-				.instrument(debug_span!("svl_store_commit"))
-				.await?;
+			SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))?;
 		}
 
 		self.completed = true;

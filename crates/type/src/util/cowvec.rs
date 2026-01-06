@@ -49,7 +49,7 @@ where
 }
 
 #[macro_export]
-macro_rules! async_cow_vec {
+macro_rules! cow_vec {
     () => {
         $crate::CowVec::new(Vec::new())
     };

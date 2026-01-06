@@ -6,10 +6,7 @@ use std::{
 	ops::{Bound, RangeBounds},
 };
 
-use async_stream::try_stream;
-use async_trait::async_trait;
 use drop::find_keys_to_drop;
-use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
 	util::clock::now_millis, value::encoded::EncodedValues,
@@ -34,15 +31,14 @@ use crate::{
 /// This is the number of versioned entries fetched per tier per iteration.
 const TIER_SCAN_CHUNK_SIZE: usize = 4096;
 
-#[async_trait]
 impl MultiVersionGet for StandardTransactionStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	async fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		let table = classify_key(key);
 
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			match get_at_version(hot, table, key.as_ref(), version).await? {
+			match get_at_version(hot, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -60,7 +56,7 @@ impl MultiVersionGet for StandardTransactionStore {
 
 		// Try warm tier
 		if let Some(warm) = &self.warm {
-			match get_at_version(warm, table, key.as_ref(), version).await? {
+			match get_at_version(warm, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -78,7 +74,7 @@ impl MultiVersionGet for StandardTransactionStore {
 
 		// Try cold tier
 		if let Some(cold) = &self.cold {
-			match get_at_version(cold, table, key.as_ref(), version).await? {
+			match get_at_version(cold, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -98,18 +94,16 @@ impl MultiVersionGet for StandardTransactionStore {
 	}
 }
 
-#[async_trait]
 impl MultiVersionContains for StandardTransactionStore {
 	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0), ret)]
-	async fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool> {
-		Ok(MultiVersionGet::get(self, key, version).await?.is_some())
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool> {
+		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
 
-#[async_trait]
 impl MultiVersionCommit for StandardTransactionStore {
 	#[instrument(name = "store::multi::commit", level = "info", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
-	async fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
 		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
@@ -143,7 +137,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			(result, pending_keys)
 		};
 
-		let previous_versions = self.collect_previous_versions(&optimized_deltas).await;
+		let previous_versions = self.collect_previous_versions(&optimized_deltas);
 
 		// Track storage statistics
 		// TODO this should happen in the background
@@ -153,7 +147,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			let table = classify_key(key);
 
 			// Look up previous value to calculate size delta
-			let pre_version_info = self.get_previous_value_info(table, key_bytes).await;
+			let pre_version_info = self.get_previous_value_info(table, key_bytes);
 
 			// Versioned key size = original key + VERSION_SIZE
 			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
@@ -235,8 +229,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 						*up_to_version,
 						*keep_last_versions,
 						pending_version,
-					)
-					.await?;
+					)?;
 					for entry in entries_to_drop {
 						// Track storage reduction for each dropped entry
 						self.stats_tracker.record_drop(
@@ -282,11 +275,11 @@ impl MultiVersionCommit for StandardTransactionStore {
 			batches.entry(EntryKind::Cdc).or_default().push((cdc_key, Some(encoded)));
 		}
 
-		storage.set(batches).await?;
+		storage.set(batches)?;
 
 		// Checkpoint stats if needed
 		if self.stats_tracker.should_checkpoint() {
-			self.stats_tracker.checkpoint(storage).await?;
+			self.stats_tracker.checkpoint(storage)?;
 		}
 
 		Ok(())
@@ -295,10 +288,10 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 impl StandardTransactionStore {
 	/// Get information about the previous value of a key for stats tracking .
-	async fn get_previous_value_info(&self, table: EntryKind, key: &[u8]) -> Option<PreVersionInfo> {
+	fn get_previous_value_info(&self, table: EntryKind, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
-		async fn get_value<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Option<(u64, u64)> {
-			match get_at_version(storage, table, key, CommitVersion(u64::MAX)).await {
+		fn get_value<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Option<(u64, u64)> {
+			match get_at_version(storage, table, key, CommitVersion(u64::MAX)) {
 				Ok(VersionedGetResult::Value {
 					value,
 					..
@@ -312,7 +305,7 @@ impl StandardTransactionStore {
 
 		// Check tiers in order
 		if let Some(hot) = &self.hot {
-			if let Some((key_bytes, value_bytes)) = get_value(hot, table, key).await {
+			if let Some((key_bytes, value_bytes)) = get_value(hot, table, key) {
 				return Some(PreVersionInfo {
 					key_bytes,
 					value_bytes,
@@ -320,7 +313,7 @@ impl StandardTransactionStore {
 			}
 		}
 		if let Some(warm) = &self.warm {
-			if let Some((key_bytes, value_bytes)) = get_value(warm, table, key).await {
+			if let Some((key_bytes, value_bytes)) = get_value(warm, table, key) {
 				return Some(PreVersionInfo {
 					key_bytes,
 					value_bytes,
@@ -328,7 +321,7 @@ impl StandardTransactionStore {
 			}
 		}
 		if let Some(cold) = &self.cold {
-			if let Some((key_bytes, value_bytes)) = get_value(cold, table, key).await {
+			if let Some((key_bytes, value_bytes)) = get_value(cold, table, key) {
 				return Some(PreVersionInfo {
 					key_bytes,
 					value_bytes,
@@ -341,7 +334,7 @@ impl StandardTransactionStore {
 
 	/// Collect previous versions for all keys in the delta list.
 	/// Used for CDC to determine Insert vs Update operations.
-	async fn collect_previous_versions(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, CommitVersion> {
+	fn collect_previous_versions(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, CommitVersion> {
 		use super::version::get_latest_version;
 
 		let mut version_map = HashMap::new();
@@ -361,25 +354,19 @@ impl StandardTransactionStore {
 				} => {
 					// Check all tiers for the latest version
 					if let Some(hot) = &self.hot {
-						if let Ok(Some(version)) =
-							get_latest_version(hot, table, key_bytes).await
-						{
+						if let Ok(Some(version)) = get_latest_version(hot, table, key_bytes) {
 							version_map.insert(key_bytes.to_vec(), version);
 							continue;
 						}
 					}
 					if let Some(warm) = &self.warm {
-						if let Ok(Some(version)) =
-							get_latest_version(warm, table, key_bytes).await
-						{
+						if let Ok(Some(version)) = get_latest_version(warm, table, key_bytes) {
 							version_map.insert(key_bytes.to_vec(), version);
 							continue;
 						}
 					}
 					if let Some(cold) = &self.cold {
-						if let Ok(Some(version)) =
-							get_latest_version(cold, table, key_bytes).await
-						{
+						if let Ok(Some(version)) = get_latest_version(cold, table, key_bytes) {
 							version_map.insert(key_bytes.to_vec(), version);
 						}
 					}
@@ -429,7 +416,7 @@ impl StandardTransactionStore {
 	///
 	/// This properly handles high version density by scanning until `batch_size`
 	/// unique logical keys are collected OR all tiers are exhausted.
-	pub async fn range_next(
+	pub fn range_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
@@ -466,8 +453,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -484,8 +470,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -502,8 +487,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -538,7 +522,7 @@ impl StandardTransactionStore {
 
 	/// Scan a chunk from a single tier and merge into collected entries.
 	/// Returns true if any entries were processed (i.e., made progress).
-	async fn scan_tier_chunk<S: TierStorage>(
+	fn scan_tier_chunk<S: TierStorage>(
 		storage: &S,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -550,9 +534,13 @@ impl StandardTransactionStore {
 	) -> crate::Result<bool> {
 		use super::version::{extract_key, extract_version};
 
-		let batch = storage
-			.range_next(table, cursor, Bound::Included(start), Bound::Included(end), TIER_SCAN_CHUNK_SIZE)
-			.await?;
+		let batch = storage.range_next(
+			table,
+			cursor,
+			Bound::Included(start),
+			Bound::Included(end),
+			TIER_SCAN_CHUNK_SIZE,
+		)?;
 
 		if batch.entries.is_empty() {
 			return Ok(false);
@@ -588,53 +576,47 @@ impl StandardTransactionStore {
 		Ok(true)
 	}
 
-	/// Create a streaming iterator for forward range queries.
+	/// Create an iterator for forward range queries.
 	///
 	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
+	/// unique logical keys are collected. The iterator yields individual entries
 	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
-	) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + '_ {
-		try_stream! {
-			let mut cursor = MultiVersionRangeCursor::new();
-			loop {
-				let batch = self.range_next(&mut cursor, range.clone(), version, batch_size as u64).await?;
-				for item in batch.items {
-					yield item;
-				}
-				if cursor.exhausted || !batch.has_more {
-					break;
-				}
-			}
+	) -> MultiVersionRangeIter {
+		MultiVersionRangeIter {
+			store: self.clone(),
+			cursor: MultiVersionRangeCursor::new(),
+			range,
+			version,
+			batch_size,
+			current_batch: Vec::new(),
+			current_index: 0,
 		}
 	}
 
-	/// Create a streaming iterator for reverse range queries.
+	/// Create an iterator for reverse range queries.
 	///
 	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
+	/// unique logical keys are collected. The iterator yields individual entries
 	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: usize,
-	) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + '_ {
-		try_stream! {
-			let mut cursor = MultiVersionRangeCursor::new();
-			loop {
-				let batch = self.range_rev_next(&mut cursor, range.clone(), version, batch_size as u64).await?;
-				for item in batch.items {
-					yield item;
-				}
-				if cursor.exhausted || !batch.has_more {
-					break;
-				}
-			}
+	) -> MultiVersionRangeRevIter {
+		MultiVersionRangeRevIter {
+			store: self.clone(),
+			cursor: MultiVersionRangeCursor::new(),
+			range,
+			version,
+			batch_size,
+			current_batch: Vec::new(),
+			current_index: 0,
 		}
 	}
 
@@ -642,7 +624,7 @@ impl StandardTransactionStore {
 	///
 	/// This properly handles high version density by scanning until `batch_size`
 	/// unique logical keys are collected OR all tiers are exhausted.
-	async fn range_rev_next(
+	fn range_rev_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
@@ -679,8 +661,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -697,8 +678,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -715,8 +695,7 @@ impl StandardTransactionStore {
 						version,
 						&range,
 						&mut collected,
-					)
-					.await?;
+					)?;
 					any_progress |= progress;
 				}
 			}
@@ -752,7 +731,7 @@ impl StandardTransactionStore {
 
 	/// Scan a chunk from a single tier in reverse and merge into collected entries.
 	/// Returns true if any entries were processed (i.e., made progress).
-	async fn scan_tier_chunk_rev<S: TierStorage>(
+	fn scan_tier_chunk_rev<S: TierStorage>(
 		storage: &S,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
@@ -764,15 +743,13 @@ impl StandardTransactionStore {
 	) -> crate::Result<bool> {
 		use super::version::{extract_key, extract_version};
 
-		let batch = storage
-			.range_rev_next(
-				table,
-				cursor,
-				Bound::Included(start),
-				Bound::Included(end),
-				TIER_SCAN_CHUNK_SIZE,
-			)
-			.await?;
+		let batch = storage.range_rev_next(
+			table,
+			cursor,
+			Bound::Included(start),
+			Bound::Included(end),
+			TIER_SCAN_CHUNK_SIZE,
+		)?;
 
 		if batch.entries.is_empty() {
 			return Ok(false);
@@ -810,6 +787,96 @@ impl StandardTransactionStore {
 }
 
 impl MultiVersionStore for StandardTransactionStore {}
+
+/// Iterator for forward multi-version range queries.
+pub struct MultiVersionRangeIter {
+	store: StandardTransactionStore,
+	cursor: MultiVersionRangeCursor,
+	range: EncodedKeyRange,
+	version: CommitVersion,
+	batch_size: usize,
+	current_batch: Vec<MultiVersionValues>,
+	current_index: usize,
+}
+
+impl Iterator for MultiVersionRangeIter {
+	type Item = crate::Result<MultiVersionValues>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// If we have items in the current batch, return them
+		if self.current_index < self.current_batch.len() {
+			let item = self.current_batch[self.current_index].clone();
+			self.current_index += 1;
+			return Some(Ok(item));
+		}
+
+		// If cursor is exhausted, we're done
+		if self.cursor.exhausted {
+			return None;
+		}
+
+		// Fetch the next batch
+		match self.store.range_next(&mut self.cursor, self.range.clone(), self.version, self.batch_size as u64)
+		{
+			Ok(batch) => {
+				if batch.items.is_empty() {
+					return None;
+				}
+				self.current_batch = batch.items;
+				self.current_index = 0;
+				self.next()
+			}
+			Err(e) => Some(Err(e)),
+		}
+	}
+}
+
+/// Iterator for reverse multi-version range queries.
+pub struct MultiVersionRangeRevIter {
+	store: StandardTransactionStore,
+	cursor: MultiVersionRangeCursor,
+	range: EncodedKeyRange,
+	version: CommitVersion,
+	batch_size: usize,
+	current_batch: Vec<MultiVersionValues>,
+	current_index: usize,
+}
+
+impl Iterator for MultiVersionRangeRevIter {
+	type Item = crate::Result<MultiVersionValues>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// If we have items in the current batch, return them
+		if self.current_index < self.current_batch.len() {
+			let item = self.current_batch[self.current_index].clone();
+			self.current_index += 1;
+			return Some(Ok(item));
+		}
+
+		// If cursor is exhausted, we're done
+		if self.cursor.exhausted {
+			return None;
+		}
+
+		// Fetch the next batch
+		match self.store.range_rev_next(
+			&mut self.cursor,
+			self.range.clone(),
+			self.version,
+			self.batch_size as u64,
+		) {
+			Ok(batch) => {
+				if batch.items.is_empty() {
+					return None;
+				}
+				self.current_batch = batch.items;
+				self.current_index = 0;
+				self.next()
+			}
+			Err(e) => Some(Err(e)),
+		}
+	}
+}
 
 /// Classify a range to determine which table it belongs to.
 fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
