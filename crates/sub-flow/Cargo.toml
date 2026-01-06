@@ -19,25 +19,16 @@ reifydb-rql = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
-reifydb-transaction = {workspace = true}
+reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
-async-stream = { workspace = true }
-async-trait = { workspace = true }
-futures-util = { workspace = true }
 serde = { workspace = true }
-serde_bytes = { workspace = true}
-serde_json = { workspace = true }
+serde_bytes = { workspace = true }
 postcard = { workspace = true }
 libloading = { workspace = true }
-parking_lot = {workspace = true}
+parking_lot = { workspace = true }
 
 dashmap = { workspace = true }
 indexmap = { workspace = true }
 num_cpus = { workspace = true }
-tokio = { workspace = true }
-tokio-util = "0.7"
 tracing = { workspace = true }
-
-[dev-dependencies]
-rand = { workspace = true}

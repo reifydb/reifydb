@@ -1,79 +1,67 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Provides flow lag data for the system.flow_lags virtual table (V2).
+//! Provides flow lag data for the system.flow_lags virtual table.
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::interface::{FlowLagRow, FlowLagsProvider};
 use reifydb_engine::StandardEngine;
 
-use crate::{registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
+use crate::tracker::PrimitiveVersionTracker;
 
-/// Provides flow lag data for virtual table queries (V2 implementation).
+/// Provides flow lag data for virtual table queries (simplified implementation).
 ///
-/// Computes per-source lag for each flow by comparing the flow's checkpoint
-/// version to the latest change version of each source it subscribes to.
+/// In the single-threaded model, all flows process together at the same version,
+/// so lag is computed based on primitive tracker vs the global flow loop checkpoint.
 pub struct FlowLags {
-	registry: Arc<FlowConsumerRegistry>,
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
 	engine: StandardEngine,
 }
 
 impl FlowLags {
-	/// Create a new provider.
-	pub fn new(
-		registry: Arc<FlowConsumerRegistry>,
-		primitive_tracker: Arc<PrimitiveVersionTracker>,
-		engine: StandardEngine,
-	) -> Self {
+	/// Create a new simplified provider (single-threaded model).
+	pub fn new_simple(primitive_tracker: Arc<PrimitiveVersionTracker>, engine: StandardEngine) -> Self {
 		Self {
-			registry,
 			primitive_tracker,
 			engine,
 		}
 	}
 }
 
-#[async_trait]
 impl FlowLagsProvider for FlowLags {
 	/// Get all flow lag rows.
 	///
-	/// Returns one row per (flow, source) pair, showing how far behind
-	/// each flow is for each of its subscribed sources.
+	/// In the single-threaded model, returns lag based on the global flow loop checkpoint.
+	/// All flows are at the same version, so we return one row per primitive.
 	fn all_lags(&self) -> Vec<FlowLagRow> {
-		let flow_info = self.registry.all_flow_info();
+		use reifydb_cdc::CdcCheckpoint;
+		use reifydb_core::interface::CdcConsumerId;
+
 		let primitive_versions = self.primitive_tracker.all();
 
-		let mut rows = Vec::new();
-
-		for (flow_id, sources) in flow_info {
-			// Get flow's current checkpoint version
-			let flow_version = {
-				let consumers = self.registry.consumers_read();
-				if let Some(handle) = consumers.get(&flow_id) {
-					match handle.flow_consumer.current_version(&self.engine) {
-						Ok(v) => v.0,
-						Err(_) => 0, // Flow not yet processed anything
-					}
-				} else {
-					continue; // Flow removed between queries
-				}
+		// Get the flow loop's current checkpoint
+		let flow_loop_version = {
+			let consumer_id = CdcConsumerId::new("flow-loop");
+			let mut txn = match self.engine.begin_query() {
+				Ok(txn) => txn,
+				Err(_) => return Vec::new(),
 			};
+			CdcCheckpoint::fetch(&mut txn, &consumer_id).unwrap_or(reifydb_core::CommitVersion(0)).0
+		};
 
-			for primitive_id in sources {
-				let primitive_version = primitive_versions.get(&primitive_id).map(|v| v.0).unwrap_or(0);
-				let lag = primitive_version.saturating_sub(flow_version);
-
-				rows.push(FlowLagRow {
-					flow_id,
+		// Return one row per primitive showing lag
+		primitive_versions
+			.into_iter()
+			.map(|(primitive_id, version)| {
+				let lag = version.0.saturating_sub(flow_loop_version);
+				FlowLagRow {
+					flow_id: reifydb_core::interface::FlowId(0), /* No specific flow in
+					                                              * single-threaded model */
 					primitive_id,
 					lag,
-				});
-			}
-		}
-
-		rows
+				}
+			})
+			.collect()
 	}
 }

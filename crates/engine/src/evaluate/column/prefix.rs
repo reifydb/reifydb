@@ -290,9 +290,7 @@ impl StandardColumnEvaluator {
 			// EngineColumnData::Undefined(_) => {
 			//     Err("Cannot apply prefix operator to undefined data".into())
 			// }
-			ColumnData::Undefined(_) => {
-				unimplemented!()
-			}
+			ColumnData::Undefined(_) => Ok(column),
 
 			ColumnData::Date(_) => match prefix.operator {
 				PrefixOperator::Not(_) => {

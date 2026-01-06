@@ -3,7 +3,7 @@
 
 mod factory;
 
-use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
+use std::{any::Any, path::PathBuf, sync::Arc};
 
 pub use factory::FlowSubsystemFactory;
 use reifydb_core::{
@@ -16,18 +16,19 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 
 use crate::{
-	FlowEngine, coordinator::Coordinator, lag::FlowLags, operator::transform::registry::TransformOperatorRegistry,
-	registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker,
+	FlowEngine,
+	lag::FlowLags,
+	r#loop::{FlowLoop, FlowLoopConfig},
+	operator::transform::registry::TransformOperatorRegistry,
+	tracker::PrimitiveVersionTracker,
 };
 
-/// Flow subsystem - greenfield rewrite with independent per-flow consumers.
+/// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
-	coordinator: Coordinator,
+	flow_loop: FlowLoop,
 	running: bool,
-	runtime: SharedRuntime,
 }
 
 impl FlowSubsystem {
@@ -36,7 +37,7 @@ impl FlowSubsystem {
 		engine: StandardEngine,
 		operators_dir: Option<PathBuf>,
 		ioc: &IocContainer,
-		runtime: Option<SharedRuntime>,
+		_runtime: Option<()>, // Ignored in single-threaded version
 	) -> Self {
 		// Create operator registry
 		let operator_registry = TransformOperatorRegistry::new();
@@ -51,23 +52,20 @@ impl FlowSubsystem {
 			operators_dir,
 		);
 
-		let registry = Arc::new(FlowConsumerRegistry::new());
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
-		// Create lag provider
-		let lags_provider =
-			Arc::new(FlowLags::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
+		// Create lag provider (simplified - uses primitive tracker + engine for checkpoints)
+		let lags_provider = Arc::new(FlowLags::new_simple(primitive_tracker.clone(), engine.clone()));
 
 		// Register in IoC for virtual table access
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(lags_provider);
 
-		let runtime_clone = runtime.clone().unwrap_or_else(|| DEFAULT_RUNTIME.clone());
-		let coordinator = Coordinator::new(engine, Arc::new(flow_engine), registry, primitive_tracker, runtime);
+		let config = FlowLoopConfig::default();
+		let flow_loop = FlowLoop::new(engine, Arc::new(flow_engine), primitive_tracker, config);
 
 		Self {
-			coordinator,
+			flow_loop,
 			running: false,
-			runtime: runtime_clone,
 		}
 	}
 }
@@ -82,7 +80,7 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
-		self.coordinator.start()?;
+		self.flow_loop.start()?;
 		self.running = true;
 		Ok(())
 	}
@@ -92,10 +90,7 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
-		// Use 30 second timeout for graceful shutdown
-		let timeout = Duration::from_secs(30);
-		self.runtime.block_on(self.coordinator.shutdown(timeout));
-
+		self.flow_loop.stop()?;
 		self.running = false;
 		Ok(())
 	}

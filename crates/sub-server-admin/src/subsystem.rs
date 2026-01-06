@@ -10,7 +10,6 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -20,7 +19,7 @@ use reifydb_core::{
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
-use tokio::{net::TcpListener, sync::oneshot, time::timeout};
+use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::state::AdminState;
 
