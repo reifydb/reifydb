@@ -28,22 +28,22 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub async fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
-		debug_assert!(!self.inner.flows.read().await.contains_key(&flow.id), "Flow already registered");
+	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			self.add(txn, &flow, node).await?;
+			self.add(txn, &flow, node)?;
 		}
 
-		self.inner.analyzer.write().await.add(flow.clone());
-		self.inner.flows.write().await.insert(flow.id, flow);
+		self.inner.analyzer.write().add(flow.clone());
+		self.inner.flows.write().insert(flow.id, flow);
 
 		Ok(())
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	async fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
+	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
 		debug_assert!(!self.inner.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -56,7 +56,7 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = self.inner.catalog.get_table(txn, table).await?;
+				let table = self.inner.catalog.get_table(txn, table)?;
 
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id));
 				self.inner.operators.insert(
@@ -67,7 +67,7 @@ impl FlowEngine {
 			SourceView {
 				view,
 			} => {
-				let view = self.inner.catalog.get_view(txn, view).await?;
+				let view = self.inner.catalog.get_view(txn, view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
 				self.inner.operators.insert(
 					node.id,
@@ -77,7 +77,7 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = self.inner.catalog.get_flow(txn, source_flow).await?;
+				let source_flow_def = self.inner.catalog.get_flow(txn, source_flow)?;
 				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id));
 				self.inner.operators.insert(
 					node.id,
@@ -98,7 +98,7 @@ impl FlowEngine {
 					.clone();
 
 				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
-				let resolved = self.inner.catalog.resolve_view(txn, view).await?;
+				let resolved = self.inner.catalog.resolve_view(txn, view)?;
 				self.inner.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
@@ -116,7 +116,7 @@ impl FlowEngine {
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
 				// which uses PrimitiveId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self.inner.catalog.resolve_subscription(txn, subscription).await?;
+				let resolved = self.inner.catalog.resolve_subscription(txn, subscription)?;
 				self.inner.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(

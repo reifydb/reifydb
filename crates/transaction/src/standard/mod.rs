@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::pin::Pin;
-
-use futures_util::Stream;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
 use reifydb_store_transaction::MultiVersionBatch;
 use reifydb_type::Result;
@@ -42,42 +39,42 @@ impl<'a> StandardTransaction<'a> {
 	}
 
 	/// Get a value by key (async method)
-	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
 		match self {
-			Self::Command(txn) => txn.get(key).await,
-			Self::Query(txn) => txn.get(key).await,
+			Self::Command(txn) => txn.get(key),
+			Self::Query(txn) => txn.get(key),
 		}
 	}
 
 	/// Check if a key exists (async method)
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		match self {
-			Self::Command(txn) => txn.contains_key(key).await,
-			Self::Query(txn) => txn.contains_key(key).await,
+			Self::Command(txn) => txn.contains_key(key),
+			Self::Query(txn) => txn.contains_key(key),
 		}
 	}
 
 	/// Get a prefix batch (async method)
-	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		match self {
-			Self::Command(txn) => txn.prefix(prefix).await,
-			Self::Query(txn) => txn.prefix(prefix).await,
+			Self::Command(txn) => txn.prefix(prefix),
+			Self::Query(txn) => txn.prefix(prefix),
 		}
 	}
 
 	/// Get a reverse prefix batch (async method)
-	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		match self {
-			Self::Command(txn) => txn.prefix_rev(prefix).await,
-			Self::Query(txn) => txn.prefix_rev(prefix).await,
+			Self::Command(txn) => txn.prefix_rev(prefix),
+			Self::Query(txn) => txn.prefix_rev(prefix),
 		}
 	}
 
 	/// Read as of version exclusive (async method)
-	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		match self {
-			StandardTransaction::Command(txn) => txn.read_as_of_version_exclusive(version).await,
-			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version).await,
+			StandardTransaction::Command(txn) => txn.read_as_of_version_exclusive(version),
+			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version),
 		}
 	}
 
@@ -86,7 +83,7 @@ impl<'a> StandardTransaction<'a> {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
 		match self {
 			StandardTransaction::Command(txn) => txn.range(range, batch_size),
 			StandardTransaction::Query(txn) => Ok(txn.range(range, batch_size)),
@@ -98,7 +95,7 @@ impl<'a> StandardTransaction<'a> {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
 		match self {
 			StandardTransaction::Command(txn) => txn.range_rev(range, batch_size),
 			StandardTransaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
@@ -126,35 +123,35 @@ pub trait IntoStandardTransaction: Send {
 	fn into_standard_transaction(&mut self) -> StandardTransaction<'_>;
 
 	/// Get a value by key (async method)
-	async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>>
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>>
 	where
 		Self: Sized,
 	{
-		self.into_standard_transaction().get(key).await
+		self.into_standard_transaction().get(key)
 	}
 
 	/// Check if a key exists (async method)
-	async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool>
+	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool>
 	where
 		Self: Sized,
 	{
-		self.into_standard_transaction().contains_key(key).await
+		self.into_standard_transaction().contains_key(key)
 	}
 
 	/// Get a prefix batch (async method)
-	async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
 	where
 		Self: Sized,
 	{
-		self.into_standard_transaction().prefix(prefix).await
+		self.into_standard_transaction().prefix(prefix)
 	}
 
 	/// Get a reverse prefix batch (async method)
-	async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch>
 	where
 		Self: Sized,
 	{
-		self.into_standard_transaction().prefix_rev(prefix).await
+		self.into_standard_transaction().prefix_rev(prefix)
 	}
 }
 
@@ -217,21 +214,21 @@ impl<'a> StandardTransaction<'a> {
 	}
 
 	/// Begin a single-version query transaction for specific keys
-	pub async fn begin_single_query<'b, I>(&self, keys: I) -> Result<crate::single::SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<crate::single::SvlQueryTransaction<'_>>
 	where
-		I: IntoIterator<Item = &'b EncodedKey> + Send,
+		I: IntoIterator<Item = &'b EncodedKey>,
 	{
 		match self {
-			StandardTransaction::Command(txn) => txn.begin_single_query(keys).await,
-			StandardTransaction::Query(txn) => txn.begin_single_query(keys).await,
+			StandardTransaction::Command(txn) => txn.begin_single_query(keys),
+			StandardTransaction::Query(txn) => txn.begin_single_query(keys),
 		}
 	}
 
 	/// Begin a CDC query transaction
-	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
+	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		match self {
-			StandardTransaction::Command(txn) => txn.begin_cdc_query().await,
-			StandardTransaction::Query(txn) => txn.begin_cdc_query().await,
+			StandardTransaction::Command(txn) => txn.begin_cdc_query(),
+			StandardTransaction::Query(txn) => txn.begin_cdc_query(),
 		}
 	}
 }

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+#[cfg(test)]
+use std::sync::OnceLock;
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
 	time::Instant,
 };
-#[cfg(test)]
-use std::{future::Future, pin::Pin, sync::OnceLock};
 
 use cleanup::cleanup_old_windows;
+use parking_lot::{Mutex, RwLock};
 use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
-use tokio::sync::{Mutex, RwLock};
 use tracing::{Span, instrument};
 
 use crate::multi::{
@@ -35,7 +35,7 @@ pub mod testing;
 // watermark race condition for regression testing.
 
 #[cfg(test)]
-type TestHookFn = Box<dyn Fn(CommitVersion) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type TestHookFn = Arc<dyn Fn(CommitVersion) + Send + Sync>;
 
 #[cfg(test)]
 static ORACLE_TEST_HOOK: OnceLock<Mutex<Option<TestHookFn>>> = OnceLock::new();
@@ -165,7 +165,7 @@ where
 	L: VersionProvider,
 {
 	/// Create a new oracle with efficient conflict detection
-	pub async fn new(clock: L) -> Self {
+	pub fn new(clock: L) -> Self {
 		let closer = Closer::new(2);
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -178,8 +178,8 @@ where
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
 			version_lock: Mutex::new(()),
-			query: WaterMark::new("txn-mark-query".into(), closer.clone()).await,
-			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()).await,
+			query: WaterMark::new("txn-mark-query".into(), closer.clone()),
+			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()),
 			shutdown_signal,
 			closer,
 		}
@@ -203,7 +203,7 @@ where
 		cleanup_us = tracing::field::Empty,
 		has_conflict = tracing::field::Empty
 	))]
-	pub(crate) async fn new_commit(
+	pub(crate) fn new_commit(
 		&self,
 		done_read: &mut bool,
 		version: CommitVersion,
@@ -212,7 +212,7 @@ where
 		// First, perform conflict detection with read lock for better
 		// concurrency
 		let lock_start = Instant::now();
-		let inner = self.inner.read().await;
+		let inner = self.inner.read();
 		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
 
 		// Get keys involved in this transaction for efficient filtering
@@ -290,7 +290,7 @@ where
 
 				// Acquire read lock on the window for conflict
 				// checking
-				let _window_lock = window.lock.read().await;
+				let _window_lock = window.lock.read();
 
 				// Check conflicts with transactions in this
 				// window
@@ -333,16 +333,16 @@ where
 		// Get commit version with minimal locking
 		let commit_version = {
 			let version_lock_start = Instant::now();
-			let _version_guard = self.version_lock.lock().await;
+			let _version_guard = self.version_lock.lock();
 			Span::current().record("version_lock_us", version_lock_start.elapsed().as_micros() as u64);
 
 			let clock = {
-				let inner = self.inner.read().await;
+				let inner = self.inner.read();
 				inner.clock.clone()
 			};
 
 			let clock_start = Instant::now();
-			let version = clock.next().await?;
+			let version = clock.next()?;
 			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
 			// TEST HOOK: Inject behavior between version allocation and begin()
@@ -351,11 +351,11 @@ where
 			// outside lock), this hook would also move outside, allowing races.
 			#[cfg(test)]
 			{
-				let hook_guard = get_oracle_test_hook().lock().await;
+				let hook_guard = get_oracle_test_hook().lock();
 				if let Some(ref hook_fn) = *hook_guard {
-					let future = hook_fn(version);
-					drop(hook_guard); // Release hook lock before await
-					future.await;
+					let hook_clone = hook_fn.clone();
+					drop(hook_guard); // Release hook lock before calling hook
+					hook_clone(version);
 				}
 			}
 
@@ -368,7 +368,7 @@ where
 		// Add this transaction to the appropriate window with write lock
 		let needs_cleanup = {
 			let write_lock_start = Instant::now();
-			let mut inner = self.inner.write().await;
+			let mut inner = self.inner.write();
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
 			let add_start = Instant::now();
@@ -380,7 +380,7 @@ where
 
 		if needs_cleanup {
 			let cleanup_start = Instant::now();
-			let mut inner = self.inner.write().await;
+			let mut inner = self.inner.write();
 			let inner = &mut *inner;
 			cleanup_old_windows(&mut inner.time_windows, &mut inner.key_to_windows);
 			Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
@@ -392,18 +392,18 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
-	pub(crate) async fn version(&self) -> crate::Result<CommitVersion> {
-		self.inner.read().await.clock.current().await
+	pub(crate) fn version(&self) -> crate::Result<CommitVersion> {
+		self.inner.read().clock.current()
 	}
 
-	pub async fn stop(&mut self) {
+	pub fn stop(&mut self) {
 		// Signal shutdown - use blocking_write since this is called from Drop
 		{
-			let mut shutdown = self.shutdown_signal.write().await;
+			let mut shutdown = self.shutdown_signal.write();
 			*shutdown = true;
 		}
 
-		self.closer.signal_and_wait().await;
+		self.closer.signal_and_wait();
 	}
 
 	/// Mark a query as done
@@ -463,8 +463,6 @@ mod tests {
 		atomic::{AtomicU64, Ordering},
 	};
 
-	use async_trait::async_trait;
-
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
@@ -482,13 +480,12 @@ mod tests {
 		}
 	}
 
-	#[async_trait]
 	impl VersionProvider for MockVersionProvider {
-		async fn next(&self) -> crate::Result<CommitVersion> {
+		fn next(&self) -> crate::Result<CommitVersion> {
 			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
 		}
 
-		async fn current(&self) -> crate::Result<CommitVersion> {
+		fn current(&self) -> crate::Result<CommitVersion> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
 	}
@@ -497,19 +494,19 @@ mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	#[tokio::test]
-	async fn test_oracle_basic_creation() {
+	#[test]
+	fn test_oracle_basic_creation() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		// Oracle should be created successfully
-		assert_eq!(oracle.version().await.unwrap(), 0);
+		assert_eq!(oracle.version().unwrap(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_window_creation_and_indexing() {
+	#[test]
+	fn test_window_creation_and_indexing() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
@@ -520,14 +517,14 @@ mod tests {
 
 		// Simulate committing a transaction
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).await.unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
 		match result {
 			CreateCommitResult::Success(version) => {
 				assert!(version.0 >= 1); // Should get a new version
 
 				// Check that keys were indexed
-				let inner = oracle.inner.read().await;
+				let inner = oracle.inner.read();
 				assert!(inner.key_to_windows.contains_key(&key1));
 				assert!(inner.key_to_windows.contains_key(&key2));
 
@@ -538,10 +535,10 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_conflict_detection_between_transactions() {
+	#[test]
+	fn test_conflict_detection_between_transactions() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -552,7 +549,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		let _commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v, // This should be version 2
 			_ => panic!("First transaction should succeed"),
@@ -568,17 +565,17 @@ mod tests {
 		let mut done_read2 = false;
 		// txn2 also started reading at version 1, but txn1 committed at
 		// version 2 So txn2 should see the conflict
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because txn2 read shared_key which
 		// txn1 wrote to
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[tokio::test]
-	async fn test_no_conflict_different_keys() {
+	#[test]
+	fn test_no_conflict_different_keys() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -589,7 +586,7 @@ mod tests {
 		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads and writes key2 (different key, no
@@ -599,16 +596,16 @@ mod tests {
 		conflicts2.mark_write(&key2);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should succeed because different keys
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 	}
 
-	#[tokio::test]
-	async fn test_key_indexing_multiple_windows() {
+	#[test]
+	fn test_key_indexing_multiple_windows() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
@@ -625,12 +622,12 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
-			let result = oracle.new_commit(&mut done_read, version_start, conflicts).await.unwrap();
+			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
 		// Check key indexing across multiple windows
-		let inner = oracle.inner.read().await;
+		let inner = oracle.inner.read();
 
 		// key1 should be in windows 0 and 2000 (i=0,2)
 		let key1_windows = inner.key_to_windows.get(&key1).unwrap();
@@ -641,10 +638,10 @@ mod tests {
 		assert!(key2_windows.len() >= 1);
 	}
 
-	#[tokio::test]
-	async fn test_version_filtering_in_conflict_detection() {
+	#[test]
+	fn test_version_filtering_in_conflict_detection() {
 		let clock = MockVersionProvider::new(2);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -653,7 +650,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -667,7 +664,7 @@ mod tests {
 		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).unwrap();
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 
 		// Third transaction that started BEFORE the first committed
@@ -679,14 +676,14 @@ mod tests {
 
 		let mut done_read3 = false;
 		let read_version = CommitVersion(commit_v1.0 - 1); // Started reading before txn1 committed
-		let result3 = oracle.new_commit(&mut done_read3, read_version, conflicts3).await.unwrap();
+		let result3 = oracle.new_commit(&mut done_read3, read_version, conflicts3).unwrap();
 		assert!(matches!(result3, CreateCommitResult::Conflict(_)));
 	}
 
-	#[tokio::test]
-	async fn test_range_operations_fallback() {
+	#[test]
+	fn test_range_operations_fallback() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let key1 = create_test_key("key1");
 
@@ -695,7 +692,7 @@ mod tests {
 		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: does a range operation (which can't be
@@ -709,16 +706,16 @@ mod tests {
 
 		// This should use the fallback mechanism to check all windows
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict due to the range overlap with key1
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[tokio::test]
-	async fn test_window_cleanup_mechanism() {
+	#[test]
+	fn test_window_cleanup_mechanism() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		// Add many transactions to trigger cleanup
 		let mut keys = Vec::new();
@@ -731,12 +728,12 @@ mod tests {
 
 			let mut done_read = false;
 			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
-			let result = oracle.new_commit(&mut done_read, version_start, conflicts).await.unwrap();
+			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
 		// Check that cleanup occurred
-		let inner = oracle.inner.read().await;
+		let inner = oracle.inner.read();
 		assert!(inner.time_windows.len() <= MAX_WINDOWS);
 
 		// Verify that key index was also cleaned up
@@ -751,21 +748,21 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_empty_conflict_manager() {
+	#[test]
+	fn test_empty_conflict_manager() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		// Transaction with no conflicts (read-only)
 		let conflicts = ConflictManager::new(); // Empty conflict manager
 
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).await.unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
 		// Should succeed but not create any key index entries
 		match result {
 			CreateCommitResult::Success(_) => {
-				let inner = oracle.inner.read().await;
+				let inner = oracle.inner.read();
 				assert!(inner.key_to_windows.is_empty());
 			}
 			CreateCommitResult::Conflict(_) => {
@@ -774,10 +771,10 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_write_write_conflict() {
+	#[test]
+	fn test_write_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -786,7 +783,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: also writes to shared_key (write-write
@@ -795,17 +792,17 @@ mod tests {
 		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because both transactions write to the
 		// same key
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[tokio::test]
-	async fn test_read_write_conflict() {
+	#[test]
+	fn test_read_write_conflict() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -814,7 +811,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads from shared_key (read-write
@@ -823,17 +820,17 @@ mod tests {
 		conflicts2.mark_read(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because txn2 read from key that txn1
 		// wrote to
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	#[tokio::test]
-	async fn test_sequential_transactions_no_conflict() {
+	#[test]
+	fn test_sequential_transactions_no_conflict() {
 		let clock = MockVersionProvider::new(0);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let shared_key = create_test_key("shared_key");
 
@@ -843,7 +840,7 @@ mod tests {
 		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -856,16 +853,16 @@ mod tests {
 
 		let mut done_read2 = false;
 		let read_version = CommitVersion(commit_v1.0 + 1); // Started after first committed
-		let result2 = oracle.new_commit(&mut done_read2, read_version, conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, read_version, conflicts2).unwrap();
 
 		// Should NOT conflict because they don't overlap in time
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 	}
 
-	#[tokio::test]
-	async fn test_comptokenize_multi_key_scenario() {
+	#[test]
+	fn test_comptokenize_multi_key_scenario() {
 		let clock = MockVersionProvider::new(1);
-		let oracle = Oracle::<_>::new(clock).await;
+		let oracle = Oracle::<_>::new(clock);
 
 		let key_a = create_test_key("key_a");
 		let key_b = create_test_key("key_b");
@@ -877,7 +874,7 @@ mod tests {
 		conflicts1.mark_write(&key_b);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).await.unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Transaction 2: reads B, writes C (should conflict because
@@ -887,7 +884,7 @@ mod tests {
 		conflicts2.mark_write(&key_c);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).await.unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 
 		// Transaction 3: reads C, writes A (should not conflict)
@@ -896,7 +893,7 @@ mod tests {
 		conflicts3.mark_write(&key_a);
 
 		let mut done_read3 = false;
-		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).await.unwrap();
+		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).unwrap();
 		assert!(matches!(result3, CreateCommitResult::Success(_)));
 	}
 
@@ -905,11 +902,9 @@ mod tests {
 	/// This test verifies that concurrent commits don't cause the watermark
 	/// to skip versions. The fix ensures `begin(version)` is called inside
 	/// the version_lock, guaranteeing versions are registered in order.
-	#[tokio::test]
-	async fn test_concurrent_commits_dont_skip_watermark_versions() {
-		use std::sync::Arc;
-
-		use tokio::time::{Duration, sleep};
+	#[test]
+	fn test_concurrent_commits_dont_skip_watermark_versions() {
+		use std::{sync::Arc, thread::sleep, time::Duration};
 
 		const NUM_CONCURRENT: usize = 100;
 		const ITERATIONS: usize = 10;
@@ -917,7 +912,7 @@ mod tests {
 		for iteration in 0..ITERATIONS {
 			// Create fresh oracle for each iteration to avoid conflicts
 			let clock = MockVersionProvider::new(0);
-			let oracle = Arc::new(Oracle::<_>::new(clock).await);
+			let oracle = Arc::new(Oracle::<_>::new(clock));
 			let mut handles = vec![];
 
 			for i in 0..NUM_CONCURRENT {
@@ -925,21 +920,20 @@ mod tests {
 				// Use unique keys per iteration to avoid conflicts
 				let key = create_test_key(&format!("key_{}_{}", iteration, i));
 
-				let handle = tokio::spawn(async move {
+				let handle = std::thread::spawn(move || {
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
 
 					let mut done_read = false;
 					let result = oracle_clone
 						.new_commit(&mut done_read, CommitVersion(1), conflicts)
-						.await
 						.unwrap();
 
 					match result {
 						CreateCommitResult::Success(version) => {
 							// Simulate storage write with variable delay
 							if i % 3 == 0 {
-								sleep(Duration::from_micros(100)).await;
+								sleep(Duration::from_micros(100));
 							}
 							// Mark commit as done
 							oracle_clone.done_commit(version);
@@ -955,7 +949,7 @@ mod tests {
 			let mut max_version = CommitVersion(0);
 			let mut success_count = 0;
 			for handle in handles {
-				if let Some(v) = handle.await.unwrap() {
+				if let Some(v) = handle.join().unwrap() {
 					max_version = max_version.max(v);
 					success_count += 1;
 				}
@@ -969,7 +963,7 @@ mod tests {
 			);
 
 			// Give watermark processor time to catch up
-			sleep(Duration::from_millis(100)).await;
+			sleep(Duration::from_millis(100));
 
 			// KEY ASSERTION: The watermark should have advanced to max_version
 			// If any version was skipped due to the race condition, done_until
@@ -985,14 +979,16 @@ mod tests {
 	}
 
 	/// Test that verifies versions are registered with watermark in order
-	#[tokio::test]
-	async fn test_version_begin_ordering() {
-		use std::sync::Arc;
-
-		use tokio::{sync::Barrier, time::Duration};
+	#[test]
+	fn test_version_begin_ordering() {
+		use std::{
+			sync::{Arc, Barrier},
+			thread::sleep,
+			time::Duration,
+		};
 
 		let clock = MockVersionProvider::new(0);
-		let oracle = Arc::new(Oracle::<_>::new(clock).await);
+		let oracle = Arc::new(Oracle::<_>::new(clock));
 		let barrier = Arc::new(Barrier::new(10));
 
 		let mut handles = vec![];
@@ -1003,18 +999,16 @@ mod tests {
 			let barrier_clone = barrier.clone();
 			let key = create_test_key(&format!("order_key_{}", i));
 
-			let handle = tokio::spawn(async move {
+			let handle = std::thread::spawn(move || {
 				// Wait for all tasks to be ready
-				barrier_clone.wait().await;
+				barrier_clone.wait();
 
 				let mut conflicts = ConflictManager::new();
 				conflicts.mark_write(&key);
 
 				let mut done_read = false;
-				let result = oracle_clone
-					.new_commit(&mut done_read, CommitVersion(1), conflicts)
-					.await
-					.unwrap();
+				let result =
+					oracle_clone.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
 				if let CreateCommitResult::Success(version) = result {
 					oracle_clone.done_commit(version);
@@ -1028,14 +1022,14 @@ mod tests {
 
 		let mut versions: Vec<u64> = vec![];
 		for handle in handles {
-			let v = handle.await.unwrap();
+			let v = handle.join().unwrap();
 			if v.0 > 0 {
 				versions.push(v.0);
 			}
 		}
 
 		// Give watermark time to process
-		tokio::time::sleep(Duration::from_millis(50)).await;
+		sleep(Duration::from_millis(50));
 
 		// All versions should be contiguous (no gaps)
 		versions.sort();

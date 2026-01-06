@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -14,10 +13,7 @@ use crate::{
 };
 
 /// Load all primary keys from storage
-pub async fn load_primary_keys(
-	rx: &mut impl IntoStandardTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
+pub fn load_primary_keys(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let mut txn = rx.into_standard_transaction();
 	let range = PrimaryKeyKey::full_scan();
 
@@ -25,7 +21,7 @@ pub async fn load_primary_keys(
 	let mut entries = Vec::new();
 	{
 		let mut stream = txn.range(range, 1024)?;
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			entries.push(entry?);
 		}
 	}
@@ -41,7 +37,7 @@ pub async fn load_primary_keys(
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = CatalogStore::get_column(&mut txn, column_id).await?;
+			let column_def = CatalogStore::get_column(&mut txn, column_id)?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,

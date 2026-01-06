@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	CommitVersion,
 	interface::{
@@ -15,7 +14,7 @@ use crate::{
 	store::subscription::layout::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY},
 };
 
-pub(crate) async fn load_subscriptions(
+pub(crate) fn load_subscriptions(
 	rx: &mut impl IntoStandardTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
@@ -23,7 +22,7 @@ pub(crate) async fn load_subscriptions(
 	let range = SubscriptionKey::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 
-	while let Some(result) = stream.next().await {
+	while let Some(result) = stream.next() {
 		let multi = result?;
 		let version = multi.version;
 

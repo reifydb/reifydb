@@ -10,7 +10,7 @@ use crate::{Catalog, CatalogStore};
 
 impl Catalog {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self, txn))]
-	pub async fn find_namespace<T: IntoStandardTransaction>(
+	pub fn find_namespace<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: NamespaceId,
@@ -33,7 +33,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace(cmd, id).await? {
+				if let Some(namespace) = CatalogStore::find_namespace(cmd, id)? {
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -50,7 +50,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace(qry, id).await? {
+				if let Some(namespace) = CatalogStore::find_namespace(qry, id)? {
 					warn!(
 						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -64,7 +64,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn find_namespace_by_name<T: IntoStandardTransaction>(
+	pub fn find_namespace_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		name: &str,
@@ -91,7 +91,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(cmd, name).await? {
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(cmd, name)? {
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -107,7 +107,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(qry, name).await? {
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(qry, name)? {
 					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(namespace));
 				}
@@ -118,12 +118,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self, txn))]
-	pub async fn get_namespace<T: IntoStandardTransaction>(
+	pub fn get_namespace<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: NamespaceId,
 	) -> crate::Result<NamespaceDef> {
-		self.find_namespace(txn, id).await?.ok_or_else(|| {
+		self.find_namespace(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -132,14 +132,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn get_namespace_by_name<T: IntoStandardTransaction>(
+	pub fn get_namespace_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		name: impl Into<Fragment> + Send,
 	) -> crate::Result<NamespaceDef> {
 		let name = name.into();
-		self.find_namespace_by_name(txn, name.text())
-			.await?
+		self.find_namespace_by_name(txn, name.text())?
 			.ok_or_else(|| error!(namespace_not_found(name.clone(), name.text())))
 	}
 }

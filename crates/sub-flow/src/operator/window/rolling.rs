@@ -52,7 +52,7 @@ impl WindowOperator {
 }
 
 /// Process inserts for rolling windows
-async fn process_rolling_insert(
+fn process_rolling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -81,8 +81,7 @@ async fn process_rolling_insert(
 			group_hash,
 			current_timestamp,
 			evaluator,
-		)
-		.await?;
+		)?;
 		result.extend(group_result);
 	}
 
@@ -90,7 +89,7 @@ async fn process_rolling_insert(
 }
 
 /// Process inserts for a single group in rolling windows
-async fn process_rolling_group_insert(
+fn process_rolling_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -110,7 +109,7 @@ async fn process_rolling_group_insert(
 	// For rolling windows, we use a single window ID per group (always 0)
 	let window_id = 0u64;
 	let window_key = operator.create_window_key(group_hash, window_id);
-	let mut window_state = operator.load_window_state(txn, &window_key).await?;
+	let mut window_state = operator.load_window_state(txn, &window_key)?;
 
 	// Process each row
 	for row_idx in 0..row_count {
@@ -118,7 +117,7 @@ async fn process_rolling_group_insert(
 
 		// Calculate previous aggregation BEFORE adding the new event
 		let previous_aggregation = if window_state.events.len() >= operator.min_events {
-			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
 		} else {
 			None
 		};
@@ -143,7 +142,7 @@ async fn process_rolling_group_insert(
 		// Always trigger rolling windows (they continuously update)
 		if window_state.events.len() >= operator.min_events {
 			if let Some((aggregated_row, is_new)) =
-				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
 			{
 				if is_new {
 					// First time this rolling window appears
@@ -175,7 +174,7 @@ async fn process_rolling_group_insert(
 }
 
 /// Apply changes for rolling windows
-pub async fn apply_rolling_window(
+pub fn apply_rolling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -189,7 +188,7 @@ pub async fn apply_rolling_window(
 			FlowDiff::Insert {
 				post,
 			} => {
-				let insert_result = process_rolling_insert(operator, txn, post, evaluator).await?;
+				let insert_result = process_rolling_insert(operator, txn, post, evaluator)?;
 				result.extend(insert_result);
 			}
 			FlowDiff::Update {
@@ -197,7 +196,7 @@ pub async fn apply_rolling_window(
 				post,
 			} => {
 				// For rolling windows, updates are treated as inserts of new values
-				let update_result = process_rolling_insert(operator, txn, post, evaluator).await?;
+				let update_result = process_rolling_insert(operator, txn, post, evaluator)?;
 				result.extend(update_result);
 			}
 			FlowDiff::Remove {

@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use bumpalo::Bump;
-use reifydb::{Database, EmbeddedBuilder, memory, serializable, vendor::tokio::runtime::Runtime};
+use reifydb::{Database, EmbeddedBuilder, memory, transaction, vendor::tokio::runtime::Runtime};
 use reifydb_core::event::EventBus;
 use reifydb_rqlv2::{
 	ast::{
@@ -114,26 +114,23 @@ impl testscript::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		if let (Some(runtime), Some(instance)) = (self.runtime.as_mut(), self.instance.as_mut()) {
-			runtime.block_on(async {
-				instance.start().await.unwrap();
-				instance.command_as_root(
-					r#"
-					create namespace test;
-					create table test.users{id: int8, name: utf8, age: int4};
-					create table test.orders{id: int8, user_id: int8, amount: float8};
-				"#,
-					Params::None,
-				)
-				.await
-			})?;
+		if let (Some(_runtime), Some(instance)) = (self.runtime.as_mut(), self.instance.as_mut()) {
+			instance.start()?;
+			instance.command_as_root(
+				r#"
+				create namespace test;
+				create table test.users{id: int8, name: utf8, age: int4};
+				create table test.orders{id: int8, user_id: int8, amount: float8};
+			"#,
+				Params::None,
+			)?;
 		}
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		if let (Some(runtime), Some(instance)) = (self.runtime.as_mut(), self.instance.as_mut()) {
-			runtime.block_on(instance.stop())?;
+		if let (Some(_runtime), Some(instance)) = (self.runtime.as_mut(), self.instance.as_mut()) {
+			instance.stop()?;
 		}
 		Ok(())
 	}
@@ -146,9 +143,7 @@ impl Runner {
 	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
-			instance: Some(runtime
-				.block_on(EmbeddedBuilder::new(multi, single, cdc, eventbus).build())
-				.unwrap()),
+			instance: Some(EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap()),
 			runtime: Some(runtime),
 		}
 	}
@@ -173,6 +168,6 @@ fn run_test(path: &Path) {
 fn run_plan_test(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	let input = runtime.block_on(async { serializable(memory().await).await }).unwrap();
+	let input = transaction(memory());
 	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
 }

@@ -10,11 +10,7 @@ use crate::{Catalog, CatalogStore};
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub async fn find_view<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		id: ViewId,
-	) -> crate::Result<Option<ViewDef>> {
+	pub fn find_view<T: IntoStandardTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<Option<ViewDef>> {
 		match txn.into_standard_transaction() {
 			StandardTransaction::Command(cmd) => {
 				// 1. Check transactional changes first
@@ -33,7 +29,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(cmd, id).await? {
+				if let Some(view) = CatalogStore::find_view(cmd, id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -47,7 +43,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(qry, id).await? {
+				if let Some(view) = CatalogStore::find_view(qry, id)? {
 					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(view));
 				}
@@ -58,7 +54,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn find_view_by_name<T: IntoStandardTransaction>(
+	pub fn find_view_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -84,7 +80,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(cmd, namespace, name).await? {
+				if let Some(view) = CatalogStore::find_view_by_name(cmd, namespace, name)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -103,7 +99,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(qry, namespace, name).await? {
+				if let Some(view) = CatalogStore::find_view_by_name(qry, namespace, name)? {
 					warn!(
 						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -117,8 +113,8 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub async fn get_view<T: IntoStandardTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<ViewDef> {
-		self.find_view(txn, id).await?.ok_or_else(|| {
+	pub fn get_view<T: IntoStandardTransaction>(&self, txn: &mut T, id: ViewId) -> crate::Result<ViewDef> {
+		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id

@@ -15,14 +15,13 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Set up sample data
-	db.command_as_root("create namespace store", Params::None).await.unwrap();
+	db.command_as_root("create namespace store", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table store.products {
@@ -36,7 +35,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -55,7 +53,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Example 1: Sort by single column (ascending - default)
@@ -72,7 +69,6 @@ sort price"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -92,7 +88,6 @@ sort name asc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -112,7 +107,6 @@ sort rating desc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -132,7 +126,6 @@ sort { category asc, price asc }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -154,7 +147,6 @@ sort stock desc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -184,7 +176,6 @@ sort score desc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -206,7 +197,6 @@ sort rating desc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -226,7 +216,6 @@ sort { category asc, rating desc }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -246,7 +235,6 @@ sort id asc"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

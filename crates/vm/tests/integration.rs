@@ -27,12 +27,12 @@
 // };
 //
 // /// Create a test engine with in-memory storage.
-// async fn create_test_engine() -> StandardEngine {
+// fn create_test_engine() -> StandardEngine {
 // 	let store = TransactionStore::testing_memory();
 // 	let eventbus = EventBus::new();
 // 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 // 	let cdc = TransactionCdc::new(store.clone());
-// 	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
+// 	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).unwrap();
 //
 // 	StandardEngine::new(
 // 		multi,
@@ -44,7 +44,7 @@
 // 		None,
 // 		IocContainer::new(),
 // 	)
-// 	.await
+//
 // }
 //
 // /// Test identity for commands.
@@ -53,36 +53,36 @@
 // }
 //
 // /// Create a namespace via RQL command.
-// async fn create_namespace(engine: &StandardEngine, name: &str) {
+// fn create_namespace(engine: &StandardEngine, name: &str) {
 // 	let identity = test_identity();
 // 	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
 // 		.try_collect::<Vec<_>>()
-// 		.await
+//
 // 		.unwrap();
 // }
 //
 // /// Create a table via RQL command.
-// async fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
+// fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 // 	let identity = test_identity();
 // 	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
 // 		.try_collect::<Vec<_>>()
-// 		.await
+//
 // 		.unwrap();
 // }
 //
 // /// Insert data via RQL command.
-// async fn insert_data(engine: &StandardEngine, rql: &str) {
+// fn insert_data(engine: &StandardEngine, rql: &str) {
 // 	let identity = test_identity();
-// 	engine.command_as(&identity, rql, Default::default()).try_collect::<Vec<_>>().await.unwrap();
+// 	engine.command_as(&identity, rql, Default::default()).try_collect::<Vec<_>>().unwrap();
 // }
 //
 // #[tokio::test]
-// async fn test_vm_scan_real_table() {
-// 	let engine = create_test_engine().await;
+// fn test_vm_scan_real_table() {
+// 	let engine = create_test_engine();
 //
 // 	// Setup: create namespace, table, and insert data
-// 	create_namespace(&engine, "test").await;
-// 	create_table(&engine, "test", "users", "id: int4, name: utf8, age: int4").await;
+// 	create_namespace(&engine, "test");
+// 	create_table(&engine, "test", "users", "id: int4, name: utf8, age: int4");
 // 	insert_data(
 // 		&engine,
 // 		r#"from [
@@ -91,10 +91,10 @@
 // 			{id: 3, name: "Charlie", age: 35}
 // 		] insert test.users"#,
 // 	)
-// 	.await;
+// 	;
 //
 // 	// Get a query transaction
-// 	let mut query_txn = engine.begin_query().await.unwrap();
+// 	let mut query_txn = engine.begin_query().unwrap();
 // 	let mut tx: StandardTransaction = (&mut query_txn).into();
 //
 // 	// Compile script and create VM
@@ -114,23 +114,23 @@
 // 	let mut vm = VmState::new(program, context);
 //
 // 	// Execute VM directly with transaction
-// 	let result = vm.execute(&mut tx).await.unwrap();
+// 	let result = vm.execute(&mut tx).unwrap();
 //
 // 	// Verify results
 // 	assert!(result.is_some(), "Expected a pipeline result");
 // 	let pipeline = result.unwrap();
-// 	let columns = collect(pipeline).await.unwrap();
+// 	let columns = collect(pipeline).unwrap();
 // 	println!("Result: {} rows", columns.row_count());
 // 	assert_eq!(columns.row_count(), 3, "Expected 3 rows");
 // }
 //
 // #[tokio::test]
-// async fn test_vm_filter_real_table() {
-// 	let engine = create_test_engine().await;
+// fn test_vm_filter_real_table() {
+// 	let engine = create_test_engine();
 //
 // 	// Setup - use int8 to match VM literal type
-// 	create_namespace(&engine, "test").await;
-// 	create_table(&engine, "test", "products", "id: int8, name: utf8, price: int8").await;
+// 	create_namespace(&engine, "test");
+// 	create_table(&engine, "test", "products", "id: int8, name: utf8, price: int8");
 // 	insert_data(
 // 		&engine,
 // 		r#"from [
@@ -140,10 +140,10 @@
 // 			{id: 4, name: "Date", price: 150}
 // 		] insert test.products"#,
 // 	)
-// 	.await;
+// 	;
 //
 // 	// Get transaction
-// 	let mut query_txn = engine.begin_query().await.unwrap();
+// 	let mut query_txn = engine.begin_query().unwrap();
 // 	let mut tx: StandardTransaction = (&mut query_txn).into();
 //
 // 	// Compile and execute: filter price > 100
@@ -163,22 +163,22 @@
 // 	let context = Arc::new(VmContext::new(sources));
 // 	let mut vm = VmState::new(program, context);
 //
-// 	let result = vm.execute(&mut tx).await.unwrap();
+// 	let result = vm.execute(&mut tx).unwrap();
 //
 // 	// Verify: should get Cherry (200) and Date (150)
 // 	assert!(result.is_some());
-// 	let columns = collect(result.unwrap()).await.unwrap();
+// 	let columns = collect(result.unwrap()).unwrap();
 // 	println!("Result: {:?} rows", columns);
 // 	assert_eq!(columns.row_count(), 2, "Expected 2 rows with price > 100");
 // }
 //
 // #[tokio::test]
-// async fn test_vm_sort_and_take() {
-// 	let engine = create_test_engine().await;
+// fn test_vm_sort_and_take() {
+// 	let engine = create_test_engine();
 //
 // 	// Setup - use int8 to match VM literal type
-// 	create_namespace(&engine, "test").await;
-// 	create_table(&engine, "test", "scores", "player: utf8, score: int8").await;
+// 	create_namespace(&engine, "test");
+// 	create_table(&engine, "test", "scores", "player: utf8, score: int8");
 // 	insert_data(
 // 		&engine,
 // 		r#"from [
@@ -189,10 +189,10 @@
 // 			{player: "Eve", score: 125}
 // 		] insert test.scores"#,
 // 	)
-// 	.await;
+// 	;
 //
 // 	// Get transaction
-// 	let mut query_txn = engine.begin_query().await.unwrap();
+// 	let mut query_txn = engine.begin_query().unwrap();
 // 	let mut tx: StandardTransaction = (&mut query_txn).into();
 //
 // 	// Compile and execute: top 3 scores (sort descending then take 3)
@@ -211,11 +211,11 @@
 // 	let context = Arc::new(VmContext::new(sources));
 // 	let mut vm = VmState::new(program, context);
 //
-// 	let result = vm.execute(&mut tx).await.unwrap();
+// 	let result = vm.execute(&mut tx).unwrap();
 //
 // 	// Verify: should get 3 rows (Diana 300, Bob 250, Charlie 175)
 // 	assert!(result.is_some());
-// 	let columns = collect(result.unwrap()).await.unwrap();
+// 	let columns = collect(result.unwrap()).unwrap();
 // 	println!("Result: {} rows", columns.row_count());
 // 	assert_eq!(columns.row_count(), 3, "Expected top 3 scores");
 // }

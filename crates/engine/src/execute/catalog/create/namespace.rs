@@ -9,13 +9,13 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_namespace<'a>(
+	pub(crate) fn create_namespace<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateNamespaceNode,
 	) -> crate::Result<Columns> {
 		// Check if namespace already exists using the catalog
-		if let Some(_) = self.catalog.find_namespace_by_name(txn, plan.namespace.text()).await? {
+		if let Some(_) = self.catalog.find_namespace_by_name(txn, plan.namespace.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.text().to_string())),
@@ -32,8 +32,7 @@ impl Executor {
 				namespace_fragment: Some(plan.namespace.clone()),
 				name: plan.namespace.text().to_string(),
 			},
-		)
-		.await?;
+		)?;
 		txn.track_namespace_def_created(result.clone())?;
 
 		Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
@@ -48,10 +47,10 @@ mod tests {
 
 	use crate::{execute::Executor, stack::Stack, test_utils::create_test_command_transaction};
 
-	#[tokio::test]
-	async fn test_create_namespace() {
+	#[test]
+	fn test_create_namespace() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
 		let mut plan = CreateNamespaceNode {
 			namespace: Fragment::internal("my_schema"),
@@ -67,7 +66,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 
@@ -84,7 +82,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
@@ -100,7 +97,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

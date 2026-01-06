@@ -28,7 +28,7 @@ pub enum AlterFlowAction {
 }
 
 impl Compiler {
-	pub(crate) async fn compile_alter_flow<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter_flow<T: IntoStandardTransaction>(
 		&self,
 		ast: AstAlterFlow,
 		tx: &mut T,
@@ -45,7 +45,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile the query statement to logical plan
-				let compiled_query = self.compile(query, tx).await?;
+				let compiled_query = self.compile(query, tx)?;
 				AlterFlowAction::SetQuery {
 					query: compiled_query,
 				}

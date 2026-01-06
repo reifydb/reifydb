@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
-use futures_util::TryStreamExt;
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Identity, Params},
@@ -22,10 +20,9 @@ impl CreateEventListener {
 	}
 }
 
-#[async_trait]
 impl EventListener<OnCreateEvent> for CreateEventListener {
-	async fn on(&self, _event: &OnCreateEvent) {
-		let stream = self.engine.command_as(
+	fn on(&self, _event: &OnCreateEvent) {
+		let result = self.engine.command_as(
 			&Identity::root(),
 			r#"
 
@@ -40,7 +37,7 @@ create table reifydb.flows{
 			Params::None,
 		);
 
-		if let Err(e) = stream.try_collect::<Vec<_>>().await {
+		if let Err(e) = result {
 			error!("Failed to create initial database namespace: {:?}", e);
 		}
 	}

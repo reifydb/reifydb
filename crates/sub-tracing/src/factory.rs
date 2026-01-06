@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::StandardInterceptorBuilder;
@@ -41,7 +40,6 @@ impl Default for TracingSubsystemFactory {
 	}
 }
 
-#[async_trait]
 impl SubsystemFactory for TracingSubsystemFactory {
 	fn provide_interceptors(
 		&self,
@@ -52,7 +50,7 @@ impl SubsystemFactory for TracingSubsystemFactory {
 		builder
 	}
 
-	async fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(TracingBuilder::new())
 		} else {

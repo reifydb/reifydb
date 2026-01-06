@@ -28,12 +28,9 @@ impl HttpRunner {
 		runtime: Arc<Runtime>,
 	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
-		let instance = runtime
-			.block_on(
-				ServerBuilder::new(multi, single, cdc, eventbus)
-					.with_http(HttpConfig::default().bind_addr("::1:0"))
-					.build(),
-			)
+		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
+			.with_http(HttpConfig::default().bind_addr("::1:0"))
+			.build()
 			.unwrap();
 
 		Self {
@@ -82,7 +79,7 @@ impl testscript::Runner for HttpRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		self.runtime.block_on(server.start())?;
+		server.start()?;
 
 		let port = server.sub_server_http().unwrap().port().unwrap();
 
@@ -114,7 +111,7 @@ fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		let input = transaction(memory());
 		testscript::run_path(&mut HttpRunner::new(input, Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")

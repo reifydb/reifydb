@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	CommitVersion,
 	interface::{Key, SubscriptionDef, SubscriptionKey},
@@ -11,9 +10,7 @@ use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
 use crate::{CatalogStore, store::subscription::layout::subscription};
 
 impl CatalogStore {
-	pub async fn list_subscriptions_all(
-		rx: &mut impl IntoStandardTransaction,
-	) -> crate::Result<Vec<SubscriptionDef>> {
+	pub fn list_subscriptions_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<SubscriptionDef>> {
 		let mut txn = rx.into_standard_transaction();
 
 		// First, collect all subscription IDs and metadata
@@ -21,7 +18,7 @@ impl CatalogStore {
 		{
 			let mut stream = txn.range(SubscriptionKey::full_scan(), 1024)?;
 
-			while let Some(result_entry) = stream.next().await {
+			while let Some(result_entry) = stream.next() {
 				let entry = result_entry?;
 				if let Some(key) = Key::decode(&entry.key) {
 					if let Key::Subscription(sub_key) = key {
@@ -45,7 +42,7 @@ impl CatalogStore {
 			// Load columns based on transaction type
 			let columns = match &mut txn {
 				StandardTransaction::Command(cmd) => {
-					Self::list_subscription_columns(cmd, subscription_id).await?
+					Self::list_subscription_columns(cmd, subscription_id)?
 				}
 				StandardTransaction::Query(_) => vec![],
 			};
@@ -73,17 +70,17 @@ mod tests {
 
 	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
 
-	#[tokio::test]
-	async fn test_list_subscriptions_empty() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_list_subscriptions_empty() {
+		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::list_subscriptions_all(&mut txn).await.unwrap();
+		let result = CatalogStore::list_subscriptions_all(&mut txn).unwrap();
 		assert!(result.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_list_subscriptions() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_list_subscriptions() {
+		let mut txn = create_test_command_transaction();
 
 		let sub1 = CatalogStore::create_subscription(
 			&mut txn,
@@ -91,7 +88,6 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
 		let sub2 = CatalogStore::create_subscription(
@@ -100,7 +96,6 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
 		let sub3 = CatalogStore::create_subscription(
@@ -109,10 +104,9 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
-		let result = CatalogStore::list_subscriptions_all(&mut txn).await.unwrap();
+		let result = CatalogStore::list_subscriptions_all(&mut txn).unwrap();
 		assert_eq!(result.len(), 3);
 
 		// Verify all have unique IDs (order may vary due to key encoding)

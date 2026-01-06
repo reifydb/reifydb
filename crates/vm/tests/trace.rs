@@ -29,7 +29,7 @@
 // }
 //
 // #[tokio::test]
-// async fn test_basic_trace() {
+// fn test_basic_trace() {
 // 	let registry = create_registry();
 //
 // 	// Simple script: push a constant, store it, halt
@@ -45,7 +45,7 @@
 // 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 //
 // 	// Execute
-// 	let result = vm.execute_memory().await;
+// 	let result = vm.execute_memory();
 // 	assert!(result.is_ok(), "Execution should succeed");
 //
 // 	// Get trace
@@ -67,7 +67,7 @@
 // }
 //
 // #[tokio::test]
-// async fn test_trace_with_pipeline() {
+// fn test_trace_with_pipeline() {
 // 	let registry = create_registry();
 //
 // 	let script = r#"
@@ -83,7 +83,7 @@
 // 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 //
 // 	// Execute
-// 	let result = vm.execute_memory().await;
+// 	let result = vm.execute_memory();
 // 	assert!(result.is_ok(), "Execution should succeed");
 //
 // 	// Get and print trace
@@ -105,7 +105,7 @@
 // }
 //
 // #[tokio::test]
-// async fn test_trace_format() {
+// fn test_trace_format() {
 // 	let registry = create_registry();
 //
 // 	let script = r#"
@@ -119,7 +119,7 @@
 // 	let tracer = VmTracer::new();
 // 	let mut vm = VmState::new(Arc::new(program), context).with_tracer(tracer);
 //
-// 	let result = vm.execute_memory().await;
+// 	let result = vm.execute_memory();
 // 	assert!(result.is_ok(), "Execution should succeed");
 //
 // 	// Get tracer back and format

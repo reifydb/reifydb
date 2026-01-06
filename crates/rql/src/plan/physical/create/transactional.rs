@@ -11,14 +11,14 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_transactional<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_transactional<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateTransactionalViewNode,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, namespace_name).await? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
 			let ns_fragment = create
 				.view
 				.namespace
@@ -32,7 +32,7 @@ impl Compiler {
 			view: create.view.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
-			as_clause: self.compile(rx, create.as_clause).await?.map(Box::new).unwrap(), // FIXME
+			as_clause: self.compile(rx, create.as_clause)?.map(Box::new).unwrap(), // FIXME
 			primary_key: create.primary_key,
 		}))
 	}

@@ -28,12 +28,9 @@ impl WsRunner {
 		runtime: Arc<Runtime>,
 	) -> Self {
 		let (multi, single, cdc, eventbus) = input;
-		let instance = runtime
-			.block_on(
-				ServerBuilder::new(multi, single, cdc, eventbus)
-					.with_ws(WsConfig::default().bind_addr("::1:0"))
-					.build(),
-			)
+		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
+			.with_ws(WsConfig::default().bind_addr("::1:0"))
+			.build()
 			.unwrap();
 
 		Self {
@@ -82,7 +79,7 @@ impl testscript::Runner for WsRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		self.runtime.block_on(server.start())?;
+		server.start()?;
 
 		let port = server.sub_server_ws().unwrap().port().unwrap();
 
@@ -116,7 +113,7 @@ fn test_ws(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		let input = transaction(memory());
 		testscript::run_path(&mut WsRunner::new(input, Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")

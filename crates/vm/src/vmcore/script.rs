@@ -47,10 +47,7 @@ impl ScriptFunctionCaller for BytecodeScriptCaller {
 		// Set IP to the function's bytecode offset
 		vm.ip = func.bytecode_offset;
 
-		// Execute synchronously until return
-		// For simple functions like `fn get_min_age() { 20 }`, this is a few instructions
 		let result = execute_until_return(&mut vm)?;
-
 		// Broadcast scalar result to column
 		Ok(broadcast_value_to_column(result, row_count))
 	}
@@ -58,20 +55,13 @@ impl ScriptFunctionCaller for BytecodeScriptCaller {
 
 /// Execute the VM until a return is encountered at the top level.
 fn execute_until_return(vm: &mut VmState) -> Result<Value, EvalError> {
-	use tokio::{runtime::Handle, task::block_in_place};
-
 	use super::state::OperandValue;
-
-	let handle = Handle::current();
 
 	// Execute steps until we get a result
 	loop {
 		// We need a transaction for execution, but for pure functions we don't need one.
-		// Use block_in_place to allow blocking from within async context.
-		let result = block_in_place(|| handle.block_on(vm.step(None))).map_err(|e| {
-			EvalError::UnsupportedOperation {
-				operation: format!("bytecode execution error: {:?}", e),
-			}
+		let result = vm.step(None).map_err(|e| EvalError::UnsupportedOperation {
+			operation: format!("bytecode execution error: {:?}", e),
 		})?;
 
 		match result {

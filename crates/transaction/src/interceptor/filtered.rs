@@ -58,12 +58,11 @@ macro_rules! define_filtered_interceptor {
 			}
 		}
 
-		#[async_trait::async_trait]
 		impl<F> $trait_name for $wrapper_name<F>
 		where
 			F: for<'a> Fn(&mut $context_type<'a>) -> reifydb_core::Result<()> + Send + Sync,
 		{
-			async fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> reifydb_core::Result<()> {
+			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> reifydb_core::Result<()> {
 				// TODO: Add namespace matching once we have namespace name resolution.
 				// For now, we only match by entity name if namespace is not specified in filter,
 				// or skip namespace check entirely.

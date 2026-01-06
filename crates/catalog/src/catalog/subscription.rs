@@ -11,7 +11,7 @@ use crate::{Catalog, CatalogStore};
 impl Catalog {
 	/// Find a subscription by ID
 	#[instrument(name = "catalog::subscription::find", level = "trace", skip(self, txn))]
-	pub async fn find_subscription<T: IntoStandardTransaction>(
+	pub fn find_subscription<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: SubscriptionId,
@@ -24,7 +24,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(subscription) = CatalogStore::find_subscription(cmd, id).await? {
+				if let Some(subscription) = CatalogStore::find_subscription(cmd, id)? {
 					warn!(
 						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -41,7 +41,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(subscription) = CatalogStore::find_subscription(qry, id).await? {
+				if let Some(subscription) = CatalogStore::find_subscription(qry, id)? {
 					warn!(
 						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -56,12 +56,12 @@ impl Catalog {
 
 	/// Get a subscription by ID, error if not found
 	#[instrument(name = "catalog::subscription::get", level = "trace", skip(self, txn))]
-	pub async fn get_subscription<T: IntoStandardTransaction>(
+	pub fn get_subscription<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {
-		self.find_subscription(txn, id).await?.ok_or_else(|| {
+		self.find_subscription(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -71,12 +71,12 @@ impl Catalog {
 
 	/// Resolve a subscription ID to a fully resolved subscription
 	#[instrument(name = "catalog::resolve::subscription", level = "trace", skip(self, txn))]
-	pub async fn resolve_subscription<T: IntoStandardTransaction>(
+	pub fn resolve_subscription<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		subscription_id: SubscriptionId,
 	) -> crate::Result<ResolvedSubscription> {
-		let subscription_def = self.get_subscription(txn, subscription_id).await?;
+		let subscription_def = self.get_subscription(txn, subscription_id)?;
 		// Use subscription ID as identifier since subscriptions don't have names
 		let subscription_ident = Fragment::internal(format!("subscription_{}", subscription_id.0));
 

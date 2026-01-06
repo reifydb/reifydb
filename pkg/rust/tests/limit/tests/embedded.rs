@@ -1,32 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{error::Error, fmt::Write, path::Path, sync::Arc};
+use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
 	Database, EmbeddedBuilder,
 	core::{event::EventBus, interface::Params},
-	memory, serializable,
+	memory, transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
-use tokio::runtime::Runtime;
 
 pub struct Runner {
 	instance: Database,
-	runtime: Arc<Runtime>,
 }
 
 impl Runner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
-			instance: runtime.block_on(EmbeddedBuilder::new(multi, single, cdc, eventbus).build()).unwrap(),
-			runtime,
+			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
 		}
 	}
 }
@@ -40,10 +34,7 @@ impl testscript::Runner for Runner {
 
 				println!("command: {query}");
 
-				for frame in self
-					.runtime
-					.block_on(self.instance.command_as_root(query.as_str(), Params::None))?
-				{
+				for frame in self.instance.command_as_root(query.as_str(), Params::None)? {
 					writeln!(output, "{}", frame)?;
 				}
 			}
@@ -52,10 +43,7 @@ impl testscript::Runner for Runner {
 
 				println!("query: {query}");
 
-				for frame in self
-					.runtime
-					.block_on(self.instance.query_as_root(query.as_str(), Params::None))?
-				{
+				for frame in self.instance.query_as_root(query.as_str(), Params::None)? {
 					writeln!(output, "{}", frame)?;
 				}
 			}
@@ -68,12 +56,12 @@ impl testscript::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.runtime.block_on(self.instance.start())?;
+		self.instance.start()?;
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.runtime.block_on(self.instance.stop())?;
+		self.instance.stop()?;
 		Ok(())
 	}
 }
@@ -81,8 +69,6 @@ impl testscript::Runner for Runner {
 test_each_path! { in "pkg/rust/tests/limit/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-	let runtime = Arc::new(Runtime::new().unwrap());
-	let _guard = runtime.enter();
-	let input = runtime.block_on(async { serializable(memory().await).await }).unwrap();
-	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
+	let input = transaction(memory());
+	testscript::run_path(&mut Runner::new(input), path).expect("test failed")
 }

@@ -9,7 +9,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_flow<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_flow<T: IntoStandardTransaction>(
 		&self,
 		ast: AstCreateFlow,
 		tx: &mut T,
@@ -18,7 +18,7 @@ impl Compiler {
 		let flow = ast.flow;
 
 		// Compile the AS clause (required for flows)
-		let with = self.compile(ast.as_clause, tx).await?;
+		let with = self.compile(ast.as_clause, tx)?;
 
 		Ok(LogicalPlan::CreateFlow(CreateFlowNode {
 			flow,

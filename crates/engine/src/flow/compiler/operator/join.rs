@@ -95,36 +95,30 @@ fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Express
 }
 
 impl CompileOperator for JoinCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		// Extract source name from right plan for fallback alias
 		let source_name = extract_source_name(&self.right);
 
-		let left_node = compiler.compile_plan(txn, *self.left).await?;
-		let right_node = compiler.compile_plan(txn, *self.right).await?;
+		let left_node = compiler.compile_plan(txn, *self.left)?;
+		let right_node = compiler.compile_plan(txn, *self.right)?;
 
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
 		// Use explicit alias, or fall back to extracted source name, or use "other"
 		let effective_alias = self.alias.or(source_name).or_else(|| Some("other".to_string()));
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				FlowNodeType::Join {
-					join_type: self.join_type,
-					left: left_keys,
-					right: right_keys,
-					alias: effective_alias,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			FlowNodeType::Join {
+				join_type: self.join_type,
+				left: left_keys,
+				right: right_keys,
+				alias: effective_alias,
+			},
+		)?;
 
-		compiler.add_edge(txn, &left_node, &node_id).await?;
-		compiler.add_edge(txn, &right_node, &node_id).await?;
+		compiler.add_edge(txn, &left_node, &node_id)?;
+		compiler.add_edge(txn, &right_node, &node_id)?;
 
 		Ok(node_id)
 	}

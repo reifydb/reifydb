@@ -1756,8 +1756,6 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 name = "reifydb"
 version = "0.2.0"
 dependencies = [
- "async-trait",
- "futures-util",
  "libc",
  "num_cpus",
  "opentelemetry",
@@ -1895,6 +1893,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "once_cell",
+ "parking_lot",
  "rayon",
  "reifydb-catalog",
  "reifydb-cdc",
@@ -2086,6 +2085,7 @@ dependencies = [
  "indexmap",
  "libloading",
  "num_cpus",
+ "parking_lot",
  "postcard",
  "rand",
  "reifydb-abi",
@@ -2098,6 +2098,7 @@ dependencies = [
  "reifydb-sdk",
  "reifydb-store-transaction",
  "reifydb-sub-api",
+ "reifydb-sub-server",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -2114,6 +2115,7 @@ version = "0.2.0"
 dependencies = [
  "futures-util",
  "num_cpus",
+ "once_cell",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-type",
@@ -2227,18 +2229,16 @@ dependencies = [
 name = "reifydb-transaction"
 version = "0.2.0"
 dependencies = [
- "async-stream",
- "async-trait",
+ "crossbeam-channel",
  "crossbeam-skiplist",
- "futures-util",
  "indexmap",
+ "parking_lot",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-store-transaction",
  "reifydb-testing",
  "reifydb-type",
  "test_each_file",
- "tokio",
  "tracing",
  "uuid",
 ]

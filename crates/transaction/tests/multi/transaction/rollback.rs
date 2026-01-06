@@ -13,22 +13,22 @@ use reifydb_transaction::multi::TransactionMulti;
 
 use crate::{as_key, as_values};
 
-#[tokio::test]
-async fn test_rollback_same_tx() {
-	let engine = TransactionMulti::testing().await;
-	let mut txn = engine.begin_command().await.unwrap();
+#[test]
+fn test_rollback_same_tx() {
+	let engine = TransactionMulti::testing();
+	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
-	assert!(txn.get(&as_key!(1)).await.unwrap().is_none());
+	assert!(txn.get(&as_key!(1)).unwrap().is_none());
 }
 
-#[tokio::test]
-async fn test_rollback_different_tx() {
-	let engine = TransactionMulti::testing().await;
-	let mut txn = engine.begin_command().await.unwrap();
+#[test]
+fn test_rollback_different_tx() {
+	let engine = TransactionMulti::testing();
+	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
 
-	let rx = engine.begin_query().await.unwrap();
-	assert!(rx.get(&as_key!(1)).await.unwrap().is_none());
+	let rx = engine.begin_query().unwrap();
+	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }

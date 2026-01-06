@@ -133,8 +133,8 @@ mod tests {
 
 	use crate::evaluate::column::cast::text::from_blob;
 
-	#[tokio::test]
-	async fn test_from_blob() {
+	#[test]
+	fn test_from_blob() {
 		let blobs = vec![
 			Blob::from_utf8(Fragment::internal("Hello")),
 			Blob::from_utf8(Fragment::internal("World")),
@@ -156,8 +156,8 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_from_blob_invalid() {
+	#[test]
+	fn test_from_blob_invalid() {
 		let blobs = vec![
 			Blob::new(vec![0xFF, 0xFE]), // Invalid UTF-8
 		];

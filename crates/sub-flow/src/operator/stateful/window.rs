@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
-use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	key::{EncodableKey, FlowNodeStateKey},
@@ -12,7 +11,6 @@ use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
-#[allow(async_fn_in_trait)]
 pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;
@@ -24,8 +22,8 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a window
-	async fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
-		utils::load_or_create_row(self.id(), txn, window_key, &self.layout()).await
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
+		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
 	/// Save state for a window
@@ -40,7 +38,7 @@ pub trait WindowStateful: RawStatefulOperator {
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	async fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
+	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
 		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
@@ -48,7 +46,7 @@ pub trait WindowStateful: RawStatefulOperator {
 		let keys_to_remove = {
 			let mut stream = txn.range(prefixed_range, 1024);
 			let mut keys = Vec::new();
-			while let Some(result) = stream.next().await {
+			while let Some(result) = stream.next() {
 				let multi = result?;
 				keys.push(multi.key);
 			}
@@ -91,8 +89,8 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_window_key_encoding() {
+	#[test]
+	fn test_window_key_encoding() {
 		// Test different window IDs
 		let key1 = test_window_key(1);
 		let key2 = test_window_key(2);
@@ -107,8 +105,8 @@ mod tests {
 		assert!(key2 > key100);
 	}
 
-	#[tokio::test]
-	async fn test_create_state() {
+	#[test]
+	fn test_create_state() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let state = operator.create_state();
 
@@ -116,15 +114,15 @@ mod tests {
 		assert!(state.len() > 0);
 	}
 
-	#[tokio::test]
-	async fn test_load_save_window_state() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_load_save_window_state() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
 		// Initially should create new state
-		let state1 = operator.load_state(&mut txn, &window_key).await.unwrap();
+		let state1 = operator.load_state(&mut txn, &window_key).unwrap();
 
 		// Modify and save
 		let mut modified = state1.clone();
@@ -132,14 +130,14 @@ mod tests {
 		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
 
 		// Load should return modified state
-		let state2 = operator.load_state(&mut txn, &window_key).await.unwrap();
+		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
 		assert_eq!(state2.as_ref()[0], 0xAB);
 	}
 
-	#[tokio::test]
-	async fn test_multiple_windows() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_multiple_windows() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -152,15 +150,15 @@ mod tests {
 
 		// Verify each window has its own state
 		for (i, window_key) in window_keys.iter().enumerate() {
-			let state = operator.load_state(&mut txn, window_key).await.unwrap();
+			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}
 
-	#[tokio::test]
-	async fn test_expire_before() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_expire_before() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -176,26 +174,26 @@ mod tests {
 		// So to expire windows < 5, we need range from key(5) to end
 		let before_key = test_window_key(5);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).await.unwrap();
+		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
 		// Verify windows 0-4 are gone
 		for i in 0..5 {
-			let state = operator.load_state(&mut txn, &window_keys[i]).await.unwrap();
+			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
 		}
 
 		// Verify windows 5-9 still exist
 		for i in 5..10 {
-			let state = operator.load_state(&mut txn, &window_keys[i]).await.unwrap();
+			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
 			assert_eq!(state.as_ref()[0], i as u8);
 		}
 	}
 
-	#[tokio::test]
-	async fn test_expire_empty_range() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_expire_empty_range() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -209,20 +207,20 @@ mod tests {
 		// Expire before 3 (should remove nothing since all windows are >= 5)
 		let before_key = test_window_key(3);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).await.unwrap();
+		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 0);
 
 		// All windows should still exist
 		for (idx, window_key) in window_keys.iter().enumerate() {
-			let state = operator.load_state(&mut txn, window_key).await.unwrap();
+			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(state.as_ref()[0], (idx + 5) as u8);
 		}
 	}
 
-	#[tokio::test]
-	async fn test_expire_all() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_expire_all() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -236,20 +234,20 @@ mod tests {
 		// Expire before 100 (should remove all)
 		let before_key = test_window_key(100);
 		let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-		let expired = operator.expire_range(&mut txn, range).await.unwrap();
+		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
 		// All windows should be gone
 		for window_key in &window_keys {
-			let state = operator.load_state(&mut txn, window_key).await.unwrap();
+			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
 		}
 	}
 
-	#[tokio::test]
-	async fn test_sliding_window_simulation() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_sliding_window_simulation() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows
@@ -269,18 +267,18 @@ mod tests {
 				let expire_before = current_window - window_size + 1;
 				let before_key = test_window_key(expire_before);
 				let range = EncodedKeyRange::new(Excluded(before_key), Unbounded);
-				operator.expire_range(&mut txn, range).await.unwrap();
+				operator.expire_range(&mut txn, range).unwrap();
 			}
 		}
 
 		// Only windows 7, 8, 9 should exist
 		for i in 0..7 {
-			let state = operator.load_state(&mut txn, &all_window_keys[i]).await.unwrap();
+			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
 			assert_eq!(state.as_ref()[0], 0); // Should be default (expired)
 		}
 
 		for i in 7..10 {
-			let state = operator.load_state(&mut txn, &all_window_keys[i]).await.unwrap();
+			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
 			assert_eq!(state.as_ref()[0], i as u8); // Should have saved data
 		}
 	}

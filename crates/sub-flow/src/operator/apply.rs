@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::FlowChange;
@@ -30,22 +29,21 @@ impl ApplyOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for ApplyOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
-		self.inner.apply(txn, change, evaluator).await
+		self.inner.apply(txn, change, evaluator)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
-		self.parent.pull(txn, rows).await
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows)
 	}
 }

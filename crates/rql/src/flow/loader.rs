@@ -11,12 +11,12 @@ use reifydb_type::internal;
 use super::{Flow, FlowEdge, FlowNode, FlowNodeType};
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub async fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<Flow> {
+pub fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<Flow> {
 	// Load all nodes for this flow
-	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id).await?;
+	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id)?;
 
 	// Load all edges for this flow
-	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id).await?;
+	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
 
 	// Create a new FlowBuilder
 	let mut builder = Flow::builder(flow_id);

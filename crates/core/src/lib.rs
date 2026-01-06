@@ -12,7 +12,6 @@ pub mod key;
 pub mod retention;
 mod row;
 mod sort;
-pub mod stream;
 pub mod util;
 pub mod value;
 

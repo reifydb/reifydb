@@ -17,7 +17,7 @@ use reifydb_type::RowNumber;
 use crate::catalog::FlowCatalog;
 
 /// Convert CDC change format to FlowChange format.
-pub(crate) async fn convert_cdc_to_flow_change(
+pub(crate) fn convert_cdc_to_flow_change(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
@@ -30,7 +30,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 			post,
 			..
 		} => {
-			let row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
+			let row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec())?;
 			let diff = FlowDiff::Insert {
 				post: Columns::from_row(&row),
 			};
@@ -41,8 +41,8 @@ pub(crate) async fn convert_cdc_to_flow_change(
 			post,
 			..
 		} => {
-			let pre_row = create_row(txn, catalog_cache, source_id, row_number, pre.to_vec()).await?;
-			let post_row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec()).await?;
+			let pre_row = create_row(txn, catalog_cache, source_id, row_number, pre.to_vec())?;
+			let post_row = create_row(txn, catalog_cache, source_id, row_number, post.to_vec())?;
 			let diff = FlowDiff::Update {
 				pre: Columns::from_row(&pre_row),
 				post: Columns::from_row(&post_row),
@@ -54,7 +54,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 			..
 		} => {
 			let pre_bytes = pre.as_ref().map(|v| v.to_vec()).unwrap_or_default();
-			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes).await?;
+			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes)?;
 			let diff = FlowDiff::Remove {
 				pre: Columns::from_row(&row),
 			};
@@ -64,7 +64,7 @@ pub(crate) async fn convert_cdc_to_flow_change(
 }
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
-pub(crate) async fn create_row(
+pub(crate) fn create_row(
 	txn: &mut reifydb_engine::StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
@@ -77,7 +77,7 @@ pub(crate) async fn create_row(
 	use reifydb_type::{DictionaryEntryId, Value, internal};
 
 	// Get cached source metadata (loads from catalog on cache miss)
-	let metadata = catalog_cache.get_or_load(txn, source_id).await?;
+	let metadata = catalog_cache.get_or_load(txn, source_id)?;
 
 	// Handle empty row bytes - return error if table has columns
 	if row_bytes.is_empty() && !metadata.value_types.is_empty() {
@@ -112,7 +112,7 @@ pub(crate) async fn create_row(
 			if let Some(entry_id) = DictionaryEntryId::from_value(&raw_value) {
 				let index_key =
 					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();
-				match txn.get(&index_key).await? {
+				match txn.get(&index_key)? {
 					Some(v) => {
 						let decoded_value: Value =
 							postcard::from_bytes(&v.values).map_err(|e| {

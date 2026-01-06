@@ -22,17 +22,12 @@ impl From<TableScanNode> for TableScanCompiler {
 }
 
 impl CompileOperator for TableScanCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		compiler.add_node(
 			txn,
 			SourceTable {
 				table: self.table_scan.source.def().id,
 			},
 		)
-		.await
 	}
 }

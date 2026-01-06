@@ -20,19 +20,19 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create<T: IntoStandardTransaction>(
 		&self,
 		ast: AstCreate,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
 		match ast {
-			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx).await,
-			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx).await,
-			AstCreate::Flow(node) => self.compile_create_flow(node, tx).await,
+			AstCreate::DeferredView(node) => self.compile_deferred_view(node, tx),
+			AstCreate::TransactionalView(node) => self.compile_transactional_view(node, tx),
+			AstCreate::Flow(node) => self.compile_create_flow(node, tx),
 			AstCreate::Namespace(node) => self.compile_create_namespace(node),
 			AstCreate::Series(node) => self.compile_create_series(node),
-			AstCreate::Table(node) => self.compile_create_table(node, tx).await,
-			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx).await,
+			AstCreate::Table(node) => self.compile_create_table(node, tx),
+			AstCreate::RingBuffer(node) => self.compile_create_ringbuffer(node, tx),
 			AstCreate::Dictionary(node) => self.compile_create_dictionary(node),
 			AstCreate::Index(node) => self.compile_create_index(node),
 			AstCreate::Subscription(node) => self.compile_create_subscription(node),

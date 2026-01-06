@@ -15,13 +15,13 @@ use crate::{registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker};
 ///
 /// Computes per-source lag for each flow by comparing the flow's checkpoint
 /// version to the latest change version of each source it subscribes to.
-pub struct FlowLagsV2 {
+pub struct FlowLags {
 	registry: Arc<FlowConsumerRegistry>,
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
 	engine: StandardEngine,
 }
 
-impl FlowLagsV2 {
+impl FlowLags {
 	/// Create a new provider.
 	pub fn new(
 		registry: Arc<FlowConsumerRegistry>,
@@ -37,23 +37,23 @@ impl FlowLagsV2 {
 }
 
 #[async_trait]
-impl FlowLagsProvider for FlowLagsV2 {
+impl FlowLagsProvider for FlowLags {
 	/// Get all flow lag rows.
 	///
 	/// Returns one row per (flow, source) pair, showing how far behind
 	/// each flow is for each of its subscribed sources.
-	async fn all_lags(&self) -> Vec<FlowLagRow> {
-		let flow_info = self.registry.all_flow_info().await;
-		let primitive_versions = self.primitive_tracker.all().await;
+	fn all_lags(&self) -> Vec<FlowLagRow> {
+		let flow_info = self.registry.all_flow_info();
+		let primitive_versions = self.primitive_tracker.all();
 
 		let mut rows = Vec::new();
 
 		for (flow_id, sources) in flow_info {
 			// Get flow's current checkpoint version
 			let flow_version = {
-				let consumers = self.registry.consumers_read().await;
+				let consumers = self.registry.consumers_read();
 				if let Some(handle) = consumers.get(&flow_id) {
-					match handle.flow_consumer.current_version(&self.engine).await {
+					match handle.flow_consumer.current_version(&self.engine) {
 						Ok(v) => v.0,
 						Err(_) => 0, // Flow not yet processed anything
 					}

@@ -3,7 +3,6 @@
 
 use std::cmp::Ordering::Equal;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
@@ -34,21 +33,16 @@ impl<'a> SortNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for SortNode {
 	#[instrument(level = "trace", skip_all, name = "query::sort::initialize")]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx).await?;
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
+		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::sort::next")]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -59,7 +53,7 @@ impl QueryNode for SortNode {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx).await?
+		}) = self.input.next(rx, ctx)?
 		{
 			if let Some(existing_columns) = &mut columns_opt {
 				for (i, col) in columns.into_iter().enumerate() {

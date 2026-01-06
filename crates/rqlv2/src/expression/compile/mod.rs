@@ -98,10 +98,8 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 		PlanExpr::Subquery(_plan) => {
 			// Subqueries require executor support
 			CompiledExpr::new(|_, _| {
-				Box::pin(async {
-					Err(EvalError::UnsupportedOperation {
-						operation: "subquery".to_string(),
-					})
+				Err(EvalError::UnsupportedOperation {
+					operation: "subquery".to_string(),
 				})
 			})
 		}
@@ -110,10 +108,8 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 		} => {
 			// EXISTS subqueries require executor support
 			CompiledExpr::new(|_, _| {
-				Box::pin(async {
-					Err(EvalError::UnsupportedOperation {
-						operation: "EXISTS subquery".to_string(),
-					})
+				Err(EvalError::UnsupportedOperation {
+					operation: "EXISTS subquery".to_string(),
 				})
 			})
 		}
@@ -122,10 +118,8 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 		} => {
 			// IN subqueries require executor support
 			CompiledExpr::new(|_, _| {
-				Box::pin(async {
-					Err(EvalError::UnsupportedOperation {
-						operation: "IN subquery".to_string(),
-					})
+				Err(EvalError::UnsupportedOperation {
+					operation: "IN subquery".to_string(),
 				})
 			})
 		}
@@ -151,24 +145,17 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 			let compiled_args: Vec<CompiledExpr> = arguments.iter().map(|a| compile_plan_expr(a)).collect();
 
 			CompiledExpr::new(move |columns, ctx| {
-				let name = name.clone();
-				let compiled_args = compiled_args.clone();
-				let columns = columns.clone();
-				let ctx = ctx.clone();
+				// Evaluate arguments to columns
+				let mut arg_cols = Vec::with_capacity(compiled_args.len());
+				for arg in &compiled_args {
+					arg_cols.push(arg.eval(columns, ctx)?);
+				}
+				let args = Columns::new(arg_cols);
 
-				Box::pin(async move {
-					// Evaluate arguments to columns
-					let mut arg_cols = Vec::with_capacity(compiled_args.len());
-					for arg in &compiled_args {
-						arg_cols.push(arg.eval(&columns, &ctx).await?);
-					}
-					let args = Columns::new(arg_cols);
+				// Call script function through trait
+				let result = ctx.call_script_function(&name, &args, columns.row_count())?;
 
-					// Call script function through trait
-					let result = ctx.call_script_function(&name, &args, columns.row_count())?;
-
-					Ok(Column::new(Fragment::internal("_call"), result))
-				})
+				Ok(Column::new(Fragment::internal("_call"), result))
 			})
 		}
 	}
@@ -181,13 +168,8 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 pub fn compile_plan_filter<'bump>(expr: &PlanExpr<'bump>) -> CompiledFilter {
 	let compiled = compile_plan_expr(expr);
 	CompiledFilter::new(move |columns, ctx| {
-		let compiled = compiled.clone();
-		let columns = columns.clone();
-		let ctx = ctx.clone();
-		Box::pin(async move {
-			let column = compiled.eval(&columns, &ctx).await?;
-			column_to_mask(&column)
-		})
+		let column = compiled.eval(columns, ctx)?;
+		column_to_mask(&column)
 	})
 }
 
@@ -208,7 +190,7 @@ mod tests {
 		let expr = compile_literal_int(42);
 		let columns = Columns::new(vec![Column::new(Fragment::from("x"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let result = expr.eval(&columns, &EvalContext::new()).await.unwrap();
+		let result = expr.eval(&columns, &EvalContext::new()).unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);
@@ -226,7 +208,7 @@ mod tests {
 		let columns =
 			Columns::new(vec![Column::new(Fragment::from("age"), ColumnData::int8(vec![25, 30, 35]))]);
 
-		let result = expr.eval(&columns, &EvalContext::new()).await.unwrap();
+		let result = expr.eval(&columns, &EvalContext::new()).unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);
@@ -243,21 +225,15 @@ mod tests {
 		let threshold = compile_literal_int(30);
 
 		let gt_expr = CompiledExpr::new(move |columns, ctx| {
-			let age_col = age_col.clone();
-			let threshold = threshold.clone();
-			let columns = columns.clone();
-			let ctx = ctx.clone();
-			Box::pin(async move {
-				let left = age_col.eval(&columns, &ctx).await?;
-				let right = threshold.eval(&columns, &ctx).await?;
-				eval_binary(BinaryPlanOp::Gt, &left, &right)
-			})
+			let left = age_col.eval(columns, ctx)?;
+			let right = threshold.eval(columns, ctx)?;
+			eval_binary(BinaryPlanOp::Gt, &left, &right)
 		});
 
 		let columns =
 			Columns::new(vec![Column::new(Fragment::from("age"), ColumnData::int8(vec![25, 30, 35]))]);
 
-		let result = gt_expr.eval(&columns, &EvalContext::new()).await.unwrap();
+		let result = gt_expr.eval(&columns, &EvalContext::new()).unwrap();
 		match result.data() {
 			ColumnData::Bool(c) => {
 				assert_eq!(c.len(), 3);
@@ -278,7 +254,7 @@ mod tests {
 
 		let columns = Columns::new(vec![Column::new(Fragment::from("y"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let result = expr.eval(&columns, &ctx).await.unwrap();
+		let result = expr.eval(&columns, &ctx).unwrap();
 		match result.data() {
 			ColumnData::Int8(c) => {
 				assert_eq!(c.len(), 3);

@@ -29,28 +29,22 @@ impl From<ExtendNode> for ExtendCompiler {
 }
 
 impl CompileOperator for ExtendCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
-			Some(compiler.compile_plan(txn, *input).await?)
+			Some(compiler.compile_plan(txn, *input)?)
 		} else {
 			None
 		};
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				Extend {
-					expressions: self.expressions,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			Extend {
+				expressions: self.expressions,
+			},
+		)?;
 
 		if let Some(input) = input_node {
-			compiler.add_edge(txn, &input, &node_id).await?;
+			compiler.add_edge(txn, &input, &node_id)?;
 		}
 
 		Ok(node_id)

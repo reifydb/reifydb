@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{DictionaryDef, DictionaryId, NamespaceId},
 	key::{DictionaryKey, NamespaceDictionaryKey},
@@ -16,7 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	/// List all dictionaries in a namespace
-	pub async fn list_dictionaries(
+	pub fn list_dictionaries(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
@@ -25,7 +24,7 @@ impl CatalogStore {
 		let mut dictionary_ids = Vec::new();
 		{
 			let mut stream = txn.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
-			while let Some(entry) = stream.next().await {
+			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = &multi.values;
 				dictionary_ids.push(DictionaryId(
@@ -36,7 +35,7 @@ impl CatalogStore {
 
 		let mut dictionaries = Vec::new();
 		for dictionary_id in dictionary_ids {
-			if let Some(dictionary) = Self::find_dictionary(&mut txn, dictionary_id).await? {
+			if let Some(dictionary) = Self::find_dictionary(&mut txn, dictionary_id)? {
 				dictionaries.push(dictionary);
 			}
 		}
@@ -45,12 +44,12 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub async fn list_all_dictionaries(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<DictionaryDef>> {
+	pub fn list_all_dictionaries(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<DictionaryDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut dictionaries = Vec::new();
 
 		let mut stream = txn.range(DictionaryKey::full_scan(), 1024)?;
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
 			let id = DictionaryId(dictionary::LAYOUT.get_u64(&row, dictionary::ID));
@@ -82,20 +81,20 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[tokio::test]
-	async fn test_list_dictionaries_empty() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_list_dictionaries_empty() {
+		let mut txn = create_test_command_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).await.unwrap();
+		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
 
 		assert!(result.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_list_dictionaries_multiple() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_list_dictionaries_multiple() {
+		let mut txn = create_test_command_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create multiple dictionaries
 		for i in 0..3 {
@@ -106,18 +105,18 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).await.unwrap();
+		let result = CatalogStore::list_dictionaries(&mut txn, namespace.id).unwrap();
 
 		assert_eq!(result.len(), 3);
 	}
 
-	#[tokio::test]
-	async fn test_list_dictionaries_different_namespaces() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace1 = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_list_dictionaries_different_namespaces() {
+		let mut txn = create_test_command_transaction();
+		let namespace1 = ensure_test_namespace(&mut txn);
 
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
@@ -126,7 +125,6 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
-		.await
 		.unwrap();
 
 		// Create 2 dictionaries in namespace1
@@ -138,7 +136,7 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
 		// Create 3 dictionaries in namespace2
@@ -150,22 +148,22 @@ mod tests {
 				id_type: Type::Uint4,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
 		// Verify namespace1 has 2 dictionaries
-		let ns1_dicts = CatalogStore::list_dictionaries(&mut txn, namespace1.id).await.unwrap();
+		let ns1_dicts = CatalogStore::list_dictionaries(&mut txn, namespace1.id).unwrap();
 		assert_eq!(ns1_dicts.len(), 2);
 
 		// Verify namespace2 has 3 dictionaries
-		let ns2_dicts = CatalogStore::list_dictionaries(&mut txn, namespace2.id).await.unwrap();
+		let ns2_dicts = CatalogStore::list_dictionaries(&mut txn, namespace2.id).unwrap();
 		assert_eq!(ns2_dicts.len(), 3);
 	}
 
-	#[tokio::test]
-	async fn test_list_all_dictionaries() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace1 = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_list_all_dictionaries() {
+		let mut txn = create_test_command_transaction();
+		let namespace1 = ensure_test_namespace(&mut txn);
 
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
@@ -174,7 +172,6 @@ mod tests {
 				name: "namespace2".to_string(),
 			},
 		)
-		.await
 		.unwrap();
 
 		// Create dictionaries in both namespaces
@@ -186,7 +183,7 @@ mod tests {
 				id_type: Type::Uint2,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
 		for i in 0..3 {
@@ -197,11 +194,11 @@ mod tests {
 				id_type: Type::Uint4,
 				fragment: None,
 			};
-			CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
 		// List all dictionaries
-		let all_dicts = CatalogStore::list_all_dictionaries(&mut txn).await.unwrap();
+		let all_dicts = CatalogStore::list_all_dictionaries(&mut txn).unwrap();
 		assert_eq!(all_dicts.len(), 5);
 	}
 }

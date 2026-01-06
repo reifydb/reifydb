@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::FlowNodeId,
@@ -21,11 +20,11 @@ impl FlowTransaction {
 		found = tracing::field::Empty,
 		query_time_us = tracing::field::Empty
 	))]
-	pub async fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		let query_start = std::time::Instant::now();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
-		let result = self.get(&encoded_key).await?;
+		let result = self.get(&encoded_key)?;
 		Span::current().record("found", result.is_some());
 		Span::current().record("query_time_us", query_start.elapsed().as_micros() as u64);
 		Ok(result)
@@ -60,12 +59,12 @@ impl FlowTransaction {
 		result_count = tracing::field::Empty,
 		scan_time_ms = tracing::field::Empty
 	))]
-	pub async fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<MultiVersionBatch> {
+	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<MultiVersionBatch> {
 		let scan_start = std::time::Instant::now();
 		let range = FlowNodeStateKey::node_range(id);
-		let mut stream = self.range(range, 1024);
+		let mut iter = self.range(range, 1024);
 		let mut items = Vec::new();
-		while let Some(result) = stream.next().await {
+		while let Some(result) = iter.next() {
 			items.push(result?);
 		}
 		Span::current().record("result_count", items.len());
@@ -80,15 +79,11 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub async fn state_range(
-		&mut self,
-		id: FlowNodeId,
-		range: EncodedKeyRange,
-	) -> crate::Result<MultiVersionBatch> {
+	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> crate::Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-		let mut stream = self.range(prefixed_range, 1024);
+		let mut iter = self.range(prefixed_range, 1024);
 		let mut items = Vec::new();
-		while let Some(result) = stream.next().await {
+		while let Some(result) = iter.next() {
 			items.push(result?);
 		}
 		Ok(MultiVersionBatch {
@@ -105,7 +100,7 @@ impl FlowTransaction {
 		remove_time_ms = tracing::field::Empty,
 		total_time_ms = tracing::field::Empty
 	))]
-	pub async fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
+	pub fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
 		let total_start = std::time::Instant::now();
 
 		// Phase 1: Scan to collect all keys
@@ -115,9 +110,9 @@ impl FlowTransaction {
 
 		let range = FlowNodeStateKey::node_range(id);
 		let keys_to_remove = {
-			let mut stream = self.range(range, 1024);
+			let mut iter = self.range(range, 1024);
 			let mut keys = Vec::new();
-			while let Some(result) = stream.next().await {
+			while let Some(result) = iter.next() {
 				let multi = result?;
 				keys.push(multi.key);
 			}
@@ -151,13 +146,13 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		created
 	))]
-	pub async fn load_or_create_row(
+	pub fn load_or_create_row(
 		&mut self,
 		id: FlowNodeId,
 		key: &EncodedKey,
 		layout: &EncodedValuesLayout,
 	) -> crate::Result<EncodedValues> {
-		match self.state_get(id, key).await? {
+		match self.state_get(id, key)? {
 			Some(row) => {
 				tracing::Span::current().record("created", false);
 				Ok(row)
@@ -199,10 +194,10 @@ mod tests {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	#[tokio::test]
-	async fn test_state_get_set() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_get_set() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -212,26 +207,26 @@ mod tests {
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// Get state back
-		let result = txn.state_get(node_id, &key).await.unwrap();
+		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, Some(value));
 	}
 
-	#[tokio::test]
-	async fn test_state_get_nonexistent() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_get_nonexistent() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("missing");
 
-		let result = txn.state_get(node_id, &key).await.unwrap();
+		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, None);
 	}
 
-	#[tokio::test]
-	async fn test_state_remove() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_remove() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -239,16 +234,16 @@ mod tests {
 
 		// Set then remove
 		txn.state_set(node_id, &key, value.clone()).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).await.unwrap(), Some(value));
+		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(value));
 
 		txn.state_remove(node_id, &key).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).await.unwrap(), None);
+		assert_eq!(txn.state_get(node_id, &key).unwrap(), None);
 	}
 
-	#[tokio::test]
-	async fn test_state_isolation_between_nodes() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_isolation_between_nodes() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -258,14 +253,14 @@ mod tests {
 		txn.state_set(node2, &key, make_value("node2_value")).unwrap();
 
 		// Each node should have its own value
-		assert_eq!(txn.state_get(node1, &key).await.unwrap(), Some(make_value("node1_value")));
-		assert_eq!(txn.state_get(node2, &key).await.unwrap(), Some(make_value("node2_value")));
+		assert_eq!(txn.state_get(node1, &key).unwrap(), Some(make_value("node1_value")));
+		assert_eq!(txn.state_get(node2, &key).unwrap(), Some(make_value("node2_value")));
 	}
 
-	#[tokio::test]
-	async fn test_state_scan() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_scan() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 
@@ -273,16 +268,16 @@ mod tests {
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		let iter = txn.state_scan(node_id).await.unwrap();
+		let iter = txn.state_scan(node_id).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		assert_eq!(items.len(), 3);
 	}
 
-	#[tokio::test]
-	async fn test_state_scan_only_own_node() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_scan_only_own_node() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -292,29 +287,29 @@ mod tests {
 		txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
 
 		// Scan node1 should only return node1's state
-		let items: Vec<_> = txn.state_scan(node1).await.unwrap().items.into_iter().collect();
+		let items: Vec<_> = txn.state_scan(node1).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 2);
 
 		// Scan node2 should only return node2's state
-		let items: Vec<_> = txn.state_scan(node2).await.unwrap().items.into_iter().collect();
+		let items: Vec<_> = txn.state_scan(node2).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 1);
 	}
 
-	#[tokio::test]
-	async fn test_state_scan_empty() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_scan_empty() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 
-		let iter = txn.state_scan(node_id).await.unwrap();
+		let iter = txn.state_scan(node_id).unwrap();
 		assert!(iter.items.into_iter().next().is_none());
 	}
 
-	#[tokio::test]
-	async fn test_state_range() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_range() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 
@@ -326,17 +321,17 @@ mod tests {
 		// Range query from "b" to "d" (exclusive)
 		use std::collections::Bound;
 		let range = EncodedKeyRange::new(Bound::Included(make_key("b")), Bound::Excluded(make_key("d")));
-		let iter = txn.state_range(node_id, range).await.unwrap();
+		let iter = txn.state_range(node_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only include "b" and "c"
 		assert_eq!(items.len(), 2);
 	}
 
-	#[tokio::test]
-	async fn test_state_clear() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_clear() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 
@@ -345,19 +340,19 @@ mod tests {
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
 		// Verify state exists
-		assert_eq!(txn.state_scan(node_id).await.unwrap().items.into_iter().count(), 3);
+		assert_eq!(txn.state_scan(node_id).unwrap().items.into_iter().count(), 3);
 
 		// Clear all state
-		txn.state_clear(node_id).await.unwrap();
+		txn.state_clear(node_id).unwrap();
 
 		// Verify state is empty
-		assert_eq!(txn.state_scan(node_id).await.unwrap().items.into_iter().count(), 0);
+		assert_eq!(txn.state_scan(node_id).unwrap().items.into_iter().count(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_state_clear_only_own_node() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_clear_only_own_node() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -367,30 +362,30 @@ mod tests {
 		txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
 
 		// Clear node1
-		txn.state_clear(node1).await.unwrap();
+		txn.state_clear(node1).unwrap();
 
 		// Node1 should be empty
-		assert_eq!(txn.state_scan(node1).await.unwrap().items.into_iter().count(), 0);
+		assert_eq!(txn.state_scan(node1).unwrap().items.into_iter().count(), 0);
 
 		// Node2 should still have state
-		assert_eq!(txn.state_scan(node2).await.unwrap().items.into_iter().count(), 1);
+		assert_eq!(txn.state_scan(node2).unwrap().items.into_iter().count(), 1);
 	}
 
-	#[tokio::test]
-	async fn test_state_clear_empty_node() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_clear_empty_node() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 
 		// Clear on empty node should not error
-		txn.state_clear(node_id).await.unwrap();
+		txn.state_clear(node_id).unwrap();
 	}
 
-	#[tokio::test]
-	async fn test_load_or_create_existing() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_load_or_create_existing() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -401,30 +396,30 @@ mod tests {
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// load_or_create should return existing value
-		let result = txn.load_or_create_row(node_id, &key, &layout).await.unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
 		assert_eq!(result, value);
 	}
 
-	#[tokio::test]
-	async fn test_load_or_create_new() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_load_or_create_new() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
-		let result = txn.load_or_create_row(node_id, &key, &layout).await.unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
 
 		// Result should be a newly allocated row (layout.allocate())
 		assert!(!result.as_ref().is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_save_row() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_save_row() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -433,14 +428,14 @@ mod tests {
 		txn.save_row(node_id, &key, row.clone()).unwrap();
 
 		// Verify saved
-		let result = txn.state_get(node_id, &key).await.unwrap();
+		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, Some(row));
 	}
 
-	#[tokio::test]
-	async fn test_state_multiple_nodes() {
-		let parent = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_state_multiple_nodes() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1), Catalog::default());
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -452,13 +447,13 @@ mod tests {
 		txn.state_set(node3, &make_key("c"), make_value("n3_c")).unwrap();
 
 		// Verify each node has correct state
-		assert_eq!(txn.state_get(node1, &make_key("a")).await.unwrap(), Some(make_value("n1_a")));
-		assert_eq!(txn.state_get(node1, &make_key("b")).await.unwrap(), Some(make_value("n1_b")));
-		assert_eq!(txn.state_get(node2, &make_key("a")).await.unwrap(), Some(make_value("n2_a")));
-		assert_eq!(txn.state_get(node3, &make_key("c")).await.unwrap(), Some(make_value("n3_c")));
+		assert_eq!(txn.state_get(node1, &make_key("a")).unwrap(), Some(make_value("n1_a")));
+		assert_eq!(txn.state_get(node1, &make_key("b")).unwrap(), Some(make_value("n1_b")));
+		assert_eq!(txn.state_get(node2, &make_key("a")).unwrap(), Some(make_value("n2_a")));
+		assert_eq!(txn.state_get(node3, &make_key("c")).unwrap(), Some(make_value("n3_c")));
 
 		// Cross-node keys should not exist
-		assert_eq!(txn.state_get(node2, &make_key("b")).await.unwrap(), None);
-		assert_eq!(txn.state_get(node3, &make_key("a")).await.unwrap(), None);
+		assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
+		assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
 	}
 }

@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Load and merge all batches from a node into a single Columns
-pub async fn load_and_merge_all<'a>(
+pub fn load_and_merge_all<'a>(
 	node: &mut Box<ExecutionPlan>,
 	rx: &mut StandardTransaction<'a>,
 	ctx: &mut ExecutionContext,
@@ -21,7 +21,7 @@ pub async fn load_and_merge_all<'a>(
 
 	while let Some(Batch {
 		columns,
-	}) = node.next(rx, ctx).await?
+	}) = node.next(rx, ctx)?
 	{
 		if let Some(mut acc) = result.take() {
 			acc.append_columns(columns)?;

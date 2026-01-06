@@ -67,7 +67,7 @@ impl Clone for TransactionalFlowInterceptor {
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut TablePostInsertContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TablePostInsertContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Insert {
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
@@ -79,7 +79,7 @@ impl<CT: CommandTransaction + Send> TablePostInsertInterceptor<CT> for Transacti
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut TablePostUpdateContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TablePostUpdateContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Update {
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
@@ -91,7 +91,7 @@ impl<CT: CommandTransaction + Send> TablePostUpdateInterceptor<CT> for Transacti
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut TablePostDeleteContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut TablePostDeleteContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Delete {
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
@@ -102,7 +102,7 @@ impl<CT: CommandTransaction + Send> TablePostDeleteInterceptor<CT> for Transacti
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Insert {
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
@@ -114,7 +114,7 @@ impl<CT: CommandTransaction + Send> RingBufferPostInsertInterceptor<CT> for Tran
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Update {
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
@@ -126,7 +126,7 @@ impl<CT: CommandTransaction + Send> RingBufferPostUpdateInterceptor<CT> for Tran
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a, CT>) -> Result<()> {
 		self.changes.lock().await.push(Change::Delete {
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
@@ -137,7 +137,7 @@ impl<CT: CommandTransaction + Send> RingBufferPostDeleteInterceptor<CT> for Tran
 
 #[async_trait]
 impl<CT: CommandTransaction + Send> PreCommitInterceptor<CT> for TransactionalFlowInterceptor {
-	async fn intercept<'a>(&self, _ctx: &mut PreCommitContext<'a, CT>) -> Result<()> {
+	fn intercept<'a>(&self, _ctx: &mut PreCommitContext<'a, CT>) -> Result<()> {
 		let _engine = self.engine.get_or_resolve(&self.ioc)?;
 
 		// Process all collected changes through flow engine

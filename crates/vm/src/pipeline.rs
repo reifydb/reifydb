@@ -1,26 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::pin::Pin;
-
-use futures_util::Stream;
 use reifydb_core::{Batch, value::column::Columns};
 
 use crate::error::{Result, VmError};
 
-/// A pipeline is an async stream of batches.
+/// A pipeline is a sync iterator of batches.
 /// Each batch can be lazy (encoded) or materialized (decoded).
 /// This is the core data type that flows through all operators.
-pub type Pipeline = Pin<Box<dyn Stream<Item = Result<Batch>> + Send + Sync>>;
+pub type Pipeline = Box<dyn Iterator<Item = Result<Batch>> + Send + Sync>;
 
 /// Collect all batches from a pipeline into a single Columns.
 /// Materializes all lazy batches and merges them together.
-pub async fn collect(mut pipeline: Pipeline) -> Result<Columns> {
-	use futures_util::StreamExt;
-
+pub fn collect(mut pipeline: Pipeline) -> Result<Columns> {
 	let mut result: Option<Columns> = None;
 
-	while let Some(batch_result) = pipeline.next().await {
+	while let Some(batch_result) = pipeline.next() {
 		let batch = batch_result?;
 		let columns = batch.into_columns(); // Materialize lazy batches
 
@@ -64,25 +59,25 @@ fn merge_columns(target: &mut Columns, source: Columns) -> Result<()> {
 
 /// Create a pipeline from a single Batch.
 pub fn from_batch(batch: Batch) -> Pipeline {
-	Box::pin(futures_util::stream::once(async move { Ok(batch) }))
+	Box::new(std::iter::once(Ok(batch)))
 }
 
 /// Create a pipeline from a Columns batch (wrapped as materialized).
 pub fn from_columns(data: Columns) -> Pipeline {
-	Box::pin(futures_util::stream::once(async move { Ok(Batch::fully_materialized(data)) }))
+	Box::new(std::iter::once(Ok(Batch::fully_materialized(data))))
 }
 
 /// Create an empty pipeline that yields no batches.
 pub fn empty() -> Pipeline {
-	Box::pin(futures_util::stream::empty())
+	Box::new(std::iter::empty())
 }
 
 /// Create a pipeline from multiple batches.
 pub fn from_batches(batches: Vec<Batch>) -> Pipeline {
-	Box::pin(futures_util::stream::iter(batches.into_iter().map(Ok::<_, VmError>)))
+	Box::new(batches.into_iter().map(Ok::<_, VmError>))
 }
 
 /// Create a pipeline from a single result.
 pub fn from_result(result: Result<Batch>) -> Pipeline {
-	Box::pin(futures_util::stream::once(async move { result }))
+	Box::new(std::iter::once(result))
 }

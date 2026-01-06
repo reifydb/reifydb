@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::key::{EncodableKey, PrimitiveRetentionPolicyKey, PrimitiveRetentionPolicyKeyRange};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{MaterializedCatalog, store::retention_policy::decode_retention_policy};
 
-pub(crate) async fn load_source_retention_policies(
+pub(crate) fn load_source_retention_policies(
 	rx: &mut impl IntoStandardTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
@@ -15,7 +14,7 @@ pub(crate) async fn load_source_retention_policies(
 	let range = PrimitiveRetentionPolicyKeyRange::full_scan();
 	let mut stream = txn.range(range, 1024)?;
 
-	while let Some(entry) = stream.next().await {
+	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
 

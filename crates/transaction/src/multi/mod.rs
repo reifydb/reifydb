@@ -25,8 +25,8 @@ pub type StandardCommandTransaction = CommandTransaction;
 
 impl TransactionMulti {
 	/// Get the current version from the transaction manager
-	pub async fn current_version(&self) -> crate::Result<CommitVersion> {
-		self.tm.version().await
+	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version()
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.

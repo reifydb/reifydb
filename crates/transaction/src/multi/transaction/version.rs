@@ -3,23 +3,21 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use parking_lot::Mutex;
 use reifydb_core::{
 	CommitVersion,
 	interface::{EncodableKey, TransactionVersionKey},
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_type::Type;
-use tokio::sync::Mutex;
 
 use crate::single::TransactionSingle;
 
 const BLOCK_SIZE: u64 = 100_000;
 
-#[async_trait]
 pub trait VersionProvider: Send + Sync + Clone {
-	async fn next(&self) -> crate::Result<CommitVersion>;
-	async fn current(&self) -> crate::Result<CommitVersion>;
+	fn next(&self) -> crate::Result<CommitVersion>;
+	fn current(&self) -> crate::Result<CommitVersion>;
 }
 
 #[derive(Debug)]
@@ -57,13 +55,13 @@ pub struct StandardVersionProvider {
 }
 
 impl StandardVersionProvider {
-	pub async fn new(single: TransactionSingle) -> crate::Result<Self> {
+	pub fn new(single: TransactionSingle) -> crate::Result<Self> {
 		// Load current version and allocate first block
-		let current_version = Self::load_current_version(&single).await?;
+		let current_version = Self::load_current_version(&single)?;
 		let first_block = VersionBlock::new(current_version);
 
 		// Persist the end of first block to storage
-		Self::persist_version(&single, first_block.last).await?;
+		Self::persist_version(&single, first_block.last)?;
 
 		Ok(Self {
 			single,
@@ -71,34 +69,33 @@ impl StandardVersionProvider {
 		})
 	}
 
-	async fn load_current_version(single: &TransactionSingle) -> crate::Result<u64> {
+	fn load_current_version(single: &TransactionSingle) -> crate::Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
-		let mut tx = single.begin_query([&key]).await?;
-		match tx.get(&key).await? {
+		let mut tx = single.begin_query([&key])?;
+		match tx.get(&key)? {
 			None => Ok(0),
 			Some(single) => Ok(layout.get_u64(&single.values, 0)),
 		}
 	}
 
-	async fn persist_version(single: &TransactionSingle, version: u64) -> crate::Result<()> {
+	fn persist_version(single: &TransactionSingle, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, version);
 
-		let mut tx = single.begin_command([&key]).await?;
+		let mut tx = single.begin_command([&key])?;
 		tx.set(&key, values)?;
-		tx.commit().await
+		tx.commit()
 	}
 }
 
-#[async_trait]
 impl VersionProvider for StandardVersionProvider {
-	async fn next(&self) -> crate::Result<CommitVersion> {
+	fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block
-		let mut block = self.current_block.lock().await;
+		let mut block = self.current_block.lock();
 
 		if let Some(version) = block.next() {
 			return Ok(version);
@@ -110,7 +107,7 @@ impl VersionProvider for StandardVersionProvider {
 		let new_block = VersionBlock::new(new_start);
 
 		// Persist new block end to storage (expensive operation)
-		Self::persist_version(&self.single, new_block.last).await?;
+		Self::persist_version(&self.single, new_block.last)?;
 
 		*block = new_block;
 
@@ -121,8 +118,8 @@ impl VersionProvider for StandardVersionProvider {
 		panic!("Failed to allocate version from new block")
 	}
 
-	async fn current(&self) -> crate::Result<CommitVersion> {
-		let block = self.current_block.lock().await;
+	fn current(&self) -> crate::Result<CommitVersion> {
+		let block = self.current_block.lock();
 		Ok(block.current())
 	}
 }
@@ -133,83 +130,83 @@ mod tests {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_new_version_provider() {
-		let single = TransactionSingle::testing().await;
-		let provider = StandardVersionProvider::new(single).await.unwrap();
+	#[test]
+	fn test_new_version_provider() {
+		let single = TransactionSingle::testing();
+		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
-		assert_eq!(provider.current().await.unwrap(), 0);
+		assert_eq!(provider.current().unwrap(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_next_version_sequential() {
-		let single = TransactionSingle::testing().await;
-		let provider = StandardVersionProvider::new(single).await.unwrap();
+	#[test]
+	fn test_next_version_sequential() {
+		let single = TransactionSingle::testing();
+		let provider = StandardVersionProvider::new(single).unwrap();
 
-		assert_eq!(provider.next().await.unwrap(), 1);
-		assert_eq!(provider.current().await.unwrap(), 1);
+		assert_eq!(provider.next().unwrap(), 1);
+		assert_eq!(provider.current().unwrap(), 1);
 
-		assert_eq!(provider.next().await.unwrap(), 2);
-		assert_eq!(provider.current().await.unwrap(), 2);
+		assert_eq!(provider.next().unwrap(), 2);
+		assert_eq!(provider.current().unwrap(), 2);
 
-		assert_eq!(provider.next().await.unwrap(), 3);
-		assert_eq!(provider.current().await.unwrap(), 3);
+		assert_eq!(provider.next().unwrap(), 3);
+		assert_eq!(provider.current().unwrap(), 3);
 	}
 
-	#[tokio::test]
-	async fn test_version_persistence() {
-		let single = TransactionSingle::testing().await;
+	#[test]
+	fn test_version_persistence() {
+		let single = TransactionSingle::testing();
 
 		// Create first provider and get some versions
 		{
-			let provider = StandardVersionProvider::new(single.clone()).await.unwrap();
-			assert_eq!(provider.next().await.unwrap(), 1);
-			assert_eq!(provider.next().await.unwrap(), 2);
-			assert_eq!(provider.next().await.unwrap(), 3);
+			let provider = StandardVersionProvider::new(single.clone()).unwrap();
+			assert_eq!(provider.next().unwrap(), 1);
+			assert_eq!(provider.next().unwrap(), 2);
+			assert_eq!(provider.next().unwrap(), 3);
 		}
 
 		// Create new provider with same storage - should continue from
 		// persisted version
-		let provider2 = StandardVersionProvider::new(single.clone()).await.unwrap();
-		assert_eq!(provider2.next().await.unwrap(), BLOCK_SIZE + 1);
-		assert_eq!(provider2.current().await.unwrap(), BLOCK_SIZE + 1);
+		let provider2 = StandardVersionProvider::new(single.clone()).unwrap();
+		assert_eq!(provider2.next().unwrap(), BLOCK_SIZE + 1);
+		assert_eq!(provider2.current().unwrap(), BLOCK_SIZE + 1);
 	}
 
-	#[tokio::test]
-	async fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSingle::testing().await;
-		let provider = StandardVersionProvider::new(single).await.unwrap();
+	#[test]
+	fn test_block_exhaustion_and_allocation() {
+		let single = TransactionSingle::testing();
+		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
 		for _ in 0..BLOCK_SIZE {
-			provider.next().await.unwrap();
+			provider.next().unwrap();
 		}
 
 		// Next version should trigger new block allocation
-		assert_eq!(provider.current().await.unwrap(), BLOCK_SIZE);
-		assert_eq!(provider.next().await.unwrap(), BLOCK_SIZE + 1);
-		assert_eq!(provider.current().await.unwrap(), BLOCK_SIZE + 1);
+		assert_eq!(provider.current().unwrap(), BLOCK_SIZE);
+		assert_eq!(provider.next().unwrap(), BLOCK_SIZE + 1);
+		assert_eq!(provider.current().unwrap(), BLOCK_SIZE + 1);
 
 		// Continue with next block
-		assert_eq!(provider.next().await.unwrap(), BLOCK_SIZE + 2);
-		assert_eq!(provider.current().await.unwrap(), BLOCK_SIZE + 2);
+		assert_eq!(provider.next().unwrap(), BLOCK_SIZE + 2);
+		assert_eq!(provider.current().unwrap(), BLOCK_SIZE + 2);
 	}
 
-	#[tokio::test]
-	async fn test_concurrent_version_allocation() {
-		let single = TransactionSingle::testing().await;
-		let provider = Arc::new(StandardVersionProvider::new(single).await.unwrap());
+	#[test]
+	fn test_concurrent_version_allocation() {
+		let single = TransactionSingle::testing();
+		let provider = Arc::new(StandardVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
 
 		// Spawn multiple tasks to request versions concurrently
 		for _ in 0..10 {
 			let provider_clone = Arc::clone(&provider);
-			let handle = tokio::spawn(async move {
+			let handle = std::thread::spawn(move || {
 				let mut versions = vec![];
 				for _ in 0..100 {
-					versions.push(provider_clone.next().await.unwrap());
+					versions.push(provider_clone.next().unwrap());
 				}
 				versions
 			});
@@ -219,7 +216,7 @@ mod tests {
 		// Collect all versions from all tasks
 		let mut all_versions = vec![];
 		for handle in handles {
-			let mut versions = handle.await.unwrap();
+			let mut versions = handle.join().unwrap();
 			all_versions.append(&mut versions);
 		}
 
@@ -275,9 +272,9 @@ mod tests {
 		assert_eq!(block.next(), None);
 	}
 
-	#[tokio::test]
-	async fn test_load_existing_version() {
-		let single = TransactionSingle::testing().await;
+	#[test]
+	fn test_load_existing_version() {
+		let single = TransactionSingle::testing();
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
@@ -286,14 +283,14 @@ mod tests {
 		layout.set_u64(&mut values, 0, 500u64);
 
 		{
-			let mut tx = single.begin_command([&key]).await.unwrap();
+			let mut tx = single.begin_command([&key]).unwrap();
 			tx.set(&key, values).unwrap();
-			tx.commit().await.unwrap();
+			tx.commit().unwrap();
 		} // tx is dropped here, releasing the key lock
 
 		// Create provider - should start from the existing version
-		let provider = StandardVersionProvider::new(single.clone()).await.unwrap();
-		assert_eq!(provider.current().await.unwrap(), 500);
-		assert_eq!(provider.next().await.unwrap(), 501);
+		let provider = StandardVersionProvider::new(single.clone()).unwrap();
+		assert_eq!(provider.current().unwrap(), 500);
+		assert_eq!(provider.next().unwrap(), 501);
 	}
 }

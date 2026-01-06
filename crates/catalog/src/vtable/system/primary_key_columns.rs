@@ -34,12 +34,12 @@ impl PrimaryKeyColumns {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for PrimaryKeyColumns {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -48,7 +48,7 @@ impl<T: IntoStandardTransaction> VTable<T> for PrimaryKeyColumns {
 		let mut column_ids = Vec::new();
 		let mut positions = Vec::new();
 
-		let pk_columns = CatalogStore::list_primary_key_columns(txn).await?;
+		let pk_columns = CatalogStore::list_primary_key_columns(txn)?;
 		for (pk_id, column_id, position) in pk_columns {
 			pk_ids.push(pk_id);
 			column_ids.push(column_id);

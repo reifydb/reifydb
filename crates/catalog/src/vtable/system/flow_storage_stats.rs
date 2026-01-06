@@ -44,12 +44,12 @@ fn tier_to_str(tier: Tier) -> &'static str {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowStorageStats {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -60,7 +60,7 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowStorageStats {
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			for (obj_id, stats) in self.stats_tracker.objects_by_tier(tier) {
 				if let ObjectId::FlowNode(flow_node_id) = obj_id {
-					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id).await? {
+					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)? {
 						let key = (node_def.flow, tier);
 						*aggregated.entry(key).or_default() += stats;
 					}
@@ -74,7 +74,7 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowStorageStats {
 
 		for ((flow_id, tier), stats) in aggregated {
 			// Look up namespace_id from catalog
-			let namespace_id = match CatalogStore::find_flow(txn, flow_id).await? {
+			let namespace_id = match CatalogStore::find_flow(txn, flow_id)? {
 				Some(flow_def) => flow_def.namespace.0,
 				None => 0,
 			};

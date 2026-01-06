@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{FlowNodeId, PrimitiveId, TableDef},
 	key::RowKey,
@@ -31,13 +30,12 @@ impl PrimitiveTableOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for PrimitiveTableOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -46,7 +44,7 @@ impl Operator for PrimitiveTableOperator {
 		Ok(change)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		if rows.is_empty() {
 			return Ok(Columns::from_table_def(&self.table));
 		}
@@ -69,7 +67,7 @@ impl Operator for PrimitiveTableOperator {
 		// Fetch and decode each row directly into columns
 		for row_num in rows {
 			let key = RowKey::encoded(PrimitiveId::table(self.table.id), *row_num);
-			if let Some(encoded) = txn.get(&key).await? {
+			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly
 				for (i, _field) in fields.fields.iter().enumerate() {

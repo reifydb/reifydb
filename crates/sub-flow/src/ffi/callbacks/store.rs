@@ -5,26 +5,15 @@
 //!
 //! Provides read-only access to the underlying store for operators,
 //! including get, contains_key, prefix, and range operations.
-//!
-//! # Async/Blocking Pattern
-//!
-//! These callbacks use `block_in_place(|| Handle::current().block_on(...))` because:
-//!
-//! 1. **FFI Constraint**: C FFI callbacks must be synchronous (`extern "C"` functions cannot be async)
-//! 2. **Async Transaction**: The underlying transaction methods are async
-//! 3. **block_in_place**: Prevents worker thread starvation by temporarily converting the current worker to a blocking
-//!    thread, allowing other async tasks to continue
 
 use std::{ops::Bound, slice::from_raw_parts};
 
-use futures_util::StreamExt;
 use reifydb_abi::{
 	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
 	FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI,
 };
 use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
 use reifydb_store_transaction::MultiVersionBatch;
-use tokio::{runtime::Handle, task::block_in_place};
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -58,8 +47,8 @@ pub(super) extern "C" fn host_store_get(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get value from transaction - use block_in_place to avoid nested runtime panic
-		match block_in_place(|| Handle::current().block_on(flow_txn.get(&key))) {
+		// Get value from transaction
+		match flow_txn.get(&key) {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
 				let value_bytes = value.as_ref();
@@ -102,8 +91,8 @@ pub(super) extern "C" fn host_store_contains_key(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Check if key exists in transaction - use block_in_place to avoid nested runtime panic
-		match block_in_place(|| Handle::current().block_on(flow_txn.contains_key(&key))) {
+		// Check if key exists in transaction
+		match flow_txn.contains_key(&key) {
 			Ok(exists) => {
 				*result = if exists {
 					1
@@ -141,9 +130,7 @@ pub(super) extern "C" fn host_store_prefix(
 		};
 		let prefix = EncodedKey(CowVec::new(prefix_bytes));
 
-		// Use block_in_place to call async methods from sync FFI context
-		let result = block_in_place(|| Handle::current().block_on(flow_txn.prefix(&prefix)));
-
+		let result = flow_txn.prefix(&prefix);
 		match result {
 			Ok(batch) => {
 				// Create iterator handle from batch
@@ -151,8 +138,8 @@ pub(super) extern "C" fn host_store_prefix(
 				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
-				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
-					as *mut StoreIteratorInternal;
+				let iter_ptr =
+					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
 					return FFI_ERROR_ALLOC;
 				}
@@ -241,21 +228,17 @@ pub(super) extern "C" fn host_store_range(
 
 		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-
-		// Use block_in_place to call async methods from sync FFI context
-		let result: Result<MultiVersionBatch, _> = block_in_place(|| {
-			Handle::current().block_on(async {
-				let mut stream = flow_txn.range(range, 1024);
-				let mut items = Vec::new();
-				while let Some(res) = stream.next().await {
-					items.push(res?);
-				}
-				Ok::<_, reifydb_core::Error>(MultiVersionBatch {
-					items,
-					has_more: false,
-				})
+		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, reifydb_core::Error> {
+			let mut iter = flow_txn.range(range, 1024);
+			let mut items = Vec::new();
+			while let Some(res) = iter.next() {
+				items.push(res?);
+			}
+			Ok(MultiVersionBatch {
+				items,
+				has_more: false,
 			})
-		});
+		})();
 
 		match result {
 			Ok(batch) => {
@@ -264,8 +247,8 @@ pub(super) extern "C" fn host_store_range(
 				let handle = store_iterator::create_iterator(batch);
 
 				// Allocate internal structure and store handle
-				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
-					as *mut StoreIteratorInternal;
+				let iter_ptr =
+					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
 					return FFI_ERROR_ALLOC;
 				}
@@ -351,6 +334,6 @@ pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFF
 		store_iterator::free_iterator(handle);
 
 		// Free the internal structure itself
-		host_free(iter_internal as *mut u8, std::mem::size_of::<StoreIteratorInternal>());
+		host_free(iter_internal as *mut u8, size_of::<StoreIteratorInternal>());
 	}
 }

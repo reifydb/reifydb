@@ -31,7 +31,7 @@ pub enum AlterFlowAction {
 }
 
 impl Compiler {
-	pub(crate) async fn compile_alter_flow<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter_flow<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		alter: logical::alter::AlterFlowNode,
@@ -46,7 +46,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile logical plans to physical plans
-				let physical_query = Box::pin(self.compile(rx, query)).await?.map(Box::new).unwrap();
+				let physical_query = self.compile(rx, query)?.map(Box::new).unwrap();
 				AlterFlowAction::SetQuery {
 					query: physical_query,
 				}

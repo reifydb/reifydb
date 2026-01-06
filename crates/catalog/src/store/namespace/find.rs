@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{NamespaceDef, NamespaceId, NamespaceKey},
 	value::encoded::EncodedValues,
@@ -14,7 +13,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_namespace_by_name(
+	pub fn find_namespace_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
@@ -28,7 +27,7 @@ impl CatalogStore {
 		let mut txn = rx.into_standard_transaction();
 		let mut stream = txn.range(NamespaceKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
@@ -40,7 +39,7 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub async fn find_namespace(
+	pub fn find_namespace(
 		rx: &mut impl IntoStandardTransaction,
 		id: NamespaceId,
 	) -> crate::Result<Option<NamespaceDef>> {
@@ -50,7 +49,7 @@ impl CatalogStore {
 		}
 
 		let mut txn = rx.into_standard_transaction();
-		Ok(txn.get(&NamespaceKey::encoded(id)).await?.map(convert_namespace))
+		Ok(txn.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
 	}
 }
 
@@ -60,35 +59,34 @@ mod tests {
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
 
-		create_namespace(&mut txn, "test_namespace").await;
+		create_namespace(&mut txn, "test_namespace");
 
-		let namespace =
-			CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap().unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
 
 		assert_eq!(namespace.id, NamespaceId(1025));
 		assert_eq!(namespace.name, "test_namespace");
 	}
 
-	#[tokio::test]
-	async fn test_empty() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_empty() {
+		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
 
 		assert_eq!(result, None);
 	}
 
-	#[tokio::test]
-	async fn test_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
 
-		create_namespace(&mut txn, "another_namespace").await;
+		create_namespace(&mut txn, "another_namespace");
 
-		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").await.unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
 		assert_eq!(result, None);
 	}
 }

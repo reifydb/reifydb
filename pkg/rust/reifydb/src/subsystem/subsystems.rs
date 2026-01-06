@@ -54,7 +54,7 @@ impl Subsystems {
 		self.subsystems.len()
 	}
 
-	pub async fn start_all(&mut self, startup_timeout: Duration) -> Result<()> {
+	pub fn start_all(&mut self, startup_timeout: Duration) -> Result<()> {
 		if self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already running
 		}
@@ -67,14 +67,14 @@ impl Subsystems {
 		for subsystem in &mut self.subsystems {
 			if start_time.elapsed() > startup_timeout {
 				error!("Startup timeout exceeded");
-				self.stop_started_subsystems(&started_subsystems).await?;
+				self.stop_started_subsystems(&started_subsystems)?;
 				panic!("Startup timeout exceeded");
 			}
 
 			let name = subsystem.name().to_string();
 			debug!("Starting subsystem: {}", name);
 
-			match subsystem.start().await {
+			match subsystem.start() {
 				Ok(()) => {
 					self.health_monitor.update_component_health(
 						name.clone(),
@@ -93,7 +93,7 @@ impl Subsystems {
 						},
 						false,
 					);
-					self.stop_started_subsystems(&started_subsystems).await?;
+					self.stop_started_subsystems(&started_subsystems)?;
 					return Err(e);
 				}
 			}
@@ -104,7 +104,7 @@ impl Subsystems {
 		Ok(())
 	}
 
-	pub async fn stop_all(&mut self, shutdown_timeout: Duration) -> Result<()> {
+	pub fn stop_all(&mut self, shutdown_timeout: Duration) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
@@ -126,7 +126,7 @@ impl Subsystems {
 
 			let name = subsystem.name().to_string();
 
-			match subsystem.shutdown().await {
+			match subsystem.shutdown() {
 				Ok(()) => {
 					// Update health monitoring
 					self.health_monitor.update_component_health(
@@ -190,7 +190,7 @@ impl Subsystems {
 		self.subsystems.get_mut(index)?.as_any_mut().downcast_mut::<T>()
 	}
 
-	async fn stop_started_subsystems(&mut self, started_names: &[String]) -> Result<()> {
+	fn stop_started_subsystems(&mut self, started_names: &[String]) -> Result<()> {
 		let mut errors = Vec::new();
 
 		// Stop the started subsystems in reverse order
@@ -198,7 +198,7 @@ impl Subsystems {
 			// Find and stop the subsystem by name
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
-					if let Err(e) = subsystem.shutdown().await {
+					if let Err(e) = subsystem.shutdown() {
 						error!("Error stopping '{}' during rollback: {}", name, e);
 						errors.push((name.clone(), e));
 					}

@@ -10,7 +10,7 @@ use crate::{Catalog, CatalogStore};
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub async fn find_table<T: IntoStandardTransaction>(
+	pub fn find_table<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: TableId,
@@ -33,7 +33,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table(cmd, id).await? {
+				if let Some(table) = CatalogStore::find_table(cmd, id)? {
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -47,7 +47,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table(qry, id).await? {
+				if let Some(table) = CatalogStore::find_table(qry, id)? {
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
 				}
@@ -58,7 +58,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn find_table_by_name<T: IntoStandardTransaction>(
+	pub fn find_table_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -85,7 +85,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(cmd, namespace, name).await? {
+				if let Some(table) = CatalogStore::find_table_by_name(cmd, namespace, name)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -104,7 +104,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(qry, namespace, name).await? {
+				if let Some(table) = CatalogStore::find_table_by_name(qry, namespace, name)? {
 					warn!(
 						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -118,8 +118,8 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub async fn get_table<T: IntoStandardTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<TableDef> {
-		self.find_table(txn, id).await?.ok_or_else(|| {
+	pub fn get_table<T: IntoStandardTransaction>(&self, txn: &mut T, id: TableId) -> crate::Result<TableDef> {
+		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -128,7 +128,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn get_table_by_name<T: IntoStandardTransaction>(
+	pub fn get_table_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -138,13 +138,11 @@ impl Catalog {
 
 		// Try to get the namespace name for the error message
 		let namespace_name = self
-			.find_namespace(txn, namespace)
-			.await?
+			.find_namespace(txn, namespace)?
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_table_by_name(txn, namespace, name.text())
-			.await?
+		self.find_table_by_name(txn, namespace, name.text())?
 			.ok_or_else(|| error!(table_not_found(name.clone(), &namespace_name, name.text())))
 	}
 }

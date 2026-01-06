@@ -16,10 +16,10 @@ pub mod test {
 	}
 
 	/// Helper to extract values from query results for comparison
-	pub async fn from_store(
+	pub fn from_store(
 		parent: &mut reifydb_engine::StandardCommandTransaction,
 		key: &EncodedKey,
 	) -> Option<EncodedValues> {
-		parent.get(key).await.unwrap().map(|m| m.values.clone())
+		parent.get(key).unwrap().map(|m| m.values.clone())
 	}
 }

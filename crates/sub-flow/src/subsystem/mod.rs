@@ -5,7 +5,6 @@ mod factory;
 
 use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
 
-use async_trait::async_trait;
 pub use factory::FlowSubsystemFactory;
 use reifydb_core::{
 	Result,
@@ -17,22 +16,28 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 
 use crate::{
-	FlowEngine, coordinator::Coordinator, lag::FlowLagsV2,
-	operator::transform::registry::TransformOperatorRegistry, registry::FlowConsumerRegistry,
-	tracker::PrimitiveVersionTracker,
+	FlowEngine, coordinator::Coordinator, lag::FlowLags, operator::transform::registry::TransformOperatorRegistry,
+	registry::FlowConsumerRegistry, tracker::PrimitiveVersionTracker,
 };
 
 /// Flow subsystem - greenfield rewrite with independent per-flow consumers.
 pub struct FlowSubsystem {
 	coordinator: Coordinator,
 	running: bool,
+	runtime: SharedRuntime,
 }
 
 impl FlowSubsystem {
 	/// Create a new flow subsystem.
-	pub fn new(engine: StandardEngine, operators_dir: Option<PathBuf>, ioc: &IocContainer) -> Self {
+	pub fn new(
+		engine: StandardEngine,
+		operators_dir: Option<PathBuf>,
+		ioc: &IocContainer,
+		runtime: Option<SharedRuntime>,
+	) -> Self {
 		// Create operator registry
 		let operator_registry = TransformOperatorRegistry::new();
 
@@ -51,27 +56,28 @@ impl FlowSubsystem {
 
 		// Create lag provider
 		let lags_provider =
-			Arc::new(FlowLagsV2::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
+			Arc::new(FlowLags::new(registry.clone(), primitive_tracker.clone(), engine.clone()));
 
 		// Register in IoC for virtual table access
 		ioc.register_service::<Arc<dyn FlowLagsProvider>>(lags_provider);
 
-		let coordinator = Coordinator::new(engine, Arc::new(flow_engine), registry, primitive_tracker);
+		let runtime_clone = runtime.clone().unwrap_or_else(|| DEFAULT_RUNTIME.clone());
+		let coordinator = Coordinator::new(engine, Arc::new(flow_engine), registry, primitive_tracker, runtime);
 
 		Self {
 			coordinator,
 			running: false,
+			runtime: runtime_clone,
 		}
 	}
 }
 
-#[async_trait]
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-flow"
 	}
 
-	async fn start(&mut self) -> Result<()> {
+	fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
 		}
@@ -81,14 +87,14 @@ impl Subsystem for FlowSubsystem {
 		Ok(())
 	}
 
-	async fn shutdown(&mut self) -> Result<()> {
+	fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
 		}
 
 		// Use 30 second timeout for graceful shutdown
 		let timeout = Duration::from_secs(30);
-		self.coordinator.shutdown(timeout).await;
+		self.runtime.block_on(self.coordinator.shutdown(timeout));
 
 		self.running = false;
 		Ok(())

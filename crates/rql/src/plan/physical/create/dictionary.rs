@@ -14,14 +14,14 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_dictionary<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_dictionary<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateDictionaryNode,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.dictionary.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name).await? else {
+		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
 			let ns_fragment = create
 				.dictionary
 				.namespace

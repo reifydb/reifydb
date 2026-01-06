@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{FlowNodeId, IMPLICIT_COLUMN_OP, ResolvedSubscription},
 	key::SubscriptionRowKey,
@@ -58,13 +57,12 @@ impl SinkSubscriptionOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for SinkSubscriptionOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -138,7 +136,7 @@ impl Operator for SinkSubscriptionOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		unreachable!()
 	}
 }

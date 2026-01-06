@@ -10,48 +10,45 @@ use crate::store::sequence::generator::u64::GeneratorU64;
 pub struct RowSequence {}
 
 impl RowSequence {
-	pub async fn next_row_number(txn: &mut StandardCommandTransaction, table: TableId) -> crate::Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).await.map(RowNumber)
+	pub fn next_row_number(txn: &mut StandardCommandTransaction, table: TableId) -> crate::Result<RowNumber> {
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
 	/// Returns a vector containing all allocated row numbers.
-	pub async fn next_row_number_batch(
+	pub fn next_row_number_batch(
 		txn: &mut StandardCommandTransaction,
 		table: TableId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(table), count).await
+		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(table), count)
 	}
 
 	/// Allocates the next row number for a ring buffer.
-	pub async fn next_row_number_for_ringbuffer(
+	pub fn next_row_number_for_ringbuffer(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None)
-			.await
-			.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
 	/// Returns a vector containing all allocated row numbers.
-	pub async fn next_row_number_batch_for_ringbuffer(
+	pub fn next_row_number_batch_for_ringbuffer(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(ringbuffer), count).await
+		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(ringbuffer), count)
 	}
 
 	/// Allocates a batch of contiguous row numbers for any source.
-	async fn next_row_number_batch_for_source(
+	fn next_row_number_batch_for_source(
 		txn: &mut StandardCommandTransaction,
 		source: PrimitiveId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		let last_row_number =
-			GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count).await?;
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count)?;
 
 		// Calculate the first row number in the batch
 		// next_batched returns the last allocated ID

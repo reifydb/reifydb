@@ -7,8 +7,7 @@ use std::{
 	sync::Arc,
 };
 
-use async_trait::async_trait;
-use tokio::sync::RwLock;
+use parking_lot::RwLock;
 
 pub mod flow;
 pub mod lifecycle;
@@ -19,17 +18,15 @@ pub trait Event: Any + Send + Sync + Clone + 'static {
 	fn into_any(self) -> Box<dyn Any + Send>;
 }
 
-#[async_trait]
 pub trait EventListener<E>: Send + Sync + 'static
 where
 	E: Event,
 {
-	async fn on(&self, event: &E);
+	fn on(&self, event: &E);
 }
 
-#[async_trait]
 trait EventListenerList: Any + Send + Sync {
-	async fn on_any(&self, event: Box<dyn Any + Send>);
+	fn on_any(&self, event: Box<dyn Any + Send>);
 	fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
@@ -47,27 +44,26 @@ where
 		}
 	}
 
-	async fn add(&self, listener: Arc<dyn EventListener<E>>) {
-		self.listeners.write().await.push(listener);
+	fn add(&self, listener: Arc<dyn EventListener<E>>) {
+		self.listeners.write().push(listener);
 	}
 }
 
-#[async_trait]
 impl<E> EventListenerList for EventListenerListImpl<E>
 where
 	E: Event,
 {
-	async fn on_any(&self, event: Box<dyn Any + Send>) {
+	fn on_any(&self, event: Box<dyn Any + Send>) {
 		if let Ok(event) = event.downcast::<E>() {
 			// Get a snapshot of listeners (hold lock briefly)
 			let listeners: Vec<_> = {
-				let guard = self.listeners.read().await;
+				let guard = self.listeners.read();
 				guard.iter().cloned().collect()
 			};
 
-			// Now we can await without holding the lock
+			// Call listeners without holding the lock
 			for listener in listeners {
-				listener.on(&*event).await;
+				listener.on(&*event);
 			}
 		}
 	}
@@ -95,20 +91,20 @@ impl EventBus {
 		}
 	}
 
-	pub async fn register<E, L>(&self, listener: L)
+	pub fn register<E, L>(&self, listener: L)
 	where
 		E: Event,
 		L: EventListener<E>,
 	{
 		let type_id = TypeId::of::<E>();
 
-		let mut listeners = self.listeners.write().await;
+		let mut listeners = self.listeners.write();
 		let list = listeners.entry(type_id).or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
 
-		list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(Arc::new(listener)).await;
+		list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(Arc::new(listener));
 	}
 
-	pub async fn emit<E>(&self, event: E)
+	pub fn emit<E>(&self, event: E)
 	where
 		E: Event,
 	{
@@ -116,7 +112,7 @@ impl EventBus {
 
 		// Get a clone of the listener list pointer
 		let listener_list = {
-			let listeners = self.listeners.read().await;
+			let listeners = self.listeners.read();
 			listeners.get(&type_id).map(|l| l.as_ref() as *const dyn EventListenerList)
 		};
 
@@ -125,7 +121,7 @@ impl EventBus {
 			// SAFETY: The listener_list is stored in an Arc inside self.listeners,
 			// so it remains valid as long as self exists
 			let listener_list = unsafe { &*listener_list_ptr };
-			listener_list.on_any(event.into_any()).await;
+			listener_list.on_any(event.into_any());
 		}
 	}
 }
@@ -149,8 +145,6 @@ macro_rules! impl_event {
 mod tests {
 	use std::sync::{Arc, Mutex};
 
-	use async_trait::async_trait;
-
 	use crate::event::{Event, EventBus, EventListener};
 
 	#[derive(Debug, Clone)]
@@ -171,112 +165,110 @@ mod tests {
 		pub counter: Arc<Mutex<i32>>,
 	}
 
-	#[async_trait]
 	impl EventListener<TestEvent> for TestEventListener {
-		async fn on(&self, _event: &TestEvent) {
+		fn on(&self, _event: &TestEvent) {
 			let mut x = self.0.counter.lock().unwrap();
 			*x += 1;
 		}
 	}
 
-	#[async_trait]
 	impl EventListener<AnotherEvent> for TestEventListener {
-		async fn on(&self, _event: &AnotherEvent) {
+		fn on(&self, _event: &AnotherEvent) {
 			let mut x = self.0.counter.lock().unwrap();
 			*x *= 2;
 		}
 	}
 
-	#[tokio::test]
-	async fn test_event_bus_new() {
+	#[test]
+	fn test_event_bus_new() {
 		let event_bus = EventBus::new();
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 	}
 
-	#[tokio::test]
-	async fn test_event_bus_default() {
+	#[test]
+	fn test_event_bus_default() {
 		let event_bus = EventBus::default();
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 	}
 
-	#[tokio::test]
-	async fn test_register_single_listener() {
+	#[test]
+	fn test_register_single_listener() {
 		let event_bus = EventBus::new();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
-		event_bus.emit(TestEvent {}).await;
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.emit(TestEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
-	#[tokio::test]
-	async fn test_emit_unregistered_event() {
+	#[test]
+	fn test_emit_unregistered_event() {
 		let event_bus = EventBus::new();
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 	}
 
-	#[tokio::test]
-	async fn test_multiple_listeners_same_event() {
+	#[test]
+	fn test_multiple_listeners_same_event() {
 		let event_bus = EventBus::new();
 		let listener1 = TestEventListener::default();
 		let listener2 = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener1.clone()).await;
-		event_bus.register::<TestEvent, TestEventListener>(listener2.clone()).await;
+		event_bus.register::<TestEvent, TestEventListener>(listener1.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener2.clone());
 
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
 		assert_eq!(*listener2.0.counter.lock().unwrap(), 1);
 	}
 
-	#[tokio::test]
-	async fn test_event_bus_clone() {
+	#[test]
+	fn test_event_bus_clone() {
 		let event_bus1 = EventBus::new();
 		let listener = TestEventListener::default();
-		event_bus1.register::<TestEvent, TestEventListener>(listener.clone()).await;
+		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let event_bus2 = event_bus1.clone();
-		event_bus2.emit(TestEvent {}).await;
+		event_bus2.emit(TestEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
-	#[tokio::test]
-	async fn test_concurrent_registration() {
+	#[test]
+	fn test_concurrent_registration() {
 		let event_bus = Arc::new(EventBus::new());
 		let mut handles = Vec::new();
 
 		for _ in 0..10 {
 			let event_bus = event_bus.clone();
-			handles.push(tokio::spawn(async move {
+			handles.push(std::thread::spawn(move || {
 				let listener = TestEventListener::default();
-				event_bus.register::<TestEvent, TestEventListener>(listener).await;
+				event_bus.register::<TestEvent, TestEventListener>(listener);
 			}));
 		}
 
 		for handle in handles {
-			handle.await.unwrap();
+			handle.join().unwrap();
 		}
 
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 	}
 
-	#[tokio::test]
-	async fn test_concurrent_emitting() {
+	#[test]
+	fn test_concurrent_emitting() {
 		let event_bus = Arc::new(EventBus::new());
 		let listener = TestEventListener::default();
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let mut handles = Vec::new();
 
 		for _ in 0..10 {
 			let event_bus = event_bus.clone();
-			handles.push(tokio::spawn(async move {
-				event_bus.emit(TestEvent {}).await;
+			handles.push(std::thread::spawn(move || {
+				event_bus.emit(TestEvent {});
 			}));
 		}
 
 		for handle in handles {
-			handle.await.unwrap();
+			handle.join().unwrap();
 		}
 
 		assert!(*listener.0.counter.lock().unwrap() >= 10);
@@ -299,22 +291,22 @@ mod tests {
 		assert_eq!(any_ref.downcast_ref::<MacroTestEvent>().unwrap().value, 42);
 	}
 
-	#[tokio::test]
-	async fn test_multi_event_listener() {
+	#[test]
+	fn test_multi_event_listener() {
 		let event_bus = EventBus::default();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(listener.clone()).await;
-		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone()).await;
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone());
 
 		// Each event type triggers only its own listeners
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 
-		event_bus.emit(TestEvent {}).await;
+		event_bus.emit(TestEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 2);
 
-		event_bus.emit(AnotherEvent {}).await;
+		event_bus.emit(AnotherEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 4); // 2 * 2
 	}
 }

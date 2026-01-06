@@ -25,8 +25,6 @@ async fn async_main() {
 
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
-		.await
-		.unwrap()
 		.with_http(http_config)
 		.with_ws(ws_config)
 		.with_tracing_otel(
@@ -42,7 +40,6 @@ async fn async_main() {
 		.with_flow(|flow| flow)
 		// .with_admin(AdminConfig::default())
 		.build()
-		.await
 		.unwrap();
 
 	// Test spans to verify OpenTelemetry is working
@@ -60,5 +57,5 @@ async fn async_main() {
 	println!();
 	println!("Press Ctrl+C to stop...");
 
-	db.start_and_await_signal().await.unwrap();
+	db.start_and_await_signal().unwrap();
 }

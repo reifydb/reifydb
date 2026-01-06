@@ -5,7 +5,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use async_recursion::async_recursion;
 use reifydb_core::{
 	util::CowVec,
 	value::column::{Column, ColumnData, Columns},
@@ -43,11 +42,11 @@ pub enum DispatchResult {
 
 impl VmState {
 	/// Execute the program until halt or yield.
-	pub async fn execute<T: IntoStandardTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
+	pub fn execute<T: IntoStandardTransaction + ?Sized>(&mut self, tx: &mut T) -> Result<Option<Pipeline>> {
 		let mut std_tx = tx.into_standard_transaction();
 
 		loop {
-			let result = self.step(Some(&mut std_tx)).await?;
+			let result = self.step(Some(&mut std_tx))?;
 			match result {
 				DispatchResult::Continue => continue,
 				DispatchResult::Halt => break,
@@ -62,8 +61,7 @@ impl VmState {
 	/// Execute a single instruction.
 	///
 	/// The transaction is optional - if None, only in-memory sources can be used.
-	#[async_recursion]
-	pub async fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
+	pub fn step<'a>(&mut self, rx: Option<&mut StandardTransaction<'a>>) -> Result<DispatchResult> {
 		// Helper macros for reading operands
 		macro_rules! read_u8 {
 			($reader:expr) => {
@@ -255,12 +253,11 @@ impl VmState {
 						source_def.name.clone(),
 						self.context.config.batch_size,
 					);
-					let mut scan_state = op.initialize(catalog, rx).await?;
+					let mut scan_state = op.initialize(catalog, rx)?;
 
 					// 2. Fetch first batch to maintain backward compatibility
 					let batch_size = self.context.config.batch_size;
-					let batch_opt =
-						ScanTableOp::next_batch(&mut scan_state, rx, batch_size).await?;
+					let batch_opt = ScanTableOp::next_batch(&mut scan_state, rx, batch_size)?;
 
 					// 3. Store scan state (for potential future FetchBatch calls)
 					self.active_scans.insert(source_index, scan_state);
@@ -283,7 +280,7 @@ impl VmState {
 
 			Opcode::Inline => {
 				let next_ip = reader.position();
-				let pipeline: Pipeline = Box::pin(futures_util::stream::empty());
+				let pipeline: Pipeline = Box::new(std::iter::empty());
 				self.push_pipeline(pipeline)?;
 				self.ip = next_ip;
 			}
@@ -310,7 +307,7 @@ impl VmState {
 				let mut result_columns = Vec::new();
 				for (name, compiled_expr) in extensions {
 					// Evaluate expression with row_count=1
-					let column = compiled_expr.eval(&empty_with_one_row, &eval_ctx).await?;
+					let column = compiled_expr.eval(&empty_with_one_row, &eval_ctx)?;
 
 					// Rename the column to the specified name
 					let renamed = Column::new(Fragment::from(name), column.data().clone());
@@ -342,7 +339,7 @@ impl VmState {
 			Opcode::Collect => {
 				let next_ip = reader.position();
 				let pipeline = self.pop_pipeline()?;
-				let columns = crate::pipeline::collect(pipeline).await?;
+				let columns = crate::pipeline::collect(pipeline)?;
 				self.push_operand(OperandValue::Frame(columns))?;
 				self.ip = next_ip;
 			}
@@ -370,7 +367,7 @@ impl VmState {
 						.ok_or(VmError::Internal("scan not initialized".to_string()))?;
 
 					let batch_size = self.context.config.batch_size;
-					let batch_opt = ScanTableOp::next_batch(scan_state, rx, batch_size).await?;
+					let batch_opt = ScanTableOp::next_batch(scan_state, rx, batch_size)?;
 
 					if let Some(batch) = batch_opt {
 						// Has more data - push batch and true
@@ -826,7 +823,7 @@ impl VmState {
 				)?;
 
 				// Execute the subquery
-				let result = self.execute_subquery(subquery_def, rx).await?;
+				let result = self.execute_subquery(subquery_def, rx)?;
 
 				// EXISTS returns true if any rows, NOT EXISTS returns true if no rows
 				let row_count = result.row_count();
@@ -866,7 +863,7 @@ impl VmState {
 				)?;
 
 				// Execute the subquery
-				let result = self.execute_subquery(subquery_def, rx).await?;
+				let result = self.execute_subquery(subquery_def, rx)?;
 
 				// Check if value is in the first column of the result
 				let found = if result.is_empty() || result.columns.is_empty() {
@@ -898,7 +895,7 @@ impl VmState {
 				)?;
 
 				// Execute the subquery
-				let result = self.execute_subquery(subquery_def, rx).await?;
+				let result = self.execute_subquery(subquery_def, rx)?;
 
 				// Scalar subquery must return exactly one row and one column
 				if result.row_count() > 1 {
@@ -1021,7 +1018,7 @@ impl VmState {
 	/// Execute a subquery and return the collected result.
 	///
 	/// This creates a nested VM execution with the subquery's bytecode.
-	async fn execute_subquery<'a>(
+	fn execute_subquery<'a>(
 		&self,
 		subquery_def: &SubqueryDef,
 		rx: Option<&mut StandardTransaction<'a>>,
@@ -1047,7 +1044,7 @@ impl VmState {
 			// For now, we can't share the transaction, so this won't work for real table access
 			// This is a limitation we need to address in the future
 			// For testing, we'll use a workaround
-			let _ = subquery_vm.execute(rx).await?;
+			let _ = subquery_vm.execute(rx)?;
 		} else {
 			// No transaction available - subquery can only work with in-memory data
 			// This shouldn't happen in practice
@@ -1060,7 +1057,7 @@ impl VmState {
 		} else {
 			// Check pipeline stack as fallback
 			if let Some(pipeline) = subquery_vm.pipeline_stack.pop() {
-				pipeline::collect(pipeline).await
+				pipeline::collect(pipeline)
 			} else {
 				Ok(Columns::empty())
 			}

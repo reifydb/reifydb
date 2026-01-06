@@ -108,8 +108,6 @@ use reifydb_transaction::multi::StandardQueryTransaction;
 /// # Thread Safety
 ///
 /// FlowTransaction is Send because all fields are either Copy, owned, or
-/// Send (StandardQueryTransaction). StandardCommandTransaction is now
-/// natively Send + Sync, requiring no special workarounds.
 pub struct FlowTransaction {
 	/// CDC event version for snapshot isolation.
 	///
@@ -154,11 +152,11 @@ impl FlowTransaction {
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	/// * `catalog` - The catalog for metadata access
 	#[instrument(name = "flow::transaction::new", level = "debug", skip(parent, catalog), fields(version = version.0))]
-	pub async fn new(parent: &StandardCommandTransaction, version: CommitVersion, catalog: Catalog) -> Self {
-		let mut primitive_query = parent.multi.begin_query().await.unwrap();
+	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion, catalog: Catalog) -> Self {
+		let mut primitive_query = parent.multi.begin_query().unwrap();
 		primitive_query.read_as_of_version_inclusive(version);
 
-		let state_query = parent.multi.begin_query().await.unwrap();
+		let state_query = parent.multi.begin_query().unwrap();
 		Self {
 			version,
 			pending: PendingWrites::new(),

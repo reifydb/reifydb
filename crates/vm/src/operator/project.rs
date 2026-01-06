@@ -7,9 +7,8 @@ use reifydb_core::{
 };
 use reifydb_rqlv2::expression::{CompiledExpr, EvalContext};
 use reifydb_type::Fragment;
-use tokio_stream::StreamExt as TokioStreamExt;
 
-use crate::pipeline::Pipeline;
+use crate::{error::Result, pipeline::Pipeline};
 
 /// Project operator - adds computed columns using compiled expressions.
 pub struct ProjectOp {
@@ -59,37 +58,53 @@ impl ProjectOp {
 	}
 
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
-		let extensions = self.extensions.clone();
-		let keep_input = self.keep_input;
-		let eval_ctx = self.eval_ctx.clone();
+		Box::new(ProjectIterator {
+			input,
+			extensions: self.extensions.clone(),
+			keep_input: self.keep_input,
+			eval_ctx: self.eval_ctx.clone(),
+		})
+	}
+}
 
-		Box::pin(TokioStreamExt::then(input, move |result| {
-			let extensions = extensions.clone();
-			let eval_ctx = eval_ctx.clone();
-			async move {
-				let batch = result?;
+/// Iterator that applies projections to each batch
+struct ProjectIterator {
+	input: Pipeline,
+	extensions: Vec<(String, CompiledExpr)>,
+	keep_input: bool,
+	eval_ctx: EvalContext,
+}
 
-				// Materialize batch for expression evaluation
-				let columns = batch.into_columns();
-				let mut new_columns: Vec<Column> = Vec::new();
+impl Iterator for ProjectIterator {
+	type Item = Result<Batch>;
 
-				if keep_input {
-					// Copy input columns
-					new_columns.extend(columns.iter().cloned());
-				}
+	fn next(&mut self) -> Option<Self::Item> {
+		let batch = match self.input.next()? {
+			Ok(b) => b,
+			Err(e) => return Some(Err(e)),
+		};
 
-				// Add computed columns
-				for (name, compiled_expr) in &extensions {
-					let col = compiled_expr.eval(&columns, &eval_ctx).await?;
-					// Set the column name
-					let col = Column::new(Fragment::internal(name), col.data().clone());
-					new_columns.push(col);
-				}
+		// Materialize batch for expression evaluation
+		let columns = batch.into_columns();
+		let mut new_columns: Vec<Column> = Vec::new();
 
-				let result_columns =
-					Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec());
-				Ok(Batch::fully_materialized(result_columns))
-			}
-		}))
+		if self.keep_input {
+			// Copy input columns
+			new_columns.extend(columns.iter().cloned());
+		}
+
+		// Add computed columns
+		for (name, compiled_expr) in &self.extensions {
+			let col = match compiled_expr.eval(&columns, &self.eval_ctx) {
+				Ok(c) => c,
+				Err(e) => return Some(Err(e.into())),
+			};
+			// Set the column name
+			let col = Column::new(Fragment::internal(name), col.data().clone());
+			new_columns.push(col);
+		}
+
+		let result_columns = Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec());
+		Some(Ok(Batch::fully_materialized(result_columns)))
 	}
 }

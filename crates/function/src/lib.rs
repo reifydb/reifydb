@@ -9,7 +9,6 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 
-use async_trait::async_trait;
 pub use registry::{Functions, FunctionsBuilder};
 use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, GroupKey};
 use reifydb_transaction::StandardTransaction;
@@ -20,9 +19,8 @@ pub struct GeneratorContext<'a> {
 	pub txn: &'a mut StandardTransaction<'a>,
 }
 
-#[async_trait]
 pub trait GeneratorFunction: Send + Sync {
-	async fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> Result<Columns>;
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> Result<Columns>;
 }
 
 pub struct ScalarFunctionContext<'a> {

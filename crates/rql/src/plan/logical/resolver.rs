@@ -22,7 +22,7 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedPrimitive
 /// This is used when processing From clauses and joins
-pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
+pub fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	catalog: &Catalog,
 	tx: &mut T,
 	unresolved: &UnresolvedPrimitiveIdentifier,
@@ -36,9 +36,9 @@ pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
 
 	// Get namespace
 	let ns_def = if let Some(ref ns_fragment) = unresolved.namespace {
-		catalog.get_namespace_by_name(tx, ns_fragment.clone()).await?
+		catalog.get_namespace_by_name(tx, ns_fragment.clone())?
 	} else {
-		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE).await?
+		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};
 
 	let namespace_fragment = Fragment::internal(ns_def.name.clone());
@@ -70,14 +70,14 @@ pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	}
 
 	// Try table first
-	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id, name_str).await? {
+	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id, name_str)? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::Table(ResolvedTable::new(name_fragment, namespace, table)));
 	}
 
 	// Try ring buffer
-	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id, name_str).await? {
+	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id, name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
@@ -88,7 +88,7 @@ pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
-	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id, name_str).await? {
+	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id, name_str)? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
@@ -106,7 +106,7 @@ pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	}
 
 	// Try dictionaries
-	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id, name_str).await? {
+	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id, name_str)? {
 		return Ok(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
@@ -115,7 +115,7 @@ pub async fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	}
 
 	// Try flows (after views, since deferred views take precedence)
-	if let Some(flow) = catalog.find_flow_by_name(tx, ns_def.id, name_str).await? {
+	if let Some(flow) = catalog.find_flow_by_name(tx, ns_def.id, name_str)? {
 		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedPrimitive::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));

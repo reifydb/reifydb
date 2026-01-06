@@ -15,11 +15,10 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database with logging
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Create a namespace to organize our tables
 	info!("Creating namespace...");
@@ -30,7 +29,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Create a table with various data types
@@ -58,7 +56,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Insert some initial data
@@ -86,7 +83,6 @@ insert company.employees"#,
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Query all employees
@@ -98,7 +94,6 @@ insert company.employees"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in results {
@@ -115,7 +110,6 @@ insert company.employees"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in results {
@@ -153,7 +147,6 @@ update company.employees"#,
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Query to see the updated salaries
@@ -166,7 +159,6 @@ update company.employees"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in results {
@@ -188,7 +180,6 @@ delete company.employees"#,
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Final query - show remaining employees
@@ -200,7 +191,6 @@ delete company.employees"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in results {
@@ -217,7 +207,6 @@ delete company.employees"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in results {

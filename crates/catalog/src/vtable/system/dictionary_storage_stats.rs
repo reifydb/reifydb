@@ -44,12 +44,12 @@ fn tier_to_str(tier: Tier) -> &'static str {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for DictionaryStorageStats {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -63,11 +63,10 @@ impl<T: IntoStandardTransaction> VTable<T> for DictionaryStorageStats {
 				// Filter for dictionary sources only
 				if let ObjectId::Source(PrimitiveId::Dictionary(dictionary_id)) = obj_id {
 					// Look up namespace_id from catalog
-					let namespace_id =
-						match CatalogStore::find_dictionary(txn, dictionary_id).await? {
-							Some(dictionary_def) => dictionary_def.namespace.0,
-							None => 0,
-						};
+					let namespace_id = match CatalogStore::find_dictionary(txn, dictionary_id)? {
+						Some(dictionary_def) => dictionary_def.namespace.0,
+						None => 0,
+					};
 
 					rows.push((
 						dictionary_id.0,

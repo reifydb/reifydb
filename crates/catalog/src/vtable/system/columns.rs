@@ -34,12 +34,12 @@ impl ColumnsTable {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for ColumnsTable {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -53,7 +53,7 @@ impl<T: IntoStandardTransaction> VTable<T> for ColumnsTable {
 		let mut auto_increments = Vec::new();
 		let mut dictionary_ids = Vec::new();
 
-		let columns_list = CatalogStore::list_columns_all(txn).await?;
+		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
 			source_ids.push(info.source_id.as_u64());

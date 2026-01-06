@@ -3,7 +3,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use async_trait::async_trait;
 use indexmap::IndexMap;
 use reifydb_core::{
 	EncodedKey, Error, JoinType,
@@ -158,7 +157,7 @@ impl JoinOperator {
 
 	/// Generate columns for an unmatched left join result.
 	/// Creates combined columns with left values and Undefined values for right columns.
-	pub(crate) async fn unmatched_left_columns(
+	pub(crate) fn unmatched_left_columns(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -174,10 +173,10 @@ impl JoinOperator {
 
 		// Get or create a unique row number for this unmatched row
 		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, &composite_key).await?;
+			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
 		// Get the right side schema
-		let right_schema = self.right_parent.pull(txn, &[]).await?;
+		let right_schema = self.right_parent.pull(txn, &[])?;
 
 		// Build using JoinedColumnsBuilder
 		let builder = JoinedColumnsBuilder::new(left, &right_schema, &self.alias);
@@ -185,7 +184,7 @@ impl JoinOperator {
 	}
 
 	/// Generate columns for multiple unmatched left join results.
-	pub(crate) async fn unmatched_left_columns_batch(
+	pub(crate) fn unmatched_left_columns_batch(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -209,11 +208,11 @@ impl JoinOperator {
 
 		// Batch get/create row numbers
 		let row_numbers_with_flags =
-			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter()).await?;
+			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		// Get the right side schema
-		let right_schema = self.right_parent.pull(txn, &[]).await?;
+		let right_schema = self.right_parent.pull(txn, &[])?;
 
 		// Build using JoinedColumnsBuilder
 		let builder = JoinedColumnsBuilder::new(left, &right_schema, &self.alias);
@@ -222,22 +221,18 @@ impl JoinOperator {
 
 	/// Clean up all join results for a given left row
 	/// This removes both matched and unmatched join results
-	pub(crate) async fn cleanup_left_row_joins(
-		&self,
-		txn: &mut FlowTransaction,
-		left_number: u64,
-	) -> crate::Result<()> {
+	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> crate::Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
 		// Remove all mappings with this prefix
-		self.row_number_provider.remove_by_prefix(txn, &prefix).await
+		self.row_number_provider.remove_by_prefix(txn, &prefix)
 	}
 
 	/// Join a single left row with a single right row, returning combined Columns.
-	pub(crate) async fn join_columns(
+	pub(crate) fn join_columns(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -250,7 +245,7 @@ impl JoinOperator {
 
 		let composite_key = Self::make_composite_key(left_row_number, right_row_number);
 		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, &composite_key).await?;
+			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
 		// Join directly at indices without extracting rows
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
@@ -295,7 +290,7 @@ impl JoinOperator {
 
 	/// Join one left row with all right rows.
 	/// Returns combined Columns with one row per right row.
-	pub(crate) async fn join_columns_one_to_many(
+	pub(crate) fn join_columns_one_to_many(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -319,7 +314,7 @@ impl JoinOperator {
 
 		// Batch get/create row numbers
 		let row_numbers_with_flags =
-			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter()).await?;
+			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
@@ -328,7 +323,7 @@ impl JoinOperator {
 
 	/// Join all left rows with one right row.
 	/// Returns combined Columns with one row per left row.
-	pub(crate) async fn join_columns_many_to_one(
+	pub(crate) fn join_columns_many_to_one(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -352,7 +347,7 @@ impl JoinOperator {
 
 		// Batch get/create row numbers
 		let row_numbers_with_flags =
-			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter()).await?;
+			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
@@ -361,7 +356,7 @@ impl JoinOperator {
 
 	/// Join left rows at specified indices with all right rows (cartesian product).
 	/// Returns combined Columns with left_indices.len() * right.row_count() rows.
-	pub(crate) async fn join_columns_cartesian(
+	pub(crate) fn join_columns_cartesian(
 		&self,
 		txn: &mut FlowTransaction,
 		left: &Columns,
@@ -388,7 +383,7 @@ impl JoinOperator {
 
 		// Batch get/create row numbers
 		let row_numbers_with_flags =
-			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter()).await?;
+			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
@@ -421,13 +416,12 @@ impl SingleStateful for JoinOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -480,23 +474,17 @@ impl Operator for JoinOperator {
 
 					// Process inserts with defined keys (batched by key)
 					for (key_hash, indices) in inserts_by_key {
-						let diffs = self
-							.strategy
-							.handle_insert(
-								txn, &post, &indices, side, &key_hash, &mut state, self,
-							)
-							.await?;
+						let diffs = self.strategy.handle_insert(
+							txn, &post, &indices, side, &key_hash, &mut state, self,
+						)?;
 						result.extend(diffs);
 					}
 
 					// Process inserts with undefined keys individually
 					for idx in inserts_undefined {
-						let diffs = self
-							.strategy
-							.handle_insert_undefined(
-								txn, &post, idx, side, &mut state, self,
-							)
-							.await?;
+						let diffs = self.strategy.handle_insert_undefined(
+							txn, &post, idx, side, &mut state, self,
+						)?;
 						result.extend(diffs);
 					}
 				}
@@ -521,36 +509,30 @@ impl Operator for JoinOperator {
 
 					// Process removes with defined keys (batched by key)
 					for (key_hash, indices) in removes_by_key {
-						let diffs = self
-							.strategy
-							.handle_remove(
-								txn,
-								&pre,
-								&indices,
-								side,
-								&key_hash,
-								&mut state,
-								self,
-								change.version,
-							)
-							.await?;
+						let diffs = self.strategy.handle_remove(
+							txn,
+							&pre,
+							&indices,
+							side,
+							&key_hash,
+							&mut state,
+							self,
+							change.version,
+						)?;
 						result.extend(diffs);
 					}
 
 					// Process removes with undefined keys individually
 					for idx in removes_undefined {
-						let diffs = self
-							.strategy
-							.handle_remove_undefined(
-								txn,
-								&pre,
-								idx,
-								side,
-								&mut state,
-								self,
-								change.version,
-							)
-							.await?;
+						let diffs = self.strategy.handle_remove_undefined(
+							txn,
+							&pre,
+							idx,
+							side,
+							&mut state,
+							self,
+							change.version,
+						)?;
 						result.extend(diffs);
 					}
 				}
@@ -587,39 +569,33 @@ impl Operator for JoinOperator {
 
 					// Process updates with defined keys (batched by key pair)
 					for ((old_key, new_key), indices) in updates_by_key {
-						let diffs = self
-							.strategy
-							.handle_update(
-								txn,
-								&pre,
-								&post,
-								&indices,
-								side,
-								&old_key,
-								&new_key,
-								&mut state,
-								self,
-								change.version,
-							)
-							.await?;
+						let diffs = self.strategy.handle_update(
+							txn,
+							&pre,
+							&post,
+							&indices,
+							side,
+							&old_key,
+							&new_key,
+							&mut state,
+							self,
+							change.version,
+						)?;
 						result.extend(diffs);
 					}
 
 					// Process updates with undefined keys individually
 					for row_idx in updates_undefined {
-						let diffs = self
-							.strategy
-							.handle_update_undefined(
-								txn,
-								&pre,
-								&post,
-								row_idx,
-								side,
-								&mut state,
-								self,
-								change.version,
-							)
-							.await?;
+						let diffs = self.strategy.handle_update_undefined(
+							txn,
+							&pre,
+							&post,
+							row_idx,
+							side,
+							&mut state,
+							self,
+							change.version,
+						)?;
 						result.extend(diffs);
 					}
 				}
@@ -635,12 +611,12 @@ impl Operator for JoinOperator {
 	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
 	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
 	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {
 			// Get the composite key for this row number (reverse lookup)
-			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number).await? else {
+			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
 				continue;
 			};
 
@@ -650,14 +626,14 @@ impl Operator for JoinOperator {
 			};
 
 			// Get left columns from parent (no Row conversion)
-			let left_cols = self.left_parent.pull(txn, &[left_row_number]).await?;
+			let left_cols = self.left_parent.pull(txn, &[left_row_number])?;
 			if left_cols.is_empty() {
 				continue;
 			}
 
 			if let Some(right_row_num) = right_row_number {
 				// Matched join - has right row number
-				let right_cols = self.right_parent.pull(txn, &[right_row_num]).await?;
+				let right_cols = self.right_parent.pull(txn, &[right_row_num])?;
 				if !right_cols.is_empty() {
 					// Use JoinedColumnsBuilder to create joined columns
 					let builder = JoinedColumnsBuilder::new(&left_cols, &right_cols, &self.alias);
@@ -668,7 +644,7 @@ impl Operator for JoinOperator {
 				}
 			} else {
 				// Unmatched left row - use builder.unmatched_left
-				let right_schema = self.right_parent.pull(txn, &[]).await?;
+				let right_schema = self.right_parent.pull(txn, &[])?;
 				let builder = JoinedColumnsBuilder::new(&left_cols, &right_schema, &self.alias);
 				let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_schema);
 				// Override the row number to match what was requested
@@ -680,8 +656,8 @@ impl Operator for JoinOperator {
 		// Combine found rows
 		if found_columns.is_empty() {
 			// Get schema from both parents and combine them
-			let left_schema = self.left_parent.pull(txn, &[]).await?;
-			let right_schema = self.right_parent.pull(txn, &[]).await?;
+			let left_schema = self.left_parent.pull(txn, &[])?;
+			let right_schema = self.right_parent.pull(txn, &[])?;
 
 			// Use JoinedColumnsBuilder to get properly aliased names
 			let builder = JoinedColumnsBuilder::new(&left_schema, &right_schema, &self.alias);

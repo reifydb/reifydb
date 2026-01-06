@@ -17,6 +17,7 @@
 mod auth;
 mod execute;
 mod response;
+mod runtime;
 mod state;
 
 // Authentication exports
@@ -30,5 +31,7 @@ pub use execute::{
 };
 // Response conversion exports
 pub use response::{ResponseColumn, ResponseFrame, convert_frames};
+// Runtime exports
+pub use runtime::{DEFAULT_RUNTIME, SharedRuntime};
 // State exports
 pub use state::{AppState, QueryConfig};

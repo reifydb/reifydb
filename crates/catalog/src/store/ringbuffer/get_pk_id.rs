@@ -9,12 +9,12 @@ use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 impl CatalogStore {
 	/// Get the primary key ID for a ring buffer
 	/// Returns None if the ring buffer doesn't exist or has no primary key
-	pub async fn get_ringbuffer_pk_id(
+	pub fn get_ringbuffer_pk_id(
 		rx: &mut impl IntoStandardTransaction,
 		ringbuffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		let mut txn = rx.into_standard_transaction();
-		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id)).await? {
+		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -36,36 +36,36 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
-	#[tokio::test]
-	async fn test_get_ringbuffer_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
+	#[test]
+	fn test_get_ringbuffer_pk_id_without_primary_key() {
+		let mut txn = create_test_command_transaction();
+		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).await.unwrap();
+		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
 
 		assert_eq!(pk_id, None);
 	}
 
-	#[tokio::test]
-	async fn test_get_ringbuffer_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
+	#[test]
+	fn test_get_ringbuffer_pk_id_with_primary_key() {
+		let mut txn = create_test_command_transaction();
+		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set primary key
 		let pk_id = PrimaryKeyId(42);
-		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).await.unwrap();
+		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).unwrap();
 
 		// Get and verify
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).await.unwrap();
+		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
 
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
 
-	#[tokio::test]
-	async fn test_get_ringbuffer_pk_id_nonexistent_ringbuffer() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_ringbuffer_pk_id_nonexistent_ringbuffer() {
+		let mut txn = create_test_command_transaction();
 
-		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, RingBufferId(999)).await.unwrap();
+		let pk_id = CatalogStore::get_ringbuffer_pk_id(&mut txn, RingBufferId(999)).unwrap();
 
 		assert_eq!(pk_id, None);
 	}

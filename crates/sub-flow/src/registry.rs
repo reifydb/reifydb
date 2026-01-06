@@ -8,12 +8,9 @@ use std::{
 	time::Duration,
 };
 
+use parking_lot::{RwLock, RwLockReadGuard};
 use reifydb_core::interface::{FlowId, PrimitiveId};
-use tokio::{
-	sync::{RwLock, RwLockReadGuard},
-	time::{Instant, timeout},
-};
-use tracing::{debug, error, warn};
+use tracing::debug;
 
 use crate::flow::FlowConsumer;
 
@@ -35,33 +32,33 @@ impl FlowConsumerRegistry {
 	}
 
 	/// Register a flow consumer.
-	pub async fn register(&self, flow_id: FlowId, flow_consumer: FlowConsumer) {
+	pub fn register(&self, flow_id: FlowId, flow_consumer: FlowConsumer) {
 		let handle = FlowConsumerHandle {
 			flow_consumer,
 		};
 
-		let mut consumers = self.consumers.write().await;
+		let mut consumers = self.consumers.write();
 		consumers.insert(flow_id, handle);
 		debug!(flow_id = flow_id.0, "flow consumer registered");
 	}
 
 	/// Check if a flow is already registered.
-	pub async fn contains(&self, flow_id: FlowId) -> bool {
-		let consumers = self.consumers.read().await;
+	pub fn contains(&self, flow_id: FlowId) -> bool {
+		let consumers = self.consumers.read();
 		consumers.contains_key(&flow_id)
 	}
 
 	/// Deregister a flow consumer and return it for shutdown.
-	pub async fn deregister(&self, flow_id: FlowId) -> Option<FlowConsumer> {
-		let mut consumers = self.consumers.write().await;
+	pub fn deregister(&self, flow_id: FlowId) -> Option<FlowConsumer> {
+		let mut consumers = self.consumers.write();
 		let handle = consumers.remove(&flow_id)?;
 		debug!(flow_id = flow_id.0, "flow consumer deregistered");
 		Some(handle.flow_consumer)
 	}
 
 	/// Get all registered flow IDs.
-	pub async fn flow_ids(&self) -> Vec<FlowId> {
-		let consumers = self.consumers.read().await;
+	pub fn flow_ids(&self) -> Vec<FlowId> {
+		let consumers = self.consumers.read();
 		consumers.keys().copied().collect()
 	}
 
@@ -69,8 +66,8 @@ impl FlowConsumerRegistry {
 	///
 	/// This returns flow IDs and their source sets. Versions are retrieved
 	/// separately by querying each consumer's CDC checkpoint.
-	pub async fn all_flow_info(&self) -> Vec<(FlowId, HashSet<PrimitiveId>)> {
-		let consumers = self.consumers.read().await;
+	pub fn all_flow_info(&self) -> Vec<(FlowId, HashSet<PrimitiveId>)> {
+		let consumers = self.consumers.read();
 		consumers
 			.values()
 			.map(|handle| {
@@ -84,32 +81,19 @@ impl FlowConsumerRegistry {
 	/// Get a reference to the consumers map for internal use.
 	///
 	/// Returns a read lock guard that allows read-only access to the consumers map.
-	pub(crate) async fn consumers_read(&self) -> RwLockReadGuard<'_, HashMap<FlowId, FlowConsumerHandle>> {
-		self.consumers.read().await
+	pub(crate) fn consumers_read(&self) -> RwLockReadGuard<'_, HashMap<FlowId, FlowConsumerHandle>> {
+		self.consumers.read()
 	}
 
 	/// Shutdown all flow consumers with a timeout.
-	pub async fn shutdown_all(&self, drain_timeout: Duration) {
-		let flow_ids = self.flow_ids().await;
-		let drain_deadline = Instant::now() + drain_timeout;
+	pub fn shutdown_all(&self, _drain_timeout: Duration) {
+		let flow_ids = self.flow_ids();
 
 		debug!(count = flow_ids.len(), "shutting down all flow consumers");
 
 		for flow_id in flow_ids {
-			if let Some(consumer) = self.deregister(flow_id).await {
-				let remaining = drain_deadline.saturating_duration_since(Instant::now());
-
-				match timeout(remaining, consumer.shutdown()).await {
-					Ok(Ok(())) => {
-						debug!(flow_id = flow_id.0, "flow consumer shutdown successfully");
-					}
-					Ok(Err(e)) => {
-						error!(flow_id = flow_id.0, error = %e, "flow consumer shutdown failed");
-					}
-					Err(_) => {
-						warn!(flow_id = flow_id.0, "flow consumer shutdown timed out");
-					}
-				}
+			if let Some(consumer) = self.deregister(flow_id) {
+				consumer.shutdown().unwrap()
 			}
 		}
 

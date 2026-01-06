@@ -29,7 +29,7 @@ impl Executor {
 	///
 	/// The flow entry is created first to obtain a FlowId, then the flow nodes
 	/// and edges are compiled and persisted with that same FlowId.
-	pub(crate) async fn create_deferred_view_flow(
+	pub(crate) fn create_deferred_view_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		view: &ViewDef,
@@ -43,10 +43,9 @@ impl Executor {
 				namespace: view.namespace,
 				status: FlowStatus::Active,
 			},
-		)
-		.await?;
+		)?;
 
-		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id).await?;
+		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id)?;
 		Ok(())
 	}
 
@@ -54,7 +53,7 @@ impl Executor {
 	///
 	/// The flow entry is created first to obtain a FlowId, then the flow nodes
 	/// and edges are compiled and persisted with that same FlowId.
-	pub(crate) async fn create_subscription_flow(
+	pub(crate) fn create_subscription_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		subscription: &SubscriptionDef,
@@ -68,10 +67,9 @@ impl Executor {
 				namespace: subscription_flow_namespace(),
 				status: FlowStatus::Active,
 			},
-		)
-		.await?;
+		)?;
 
-		let _flow = compile_subscription_flow(txn, plan, subscription, flow_def.id).await?;
+		let _flow = compile_subscription_flow(txn, plan, subscription, flow_def.id)?;
 		Ok(())
 	}
 }

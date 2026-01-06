@@ -12,14 +12,14 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_ringbuffer<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_ringbuffer<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateRingBufferNode,
 	) -> crate::Result<PhysicalPlan> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.ringbuffer.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name).await? else {
+		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, namespace_name)? else {
 			let ns_fragment = create
 				.ringbuffer
 				.namespace

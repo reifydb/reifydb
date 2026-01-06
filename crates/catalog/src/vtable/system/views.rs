@@ -34,17 +34,17 @@ impl Views {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for Views {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let views = CatalogStore::list_views_all(txn).await?;
+		let views = CatalogStore::list_views_all(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(views.len());
 		let mut namespaces = ColumnData::uint8_with_capacity(views.len());

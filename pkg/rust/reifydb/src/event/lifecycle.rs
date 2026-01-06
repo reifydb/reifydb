@@ -3,16 +3,12 @@
 
 //! Lifecycle hook contexts and implementations
 
-use async_trait::async_trait;
-use futures_util::TryStreamExt;
 use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Identity, Params},
-	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
-use tracing::error;
 
 /// Context provided to on_create eventbus
 pub struct OnCreateContext {
@@ -27,76 +23,68 @@ impl OnCreateContext {
 	}
 
 	/// Execute a transactional command as the specified identity.
-	pub async fn command_as(
+	pub fn command_as(
 		&self,
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, StreamError> {
-		self.engine.command_as(identity, rql, params.into()).try_collect().await
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
+		self.engine.command_as(identity, rql, params.into())
 	}
 
 	/// Execute a transactional command as root user.
-	pub async fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
+	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
 		};
-		self.command_as(&identity, rql, params).await
+		self.command_as(&identity, rql, params)
 	}
 
 	/// Execute a read-only query as the specified identity.
-	pub async fn query_as(
+	pub fn query_as(
 		&self,
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, StreamError> {
-		self.engine.query_as(identity, rql, params.into()).try_collect().await
+	) -> Result<Vec<Frame>, reifydb_type::Error> {
+		self.engine.query_as(identity, rql, params.into())
 	}
 
 	/// Execute a read-only query as root user.
-	pub async fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
+	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::root();
-		self.query_as(&identity, rql, params).await
+		self.query_as(&identity, rql, params)
 	}
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateEventListener<F, Fut>
+pub struct OnCreateEventListener<F>
 where
-	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: Future<Output = crate::Result<()>> + Send + 'static,
+	F: Fn(OnCreateContext) + Send + Sync + 'static,
 {
 	pub callback: F,
 	pub engine: StandardEngine,
-	_marker: std::marker::PhantomData<fn() -> Fut>,
 }
 
-impl<F, Fut> OnCreateEventListener<F, Fut>
+impl<F> OnCreateEventListener<F>
 where
-	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: Future<Output = crate::Result<()>> + Send + 'static,
+	F: Fn(OnCreateContext) + Send + Sync + 'static,
 {
 	pub fn new(engine: StandardEngine, callback: F) -> Self {
 		Self {
 			callback,
 			engine,
-			_marker: std::marker::PhantomData,
 		}
 	}
 }
 
-#[async_trait]
-impl<F, Fut> EventListener<OnCreateEvent> for OnCreateEventListener<F, Fut>
+impl<F> EventListener<OnCreateEvent> for OnCreateEventListener<F>
 where
-	F: Fn(OnCreateContext) -> Fut + Send + Sync + 'static,
-	Fut: Future<Output = crate::Result<()>> + Send + 'static,
+	F: Fn(OnCreateContext) + Send + Sync + 'static,
 {
-	async fn on(&self, _hook: &OnCreateEvent) {
+	fn on(&self, _event: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());
-		if let Err(e) = (self.callback)(context).await {
-			error!("Failed to handle OnCreate event: {}", e);
-		}
+		(self.callback)(context);
 	}
 }

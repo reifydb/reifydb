@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_transaction::interceptor::{PostCommitContext, PostCommitInterceptor};
 
@@ -17,9 +16,8 @@ impl MaterializedCatalogInterceptor {
 	}
 }
 
-#[async_trait]
 impl PostCommitInterceptor for MaterializedCatalogInterceptor {
-	async fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 
 		for change in &ctx.changes.namespace_def {

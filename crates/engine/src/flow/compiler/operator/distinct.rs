@@ -54,12 +54,8 @@ fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 }
 
 impl CompileOperator for DistinctCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(txn, *self.input).await?;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		// Convert resolved columns to column expressions via ColumnIdentifier
 		let expressions: Vec<Expression> = self
@@ -68,16 +64,14 @@ impl CompileOperator for DistinctCompiler {
 			.map(|col| Expression::Column(ColumnExpression(resolved_to_column_identifier(col))))
 			.collect();
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				Distinct {
-					expressions,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			Distinct {
+				expressions,
+			},
+		)?;
 
-		compiler.add_edge(txn, &input_node, &node_id).await?;
+		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)
 	}
 }

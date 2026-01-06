@@ -38,19 +38,19 @@ impl FlowLags {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowLags {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
 		// Lazily resolve the provider from IoC - if not registered yet, return empty
 		let rows = match self.ioc.resolve::<Arc<dyn FlowLagsProvider>>() {
-			Ok(provider) => provider.all_lags().await,
+			Ok(provider) => provider.all_lags(),
 			Err(_) => vec![],
 		};
 

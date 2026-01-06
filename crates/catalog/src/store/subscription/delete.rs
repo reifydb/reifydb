@@ -7,12 +7,12 @@ use reifydb_transaction::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn delete_subscription(
+	pub fn delete_subscription(
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<()> {
 		// Delete the subscription metadata
-		txn.remove(&SubscriptionKey::encoded(subscription)).await?;
+		txn.remove(&SubscriptionKey::encoded(subscription))?;
 
 		// Note: Column deletion would require iterating through and removing columns
 		// For now, the columns associated with the subscription are orphaned when deleted
@@ -31,9 +31,9 @@ mod tests {
 
 	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
 
-	#[tokio::test]
-	async fn test_delete_subscription() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_delete_subscription() {
+		let mut txn = create_test_command_transaction();
 
 		let created = CatalogStore::create_subscription(
 			&mut txn,
@@ -41,29 +41,28 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
 		// Verify it exists
-		let found = CatalogStore::find_subscription(&mut txn, created.id).await.unwrap();
+		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap();
 		assert!(found.is_some());
 
 		// Delete it
-		CatalogStore::delete_subscription(&mut txn, created.id).await.unwrap();
+		CatalogStore::delete_subscription(&mut txn, created.id).unwrap();
 
 		// Verify it's gone
-		let found = CatalogStore::find_subscription(&mut txn, created.id).await.unwrap();
+		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap();
 		assert!(found.is_none());
 	}
 
-	#[tokio::test]
-	async fn test_delete_nonexistent_subscription() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_delete_nonexistent_subscription() {
+		let mut txn = create_test_command_transaction();
 
 		use reifydb_core::interface::SubscriptionId;
 		// Deleting a non-existent subscription should not error
 		let non_existent = SubscriptionId::new();
-		let result = CatalogStore::delete_subscription(&mut txn, non_existent).await;
+		let result = CatalogStore::delete_subscription(&mut txn, non_existent);
 		assert!(result.is_ok());
 	}
 }

@@ -25,18 +25,14 @@ impl From<MergeNode> for MergeCompiler {
 }
 
 impl CompileOperator for MergeCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
-		let left_node = compiler.compile_plan(txn, *self.left).await?;
-		let right_node = compiler.compile_plan(txn, *self.right).await?;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+		let left_node = compiler.compile_plan(txn, *self.left)?;
+		let right_node = compiler.compile_plan(txn, *self.right)?;
 
-		let node_id = compiler.add_node(txn, FlowNodeType::Merge).await?;
+		let node_id = compiler.add_node(txn, FlowNodeType::Merge)?;
 
-		compiler.add_edge(txn, &left_node, &node_id).await?;
-		compiler.add_edge(txn, &right_node, &node_id).await?;
+		compiler.add_edge(txn, &left_node, &node_id)?;
+		compiler.add_edge(txn, &right_node, &node_id)?;
 
 		Ok(node_id)
 	}

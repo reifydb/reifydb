@@ -54,7 +54,7 @@ impl testscript::Runner for Runner {
 
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_command_transaction().await;
+					let mut dummy_tx = create_test_command_transaction();
 
 					let default_namespace = CatalogStore::create_namespace(
 						&mut dummy_tx,
@@ -63,7 +63,6 @@ impl testscript::Runner for Runner {
 							name: "default".to_string(),
 						},
 					)
-					.await
 					.unwrap();
 
 					CatalogStore::create_table(
@@ -76,7 +75,6 @@ impl testscript::Runner for Runner {
 							retention_policy: None,
 						},
 					)
-					.await
 					.unwrap();
 
 					CatalogStore::create_table(
@@ -89,7 +87,6 @@ impl testscript::Runner for Runner {
 							retention_policy: None,
 						},
 					)
-					.await
 					.unwrap();
 
 					// Also create test namespace for tests that
@@ -101,7 +98,6 @@ impl testscript::Runner for Runner {
 							name: "test".to_string(),
 						},
 					)
-					.await
 					.unwrap();
 
 					CatalogStore::create_table(
@@ -114,13 +110,10 @@ impl testscript::Runner for Runner {
 							retention_policy: None,
 						},
 					)
-					.await
 					.unwrap();
 
 					let catalog = Catalog::default();
-					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query)
-						.await
-						.unwrap()
+					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
 			}
@@ -132,7 +125,7 @@ impl testscript::Runner for Runner {
 
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_command_transaction().await;
+					let mut dummy_tx = create_test_command_transaction();
 
 					let namespace = CatalogStore::create_namespace(
 						&mut dummy_tx,
@@ -141,7 +134,6 @@ impl testscript::Runner for Runner {
 							name: "default".to_string(),
 						},
 					)
-					.await
 					.unwrap();
 
 					CatalogStore::create_table(
@@ -154,7 +146,6 @@ impl testscript::Runner for Runner {
 							retention_policy: None,
 						},
 					)
-					.await
 					.unwrap();
 
 					CatalogStore::create_table(
@@ -167,11 +158,10 @@ impl testscript::Runner for Runner {
 							retention_policy: None,
 						},
 					)
-					.await
 					.unwrap();
 
 					let catalog = Catalog::default();
-					explain_physical_plan(&catalog, &mut dummy_tx, query).await.unwrap()
+					explain_physical_plan(&catalog, &mut dummy_tx, query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
 			}

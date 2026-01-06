@@ -42,9 +42,9 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
+	pub fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
 		let mut txn = rx.into_standard_transaction();
-		let multi = txn.get(&ColumnsKey::encoded(column)).await?.ok_or_else(|| {
+		let multi = txn.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
@@ -74,7 +74,7 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let policies = Self::list_column_policies(&mut txn, id).await?;
+		let policies = Self::list_column_policies(&mut txn, id)?;
 
 		Ok(ColumnDef {
 			id,
@@ -96,14 +96,14 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let result = CatalogStore::get_column(&mut txn, ColumnId(8194)).await.unwrap();
+		let result = CatalogStore::get_column(&mut txn, ColumnId(8194)).unwrap();
 
 		assert_eq!(result.id, ColumnId(8194));
 		assert_eq!(result.name, "col_2");
@@ -111,14 +111,14 @@ mod tests {
 		assert_eq!(result.auto_increment, false);
 	}
 
-	#[tokio::test]
-	async fn test_not_found() {
-		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let err = CatalogStore::get_column(&mut txn, ColumnId(4)).await.unwrap_err();
+		let err = CatalogStore::get_column(&mut txn, ColumnId(4)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ColumnId(4)"));
 		assert!(err.message.contains("not found in catalog"));

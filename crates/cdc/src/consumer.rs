@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::interface::Cdc;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for CDC transaction processing functions
-#[async_trait]
 pub trait CdcConsume: Send + Sync + 'static {
-	async fn consume(&self, txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()>;
+	fn consume(&self, txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()>;
 }
 
 /// Trait for CDC event stream consumers

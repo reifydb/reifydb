@@ -18,7 +18,7 @@ pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, Alter
 pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
 impl Compiler {
-	pub(crate) async fn compile_alter<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter<T: IntoStandardTransaction>(
 		&self,
 		ast: AstAlter,
 		tx: &mut T,
@@ -27,7 +27,7 @@ impl Compiler {
 			AstAlter::Sequence(node) => self.compile_alter_sequence(node),
 			AstAlter::Table(node) => self.compile_alter_table(node),
 			AstAlter::View(node) => self.compile_alter_view(node),
-			AstAlter::Flow(node) => self.compile_alter_flow(node, tx).await,
+			AstAlter::Flow(node) => self.compile_alter_flow(node, tx),
 		}
 	}
 }

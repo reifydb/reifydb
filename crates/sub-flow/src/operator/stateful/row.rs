@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 use std::iter::once;
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey,
 	interface::FlowNodeId,
@@ -41,7 +40,7 @@ impl RowNumberProvider {
 	/// Get or create RowNumbers for multiple keys
 	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
 	/// where is_new indicates if the row number was newly created
-	pub async fn get_or_create_row_numbers<'a, I>(
+	pub fn get_or_create_row_numbers<'a, I>(
 		&self,
 		txn: &mut FlowTransaction,
 		keys: I,
@@ -50,13 +49,13 @@ impl RowNumberProvider {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		let mut results = Vec::new();
-		let mut counter = self.load_counter(txn).await?;
+		let mut counter = self.load_counter(txn)?;
 		let initial_counter = counter;
 
 		for key in keys {
 			let map_key = self.make_map_key(key);
 
-			if let Some(existing_row) = internal_state_get(self.node, txn, &map_key).await? {
+			if let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? {
 				let bytes = existing_row.as_ref();
 				if bytes.len() >= 8 {
 					let row_num = u64::from_be_bytes([
@@ -98,22 +97,22 @@ impl RowNumberProvider {
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
 	/// created
-	pub async fn get_or_create_row_number(
+	pub fn get_or_create_row_number(
 		&self,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers(txn, once(key)).await?.into_iter().next().unwrap())
+		Ok(self.get_or_create_row_numbers(txn, once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Get the original key for a given row number (reverse lookup)
-	pub async fn get_key_for_row_number(
+	pub fn get_key_for_row_number(
 		&self,
 		txn: &mut FlowTransaction,
 		row_number: RowNumber,
 	) -> crate::Result<Option<EncodedKey>> {
 		let reverse_key = self.make_reverse_map_key(row_number);
-		if let Some(key_bytes) = internal_state_get(self.node, txn, &reverse_key).await? {
+		if let Some(key_bytes) = internal_state_get(self.node, txn, &reverse_key)? {
 			Ok(Some(EncodedKey::new(key_bytes.as_ref().to_vec())))
 		} else {
 			Ok(None)
@@ -121,9 +120,9 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	async fn load_counter(&self, txn: &mut FlowTransaction) -> crate::Result<u64> {
+	fn load_counter(&self, txn: &mut FlowTransaction) -> crate::Result<u64> {
 		let key = self.make_counter_key();
-		match internal_state_get(self.node, txn, &key).await? {
+		match internal_state_get(self.node, txn, &key)? {
 			None => Ok(1), // First time, start at 1
 			Some(state_row) => {
 				// Parse the stored counter
@@ -173,7 +172,7 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub async fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
+	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
 		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
@@ -187,7 +186,7 @@ impl RowNumberProvider {
 		let keys_to_remove = {
 			let mut stream = txn.range(full_range, 1024);
 			let mut keys = Vec::new();
-			while let Some(result) = stream.next().await {
+			while let Some(result) = stream.next() {
 				let multi = result?;
 				keys.push(multi.key);
 			}
@@ -210,34 +209,34 @@ mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
-	#[tokio::test]
-	async fn test_first_row_number() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_first_row_number() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("first");
-		let (row_num, is_new) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (row_num, is_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 
 		assert_eq!(row_num.0, 1);
 		assert!(is_new);
 	}
 
-	#[tokio::test]
-	async fn test_duplicate_key_same_row_number() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_duplicate_key_same_row_number() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("duplicate");
 
 		// First call - should create new
-		let (row_num1, is_new1) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (row_num1, is_new1) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 		assert_eq!(row_num1.0, 1);
 		assert!(is_new1);
 
 		// Second call with same key - should return existing
-		let (row_num2, is_new2) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (row_num2, is_new2) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 		assert_eq!(row_num2.0, 1);
 		assert!(!is_new2);
 
@@ -245,26 +244,26 @@ mod tests {
 		assert_eq!(row_num1, row_num2);
 	}
 
-	#[tokio::test]
-	async fn test_sequential_row_numbers() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_sequential_row_numbers() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create multiple unique keys
 		for i in 1..=5 {
 			let key = test_key(&format!("key_{}", i));
-			let (row_num, is_new) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+			let (row_num, is_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 
 			assert_eq!(row_num.0, i as u64);
 			assert!(is_new);
 		}
 	}
 
-	#[tokio::test]
-	async fn test_mixed_new_and_existing() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_mixed_new_and_existing() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some keys
@@ -273,9 +272,9 @@ mod tests {
 		let key3 = test_key("mixed_3");
 
 		// First round - all new
-		let (rn1, new1) = provider.get_or_create_row_number(&mut txn, &key1).await.unwrap();
-		let (rn2, new2) = provider.get_or_create_row_number(&mut txn, &key2).await.unwrap();
-		let (rn3, new3) = provider.get_or_create_row_number(&mut txn, &key3).await.unwrap();
+		let (rn1, new1) = provider.get_or_create_row_number(&mut txn, &key1).unwrap();
+		let (rn2, new2) = provider.get_or_create_row_number(&mut txn, &key2).unwrap();
+		let (rn3, new3) = provider.get_or_create_row_number(&mut txn, &key3).unwrap();
 
 		assert_eq!(rn1.0, 1);
 		assert!(new1);
@@ -286,9 +285,9 @@ mod tests {
 
 		// Second round - mixed
 		let key4 = test_key("mixed_4");
-		let (rn2_again, new2_again) = provider.get_or_create_row_number(&mut txn, &key2).await.unwrap();
-		let (rn4, new4) = provider.get_or_create_row_number(&mut txn, &key4).await.unwrap();
-		let (rn1_again, new1_again) = provider.get_or_create_row_number(&mut txn, &key1).await.unwrap();
+		let (rn2_again, new2_again) = provider.get_or_create_row_number(&mut txn, &key2).unwrap();
+		let (rn4, new4) = provider.get_or_create_row_number(&mut txn, &key4).unwrap();
+		let (rn1_again, new1_again) = provider.get_or_create_row_number(&mut txn, &key1).unwrap();
 
 		assert_eq!(rn2_again.0, 2);
 		assert!(!new2_again);
@@ -298,85 +297,85 @@ mod tests {
 		assert!(!new1_again);
 	}
 
-	#[tokio::test]
-	async fn test_multiple_providers_isolated() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_multiple_providers_isolated() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
 		let key = test_key("shared_key");
 
 		// Same key in different providers should get different encoded numbers
-		let (rn1, _) = provider1.get_or_create_row_number(&mut txn, &key).await.unwrap();
-		let (rn2, _) = provider2.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (rn1, _) = provider1.get_or_create_row_number(&mut txn, &key).unwrap();
+		let (rn2, _) = provider2.get_or_create_row_number(&mut txn, &key).unwrap();
 
 		assert_eq!(rn1.0, 1);
 		assert_eq!(rn2.0, 1);
 
 		// Add more keys to provider1
 		let key2 = test_key("key2");
-		let (rn1_2, _) = provider1.get_or_create_row_number(&mut txn, &key2).await.unwrap();
+		let (rn1_2, _) = provider1.get_or_create_row_number(&mut txn, &key2).unwrap();
 		assert_eq!(rn1_2.0, 2);
 
 		// Provider2 should still be at 1 for new keys
-		let (rn2_2, _) = provider2.get_or_create_row_number(&mut txn, &key2).await.unwrap();
+		let (rn2_2, _) = provider2.get_or_create_row_number(&mut txn, &key2).unwrap();
 		assert_eq!(rn2_2.0, 2);
 	}
 
-	#[tokio::test]
-	async fn test_counter_persistence() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_counter_persistence() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some encoded numbers
 		for i in 1..=3 {
 			let key = test_key(&format!("persist_{}", i));
-			let (rn, _) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+			let (rn, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 			assert_eq!(rn.0, i as u64);
 		}
 
 		// Simulate loading counter again (internally happens in get_or_create)
 		let new_key = test_key("persist_new");
-		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &new_key).await.unwrap();
+		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &new_key).unwrap();
 
 		// Should continue from where we left off
 		assert_eq!(rn.0, 4);
 		assert!(is_new);
 	}
 
-	#[tokio::test]
-	async fn test_large_row_numbers() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_large_row_numbers() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create many encoded numbers
 		for i in 1..=1000 {
 			let key = test_key(&format!("large_{}", i));
-			let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+			let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 			assert_eq!(rn.0, i as u64);
 			assert!(is_new);
 		}
 
 		// Verify we can still retrieve early ones
 		let key = test_key("large_1");
-		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 		assert_eq!(rn.0, 1);
 		assert!(!is_new);
 
 		// And continue adding new ones
 		let key = test_key("large_1001");
-		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).await.unwrap();
+		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
 		assert_eq!(rn.0, 1001);
 		assert!(is_new);
 	}
 
-	#[tokio::test]
-	async fn test_mixed_existing_and_new_keys() {
-		let mut txn = create_test_transaction().await;
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default()).await;
+	#[test]
+	fn test_mixed_existing_and_new_keys() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers
@@ -384,13 +383,13 @@ mod tests {
 		let key2 = test_key("key_2");
 		let key3 = test_key("key_3");
 
-		let (rn1, _) = provider.get_or_create_row_number(&mut txn, &key1).await.unwrap();
+		let (rn1, _) = provider.get_or_create_row_number(&mut txn, &key1).unwrap();
 		assert_eq!(rn1.0, 1);
 
-		let (rn2, _) = provider.get_or_create_row_number(&mut txn, &key2).await.unwrap();
+		let (rn2, _) = provider.get_or_create_row_number(&mut txn, &key2).unwrap();
 		assert_eq!(rn2.0, 2);
 
-		let (rn3, _) = provider.get_or_create_row_number(&mut txn, &key3).await.unwrap();
+		let (rn3, _) = provider.get_or_create_row_number(&mut txn, &key3).unwrap();
 		assert_eq!(rn3.0, 3);
 
 		// Now test batch with mix of existing and new keys
@@ -400,7 +399,7 @@ mod tests {
 		// Batch: [existing key2, new key4, existing key1, new key5, existing key3]
 		let keys = vec![&key2, &key4, &key1, &key5, &key3];
 
-		let results = provider.get_or_create_row_numbers(&mut txn, keys.into_iter()).await.unwrap();
+		let results = provider.get_or_create_row_numbers(&mut txn, keys.into_iter()).unwrap();
 
 		// Verify results are in correct order and have correct values
 		assert_eq!(results.len(), 5);
@@ -428,31 +427,31 @@ mod tests {
 		// Verify that counter was only incremented by 2 (for key4 and key5)
 		// by checking that the next new key gets row number 6
 		let key6 = test_key("key_6");
-		let (rn6, is_new6) = provider.get_or_create_row_number(&mut txn, &key6).await.unwrap();
+		let (rn6, is_new6) = provider.get_or_create_row_number(&mut txn, &key6).unwrap();
 		assert_eq!(rn6.0, 6);
 		assert!(is_new6);
 
 		// Verify all mappings are still correct by retrieving them individually
-		let (check_rn4, is_new4) = provider.get_or_create_row_number(&mut txn, &key4).await.unwrap();
+		let (check_rn4, is_new4) = provider.get_or_create_row_number(&mut txn, &key4).unwrap();
 		assert_eq!(check_rn4.0, 4);
 		assert!(!is_new4);
 
-		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut txn, &key5).await.unwrap();
+		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut txn, &key5).unwrap();
 		assert_eq!(check_rn5.0, 5);
 		assert!(!is_new5);
 
 		// Verify reverse mappings exist for the new keys created in batch
-		let reverse_key4 = provider.get_key_for_row_number(&mut txn, RowNumber(4)).await.unwrap();
+		let reverse_key4 = provider.get_key_for_row_number(&mut txn, RowNumber(4)).unwrap();
 		assert_eq!(reverse_key4, Some(key4));
 
-		let reverse_key5 = provider.get_key_for_row_number(&mut txn, RowNumber(5)).await.unwrap();
+		let reverse_key5 = provider.get_key_for_row_number(&mut txn, RowNumber(5)).unwrap();
 		assert_eq!(reverse_key5, Some(key5));
 
 		// Verify reverse mappings also exist for keys created before batch
-		let reverse_key1 = provider.get_key_for_row_number(&mut txn, RowNumber(1)).await.unwrap();
+		let reverse_key1 = provider.get_key_for_row_number(&mut txn, RowNumber(1)).unwrap();
 		assert_eq!(reverse_key1, Some(key1));
 
-		let reverse_key2 = provider.get_key_for_row_number(&mut txn, RowNumber(2)).await.unwrap();
+		let reverse_key2 = provider.get_key_for_row_number(&mut txn, RowNumber(2)).unwrap();
 		assert_eq!(reverse_key2, Some(key2));
 	}
 }

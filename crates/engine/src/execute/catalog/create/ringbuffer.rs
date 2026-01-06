@@ -9,16 +9,14 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_ringbuffer(
+	pub(crate) fn create_ringbuffer(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateRingBufferNode,
 	) -> crate::Result<Columns> {
 		// Check if ring buffer already exists using the catalog
-		if let Some(_) = self
-			.catalog
-			.find_ringbuffer_by_name(txn, plan.namespace.def().id, plan.ringbuffer.text())
-			.await?
+		if let Some(_) =
+			self.catalog.find_ringbuffer_by_name(txn, plan.namespace.def().id, plan.ringbuffer.text())?
 		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -40,8 +38,7 @@ impl Executor {
 				columns: plan.columns,
 				capacity: plan.capacity,
 			},
-		)
-		.await?;
+		)?;
 		txn.track_ringbuffer_def_created(result)?;
 
 		Ok(Columns::single_row([
@@ -65,12 +62,12 @@ mod tests {
 		test_utils::create_test_command_transaction,
 	};
 
-	#[tokio::test]
-	async fn test_create_ringbuffer() {
+	#[test]
+	fn test_create_ringbuffer() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let resolved_namespace =
 			ResolvedNamespace::new(Fragment::internal("test_namespace"), namespace.clone());
@@ -93,7 +90,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -110,7 +106,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -127,18 +122,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
 
-	#[tokio::test]
-	async fn test_create_same_ringbuffer_in_different_schema() {
+	#[test]
+	fn test_create_same_ringbuffer_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
-		let another_schema = create_namespace(&mut txn, "another_schema").await;
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema = create_namespace(&mut txn, "another_schema");
 
 		let namespace_ident = Fragment::internal("test_namespace");
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
@@ -159,7 +153,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -183,7 +176,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -191,10 +183,10 @@ mod tests {
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
-	#[tokio::test]
-	async fn test_create_ringbuffer_missing_schema() {
+	#[test]
+	fn test_create_ringbuffer_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
 		let namespace_ident = Fragment::internal("missing_schema");
 		let namespace_def = NamespaceDef {
@@ -211,9 +203,6 @@ mod tests {
 			primary_key: None,
 		};
 
-		// With defensive fallback, this now succeeds even with
-		// non-existent namespace The ring buffer is created with the
-		// provided namespace ID
 		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
@@ -222,7 +211,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
-use futures_util::StreamExt;
 use reifydb_core::{
 	interface::{SubscriptionDef, SubscriptionId},
 	key::{Key, SubscriptionRowKey},
@@ -23,9 +21,8 @@ impl InspectSubscription {
 	}
 }
 
-#[async_trait]
 impl GeneratorFunction for InspectSubscription {
-	async fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
 		let txn = ctx.txn;
 
 		// Extract subscription_id parameter
@@ -54,13 +51,13 @@ impl GeneratorFunction for InspectSubscription {
 
 		let sub_key = reifydb_core::key::SubscriptionKey::encoded(subscription_id);
 
-		let subscription_def = if let Some(entry) = txn.get(&sub_key).await? {
+		let subscription_def = if let Some(entry) = txn.get(&sub_key)? {
 			// Scan subscription columns
 			use reifydb_core::key::SubscriptionColumnKey;
 			let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription_id), 256)?;
 			let mut columns = Vec::new();
 
-			while let Some(result) = stream.next().await {
+			while let Some(result) = stream.next() {
 				let col_entry = result?;
 				if let Some(Key::SubscriptionColumn(col_key)) = Key::decode(&col_entry.key) {
 					use reifydb_catalog::store::subscription::layout::subscription_column;
@@ -115,7 +112,7 @@ impl GeneratorFunction for InspectSubscription {
 		let mut row_numbers = Vec::new();
 
 		// Scan all rows
-		while let Some(result) = stream.next().await {
+		while let Some(result) = stream.next() {
 			let entry = result?;
 
 			if let Some(Key::SubscriptionRow(sub_row_key)) = Key::decode(&entry.key) {

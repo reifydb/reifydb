@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_sequence(
+	pub fn find_sequence(
 		rx: &mut impl IntoStandardTransaction,
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
@@ -39,7 +39,7 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let mut txn = rx.into_standard_transaction();
-		let value = match txn.get(&sequence_key).await? {
+		let value = match txn.get(&sequence_key)? {
 			Some(row) => LAYOUT.get_u64(&row.values, VALUE),
 			None => 0,
 		};

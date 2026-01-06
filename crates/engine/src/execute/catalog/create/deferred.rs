@@ -9,12 +9,12 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_deferred_view<'a>(
+	pub(crate) fn create_deferred_view<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns> {
-		if let Some(_) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
+		if let Some(_) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -32,11 +32,10 @@ impl Executor {
 				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
-		)
-		.await?;
+		)?;
 		txn.track_view_def_created(result.clone())?;
 
-		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
+		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -58,12 +57,12 @@ mod tests {
 		execute::Executor, stack::Stack, test_utils::create_test_command_transaction_with_internal_schema,
 	};
 
-	#[tokio::test]
-	async fn test_create_view() {
+	#[test]
+	fn test_create_view() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema().await;
+		let mut txn = create_test_command_transaction_with_internal_schema();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let mut plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
@@ -88,7 +87,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 
@@ -106,7 +104,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 
@@ -124,18 +121,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[tokio::test]
-	async fn test_create_same_view_in_different_schema() {
+	#[test]
+	fn test_create_same_view_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema().await;
+		let mut txn = create_test_command_transaction_with_internal_schema();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
-		let another_schema = create_namespace(&mut txn, "another_schema").await;
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema = create_namespace(&mut txn, "another_schema");
 
 		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
@@ -159,7 +155,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 
@@ -187,7 +182,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -195,10 +189,10 @@ mod tests {
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 	}
 
-	#[tokio::test]
-	async fn test_create_view_missing_schema() {
+	#[test]
+	fn test_create_view_missing_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction_with_internal_schema().await;
+		let mut txn = create_test_command_transaction_with_internal_schema();
 
 		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
@@ -221,7 +215,6 @@ mod tests {
 			Params::default(),
 			&mut stack,
 		)
-		.await
 		.unwrap_err();
 	}
 }

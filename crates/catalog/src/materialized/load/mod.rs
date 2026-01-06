@@ -31,30 +31,27 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub async fn load_all(
-		rx: &mut impl IntoStandardTransaction,
-		catalog: &MaterializedCatalog,
-	) -> crate::Result<()> {
+	pub fn load_all(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 		let mut txn = rx.into_standard_transaction();
-		load_namespaces(&mut txn, catalog).await?;
+		load_namespaces(&mut txn, catalog)?;
 		// Load primary keys first so they're available when loading
 		// tables/views
-		load_primary_keys(&mut txn, catalog).await?;
+		load_primary_keys(&mut txn, catalog)?;
 
-		load_tables(&mut txn, catalog).await?;
-		load_views(&mut txn, catalog).await?;
-		load_flows(&mut txn, catalog).await?;
-		load_ringbuffers(&mut txn, catalog).await?;
+		load_tables(&mut txn, catalog)?;
+		load_views(&mut txn, catalog)?;
+		load_flows(&mut txn, catalog)?;
+		load_ringbuffers(&mut txn, catalog)?;
 
 		// Load retention policies
-		load_source_retention_policies(&mut txn, catalog).await?;
-		load_operator_retention_policies(&mut txn, catalog).await?;
+		load_source_retention_policies(&mut txn, catalog)?;
+		load_operator_retention_policies(&mut txn, catalog)?;
 
 		// Load dictionaries
-		load_dictionaries(&mut txn, catalog).await?;
+		load_dictionaries(&mut txn, catalog)?;
 
 		// Load subscriptions
-		load_subscriptions(&mut txn, catalog).await?;
+		load_subscriptions(&mut txn, catalog)?;
 
 		Ok(())
 	}

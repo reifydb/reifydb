@@ -9,37 +9,36 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use futures_util::TryStreamExt;
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::TransactionMulti;
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
-#[tokio::test]
-async fn test_versions() {
-	let engine = TransactionMulti::testing().await;
+#[test]
+fn test_versions() {
+	let engine = TransactionMulti::testing();
 
 	let k0 = as_key!(0);
 
 	for i in 1..10 {
-		let mut txn = engine.begin_command().await.unwrap();
+		let mut txn = engine.begin_command().unwrap();
 		txn.set(&k0, as_values!(i)).unwrap();
-		txn.commit().await.unwrap();
-		assert_eq!(i + 1, engine.version().await.unwrap());
+		txn.commit().unwrap();
+		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
 	for idx in 1i32..10 {
-		let mut txn = engine.begin_command().await.unwrap();
+		let mut txn = engine.begin_command().unwrap();
 		txn.read_as_of_version_exclusive(CommitVersion(idx as u64 + 1)); // Read version at idx.
 
 		let v = idx;
 		{
-			let tv = txn.get(&k0).await.unwrap().unwrap();
+			let tv = txn.get(&k0).unwrap().unwrap();
 			assert_eq!(v, from_values!(i32, tv.values()));
 		}
 
 		// Try retrieving the latest version forward and reverse.
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).try_collect().await.unwrap();
+		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 		let mut count = 0;
 		for sv in items {
 			assert_eq!(&sv.key, &k0);
@@ -49,7 +48,7 @@ async fn test_versions() {
 		}
 		assert_eq!(1, count); // should only loop once.
 
-		let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).try_collect().await.unwrap();
+		let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 		let mut count = 0;
 		for sv in items {
 			let value = from_values!(i32, &sv.values);
@@ -59,8 +58,8 @@ async fn test_versions() {
 		assert_eq!(1, count); // should only loop once.
 	}
 
-	let mut txn = engine.begin_command().await.unwrap();
-	let sv = txn.get(&k0).await.unwrap().unwrap();
+	let mut txn = engine.begin_command().unwrap();
+	let sv = txn.get(&k0).unwrap().unwrap();
 	let val = from_values!(i32, sv.values());
 	assert_eq!(9, val)
 }

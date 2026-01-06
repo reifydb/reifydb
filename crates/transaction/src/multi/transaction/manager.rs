@@ -382,7 +382,7 @@ where
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	pub(crate) async fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
+	pub(crate) fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -390,7 +390,7 @@ where
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager).await? {
+		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager)? {
 			CreateCommitResult::Conflict(conflicts) => {
 				// If there is a conflict, we should not send
 				// the updates to the write channel.

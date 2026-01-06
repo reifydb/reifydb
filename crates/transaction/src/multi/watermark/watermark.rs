@@ -19,11 +19,9 @@ use std::{
 	time::Duration,
 };
 
+use crossbeam_channel::{Sender, unbounded};
+use parking_lot::{Condvar, Mutex};
 use reifydb_core::CommitVersion;
-use tokio::{
-	spawn,
-	sync::{Mutex, mpsc, oneshot},
-};
 use tracing::instrument;
 
 use crate::multi::watermark::Closer;
@@ -31,15 +29,45 @@ use crate::multi::watermark::Closer;
 pub struct WatermarkInner {
 	pub(crate) done_until: AtomicU64,
 	pub(crate) last_index: AtomicU64,
-	pub(crate) tx: mpsc::UnboundedSender<Mark>,
-	pub(crate) processor_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+	pub(crate) tx: Sender<Mark>,
+	pub(crate) processor_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 #[derive(Debug)]
 pub(crate) struct Mark {
 	pub(crate) version: u64,
-	pub(crate) waiter: Option<oneshot::Sender<()>>,
+	pub(crate) waiter: Option<Arc<WaiterHandle>>,
 	pub(crate) done: bool,
+}
+
+/// Handle for waiting on a specific version to complete
+#[derive(Debug)]
+pub(crate) struct WaiterHandle {
+	notified: Mutex<bool>,
+	condvar: Condvar,
+}
+
+impl WaiterHandle {
+	fn new() -> Self {
+		Self {
+			notified: Mutex::new(false),
+			condvar: Condvar::new(),
+		}
+	}
+
+	pub(crate) fn notify(&self) {
+		let mut guard = self.notified.lock();
+		*guard = true;
+		self.condvar.notify_one();
+	}
+
+	fn wait_timeout(&self, timeout: Duration) -> bool {
+		let mut guard = self.notified.lock();
+		if *guard {
+			return true;
+		}
+		!self.condvar.wait_for(&mut guard, timeout).timed_out()
+	}
 }
 
 /// WaterMark is used to keep track of the minimum un-finished index. Typically,
@@ -68,27 +96,29 @@ impl Deref for WaterMark {
 
 impl WaterMark {
 	/// Create a new WaterMark with given name and closer.
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %_task_name))]
-	pub async fn new(_task_name: String, closer: Closer) -> Self {
-		let (tx, rx) = mpsc::unbounded_channel();
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(closer), fields(task_name = %task_name))]
+	pub fn new(task_name: String, closer: Closer) -> Self {
+		let (tx, rx) = unbounded();
 
 		let inner = Arc::new(WatermarkInner {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
 			tx,
-			processor_task: Mutex::new(None),
+			processor_thread: Mutex::new(None),
 		});
-
-		// Subscribe to shutdown signal BEFORE spawning to avoid race condition
-		let shutdown_rx = closer.listen();
 
 		let processing_inner = inner.clone();
-		let task_handle = spawn(async move {
-			processing_inner.process(rx, closer, shutdown_rx).await;
-		});
 
-		// Store the task handle
-		*inner.processor_task.lock().await = Some(task_handle);
+		// Spawn OS thread for watermark processing
+		let thread_handle = std::thread::Builder::new()
+			.name(task_name)
+			.spawn(move || {
+				processing_inner.process(rx, closer);
+			})
+			.expect("Failed to spawn watermark thread");
+
+		// Store the thread handle
+		*inner.processor_thread.lock() = Some(thread_handle);
 
 		Self(inner)
 	}
@@ -124,23 +154,23 @@ impl WaterMark {
 
 	/// Waits until the given index is marked as done with a default
 	/// timeout.
-	pub async fn wait_for_mark(&self, index: u64) {
-		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30)).await;
+	pub fn wait_for_mark(&self, index: u64) {
+		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
 	}
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
-	pub async fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
+	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		if self.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;
 		}
 
-		let (wait_tx, wait_rx) = oneshot::channel();
+		let waiter = Arc::new(WaiterHandle::new());
 
 		if self.tx
 			.send(Mark {
 				version: index.0,
-				waiter: Some(wait_tx),
+				waiter: Some(waiter.clone()),
 				done: false,
 			})
 			.is_err()
@@ -149,36 +179,28 @@ impl WaterMark {
 			return false;
 		}
 
-		// Wait with timeout
-		match tokio::time::timeout(timeout, wait_rx).await {
-			Ok(Ok(_)) => true,
-			Ok(Err(_)) => {
-				// Channel closed without signal
-				false
-			}
-			Err(_) => {
-				// Timeout occurred
-				false
-			}
-		}
+		// Wait with timeout using condvar
+		waiter.wait_timeout(timeout)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::{sync::atomic::AtomicUsize, time::Instant};
-
-	use tokio::time::sleep;
+	use std::{
+		sync::atomic::AtomicUsize,
+		thread::sleep,
+		time::{Duration, Instant},
+	};
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_basic() {
-		init_and_close(|_| async {}).await;
+	#[test]
+	fn test_basic() {
+		init_and_close(|_| async {});
 	}
 
-	#[tokio::test]
-	async fn test_begin_done() {
+	#[test]
+	fn test_begin_done() {
 		init_and_close(|watermark| async move {
 			watermark.begin(CommitVersion(1));
 			watermark.begin(CommitVersion(2));
@@ -187,12 +209,11 @@ mod tests {
 			watermark.done(CommitVersion(1));
 			watermark.done(CommitVersion(2));
 			watermark.done(CommitVersion(3));
-		})
-		.await;
+		});
 	}
 
-	#[tokio::test]
-	async fn test_wait_for_mark() {
+	#[test]
+	fn test_wait_for_mark() {
 		init_and_close(|watermark| async move {
 			watermark.begin(CommitVersion(1));
 			watermark.begin(CommitVersion(2));
@@ -204,26 +225,24 @@ mod tests {
 			assert_eq!(watermark.done_until(), 0);
 
 			watermark.done(CommitVersion(1));
-			watermark.wait_for_mark(1).await;
-			watermark.wait_for_mark(3).await;
+			watermark.wait_for_mark(1);
+			watermark.wait_for_mark(3);
 			assert_eq!(watermark.done_until(), 3);
-		})
-		.await;
+		});
 	}
 
-	#[tokio::test]
-	async fn test_done_until() {
+	#[test]
+	fn test_done_until() {
 		init_and_close(|watermark| async move {
 			watermark.done_until.store(1, Ordering::SeqCst);
 			assert_eq!(watermark.done_until(), 1);
-		})
-		.await;
+		});
 	}
 
-	#[tokio::test]
-	async fn test_high_concurrency() {
+	#[test]
+	fn test_high_concurrency() {
 		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new("concurrent".into(), closer.clone()).await);
+		let watermark = Arc::new(WaterMark::new("concurrent".into(), closer.clone()));
 
 		const NUM_TASKS: usize = 50;
 		const OPS_PER_TASK: usize = 100;
@@ -233,7 +252,7 @@ mod tests {
 		// Spawn tasks that perform concurrent begin/done operations
 		for task_id in 0..NUM_TASKS {
 			let wm = watermark.clone();
-			let handle = spawn(async move {
+			let handle = std::thread::spawn(move || {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
 					wm.begin(version);
@@ -244,22 +263,22 @@ mod tests {
 		}
 
 		for handle in handles {
-			handle.await.expect("Task panicked");
+			handle.join().unwrap();
 		}
 
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_millis(100));
 
 		// Verify the watermark progressed
 		let final_done = watermark.done_until();
 		assert!(final_done.0 > 0, "Watermark should have progressed");
 
-		closer.signal_and_wait().await;
+		closer.signal_and_wait();
 	}
 
-	#[tokio::test]
-	async fn test_concurrent_wait_for_mark() {
+	#[test]
+	fn test_concurrent_wait_for_mark() {
 		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), closer.clone()).await);
+		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), closer.clone()));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
@@ -273,9 +292,9 @@ mod tests {
 		for version in 1..=10 {
 			let wm = watermark.clone();
 			let counter = success_count.clone();
-			let handle = spawn(async move {
+			let handle = std::thread::spawn(move || {
 				// Use timeout to avoid hanging if something goes wrong
-				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)).await {
+				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)) {
 					counter.fetch_add(1, Ordering::Relaxed);
 				}
 			});
@@ -283,7 +302,7 @@ mod tests {
 		}
 
 		// Give tasks time to start waiting
-		sleep(Duration::from_millis(50)).await;
+		sleep(Duration::from_millis(50));
 
 		// Complete the versions
 		for i in 1..=10 {
@@ -291,17 +310,17 @@ mod tests {
 		}
 
 		for handle in handles {
-			handle.await.expect("Task panicked");
+			handle.join().unwrap();
 		}
 
 		// All waits should have succeeded
 		assert_eq!(success_count.load(Ordering::Relaxed), 10);
 
-		closer.signal_and_wait().await;
+		closer.signal_and_wait();
 	}
 
-	#[tokio::test]
-	async fn test_old_version_rejection() {
+	#[test]
+	fn test_old_version_rejection() {
 		init_and_close(|watermark| async move {
 			// Advance done_until significantly
 			for i in 1..=100 {
@@ -310,7 +329,7 @@ mod tests {
 			}
 
 			// Wait for processing
-			sleep(Duration::from_millis(50)).await;
+			sleep(Duration::from_millis(50));
 
 			let done_until = watermark.done_until();
 			assert!(done_until.0 >= 50, "Should have processed many versions");
@@ -318,25 +337,23 @@ mod tests {
 			// Try to wait for a very old version (should return immediately)
 			let very_old = done_until.0.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
 			let start = Instant::now();
-			watermark.wait_for_mark(very_old).await;
+			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
 
 			// Should return almost immediately (< 10ms)
 			assert!(elapsed.as_millis() < 10, "Old version wait should return immediately");
-		})
-		.await;
+		});
 	}
 
-	#[tokio::test]
-	async fn test_timeout_behavior() {
+	#[test]
+	fn test_timeout_behavior() {
 		init_and_close(|watermark| async move {
 			// Begin but don't complete a version
 			watermark.begin(CommitVersion(1));
 
 			// Wait with short timeout
 			let start = Instant::now();
-			let result =
-				watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100)).await;
+			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
 			let elapsed = start.elapsed();
 
 			// Should timeout and return false
@@ -345,21 +362,20 @@ mod tests {
 				elapsed.as_millis() >= 100 && elapsed.as_millis() < 200,
 				"Should respect timeout duration"
 			);
-		})
-		.await;
+		});
 	}
 
-	async fn init_and_close<F, Fut>(f: F)
+	fn init_and_close<F, Fut>(f: F)
 	where
 		F: FnOnce(Arc<WaterMark>) -> Fut,
 		Fut: Future<Output = ()>,
 	{
 		let closer = Closer::new(1);
 
-		let watermark = Arc::new(WaterMark::new("watermark".into(), closer.clone()).await);
-		f(watermark).await;
+		let watermark = Arc::new(WaterMark::new("watermark".into(), closer.clone()));
+		f(watermark);
 
-		sleep(Duration::from_millis(10)).await;
-		closer.signal_and_wait().await;
+		sleep(Duration::from_millis(10));
+		closer.signal_and_wait();
 	}
 }

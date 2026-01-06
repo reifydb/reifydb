@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -39,21 +38,16 @@ impl MapNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for MapNode {
 	#[instrument(name = "query::map::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -63,7 +57,7 @@ impl QueryNode for MapNode {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx).await?
+		}) = self.input.next(rx, ctx)?
 		{
 			let mut new_columns = Vec::with_capacity(self.expressions.len());
 
@@ -148,20 +142,15 @@ impl MapWithoutInputNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "query::map::noinput::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::map::noinput::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,

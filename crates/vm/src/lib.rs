@@ -24,7 +24,7 @@
 //!     .select_cols(&["name", "age"])
 //!     .take(10)
 //!     .collect()
-//!     .await?;
+//!     ?;
 //! ```
 
 pub mod error;

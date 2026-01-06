@@ -120,7 +120,7 @@ fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
+		let input = transaction(memory());
 		testscript::run_path(&mut HttpRunner::new(input, Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")

@@ -196,8 +196,8 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_empty_range_both_iterators() {
+	#[test]
+	fn test_empty_range_both_iterators() {
 		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
 		let committed: Vec<MultiVersionValues> = vec![];
 
@@ -206,8 +206,8 @@ mod tests {
 		assert!(iter.next().is_none());
 	}
 
-	#[tokio::test]
-	async fn test_range_only_pending() {
+	#[test]
+	fn test_range_only_pending() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("1")));
 		pending.insert(make_key("b"), Pending::Set(make_value("2")));
@@ -229,8 +229,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[tokio::test]
-	async fn test_range_only_committed() {
+	#[test]
+	fn test_range_only_committed() {
 		let pending: BTreeMap<EncodedKey, Pending> = BTreeMap::new();
 		let committed =
 			vec![make_committed("a", "1", 5), make_committed("b", "2", 6), make_committed("c", "3", 7)];
@@ -244,8 +244,8 @@ mod tests {
 		assert_eq!(items[2].key, make_key("c"));
 	}
 
-	#[tokio::test]
-	async fn test_range_filters_removes() {
+	#[test]
+	fn test_range_filters_removes() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("1")));
 		pending.insert(make_key("b"), Pending::Remove);
@@ -261,8 +261,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[tokio::test]
-	async fn test_range_pending_shadows_committed() {
+	#[test]
+	fn test_range_pending_shadows_committed() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Set(make_value("new")));
 
@@ -278,8 +278,8 @@ mod tests {
 		assert_eq!(items[1].version, CommitVersion(10));
 	}
 
-	#[tokio::test]
-	async fn test_range_remove_hides_committed() {
+	#[test]
+	fn test_range_remove_hides_committed() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Remove);
 
@@ -294,8 +294,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[tokio::test]
-	async fn test_range_bounded_query() {
+	#[test]
+	fn test_range_bounded_query() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -325,8 +325,8 @@ mod tests {
 		assert_eq!(items[3].values, make_value("f_old"));
 	}
 
-	#[tokio::test]
-	async fn test_range_interleaved_merge() {
+	#[test]
+	fn test_range_interleaved_merge() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("b"), Pending::Set(make_value("pending_b")));
 		pending.insert(make_key("d"), Pending::Set(make_value("pending_d")));
@@ -348,8 +348,8 @@ mod tests {
 		assert_eq!(items[4].key, make_key("e"));
 	}
 
-	#[tokio::test]
-	async fn test_range_sorted_order() {
+	#[test]
+	fn test_range_sorted_order() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("m"), Pending::Set(make_value("m")));
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
@@ -370,8 +370,8 @@ mod tests {
 		);
 	}
 
-	#[tokio::test]
-	async fn test_range_with_start_bound() {
+	#[test]
+	fn test_range_with_start_bound() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -394,8 +394,8 @@ mod tests {
 		assert_eq!(items[2].key, make_key("d"));
 	}
 
-	#[tokio::test]
-	async fn test_range_with_end_bound() {
+	#[test]
+	fn test_range_with_end_bound() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -417,8 +417,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("b"));
 	}
 
-	#[tokio::test]
-	async fn test_range_inclusive_bounds() {
+	#[test]
+	fn test_range_inclusive_bounds() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("b"), Pending::Set(make_value("b")));
@@ -440,8 +440,8 @@ mod tests {
 		assert_eq!(items[1].key, make_key("c"));
 	}
 
-	#[tokio::test]
-	async fn test_range_complex_scenario() {
+	#[test]
+	fn test_range_complex_scenario() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("new_a")));
 		pending.insert(make_key("b"), Pending::Remove);
@@ -479,8 +479,8 @@ mod tests {
 		assert_eq!(items[3].values, make_value("old_e"));
 	}
 
-	#[tokio::test]
-	async fn test_range_empty_result() {
+	#[test]
+	fn test_range_empty_result() {
 		let mut pending = BTreeMap::new();
 		pending.insert(make_key("a"), Pending::Set(make_value("a")));
 		pending.insert(make_key("z"), Pending::Set(make_value("z")));

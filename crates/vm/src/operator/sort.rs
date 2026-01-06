@@ -3,7 +3,6 @@
 
 use std::cmp::Ordering;
 
-use futures_util::{StreamExt, stream::unfold};
 use reifydb_core::{
 	Batch,
 	value::column::{ColumnData, Columns},
@@ -42,40 +41,52 @@ impl SortOp {
 	}
 
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
-		let specs = self.specs.clone();
+		Box::new(SortIterator {
+			input: Some(input),
+			specs: self.specs.clone(),
+		})
+	}
+}
 
-		// State: Some((input, specs)) while collecting, None after emitting
-		Box::pin(unfold(Some((input, specs)), |state| async move {
-			let (mut input, specs) = state?;
+/// Iterator that collects all input, sorts, and emits a single batch
+struct SortIterator {
+	input: Option<Pipeline>,
+	specs: Vec<SortSpec>,
+}
 
-			// Collect all input batches
-			let mut collected: Option<Columns> = None;
+impl Iterator for SortIterator {
+	type Item = Result<Batch>;
 
-			while let Some(result) = input.next().await {
-				match result {
-					Err(e) => return Some((Err(e), None)),
-					Ok(batch) => {
-						// Materialize the batch to Columns
-						let columns = batch.into_columns();
+	fn next(&mut self) -> Option<Self::Item> {
+		// Take the input (can only iterate once)
+		let mut input = self.input.take()?;
 
-						collected = Some(match collected {
-							None => columns,
-							Some(existing) => match merge_columns(&existing, columns) {
-								Ok(merged) => merged,
-								Err(e) => return Some((Err(e), None)),
-							},
-						});
-					}
+		// Collect all input batches
+		let mut collected: Option<Columns> = None;
+
+		while let Some(result) = input.next() {
+			match result {
+				Err(e) => return Some(Err(e)),
+				Ok(batch) => {
+					// Materialize the batch to Columns
+					let columns = batch.into_columns();
+
+					collected = Some(match collected {
+						None => columns,
+						Some(existing) => match merge_columns(&existing, columns) {
+							Ok(merged) => merged,
+							Err(e) => return Some(Err(e)),
+						},
+					});
 				}
 			}
+		}
 
-			// Sort and emit once, then return None to signal end
-			collected.map(|data| {
-				let sorted = sort_columns(&data, &specs);
-				// Wrap the sorted Columns in a Batch
-				(sorted.map(Batch::fully_materialized), None)
-			})
-		}))
+		// Sort and emit once
+		collected.map(|data| {
+			let sorted = sort_columns(&data, &self.specs);
+			sorted.map(Batch::fully_materialized)
+		})
 	}
 }
 

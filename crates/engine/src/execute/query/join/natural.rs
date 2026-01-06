@@ -3,7 +3,6 @@
 
 use std::collections::HashSet;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	JoinType,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -58,22 +57,17 @@ impl NaturalJoinNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for NaturalJoinNode {
 	#[instrument(name = "query::join::natural::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context.set(ctx);
-		self.left.initialize(rx, ctx).await?;
-		self.right.initialize(rx, ctx).await?;
+		self.left.initialize(rx, ctx)?;
+		self.right.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::join::natural::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -84,8 +78,8 @@ impl QueryNode for NaturalJoinNode {
 			return Ok(None);
 		}
 
-		let left_columns = load_and_merge_all(&mut self.left, rx, ctx).await?;
-		let right_columns = load_and_merge_all(&mut self.right, rx, ctx).await?;
+		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
+		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();

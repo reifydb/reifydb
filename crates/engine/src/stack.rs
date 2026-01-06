@@ -269,8 +269,8 @@ mod tests {
 		Columns::new(vec![column])
 	}
 
-	#[tokio::test]
-	async fn test_basic_variable_operations() {
+	#[test]
+	fn test_basic_variable_operations() {
 		let mut ctx = Stack::new();
 		let cols = create_test_columns(vec![Value::utf8("Alice".to_string())]);
 
@@ -284,8 +284,8 @@ mod tests {
 		assert!(ctx.exists_in_current_scope("name"));
 	}
 
-	#[tokio::test]
-	async fn test_mutable_variable() {
+	#[test]
+	fn test_mutable_variable() {
 		let mut ctx = Stack::new();
 		let cols1 = create_test_columns(vec![Value::Int4(42)]);
 		let cols2 = create_test_columns(vec![Value::Int4(84)]);
@@ -318,8 +318,8 @@ mod tests {
 		assert!(ctx.get("name").is_some());
 	}
 
-	#[tokio::test]
-	async fn test_scope_management() {
+	#[test]
+	fn test_scope_management() {
 		let mut ctx = Stack::new();
 
 		// Initially in global scope
@@ -350,8 +350,8 @@ mod tests {
 		assert!(ctx.exit_scope().is_err());
 	}
 
-	#[tokio::test]
-	async fn test_variable_shadowing() {
+	#[test]
+	fn test_variable_shadowing() {
 		let mut ctx = Stack::new();
 		let outer_cols = create_test_columns(vec![Value::utf8("outer".to_string())]);
 		let inner_cols = create_test_columns(vec![Value::utf8("inner".to_string())]);
@@ -373,8 +373,8 @@ mod tests {
 		assert!(ctx.get("var").is_some());
 	}
 
-	#[tokio::test]
-	async fn test_parent_scope_access() {
+	#[test]
+	fn test_parent_scope_access() {
 		let mut ctx = Stack::new();
 		let outer_cols = create_test_columns(vec![Value::utf8("outer".to_string())]);
 
@@ -394,8 +394,8 @@ mod tests {
 		assert_eq!(scope_depth, 0); // Found in global scope
 	}
 
-	#[tokio::test]
-	async fn test_scope_specific_mutability() {
+	#[test]
+	fn test_scope_specific_mutability() {
 		let mut ctx = Stack::new();
 		let cols1 = create_test_columns(vec![Value::utf8("value1".to_string())]);
 		let cols2 = create_test_columns(vec![Value::utf8("value2".to_string())]);
@@ -415,8 +415,8 @@ mod tests {
 		assert!(!ctx.is_mutable("var"));
 	}
 
-	#[tokio::test]
-	async fn test_visible_variable_names() {
+	#[test]
+	fn test_visible_variable_names() {
 		let mut ctx = Stack::new();
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
@@ -441,8 +441,8 @@ mod tests {
 		assert!(function_visible.contains(&"local1".to_string()));
 	}
 
-	#[tokio::test]
-	async fn test_clear_resets_to_global() {
+	#[test]
+	fn test_clear_resets_to_global() {
 		let mut ctx = Stack::new();
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
@@ -463,8 +463,8 @@ mod tests {
 		assert_eq!(ctx.visible_variable_names().len(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_nonexistent_variable() {
+	#[test]
+	fn test_nonexistent_variable() {
 		let ctx = Stack::new();
 
 		assert!(ctx.get("nonexistent").is_none());

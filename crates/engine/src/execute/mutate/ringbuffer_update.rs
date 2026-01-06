@@ -27,25 +27,24 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) async fn update_ringbuffer<'a>(
+	pub(crate) fn update_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: UpdateRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata - we need it to validate that rows exist
-		let Some(metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id).await? else {
+		let Some(metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
@@ -54,7 +53,7 @@ impl Executor {
 		let mut ringbuffer_types: Vec<Type> = Vec::new();
 		for c in &ringbuffer.columns {
 			if let Some(dict_id) = c.dictionary_id {
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
 					Ok(Some(d)) => d.id_type,
 					_ => c.constraint.get_type(),
 				};
@@ -88,15 +87,15 @@ impl Executor {
 		// execution with proper transaction borrowing
 		{
 			let mut wrapped_txn = StandardTransaction::from(&mut *txn);
-			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone())).await;
+			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
 			// Initialize the operator before execution
-			input_node.initialize(&mut wrapped_txn, &context).await?;
+			input_node.initialize(&mut wrapped_txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context).await?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
@@ -153,8 +152,7 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							)
-							.await?
+							)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -164,8 +162,7 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value)
-								.await?;
+								.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
 							value
@@ -207,10 +204,11 @@ impl Executor {
 
 					// Update the encoded using interceptors
 					use crate::transaction::operation::RingBufferOperations;
-					wrapped_txn
-						.command_mut()
-						.update_ringbuffer(ringbuffer.clone(), row_number, row)
-						.await?;
+					wrapped_txn.command_mut().update_ringbuffer(
+						ringbuffer.clone(),
+						row_number,
+						row,
+					)?;
 
 					updated_count += 1;
 				}

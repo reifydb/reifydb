@@ -88,7 +88,7 @@ impl PipelineBuilder {
 	}
 
 	/// Collect all results into a single Columns batch.
-	pub async fn collect(self) -> Result<Columns> {
-		collect(self.pipeline).await
+	pub fn collect(self) -> Result<Columns> {
+		collect(self.pipeline)
 	}
 }

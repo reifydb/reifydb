@@ -14,11 +14,10 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Example 1: Basic take operation
 	info!("Example 1: Take first 3 rows from inline data");
@@ -46,14 +45,13 @@ take 3"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
 	}
 
 	// Set up table data for more examples
-	db.command_as_root("create namespace demo", Params::None).await.unwrap();
+	db.command_as_root("create namespace demo", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table demo.events {
@@ -66,7 +64,6 @@ take 3"#,
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -87,7 +84,6 @@ take 3"#,
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Example 2: Take from a table
@@ -101,7 +97,6 @@ take 3"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -123,7 +118,6 @@ take 2"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -145,7 +139,6 @@ take 3"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -167,7 +160,6 @@ take 4"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -193,7 +185,6 @@ take 3"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -215,7 +206,6 @@ take 1"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -237,7 +227,6 @@ take 5"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

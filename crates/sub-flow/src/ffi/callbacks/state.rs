@@ -52,11 +52,8 @@ pub(super) extern "C" fn host_state_get(
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get state from transaction (use block_in_place for async call from sync FFI)
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current()
-				.block_on(async { flow_txn.state_get(FlowNodeId(operator_id), &key).await })
-		});
+		// Get state from transaction
+		let result = flow_txn.state_get(FlowNodeId(operator_id), &key);
 
 		match result {
 			Ok(Some(value)) => {
@@ -153,10 +150,8 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI
 		let flow_txn = get_transaction_mut(ctx_handle);
 		let node_id = FlowNodeId(operator_id);
 
-		// Use block_in_place to call async method from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current().block_on(async { flow_txn.state_clear(node_id).await })
-		});
+		// Clear all state for this operator
+		let result = flow_txn.state_clear(node_id);
 
 		match result {
 			Ok(_) => FFI_OK,
@@ -191,19 +186,14 @@ pub(super) extern "C" fn host_state_prefix(
 		};
 
 		// Create range query based on prefix
-		// Use block_in_place to call async methods from sync FFI context
-		let result = tokio::task::block_in_place(|| {
-			tokio::runtime::Handle::current().block_on(async {
-				if prefix_bytes.is_empty() {
-					// Empty prefix = full scan of all state for this operator
-					flow_txn.state_scan(node_id).await
-				} else {
-					// Prefix scan = range query using prefix
-					let range = EncodedKeyRange::prefix(&prefix_bytes);
-					flow_txn.state_range(node_id, range).await
-				}
-			})
-		});
+		let result = if prefix_bytes.is_empty() {
+			// Empty prefix = full scan of all state for this operator
+			flow_txn.state_scan(node_id)
+		} else {
+			// Prefix scan = range query using prefix
+			let range = EncodedKeyRange::prefix(&prefix_bytes);
+			flow_txn.state_range(node_id, range)
+		};
 
 		match result {
 			Ok(batch) => {

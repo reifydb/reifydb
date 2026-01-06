@@ -16,11 +16,10 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Example 1: Basic comparisons with numbers
 	info!("Example 1: Numeric comparisons");
@@ -50,7 +49,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -78,7 +76,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -104,14 +101,13 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
 	}
 
 	// Set up sample data
-	db.command_as_root("create namespace test", Params::None).await.unwrap();
+	db.command_as_root("create namespace test", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table test.scores {
@@ -125,7 +121,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -144,7 +139,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Example 4: Equality comparisons in filters
@@ -158,7 +152,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -175,7 +168,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -192,7 +184,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -209,7 +200,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -226,7 +216,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -258,7 +247,6 @@ map {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -278,7 +266,6 @@ filter score >= 80 and score < 95"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

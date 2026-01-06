@@ -20,12 +20,12 @@ pub mod physical;
 pub type RowToInsert = Vec<Expression>;
 
 #[instrument(name = "rql::plan", level = "trace", skip(catalog, rx, statement))]
-pub async fn plan<T: IntoStandardTransaction>(
+pub fn plan<T: IntoStandardTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
 	statement: AstStatement,
 ) -> crate::Result<Option<PhysicalPlan>> {
-	let logical = compile_logical(catalog, rx, statement).await?;
-	let physical = compile_physical(catalog, rx, logical).await?;
+	let logical = compile_logical(catalog, rx, statement)?;
+	let physical = compile_physical(catalog, rx, logical)?;
 	Ok(physical)
 }

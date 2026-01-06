@@ -13,23 +13,21 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
-use async_trait::async_trait;
 use reifydb_core::{
 	diagnostic::subsystem::{address_unavailable, bind_failed},
 	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::AppState;
+use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, SharedRuntime};
 use tokio::{
 	net::TcpListener,
-	spawn,
+	select,
 	sync::{Semaphore, watch},
-	time::{Instant, sleep},
 };
+use tracing::info;
 
 use crate::handler::handle_connection;
 
@@ -72,6 +70,8 @@ pub struct WsSubsystem {
 	shutdown_tx: Option<watch::Sender<bool>>,
 	/// Semaphore for connection limiting.
 	connection_semaphore: Arc<Semaphore>,
+	/// Shared tokio runtime.
+	runtime: SharedRuntime,
 }
 
 impl WsSubsystem {
@@ -81,7 +81,8 @@ impl WsSubsystem {
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
 	/// * `state` - Shared application state with engine and config
-	pub fn new(bind_addr: String, state: AppState) -> Self {
+	/// * `runtime` - Optional shared runtime
+	pub fn new(bind_addr: String, state: AppState, runtime: Option<SharedRuntime>) -> Self {
 		let max_connections = state.max_connections();
 		Self {
 			bind_addr,
@@ -91,6 +92,7 @@ impl WsSubsystem {
 			active_connections: Arc::new(AtomicUsize::new(0)),
 			shutdown_tx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
+			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
 		}
 	}
 
@@ -126,36 +128,38 @@ impl HasVersion for WsSubsystem {
 	}
 }
 
-#[async_trait]
 impl Subsystem for WsSubsystem {
 	fn name(&self) -> &'static str {
 		"WebSocket"
 	}
 
-	async fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
 
 		let addr = self.bind_addr.clone();
-		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
+		let runtime = self.runtime.clone();
+		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| error!(bind_failed(&addr, e)))?;
 
 		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
-		tracing::info!("WebSocket server bound to {}", actual_addr);
+		info!("WebSocket server bound to {}", actual_addr);
 
 		let (tx, mut rx) = watch::channel(false);
 		let state = self.state.clone();
 		let running = self.running.clone();
 		let active_connections = self.active_connections.clone();
 		let semaphore = self.connection_semaphore.clone();
+		let runtime = self.runtime.clone();
+		let runtime_inner = runtime.clone();
 
-		tokio::spawn(async move {
+		runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
 			loop {
-				tokio::select! {
+				select! {
 					biased;
 
 					// Check shutdown first
@@ -183,11 +187,12 @@ impl Subsystem for WsSubsystem {
 								let conn_state = state.clone();
 								let shutdown_rx = rx.clone();
 								let active = active_connections.clone();
+								let runtime_handle = runtime_inner.clone();
 
 								active.fetch_add(1, Ordering::SeqCst);
 								tracing::debug!("Accepted connection from {}", peer);
 
-								spawn(async move {
+								runtime_handle.spawn(async move {
 									handle_connection(stream, conn_state, shutdown_rx).await;
 									active.fetch_sub(1, Ordering::SeqCst);
 									drop(permit); // Release connection slot
@@ -202,35 +207,17 @@ impl Subsystem for WsSubsystem {
 			}
 
 			running.store(false, Ordering::SeqCst);
-			tracing::info!("WebSocket server stopped");
+			info!("WebSocket server stopped");
 		});
 
 		self.shutdown_tx = Some(tx);
 		Ok(())
 	}
 
-	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
-		// Send shutdown signal
+	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
 		}
-
-		// Wait for active connections to drain (with timeout)
-		let active = self.active_connections.clone();
-
-		let deadline = Instant::now() + Duration::from_secs(30);
-		while active.load(Ordering::SeqCst) > 0 {
-			if Instant::now() > deadline {
-				tracing::warn!(
-					"WebSocket shutdown timeout with {} connections still active",
-					active.load(Ordering::SeqCst)
-				);
-				break;
-			}
-			sleep(Duration::from_millis(100)).await;
-		}
-		tracing::debug!("WebSocket server shutdown completed");
-
 		Ok(())
 	}
 

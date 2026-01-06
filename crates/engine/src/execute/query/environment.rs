@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 
 use crate::{
@@ -26,19 +25,14 @@ impl EnvironmentNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for EnvironmentNode {
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		// Store context for environment access
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,

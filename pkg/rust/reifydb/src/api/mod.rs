@@ -13,7 +13,7 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
+pub fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 	let storage = HotStorage::memory();
 	let store = TransactionStore::standard(TransactionStoreConfig {
@@ -32,7 +32,7 @@ pub async fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, E
 }
 
 /// Convenience function to create SQLite storage
-pub async fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
+pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 	let storage = HotStorage::sqlite(config);
 	let store = TransactionStore::standard(TransactionStoreConfig {
@@ -51,16 +51,9 @@ pub async fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingl
 }
 
 /// Convenience function to create a transaction layer
-pub async fn transaction(
+pub fn transaction(
 	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
-) -> crate::Result<(TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)> {
-	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone()).await?;
-	Ok((multi, input.1, input.2, input.3))
-}
-
-/// Backwards-compat alias for transaction()
-pub async fn serializable(
-	input: (TransactionStore, TransactionSingle, TransactionCdc, EventBus),
-) -> crate::Result<(TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)> {
-	transaction(input).await
+) -> (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus) {
+	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone()).unwrap();
+	(multi, input.1, input.2, input.3)
 }

@@ -9,12 +9,12 @@ use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_transactional_view(
+	pub(crate) fn create_transactional_view(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns> {
-		if let Some(view) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text()).await? {
+		if let Some(view) = self.catalog.find_view_by_name(txn, plan.namespace.id, plan.view.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -34,11 +34,10 @@ impl Executor {
 				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
-		)
-		.await?;
+		)?;
 		txn.track_view_def_created(result.clone())?;
 
-		self.create_deferred_view_flow(txn, &result, plan.as_clause).await?;
+		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

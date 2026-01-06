@@ -54,10 +54,10 @@ pub enum VTableContext {
 pub trait VTable<T: IntoStandardTransaction>: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
-	async fn initialize(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()>;
+	fn initialize(&mut self, txn: &mut T, ctx: VTableContext) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &VTableDef;

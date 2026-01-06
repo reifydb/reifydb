@@ -15,14 +15,13 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Set up sample data with relationships
-	db.command_as_root("create namespace company", Params::None).await.unwrap();
+	db.command_as_root("create namespace company", Params::None).unwrap();
 
 	// Create employees table
 	db.command_as_root(
@@ -36,7 +35,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Create departments table
@@ -50,7 +48,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Create projects table
@@ -65,7 +62,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Insert data
@@ -83,7 +79,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -97,7 +92,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -112,7 +106,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Example 1: Inner join
@@ -133,7 +126,6 @@ inner join {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -158,7 +150,6 @@ left join {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -178,7 +169,6 @@ natural join { from company.departments } as departments"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -204,7 +194,6 @@ filter location == "Building A""#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -230,7 +219,6 @@ map { name, dept_name, salary }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -260,7 +248,6 @@ inner join {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -288,7 +275,6 @@ aggregate { avg(salary), count(emp_id) }
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

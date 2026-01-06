@@ -8,13 +8,12 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 };
 
-use async_trait::async_trait;
+use parking_lot::Mutex;
 use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
-use tokio::sync::RwLock;
 use tracing::{Span, debug_span, instrument};
 
 use crate::{
@@ -39,7 +38,7 @@ pub struct FFIOperator {
 	operator_id: FlowNodeId,
 
 	/// Marshaller for type conversions
-	marshaller: RwLock<Marshaller>,
+	marshaller: Mutex<Marshaller>,
 }
 
 // SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
@@ -56,7 +55,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id,
-			marshaller: RwLock::new(Marshaller::new()),
+			marshaller: Mutex::new(Marshaller::new()),
 		}
 	}
 
@@ -87,7 +86,6 @@ impl OperatorInfo for FFIOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
@@ -102,7 +100,7 @@ impl Operator for FFIOperator {
 		unmarshal_time_us = tracing::field::Empty,
 		total_time_ms = tracing::field::Empty
 	))]
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -111,7 +109,7 @@ impl Operator for FFIOperator {
 		let total_start = std::time::Instant::now();
 
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.write().await;
+		let mut marshaller = self.marshaller.lock();
 
 		// Phase 1: Marshal the flow change
 		let marshal_span = debug_span!("flow::ffi::marshal");
@@ -174,9 +172,9 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.write().await;
+		let mut marshaller = self.marshaller.lock();
 
 		// Convert row numbers to u64 array
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{FlowNodeId, PrimitiveId, ViewDef},
 	key::RowKey,
@@ -28,13 +27,12 @@ impl PrimitiveViewOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for PrimitiveViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -43,7 +41,7 @@ impl Operator for PrimitiveViewOperator {
 		Ok(change)
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		if rows.is_empty() {
 			return Ok(Columns::from_view_def(&self.view));
 		}
@@ -66,7 +64,7 @@ impl Operator for PrimitiveViewOperator {
 		// Fetch and decode each row directly into columns
 		for row_num in rows {
 			let key = RowKey::encoded(PrimitiveId::view(self.view.id), *row_num);
-			if let Some(encoded) = txn.get(&key).await? {
+			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly
 				for (i, _field) in fields.fields.iter().enumerate() {

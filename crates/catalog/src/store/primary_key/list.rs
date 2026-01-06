@@ -3,7 +3,6 @@
 
 use std::ops::Bound;
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{Key, PrimaryKeyDef, PrimaryKeyKey},
@@ -21,7 +20,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub async fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
+	pub fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -39,7 +38,7 @@ impl CatalogStore {
 		let mut entries = Vec::new();
 		{
 			let mut stream = txn.range(primary_key_range, 1024)?;
-			while let Some(entry) = stream.next().await {
+			while let Some(entry) = stream.next() {
 				entries.push(entry?);
 			}
 		}
@@ -61,7 +60,7 @@ impl CatalogStore {
 					// ID
 					let mut columns = Vec::new();
 					for column_id in column_ids {
-						let column_def = Self::get_column(&mut txn, column_id).await?;
+						let column_def = Self::get_column(&mut txn, column_id)?;
 						columns.push(reifydb_core::interface::ColumnDef {
 							id: column_def.id,
 							name: column_def.name,
@@ -89,7 +88,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub async fn list_primary_key_columns(
+	pub fn list_primary_key_columns(
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<(u64, u64, usize)>> {
 		let mut txn = rx.into_standard_transaction();
@@ -106,7 +105,7 @@ impl CatalogStore {
 
 		let mut stream = txn.range(primary_key_range, 1024)?;
 
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let entry = entry?;
 			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key) {

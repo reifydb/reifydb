@@ -3,8 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use futures_util::StreamExt;
 use reifydb_core::{
 	EncodedKey,
 	interface::{EncodableKey, RowKey, RowKeyRange, resolved::ResolvedView},
@@ -47,10 +45,9 @@ impl ViewScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "query::scan::view::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -60,7 +57,7 @@ impl QueryNode for ViewScanNode {
 	}
 
 	#[instrument(name = "query::scan::view::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
@@ -81,7 +78,7 @@ impl QueryNode for ViewScanNode {
 
 		let mut stream = rx.range(range, batch_size as usize)?;
 		for _ in 0..batch_size {
-			match stream.next().await {
+			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
 						batch_rows.push(multi.values);

@@ -16,8 +16,7 @@ use reifydb::{Params, SqliteConfig, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	let db_path = "/tmp/reifydb-example/crates";
 
 	// Clean up any existing database
@@ -34,13 +33,13 @@ async fn main() {
 	{
 		// Create database (will be saved to disk)
 		info!("Creating SQLite database...");
-		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).await.unwrap().build().await.unwrap();
-		db.start().await.unwrap();
+		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
+		db.start().unwrap();
 		info!("✓ Database created and started\n");
 
 		// Create namespace
 		info!("Creating namespace 'store'...");
-		let result = db.command_as_root("create namespace store", Params::None).await.unwrap();
+		let result = db.command_as_root("create namespace store", Params::None).unwrap();
 		for frame in result {
 			info!("{}", frame);
 		}
@@ -60,7 +59,6 @@ async fn main() {
 			"#,
 				Params::None,
 			)
-			.await
 			.unwrap();
 		for frame in result {
 			info!("{}", frame);
@@ -90,7 +88,6 @@ insert store.products"#,
 			"#,
 				Params::None,
 			)
-			.await
 			.unwrap();
 		for frame in result {
 			info!("{}", frame);
@@ -101,7 +98,7 @@ insert store.products"#,
 		info!("Querying products:");
 		log_query("from store.products");
 
-		for frame in db.query_as_root("from store.products", Params::None).await.unwrap() {
+		for frame in db.query_as_root("from store.products", Params::None).unwrap() {
 			info!("{}", frame);
 		}
 
@@ -117,15 +114,15 @@ insert store.products"#,
 	{
 		// Open existing database
 		info!("Opening existing database at: {}", db_path);
-		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).await.unwrap().build().await.unwrap();
-		db.start().await.unwrap();
+		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
+		db.start().unwrap();
 		info!("✓ Database reopened successfully\n");
 
 		// Verify data persisted
 		info!("Verifying data persistence:");
 		log_query("from store.products");
 
-		for frame in db.query_as_root("from store.products", Params::None).await.unwrap() {
+		for frame in db.query_as_root("from store.products", Params::None).unwrap() {
 			info!("{}", frame);
 		}
 		info!("✓ Data persisted correctly\n");
@@ -145,7 +142,6 @@ insert store.products"#,
 			"#,
 				Params::None,
 			)
-			.await
 			.unwrap();
 		for frame in result {
 			info!("{}", frame);
@@ -156,7 +152,7 @@ insert store.products"#,
 		info!("All products after update:");
 		log_query("from store.products sort id");
 
-		for frame in db.query_as_root("from store.products sort id", Params::None).await.unwrap() {
+		for frame in db.query_as_root("from store.products sort id", Params::None).unwrap() {
 			info!("{}", frame);
 		}
 
@@ -164,9 +160,7 @@ insert store.products"#,
 		info!("\nQuerying in-stock products:");
 		log_query("from store.products filter in_stock == true");
 
-		for frame in
-			db.query_as_root("from store.products filter in_stock == true", Params::None).await.unwrap()
-		{
+		for frame in db.query_as_root("from store.products filter in_stock == true", Params::None).unwrap() {
 			info!("{}", frame);
 		}
 

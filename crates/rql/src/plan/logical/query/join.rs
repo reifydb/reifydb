@@ -73,7 +73,7 @@ fn build_join_expressions(using: &AstUsingClause, alias: &Fragment) -> crate::Re
 }
 
 impl Compiler {
-	pub(crate) async fn compile_join<T: IntoStandardTransaction>(
+	pub(crate) fn compile_join<T: IntoStandardTransaction>(
 		&self,
 		ast: AstJoin,
 		tx: &mut T,
@@ -85,7 +85,7 @@ impl Compiler {
 				alias,
 				..
 			} => {
-				let with = self.compile_join_subquery(&with, &alias, tx).await?;
+				let with = self.compile_join_subquery(&with, &alias, tx)?;
 
 				// Build equality expressions from using clause
 				let on = build_join_expressions(&using_clause, &alias)?;
@@ -102,7 +102,7 @@ impl Compiler {
 				alias,
 				..
 			} => {
-				let with = self.compile_join_subquery(&with, &alias, tx).await?;
+				let with = self.compile_join_subquery(&with, &alias, tx)?;
 
 				// Build equality expressions from using clause
 				let on = build_join_expressions(&using_clause, &alias)?;
@@ -119,7 +119,7 @@ impl Compiler {
 				alias,
 				..
 			} => {
-				let with = self.compile_natural_join_subquery(&with, &alias, tx).await?;
+				let with = self.compile_natural_join_subquery(&with, &alias, tx)?;
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
@@ -130,7 +130,7 @@ impl Compiler {
 		}
 	}
 
-	async fn compile_join_subquery<T: IntoStandardTransaction>(
+	fn compile_join_subquery<T: IntoStandardTransaction>(
 		&self,
 		with: &crate::ast::AstSubQuery,
 		alias: &Fragment,
@@ -149,7 +149,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
@@ -162,7 +162,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
@@ -190,7 +190,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
@@ -201,7 +201,7 @@ impl Compiler {
 		}
 	}
 
-	async fn compile_natural_join_subquery<T: IntoStandardTransaction>(
+	fn compile_natural_join_subquery<T: IntoStandardTransaction>(
 		&self,
 		with: &crate::ast::AstSubQuery,
 		alias: &Fragment,
@@ -220,7 +220,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
@@ -233,7 +233,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,
@@ -261,7 +261,7 @@ impl Compiler {
 				unresolved = unresolved.with_alias(alias.clone());
 
 				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved).await?;
+					resolver::resolve_unresolved_source(&self.catalog, tx, &unresolved)?;
 				Ok(vec![PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,
 					columns: None,

@@ -6,7 +6,6 @@ use std::{
 	sync::Arc,
 };
 
-use async_trait::async_trait;
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, Functions};
 use reifydb_rql::expression::Expression;
@@ -52,21 +51,20 @@ impl AggregateNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -86,7 +84,7 @@ impl QueryNode for AggregateNode {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx).await?
+		}) = self.input.next(rx, ctx)?
 		{
 			let groups = columns.group_by_view(&keys)?;
 

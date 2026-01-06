@@ -9,10 +9,9 @@
 
 use std::{sync::Arc, time::Duration};
 
-use futures_util::TryStreamExt;
-use reifydb_core::{Frame, interface::Identity, stream::StreamError};
+use reifydb_core::{Frame, interface::Identity};
 use reifydb_engine::StandardEngine;
-use reifydb_type::{Params, diagnostic::Diagnostic};
+use reifydb_type::{Error, Params, diagnostic::Diagnostic};
 
 /// Error types for query/command execution.
 #[derive(Debug)]
@@ -48,19 +47,11 @@ impl std::fmt::Display for ExecuteError {
 
 impl std::error::Error for ExecuteError {}
 
-impl From<StreamError> for ExecuteError {
-	fn from(err: StreamError) -> Self {
-		match err {
-			StreamError::Query {
-				diagnostic,
-				statement,
-			} => ExecuteError::Engine {
-				diagnostic, // Preserve full diagnostic
-				statement: statement.unwrap_or_default(),
-			},
-			StreamError::Cancelled => ExecuteError::Cancelled,
-			StreamError::Timeout => ExecuteError::Timeout,
-			StreamError::Disconnected => ExecuteError::Disconnected,
+impl From<Error> for ExecuteError {
+	fn from(err: Error) -> Self {
+		ExecuteError::Engine {
+			diagnostic: Arc::new(err.diagnostic()),
+			statement: String::new(),
 		}
 	}
 }
@@ -95,7 +86,7 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 /// ```ignore
 /// let result = execute_query(
 ///     engine,
-///     "SELECT * FROM users".to_string(),
+///     "FROM users take 42".to_string(),
 ///     identity,
 ///     Params::None,
 ///     Duration::from_secs(30),
@@ -108,14 +99,15 @@ pub async fn execute_query(
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
-	let stream = engine.query_as(&identity, &query, params);
+	// Execute synchronous query in blocking task with timeout
+	let task = tokio::task::spawn_blocking(move || engine.query_as(&identity, &query, params));
 
-	// Collect the stream with a timeout
-	let result = tokio::time::timeout(timeout, stream.try_collect::<Vec<Frame>>()).await;
+	let result = tokio::time::timeout(timeout, task).await;
 
 	match result {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(stream_result) => stream_result.map_err(ExecuteError::from),
+		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
 
@@ -146,14 +138,16 @@ pub async fn execute_command(
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
-	let stream = engine.command_as(&identity, &combined, params);
 
-	// Collect the stream with a timeout
-	let result = tokio::time::timeout(timeout, stream.try_collect::<Vec<Frame>>()).await;
+	// Execute synchronous command in blocking task with timeout
+	let task = tokio::task::spawn_blocking(move || engine.command_as(&identity, &combined, params));
+
+	let result = tokio::time::timeout(timeout, task).await;
 
 	match result {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(stream_result) => stream_result.map_err(ExecuteError::from),
+		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
 

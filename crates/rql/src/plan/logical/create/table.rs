@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_table<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_table<T: IntoStandardTransaction>(
 		&self,
 		ast: AstCreateTable,
 		tx: &mut T,
@@ -55,8 +55,7 @@ impl Compiler {
 				let dict_name = dict_ident.name.text();
 
 				// Find the namespace
-				let Some(namespace) =
-					self.catalog.find_namespace_by_name(tx, dict_namespace_name).await?
+				let Some(namespace) = self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
 				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
@@ -67,7 +66,7 @@ impl Compiler {
 
 				// Find the dictionary
 				let Some(dictionary) =
-					self.catalog.find_dictionary_by_name(tx, namespace.id, dict_name).await?
+					self.catalog.find_dictionary_by_name(tx, namespace.id, dict_name)?
 				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),

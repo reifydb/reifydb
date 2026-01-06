@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{NamespaceId, NamespaceTableKey, TableDef, TableId, TableKey};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -11,12 +10,9 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_table(
-		rx: &mut impl IntoStandardTransaction,
-		table: TableId,
-	) -> crate::Result<Option<TableDef>> {
+	pub fn find_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let Some(multi) = txn.get(&TableKey::encoded(table)).await? else {
+		let Some(multi) = txn.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
 
@@ -29,12 +25,12 @@ impl CatalogStore {
 			id,
 			name,
 			namespace,
-			columns: Self::list_columns(&mut txn, id).await?,
-			primary_key: Self::find_primary_key(&mut txn, id).await?,
+			columns: Self::list_columns(&mut txn, id)?,
+			primary_key: Self::find_primary_key(&mut txn, id)?,
 		}))
 	}
 
-	pub async fn find_table_by_name(
+	pub fn find_table_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
@@ -44,7 +40,7 @@ impl CatalogStore {
 		let mut stream = txn.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 
 		let mut found_table = None;
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
 			let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
@@ -60,7 +56,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_table(&mut txn, table).await?))
+		Ok(Some(Self::get_table(&mut txn, table)?))
 	}
 }
 
@@ -74,65 +70,62 @@ mod tests {
 		test_utils::{create_namespace, create_table, ensure_test_namespace},
 	};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+		create_table(&mut txn, "namespace_one", "table_one", &[]);
+		create_table(&mut txn, "namespace_two", "table_two", &[]);
+		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1027), "table_two")
-			.await
-			.unwrap()
-			.unwrap();
+		let result =
+			CatalogStore::find_table_by_name(&mut txn, NamespaceId(1027), "table_two").unwrap().unwrap();
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "table_two");
 	}
 
-	#[tokio::test]
-	async fn test_empty() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_empty() {
+		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").await.unwrap();
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "some_table").unwrap();
 		assert!(result.is_none());
 	}
 
-	#[tokio::test]
-	async fn test_not_found_different_table() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_not_found_different_table() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+		create_table(&mut txn, "namespace_one", "table_one", &[]);
+		create_table(&mut txn, "namespace_two", "table_two", &[]);
+		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result =
-			CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "table_four_two").await.unwrap();
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(1025), "table_four_two").unwrap();
 		assert!(result.is_none());
 	}
 
-	#[tokio::test]
-	async fn test_not_found_different_namespace() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_not_found_different_namespace() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+		create_table(&mut txn, "namespace_one", "table_one", &[]);
+		create_table(&mut txn, "namespace_two", "table_two", &[]);
+		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(2), "table_two").await.unwrap();
+		let result = CatalogStore::find_table_by_name(&mut txn, NamespaceId(2), "table_two").unwrap();
 		assert!(result.is_none());
 	}
 }

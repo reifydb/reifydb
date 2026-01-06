@@ -19,7 +19,7 @@
 //!     &catalog.materialized,
 //! )?;
 //!
-//! let pipeline = execute_program(program, registry, catalog, &mut tx).await?;
+//! let pipeline = execute_program(program, registry, catalog, &mut tx)?;
 //! ```
 
 use std::sync::Arc;
@@ -57,9 +57,9 @@ use crate::{
 ///     program,
 ///     catalog,
 ///     &mut tx
-/// ).await?;
+/// )?;
 /// ```
-pub async fn execute_program<T: IntoStandardTransaction>(
+pub fn execute_program<T: IntoStandardTransaction>(
 	program: CompiledProgram,
 	catalog: Catalog,
 	tx: &mut T,
@@ -71,7 +71,7 @@ pub async fn execute_program<T: IntoStandardTransaction>(
 	let mut vm = VmState::new(program, context);
 
 	// Execute using the trait method
-	let result = vm.execute(tx).await?;
+	let result = vm.execute(tx)?;
 
 	Ok(result)
 }

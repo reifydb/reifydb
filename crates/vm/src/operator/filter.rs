@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_rqlv2::expression::{CompiledFilter, EvalContext};
 
-use crate::pipeline::Pipeline;
+use crate::{error::Result, pipeline::Pipeline};
 
 /// Filter operator - applies a compiled boolean predicate to filter rows.
 pub struct FilterOp {
@@ -30,54 +29,67 @@ impl FilterOp {
 	}
 
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
-		let predicate = self.predicate.clone();
-		let eval_ctx = self.eval_ctx.clone();
+		Box::new(FilterIterator {
+			input,
+			predicate: self.predicate.clone(),
+			eval_ctx: self.eval_ctx.clone(),
+		})
+	}
+}
 
-		Box::pin(input.filter_map(move |result| {
-			let predicate = predicate.clone();
-			let eval_ctx = eval_ctx.clone();
-			async move {
-				let batch = match result {
-					Err(e) => return Some(Err(e)),
-					Ok(b) => b,
-				};
+/// Iterator that filters batches based on a predicate
+struct FilterIterator {
+	input: Pipeline,
+	predicate: CompiledFilter,
+	eval_ctx: EvalContext,
+}
 
-				// Materialize batch for filter evaluation
-				let columns = batch.clone().into_columns();
+impl Iterator for FilterIterator {
+	type Item = Result<reifydb_core::Batch>;
 
-				// Evaluate compiled filter to get filter mask
-				let mask = match predicate.eval(&columns, &eval_ctx).await {
-					Err(e) => return Some(Err(e.into())), // Convert EvalError to VmError
-					Ok(m) => m,
-				};
+	fn next(&mut self) -> Option<Self::Item> {
+		// Keep trying batches until we find one with rows that pass
+		loop {
+			let batch = match self.input.next()? {
+				Ok(b) => b,
+				Err(e) => return Some(Err(e)),
+			};
 
-				// Check if any rows pass
-				if mask.none() {
-					// All rows filtered out, skip this batch
-					return None;
-				}
+			// Materialize batch for filter evaluation
+			let columns = batch.clone().into_columns();
 
-				// Check if all rows pass
-				if mask.count_ones() == batch.row_count() {
-					// All rows pass, return unchanged
-					return Some(Ok(batch));
-				}
+			// Evaluate compiled filter to get filter mask
+			let mask = match self.predicate.eval(&columns, &self.eval_ctx) {
+				Ok(m) => m,
+				Err(e) => return Some(Err(e.into())),
+			};
 
-				// Apply filter - collect indices where mask is true
-				let indices: Vec<usize> = mask
-					.iter()
-					.enumerate()
-					.filter_map(|(i, b)| {
-						if b {
-							Some(i)
-						} else {
-							None
-						}
-					})
-					.collect();
-
-				Some(Ok(batch.extract_by_indices(&indices)))
+			// Check if any rows pass
+			if mask.none() {
+				// All rows filtered out, try next batch
+				continue;
 			}
-		}))
+
+			// Check if all rows pass
+			if mask.count_ones() == batch.row_count() {
+				// All rows pass, return unchanged
+				return Some(Ok(batch));
+			}
+
+			// Apply filter - collect indices where mask is true
+			let indices: Vec<usize> = mask
+				.iter()
+				.enumerate()
+				.filter_map(|(i, b)| {
+					if b {
+						Some(i)
+					} else {
+						None
+					}
+				})
+				.collect();
+
+			return Some(Ok(batch.extract_by_indices(&indices)));
+		}
 	}
 }

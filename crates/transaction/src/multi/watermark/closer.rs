@@ -15,10 +15,12 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
+use crossbeam_channel::{Receiver, Sender, unbounded};
+use parking_lot::{Condvar, Mutex};
 use reifydb_core::WaitGroup;
-use tokio::sync::broadcast;
 
 /// Closer holds the two things we need to close a task and wait for it to
 /// finish: a channel to tell the task to shut down, and a WaitGroup with
@@ -37,26 +39,38 @@ impl Deref for Closer {
 #[derive(Debug)]
 pub struct CloserInner {
 	wg: WaitGroup,
-	tx: broadcast::Sender<()>,
+	shutdown_tx: Sender<()>,
+	pub(crate) shutdown_rx: Receiver<()>,
+	shutdown_condvar: Condvar,
+	shutdown_mutex: Mutex<bool>,
 	signaled: AtomicBool,
+	initial_count: usize,
 }
 
 impl CloserInner {
 	fn new() -> Self {
-		let (tx, _rx) = broadcast::channel(1);
+		let (shutdown_tx, shutdown_rx) = unbounded();
 		Self {
 			wg: WaitGroup::new(),
-			tx,
+			shutdown_tx,
+			shutdown_rx,
+			shutdown_condvar: Condvar::new(),
+			shutdown_mutex: Mutex::new(false),
 			signaled: AtomicBool::new(false),
+			initial_count: 0,
 		}
 	}
 
 	fn with(initial: usize) -> Self {
-		let (tx, _rx) = broadcast::channel(1);
+		let (shutdown_tx, shutdown_rx) = unbounded();
 		Self {
 			wg: WaitGroup::from(initial),
-			tx,
+			shutdown_tx,
+			shutdown_rx,
+			shutdown_condvar: Condvar::new(),
+			shutdown_mutex: Mutex::new(false),
 			signaled: AtomicBool::new(false),
+			initial_count: initial,
 		}
 	}
 }
@@ -83,26 +97,38 @@ impl Closer {
 	pub fn signal(&self) {
 		// Only signal once
 		if !self.signaled.swap(true, Ordering::AcqRel) {
-			let _ = self.tx.send(());
+			let mut guard = self.shutdown_mutex.lock();
+			*guard = true;
+			drop(guard);
+			self.shutdown_condvar.notify_all();
+			// Send shutdown signal to all waiting threads
+			// We need to send one message per initial thread count
+			for _ in 0..self.initial_count {
+				let _ = self.shutdown_tx.send(());
+			}
 		}
 	}
 
 	/// Waits on the [`WaitGroup`]. (It waits for the Closer's initial
 	/// value, [`Closer::add_running`], and [`Closer::done`]
-	pub async fn wait(&self) {
-		self.wg.wait().await;
+	pub fn wait(&self) {
+		self.wg.wait();
 	}
 
 	/// Calls [`Closer::signal`], then [`Closer::wait`].
-	pub async fn signal_and_wait(&self) {
+	pub fn signal_and_wait(&self) {
 		self.signal();
-		self.wait().await;
+		self.wait();
 	}
 
-	/// Listens for the shutdown signal.
-	/// Returns a receiver that will receive a message when signal() is called.
-	pub fn listen(&self) -> broadcast::Receiver<()> {
-		self.tx.subscribe()
+	/// Waits for the shutdown signal with a timeout.
+	/// Returns true if shutdown was signaled, false if timeout occurred.
+	pub fn wait_shutdown(&self, timeout: Duration) -> bool {
+		let mut guard = self.shutdown_mutex.lock();
+		if *guard {
+			return true;
+		}
+		self.shutdown_condvar.wait_for(&mut guard, timeout).timed_out()
 	}
 
 	/// Returns true if signal() has been called.
@@ -113,67 +139,67 @@ impl Closer {
 
 #[cfg(test)]
 mod tests {
-	use tokio::{
-		spawn,
-		time::{Duration, sleep, timeout},
-	};
+	use std::time::Duration;
 
 	use crate::multi::watermark::Closer;
 
-	#[tokio::test]
-	async fn test_multiple_singles() {
+	#[test]
+	fn test_multiple_singles() {
 		let closer = Closer::default();
 		closer.signal();
 		closer.signal();
-		closer.signal_and_wait().await;
+		closer.signal_and_wait();
 
 		let closer = Closer::new(1);
 		closer.done();
-		closer.signal_and_wait().await;
-		closer.signal_and_wait().await;
+		closer.signal_and_wait();
+		closer.signal_and_wait();
 		closer.signal();
 	}
 
-	#[tokio::test]
-	async fn test_closer_single() {
+	#[test]
+	fn test_closer_single() {
 		let closer = Closer::new(1);
 		let tc = closer.clone();
-		spawn(async move {
-			let mut rx = tc.listen();
-			let _ = rx.recv().await;
+		std::thread::spawn(move || {
+			let rx = tc.shutdown_rx.clone();
+			let _ = rx.recv();
 			tc.done();
 		});
-		// Give tasks time to start and subscribe
-		sleep(Duration::from_millis(10)).await;
-		closer.signal_and_wait().await;
+		// Give tasks time to start
+		std::thread::sleep(Duration::from_millis(10));
+		closer.signal_and_wait();
 	}
 
-	#[tokio::test]
-	async fn test_closer_many() {
-		use tokio::sync::mpsc;
+	#[test]
+	fn test_closer_many() {
+		use crossbeam_channel::unbounded;
 
-		let (tx, mut rx) = mpsc::channel(10);
+		let (tx, rx) = unbounded();
 
-		let c = Closer::default();
+		// Create closer with count matching number of threads
+		let c = Closer::new(10);
 
 		for _ in 0..10 {
 			let c = c.clone();
 			let tx = tx.clone();
-			spawn(async move {
-				let mut listener = c.listen();
-				// Wait for signal (recv returns Err when sender is dropped or message received)
-				let _ = listener.recv().await;
-				tx.send(()).await.unwrap();
+			std::thread::spawn(move || {
+				let shutdown_rx = c.shutdown_rx.clone();
+				// Wait for signal
+				let _ = shutdown_rx.recv();
+				tx.send(()).unwrap();
+				// Signal that this thread is done
+				c.done();
 			});
 		}
 
-		// Give tasks time to start and subscribe
-		sleep(Duration::from_millis(10)).await;
+		// Give tasks time to start
+		std::thread::sleep(Duration::from_millis(10));
 
-		c.signal();
+		c.signal_and_wait();
 
 		for _ in 0..10 {
-			timeout(Duration::from_millis(100), rx.recv()).await.expect("timeout").expect("channel closed");
+			rx.recv_timeout(Duration::from_millis(100)).expect("timeout or channel closed");
 		}
 	}
 }

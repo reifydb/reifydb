@@ -10,12 +10,12 @@ use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
 use crate::{CatalogStore, store::subscription::layout::subscription};
 
 impl CatalogStore {
-	pub async fn find_subscription(
+	pub fn find_subscription(
 		rx: &mut impl IntoStandardTransaction,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let Some(multi) = txn.get(&SubscriptionKey::encoded(id)).await? else {
+		let Some(multi) = txn.get(&SubscriptionKey::encoded(id))? else {
 			return Ok(None);
 		};
 
@@ -27,7 +27,7 @@ impl CatalogStore {
 
 		// Load columns using the new subscription column storage
 		let columns = match &mut txn {
-			StandardTransaction::Command(cmd) => Self::list_subscription_columns(cmd, id).await?,
+			StandardTransaction::Command(cmd) => Self::list_subscription_columns(cmd, id)?,
 			StandardTransaction::Query(_) => {
 				// For query transactions, we can't use StandardCommandTransaction
 				// This is a limitation - for now return empty columns for queries
@@ -52,9 +52,9 @@ mod tests {
 
 	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
 
-	#[tokio::test]
-	async fn test_find_subscription_by_id() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_subscription_by_id() {
+		let mut txn = create_test_command_transaction();
 
 		let created = CatalogStore::create_subscription(
 			&mut txn,
@@ -62,20 +62,19 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
-		let found = CatalogStore::find_subscription(&mut txn, created.id).await.unwrap().unwrap();
+		let found = CatalogStore::find_subscription(&mut txn, created.id).unwrap().unwrap();
 		assert_eq!(found.id, created.id);
 	}
 
-	#[tokio::test]
-	async fn test_find_subscription_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_subscription_not_found() {
+		let mut txn = create_test_command_transaction();
 
 		// Generate a random UUID that doesn't exist
 		let non_existent = SubscriptionId::new();
-		let result = CatalogStore::find_subscription(&mut txn, non_existent).await.unwrap();
+		let result = CatalogStore::find_subscription(&mut txn, non_existent).unwrap();
 		assert!(result.is_none());
 	}
 }

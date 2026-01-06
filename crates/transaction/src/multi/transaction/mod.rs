@@ -63,11 +63,11 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
-	pub async fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
+	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
-			version: self.inner.version().await?,
+			version: self.inner.version()?,
 			read_version: None,
 			size: 0,
 			count: 0,
@@ -85,9 +85,9 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
-	pub async fn new(clock: L) -> crate::Result<Self> {
-		let version = clock.next().await?;
-		let oracle = Oracle::new(clock).await;
+	pub fn new(clock: L) -> crate::Result<Self> {
+		let version = clock.next()?;
+		let oracle = Oracle::new(clock);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
@@ -96,8 +96,8 @@ where
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
-	pub async fn version(&self) -> crate::Result<CommitVersion> {
-		self.inner.version().await
+	pub fn version(&self) -> crate::Result<CommitVersion> {
+		self.inner.version()
 	}
 }
 
@@ -106,8 +106,8 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
-	pub async fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
-		let safe_version = self.inner.version().await?;
+	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
+		let safe_version = self.inner.version()?;
 
 		Ok(if let Some(version) = version {
 			assert!(version <= safe_version);
@@ -153,9 +153,9 @@ impl Clone for TransactionMulti {
 }
 
 impl Inner {
-	async fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
-		let version_provider = StandardVersionProvider::new(single).await?;
-		let tm = TransactionManager::new(version_provider).await?;
+	fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+		let version_provider = StandardVersionProvider::new(single)?;
+		let tm = TransactionManager::new(version_provider)?;
 
 		Ok(Self {
 			tm,
@@ -164,13 +164,13 @@ impl Inner {
 		})
 	}
 
-	async fn version(&self) -> crate::Result<CommitVersion> {
-		self.tm.version().await
+	fn version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version()
 	}
 }
 
 impl TransactionMulti {
-	pub async fn testing() -> Self {
+	pub fn testing() -> Self {
 		let store = TransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
@@ -178,31 +178,26 @@ impl TransactionMulti {
 			TransactionSingle::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
 			event_bus,
 		)
-		.await
 		.unwrap()
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
-	pub async fn new(
-		store: TransactionStore,
-		single: TransactionSingle,
-		event_bus: EventBus,
-	) -> crate::Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus).await?)))
+	pub fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus)?)))
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
-	pub async fn version(&self) -> crate::Result<CommitVersion> {
-		self.0.version().await
+	pub fn version(&self) -> crate::Result<CommitVersion> {
+		self.0.version()
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
-	pub async fn begin_query(&self) -> crate::Result<QueryTransaction> {
-		QueryTransaction::new(self.clone(), None).await
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), None)
 	}
 
 	/// Begin a query transaction at a specific version.
@@ -210,15 +205,15 @@ impl TransactionMulti {
 	/// This is used for parallel query execution where multiple tasks need to
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
-	pub async fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
-		QueryTransaction::new(self.clone(), Some(version)).await
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), Some(version))
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub async fn begin_command(&self) -> crate::Result<CommandTransaction> {
-		CommandTransaction::new(self.clone()).await
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
+		CommandTransaction::new(self.clone())
 	}
 }
 
@@ -229,20 +224,12 @@ pub enum TransactionType {
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub async fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Committed>, reifydb_type::Error> {
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
 	}
 
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub async fn contains_key(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
 		MultiVersionContains::contains(&self.store, key, version)
 	}
 

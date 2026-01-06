@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedColumn,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -39,21 +38,16 @@ impl ExtendNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for ExtendNode {
 	#[instrument(name = "query::extend::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -63,7 +57,7 @@ impl QueryNode for ExtendNode {
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx, ctx).await?
+		}) = self.input.next(rx, ctx)?
 		{
 			// Start with all existing columns (EXTEND preserves
 			// everything)
@@ -176,20 +170,15 @@ impl ExtendWithoutInputNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "query::extend::noinput::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
 	#[instrument(name = "query::extend::noinput::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,

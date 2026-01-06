@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_type::RowNumber;
@@ -44,18 +43,17 @@ pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use window::WindowOperator;
 
-#[async_trait]
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId; // FIXME replace by operator id
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange>;
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns>;
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator>;
@@ -79,48 +77,48 @@ pub enum Operators {
 }
 
 impl Operators {
-	pub async fn apply(
+	pub fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
 		match self {
-			Operators::Filter(op) => op.apply(txn, change, evaluator).await,
-			Operators::Map(op) => op.apply(txn, change, evaluator).await,
-			Operators::Extend(op) => op.apply(txn, change, evaluator).await,
-			Operators::Join(op) => op.apply(txn, change, evaluator).await,
-			Operators::Sort(op) => op.apply(txn, change, evaluator).await,
-			Operators::Take(op) => op.apply(txn, change, evaluator).await,
-			Operators::Distinct(op) => op.apply(txn, change, evaluator).await,
-			Operators::Merge(op) => op.apply(txn, change, evaluator).await,
-			Operators::Apply(op) => op.apply(txn, change, evaluator).await,
-			Operators::SinkView(op) => op.apply(txn, change, evaluator).await,
-			Operators::SinkSubscription(op) => op.apply(txn, change, evaluator).await,
-			Operators::Window(op) => op.apply(txn, change, evaluator).await,
-			Operators::SourceTable(op) => op.apply(txn, change, evaluator).await,
-			Operators::SourceView(op) => op.apply(txn, change, evaluator).await,
-			Operators::SourceFlow(op) => op.apply(txn, change, evaluator).await,
+			Operators::Filter(op) => op.apply(txn, change, evaluator),
+			Operators::Map(op) => op.apply(txn, change, evaluator),
+			Operators::Extend(op) => op.apply(txn, change, evaluator),
+			Operators::Join(op) => op.apply(txn, change, evaluator),
+			Operators::Sort(op) => op.apply(txn, change, evaluator),
+			Operators::Take(op) => op.apply(txn, change, evaluator),
+			Operators::Distinct(op) => op.apply(txn, change, evaluator),
+			Operators::Merge(op) => op.apply(txn, change, evaluator),
+			Operators::Apply(op) => op.apply(txn, change, evaluator),
+			Operators::SinkView(op) => op.apply(txn, change, evaluator),
+			Operators::SinkSubscription(op) => op.apply(txn, change, evaluator),
+			Operators::Window(op) => op.apply(txn, change, evaluator),
+			Operators::SourceTable(op) => op.apply(txn, change, evaluator),
+			Operators::SourceView(op) => op.apply(txn, change, evaluator),
+			Operators::SourceFlow(op) => op.apply(txn, change, evaluator),
 		}
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		match self {
-			Operators::Filter(op) => op.pull(txn, rows).await,
-			Operators::Map(op) => op.pull(txn, rows).await,
-			Operators::Extend(op) => op.pull(txn, rows).await,
-			Operators::Join(op) => op.pull(txn, rows).await,
-			Operators::Sort(op) => op.pull(txn, rows).await,
-			Operators::Take(op) => op.pull(txn, rows).await,
-			Operators::Distinct(op) => op.pull(txn, rows).await,
-			Operators::Merge(op) => op.pull(txn, rows).await,
-			Operators::Apply(op) => op.pull(txn, rows).await,
-			Operators::SinkView(op) => op.pull(txn, rows).await,
-			Operators::SinkSubscription(op) => op.pull(txn, rows).await,
-			Operators::Window(op) => op.pull(txn, rows).await,
-			Operators::SourceTable(op) => op.pull(txn, rows).await,
-			Operators::SourceView(op) => op.pull(txn, rows).await,
-			Operators::SourceFlow(op) => op.pull(txn, rows).await,
+			Operators::Filter(op) => op.pull(txn, rows),
+			Operators::Map(op) => op.pull(txn, rows),
+			Operators::Extend(op) => op.pull(txn, rows),
+			Operators::Join(op) => op.pull(txn, rows),
+			Operators::Sort(op) => op.pull(txn, rows),
+			Operators::Take(op) => op.pull(txn, rows),
+			Operators::Distinct(op) => op.pull(txn, rows),
+			Operators::Merge(op) => op.pull(txn, rows),
+			Operators::Apply(op) => op.pull(txn, rows),
+			Operators::SinkView(op) => op.pull(txn, rows),
+			Operators::SinkSubscription(op) => op.pull(txn, rows),
+			Operators::Window(op) => op.pull(txn, rows),
+			Operators::SourceTable(op) => op.pull(txn, rows),
+			Operators::SourceView(op) => op.pull(txn, rows),
+			Operators::SourceFlow(op) => op.pull(txn, rows),
 		}
 	}
 }

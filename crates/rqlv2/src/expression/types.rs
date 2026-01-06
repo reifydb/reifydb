@@ -10,7 +10,7 @@
 //!
 //! Reference: https://blog.cloudflare.com/building-fast-interpreters-in-rust/
 
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, Columns};
 use reifydb_type::BitVec;
@@ -89,31 +89,29 @@ impl std::error::Error for EvalError {}
 /// Result type for expression evaluation.
 pub type EvalResult<T> = std::result::Result<T, EvalError>;
 
-/// Future type for expression evaluation.
-pub type ExprFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<Column>> + Send + Sync + 'a>>;
+pub type ExprResult = EvalResult<Column>;
 
-/// Future type for filter evaluation.
-pub type FilterFuture<'a> = Pin<Box<dyn Future<Output = EvalResult<BitVec>> + Send + Sync + 'a>>;
+pub type FilterResult = EvalResult<BitVec>;
 
-/// Pre-compiled expression that evaluates to a Column asynchronously.
+/// Pre-compiled expression that evaluates to a Column synchronously.
 ///
 /// The closure captures static information (column names, literals, operators)
 /// at compile time, and receives dynamic information (columns, context) at
-/// evaluation time. Returns a future to support async subquery execution.
-pub struct CompiledExpr(Arc<dyn for<'a> Fn(&'a Columns, &'a EvalContext) -> ExprFuture<'a> + Send + Sync>);
+/// evaluation time.
+pub struct CompiledExpr(Arc<dyn Fn(&Columns, &EvalContext) -> EvalResult<Column> + Send + Sync>);
 
 impl CompiledExpr {
-	/// Create a new compiled expression from an async closure.
+	/// Create a new compiled expression from a sync closure.
 	pub fn new<F>(f: F) -> Self
 	where
-		F: for<'a> Fn(&'a Columns, &'a EvalContext) -> ExprFuture<'a> + Send + Sync + 'static,
+		F: Fn(&Columns, &EvalContext) -> EvalResult<Column> + Send + Sync + 'static,
 	{
 		Self(Arc::new(f))
 	}
 
 	/// Evaluate the expression against the given columns and context.
-	pub async fn eval(&self, columns: &Columns, ctx: &EvalContext) -> EvalResult<Column> {
-		(self.0)(columns, ctx).await
+	pub fn eval(&self, columns: &Columns, ctx: &EvalContext) -> EvalResult<Column> {
+		(self.0)(columns, ctx)
 	}
 }
 
@@ -129,25 +127,25 @@ impl std::fmt::Debug for CompiledExpr {
 	}
 }
 
-/// Pre-compiled filter expression that evaluates directly to a BitVec mask asynchronously.
+/// Pre-compiled filter expression that evaluates directly to a BitVec mask synchronously.
 ///
 /// This is a specialization of CompiledExpr for filter predicates, avoiding
 /// the intermediate Column allocation when we only need a boolean mask.
-pub struct CompiledFilter(Arc<dyn for<'a> Fn(&'a Columns, &'a EvalContext) -> FilterFuture<'a> + Send + Sync>);
+pub struct CompiledFilter(Arc<dyn Fn(&Columns, &EvalContext) -> EvalResult<BitVec> + Send + Sync>);
 
 impl CompiledFilter {
-	/// Create a new compiled filter from an async closure.
+	/// Create a new compiled filter from a sync closure.
 	pub fn new<F>(f: F) -> Self
 	where
-		F: for<'a> Fn(&'a Columns, &'a EvalContext) -> FilterFuture<'a> + Send + Sync + 'static,
+		F: Fn(&Columns, &EvalContext) -> EvalResult<BitVec> + Send + Sync + 'static,
 	{
 		Self(Arc::new(f))
 	}
 
 	/// Evaluate the filter against the given columns and context.
 	/// Returns a BitVec where true = row passes the filter.
-	pub async fn eval(&self, columns: &Columns, ctx: &EvalContext) -> EvalResult<BitVec> {
-		(self.0)(columns, ctx).await
+	pub fn eval(&self, columns: &Columns, ctx: &EvalContext) -> EvalResult<BitVec> {
+		(self.0)(columns, ctx)
 	}
 }
 
@@ -165,39 +163,39 @@ impl std::fmt::Debug for CompiledFilter {
 
 #[cfg(test)]
 mod tests {
-	use reifydb::vendor::tokio;
+
 	use reifydb_core::value::column::ColumnData;
 	use reifydb_type::Fragment;
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_compiled_expr_clone() {
+	#[test]
+	fn test_compiled_expr_clone() {
 		let expr = CompiledExpr::new(|columns, _ctx| {
 			let col = columns.iter().next().unwrap().clone();
-			Box::pin(async move { Ok(col) })
+			Ok(col)
 		});
 		let cloned = expr.clone();
 
 		let columns = Columns::new(vec![Column::new(Fragment::from("x"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let result1 = expr.eval(&columns, &EvalContext::new()).await.unwrap();
-		let result2 = cloned.eval(&columns, &EvalContext::new()).await.unwrap();
+		let result1 = expr.eval(&columns, &EvalContext::new()).unwrap();
+		let result2 = cloned.eval(&columns, &EvalContext::new()).unwrap();
 
 		assert_eq!(result1.data().len(), result2.data().len());
 	}
 
-	#[tokio::test]
-	async fn test_compiled_filter_basic() {
+	#[test]
+	fn test_compiled_filter_basic() {
 		// Filter that returns all true
 		let filter = CompiledFilter::new(|columns, _ctx| {
 			let len = columns.row_count();
-			Box::pin(async move { Ok(BitVec::from_fn(len, |_| true)) })
+			Ok(BitVec::from_fn(len, |_| true))
 		});
 
 		let columns = Columns::new(vec![Column::new(Fragment::from("x"), ColumnData::int8(vec![1, 2, 3]))]);
 
-		let mask = filter.eval(&columns, &EvalContext::new()).await.unwrap();
+		let mask = filter.eval(&columns, &EvalContext::new()).unwrap();
 		assert_eq!(mask.len(), 3);
 		assert!(mask.iter().all(|b| b));
 	}

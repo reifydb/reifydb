@@ -12,12 +12,10 @@ mod command;
 mod query;
 
 pub use command::CommandSession;
-use futures_util::TryStreamExt;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
 	interface::{Identity, Params},
-	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
 use tracing::instrument;
@@ -38,10 +36,8 @@ impl CommandSession {
 	}
 
 	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
-	pub async fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
-		let rql = rql.to_string();
-		let params = params.into();
-		self.engine.command_as(&self.identity, &rql, params).try_collect().await
+	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+		self.engine.command_as(&self.identity, rql, params.into())
 	}
 }
 
@@ -55,10 +51,8 @@ impl QuerySession {
 	}
 
 	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
-	pub async fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
-		let rql = rql.to_string();
-		let params = params.into();
-		self.engine.query_as(&self.identity, &rql, params).try_collect().await
+	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+		self.engine.query_as(&self.identity, rql, params.into())
 	}
 }
 

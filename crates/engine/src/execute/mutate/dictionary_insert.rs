@@ -20,7 +20,7 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) async fn insert_dictionary<'a>(
+	pub(crate) fn insert_dictionary<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: InsertDictionaryNode,
@@ -28,11 +28,10 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
 
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let dictionary_name = plan.target.name();
-		let Some(dictionary) =
-			CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name).await?
+		let Some(dictionary) = CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name)?
 		else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
@@ -48,10 +47,10 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone()).await;
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context).await?;
+		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Collect all inserted (id, value) pairs
 		let mut ids: Vec<Value> = Vec::new();
@@ -60,7 +59,7 @@ impl Executor {
 
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
+		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 
@@ -86,10 +85,8 @@ impl Executor {
 				let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type)?;
 
 				// Insert into dictionary
-				let entry_id = std_txn
-					.command_mut()
-					.insert_into_dictionary(&dictionary, &coerced_value)
-					.await?;
+				let entry_id =
+					std_txn.command_mut().insert_into_dictionary(&dictionary, &coerced_value)?;
 
 				let id_value = match entry_id {
 					DictionaryEntryId::U1(v) => Value::Uint1(v),

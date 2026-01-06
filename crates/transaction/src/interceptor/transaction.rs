@@ -28,15 +28,14 @@ impl Default for PreCommitContext {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait PreCommitInterceptor: Send + Sync {
-	async fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()>;
+	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
-	pub async fn execute(&self, mut ctx: PreCommitContext) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: PreCommitContext) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -72,12 +71,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> PreCommitInterceptor for ClosurePreCommitInterceptor<F>
 where
 	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()> {
+	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -118,15 +116,14 @@ impl PostCommitContext {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait PostCommitInterceptor: Send + Sync {
-	async fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()>;
+	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
-	pub async fn execute(&self, mut ctx: PostCommitContext) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: PostCommitContext) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -162,12 +159,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> PostCommitInterceptor for ClosurePostCommitInterceptor<F>
 where
 	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }

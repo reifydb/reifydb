@@ -13,7 +13,7 @@ pub mod test {
 			encoded::{EncodedValues, EncodedValuesLayout},
 		},
 	};
-	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardEngine};
+	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, test_utils::create_test_engine};
 	use reifydb_sdk::FlowChange;
 	use reifydb_type::{RowNumber, Type, Value};
 
@@ -21,11 +21,6 @@ pub mod test {
 		operator::{Operator, transform::TransformOperator},
 		transaction::FlowTransaction,
 	};
-
-	/// Create a test engine with memory storage
-	pub async fn create_test_engine() -> StandardEngine {
-		reifydb_engine::test_utils::create_test_engine().await
-	}
 
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
@@ -63,13 +58,12 @@ pub mod test {
 		}
 	}
 
-	#[async_trait::async_trait]
 	impl Operator for TestOperator {
 		fn id(&self) -> FlowNodeId {
 			self.id
 		}
 
-		async fn apply(
+		fn apply(
 			&self,
 			_txn: &mut FlowTransaction,
 			_change: FlowChange,
@@ -78,7 +72,7 @@ pub mod test {
 			todo!()
 		}
 
-		async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 			unimplemented!()
 		}
 	}
@@ -106,8 +100,8 @@ pub mod test {
 	}
 
 	/// Helper to create a test transaction
-	pub async fn create_test_transaction() -> StandardCommandTransaction {
-		let engine = create_test_engine().await;
-		engine.begin_command().await.unwrap()
+	pub fn create_test_transaction() -> StandardCommandTransaction {
+		let engine = create_test_engine();
+		engine.begin_command().unwrap()
 	}
 }

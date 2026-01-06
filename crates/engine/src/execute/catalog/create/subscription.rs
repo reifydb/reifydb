@@ -9,7 +9,7 @@ use reifydb_type::{Uuid7, Value};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_subscription<'a>(
+	pub(crate) fn create_subscription<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateSubscriptionNode,
@@ -19,13 +19,12 @@ impl Executor {
 			SubscriptionToCreate {
 				columns: plan.columns,
 			},
-		)
-		.await?;
+		)?;
 		txn.track_subscription_def_created(result.clone())?;
 
 		// If AS clause is provided, create and compile a flow for the subscription
 		if let Some(as_clause) = plan.as_clause {
-			self.create_subscription_flow(txn, &result, *as_clause).await?;
+			self.create_subscription_flow(txn, &result, *as_clause)?;
 		}
 
 		Ok(Columns::single_row([

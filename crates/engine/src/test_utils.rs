@@ -20,28 +20,27 @@ use reifydb_type::{Type, TypeConstraint};
 
 use crate::{StandardCommandTransaction, StandardEngine};
 
-pub async fn create_test_command_transaction() -> StandardCommandTransaction {
+pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), event_bus.clone()).await.unwrap();
+	let multi = TransactionMulti::new(store, single.clone(), event_bus.clone()).unwrap();
 
-	StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).await.unwrap()
+	StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).unwrap()
 }
 
-pub async fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
+pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
 	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store.clone(), single.clone(), event_bus.clone()).await.unwrap();
-	let mut result =
-		StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).await.unwrap();
+	let multi = TransactionMulti::new(store.clone(), single.clone(), event_bus.clone()).unwrap();
+	let mut result = StandardCommandTransaction::new(multi, single, cdc, event_bus, Interceptors::new()).unwrap();
 
 	let namespace = CatalogStore::create_namespace(
 		&mut result,
@@ -50,7 +49,6 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 			name: "reifydb".to_string(),
 		},
 	)
-	.await
 	.unwrap();
 
 	CatalogStore::create_table(
@@ -80,7 +78,6 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 			retention_policy: None,
 		},
 	)
-	.await
 	.unwrap();
 
 	result
@@ -95,7 +92,7 @@ pub async fn create_test_command_transaction_with_internal_schema() -> StandardC
 /// - Registers MaterializedCatalog
 /// - Registers Compiler
 /// - Returns a fully configured StandardEngine ready for testing
-pub async fn create_test_engine() -> StandardEngine {
+pub fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	reifydb_core::util::mock_time_set(1000);
 
@@ -103,7 +100,7 @@ pub async fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).await.unwrap();
+	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).unwrap();
 
 	// Create and register dependencies in IocContainer
 	let mut ioc = IocContainer::new();
@@ -131,5 +128,4 @@ pub async fn create_test_engine() -> StandardEngine {
 		None,
 		ioc,
 	)
-	.await
 }

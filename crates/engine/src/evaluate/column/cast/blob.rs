@@ -35,8 +35,8 @@ mod tests {
 
 	use super::*;
 
-	#[tokio::test]
-	async fn test_from_utf8() {
+	#[test]
+	fn test_from_utf8() {
 		let strings = vec!["Hello".to_string(), "World".to_string()];
 		let bitvec = BitVec::repeat(2, true);
 		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
@@ -55,8 +55,8 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_unsupported() {
+	#[test]
+	fn test_unsupported() {
 		let ints = vec![42i32];
 		let bitvec = BitVec::repeat(1, true);
 		let container = ColumnData::int4_with_bitvec(ints, bitvec);

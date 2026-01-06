@@ -191,6 +191,7 @@ indexmap = { version = "2.11", features = ["serde"] }
 rayon = { version = "1.11.0" }
 bumpalo = { version = "3.19.0", features = ["collections"] }
 parking_lot = {version = "0.12.5"}
+crossbeam-channel = { version = "0.5.13" }
 
 # Network and server
 num_cpus = { version = "1.17.0" }

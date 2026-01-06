@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_rql::expression::Expression;
@@ -31,13 +30,12 @@ impl SortOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for SortOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -48,7 +46,7 @@ impl Operator for SortOperator {
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
-		self.parent.pull(txn, rows).await
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows)
 	}
 }

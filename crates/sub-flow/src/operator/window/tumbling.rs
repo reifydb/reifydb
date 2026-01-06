@@ -68,7 +68,7 @@ impl WindowOperator {
 }
 
 /// Process inserts for tumbling windows
-async fn process_tumbling_insert(
+fn process_tumbling_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -88,8 +88,7 @@ async fn process_tumbling_insert(
 
 	// Process each group
 	for (group_hash, group_columns) in groups {
-		let group_result =
-			process_tumbling_group_insert(operator, txn, &group_columns, group_hash, evaluator).await?;
+		let group_result = process_tumbling_group_insert(operator, txn, &group_columns, group_hash, evaluator)?;
 		result.extend(group_result);
 	}
 
@@ -97,7 +96,7 @@ async fn process_tumbling_insert(
 }
 
 /// Process inserts for a single group in tumbling windows
-async fn process_tumbling_group_insert(
+fn process_tumbling_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -125,7 +124,7 @@ async fn process_tumbling_group_insert(
 				// For count-based windows, use current processing time and calculate
 				// window ID based on global event count
 				let event_timestamp = operator.current_timestamp();
-				let global_count = operator.get_and_increment_global_count(txn, group_hash).await?;
+				let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
 				let window_size = if let WindowSize::Count(count) = &operator.size {
 					*count
 				} else {
@@ -137,7 +136,7 @@ async fn process_tumbling_group_insert(
 		};
 
 		let window_key = operator.create_window_key(group_hash, window_id);
-		let mut window_state = operator.load_window_state(txn, &window_key).await?;
+		let mut window_state = operator.load_window_state(txn, &window_key)?;
 
 		// Extract this single row as Columns and convert to Row for WindowEvent storage
 		let single_row_columns = columns.extract_row(row_idx);
@@ -155,7 +154,7 @@ async fn process_tumbling_group_insert(
 
 		// Always emit result for count-based windows - Insert for first, Update for subsequent
 		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+			operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
 		{
 			if is_new {
 				// First time we see this window - emit Insert
@@ -166,9 +165,8 @@ async fn process_tumbling_group_insert(
 				// Window already exists - emit Update
 				// We need to compute the previous aggregation (without the current event)
 				let previous_events = &window_state.events[..window_state.events.len() - 1];
-				if let Some((previous_aggregated, _)) = operator
-					.apply_aggregations(txn, &window_key, previous_events, evaluator)
-					.await?
+				if let Some((previous_aggregated, _)) =
+					operator.apply_aggregations(txn, &window_key, previous_events, evaluator)?
 				{
 					result.push(FlowDiff::Update {
 						pre: Columns::from_row(&previous_aggregated),
@@ -185,7 +183,7 @@ async fn process_tumbling_group_insert(
 }
 
 /// Apply changes for tumbling windows
-pub async fn apply_tumbling_window(
+pub fn apply_tumbling_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -195,7 +193,7 @@ pub async fn apply_tumbling_window(
 	let current_timestamp = operator.current_timestamp();
 
 	// First, process any expired windows
-	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
+	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
 	result.extend(expired_diffs);
 
 	// Process each incoming change (each diff may contain multiple rows)
@@ -204,7 +202,7 @@ pub async fn apply_tumbling_window(
 			FlowDiff::Insert {
 				post,
 			} => {
-				let insert_result = process_tumbling_insert(operator, txn, post, evaluator).await?;
+				let insert_result = process_tumbling_insert(operator, txn, post, evaluator)?;
 				result.extend(insert_result);
 			}
 			FlowDiff::Update {
@@ -213,7 +211,7 @@ pub async fn apply_tumbling_window(
 			} => {
 				// For windows, updates are treated as insert of new value
 				// Real implementation might need to handle retractions
-				let update_result = process_tumbling_insert(operator, txn, post, evaluator).await?;
+				let update_result = process_tumbling_insert(operator, txn, post, evaluator)?;
 				result.extend(update_result);
 			}
 			FlowDiff::Remove {

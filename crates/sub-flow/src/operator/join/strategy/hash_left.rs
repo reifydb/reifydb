@@ -19,7 +19,7 @@ pub(crate) struct LeftHashJoin;
 
 impl LeftHashJoin {
 	/// Handle insert for rows with undefined join keys (emits unmatched left row)
-	pub(crate) async fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Columns,
@@ -31,7 +31,7 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Undefined key in left join still emits the row
-				let unmatched = operator.unmatched_left_columns(txn, post, row_idx).await?;
+				let unmatched = operator.unmatched_left_columns(txn, post, row_idx)?;
 				Ok(vec![FlowDiff::Insert {
 					post: unmatched,
 				}])
@@ -44,7 +44,7 @@ impl LeftHashJoin {
 	}
 
 	/// Handle remove for rows with undefined join keys
-	pub(crate) async fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -59,8 +59,8 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Undefined key - remove the unmatched row
-				let unmatched = operator.unmatched_left_columns(txn, pre, row_idx).await?;
-				operator.cleanup_left_row_joins(txn, *row_number).await?;
+				let unmatched = operator.unmatched_left_columns(txn, pre, row_idx)?;
+				operator.cleanup_left_row_joins(txn, *row_number)?;
 				Ok(vec![FlowDiff::Remove {
 					pre: unmatched,
 				}])
@@ -73,7 +73,7 @@ impl LeftHashJoin {
 	}
 
 	/// Handle update for rows with undefined join keys
-	pub(crate) async fn handle_update_undefined(
+	pub(crate) fn handle_update_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -87,8 +87,8 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Both keys are undefined - update the row
-				let unmatched_pre = operator.unmatched_left_columns(txn, pre, row_idx).await?;
-				let unmatched_post = operator.unmatched_left_columns(txn, post, row_idx).await?;
+				let unmatched_pre = operator.unmatched_left_columns(txn, pre, row_idx)?;
+				let unmatched_post = operator.unmatched_left_columns(txn, post, row_idx)?;
 				Ok(vec![FlowDiff::Update {
 					pre: unmatched_pre,
 					post: unmatched_post,
@@ -102,7 +102,7 @@ impl LeftHashJoin {
 	}
 
 	/// Handle insert for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_insert(
+	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Columns,
@@ -121,7 +121,7 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Add all rows to state first
-				add_to_state_entry_batch(txn, &mut state.left, key_hash, post, indices).await?;
+				add_to_state_entry_batch(txn, &mut state.left, key_hash, post, indices)?;
 
 				// Check if there are matching right rows
 				if let Some(diff) = emit_joined_columns_batch(
@@ -133,34 +133,32 @@ impl LeftHashJoin {
 					key_hash,
 					operator,
 					&operator.right_parent,
-				)
-				.await?
-				{
+				)? {
 					result.push(diff);
 				} else {
 					// No matches - emit unmatched left rows for all
-					let unmatched =
-						operator.unmatched_left_columns_batch(txn, post, indices).await?;
+					let unmatched = operator.unmatched_left_columns_batch(txn, post, indices)?;
 					result.push(FlowDiff::Insert {
 						post: unmatched,
 					});
 				}
 			}
 			JoinSide::Right => {
-				let is_first = is_first_right_row(txn, &state.right, key_hash).await?;
+				let is_first = is_first_right_row(txn, &state.right, key_hash)?;
 
 				// Add all rows to state first
-				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices).await?;
+				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices)?;
 
 				// If first right row(s), remove previously emitted unmatched left rows
 				if is_first {
-					if let Some(left_entry) = state.left.get(txn, key_hash).await? {
-						let left_columns =
-							operator.left_parent.pull(txn, &left_entry.rows).await?;
+					if let Some(left_entry) = state.left.get(txn, key_hash)? {
+						let left_columns = operator.left_parent.pull(txn, &left_entry.rows)?;
 						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-						let unmatched = operator
-							.unmatched_left_columns_batch(txn, &left_columns, &left_indices)
-							.await?;
+						let unmatched = operator.unmatched_left_columns_batch(
+							txn,
+							&left_columns,
+							&left_indices,
+						)?;
 						result.push(FlowDiff::Remove {
 							pre: unmatched,
 						});
@@ -177,9 +175,7 @@ impl LeftHashJoin {
 					key_hash,
 					operator,
 					&operator.left_parent,
-				)
-				.await?
-				{
+				)? {
 					result.push(diff);
 				}
 			}
@@ -189,7 +185,7 @@ impl LeftHashJoin {
 	}
 
 	/// Handle remove for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_remove(
+	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -211,7 +207,7 @@ impl LeftHashJoin {
 				// Clean up row number mappings for all left rows
 				for &idx in indices {
 					let row_number = pre.row_numbers[idx];
-					operator.cleanup_left_row_joins(txn, *row_number).await?;
+					operator.cleanup_left_row_joins(txn, *row_number)?;
 				}
 
 				// First emit all remove diffs in one batch
@@ -224,14 +220,11 @@ impl LeftHashJoin {
 					key_hash,
 					operator,
 					&operator.right_parent,
-				)
-				.await?
-				{
+				)? {
 					result.push(diff);
 				} else {
 					// No joined rows to remove - remove unmatched left rows
-					let unmatched =
-						operator.unmatched_left_columns_batch(txn, pre, indices).await?;
+					let unmatched = operator.unmatched_left_columns_batch(txn, pre, indices)?;
 					result.push(FlowDiff::Remove {
 						pre: unmatched,
 					});
@@ -240,7 +233,7 @@ impl LeftHashJoin {
 				// Then remove all rows from state
 				for &idx in indices {
 					let row_number = pre.row_numbers[idx];
-					remove_from_state_entry(txn, &mut state.left, key_hash, row_number).await?;
+					remove_from_state_entry(txn, &mut state.left, key_hash, row_number)?;
 				}
 			}
 			JoinSide::Right => {
@@ -254,14 +247,12 @@ impl LeftHashJoin {
 					key_hash,
 					operator,
 					&operator.left_parent,
-				)
-				.await?
-				{
+				)? {
 					result.push(diff);
 				}
 
 				// Check if this will make right entries empty
-				let will_become_empty = if let Some(entry) = state.right.get(txn, key_hash).await? {
+				let will_become_empty = if let Some(entry) = state.right.get(txn, key_hash)? {
 					entry.rows.len() <= indices.len()
 				} else {
 					false
@@ -270,19 +261,20 @@ impl LeftHashJoin {
 				// Remove all rows from state
 				for &idx in indices {
 					let row_number = pre.row_numbers[idx];
-					remove_from_state_entry(txn, &mut state.right, key_hash, row_number).await?;
+					remove_from_state_entry(txn, &mut state.right, key_hash, row_number)?;
 				}
 
 				// If right side became empty, re-emit left rows as unmatched
-				if will_become_empty && !state.right.contains_key(txn, key_hash).await? {
+				if will_become_empty && !state.right.contains_key(txn, key_hash)? {
 					let left_columns =
-						pull_left_columns(txn, &state.left, key_hash, &operator.left_parent)
-							.await?;
+						pull_left_columns(txn, &state.left, key_hash, &operator.left_parent)?;
 					if !left_columns.is_empty() {
 						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-						let unmatched = operator
-							.unmatched_left_columns_batch(txn, &left_columns, &left_indices)
-							.await?;
+						let unmatched = operator.unmatched_left_columns_batch(
+							txn,
+							&left_columns,
+							&left_indices,
+						)?;
 						result.push(FlowDiff::Insert {
 							post: unmatched,
 						});
@@ -295,7 +287,7 @@ impl LeftHashJoin {
 	}
 
 	/// Handle update for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_update(
+	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -329,9 +321,7 @@ impl LeftHashJoin {
 							old_key,
 							old_row_number,
 							new_row_number,
-						)
-						.await?
-						{
+						)? {
 							// Emit updates for all joined rows
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
@@ -343,18 +333,14 @@ impl LeftHashJoin {
 								old_key,
 								operator,
 								&operator.right_parent,
-							)
-							.await?
-							{
+							)? {
 								result.push(diff);
 							} else {
 								// No matching right rows - update unmatched left row
 								let unmatched_pre = operator
-									.unmatched_left_columns(txn, pre, row_idx)
-									.await?;
+									.unmatched_left_columns(txn, pre, row_idx)?;
 								let unmatched_post = operator
-									.unmatched_left_columns(txn, post, row_idx)
-									.await?;
+									.unmatched_left_columns(txn, post, row_idx)?;
 								result.push(FlowDiff::Update {
 									pre: unmatched_pre,
 									post: unmatched_post,
@@ -370,9 +356,7 @@ impl LeftHashJoin {
 							old_key,
 							old_row_number,
 							new_row_number,
-						)
-						.await?
-						{
+						)? {
 							// Emit updates for all joined rows
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
@@ -384,9 +368,7 @@ impl LeftHashJoin {
 								old_key,
 								operator,
 								&operator.left_parent,
-							)
-							.await?
-							{
+							)? {
 								result.push(diff);
 							}
 						}
@@ -396,11 +378,10 @@ impl LeftHashJoin {
 		} else {
 			// Key changed - treat as remove + insert
 			let remove_diffs =
-				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version).await?;
+				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs =
-				self.handle_insert(txn, post, indices, side, new_key, state, operator).await?;
+			let insert_diffs = self.handle_insert(txn, post, indices, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
 		}
 

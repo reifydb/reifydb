@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::plan::{physical, physical::AssignValue};
 
@@ -40,18 +39,13 @@ impl AssignNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for AssignNode {
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -84,7 +78,7 @@ impl QueryNode for AssignNode {
 			}
 			AssignValue::Statement(physical_plans) => {
 				// Execute the pipeline of physical plans
-				self.execute_statement_pipeline(rx, ctx, physical_plans).await?
+				self.execute_statement_pipeline(rx, ctx, physical_plans)?
 			}
 		};
 
@@ -126,7 +120,7 @@ impl QueryNode for AssignNode {
 
 impl<'a> AssignNode {
 	/// Execute a pipeline of physical plans and return the final result
-	async fn execute_statement_pipeline(
+	fn execute_statement_pipeline(
 		&self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -143,17 +137,17 @@ impl<'a> AssignNode {
 		// For now, execute just the last plan as a simple implementation
 		// TODO: Implement proper pipeline chaining for complex cases
 		let execution_context = Arc::new(ctx.clone());
-		let mut node = compile(last_plan.clone(), rx, execution_context.clone()).await;
+		let mut node = compile(last_plan.clone(), rx, execution_context.clone());
 
 		// Initialize the operator before execution
-		node.initialize(rx, &execution_context).await?;
+		node.initialize(rx, &execution_context)?;
 
 		let mut result: Option<Columns> = None;
 		let mut mutable_context = (*execution_context).clone();
 
 		while let Some(crate::execute::Batch {
 			columns,
-		}) = node.next(rx, &mut mutable_context).await?
+		}) = node.next(rx, &mut mutable_context)?
 		{
 			if let Some(mut result_columns) = result.take() {
 				result_columns.append_columns(columns)?;

@@ -15,16 +15,15 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Example 1: MAP with constants
 	info!("Example 1: MAP with constants");
 	log_query(r#"map { 42 as answer, "hello" as greeting }"#);
-	for frame in db.query_as_root(r#"map { 42 as answer, "hello" as greeting }"#, Params::None).await.unwrap() {
+	for frame in db.query_as_root(r#"map { 42 as answer, "hello" as greeting }"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +----------+------------+
@@ -39,7 +38,6 @@ async fn main() {
 	log_query(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#);
 	for frame in db
 		.query_as_root(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#, Params::None)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -65,7 +63,6 @@ map { name, age }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -91,7 +88,6 @@ map { first_name as name, years as age }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -141,7 +137,6 @@ map {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -159,7 +154,7 @@ map {
 	info!("\nExample 6: MAP with comptokenize expressions");
 
 	// Create a table for more realistic example
-	db.command_as_root("create namespace sales", Params::None).await.unwrap();
+	db.command_as_root("create namespace sales", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table sales.orders {
@@ -171,7 +166,6 @@ map {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Insert sample data
@@ -186,7 +180,6 @@ map {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	log_query(
@@ -212,7 +205,6 @@ map {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -241,7 +233,6 @@ map { value, value > 15 as is_high, value <= 10 as is_low }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

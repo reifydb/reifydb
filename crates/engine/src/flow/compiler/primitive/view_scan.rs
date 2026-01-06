@@ -22,17 +22,12 @@ impl From<ViewScanNode> for ViewScanCompiler {
 }
 
 impl CompileOperator for ViewScanCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		compiler.add_node(
 			txn,
 			SourceView {
 				view: self.view_scan.source.def().id,
 			},
 		)
-		.await
 	}
 }

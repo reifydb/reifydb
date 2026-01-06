@@ -155,7 +155,7 @@ impl ServerBuilder {
 		self
 	}
 
-	pub async fn build(self) -> crate::Result<Database> {
+	pub fn build(self) -> crate::Result<Database> {
 		let mut database_builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
 
@@ -174,9 +174,9 @@ impl ServerBuilder {
 		if let Some((otel_config, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::Subsystem;
 
-			// Step 1: Create and start the OtelSubsystem (async)
+			// Step 1: Create and start the OtelSubsystem
 			let mut otel_subsystem = OtelSubsystem::new(otel_config);
-			otel_subsystem.start().await.expect("Failed to start OpenTelemetry subsystem");
+			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
 
 			// Step 2: Get the concrete tracer from the initialized provider
 			let tracer =
@@ -219,7 +219,7 @@ impl ServerBuilder {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
 
-		database_builder.build().await
+		database_builder.build()
 	}
 }
 

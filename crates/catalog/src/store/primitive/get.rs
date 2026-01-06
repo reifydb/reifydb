@@ -13,13 +13,13 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
 	/// Returns an error if the primitive doesn't exist
-	pub async fn get_primitive(
+	pub fn get_primitive(
 		rx: &mut impl IntoStandardTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<PrimitiveDef> {
 		let primitive_id = primitive.into();
 
-		CatalogStore::find_primitive(rx, primitive_id).await?.ok_or_else(|| {
+		CatalogStore::find_primitive(rx, primitive_id)?.ok_or_else(|| {
 			let primitive_type = match primitive_id {
 				PrimitiveId::Table(_) => "Table",
 				PrimitiveId::View(_) => "View",
@@ -50,13 +50,13 @@ mod tests {
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
-	#[tokio::test]
-	async fn test_get_primitive_table() {
-		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_get_primitive_table() {
+		let mut txn = create_test_command_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		// Get primitive by TableId
-		let primitive = CatalogStore::get_primitive(&mut txn, table.id).await.unwrap();
+		let primitive = CatalogStore::get_primitive(&mut txn, table.id).unwrap();
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -67,7 +67,7 @@ mod tests {
 		}
 
 		// Get primitive by PrimitiveId::Table
-		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
+		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::Table(table.id)).unwrap();
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -77,10 +77,10 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_get_primitive_view() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_get_primitive_view() {
+		let mut txn = create_test_command_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -95,11 +95,10 @@ mod tests {
 				}],
 			},
 		)
-		.await
 		.unwrap();
 
 		// Get primitive by ViewId
-		let primitive = CatalogStore::get_primitive(&mut txn, view.id).await.unwrap();
+		let primitive = CatalogStore::get_primitive(&mut txn, view.id).unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -110,7 +109,7 @@ mod tests {
 		}
 
 		// Get primitive by PrimitiveId::View
-		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
+		let primitive = CatalogStore::get_primitive(&mut txn, PrimitiveId::View(view.id)).unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -120,12 +119,12 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_get_primitive_not_found_table() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_primitive_not_found_table() {
+		let mut txn = create_test_command_transaction();
 
 		// Non-existent table should error
-		let result = CatalogStore::get_primitive(&mut txn, TableId(999)).await;
+		let result = CatalogStore::get_primitive(&mut txn, TableId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -133,12 +132,12 @@ mod tests {
 		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
-	#[tokio::test]
-	async fn test_get_primitive_not_found_view() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_primitive_not_found_view() {
+		let mut txn = create_test_command_transaction();
 
 		// Non-existent view should error
-		let result = CatalogStore::get_primitive(&mut txn, ViewId(999)).await;
+		let result = CatalogStore::get_primitive(&mut txn, ViewId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

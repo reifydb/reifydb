@@ -31,11 +31,8 @@ reifydb-sub-server-http = { workspace = true, optional = true }
 reifydb-sub-server-otel = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
 
-# Async dependencies
-async-trait = { workspace = true }
-futures-util = { workspace = true }
 tokio = { workspace = true }
-num_cpus = {workspace = true}
+num_cpus = { workspace = true }
 opentelemetry = { workspace = true, optional = true }
 tracing-opentelemetry = { workspace = true, optional = true }
 

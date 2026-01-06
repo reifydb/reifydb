@@ -3,7 +3,6 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use async_trait::async_trait;
 use reifydb_core::{
 	Error,
 	interface::FlowNodeId,
@@ -55,8 +54,8 @@ impl TakeOperator {
 		}
 	}
 
-	async fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
-		let state_row = self.load_state(txn).await?;
+	fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
+		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(TakeState::default());
@@ -82,11 +81,7 @@ impl TakeOperator {
 		self.save_state(txn, state_row)
 	}
 
-	async fn promote_candidates(
-		&self,
-		state: &mut TakeState,
-		txn: &mut FlowTransaction,
-	) -> crate::Result<Vec<FlowDiff>> {
+	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -94,7 +89,7 @@ impl TakeOperator {
 				state.candidates.remove(&candidate_row);
 				state.active.insert(candidate_row, count);
 
-				let cols = self.parent.pull(txn, &[candidate_row]).await?;
+				let cols = self.parent.pull(txn, &[candidate_row])?;
 				if !cols.is_empty() {
 					output_diffs.push(FlowDiff::Insert {
 						post: cols,
@@ -106,7 +101,7 @@ impl TakeOperator {
 		Ok(output_diffs)
 	}
 
-	async fn evict_to_candidates(
+	fn evict_to_candidates(
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
@@ -119,7 +114,7 @@ impl TakeOperator {
 				state.active.remove(&evicted_row);
 				state.candidates.insert(evicted_row, count);
 
-				let cols = self.parent.pull(txn, &[evicted_row]).await?;
+				let cols = self.parent.pull(txn, &[evicted_row])?;
 				if !cols.is_empty() {
 					output_diffs.push(FlowDiff::Remove {
 						pre: cols,
@@ -148,19 +143,18 @@ impl SingleStateful for TakeOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for TakeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut state = self.load_take_state(txn).await?;
+		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
 
@@ -194,10 +188,9 @@ impl Operator for TakeOperator {
 								if let Some(count) = state.active.remove(&smallest) {
 									state.candidates.insert(smallest, count);
 
-									let cols = self
-										.parent
-										.pull(txn, &[smallest])
-										.await?;
+									let cols =
+										self.parent.pull(txn, &[smallest])?;
+
 									if !cols.is_empty() {
 										output_diffs.push(FlowDiff::Remove {
 											pre: cols,
@@ -260,7 +253,7 @@ impl Operator for TakeOperator {
 								pre,
 							});
 
-							let promoted = self.promote_candidates(&mut state, txn).await?;
+							let promoted = self.promote_candidates(&mut state, txn)?;
 							output_diffs.extend(promoted);
 						}
 					} else if let Some(count) = state.candidates.get_mut(&row_number) {
@@ -279,7 +272,7 @@ impl Operator for TakeOperator {
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
-		self.parent.pull(txn, rows).await
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows)
 	}
 }

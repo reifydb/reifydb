@@ -12,12 +12,12 @@ use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
 	/// Returns an internal error if the ring buffer doesn't exist
-	pub async fn set_ringbuffer_primary_key(
+	pub fn set_ringbuffer_primary_key(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id)).await? {
+		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Ring buffer with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -28,7 +28,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		ringbuffer::LAYOUT.set_u64(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(&RingBufferKey::encoded(ringbuffer_id), updated_row).await?;
+		txn.set(&RingBufferKey::encoded(ringbuffer_id), updated_row)?;
 
 		Ok(())
 	}
@@ -41,26 +41,25 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};
 
-	#[tokio::test]
-	async fn test_set_ringbuffer_primary_key() {
-		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
+	#[test]
+	fn test_set_ringbuffer_primary_key() {
+		let mut txn = create_test_command_transaction();
+		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set primary key
 		let pk_id = PrimaryKeyId(100);
-		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).await.unwrap();
+		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).unwrap();
 
 		// Verify it was set
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).await.unwrap();
+		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
 
-	#[tokio::test]
-	async fn test_set_ringbuffer_primary_key_nonexistent() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_set_ringbuffer_primary_key_nonexistent() {
+		let mut txn = create_test_command_transaction();
 
-		let result =
-			CatalogStore::set_ringbuffer_primary_key(&mut txn, RingBufferId(999), PrimaryKeyId(1)).await;
+		let result = CatalogStore::set_ringbuffer_primary_key(&mut txn, RingBufferId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -68,21 +67,21 @@ mod tests {
 		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
-	#[tokio::test]
-	async fn test_set_ringbuffer_primary_key_overwrites() {
-		let mut txn = create_test_command_transaction().await;
-		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
+	#[test]
+	fn test_set_ringbuffer_primary_key_overwrites() {
+		let mut txn = create_test_command_transaction();
+		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
 		// Set first primary key
 		let pk_id1 = PrimaryKeyId(100);
-		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id1).await.unwrap();
+		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id1).unwrap();
 
 		// Set second primary key (should overwrite)
 		let pk_id2 = PrimaryKeyId(200);
-		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id2).await.unwrap();
+		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id2).unwrap();
 
 		// Verify second one is set
-		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).await.unwrap();
+		let retrieved_pk = CatalogStore::get_ringbuffer_pk_id(&mut txn, ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id2));
 	}
 }

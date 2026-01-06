@@ -31,24 +31,18 @@ impl From<AggregateNode> for AggregateCompiler {
 }
 
 impl CompileOperator for AggregateCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(txn, *self.input).await?;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(txn, *self.input)?;
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				Aggregate {
-					by: self.by,
-					map: self.map,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			Aggregate {
+				by: self.by,
+				map: self.map,
+			},
+		)?;
 
-		compiler.add_edge(txn, &input_node, &node_id).await?;
+		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)
 	}
 }

@@ -116,7 +116,7 @@ pub trait UserVTableIterator: Send + Sync + 'static {
 	///
 	/// Called once before iteration begins. Use the pushdown context to
 	/// optimize data generation (e.g., limit the number of rows fetched).
-	async fn initialize(&mut self, ctx: Option<&UserVTablePushdownContext>) -> crate::Result<()>;
+	fn initialize(&mut self, ctx: Option<&UserVTablePushdownContext>) -> crate::Result<()>;
 
 	/// Get the next batch of rows.
 	///
@@ -124,5 +124,5 @@ pub trait UserVTableIterator: Send + Sync + 'static {
 	/// Each inner `Vec<Value>` represents one row.
 	///
 	/// The `batch_size` parameter is a hint for how many rows to return.
-	async fn next_batch(&mut self, batch_size: usize) -> crate::Result<Option<Vec<Vec<Value>>>>;
+	fn next_batch(&mut self, batch_size: usize) -> crate::Result<Option<Vec<Vec<Value>>>>;
 }

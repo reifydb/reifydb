@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::internal;
 
@@ -23,20 +22,19 @@ impl<'a> ScalarizeNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for ScalarizeNode {
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		self.frame_consumed = false;
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -49,7 +47,7 @@ impl QueryNode for ScalarizeNode {
 		}
 
 		// Get the input frame
-		let input_batch = match self.input.next(rx, ctx).await? {
+		let input_batch = match self.input.next(rx, ctx)? {
 			Some(batch) => batch,
 			None => {
 				// Empty input - return empty result

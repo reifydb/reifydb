@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
 	interface::FlowNodeId,
@@ -356,7 +355,7 @@ impl WindowOperator {
 	}
 
 	/// Apply aggregations to all events in a window
-	pub async fn apply_aggregations(
+	pub fn apply_aggregations(
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
@@ -370,7 +369,7 @@ impl WindowOperator {
 		if self.aggregations.is_empty() {
 			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
-				self.row_number_provider.get_or_create_row_number(txn, window_key).await?;
+				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 			let mut result_row = events[0].to_row();
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
@@ -422,8 +421,7 @@ impl WindowOperator {
 		layout.set_values(&mut encoded, &result_values);
 
 		// Use RowNumberProvider to get unique, stable row number for this window
-		let (result_row_number, is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, window_key).await?;
+		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
 		let result_row = Row {
 			number: result_row_number,
@@ -435,7 +433,7 @@ impl WindowOperator {
 	}
 
 	/// Process expired windows and clean up state
-	pub async fn process_expired_windows(
+	pub fn process_expired_windows(
 		&self,
 		txn: &mut FlowTransaction,
 		current_timestamp: u64,
@@ -453,19 +451,19 @@ impl WindowOperator {
 			let range =
 				EncodedKeyRange::new(std::ops::Bound::Excluded(before_key), std::ops::Bound::Unbounded);
 
-			let _expired_count = self.expire_range(txn, range).await?;
+			let _expired_count = self.expire_range(txn, range)?;
 		}
 
 		Ok(result)
 	}
 
 	/// Load window state from storage
-	pub async fn load_window_state(
+	pub fn load_window_state(
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<WindowState> {
-		let state_row = self.load_state(txn, window_key).await?;
+		let state_row = self.load_state(txn, window_key)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(WindowState::default());
@@ -498,13 +496,13 @@ impl WindowOperator {
 	}
 
 	/// Get and increment global event count for count-based windows
-	pub async fn get_and_increment_global_count(
+	pub fn get_and_increment_global_count(
 		&self,
 		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 	) -> crate::Result<u64> {
 		let count_key = self.create_count_key(group_hash);
-		let count_row = self.load_state(txn, &count_key).await?;
+		let count_row = self.load_state(txn, &count_key)?;
 
 		let current_count = if count_row.is_empty() || !count_row.is_defined(0) {
 			0
@@ -551,29 +549,28 @@ impl WindowStateful for WindowOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for WindowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
-		// For window operators, we need async operation but trait requires sync.
+		// For window operators, we need  operation but trait requires sync.
 		// We'll need to refactor the architecture to support this properly.
-		// For now, return an error indicating async is needed.
+		// For now, return an error indicating  is needed.
 		match &self.slide {
-			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator).await,
-			Some(_) => apply_sliding_window(self, txn, change, evaluator).await,
-			None => apply_tumbling_window(self, txn, change, evaluator).await,
+			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
+			Some(_) => apply_sliding_window(self, txn, change, evaluator),
+			None => apply_tumbling_window(self, txn, change, evaluator),
 		}
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		todo!()
 	}
 }

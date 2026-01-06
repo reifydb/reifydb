@@ -30,7 +30,7 @@ impl JoinStrategy {
 	}
 
 	/// Handle insert for rows with undefined join keys (processed individually)
-	pub(crate) async fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Columns,
@@ -41,16 +41,16 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_insert_undefined(txn, post, row_idx, side, state, operator).await
+				s.handle_insert_undefined(txn, post, row_idx, side, state, operator)
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_insert_undefined(txn, post, row_idx, side, state, operator).await
+				s.handle_insert_undefined(txn, post, row_idx, side, state, operator)
 			}
 		}
 	}
 
 	/// Handle remove for rows with undefined join keys (processed individually)
-	pub(crate) async fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -62,16 +62,16 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version).await
+				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version)
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version).await
+				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version)
 			}
 		}
 	}
 
 	/// Handle update for rows with undefined join keys (processed individually)
-	pub(crate) async fn handle_update_undefined(
+	pub(crate) fn handle_update_undefined(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -84,16 +84,16 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version).await
+				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version)
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version).await
+				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version)
 			}
 		}
 	}
 
 	/// Handle insert for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_insert(
+	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Columns,
@@ -105,16 +105,16 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_insert(txn, post, indices, side, key_hash, state, operator).await
+				s.handle_insert(txn, post, indices, side, key_hash, state, operator)
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_insert(txn, post, indices, side, key_hash, state, operator).await
+				s.handle_insert(txn, post, indices, side, key_hash, state, operator)
 			}
 		}
 	}
 
 	/// Handle remove for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_remove(
+	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -127,16 +127,16 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
-				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version).await
+				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version)
 			}
 			JoinStrategy::InnerHash(s) => {
-				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version).await
+				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version)
 			}
 		}
 	}
 
 	/// Handle update for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_update(
+	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -150,18 +150,12 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => {
-				s.handle_update(
-					txn, pre, post, indices, side, old_key, new_key, state, operator, version,
-				)
-				.await
-			}
-			JoinStrategy::InnerHash(s) => {
-				s.handle_update(
-					txn, pre, post, indices, side, old_key, new_key, state, operator, version,
-				)
-				.await
-			}
+			JoinStrategy::LeftHash(s) => s.handle_update(
+				txn, pre, post, indices, side, old_key, new_key, state, operator, version,
+			),
+			JoinStrategy::InnerHash(s) => s.handle_update(
+				txn, pre, post, indices, side, old_key, new_key, state, operator, version,
+			),
 		}
 	}
 }

@@ -13,13 +13,13 @@ use std::{
 	time::Duration,
 };
 
-use async_trait::async_trait;
 use reifydb_core::{
 	diagnostic::subsystem::{address_unavailable, bind_failed, socket_config_failed},
 	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 use tokio::{net::TcpListener, sync::oneshot, time::timeout};
 
 use crate::state::AdminState;
@@ -42,6 +42,8 @@ pub struct AdminSubsystem {
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	/// Channel to receive shutdown completion.
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	/// Shared tokio runtime.
+	runtime: SharedRuntime,
 }
 
 impl AdminSubsystem {
@@ -51,7 +53,8 @@ impl AdminSubsystem {
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
 	/// * `state` - Shared application state
-	pub fn new(bind_addr: String, state: AdminState) -> Self {
+	/// * `runtime` - Optional shared runtime
+	pub fn new(bind_addr: String, state: AdminState, runtime: Option<SharedRuntime>) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -59,6 +62,7 @@ impl AdminSubsystem {
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
 		}
 	}
 
@@ -89,13 +93,12 @@ impl HasVersion for AdminSubsystem {
 	}
 }
 
-#[async_trait]
 impl Subsystem for AdminSubsystem {
 	fn name(&self) -> &'static str {
 		"Admin"
 	}
 
-	async fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -118,8 +121,9 @@ impl Subsystem for AdminSubsystem {
 
 		let state = self.state.clone();
 		let running = self.running.clone();
+		let runtime = self.runtime.clone();
 
-		tokio::spawn(async move {
+		runtime.spawn(async move {
 			// Mark as running
 			running.store(true, Ordering::SeqCst);
 
@@ -146,24 +150,10 @@ impl Subsystem for AdminSubsystem {
 		Ok(())
 	}
 
-	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
-		// Send shutdown signal
+	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
-
-		// Wait for graceful shutdown with timeout
-		if let Some(rx) = self.shutdown_complete_rx.take() {
-			match timeout(Duration::from_secs(30), rx).await {
-				Ok(_) => {
-					tracing::debug!("Admin server shutdown completed");
-				}
-				Err(_) => {
-					tracing::warn!("Admin server shutdown timed out");
-				}
-			}
-		}
-
 		Ok(())
 	}
 

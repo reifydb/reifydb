@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 
 use crate::{GeneratorContext, GeneratorFunction};
@@ -14,9 +13,8 @@ impl GenerateSeries {
 	}
 }
 
-#[async_trait]
 impl GeneratorFunction for GenerateSeries {
-	async fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 

@@ -14,19 +14,18 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	info!("=== Memory Storage Example ===\n");
 
 	// Create an in-memory database
 	info!("Creating in-memory database...");
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 	info!("✓ Database created and started\n");
 
 	// Create a namespace
 	info!("Creating namespace 'app'...");
-	let result = db.command_as_root("create namespace app", Params::None).await.unwrap();
+	let result = db.command_as_root("create namespace app", Params::None).unwrap();
 	for frame in result {
 		info!("{}", frame);
 	}
@@ -46,7 +45,6 @@ async fn main() {
 		"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 	for frame in result {
 		info!("{}", frame);
@@ -76,7 +74,6 @@ insert app.users"#,
 		"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 	for frame in result {
 		info!("{}", frame);
@@ -87,7 +84,7 @@ insert app.users"#,
 	info!("Querying all users:");
 	log_query("from app.users");
 
-	for frame in db.query_as_root("from app.users", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from app.users", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
@@ -95,7 +92,7 @@ insert app.users"#,
 	info!("\nQuerying active users:");
 	log_query("from app.users filter active == true");
 
-	for frame in db.query_as_root("from app.users filter active == true", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from app.users filter active == true", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 
@@ -114,7 +111,6 @@ insert app.users"#,
 		"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 	for frame in result {
 		info!("{}", frame);
@@ -125,7 +121,7 @@ insert app.users"#,
 	info!("Querying all users after update:");
 	log_query("from app.users sort id");
 
-	for frame in db.query_as_root("from app.users sort id", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from app.users sort id", Params::None).unwrap() {
 		info!("{}", frame);
 	}
 }

@@ -13,6 +13,7 @@ reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
 
 futures-util = { workspace = true }
+once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	event::{
 		EventListener,
@@ -28,17 +27,16 @@ impl StartEventListener {
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-#[async_trait]
 impl EventListener<OnStartEvent> for StartEventListener {
-	async fn on(&self, _hook: &OnStartEvent) {
-		if let Err(e) = self.handle_start().await {
+	fn on(&self, _hook: &OnStartEvent) {
+		if let Err(e) = self.handle_start() {
 			error!("Failed to handle OnStart event: {}", e);
 		}
 	}
 }
 
 impl StartEventListener {
-	async fn handle_start(&self) -> crate::Result<()> {
+	fn handle_start(&self) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1]);
 		let key = SystemVersionKey {
 			version: SystemVersion::Storage,
@@ -46,9 +44,9 @@ impl StartEventListener {
 		.encode();
 
 		// Manually manage transaction since we need async operations
-		let mut tx = self.single.begin_command([&key]).await?;
+		let mut tx = self.single.begin_command([&key])?;
 
-		let created = match tx.get(&key).await? {
+		let created = match tx.get(&key)? {
 			None => {
 				let mut row = layout.allocate();
 				layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
@@ -62,18 +60,18 @@ impl StartEventListener {
 			}
 		};
 
-		tx.commit().await?;
+		tx.commit()?;
 
 		// the database was never started before
 		if created {
-			self.trigger_database_creation().await
+			self.trigger_database_creation()
 		} else {
 			Ok(())
 		}
 	}
 
-	async fn trigger_database_creation(&self) -> crate::Result<()> {
-		self.single.event_bus().emit(OnCreateEvent {}).await;
+	fn trigger_database_creation(&self) -> crate::Result<()> {
+		self.single.event_bus().emit(OnCreateEvent {});
 		Ok(())
 	}
 }

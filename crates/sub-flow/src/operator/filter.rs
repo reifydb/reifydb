@@ -3,7 +3,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use async_trait::async_trait;
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_rql::expression::Expression;
@@ -110,13 +109,12 @@ impl FilterOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for FilterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -193,8 +191,8 @@ impl Operator for FilterOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let _guard = operator_context_guard!(self);
-		self.parent.pull(txn, rows).await
+		self.parent.pull(txn, rows)
 	}
 }

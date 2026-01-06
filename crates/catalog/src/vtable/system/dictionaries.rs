@@ -34,12 +34,12 @@ impl Dictionaries {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for Dictionaries {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -50,7 +50,7 @@ impl<T: IntoStandardTransaction> VTable<T> for Dictionaries {
 		let mut value_types = Vec::new();
 		let mut id_types = Vec::new();
 
-		let dictionaries = CatalogStore::list_all_dictionaries(txn).await?;
+		let dictionaries = CatalogStore::list_all_dictionaries(txn)?;
 		for dict in dictionaries {
 			ids.push(dict.id.0);
 			namespace_ids.push(dict.namespace.0);

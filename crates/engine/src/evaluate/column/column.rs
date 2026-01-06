@@ -647,8 +647,8 @@ mod tests {
 		stack::Stack,
 	};
 
-	#[tokio::test]
-	async fn test_column_not_found_returns_correct_row_count() {
+	#[test]
+	fn test_column_not_found_returns_correct_row_count() {
 		// Create context with 5 rows
 		let columns =
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);

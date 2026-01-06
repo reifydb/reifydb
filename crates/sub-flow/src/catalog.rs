@@ -8,6 +8,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use parking_lot::RwLock;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result,
@@ -15,7 +16,6 @@ use reifydb_core::{
 };
 use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
-use tokio::sync::RwLock;
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -55,26 +55,26 @@ impl FlowCatalog {
 	/// Uses double-check locking pattern:
 	/// 1. Fast path: read lock check for cached entry
 	/// 2. Slow path: write lock, re-check, then load and cache
-	pub async fn get_or_load<T: IntoStandardTransaction>(
+	pub fn get_or_load<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		source: PrimitiveId,
 	) -> Result<Arc<PrimitiveMetadata>> {
 		// Fast path: read lock check
 		{
-			let cache = self.sources.read().await;
+			let cache = self.sources.read();
 			if let Some(metadata) = cache.get(&source) {
 				return Ok(Arc::clone(metadata));
 			}
 		}
 
 		// Slow path: load and cache
-		let metadata = Arc::new(self.load_primitive_metadata(txn, source).await?);
-		let mut cache = self.sources.write().await;
+		let metadata = Arc::new(self.load_primitive_metadata(txn, source)?);
+		let mut cache = self.sources.write();
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	async fn load_primitive_metadata<T: IntoStandardTransaction>(
+	fn load_primitive_metadata<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		source: PrimitiveId,
@@ -82,13 +82,11 @@ impl FlowCatalog {
 		// Get columns based on source type
 		let columns: Vec<ColumnDef> = match source {
 			PrimitiveId::Table(table_id) => {
-				self.catalog.resolve_table(txn, table_id).await?.def().columns.clone()
+				self.catalog.resolve_table(txn, table_id)?.def().columns.clone()
 			}
-			PrimitiveId::View(view_id) => {
-				self.catalog.resolve_view(txn, view_id).await?.def().columns.clone()
-			}
+			PrimitiveId::View(view_id) => self.catalog.resolve_view(txn, view_id)?.def().columns.clone(),
 			PrimitiveId::RingBuffer(rb_id) => {
-				self.catalog.resolve_ringbuffer(txn, rb_id).await?.def().columns.clone()
+				self.catalog.resolve_ringbuffer(txn, rb_id)?.def().columns.clone()
 			}
 			PrimitiveId::Flow(_) => unimplemented!("Flow sources not supported in flows"),
 			PrimitiveId::TableVirtual(_) => unimplemented!("Virtual table sources not supported in flows"),
@@ -103,7 +101,7 @@ impl FlowCatalog {
 
 		for col in &columns {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = self.catalog.find_dictionary(txn, dict_id).await? {
+				if let Some(dict) = self.catalog.find_dictionary(txn, dict_id)? {
 					storage_types.push(dict.id_type);
 					value_types.push((col.name.clone(), dict.value_type));
 					dictionaries.push(Some(dict));
@@ -147,25 +145,25 @@ mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;
 
-	#[tokio::test]
-	async fn test_new_creates_empty_cache() {
+	#[test]
+	fn test_new_creates_empty_cache() {
 		let flow_catalog = FlowCatalog::default();
-		assert!(flow_catalog.sources.read().await.is_empty());
+		assert!(flow_catalog.sources.read().is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_default() {
+	#[test]
+	fn test_default() {
 		let flow_catalog = FlowCatalog::default();
-		assert!(flow_catalog.sources.read().await.is_empty());
+		assert!(flow_catalog.sources.read().is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_get_or_load_table() {
-		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_get_or_load_table() {
+		let mut txn = create_test_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		let flow_catalog = FlowCatalog::default();
-		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).await.unwrap();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).unwrap();
 
 		// The test table has no columns, so metadata should reflect that
 		assert!(metadata.storage_types.is_empty());
@@ -174,42 +172,42 @@ mod tests {
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[tokio::test]
-	async fn test_get_or_load_cache_hit() {
-		let mut txn = create_test_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_get_or_load_cache_hit() {
+		let mut txn = create_test_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		let flow_catalog = FlowCatalog::default();
 		let source = PrimitiveId::Table(table.id);
 
-		let first = flow_catalog.get_or_load(&mut txn, source).await.unwrap();
-		let second = flow_catalog.get_or_load(&mut txn, source).await.unwrap();
+		let first = flow_catalog.get_or_load(&mut txn, source).unwrap();
+		let second = flow_catalog.get_or_load(&mut txn, source).unwrap();
 
 		// Should return the same Arc (cache hit)
 		assert!(Arc::ptr_eq(&first, &second));
 	}
 
-	#[tokio::test]
-	async fn test_get_or_load_view() {
-		let mut txn = create_test_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		let view = create_view(&mut txn, "test_namespace", "test_view", &[]).await;
+	#[test]
+	fn test_get_or_load_view() {
+		let mut txn = create_test_transaction();
+		ensure_test_namespace(&mut txn);
+		let view = create_view(&mut txn, "test_namespace", "test_view", &[]);
 
 		let flow_catalog = FlowCatalog::default();
-		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).await.unwrap();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
 		assert!(!metadata.has_dictionary_columns);
 	}
 
-	#[tokio::test]
-	async fn test_get_or_load_ringbuffer() {
-		let mut txn = create_test_transaction().await;
-		let rb = ensure_test_ringbuffer(&mut txn).await;
+	#[test]
+	fn test_get_or_load_ringbuffer() {
+		let mut txn = create_test_transaction();
+		let rb = ensure_test_ringbuffer(&mut txn);
 
 		let flow_catalog = FlowCatalog::default();
-		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).await.unwrap();
+		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).unwrap();
 
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());

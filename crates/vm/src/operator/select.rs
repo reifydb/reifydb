@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::{
 	Batch,
 	value::column::{Column, Columns},
@@ -27,7 +26,7 @@ impl SelectOp {
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
 		let columns = self.columns.clone();
 
-		Box::pin(input.map(move |result| result.and_then(|batch| project_columns(&batch, &columns))))
+		Box::new(input.map(move |result| result.and_then(|batch| project_columns(&batch, &columns))))
 	}
 }
 

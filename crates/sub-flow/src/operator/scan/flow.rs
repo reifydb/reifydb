@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{FlowDef, FlowNodeId},
 	value::column::Columns,
@@ -27,13 +26,12 @@ impl PrimitiveFlowOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for PrimitiveFlowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -42,7 +40,7 @@ impl Operator for PrimitiveFlowOperator {
 		Ok(change)
 	}
 
-	async fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
 		// TODO: Implement flow pull
 		unimplemented!()
 	}

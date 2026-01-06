@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{
 	SubscriptionColumnDef, SubscriptionColumnId, SubscriptionColumnKey, SubscriptionDef, SubscriptionId,
 	SubscriptionKey,
@@ -26,33 +25,30 @@ pub struct SubscriptionToCreate {
 }
 
 impl CatalogStore {
-	pub async fn create_subscription(
+	pub fn create_subscription(
 		txn: &mut StandardCommandTransaction,
 		to_create: SubscriptionToCreate,
 	) -> crate::Result<SubscriptionDef> {
 		// Generate a new UUID v7 subscription ID (time-ordered and globally unique)
 		let subscription_id = SubscriptionId::new();
-		Self::store_subscription(txn, subscription_id).await?;
-		Self::insert_columns_for_subscription(txn, subscription_id, &to_create).await?;
+		Self::store_subscription(txn, subscription_id)?;
+		Self::insert_columns_for_subscription(txn, subscription_id, &to_create)?;
 
-		Ok(Self::get_subscription(txn, subscription_id).await?)
+		Ok(Self::get_subscription(txn, subscription_id)?)
 	}
 
-	async fn store_subscription(
-		txn: &mut StandardCommandTransaction,
-		subscription: SubscriptionId,
-	) -> crate::Result<()> {
+	fn store_subscription(txn: &mut StandardCommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
 		let mut row = subscription::LAYOUT.allocate();
 		subscription::LAYOUT.set_uuid7(&mut row, subscription::ID, Uuid7::from(subscription.0));
 		subscription::LAYOUT.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
 		subscription::LAYOUT.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
 
-		txn.set(&SubscriptionKey::encoded(subscription), row).await?;
+		txn.set(&SubscriptionKey::encoded(subscription), row)?;
 
 		Ok(())
 	}
 
-	async fn insert_columns_for_subscription(
+	fn insert_columns_for_subscription(
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 		to_create: &SubscriptionToCreate,
@@ -73,19 +69,19 @@ impl CatalogStore {
 				column_to_create.ty as u8,
 			);
 
-			txn.set(&SubscriptionColumnKey::encoded(subscription, column_id), row).await?;
+			txn.set(&SubscriptionColumnKey::encoded(subscription, column_id), row)?;
 		}
 		Ok(())
 	}
 
-	pub(crate) async fn list_subscription_columns(
+	pub(crate) fn list_subscription_columns(
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<Vec<SubscriptionColumnDef>> {
 		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
 		let mut columns = Vec::new();
-		while let Some(result) = stream.next().await {
+		while let Some(result) = stream.next() {
 			let multi = result?;
 			let row = &multi.values;
 			let id =
@@ -119,23 +115,23 @@ mod tests {
 		store::subscription::{SubscriptionColumnToCreate, SubscriptionToCreate},
 	};
 
-	#[tokio::test]
-	async fn test_create_subscription() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_create_subscription() {
+		let mut txn = create_test_command_transaction();
 
 		let to_create = SubscriptionToCreate {
 			columns: vec![],
 		};
 
-		let result = CatalogStore::create_subscription(&mut txn, to_create).await.unwrap();
+		let result = CatalogStore::create_subscription(&mut txn, to_create).unwrap();
 		// UUID v7 IDs are generated, so we just verify the subscription was created
 		assert_eq!(result.acknowledged_version.0, 0);
 		assert!(result.columns.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_create_subscription_with_columns() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_create_subscription_with_columns() {
+		let mut txn = create_test_command_transaction();
 
 		let to_create = SubscriptionToCreate {
 			columns: vec![
@@ -150,7 +146,7 @@ mod tests {
 			],
 		};
 
-		let result = CatalogStore::create_subscription(&mut txn, to_create).await.unwrap();
+		let result = CatalogStore::create_subscription(&mut txn, to_create).unwrap();
 		assert_eq!(result.columns.len(), 2);
 
 		// Column IDs are indices
@@ -163,9 +159,9 @@ mod tests {
 		assert_eq!(result.columns[1].ty, Type::Utf8);
 	}
 
-	#[tokio::test]
-	async fn test_create_multiple_subscriptions() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_create_multiple_subscriptions() {
+		let mut txn = create_test_command_transaction();
 
 		let sub1 = CatalogStore::create_subscription(
 			&mut txn,
@@ -173,7 +169,6 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
 		let sub2 = CatalogStore::create_subscription(
@@ -182,7 +177,6 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
 		// Multiple subscriptions allowed with unique UUID v7 IDs

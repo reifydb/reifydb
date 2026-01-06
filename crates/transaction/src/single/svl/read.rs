@@ -2,17 +2,46 @@
 // Copyright (c) 2025 ReifyDB
 
 use diagnostic::transaction::key_out_of_scope;
+use parking_lot::{RwLock, RwLockReadGuard};
 use reifydb_core::interface::SingleVersionValues;
 use reifydb_store_transaction::{SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic, error, util::hex};
-use tokio::sync::OwnedRwLockReadGuard;
 
 use super::*;
 
-/// Simple wrapper around tokio's OwnedRwLockReadGuard.
-/// OwnedRwLockReadGuard is Send, so this struct is Send.
+/// Holds both the Arc and the guard to keep the lock alive
 #[allow(dead_code)]
-pub struct KeyReadLock(pub(super) OwnedRwLockReadGuard<()>);
+pub struct KeyReadLock {
+	pub(super) _arc: Arc<RwLock<()>>,
+	pub(super) _guard: RwLockReadGuard<'static, ()>,
+}
+
+impl KeyReadLock {
+	/// Creates a new KeyReadLock by taking a read guard and storing it with the Arc.
+	///
+	/// # Safety
+	/// This function uses unsafe code to extend the lifetime of the guard to 'static.
+	/// This is safe because:
+	/// 1. The guard borrows from the RwLock inside the Arc
+	/// 2. We store the Arc in this struct, keeping the RwLock alive
+	/// 3. The guard will be dropped before or with the Arc (due to field order)
+	/// 4. As long as this struct exists, the Arc exists, so the RwLock exists
+	pub(super) fn new(arc: Arc<RwLock<()>>) -> Self {
+		// Take the guard while we still have a reference to arc
+		let guard = arc.read();
+
+		// SAFETY: We're extending the guard's lifetime to 'static.
+		// This is sound because we're also storing the Arc, which keeps
+		// the underlying RwLock alive for as long as this struct exists.
+		let guard =
+			unsafe { std::mem::transmute::<RwLockReadGuard<'_, ()>, RwLockReadGuard<'static, ()>>(guard) };
+
+		Self {
+			_arc: arc,
+			_guard: guard,
+		}
+	}
+}
 
 pub struct SvlQueryTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
@@ -30,18 +59,15 @@ impl<'a> SvlQueryTransaction<'a> {
 		}
 	}
 
-	pub async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
-		// Clone the store to avoid holding the lock across await
-		// TransactionStore is Arc-based, so clone is cheap
-		let store = self.inner.store.read().await.clone();
+		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
-		// Clone the store to avoid holding the lock across await
-		let store = self.inner.store.read().await.clone();
+		let store = self.inner.store.read().clone();
 		SingleVersionContains::contains(&store, key)
 	}
 }

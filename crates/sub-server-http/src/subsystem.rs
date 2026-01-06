@@ -13,18 +13,16 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
-use async_trait::async_trait;
 use reifydb_core::{
 	diagnostic::subsystem::{address_unavailable, bind_failed},
 	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::AppState;
-use tokio::{net::TcpListener, sync::oneshot, time::timeout};
+use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, SharedRuntime};
+use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::routes::router;
 
@@ -63,6 +61,8 @@ pub struct HttpSubsystem {
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	/// Channel to receive shutdown completion.
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	/// Shared tokio runtime.
+	runtime: SharedRuntime,
 }
 
 impl HttpSubsystem {
@@ -72,7 +72,8 @@ impl HttpSubsystem {
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
 	/// * `state` - Shared application state with engine and config
-	pub fn new(bind_addr: String, state: AppState) -> Self {
+	/// * `runtime` - Optional shared runtime
+	pub fn new(bind_addr: String, state: AppState, runtime: Option<SharedRuntime>) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -80,6 +81,7 @@ impl HttpSubsystem {
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
 		}
 	}
 
@@ -110,20 +112,20 @@ impl HasVersion for HttpSubsystem {
 	}
 }
 
-#[async_trait]
 impl Subsystem for HttpSubsystem {
 	fn name(&self) -> &'static str {
 		"Http"
 	}
 
-	async fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
 
 		let addr = self.bind_addr.clone();
-		let listener = TcpListener::bind(&addr).await.map_err(|e| error!(bind_failed(&addr, e)))?;
+		let runtime = self.runtime.clone();
+		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| error!(bind_failed(&addr, e)))?;
 
 		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
@@ -134,8 +136,9 @@ impl Subsystem for HttpSubsystem {
 
 		let state = self.state.clone();
 		let running = self.running.clone();
+		let runtime = self.runtime.clone();
 
-		tokio::spawn(async move {
+		runtime.spawn(async move {
 			// Mark as running
 			running.store(true, Ordering::SeqCst);
 
@@ -162,24 +165,10 @@ impl Subsystem for HttpSubsystem {
 		Ok(())
 	}
 
-	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
-		// Send shutdown signal
+	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
-
-		// Wait for graceful shutdown with timeout
-		if let Some(rx) = self.shutdown_complete_rx.take() {
-			match timeout(Duration::from_secs(30), rx).await {
-				Ok(_) => {
-					tracing::debug!("HTTP server shutdown completed");
-				}
-				Err(_) => {
-					tracing::warn!("HTTP server shutdown timed out");
-				}
-			}
-		}
-
 		Ok(())
 	}
 

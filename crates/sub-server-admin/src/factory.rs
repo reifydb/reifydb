@@ -3,7 +3,6 @@
 
 //! Factory for creating admin subsystem instances.
 
-use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -24,9 +23,8 @@ impl AdminSubsystemFactory {
 	}
 }
 
-#[async_trait]
 impl SubsystemFactory for AdminSubsystemFactory {
-	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Create admin state from config
@@ -38,7 +36,7 @@ impl SubsystemFactory for AdminSubsystemFactory {
 			self.config.auth_token.clone(),
 		);
 
-		let subsystem = AdminSubsystem::new(self.config.bind_addr.clone(), state);
+		let subsystem = AdminSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime);
 
 		Ok(Box::new(subsystem))
 	}

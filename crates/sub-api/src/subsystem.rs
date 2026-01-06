@@ -3,7 +3,6 @@
 
 use std::any::Any;
 
-use async_trait::async_trait;
 use reifydb_core::{interface::version::HasVersion, ioc::IocContainer};
 use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 
@@ -11,7 +10,6 @@ use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
-#[async_trait]
 pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// Get the unique name of this subsystem
 	fn name(&self) -> &'static str;
@@ -20,7 +18,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// This method should initialize the subsystem and start any background
 	/// threads or processes. It should be idempotent - calling start() on
 	/// an already running subsystem should succeed without side effects.
-	async fn start(&mut self) -> reifydb_core::Result<()>;
+	fn start(&mut self) -> reifydb_core::Result<()>;
 	/// Shutdown the subsystem
 	///
 	/// This method should gracefully shut down the subsystem and clean up
@@ -28,7 +26,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// subsystem cannot be restarted. It should be idempotent - calling
 	/// shutdown() on an already shutdown subsystem should succeed without
 	/// side effects.
-	async fn shutdown(&mut self) -> reifydb_core::Result<()>;
+	fn shutdown(&mut self) -> reifydb_core::Result<()>;
 
 	/// Check if the subsystem is currently running
 	fn is_running(&self) -> bool;
@@ -47,7 +45,6 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 }
 
 /// Factory trait for creating subsystems with IoC support
-#[async_trait]
 pub trait SubsystemFactory: Send {
 	fn provide_interceptors(
 		&self,
@@ -57,7 +54,7 @@ pub trait SubsystemFactory: Send {
 		builder
 	}
 
-	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>>;
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

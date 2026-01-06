@@ -20,6 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sdk::FlowChange;
+use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 use reifydb_transaction::cdc::CdcQueryTransaction;
 use tokio::{
 	select,
@@ -49,15 +50,12 @@ struct CachedVersion {
 pub struct FlowChangeProvider {
 	/// Engine for fetching CDC and creating transactions.
 	engine: StandardEngine,
-
 	/// LRU cache: version -> decoded changes + affected primitives.
 	/// Thread-safe via DashMap internally.
 	cache: LruCache<CommitVersion, CachedVersion>,
-
 	/// In-flight fetches: prevents duplicate fetches for same version.
 	/// Maps version to a channel that will receive the result.
 	in_flight: DashMap<CommitVersion, watch::Receiver<Option<CachedVersion>>>,
-
 	/// Catalog cache for source metadata (shared across fetches).
 	catalog_cache: FlowCatalog,
 }
@@ -71,7 +69,9 @@ impl FlowChangeProvider {
 		engine: StandardEngine,
 		version_rx: broadcast::Receiver<VersionBroadcast>,
 		shutdown: CancellationToken,
+		runtime: Option<SharedRuntime>,
 	) -> Arc<Self> {
+		let runtime = runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone());
 		let catalog_cache = FlowCatalog::new(engine.catalog());
 
 		let provider = Arc::new(Self {
@@ -83,7 +83,7 @@ impl FlowChangeProvider {
 
 		// Spawn pre-fetch worker
 		let provider_clone = Arc::clone(&provider);
-		tokio::spawn(Self::prefetch_loop(provider_clone, version_rx, shutdown));
+		runtime.spawn(Self::prefetch_loop(provider_clone, version_rx, shutdown));
 
 		debug!("flow change provider spawned");
 		provider
@@ -221,11 +221,11 @@ impl FlowChangeProvider {
 		version: CommitVersion,
 	) -> crate::Result<(VersionChanges, HashSet<PrimitiveId>)> {
 		// Begin query transaction at the version for dictionary decoding
-		let mut query_txn = self.engine.begin_query_at_version(version).await?;
+		let mut query_txn = self.engine.begin_query_at_version(version)?;
 
 		// Fetch CDC for this specific version
-		let cdc_txn = query_txn.begin_cdc_query().await?;
-		let cdc_opt = cdc_txn.get(version).await?;
+		let cdc_txn = query_txn.begin_cdc_query()?;
+		let cdc_opt = cdc_txn.get(version)?;
 
 		let cdc = match cdc_opt {
 			Some(cdc) => cdc,
@@ -264,9 +264,7 @@ impl FlowChangeProvider {
 					row_number,
 					&cdc_change.change,
 					version,
-				)
-				.await
-				{
+				) {
 					Ok(change) => {
 						all_changes.push(change);
 					}

@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_update<T: IntoStandardTransaction>(
+	pub(crate) fn compile_update<T: IntoStandardTransaction>(
 		&self,
 		ast: AstUpdate,
 		tx: &mut T,
@@ -31,7 +31,7 @@ impl Compiler {
 		let target_name = unresolved.name.text();
 
 		// Try to find namespace
-		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name).await? {
+		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name)? {
 			ns.id
 		} else {
 			// If namespace doesn't exist, default to table (will error during physical plan)
@@ -46,7 +46,7 @@ impl Compiler {
 		};
 
 		// Check if it's a ring buffer first
-		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name).await?.is_some() {
+		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
 			if let Some(ns) = unresolved.namespace.clone() {
 				target = target.with_namespace(ns);

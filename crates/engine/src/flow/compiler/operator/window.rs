@@ -43,37 +43,31 @@ impl From<WindowNode> for WindowCompiler {
 }
 
 impl CompileOperator for WindowCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		// Compile input first if present
 		let input_node = if let Some(input) = self.input {
-			Some(compiler.compile_plan(txn, *input).await?)
+			Some(compiler.compile_plan(txn, *input)?)
 		} else {
 			None
 		};
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				Window {
-					window_type: self.window_type,
-					size: self.size,
-					slide: self.slide,
-					group_by: self.group_by,
-					aggregations: self.aggregations,
-					min_events: self.min_events,
-					max_window_count: self.max_window_count,
-					max_window_age: self.max_window_age,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			Window {
+				window_type: self.window_type,
+				size: self.size,
+				slide: self.slide,
+				group_by: self.group_by,
+				aggregations: self.aggregations,
+				min_events: self.min_events,
+				max_window_count: self.max_window_count,
+				max_window_age: self.max_window_age,
+			},
+		)?;
 
 		// Add input edge if we have one
 		if let Some(input_node) = input_node {
-			compiler.add_edge(txn, &input_node, &node_id).await?;
+			compiler.add_edge(txn, &input_node, &node_id)?;
 		}
 
 		Ok(node_id)

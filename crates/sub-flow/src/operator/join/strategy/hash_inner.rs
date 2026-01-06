@@ -18,7 +18,7 @@ pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
 	/// Handle insert for rows with undefined join keys (no output for inner join)
-	pub(crate) async fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
 		_post: &Columns,
@@ -32,7 +32,7 @@ impl InnerHashJoin {
 	}
 
 	/// Handle remove for rows with undefined join keys (no output for inner join)
-	pub(crate) async fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
 		_pre: &Columns,
@@ -47,7 +47,7 @@ impl InnerHashJoin {
 	}
 
 	/// Handle update for rows with undefined join keys (no output for inner join)
-	pub(crate) async fn handle_update_undefined(
+	pub(crate) fn handle_update_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
 		_pre: &Columns,
@@ -63,7 +63,7 @@ impl InnerHashJoin {
 	}
 
 	/// Handle insert for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_insert(
+	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
 		post: &Columns,
@@ -82,10 +82,10 @@ impl InnerHashJoin {
 		// Add all rows to state first
 		match side {
 			JoinSide::Left => {
-				add_to_state_entry_batch(txn, &mut state.left, key_hash, post, indices).await?;
+				add_to_state_entry_batch(txn, &mut state.left, key_hash, post, indices)?;
 			}
 			JoinSide::Right => {
-				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices).await?;
+				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices)?;
 			}
 		}
 
@@ -108,9 +108,7 @@ impl InnerHashJoin {
 			key_hash,
 			operator,
 			opposite_parent,
-		)
-		.await?
-		{
+		)? {
 			result.push(diff);
 		}
 
@@ -118,7 +116,7 @@ impl InnerHashJoin {
 	}
 
 	/// Handle remove for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_remove(
+	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -139,7 +137,7 @@ impl InnerHashJoin {
 		if matches!(side, JoinSide::Left) {
 			for &idx in indices {
 				let row_number = pre.row_numbers[idx];
-				operator.cleanup_left_row_joins(txn, *row_number).await?;
+				operator.cleanup_left_row_joins(txn, *row_number)?;
 			}
 		}
 
@@ -162,9 +160,7 @@ impl InnerHashJoin {
 			key_hash,
 			operator,
 			opposite_parent,
-		)
-		.await?
-		{
+		)? {
 			result.push(diff);
 		}
 
@@ -173,10 +169,10 @@ impl InnerHashJoin {
 			let row_number = pre.row_numbers[idx];
 			match side {
 				JoinSide::Left => {
-					remove_from_state_entry(txn, &mut state.left, key_hash, row_number).await?;
+					remove_from_state_entry(txn, &mut state.left, key_hash, row_number)?;
 				}
 				JoinSide::Right => {
-					remove_from_state_entry(txn, &mut state.right, key_hash, row_number).await?;
+					remove_from_state_entry(txn, &mut state.right, key_hash, row_number)?;
 				}
 			}
 		}
@@ -185,7 +181,7 @@ impl InnerHashJoin {
 	}
 
 	/// Handle update for rows with defined join keys (batched by key)
-	pub(crate) async fn handle_update(
+	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
 		pre: &Columns,
@@ -219,9 +215,7 @@ impl InnerHashJoin {
 							old_key,
 							old_row_number,
 							new_row_number,
-						)
-						.await?
-						{
+						)? {
 							// Emit updates for all joined rows (only if right rows exist)
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
@@ -233,9 +227,7 @@ impl InnerHashJoin {
 								old_key,
 								operator,
 								&operator.right_parent,
-							)
-							.await?
-							{
+							)? {
 								result.push(diff);
 							}
 						}
@@ -248,9 +240,7 @@ impl InnerHashJoin {
 							old_key,
 							old_row_number,
 							new_row_number,
-						)
-						.await?
-						{
+						)? {
 							// Emit updates for all joined rows (only if left rows exist)
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
@@ -262,9 +252,7 @@ impl InnerHashJoin {
 								old_key,
 								operator,
 								&operator.left_parent,
-							)
-							.await?
-							{
+							)? {
 								result.push(diff);
 							}
 						}
@@ -274,11 +262,10 @@ impl InnerHashJoin {
 		} else {
 			// Key changed - treat as remove + insert
 			let remove_diffs =
-				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version).await?;
+				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs =
-				self.handle_insert(txn, post, indices, side, new_key, state, operator).await?;
+			let insert_diffs = self.handle_insert(txn, post, indices, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
 		}
 

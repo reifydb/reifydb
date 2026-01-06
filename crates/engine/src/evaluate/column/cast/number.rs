@@ -1246,8 +1246,8 @@ mod tests {
 
 		use crate::evaluate::{column::cast::number::convert_vec, convert::Convert};
 
-		#[tokio::test]
-		async fn test_promote_ok() {
+		#[test]
+		fn test_promote_ok() {
 			let data = [1i8, 2i8];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
@@ -1266,8 +1266,8 @@ mod tests {
 			assert_eq!(slice, &[1i16, 2i16]);
 		}
 
-		#[tokio::test]
-		async fn test_promote_none_maps_to_undefined() {
+		#[test]
+		fn test_promote_none_maps_to_undefined() {
 			// 42 mapped to None
 			let data = [42i8];
 			let bitvec = BitVec::from_slice(&[true]);
@@ -1286,8 +1286,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[tokio::test]
-		async fn test_promote_invalid_bitmaps_are_undefined() {
+		#[test]
+		fn test_promote_invalid_bitmaps_are_undefined() {
 			let data = [1i8];
 			let bitvec = BitVec::from_slice(&[false]);
 			let ctx = TestCtx::new();
@@ -1305,8 +1305,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[tokio::test]
-		async fn test_promote_mixed_bitvec_and_failure() {
+		#[test]
+		fn test_promote_mixed_bitvec_and_failure() {
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
@@ -1365,8 +1365,8 @@ mod tests {
 			}
 		}
 
-		#[tokio::test]
-		async fn test_demote_ok() {
+		#[test]
+		fn test_demote_ok() {
 			let data = [1i16, 2i16];
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
@@ -1387,8 +1387,8 @@ mod tests {
 			assert!(result.is_defined(1));
 		}
 
-		#[tokio::test]
-		async fn test_demote_none_maps_to_undefined() {
+		#[test]
+		fn test_demote_none_maps_to_undefined() {
 			let data = [42i16];
 			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
@@ -1406,8 +1406,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[tokio::test]
-		async fn test_demote_invalid_bitmaps_are_undefined() {
+		#[test]
+		fn test_demote_invalid_bitmaps_are_undefined() {
 			let data = [1i16];
 			let bitvec = BitVec::repeat(1, false);
 			let ctx = TestCtx::new();
@@ -1425,8 +1425,8 @@ mod tests {
 			assert!(!result.is_defined(0));
 		}
 
-		#[tokio::test]
-		async fn test_demote_mixed_bitvec_and_failure() {
+		#[test]
+		fn test_demote_mixed_bitvec_and_failure() {
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();

@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	error,
 	value::column::{Columns, headers::ColumnHeaders},
@@ -38,13 +37,8 @@ impl GeneratorNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for GeneratorNode {
-	async fn initialize<'a>(
-		&mut self,
-		_txn: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let generator = ctx
@@ -58,7 +52,7 @@ impl QueryNode for GeneratorNode {
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		txn: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
@@ -91,16 +85,12 @@ impl QueryNode for GeneratorNode {
 		}
 		let evaluated_params = Columns::new(evaluated_columns);
 
-		let columns = generator
-			.generate(GeneratorContext {
-				params: evaluated_params,
-				txn: unsafe {
-					std::mem::transmute::<&mut StandardTransaction, &'a mut StandardTransaction<'a>>(
-						txn,
-					)
-				},
-			})
-			.await?;
+		let columns = generator.generate(GeneratorContext {
+			params: evaluated_params,
+			txn: unsafe {
+				std::mem::transmute::<&mut StandardTransaction, &'a mut StandardTransaction<'a>>(txn)
+			},
+		})?;
 
 		self.exhausted = true;
 

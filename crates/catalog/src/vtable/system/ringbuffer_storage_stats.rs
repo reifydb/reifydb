@@ -44,12 +44,12 @@ fn tier_to_str(tier: Tier) -> &'static str {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for RingBufferStorageStats {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -63,11 +63,10 @@ impl<T: IntoStandardTransaction> VTable<T> for RingBufferStorageStats {
 				// Filter for ring buffer sources only
 				if let ObjectId::Source(PrimitiveId::RingBuffer(ringbuffer_id)) = obj_id {
 					// Look up namespace_id from catalog
-					let namespace_id =
-						match CatalogStore::find_ringbuffer(txn, ringbuffer_id).await? {
-							Some(ringbuffer_def) => ringbuffer_def.namespace.0,
-							None => 0,
-						};
+					let namespace_id = match CatalogStore::find_ringbuffer(txn, ringbuffer_id)? {
+						Some(ringbuffer_def) => ringbuffer_def.namespace.0,
+						None => 0,
+					};
 
 					rows.push((
 						ringbuffer_id.0,

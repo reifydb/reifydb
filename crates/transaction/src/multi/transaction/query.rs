@@ -9,9 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::pin::Pin;
-
-use futures_util::{Stream, TryStreamExt};
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
 use reifydb_store_transaction::MultiVersionBatch;
 
@@ -24,8 +21,8 @@ pub struct QueryTransaction {
 }
 
 impl QueryTransaction {
-	pub async fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> crate::Result<Self> {
-		let tm = engine.tm.query(version).await?;
+	pub fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> crate::Result<Self> {
+		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,
 			tm,
@@ -46,42 +43,43 @@ impl QueryTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
-	pub async fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
+	pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
 		let version = self.tm.version();
-		Ok(self.engine.get(key, version).await?.map(Into::into))
+		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
 
-	pub async fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool> {
 		let version = self.tm.version();
-		Ok(self.engine.contains_key(key, version).await?)
+		Ok(self.engine.contains_key(key, version)?)
 	}
 
-	pub async fn scan(&self) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range(EncodedKeyRange::all(), 1024).try_collect().await?;
+	pub fn scan(&self) -> crate::Result<MultiVersionBatch> {
+		let items: Vec<_> = self.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
 	}
 
-	pub async fn scan_rev(&self) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range_rev(EncodedKeyRange::all(), 1024).try_collect().await?;
+	pub fn scan_rev(&self) -> crate::Result<MultiVersionBatch> {
+		let items: Vec<_> = self.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
 	}
 
-	pub async fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+	pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
 	}
 
-	pub async fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range_rev(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+	pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+		let items: Vec<_> =
+			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -97,10 +95,9 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
-		let iter = self.engine.store.range(range, version, batch_size);
-		Box::pin(futures_util::stream::iter(iter))
+		Box::new(self.engine.store.range(range, version, batch_size))
 	}
 
 	/// Create a streaming iterator for reverse range queries.
@@ -112,9 +109,8 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
-		let iter = self.engine.store.range_rev(range, version, batch_size);
-		Box::pin(futures_util::stream::iter(iter))
+		Box::new(self.engine.store.range_rev(range, version, batch_size))
 	}
 }

@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	EncodedKey, Error, interface::FlowNodeId, util::encoding::keycode::KeySerializer, value::column::Columns,
 };
@@ -80,13 +79,12 @@ impl MergeOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for MergeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
@@ -117,8 +115,8 @@ impl Operator for MergeOperator {
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _is_new) = self
 							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)
-							.await?;
+							.get_or_create_row_number(txn, &composite_key)?;
+
 						output_row_numbers.push(output_row_number);
 					}
 
@@ -149,8 +147,7 @@ impl Operator for MergeOperator {
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _) = self
 							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)
-							.await?;
+							.get_or_create_row_number(txn, &composite_key)?;
 						output_row_numbers.push(output_row_number);
 					}
 
@@ -185,8 +182,7 @@ impl Operator for MergeOperator {
 							Self::make_composite_key(parent_index as u8, source_row_number);
 						let (output_row_number, _) = self
 							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)
-							.await?;
+							.get_or_create_row_number(txn, &composite_key)?;
 						output_row_numbers.push(output_row_number);
 					}
 
@@ -206,12 +202,12 @@ impl Operator for MergeOperator {
 		Ok(FlowChange::internal(self.node, change.version, result_diffs))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {
 			// Reverse lookup: output row number -> composite key
-			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number).await? else {
+			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
 				continue;
 			};
 
@@ -226,7 +222,7 @@ impl Operator for MergeOperator {
 			}
 
 			// Delegate to parent operator
-			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number]).await?;
+			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number])?;
 
 			if !parent_cols.is_empty() {
 				// Replace row number with merge output row number
@@ -241,7 +237,7 @@ impl Operator for MergeOperator {
 		// Combine found rows
 		if found_columns.is_empty() {
 			// Get schema from first parent (returns empty Columns with schema)
-			self.parents[0].pull(txn, &[]).await
+			self.parents[0].pull(txn, &[])
 		} else if found_columns.len() == 1 {
 			Ok(found_columns.remove(0))
 		} else {

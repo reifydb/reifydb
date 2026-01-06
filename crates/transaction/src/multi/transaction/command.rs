@@ -9,17 +9,14 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{ops::RangeBounds, pin::Pin};
+use std::ops::RangeBounds;
 
-use async_stream::try_stream;
-use futures_util::{Stream, StreamExt, TryStreamExt};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_type::{Error, util::hex};
-use tokio::spawn;
 use tracing::instrument;
 
 use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
@@ -32,8 +29,8 @@ pub struct CommandTransaction {
 
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
-	pub async fn new(engine: TransactionMulti) -> crate::Result<Self> {
-		let tm = engine.tm.write().await?;
+	pub fn new(engine: TransactionMulti) -> crate::Result<Self> {
+		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
 			tm,
@@ -43,7 +40,7 @@ impl CommandTransaction {
 
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
-	pub async fn commit(&mut self) -> Result<CommitVersion, Error> {
+	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		// For read-only transactions (no pending writes), skip conflict detection
 		if self.tm.pending_writes().is_empty() {
 			self.tm.discard();
@@ -52,7 +49,7 @@ impl CommandTransaction {
 
 		// Use commit_pending to allocate the commit version via oracle BEFORE writing to storage
 		// This ensures entries have the correct commit version
-		let (commit_version, entries) = self.tm.commit_pending().await?;
+		let (commit_version, entries) = self.tm.commit_pending()?;
 
 		if entries.is_empty() {
 			self.tm.discard();
@@ -70,16 +67,9 @@ impl CommandTransaction {
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
 
-		let event_bus = self.engine.event_bus.clone();
-		let version = commit_version;
-
-		spawn(async move {
-			event_bus
-				.emit(PostCommitEvent {
-					deltas,
-					version,
-				})
-				.await;
+		self.engine.event_bus.emit(PostCommitEvent {
+			deltas,
+			version: commit_version,
 		});
 
 		Ok(commit_version)
@@ -110,7 +100,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
@@ -120,7 +110,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
@@ -144,16 +134,17 @@ impl CommandTransaction {
 		self.tm.remove(key)
 	}
 
-	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
+		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
 	}
 
-	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let items: Vec<_> = self.range_rev(EncodedKeyRange::prefix(prefix), 1024).try_collect().await?;
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
+		let items: Vec<_> =
+			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -170,7 +161,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -183,9 +174,8 @@ impl CommandTransaction {
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range(range, version, batch_size);
-		let storage_stream = futures_util::stream::iter(storage_iter);
 
-		Box::pin(merge_pending_with_stream(pending, storage_stream, false))
+		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
 
 	/// Create a streaming iterator for reverse range queries, merging pending writes.
@@ -197,7 +187,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = crate::Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -210,9 +200,8 @@ impl CommandTransaction {
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev(range, version, batch_size);
-		let storage_stream = futures_util::stream::iter(storage_iter);
 
-		Box::pin(merge_pending_with_stream(pending, storage_stream, true))
+		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 }
 
@@ -220,36 +209,51 @@ use reifydb_core::interface::MultiVersionValues;
 
 use crate::multi::types::Pending;
 
-/// Merge pending writes with a storage stream.
-fn merge_pending_with_stream<'a, S>(
-	pending: Vec<(EncodedKey, Pending)>,
-	storage_stream: S,
+/// Iterator that merges pending writes with storage iterator.
+struct MergePendingIterator<I> {
+	pending_iter: std::iter::Peekable<std::vec::IntoIter<(EncodedKey, Pending)>>,
+	storage_iter: I,
+	next_storage: Option<MultiVersionValues>,
 	reverse: bool,
-) -> impl Stream<Item = crate::Result<MultiVersionValues>> + Send + 'a
-where
-	S: Stream<Item = reifydb_type::Result<MultiVersionValues>> + Send + 'a,
-{
-	try_stream! {
-		use std::cmp::Ordering;
+}
 
-		let mut storage_stream = std::pin::pin!(storage_stream);
-		let mut pending_iter = pending.into_iter().peekable();
-		let mut next_storage: Option<MultiVersionValues> = None;
+impl<I> MergePendingIterator<I>
+where
+	I: Iterator<Item = crate::Result<MultiVersionValues>>,
+{
+	fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
+		Self {
+			pending_iter: pending.into_iter().peekable(),
+			storage_iter,
+			next_storage: None,
+			reverse,
+		}
+	}
+}
+
+impl<I> Iterator for MergePendingIterator<I>
+where
+	I: Iterator<Item = crate::Result<MultiVersionValues>>,
+{
+	type Item = crate::Result<MultiVersionValues>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		use std::cmp::Ordering;
 
 		loop {
 			// Fetch next storage item if needed
-			if next_storage.is_none() {
-				next_storage = match storage_stream.next().await {
+			if self.next_storage.is_none() {
+				self.next_storage = match self.storage_iter.next() {
 					Some(Ok(v)) => Some(v),
-					Some(Err(e)) => { Err(e)?; None }
+					Some(Err(e)) => return Some(Err(e)),
 					None => None,
 				};
 			}
 
-			match (pending_iter.peek(), &next_storage) {
+			match (self.pending_iter.peek(), &self.next_storage) {
 				(Some((pending_key, _)), Some(storage_val)) => {
 					let cmp = pending_key.cmp(&storage_val.key);
-					let should_yield_pending = if reverse {
+					let should_yield_pending = if self.reverse {
 						// Reverse: larger keys first
 						matches!(cmp, Ordering::Greater)
 					} else {
@@ -259,47 +263,49 @@ where
 
 					if should_yield_pending {
 						// Pending key comes first
-						let (key, value) = pending_iter.next().unwrap();
+						let (key, value) = self.pending_iter.next().unwrap();
 						if let Some(values) = value.values() {
-							yield MultiVersionValues {
+							return Some(Ok(MultiVersionValues {
 								key,
 								values: values.clone(),
 								version: value.version,
-							};
+							}));
 						}
-						// Tombstone: skip (don't yield)
+						// Tombstone: skip (continue loop)
 					} else if matches!(cmp, Ordering::Equal) {
 						// Same key - pending shadows storage
-						let (key, value) = pending_iter.next().unwrap();
-						next_storage = None; // Consume storage entry
+						let (key, value) = self.pending_iter.next().unwrap();
+						self.next_storage = None; // Consume storage entry
 						if let Some(values) = value.values() {
-							yield MultiVersionValues {
+							return Some(Ok(MultiVersionValues {
 								key,
 								values: values.clone(),
 								version: value.version,
-							};
+							}));
 						}
+						// Tombstone: skip (continue loop)
 					} else {
 						// Storage key comes first
-						yield next_storage.take().unwrap();
+						return Some(Ok(self.next_storage.take().unwrap()));
 					}
 				}
 				(Some(_), None) => {
 					// Only pending left
-					let (key, value) = pending_iter.next().unwrap();
+					let (key, value) = self.pending_iter.next().unwrap();
 					if let Some(values) = value.values() {
-						yield MultiVersionValues {
+						return Some(Ok(MultiVersionValues {
 							key,
 							values: values.clone(),
 							version: value.version,
-						};
+						}));
 					}
+					// Tombstone: skip (continue loop)
 				}
 				(None, Some(_)) => {
 					// Only storage left
-					yield next_storage.take().unwrap();
+					return Some(Ok(self.next_storage.take().unwrap()));
 				}
-				(None, None) => break,
+				(None, None) => return None,
 			}
 		}
 	}

@@ -15,18 +15,13 @@ use tokio::runtime::Runtime;
 
 pub struct Runner {
 	instance: Database,
-	runtime: Arc<Runtime>,
 }
 
 impl Runner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
-			instance: runtime.block_on(EmbeddedBuilder::new(multi, single, cdc, eventbus).build()).unwrap(),
-			runtime,
+			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
 		}
 	}
 }
@@ -40,10 +35,7 @@ impl testscript::Runner for Runner {
 
 				println!("command: {rql}");
 
-				let instance = &self.instance;
-				for frame in
-					self.runtime.block_on(instance.command_as_root(rql.as_str(), Params::None))?
-				{
+				for frame in self.instance.command_as_root(rql.as_str(), Params::None)? {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -52,10 +44,7 @@ impl testscript::Runner for Runner {
 
 				println!("query: {rql}");
 
-				let instance = &self.instance;
-				for frame in
-					self.runtime.block_on(instance.query_as_root(rql.as_str(), Params::None))?
-				{
+				for frame in self.instance.query_as_root(rql.as_str(), Params::None)? {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -68,12 +57,12 @@ impl testscript::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.runtime.block_on(self.instance.start())?;
+		self.instance.start()?;
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.runtime.block_on(self.instance.stop())?;
+		self.instance.stop()?;
 		Ok(())
 	}
 }
@@ -83,6 +72,6 @@ test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as embedded => te
 fn test_embedded(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	let input = runtime.block_on(async { transaction(memory().await).await }).unwrap();
-	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
+	let input = transaction(memory());
+	testscript::run_path(&mut Runner::new(input), path).expect("test failed")
 }

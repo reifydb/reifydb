@@ -10,16 +10,16 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_create_subscription<T: IntoStandardTransaction>(
+	pub(crate) fn compile_create_subscription<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		create: logical::CreateSubscriptionNode,
 	) -> crate::Result<PhysicalPlan> {
 		let as_clause = if let Some(as_clause_ast) = create.as_clause {
-			let logical_plans = compile_logical(&self.catalog, rx, as_clause_ast).await?;
+			let logical_plans = compile_logical(&self.catalog, rx, as_clause_ast)?;
 
 			// Compile logical plans to physical plan
-			self.compile(rx, logical_plans).await?.map(Box::new)
+			self.compile(rx, logical_plans)?.map(Box::new)
 		} else {
 			None
 		};

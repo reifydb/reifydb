@@ -44,12 +44,12 @@ fn tier_to_str(tier: Tier) -> &'static str {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowNodeStorageStats {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -63,7 +63,7 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowNodeStorageStats {
 				// Filter for flow nodes only
 				if let ObjectId::FlowNode(flow_node_id) = obj_id {
 					// Look up flow_id from catalog
-					let flow_id = match CatalogStore::find_flow_node(txn, flow_node_id).await? {
+					let flow_id = match CatalogStore::find_flow_node(txn, flow_node_id)? {
 						Some(node_def) => node_def.flow.0,
 						None => 0,
 					};

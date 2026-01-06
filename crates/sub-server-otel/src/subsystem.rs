@@ -6,12 +6,11 @@
 use std::{
 	any::Any,
 	sync::{
-		Arc,
+		Arc, Mutex,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
-use async_trait::async_trait;
 use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use reifydb_core::{
@@ -20,7 +19,6 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use tokio::sync::Mutex;
 
 use crate::config::OtelConfig;
 
@@ -149,13 +147,12 @@ impl HasVersion for OtelSubsystem {
 	}
 }
 
-#[async_trait]
 impl Subsystem for OtelSubsystem {
 	fn name(&self) -> &'static str {
 		"OpenTelemetry"
 	}
 
-	async fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_core::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -178,7 +175,7 @@ impl Subsystem for OtelSubsystem {
 		global::set_tracer_provider(provider.clone());
 
 		// Store the provider to prevent premature drop
-		*self.tracer_provider.lock().await = Some(provider);
+		*self.tracer_provider.lock().unwrap() = Some(provider);
 
 		self.running.store(true, Ordering::SeqCst);
 		tracing::info!(
@@ -191,15 +188,12 @@ impl Subsystem for OtelSubsystem {
 		Ok(())
 	}
 
-	async fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	fn shutdown(&mut self) -> reifydb_core::Result<()> {
 		if !self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
 			return Ok(()); // Already shutdown
 		}
 
-		tracing::info!("OpenTelemetry subsystem shutting down");
-
-		// Flush and shutdown the tracer provider
-		if let Some(provider) = self.tracer_provider.lock().await.take() {
+		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
 			// This ensures all pending traces are exported
 			if let Err(e) = provider.shutdown() {
 				tracing::error!("Error shutting down tracer provider: {:?}", e);

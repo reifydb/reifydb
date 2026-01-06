@@ -3,8 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use futures_util::StreamExt;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey, LazyBatch, LazyColumnMeta,
@@ -38,7 +36,7 @@ pub(crate) struct TableScanNode {
 }
 
 impl TableScanNode {
-	pub async fn new<Rx: IntoStandardTransaction>(
+	pub fn new<Rx: IntoStandardTransaction>(
 		table: ResolvedTable,
 		context: Arc<ExecutionContext>,
 		rx: &mut Rx,
@@ -49,7 +47,7 @@ impl TableScanNode {
 
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id).await? {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -82,10 +80,9 @@ impl TableScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for TableScanNode {
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::initialize")]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -95,7 +92,7 @@ impl QueryNode for TableScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next")]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
@@ -120,7 +117,7 @@ impl QueryNode for TableScanNode {
 
 		// Consume up to batch_size items from the stream
 		for _ in 0..batch_size {
-			match stream.next().await {
+			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
 						batch_rows.push(multi.values);
@@ -163,7 +160,7 @@ impl QueryNode for TableScanNode {
 		{
 			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
 		}
-		self.decode_dictionary_columns(&mut columns, rx).await?;
+		self.decode_dictionary_columns(&mut columns, rx)?;
 
 		// Restore row numbers (they get cleared during column transformation)
 		columns.row_numbers = CowVec::new(row_numbers);
@@ -178,7 +175,7 @@ impl QueryNode for TableScanNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::scan::table::next_lazy")]
-	async fn next_lazy<'a>(
+	fn next_lazy<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
@@ -201,7 +198,7 @@ impl QueryNode for TableScanNode {
 
 		// Consume up to batch_size items from the stream
 		for _ in 0..batch_size {
-			match stream.next().await {
+			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
 						encoded_rows.push(multi.values);
@@ -245,7 +242,7 @@ impl QueryNode for TableScanNode {
 
 impl<'a> TableScanNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values
-	async fn decode_dictionary_columns(
+	fn decode_dictionary_columns(
 		&self,
 		columns: &mut Columns,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -263,7 +260,7 @@ impl<'a> TableScanNode {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 						if let Some(decoded_value) =
-							rx.get_from_dictionary(dictionary, entry_id).await?
+							rx.get_from_dictionary(dictionary, entry_id)?
 						{
 							new_data.push_value(decoded_value);
 						} else {

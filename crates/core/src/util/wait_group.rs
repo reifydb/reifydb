@@ -14,11 +14,12 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use tokio::sync::Notify;
+use parking_lot::{Condvar, Mutex};
 
 struct Inner {
 	count: AtomicUsize,
-	notify: Notify,
+	mutex: Mutex<()>,
+	condvar: Condvar,
 }
 
 pub struct WaitGroup {
@@ -36,7 +37,8 @@ impl From<usize> for WaitGroup {
 		Self {
 			inner: Arc::new(Inner {
 				count: AtomicUsize::new(count),
-				notify: Notify::new(),
+				mutex: Mutex::new(()),
+				condvar: Condvar::new(),
 			}),
 		}
 	}
@@ -62,7 +64,8 @@ impl WaitGroup {
 		Self {
 			inner: Arc::new(Inner {
 				count: AtomicUsize::new(0),
-				notify: Notify::new(),
+				mutex: Mutex::new(()),
+				condvar: Condvar::new(),
 			}),
 		}
 	}
@@ -77,7 +80,8 @@ impl WaitGroup {
 	pub fn done(&self) -> usize {
 		let prev = self.inner.count.fetch_sub(1, Ordering::AcqRel);
 		if prev == 1 {
-			self.inner.notify.notify_waiters();
+			let _guard = self.inner.mutex.lock();
+			self.inner.condvar.notify_all();
 		}
 		if prev == 0 {
 			// Already at zero, restore it (shouldn't happen in correct usage)
@@ -91,66 +95,65 @@ impl WaitGroup {
 		self.inner.count.load(Ordering::Acquire)
 	}
 
-	pub async fn wait(&self) {
-		loop {
-			if self.inner.count.load(Ordering::Acquire) == 0 {
-				return;
-			}
-			self.inner.notify.notified().await;
+	pub fn wait(&self) {
+		let mut guard = self.inner.mutex.lock();
+		while self.inner.count.load(Ordering::Acquire) > 0 {
+			self.inner.condvar.wait(&mut guard);
 		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering},
+	use std::{
+		sync::{
+			Arc,
+			atomic::{AtomicUsize, Ordering},
+		},
+		time::Duration,
 	};
-
-	use tokio::time::{Duration, sleep};
 
 	use crate::util::WaitGroup;
 
-	#[tokio::test]
-	async fn test_wait_group_reuse() {
+	#[test]
+	fn test_wait_group_reuse() {
 		let wg = WaitGroup::new();
 		let ctr = Arc::new(AtomicUsize::new(0));
 		for _ in 0..6 {
 			let wg = wg.add(1);
 			let ctrx = ctr.clone();
-			tokio::spawn(async move {
-				sleep(Duration::from_millis(5)).await;
+			std::thread::spawn(move || {
+				std::thread::sleep(Duration::from_millis(5));
 				ctrx.fetch_add(1, Ordering::Relaxed);
 				wg.done();
 			});
 		}
 
-		wg.wait().await;
+		wg.wait();
 		assert_eq!(ctr.load(Ordering::Relaxed), 6);
 
 		let worker = wg.add(1);
 		let ctrx = ctr.clone();
-		tokio::spawn(async move {
-			sleep(Duration::from_millis(5)).await;
+		std::thread::spawn(move || {
+			std::thread::sleep(Duration::from_millis(5));
 			ctrx.fetch_add(1, Ordering::Relaxed);
 			worker.done();
 		});
-		wg.wait().await;
+		wg.wait();
 		assert_eq!(ctr.load(Ordering::Relaxed), 7);
 	}
 
-	#[tokio::test]
-	async fn test_wait_group_nested() {
+	#[test]
+	fn test_wait_group_nested() {
 		let wg = WaitGroup::new();
 		let ctr = Arc::new(AtomicUsize::new(0));
 		for _ in 0..5 {
 			let worker = wg.add(1);
 			let ctrx = ctr.clone();
-			tokio::spawn(async move {
+			std::thread::spawn(move || {
 				let nested_worker = worker.add(1);
 				let ctrxx = ctrx.clone();
-				tokio::spawn(async move {
+				std::thread::spawn(move || {
 					ctrxx.fetch_add(1, Ordering::Relaxed);
 					nested_worker.done();
 				});
@@ -159,20 +162,20 @@ mod tests {
 			});
 		}
 
-		wg.wait().await;
+		wg.wait();
 		assert_eq!(ctr.load(Ordering::Relaxed), 10);
 	}
 
-	#[tokio::test]
-	async fn test_wait_group_from() {
+	#[test]
+	fn test_wait_group_from() {
 		let wg = WaitGroup::from(5);
 		for _ in 0..5 {
 			let t = wg.clone();
-			tokio::spawn(async move {
+			std::thread::spawn(move || {
 				t.done();
 			});
 		}
-		wg.wait().await;
+		wg.wait();
 	}
 
 	#[test]

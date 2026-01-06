@@ -12,30 +12,27 @@
 use std::{
 	cmp::Reverse,
 	collections::{BinaryHeap, HashMap},
-	sync::atomic::Ordering,
+	sync::{Arc, atomic::Ordering},
 };
 
-use mpsc::UnboundedReceiver;
-use tokio::sync::{mpsc, oneshot};
+use crossbeam_channel::{Receiver, select};
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
-use crate::multi::watermark::{Closer, watermark::WatermarkInner};
+use crate::multi::watermark::{
+	Closer,
+	watermark::{WaiterHandle, WatermarkInner},
+};
 
 impl WatermarkInner {
-	pub(crate) async fn process(
-		&self,
-		mut rx: UnboundedReceiver<super::watermark::Mark>,
-		closer: Closer,
-		mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-	) {
+	pub(crate) fn process(&self, rx: Receiver<super::watermark::Mark>, closer: Closer) {
 		let mut indices: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
 		let mut pending: HashMap<u64, i64> = HashMap::new();
-		let mut waiters: HashMap<u64, Vec<oneshot::Sender<()>>> = HashMap::new();
+		let mut waiters: HashMap<u64, Vec<Arc<WaiterHandle>>> = HashMap::new();
 
 		let process_one = |idx: u64,
 		                   done: bool,
 		                   pending: &mut HashMap<u64, i64>,
-		                   waiters: &mut HashMap<u64, Vec<oneshot::Sender<()>>>,
+		                   waiters: &mut HashMap<u64, Vec<Arc<WaiterHandle>>>,
 		                   indices: &mut BinaryHeap<Reverse<u64>>| {
 			// Prevent unbounded growth
 			if pending.len() > MAX_PENDING {
@@ -53,7 +50,7 @@ impl WatermarkInner {
 					if k <= cutoff {
 						// Signal and remove old waiters
 						for waiter in waiters_list.drain(..) {
-							let _ = waiter.send(());
+							waiter.notify();
 						}
 						false
 					} else {
@@ -117,7 +114,7 @@ impl WatermarkInner {
 					if let Some(waiters_list) = waiters.remove(&idx) {
 						// Signal all waiters for this index
 						for waiter in waiters_list {
-							let _ = waiter.send(());
+							waiter.notify();
 						}
 					}
 				});
@@ -128,7 +125,7 @@ impl WatermarkInner {
 					if idx <= self.done_until.load(Ordering::SeqCst) {
 						// Signal and remove
 						for waiter in waiters_list.drain(..) {
-							let _ = waiter.send(());
+							waiter.notify();
 						}
 						false
 					} else {
@@ -139,32 +136,32 @@ impl WatermarkInner {
 		};
 
 		loop {
-			tokio::select! {
-				_ = shutdown_rx.recv() => {
+			select! {
+				recv(closer.shutdown_rx) -> _ => {
 					closer.done();
 					return;
 				}
-				mark = rx.recv() => {
+				recv(rx) -> mark => {
 					match mark {
-						Some(mark) => {
-							if let Some(wait_tx) = mark.waiter {
+						Ok(mark) => {
+							if let Some(waiter) = mark.waiter {
 								let done_until = self.done_until.load(Ordering::SeqCst);
 								if done_until >= mark.version {
 									// Already done, signal immediately
-									let _ = wait_tx.send(());
+									waiter.notify();
 								} else if mark.version < done_until.saturating_sub(OLD_VERSION_THRESHOLD) {
 									// Version is so old we know it's irrelevant; skip waiter registration
-									let _ = wait_tx.send(());
+									waiter.notify();
 								} else {
-									waiters.entry(mark.version).or_default().push(wait_tx);
+									waiters.entry(mark.version).or_default().push(waiter);
 								}
 							} else {
 								process_one(mark.version, mark.done, &mut pending, &mut waiters, &mut indices);
 							}
 						}
-						None => {
+						Err(_) => {
 							// Channel closed
-								closer.done();
+							closer.done();
 							return;
 						}
 					}

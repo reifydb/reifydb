@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::pin::Pin;
-
-use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
@@ -60,31 +57,31 @@ impl StandardQueryTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
-		Ok(self.multi.get(key).await?.map(|v| v.into_multi_version_values()))
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_values()))
 	}
 
 	/// Check if a key exists
 	#[inline]
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.multi.contains_key(key).await
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+		self.multi.contains_key(key)
 	}
 
 	/// Get a prefix batch
 	#[inline]
-	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		self.multi.prefix(prefix).await
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		self.multi.prefix(prefix)
 	}
 
 	/// Get a reverse prefix batch
 	#[inline]
-	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		self.multi.prefix_rev(prefix).await
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		self.multi.prefix_rev(prefix)
 	}
 
 	/// Read as of version exclusive
 	#[inline]
-	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.multi.read_as_of_version_exclusive(version);
 		Ok(())
 	}
@@ -95,7 +92,7 @@ impl StandardQueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		self.multi.range(range, batch_size)
 	}
 
@@ -105,19 +102,19 @@ impl StandardQueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		self.multi.range_rev(range, batch_size)
 	}
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::standard::query::with_single_query", level = "trace", skip(self, keys, f))]
-	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
-		self.single.with_query(keys, f).await
+		self.single.with_query(keys, f)
 	}
 
 	/// Execute a function with access to the multi query transaction.
@@ -138,16 +135,16 @@ impl StandardQueryTransaction {
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::query::begin_single_query", level = "trace", skip(self, keys))]
-	pub async fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.begin_query(keys).await
+		self.single.begin_query(keys)
 	}
 
 	/// Begin a CDC query transaction
 	#[instrument(name = "transaction::standard::query::begin_cdc_query", level = "trace", skip(self))]
-	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
+	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		Ok(self.cdc.begin_query()?)
 	}
 }

@@ -17,7 +17,7 @@ struct CreateSubscriptionResult {
 
 #[tokio::main]
 async fn main() {
-	let mut db = embedded::memory().await.unwrap().with_flow(|f| f).build().await.unwrap();
+	let mut db = embedded::memory().with_flow(|f| f).build().unwrap();
 
 	println!("Database built with {} subsystems", db.subsystem_count());
 
@@ -27,7 +27,7 @@ async fn main() {
 	}
 
 	println!("Starting database...");
-	db.start().await.unwrap();
+	db.start().unwrap();
 	println!("Database started successfully!");
 
 	println!("Database is_running: {}", db.is_running());
@@ -36,7 +36,7 @@ async fn main() {
 
 	// 1. Create namespace
 	println!(">>> Creating namespace demo");
-	db.command_as_root("create namespace demo;", Params::None).await.unwrap();
+	db.command_as_root("create namespace demo;", Params::None).unwrap();
 
 	// 2. Create events table
 	println!("\n>>> Creating table demo.events");
@@ -49,7 +49,6 @@ async fn main() {
 			}"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		println!("{}", frame);
@@ -68,7 +67,6 @@ async fn main() {
 			}"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	let result = CreateSubscriptionResult::from_frame(&frames[0]).unwrap();
@@ -87,7 +85,6 @@ async fn main() {
 			}"#,
 			Params::None,
 		)
-		.await
 		.unwrap();
 
 	for frame in db
@@ -107,7 +104,6 @@ async fn main() {
 			}] insert demo.events"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		println!("{}", frame);
@@ -120,17 +116,15 @@ async fn main() {
 
 	// 6. Query source table for comparison
 	println!("\n>>> Source table demo.events:");
-	for frame in db.query_as_root("from demo.events", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from demo.events", Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
 	// 8. Verify the subscription flow was created
 	println!("\n>>> Subscription flow in system.flows:");
 	let flow_name = format!("subscription_{}", subscription_id);
-	for frame in db
-		.query_as_root(&format!("from system.flows | filter name == '{}'", flow_name), Params::None)
-		.await
-		.unwrap()
+	for frame in
+		db.query_as_root(&format!("from system.flows | filter name == '{}'", flow_name), Params::None).unwrap()
 	{
 		println!("{}", frame);
 	}
@@ -139,11 +133,11 @@ async fn main() {
 	println!("\\n>>> Querying subscription: {}", subscription_id);
 
 	let query = format!("from inspect_subscription {{ id: '{}' }}", subscription_id);
-	for frame in db.query_as_root(&query, Params::None).await.unwrap() {
+	for frame in db.query_as_root(&query, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	for frame in db.query_as_root("from demo.test_view", Params::None).await.unwrap() {
+	for frame in db.query_as_root("from demo.test_view", Params::None).unwrap() {
 		println!("{}", frame);
 	}
 }

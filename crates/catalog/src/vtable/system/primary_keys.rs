@@ -34,12 +34,12 @@ impl PrimaryKeys {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for PrimaryKeys {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -48,7 +48,7 @@ impl<T: IntoStandardTransaction> VTable<T> for PrimaryKeys {
 		let mut source_ids = Vec::new();
 
 		// Read primary keys from storage instead of in-memory catalog
-		let primary_keys = CatalogStore::list_primary_keys(txn).await?;
+		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
 			source_ids.push(pk_info.source_id);

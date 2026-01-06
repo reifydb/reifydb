@@ -40,12 +40,12 @@ impl IndexStorageStats {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for IndexStorageStats {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

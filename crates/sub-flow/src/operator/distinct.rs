@@ -3,7 +3,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use async_trait::async_trait;
 use indexmap::IndexMap;
 use reifydb_core::{
 	Error,
@@ -229,8 +228,8 @@ impl DistinctOperator {
 		}
 	}
 
-	async fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
-		let state_row = self.load_state(txn).await?;
+	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
+		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
 			return Ok(DistinctState::default());
@@ -449,19 +448,18 @@ impl SingleStateful for DistinctOperator {
 	}
 }
 
-#[async_trait]
 impl Operator for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
-	async fn apply(
+	fn apply(
 		&self,
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut state = self.load_distinct_state(txn).await?;
+		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -493,7 +491,7 @@ impl Operator for DistinctOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	async fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
-		self.parent.pull(txn, rows).await
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+		self.parent.pull(txn, rows)
 	}
 }

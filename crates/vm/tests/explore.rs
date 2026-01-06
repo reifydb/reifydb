@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::TryStreamExt;
 use reifydb_core::{interface::Identity, value::column::Columns};
 use reifydb_engine::{StandardEngine, test_utils::create_test_engine};
 use reifydb_rqlv2::compile_script;
@@ -13,36 +12,31 @@ pub fn test_identity() -> Identity {
 }
 
 /// Create a namespace via RQL command.
-async fn create_namespace(engine: &StandardEngine, name: &str) {
+fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default())
-		.try_collect::<Vec<_>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
 }
 
 /// Create a table via RQL command.
-async fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
+fn create_table(engine: &StandardEngine, namespace: &str, table: &str, columns: &str) {
 	let identity = test_identity();
 	engine.command_as(&identity, &format!("CREATE TABLE {namespace}.{table} {{ {columns} }}"), Default::default())
-		.try_collect::<Vec<_>>()
-		.await
 		.unwrap();
 }
 
 /// Insert data via RQL command.
-async fn insert_data(engine: &StandardEngine, rql: &str) {
+fn insert_data(engine: &StandardEngine, rql: &str) {
 	let identity = test_identity();
-	engine.command_as(&identity, rql, Default::default()).try_collect::<Vec<_>>().await.unwrap();
+	engine.command_as(&identity, rql, Default::default()).unwrap();
 }
 
-#[tokio::test]
-async fn explore() {
-	let engine = create_test_engine().await;
+#[test]
+fn explore() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -50,10 +44,9 @@ async fn explore() {
 				{id: 2, name: "Bob", age: 25},
 				{id: 3, name: "Charlie", age: 35}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 
 	let catalog = engine.catalog();
 
@@ -114,22 +107,17 @@ async fn explore() {
 	}
 	println!("================\n");
 
-	for frame in engine
-		.query_as(&test_identity(), "from test.users", Params::None)
-		.try_collect::<Vec<_>>()
-		.await
-		.unwrap()
-	{
+	for frame in engine.query_as(&test_identity(), "from test.users", Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -160,13 +148,13 @@ async fn explore() {
 	}
 	println!("==============\n");
 }
-#[tokio::test]
-async fn test_function_declaration_and_call() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_function_declaration_and_call() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data with scores
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8, score: float8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8, score: float8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -176,10 +164,9 @@ async fn test_function_declaration_and_call() {
 				{id: 4, name: "Diana", age: 22, score: 88.0},
 				{id: 5, name: "Eve", age: 19, score: 95.5}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// ============================================
@@ -197,13 +184,13 @@ async fn test_function_declaration_and_call() {
 	println!("==============================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -241,13 +228,13 @@ async fn test_function_declaration_and_call() {
 	assert_eq!(result.len(), 4, "Expected 4 columns (id, name, age, score)");
 }
 /// Test dollar-prefixed variable declaration syntax
-#[tokio::test]
-async fn test_dollar_variable_declaration() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_dollar_variable_declaration() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -257,10 +244,9 @@ async fn test_dollar_variable_declaration() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// ============================================
@@ -278,13 +264,13 @@ async fn test_dollar_variable_declaration() {
 	println!("=====================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -322,13 +308,13 @@ async fn test_dollar_variable_declaration() {
 }
 
 /// Test if/else-if/else chain
-#[tokio::test]
-async fn test_if_else_if_else() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_if_else_if_else() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -338,10 +324,9 @@ async fn test_if_else_if_else() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Test that else-if branch is taken when first condition is false but second is true
@@ -364,13 +349,13 @@ async fn test_if_else_if_else() {
 	println!("=====================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -406,13 +391,13 @@ async fn test_if_else_if_else() {
 }
 
 /// Test simple loop with break
-#[tokio::test]
-async fn test_loop_break() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_loop_break() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -422,10 +407,9 @@ async fn test_loop_break() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Simple loop that breaks immediately after one iteration
@@ -445,13 +429,13 @@ async fn test_loop_break() {
 	println!("================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -487,13 +471,13 @@ async fn test_loop_break() {
 }
 
 /// Test for..in iteration over query results
-#[tokio::test]
-async fn test_for_in_iteration() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_for_in_iteration() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -503,10 +487,9 @@ async fn test_for_in_iteration() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// For loop iterating over users with age > 20
@@ -526,13 +509,13 @@ async fn test_for_in_iteration() {
 	println!("======================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -570,11 +553,11 @@ async fn test_for_in_iteration() {
 }
 
 /// Test loop counting to 10
-#[tokio::test]
-async fn test_loop_count_to_10() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_loop_count_to_10() {
+	let engine = create_test_engine();
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	let script = r#"
@@ -596,7 +579,7 @@ async fn test_loop_count_to_10() {
 	println!("================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nExecution result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	// Should execute successfully (console::log prints 1-10)
@@ -604,13 +587,13 @@ async fn test_loop_count_to_10() {
 }
 
 /// Test for..in with field access
-#[tokio::test]
-async fn test_for_in_field_access() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_for_in_field_access() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -620,10 +603,9 @@ async fn test_for_in_field_access() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	let script = r#"
@@ -644,7 +626,7 @@ async fn test_for_in_field_access() {
 	println!("==========================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	// Should execute successfully
@@ -652,13 +634,13 @@ async fn test_for_in_field_access() {
 }
 
 /// Test bare literal expression in function body - compilation only
-#[tokio::test]
-async fn test_bare_literal_expression_compiles() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_bare_literal_expression_compiles() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -666,8 +648,7 @@ async fn test_bare_literal_expression_compiles() {
 				{id: 2, name: "Bob", age: 17},
 				{id: 3, name: "Charlie", age: 35}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
 	let catalog = engine.catalog();
 
@@ -690,13 +671,13 @@ async fn test_bare_literal_expression_compiles() {
 }
 
 /// Test bare literal expression in function body used in filter
-#[tokio::test(flavor = "multi_thread")]
-async fn test_bare_literal_expression_in_filter() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_bare_literal_expression_in_filter() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -706,10 +687,9 @@ async fn test_bare_literal_expression_in_filter() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Function with bare literal as implicit return, used in filter
@@ -730,13 +710,13 @@ async fn test_bare_literal_expression_in_filter() {
 	println!("===================================\n");
 
 	// Execute using bytecode VM
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 	println!("\nPipeline result: {:?}", pipeline.as_ref().map(|o| o.is_some()));
 
 	let result = match pipeline {
 		Ok(Some(p)) => {
 			println!("Got pipeline, collecting...");
-			match collect(p).await {
+			match collect(p) {
 				Ok(cols) => {
 					println!("Collected {} columns, {} rows", cols.len(), cols.row_count());
 					cols
@@ -773,13 +753,13 @@ async fn test_bare_literal_expression_in_filter() {
 }
 
 /// Test arithmetic expression in function body used in filter
-#[tokio::test(flavor = "multi_thread")]
-async fn test_arithmetic_expression_in_filter() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_arithmetic_expression_in_filter() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -789,10 +769,9 @@ async fn test_arithmetic_expression_in_filter() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Function with arithmetic as implicit return
@@ -809,10 +788,10 @@ async fn test_arithmetic_expression_in_filter() {
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("=================================\n");
 
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 
 	let result = match pipeline {
-		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		Ok(Some(p)) => collect(p).unwrap_or_else(|_| Columns::empty()),
 		_ => Columns::empty(),
 	};
 
@@ -822,13 +801,13 @@ async fn test_arithmetic_expression_in_filter() {
 }
 
 /// Test parenthesized expression in function body used in filter
-#[tokio::test(flavor = "multi_thread")]
-async fn test_parenthesized_expression_in_filter() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_parenthesized_expression_in_filter() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -838,10 +817,9 @@ async fn test_parenthesized_expression_in_filter() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Function with parenthesized expression
@@ -858,10 +836,10 @@ async fn test_parenthesized_expression_in_filter() {
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("====================================\n");
 
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 
 	let result = match pipeline {
-		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		Ok(Some(p)) => collect(p).unwrap_or_else(|_| Columns::empty()),
 		_ => Columns::empty(),
 	};
 
@@ -871,13 +849,13 @@ async fn test_parenthesized_expression_in_filter() {
 }
 
 /// Test variable expression in function body used in filter
-#[tokio::test(flavor = "multi_thread")]
-async fn test_variable_expression_in_filter() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_variable_expression_in_filter() {
+	let engine = create_test_engine();
 
 	// Setup: create namespace, table, and insert data
-	create_namespace(&engine, "test").await;
-	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8").await;
+	create_namespace(&engine, "test");
+	create_table(&engine, "test", "users", "id: int8, name: utf8, age: int8");
 	insert_data(
 		&engine,
 		r#"from [
@@ -887,10 +865,9 @@ async fn test_variable_expression_in_filter() {
 				{id: 4, name: "Diana", age: 22},
 				{id: 5, name: "Eve", age: 19}
 			] insert test.users"#,
-	)
-	.await;
+	);
 
-	let mut tx = engine.begin_command().await.unwrap();
+	let mut tx = engine.begin_command().unwrap();
 	let catalog = engine.catalog();
 
 	// Function with variable arithmetic
@@ -908,10 +885,10 @@ async fn test_variable_expression_in_filter() {
 	println!("Script Functions: {:?}", program.script_functions);
 	println!("===============================\n");
 
-	let pipeline = execute_program(program.clone(), catalog, &mut tx).await;
+	let pipeline = execute_program(program.clone(), catalog, &mut tx);
 
 	let result = match pipeline {
-		Ok(Some(p)) => collect(p).await.unwrap_or_else(|_| Columns::empty()),
+		Ok(Some(p)) => collect(p).unwrap_or_else(|_| Columns::empty()),
 		_ => Columns::empty(),
 	};
 

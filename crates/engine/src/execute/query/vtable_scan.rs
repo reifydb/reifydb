@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_catalog::vtable::{VTableContext, VTables};
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::Fragment;
@@ -42,29 +41,24 @@ impl VirtualScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for VirtualScanNode {
 	#[instrument(name = "query::scan::virtual::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| VTableContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
-		self.virtual_table.initialize(rx, ctx).await?;
+		self.virtual_table.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::virtual::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
-		match self.virtual_table.next(rx).await? {
+		match self.virtual_table.next(rx)? {
 			Some(vtable_batch) => Ok(Some(Batch {
 				columns: vtable_batch.columns,
 			})),

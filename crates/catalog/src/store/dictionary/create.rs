@@ -21,7 +21,7 @@ pub struct DictionaryToCreate {
 }
 
 impl CatalogStore {
-	pub async fn create_dictionary(
+	pub fn create_dictionary(
 		txn: &mut StandardCommandTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {
@@ -29,9 +29,9 @@ impl CatalogStore {
 
 		// Check if dictionary already exists
 		if let Some(dictionary) =
-			CatalogStore::find_dictionary_by_name(txn, namespace_id, &to_create.dictionary).await?
+			CatalogStore::find_dictionary_by_name(txn, namespace_id, &to_create.dictionary)?
 		{
-			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
+			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(dictionary_already_exists(
 				to_create.fragment.unwrap_or_else(|| Fragment::None),
 				&namespace.name,
@@ -40,21 +40,21 @@ impl CatalogStore {
 		}
 
 		// Allocate new dictionary ID
-		let dictionary_id = SystemSequence::next_dictionary_id(txn).await?;
+		let dictionary_id = SystemSequence::next_dictionary_id(txn)?;
 
 		// Store the dictionary
-		Self::store_dictionary(txn, dictionary_id, namespace_id, &to_create).await?;
+		Self::store_dictionary(txn, dictionary_id, namespace_id, &to_create)?;
 
 		// Link dictionary to namespace
-		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, &to_create.dictionary).await?;
+		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, &to_create.dictionary)?;
 
 		// Initialize dictionary sequence counter to 0
-		Self::initialize_dictionary_sequence(txn, dictionary_id).await?;
+		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
 
-		Ok(Self::get_dictionary(txn, dictionary_id).await?)
+		Ok(Self::get_dictionary(txn, dictionary_id)?)
 	}
 
-	async fn store_dictionary(
+	fn store_dictionary(
 		txn: &mut StandardCommandTransaction,
 		dictionary: DictionaryId,
 		namespace: NamespaceId,
@@ -71,12 +71,12 @@ impl CatalogStore {
 		dictionary::LAYOUT.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
 		dictionary::LAYOUT.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
 
-		txn.set(&DictionaryKey::encoded(dictionary), row).await?;
+		txn.set(&DictionaryKey::encoded(dictionary), row)?;
 
 		Ok(())
 	}
 
-	async fn link_dictionary_to_namespace(
+	fn link_dictionary_to_namespace(
 		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		dictionary: DictionaryId,
@@ -90,12 +90,12 @@ impl CatalogStore {
 		dictionary_namespace::LAYOUT.set_u64(&mut row, dictionary_namespace::ID, dictionary);
 		dictionary_namespace::LAYOUT.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
-		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row).await?;
+		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
 
 		Ok(())
 	}
 
-	async fn initialize_dictionary_sequence(
+	fn initialize_dictionary_sequence(
 		txn: &mut StandardCommandTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<()> {
@@ -106,7 +106,7 @@ impl CatalogStore {
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
 		let initial_value = 0u128.to_be_bytes().to_vec();
 
-		txn.set(&seq_key, EncodedValues(CowVec::new(initial_value))).await?;
+		txn.set(&seq_key, EncodedValues(CowVec::new(initial_value)))?;
 
 		Ok(())
 	}
@@ -114,7 +114,6 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use futures_util::TryStreamExt;
 	use reifydb_core::interface::NamespaceDictionaryKey;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -122,10 +121,10 @@ mod tests {
 	use super::*;
 	use crate::{store::dictionary::layout::dictionary_namespace, test_utils::ensure_test_namespace};
 
-	#[tokio::test]
-	async fn test_create_simple_dictionary() {
-		let mut txn = create_test_command_transaction().await;
-		let test_namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_create_simple_dictionary() {
+		let mut txn = create_test_command_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -135,7 +134,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
@@ -144,10 +143,10 @@ mod tests {
 		assert_eq!(result.id_type, Type::Uint2);
 	}
 
-	#[tokio::test]
-	async fn test_create_duplicate_dictionary() {
-		let mut txn = create_test_command_transaction().await;
-		let test_namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_create_duplicate_dictionary() {
+		let mut txn = create_test_command_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -158,20 +157,20 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_dictionary(&mut txn, to_create.clone()).await.unwrap();
+		let result = CatalogStore::create_dictionary(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
 		assert_eq!(result.name, "test_dict");
 
 		// Second creation should fail with duplicate error
-		let err = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap_err();
+		let err = CatalogStore::create_dictionary(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
 
-	#[tokio::test]
-	async fn test_dictionary_linked_to_namespace() {
-		let mut txn = create_test_command_transaction().await;
-		let test_namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_dictionary_linked_to_namespace() {
+		let mut txn = create_test_command_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create1 = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -181,7 +180,7 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_dictionary(&mut txn, to_create1).await.unwrap();
+		CatalogStore::create_dictionary(&mut txn, to_create1).unwrap();
 
 		let to_create2 = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -191,14 +190,13 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_dictionary(&mut txn, to_create2).await.unwrap();
+		CatalogStore::create_dictionary(&mut txn, to_create2).unwrap();
 
 		// Check namespace links
 		let links: Vec<_> = txn
 			.range(NamespaceDictionaryKey::full_scan(test_namespace.id), 1024)
 			.unwrap()
-			.try_collect()
-			.await
+			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
@@ -217,10 +215,10 @@ mod tests {
 		assert_eq!(dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME), "dict1");
 	}
 
-	#[tokio::test]
-	async fn test_create_dictionary_with_various_types() {
-		let mut txn = create_test_command_transaction().await;
-		let test_namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_create_dictionary_with_various_types() {
+		let mut txn = create_test_command_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		// Test with Uint1 ID type
 		let to_create = DictionaryToCreate {
@@ -230,7 +228,7 @@ mod tests {
 			id_type: Type::Uint1,
 			fragment: None,
 		};
-		let result = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		assert_eq!(result.id_type, Type::Uint1);
 
 		// Test with Uint8 ID type
@@ -241,7 +239,7 @@ mod tests {
 			id_type: Type::Uint8,
 			fragment: None,
 		};
-		let result = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		assert_eq!(result.id_type, Type::Uint8);
 		assert_eq!(result.value_type, Type::Blob);
 	}

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnKey, PrimitiveId};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -18,7 +17,7 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub async fn list_columns(
+	pub fn list_columns(
 		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -30,7 +29,7 @@ impl CatalogStore {
 		let mut ids = Vec::new();
 		{
 			let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
-			while let Some(entry) = stream.next().await {
+			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = multi.values;
 				ids.push(ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID)));
@@ -38,7 +37,7 @@ impl CatalogStore {
 		}
 
 		for id in ids {
-			result.push(Self::get_column(&mut txn, id).await?);
+			result.push(Self::get_column(&mut txn, id)?);
 		}
 
 		result.sort_by_key(|c| c.index);
@@ -46,14 +45,14 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub async fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
+	pub fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Get all tables
-		let tables = CatalogStore::list_tables_all(&mut txn).await?;
+		let tables = CatalogStore::list_tables_all(&mut txn)?;
 		for table in tables {
-			let columns = CatalogStore::list_columns(&mut txn, table.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, table.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -64,9 +63,9 @@ impl CatalogStore {
 		}
 
 		// Get all views
-		let views = CatalogStore::list_views_all(&mut txn).await?;
+		let views = CatalogStore::list_views_all(&mut txn)?;
 		for view in views {
-			let columns = CatalogStore::list_columns(&mut txn, view.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, view.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -77,9 +76,9 @@ impl CatalogStore {
 		}
 
 		// Get all ring buffers
-		let ringbuffers = CatalogStore::list_ringbuffers_all(&mut txn).await?;
+		let ringbuffers = CatalogStore::list_ringbuffers_all(&mut txn)?;
 		for ringbuffer in ringbuffers {
-			let columns = CatalogStore::list_columns(&mut txn, ringbuffer.id).await?;
+			let columns = CatalogStore::list_columns(&mut txn, ringbuffer.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
@@ -105,10 +104,10 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		// Create columns out of order
 		CatalogStore::create_column(
@@ -128,7 +127,6 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
 		CatalogStore::create_column(
@@ -148,10 +146,9 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -164,20 +161,20 @@ mod tests {
 		assert_eq!(columns[1].auto_increment, true);
 	}
 
-	#[tokio::test]
-	async fn test_empty() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_empty() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_table_does_not_exist() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_table_does_not_exist() {
+		let mut txn = create_test_command_transaction();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).await.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 }

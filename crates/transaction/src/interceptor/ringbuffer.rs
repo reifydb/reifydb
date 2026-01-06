@@ -22,15 +22,14 @@ impl<'a> RingBufferPreInsertContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPreInsertInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -65,12 +64,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPreInsertInterceptor for ClosureRingBufferPreInsertInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreInsertContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -100,15 +98,14 @@ impl<'a> RingBufferPostInsertContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPostInsertInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPostInsertInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -143,12 +140,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPostInsertInterceptor for ClosureRingBufferPostInsertInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -178,15 +174,14 @@ impl<'a> RingBufferPreUpdateContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPreUpdateInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -221,12 +216,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPreUpdateInterceptor for ClosureRingBufferPreUpdateInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreUpdateContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -263,15 +257,14 @@ impl<'a> RingBufferPostUpdateContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPostUpdateInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -306,12 +299,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPostUpdateInterceptor for ClosureRingBufferPostUpdateInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -339,15 +331,14 @@ impl<'a> RingBufferPreDeleteContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPreDeleteInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -382,12 +373,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPreDeleteInterceptor for ClosureRingBufferPreDeleteInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPreDeleteContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -417,15 +407,14 @@ impl<'a> RingBufferPostDeleteContext<'a> {
 	}
 }
 
-#[async_trait::async_trait]
 pub trait RingBufferPostDeleteInterceptor: Send + Sync {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()>;
 }
 
 impl InterceptorChain<dyn RingBufferPostDeleteInterceptor + Send + Sync> {
-	pub async fn execute<'a>(&self, mut ctx: RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute<'a>(&self, mut ctx: RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx).await?;
+			interceptor.intercept(&mut ctx)?;
 		}
 		Ok(())
 	}
@@ -460,12 +449,11 @@ where
 	}
 }
 
-#[async_trait::async_trait]
 impl<F> RingBufferPostDeleteInterceptor for ClosureRingBufferPostDeleteInterceptor<F>
 where
 	F: for<'a> Fn(&mut RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	async fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a>) -> reifydb_core::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -481,36 +469,36 @@ where
 pub struct RingBufferInterceptor;
 
 impl RingBufferInterceptor {
-	pub async fn pre_insert(
+	pub fn pre_insert(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		row: &EncodedValues,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPreInsertContext::new(ringbuffer, row);
-		txn.ringbuffer_pre_insert_interceptors().execute(ctx).await
+		txn.ringbuffer_pre_insert_interceptors().execute(ctx)
 	}
 
-	pub async fn post_insert(
+	pub fn post_insert(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
 		row: &EncodedValues,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPostInsertContext::new(ringbuffer, id, row);
-		txn.ringbuffer_post_insert_interceptors().execute(ctx).await
+		txn.ringbuffer_post_insert_interceptors().execute(ctx)
 	}
 
-	pub async fn pre_update(
+	pub fn pre_update(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
 		row: &EncodedValues,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPreUpdateContext::new(ringbuffer, id, row);
-		txn.ringbuffer_pre_update_interceptors().execute(ctx).await
+		txn.ringbuffer_pre_update_interceptors().execute(ctx)
 	}
 
-	pub async fn post_update(
+	pub fn post_update(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
@@ -518,25 +506,25 @@ impl RingBufferInterceptor {
 		old_row: &EncodedValues,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPostUpdateContext::new(ringbuffer, id, row, old_row);
-		txn.ringbuffer_post_update_interceptors().execute(ctx).await
+		txn.ringbuffer_post_update_interceptors().execute(ctx)
 	}
 
-	pub async fn pre_delete(
+	pub fn pre_delete(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPreDeleteContext::new(ringbuffer, id);
-		txn.ringbuffer_pre_delete_interceptors().execute(ctx).await
+		txn.ringbuffer_pre_delete_interceptors().execute(ctx)
 	}
 
-	pub async fn post_delete(
+	pub fn post_delete(
 		txn: &mut impl super::WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
 		deleted_row: &EncodedValues,
 	) -> reifydb_core::Result<()> {
 		let ctx = RingBufferPostDeleteContext::new(ringbuffer, id, deleted_row);
-		txn.ringbuffer_post_delete_interceptors().execute(ctx).await
+		txn.ringbuffer_post_delete_interceptors().execute(ctx)
 	}
 }

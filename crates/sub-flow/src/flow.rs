@@ -17,6 +17,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 use reifydb_rql::flow::{Flow, FlowNodeType};
 use reifydb_sdk::FlowChangeOrigin;
+use reifydb_sub_server::SharedRuntime;
 use tokio::{select, sync::broadcast, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{Span, debug, error, info, instrument, warn};
@@ -48,6 +49,7 @@ impl FlowConsumer {
 		provider: Arc<FlowChangeProvider>,
 		version_rx: broadcast::Receiver<VersionBroadcast>,
 		shutdown: CancellationToken,
+		runtime: SharedRuntime,
 	) -> Result<Self> {
 		// Extract source primitives from flow definition
 		let sources = extract_sources(&flow);
@@ -59,7 +61,7 @@ impl FlowConsumer {
 			let sources = sources.clone();
 			let shutdown = shutdown.clone();
 
-			tokio::spawn(Self::processing_loop(
+			runtime.spawn(Self::processing_loop(
 				flow_id,
 				sources,
 				engine,
@@ -90,7 +92,7 @@ impl FlowConsumer {
 		shutdown: CancellationToken,
 	) {
 		// Get initial checkpoint
-		let mut current_version = match Self::load_checkpoint(&engine, flow_id).await {
+		let mut current_version = match Self::load_checkpoint(&engine, flow_id) {
 			Ok(v) => v,
 			Err(e) => {
 				error!(flow_id = flow_id.0, error = %e, "failed to load checkpoint, starting from 0");
@@ -209,7 +211,7 @@ impl FlowConsumer {
 		}
 
 		for change in relevant {
-			flow_engine.process(flow_txn, change, flow_id).await?;
+			flow_engine.process(flow_txn, change, flow_id)?;
 		}
 
 		Span::current().record("process_time_us", process_start.elapsed().as_micros() as u64);
@@ -247,13 +249,13 @@ impl FlowConsumer {
 
 		// Single parent transaction for entire batch
 		let txn_begin_start = Instant::now();
-		let mut txn = engine.begin_command().await?;
+		let mut txn = engine.begin_command()?;
 		Span::current().record("txn_begin_us", txn_begin_start.elapsed().as_micros() as u64);
 
 		let catalog = engine.catalog();
 
 		let flow_txn_init_start = Instant::now();
-		let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone()).await;
+		let mut flow_txn = FlowTransaction::new(&mut txn, CommitVersion(start_version), catalog.clone());
 		Span::current().record("flow_txn_init_us", flow_txn_init_start.elapsed().as_micros() as u64);
 
 		let processing_start = Instant::now();
@@ -272,13 +274,13 @@ impl FlowConsumer {
 		Span::current().record("processing_us", processing_start.elapsed().as_micros() as u64);
 
 		let flow_commit_start = Instant::now();
-		flow_txn.commit(&mut txn).await?;
+		flow_txn.commit(&mut txn)?;
 		Span::current().record("flow_commit_us", flow_commit_start.elapsed().as_micros() as u64);
 
-		CdcCheckpoint::persist(&mut txn, consumer_id, final_version).await?;
+		CdcCheckpoint::persist(&mut txn, consumer_id, final_version)?;
 
 		let parent_commit_start = Instant::now();
-		txn.commit().await?;
+		txn.commit()?;
 		Span::current().record("parent_commit_us", parent_commit_start.elapsed().as_micros() as u64);
 
 		Span::current().record("versions_processed", versions_processed);
@@ -288,14 +290,14 @@ impl FlowConsumer {
 	}
 
 	/// Load the checkpoint for this flow consumer.
-	async fn load_checkpoint(engine: &StandardEngine, flow_id: FlowId) -> Result<CommitVersion> {
+	fn load_checkpoint(engine: &StandardEngine, flow_id: FlowId) -> Result<CommitVersion> {
 		let consumer_id = CdcConsumerId::new(&format!("flow-consumer-{}", flow_id.0));
-		let mut txn = engine.begin_query().await?;
-		CdcCheckpoint::fetch(&mut txn, &consumer_id).await
+		let mut txn = engine.begin_query()?;
+		CdcCheckpoint::fetch(&mut txn, &consumer_id)
 	}
 
 	/// Shutdown the flow consumer gracefully.
-	pub async fn shutdown(mut self) -> Result<()> {
+	pub fn shutdown(mut self) -> Result<()> {
 		debug!(flow_id = self.flow_id.0, "shutting down flow consumer");
 
 		// Signal shutdown
@@ -313,8 +315,8 @@ impl FlowConsumer {
 	/// Get the current checkpoint version for this flow consumer.
 	///
 	/// This represents how far the flow has processed in the CDC log.
-	pub async fn current_version(&self, engine: &StandardEngine) -> Result<CommitVersion> {
-		Self::load_checkpoint(engine, self.flow_id).await
+	pub fn current_version(&self, engine: &StandardEngine) -> Result<CommitVersion> {
+		Self::load_checkpoint(engine, self.flow_id)
 	}
 
 	/// Get the flow ID.

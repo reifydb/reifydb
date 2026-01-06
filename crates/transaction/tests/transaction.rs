@@ -11,7 +11,6 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
 
-use futures_util::TryStreamExt;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
@@ -28,7 +27,6 @@ use reifydb_transaction::{
 	},
 	single::{TransactionSingle, TransactionSvl},
 };
-use tokio::runtime::Runtime;
 
 /// A handle to either a query or command transaction for test tracking
 enum TransactionHandle {
@@ -41,37 +39,28 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_mu
 test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
-	let runtime = Runtime::new().unwrap();
+	let store = TransactionStore::testing_memory();
+	let bus = EventBus::default();
+	let engine = TransactionMulti::new(
+		store.clone(),
+		TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
+		bus,
+	)
+	.unwrap();
 
-	let engine = runtime
-		.block_on(async {
-			// Create store inside runtime context because it spawns a background writer task
-			let store = TransactionStore::testing_memory();
-			let bus = EventBus::default();
-			TransactionMulti::new(
-				store.clone(),
-				TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
-				bus,
-			)
-			.await
-		})
-		.unwrap();
-
-	testscript::run_path(&mut MvccRunner::new(engine, runtime), path).expect("testfailed")
+	testscript::run_path(&mut MvccRunner::new(engine), path).expect("testfailed")
 }
 
 pub struct MvccRunner {
 	engine: TransactionMulti,
 	transactions: HashMap<String, TransactionHandle>,
-	runtime: Runtime,
 }
 
 impl MvccRunner {
-	fn new(engine: TransactionMulti, runtime: Runtime) -> Self {
+	fn new(engine: TransactionMulti) -> Self {
 		Self {
 			engine,
 			transactions: HashMap::new(),
-			runtime,
 		}
 	}
 
@@ -120,19 +109,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 				let t = match readonly {
 					true => TransactionHandle::Query(
-						self.runtime
-							.block_on(async {
-								QueryTransaction::new(self.engine.clone(), version)
-									.await
-							})
-							.unwrap(),
+						QueryTransaction::new(self.engine.clone(), version).unwrap(),
 					),
 					false => TransactionHandle::Command(
-						self.runtime
-							.block_on(async {
-								CommandTransaction::new(self.engine.clone()).await
-							})
-							.unwrap(),
+						CommandTransaction::new(self.engine.clone()).unwrap(),
 					),
 				};
 
@@ -150,7 +130,7 @@ impl<'a> testscript::Runner for MvccRunner {
 						unreachable!("can not call commit on rx")
 					}
 					TransactionHandle::Command(mut tx) => {
-						self.runtime.block_on(async { tx.commit().await })?;
+						tx.commit()?;
 					}
 				}
 			}
@@ -195,13 +175,11 @@ impl<'a> testscript::Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(&arg.value));
 
 					let value = match &mut t {
-						TransactionHandle::Query(rx) => self
-							.runtime
-							.block_on(async { rx.get(&key).await })
+						TransactionHandle::Query(rx) => rx
+							.get(&key)
 							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
-						TransactionHandle::Command(tx) => self
-							.runtime
-							.block_on(async { tx.get(&key).await })
+						TransactionHandle::Command(tx) => tx
+							.get(&key)
 							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
 					}
 					.unwrap();
@@ -218,10 +196,7 @@ impl<'a> testscript::Runner for MvccRunner {
 				Self::no_tx(command)?;
 				let mut args = command.consume_args();
 
-				let mut tx = self
-					.runtime
-					.block_on(async { CommandTransaction::new(self.engine.clone()).await })
-					.unwrap();
+				let mut tx = CommandTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
@@ -233,7 +208,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					}
 				}
 				args.reject_rest()?;
-				self.runtime.block_on(async { tx.commit().await })?;
+				tx.commit()?;
 			}
 
 			// tx: rollback
@@ -263,26 +238,18 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut kvs: Vec<(EncodedKey, Vec<u8>)> = Vec::new();
 				match &mut t {
 					TransactionHandle::Query(rx) => {
-						let items: Vec<_> = self
-							.runtime
-							.block_on(async {
-								rx.range(EncodedKeyRange::all(), 1024)
-									.try_collect()
-									.await
-							})
+						let items: Vec<_> = rx
+							.range(EncodedKeyRange::all(), 1024)
+							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
 					TransactionHandle::Command(tx) => {
-						let items: Vec<_> = self
-							.runtime
-							.block_on(async {
-								tx.range(EncodedKeyRange::all(), 1024)
-									.try_collect()
-									.await
-							})
+						let items: Vec<_> = tx
+							.range(EncodedKeyRange::all(), 1024)
+							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
 							kvs.push((item.key.clone(), item.values.to_vec()));
@@ -312,38 +279,30 @@ impl<'a> testscript::Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Query(rx) => {
 						if !reverse {
-							let items: Vec<_> = self
-								.runtime
-								.block_on(async {
-									rx.range(range, 1024).try_collect().await
-								})
+							let items: Vec<_> = rx
+								.range(range, 1024)
+								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
-							let items: Vec<_> = self
-								.runtime
-								.block_on(async {
-									rx.range_rev(range, 1024).try_collect().await
-								})
+							let items: Vec<_> = rx
+								.range_rev(range, 1024)
+								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						}
 					}
 					TransactionHandle::Command(tx) => {
 						if !reverse {
-							let items: Vec<_> = self
-								.runtime
-								.block_on(async {
-									tx.range(range, 1024).try_collect().await
-								})
+							let items: Vec<_> = tx
+								.range(range, 1024)
+								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
-							let items: Vec<_> = self
-								.runtime
-								.block_on(async {
-									tx.range_rev(range, 1024).try_collect().await
-								})
+							let items: Vec<_> = tx
+								.range_rev(range, 1024)
+								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						}
@@ -367,31 +326,19 @@ impl<'a> testscript::Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Query(rx) => {
 						if !reverse {
-							let batch = self
-								.runtime
-								.block_on(async { rx.prefix(&prefix).await })
-								.unwrap();
+							let batch = rx.prefix(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
 						} else {
-							let batch = self
-								.runtime
-								.block_on(async { rx.prefix_rev(&prefix).await })
-								.unwrap();
+							let batch = rx.prefix_rev(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
 						}
 					}
 					TransactionHandle::Command(tx) => {
 						if !reverse {
-							let batch = self
-								.runtime
-								.block_on(async { tx.prefix(&prefix).await })
-								.unwrap();
+							let batch = tx.prefix(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
 						} else {
-							let batch = self
-								.runtime
-								.block_on(async { tx.prefix_rev(&prefix).await })
-								.unwrap();
+							let batch = tx.prefix_rev(&prefix).unwrap();
 							print_rx(&mut output, batch.items.into_iter())
 						}
 					}

@@ -93,8 +93,8 @@ mod tests {
 
 	use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
 
-	#[tokio::test]
-	async fn test_cast_integer() {
+	#[test]
+	fn test_cast_integer() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -114,8 +114,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int4([42]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_negative_integer() {
+	#[test]
+	fn test_cast_negative_integer() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -139,8 +139,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int4([-42]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_negative_min() {
+	#[test]
+	fn test_cast_negative_min() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -164,8 +164,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::int1([-128]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_float_8() {
+	#[test]
+	fn test_cast_float_8() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -185,8 +185,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float8([4.2]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_float_4() {
+	#[test]
+	fn test_cast_float_4() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -206,8 +206,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float4([4.2]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_negative_float_4() {
+	#[test]
+	fn test_cast_negative_float_4() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -227,8 +227,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float4([-1.1]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_negative_float_8() {
+	#[test]
+	fn test_cast_negative_float_8() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -248,8 +248,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::float8([-1.1]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_string_to_bool() {
+	#[test]
+	fn test_cast_string_to_bool() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -269,8 +269,8 @@ mod tests {
 		assert_eq!(*result.data(), ColumnData::bool([false]));
 	}
 
-	#[tokio::test]
-	async fn test_cast_string_neg_one_to_bool_should_fail() {
+	#[test]
+	fn test_cast_string_neg_one_to_bool_should_fail() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -298,8 +298,8 @@ mod tests {
 		assert_eq!(cause.code, "BOOLEAN_003"); // invalid_number_boolean
 	}
 
-	#[tokio::test]
-	async fn test_cast_boolean_to_date_should_fail() {
+	#[test]
+	fn test_cast_boolean_to_date_should_fail() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,
@@ -324,8 +324,8 @@ mod tests {
 		assert_eq!(diagnostic.code, "CAST_001");
 	}
 
-	#[tokio::test]
-	async fn test_cast_text_to_decimal() {
+	#[test]
+	fn test_cast_text_to_decimal() {
 		let mut ctx = ColumnEvaluationContext::testing();
 		let result = evaluate(
 			&mut ctx,

@@ -6,7 +6,6 @@ use std::{
 	sync::Arc,
 };
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::ResolvedPrimitive,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
@@ -51,9 +50,8 @@ impl InlineDataNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for InlineDataNode {
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -62,7 +60,7 @@ impl QueryNode for InlineDataNode {
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,

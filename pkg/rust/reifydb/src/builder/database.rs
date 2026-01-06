@@ -145,7 +145,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub async fn build(mut self) -> crate::Result<Database> {
+	pub fn build(mut self) -> crate::Result<Database> {
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -179,7 +179,7 @@ impl DatabaseBuilder {
 		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog).await?;
+		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
 
 		// Create and register Compiler (requires ComputePool to be registered first)
 		let compute_pool = self.ioc.resolve::<ComputePool>()?;
@@ -211,8 +211,7 @@ impl DatabaseBuilder {
 			Catalog::new(catalog),
 			functions,
 			self.ioc.clone(),
-		)
-		.await;
+		);
 
 		self.ioc = self.ioc.register(engine.clone());
 
@@ -243,7 +242,7 @@ impl DatabaseBuilder {
 		// 1. Add tracing subsystem first (stopped last during shutdown)
 		#[cfg(feature = "sub_tracing")]
 		if let Some(factory) = self.tracing_factory {
-			let subsystem = factory.create(&self.ioc).await?;
+			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
@@ -251,14 +250,14 @@ impl DatabaseBuilder {
 		// 3. Add flow subsystem third
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
-			let subsystem = factory.create(&self.ioc).await?;
+			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
 		// 4. Add other custom subsystems last (stopped first during shutdown)
 		for factory in self.factories {
-			let subsystem = factory.create(&self.ioc).await?;
+			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
@@ -280,16 +279,16 @@ impl DatabaseBuilder {
 	}
 
 	/// Load the materialized catalog from storage
-	async fn load_materialized_catalog(
+	fn load_materialized_catalog(
 		multi: &TransactionMultiVersion,
 		single: &TransactionSingle,
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt = StandardQueryTransaction::new(multi.begin_query().await?, single.clone(), cdc.clone());
+		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone(), cdc.clone());
 
 		debug!("Loading materialized catalog");
-		MaterializedCatalogLoader::load_all(&mut qt, catalog).await?;
+		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
 
 		Ok(())
 	}

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::{Result, util::ioc::IocContainer};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -40,7 +39,6 @@ impl Default for FlowSubsystemFactory {
 	}
 }
 
-#[async_trait]
 impl SubsystemFactory for FlowSubsystemFactory {
 	fn provide_interceptors(
 		&self,
@@ -51,7 +49,7 @@ impl SubsystemFactory for FlowSubsystemFactory {
 		builder
 	}
 
-	async fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		use super::FlowSubsystem;
 
 		let engine = ioc.resolve::<StandardEngine>()?;
@@ -63,6 +61,6 @@ impl SubsystemFactory for FlowSubsystemFactory {
 			None
 		};
 
-		Ok(Box::new(FlowSubsystem::new(engine, operators_dir, ioc)))
+		Ok(Box::new(FlowSubsystem::new(engine, operators_dir, ioc, None)))
 	}
 }

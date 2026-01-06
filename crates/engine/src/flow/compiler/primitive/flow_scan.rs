@@ -22,17 +22,12 @@ impl From<FlowScanNode> for FlowScanCompiler {
 }
 
 impl CompileOperator for FlowScanCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
 		compiler.add_node(
 			txn,
 			SourceFlow {
 				flow: self.flow_scan.source.def().id,
 			},
 		)
-		.await
 	}
 }

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::{StreamExt, stream::unfold};
-
-use crate::pipeline::Pipeline;
+use crate::{error::Result, pipeline::Pipeline};
 
 /// Take operator - limits the number of rows returned.
 pub struct TakeOp {
@@ -18,29 +16,47 @@ impl TakeOp {
 	}
 
 	pub fn apply(&self, input: Pipeline) -> Pipeline {
-		let limit = self.limit;
+		Box::new(TakeIterator {
+			input,
+			remaining: self.limit,
+		})
+	}
+}
 
-		Box::pin(unfold((input, limit), |(mut input, remaining)| async move {
-			if remaining == 0 {
-				return None;
+/// Iterator that limits the number of rows returned
+struct TakeIterator {
+	input: Pipeline,
+	remaining: usize,
+}
+
+impl Iterator for TakeIterator {
+	type Item = Result<reifydb_core::Batch>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.remaining == 0 {
+			return None;
+		}
+
+		let batch = match self.input.next()? {
+			Ok(b) => b,
+			Err(e) => {
+				self.remaining = 0;
+				return Some(Err(e));
 			}
+		};
 
-			match input.next().await? {
-				Err(e) => Some((Err(e), (input, 0))),
-				Ok(batch) => {
-					let batch_size = batch.row_count();
+		let batch_size = batch.row_count();
 
-					if batch_size <= remaining {
-						// Take entire batch
-						Some((Ok(batch), (input, remaining - batch_size)))
-					} else {
-						// Take partial batch - only first `remaining` rows
-						let indices: Vec<usize> = (0..remaining).collect();
-						let truncated = batch.extract_by_indices(&indices);
-						Some((Ok(truncated), (input, 0)))
-					}
-				}
-			}
-		}))
+		if batch_size <= self.remaining {
+			// Take entire batch
+			self.remaining -= batch_size;
+			Some(Ok(batch))
+		} else {
+			// Take partial batch - only first `remaining` rows
+			let indices: Vec<usize> = (0..self.remaining).collect();
+			let truncated = batch.extract_by_indices(&indices);
+			self.remaining = 0;
+			Some(Ok(truncated))
+		}
 	}
 }

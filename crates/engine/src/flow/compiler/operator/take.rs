@@ -25,23 +25,17 @@ impl From<TakeNode> for TakeCompiler {
 }
 
 impl CompileOperator for TakeCompiler {
-	async fn compile(
-		self,
-		compiler: &mut FlowCompiler,
-		txn: &mut StandardCommandTransaction,
-	) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(txn, *self.input).await?;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(txn, *self.input)?;
 
-		let node_id = compiler
-			.add_node(
-				txn,
-				Take {
-					limit: self.limit,
-				},
-			)
-			.await?;
+		let node_id = compiler.add_node(
+			txn,
+			Take {
+				limit: self.limit,
+			},
+		)?;
 
-		compiler.add_edge(txn, &input_node, &node_id).await?;
+		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)
 	}
 }

@@ -9,14 +9,14 @@ use crate::store::sequence::{
 	system::{FLOW_EDGE_KEY, FLOW_KEY, FLOW_NODE_KEY},
 };
 
-pub async fn next_flow_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowId> {
-	GeneratorU64::next(txn, &FLOW_KEY, None).await.map(FlowId)
+pub fn next_flow_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowId> {
+	GeneratorU64::next(txn, &FLOW_KEY, None).map(FlowId)
 }
 
-pub async fn next_flow_node_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowNodeId> {
-	GeneratorU64::next(txn, &FLOW_NODE_KEY, None).await.map(FlowNodeId)
+pub fn next_flow_node_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowNodeId> {
+	GeneratorU64::next(txn, &FLOW_NODE_KEY, None).map(FlowNodeId)
 }
 
-pub async fn next_flow_edge_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowEdgeId> {
-	GeneratorU64::next(txn, &FLOW_EDGE_KEY, None).await.map(FlowEdgeId)
+pub fn next_flow_edge_id(txn: &mut StandardCommandTransaction) -> crate::Result<FlowEdgeId> {
+	GeneratorU64::next(txn, &FLOW_EDGE_KEY, None).map(FlowEdgeId)
 }

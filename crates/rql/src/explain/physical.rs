@@ -16,7 +16,7 @@ use crate::{
 	},
 };
 
-pub async fn explain_physical_plan<T: IntoStandardTransaction>(
+pub fn explain_physical_plan<T: IntoStandardTransaction>(
 	catalog: &Catalog,
 	rx: &mut T,
 	query: &str,
@@ -25,8 +25,8 @@ pub async fn explain_physical_plan<T: IntoStandardTransaction>(
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let logical = compile_logical(catalog, rx, statement).await?;
-		plans.push(compile_physical(catalog, rx, logical).await?);
+		let logical = compile_logical(catalog, rx, statement)?;
+		plans.push(compile_physical(catalog, rx, logical)?);
 	}
 
 	let mut result = String::new();

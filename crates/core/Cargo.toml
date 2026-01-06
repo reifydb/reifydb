@@ -24,6 +24,7 @@ futures-util = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 indexmap = { workspace = true }
+parking_lot = { workspace = true }
 rayon = { workspace = true }
 
 [dev-dependencies]

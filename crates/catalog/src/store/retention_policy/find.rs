@@ -14,23 +14,23 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
-	pub async fn find_primitive_retention_policy(
+	pub fn find_primitive_retention_policy(
 		rx: &mut impl IntoStandardTransaction,
 		source: PrimitiveId,
 	) -> crate::Result<Option<RetentionPolicy>> {
 		let mut txn = rx.into_standard_transaction();
-		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source)).await?;
+		let value = txn.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 
 	/// Find a retention policy for an operator
 	/// Returns None if no retention policy is set
-	pub async fn find_operator_retention_policy(
+	pub fn find_operator_retention_policy(
 		rx: &mut impl IntoStandardTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
 		let mut txn = rx.into_standard_transaction();
-		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator)).await?;
+		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 }
@@ -48,9 +48,9 @@ mod tests {
 		_create_operator_retention_policy, create_primitive_retention_policy,
 	};
 
-	#[tokio::test]
-	async fn test_find_primitive_retention_policy_exists() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_primitive_retention_policy_exists() {
+		let mut txn = create_test_command_transaction();
 		let source = PrimitiveId::Table(TableId(42));
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -58,24 +58,24 @@ mod tests {
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_primitive_retention_policy(&mut txn, source, &policy).await.unwrap();
+		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).await.unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
-	#[tokio::test]
-	async fn test_find_primitive_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_primitive_retention_policy_not_exists() {
+		let mut txn = create_test_command_transaction();
 		let source = PrimitiveId::Table(TableId(9999));
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).await.unwrap();
+		let found = CatalogStore::find_primitive_retention_policy(&mut txn, source).unwrap();
 		assert_eq!(found, None);
 	}
 
-	#[tokio::test]
-	async fn test_find_operator_retention_policy_exists() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_operator_retention_policy_exists() {
+		let mut txn = create_test_command_transaction();
 		let operator = FlowNodeId(999);
 
 		let policy = RetentionPolicy::KeepVersions {
@@ -83,18 +83,18 @@ mod tests {
 			cleanup_mode: CleanupMode::Drop,
 		};
 
-		_create_operator_retention_policy(&mut txn, operator, &policy).await.unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).await.unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
-	#[tokio::test]
-	async fn test_find_operator_retention_policy_not_exists() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_operator_retention_policy_not_exists() {
+		let mut txn = create_test_command_transaction();
 		let operator = FlowNodeId(9999);
 
-		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).await.unwrap();
+		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
 		assert_eq!(found, None);
 	}
 }

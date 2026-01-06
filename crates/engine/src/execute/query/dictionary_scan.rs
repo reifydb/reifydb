@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	EncodedKey,
 	interface::{EncodableKey, resolved::ResolvedDictionary},
@@ -43,26 +42,19 @@ impl DictionaryScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "query::scan::dictionary::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	#[instrument(name = "query::scan::dictionary::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
-		use futures_util::StreamExt;
-
 		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
 
@@ -85,7 +77,7 @@ impl QueryNode for DictionaryScanNode {
 		let mut stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
 
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let entry = entry?;
 
 			// Skip entries we've already seen

@@ -55,7 +55,7 @@ pub struct ColumnToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) async fn create_column(
+	pub(crate) fn create_column(
 		txn: &mut StandardCommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
@@ -63,7 +63,7 @@ impl CatalogStore {
 		let source = source.into();
 
 		// FIXME policies
-		if let Some(column) = Self::find_column_by_name(txn, source, &column_to_create.column).await? {
+		if let Some(column) = Self::find_column_by_name(txn, source, &column_to_create.column)? {
 			return_error!(table_column_already_exists(
 				Fragment::None,
 				&column_to_create.namespace_name,
@@ -92,7 +92,7 @@ impl CatalogStore {
 			}
 		}
 
-		let id = SystemSequence::next_column_id(txn).await?;
+		let id = SystemSequence::next_column_id(txn)?;
 
 		let mut row = column::LAYOUT.allocate();
 		column::LAYOUT.set_u64(&mut row, ID, id);
@@ -111,16 +111,16 @@ impl CatalogStore {
 		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
 		column::LAYOUT.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
-		txn.set(&ColumnsKey::encoded(id), row).await?;
+		txn.set(&ColumnsKey::encoded(id), row)?;
 
 		let mut row = source_column::LAYOUT.allocate();
 		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
 		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
 		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(source, id), row).await?;
+		txn.set(&ColumnKey::encoded(source, id), row)?;
 
 		for policy in column_to_create.policies {
-			Self::create_column_policy(txn, id, policy).await?;
+			Self::create_column_policy(txn, id, policy)?;
 		}
 
 		Ok(ColumnDef {
@@ -128,7 +128,7 @@ impl CatalogStore {
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,
 			index: column_to_create.index,
-			policies: Self::list_column_policies(txn, id).await?,
+			policies: Self::list_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
 			dictionary_id: column_to_create.dictionary_id,
 		})
@@ -143,10 +143,10 @@ mod test {
 
 	use crate::{CatalogStore, column::ColumnToCreate, test_utils::ensure_test_table};
 
-	#[tokio::test]
-	async fn test_create_column() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_create_column() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
 			&mut txn,
@@ -165,7 +165,6 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
 		CatalogStore::create_column(
@@ -185,17 +184,16 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
-		let column_1 = CatalogStore::get_column(&mut txn, ColumnId(8193)).await.unwrap();
+		let column_1 = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 = CatalogStore::get_column(&mut txn, ColumnId(8194)).await.unwrap();
+		let column_2 = CatalogStore::get_column(&mut txn, ColumnId(8194)).unwrap();
 
 		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
@@ -203,10 +201,10 @@ mod test {
 		assert_eq!(column_2.auto_increment, false);
 	}
 
-	#[tokio::test]
-	async fn test_create_column_with_auto_increment() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_create_column_with_auto_increment() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
 			&mut txn,
@@ -225,10 +223,9 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).await.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
 		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");
@@ -236,10 +233,10 @@ mod test {
 		assert_eq!(column.auto_increment, true);
 	}
 
-	#[tokio::test]
-	async fn test_auto_increment_invalid_type() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_auto_increment_invalid_type() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		// Try to create a text column with auto_increment
 
@@ -260,7 +257,6 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap_err();
 
 		let diagnostic = err.diagnostic();
@@ -285,7 +281,6 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_006");
@@ -308,16 +303,15 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
 
-	#[tokio::test]
-	async fn test_column_already_exists() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_column_already_exists() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
 			&mut txn,
@@ -336,7 +330,6 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
 		// Tries to create a column with the same name again
@@ -357,7 +350,6 @@ mod test {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap_err();
 
 		let diagnostic = err.diagnostic();

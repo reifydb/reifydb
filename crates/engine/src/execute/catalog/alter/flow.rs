@@ -11,7 +11,7 @@ use reifydb_type::{Fragment, Value};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn execute_alter_flow<'a>(
+	pub(crate) fn execute_alter_flow<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterFlowNode,
@@ -21,7 +21,7 @@ impl Executor {
 		let flow_name = plan.flow.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan
 				.flow
 				.namespace
@@ -32,7 +32,7 @@ impl Executor {
 		};
 
 		// Find the flow
-		let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace.id, flow_name).await? else {
+		let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace.id, flow_name)? else {
 			return_error!(reifydb_core::diagnostic::catalog::flow_not_found(
 				plan.flow.name.clone(),
 				&namespace.name,
@@ -45,7 +45,7 @@ impl Executor {
 			AlterFlowAction::Rename {
 				new_name,
 			} => {
-				CatalogStore::update_flow_name(txn, flow.id, new_name.text().to_string()).await?;
+				CatalogStore::update_flow_name(txn, flow.id, new_name.text().to_string())?;
 				("RENAME", Value::Utf8(format!("{} -> {}", flow_name, new_name.text())))
 			}
 			AlterFlowAction::SetQuery {
@@ -54,11 +54,11 @@ impl Executor {
 				unimplemented!();
 			}
 			AlterFlowAction::Pause => {
-				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Paused).await?;
+				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Paused)?;
 				("PAUSE", Value::Utf8("Flow paused".to_string()))
 			}
 			AlterFlowAction::Resume => {
-				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Active).await?;
+				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Active)?;
 				("RESUME", Value::Utf8("Flow resumed".to_string()))
 			}
 		};

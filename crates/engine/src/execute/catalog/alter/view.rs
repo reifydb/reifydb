@@ -9,7 +9,7 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn execute_alter_view<'a>(
+	pub(crate) fn execute_alter_view<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterViewNode,
@@ -19,7 +19,7 @@ impl Executor {
 		let view_name = plan.node.view.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan.node.view.namespace.clone().unwrap_or_else(|| {
 				use reifydb_type::Fragment;
 				Fragment::internal("default".to_string())
@@ -31,7 +31,7 @@ impl Executor {
 		};
 
 		// Find the view
-		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name).await? else {
+		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name)? else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
 				plan.node.view.name.clone(),
 				&namespace.name,
@@ -50,7 +50,7 @@ impl Executor {
 				} => {
 					// Get all columns for the view to
 					// validate and resolve column IDs
-					let view_columns = CatalogStore::list_columns(txn, view.id).await?;
+					let view_columns = CatalogStore::list_columns(txn, view.id)?;
 
 					// Map column names to IDs
 					let mut column_ids = Vec::new();
@@ -78,8 +78,7 @@ impl Executor {
 							source: PrimitiveId::View(view.id),
 							column_ids,
 						},
-					)
-					.await?;
+					)?;
 
 					let pk_name = name
 						.map(|n| n.text().to_string())

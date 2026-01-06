@@ -38,29 +38,29 @@ pub struct ViewToCreate {
 }
 
 impl CatalogStore {
-	pub async fn create_deferred_view(
+	pub fn create_deferred_view(
 		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
-		Self::create_view(txn, to_create, Deferred).await
+		Self::create_view(txn, to_create, Deferred)
 	}
 
-	pub async fn create_transactional_view(
+	pub fn create_transactional_view(
 		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
-		Self::create_view(txn, to_create, Transactional).await
+		Self::create_view(txn, to_create, Transactional)
 	}
 
-	async fn create_view(
+	fn create_view(
 		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name).await? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
+		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name)? {
+			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(view_already_exists(
 				to_create.fragment.unwrap_or_else(|| Fragment::None),
 				&namespace.name,
@@ -68,16 +68,16 @@ impl CatalogStore {
 			));
 		}
 
-		let view_id = SystemSequence::next_view_id(txn).await?;
-		Self::store_view(txn, view_id, namespace_id, &to_create, kind).await?;
-		Self::link_view_to_namespace(txn, namespace_id, view_id, &to_create.name).await?;
+		let view_id = SystemSequence::next_view_id(txn)?;
+		Self::store_view(txn, view_id, namespace_id, &to_create, kind)?;
+		Self::link_view_to_namespace(txn, namespace_id, view_id, &to_create.name)?;
 
-		Self::insert_columns_for_view(txn, view_id, to_create).await?;
+		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
-		Ok(Self::get_view(txn, view_id).await?)
+		Ok(Self::get_view(txn, view_id)?)
 	}
 
-	async fn store_view(
+	fn store_view(
 		txn: &mut StandardCommandTransaction,
 		view: ViewId,
 		namespace: NamespaceId,
@@ -98,12 +98,12 @@ impl CatalogStore {
 		);
 		view::LAYOUT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
-		txn.set(&ViewKey::encoded(view), row).await?;
+		txn.set(&ViewKey::encoded(view), row)?;
 
 		Ok(())
 	}
 
-	async fn link_view_to_namespace(
+	fn link_view_to_namespace(
 		txn: &mut StandardCommandTransaction,
 		namespace: NamespaceId,
 		view: ViewId,
@@ -112,17 +112,17 @@ impl CatalogStore {
 		let mut row = view_namespace::LAYOUT.allocate();
 		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
 		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
-		txn.set(&NamespaceViewKey::encoded(namespace, view), row).await?;
+		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
 		Ok(())
 	}
 
-	async fn insert_columns_for_view(
+	fn insert_columns_for_view(
 		txn: &mut StandardCommandTransaction,
 		view: ViewId,
 		to_create: ViewToCreate,
 	) -> crate::Result<()> {
 		// Look up namespace name for error messages
-		let namespace = Self::get_namespace(txn, to_create.namespace).await?;
+		let namespace = Self::get_namespace(txn, to_create.namespace)?;
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
 			Self::create_column(
@@ -141,8 +141,7 @@ impl CatalogStore {
 					auto_increment: false,
 					dictionary_id: None, // Views don't support dictionaries yet
 				},
-			)
-			.await?;
+			)?;
 		}
 		Ok(())
 	}
@@ -150,7 +149,6 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use futures_util::TryStreamExt;
 	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
@@ -160,11 +158,11 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[tokio::test]
-	async fn test_create_deferred_view() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_create_deferred_view() {
+		let mut txn = create_test_command_transaction();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
@@ -174,19 +172,19 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).await.unwrap();
+		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, ViewId(1025));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_view");
 
-		let err = CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap_err();
+		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[tokio::test]
-	async fn test_view_linked_to_namespace() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_view_linked_to_namespace() {
+		let mut txn = create_test_command_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
@@ -195,7 +193,7 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
@@ -204,13 +202,12 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
 			.range(NamespaceViewKey::full_scan(namespace.id), 1024)
 			.unwrap()
-			.try_collect::<Vec<_>>()
-			.await
+			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
@@ -225,9 +222,9 @@ mod tests {
 		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 
-	#[tokio::test]
-	async fn test_create_deferred_view_missing_namespace() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_create_deferred_view_missing_namespace() {
+		let mut txn = create_test_command_transaction();
 
 		let to_create = ViewToCreate {
 			namespace: NamespaceId(999), // Non-existent namespace
@@ -236,6 +233,6 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create).await.unwrap_err();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 	}
 }

@@ -5,11 +5,10 @@
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, QueryConfig};
+use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
 
 use crate::HttpSubsystem;
 
@@ -24,6 +23,8 @@ pub struct HttpConfig {
 	pub query_timeout: Duration,
 	/// Timeout for entire request lifecycle.
 	pub request_timeout: Duration,
+	/// Optional shared runtime .
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl Default for HttpConfig {
@@ -33,6 +34,7 @@ impl Default for HttpConfig {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
+			runtime: None,
 		}
 	}
 }
@@ -66,6 +68,12 @@ impl HttpConfig {
 		self.request_timeout = timeout;
 		self
 	}
+
+	/// Set the shared runtime.
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
+		self.runtime = Some(runtime);
+		self
+	}
 }
 
 /// Factory for creating HTTP subsystem instances.
@@ -82,9 +90,8 @@ impl HttpSubsystemFactory {
 	}
 }
 
-#[async_trait]
 impl SubsystemFactory for HttpSubsystemFactory {
-	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		let query_config = QueryConfig::new()
@@ -93,7 +100,7 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = HttpSubsystem::new(self.config.bind_addr.clone(), state);
+		let subsystem = HttpSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime);
 
 		Ok(Box::new(subsystem))
 	}

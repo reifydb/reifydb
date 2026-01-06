@@ -111,8 +111,8 @@ mod tests {
 		})
 	}
 
-	#[tokio::test]
-	async fn test_empty_expressions() {
+	#[test]
+	fn test_empty_expressions() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions: Vec<Expression> = vec![];
 
@@ -121,8 +121,8 @@ mod tests {
 		assert!(result.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_single_alias_string() {
+	#[test]
+	fn test_single_alias_string() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
@@ -132,8 +132,8 @@ mod tests {
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
 	}
 
-	#[tokio::test]
-	async fn test_single_alias_number() {
+	#[test]
+	fn test_single_alias_number() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
@@ -143,8 +143,8 @@ mod tests {
 		assert_eq!(result.get("count"), Some(&Value::Int1(42)));
 	}
 
-	#[tokio::test]
-	async fn test_single_alias_bool() {
+	#[test]
+	fn test_single_alias_bool() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
@@ -154,8 +154,8 @@ mod tests {
 		assert_eq!(result.get("enabled"), Some(&Value::Boolean(true)));
 	}
 
-	#[tokio::test]
-	async fn test_single_alias_undefined() {
+	#[test]
+	fn test_single_alias_undefined() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
@@ -165,8 +165,8 @@ mod tests {
 		assert_eq!(result.get("optional"), Some(&Value::Undefined));
 	}
 
-	#[tokio::test]
-	async fn test_multiple_aliases() {
+	#[test]
+	fn test_multiple_aliases() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
@@ -184,8 +184,8 @@ mod tests {
 
 	// Expression filtering tests
 
-	#[tokio::test]
-	async fn test_non_alias_expressions_skipped() {
+	#[test]
+	fn test_non_alias_expressions_skipped() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
@@ -199,8 +199,8 @@ mod tests {
 		assert_eq!(result.get("valid"), Some(&Value::Utf8("included".into())));
 	}
 
-	#[tokio::test]
-	async fn test_only_non_alias_expressions() {
+	#[test]
+	fn test_only_non_alias_expressions() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions =
 			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
@@ -212,8 +212,8 @@ mod tests {
 
 	// Value type coverage tests
 
-	#[tokio::test]
-	async fn test_all_basic_value_types() {
+	#[test]
+	fn test_all_basic_value_types() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("text_val", create_constant_text("hello")),
@@ -233,8 +233,8 @@ mod tests {
 		assert_eq!(result.get("undef_val"), Some(&Value::Undefined));
 	}
 
-	#[tokio::test]
-	async fn test_duplicate_alias_names_last_wins() {
+	#[test]
+	fn test_duplicate_alias_names_last_wins() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key", create_constant_text("first")),
@@ -248,8 +248,8 @@ mod tests {
 		assert_eq!(result.get("key"), Some(&Value::Int1(42)));
 	}
 
-	#[tokio::test]
-	async fn test_empty_string_value() {
+	#[test]
+	fn test_empty_string_value() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
 
@@ -259,8 +259,8 @@ mod tests {
 		assert_eq!(result.get("empty"), Some(&Value::Utf8("".into())));
 	}
 
-	#[tokio::test]
-	async fn test_special_characters_in_alias_name() {
+	#[test]
+	fn test_special_characters_in_alias_name() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("key_with_underscore", create_constant_number(1)),
@@ -276,8 +276,8 @@ mod tests {
 		assert_eq!(result.get("key123"), Some(&Value::Int1(3)));
 	}
 
-	#[tokio::test]
-	async fn test_large_number_values() {
+	#[test]
+	fn test_large_number_values() {
 		let evaluator = StandardColumnEvaluator::default();
 		let expressions = vec![
 			create_alias_expression("small", create_constant_number(0)),

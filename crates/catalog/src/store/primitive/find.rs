@@ -11,7 +11,7 @@ use crate::{CatalogStore, vtable::VTableRegistry};
 impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
 	/// Returns None if the primitive doesn't exist
-	pub async fn find_primitive(
+	pub fn find_primitive(
 		rx: &mut impl IntoStandardTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimitiveDef>> {
@@ -20,21 +20,21 @@ impl CatalogStore {
 
 		match primitive_id {
 			PrimitiveId::Table(table_id) => {
-				if let Some(table) = Self::find_table(&mut txn, table_id).await? {
+				if let Some(table) = Self::find_table(&mut txn, table_id)? {
 					Ok(Some(PrimitiveDef::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::View(view_id) => {
-				if let Some(view) = Self::find_view(&mut txn, view_id).await? {
+				if let Some(view) = Self::find_view(&mut txn, view_id)? {
 					Ok(Some(PrimitiveDef::View(view)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::Flow(flow_id) => {
-				if let Some(flow) = Self::find_flow(&mut txn, flow_id).await? {
+				if let Some(flow) = Self::find_flow(&mut txn, flow_id)? {
 					Ok(Some(PrimitiveDef::Flow(flow)))
 				} else {
 					Ok(None)
@@ -77,16 +77,14 @@ mod tests {
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 
-	#[tokio::test]
-	async fn test_find_primitive_table() {
-		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_find_primitive_table() {
+		let mut txn = create_test_command_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		// Find primitive by TableId
-		let primitive = CatalogStore::find_primitive(&mut txn, table.id)
-			.await
-			.unwrap()
-			.expect("Primitive should exist");
+		let primitive =
+			CatalogStore::find_primitive(&mut txn, table.id).unwrap().expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::Table(t) => {
@@ -98,7 +96,6 @@ mod tests {
 
 		// Find primitive by PrimitiveId::Table
 		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::Table(table.id))
-			.await
 			.unwrap()
 			.expect("Primitive should exist");
 
@@ -110,10 +107,10 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_find_primitive_view() {
-		let mut txn = create_test_command_transaction().await;
-		let namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_find_primitive_view() {
+		let mut txn = create_test_command_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -128,12 +125,11 @@ mod tests {
 				}],
 			},
 		)
-		.await
 		.unwrap();
 
 		// Find primitive by ViewId
 		let primitive =
-			CatalogStore::find_primitive(&mut txn, view.id).await.unwrap().expect("Primitive should exist");
+			CatalogStore::find_primitive(&mut txn, view.id).unwrap().expect("Primitive should exist");
 
 		match primitive {
 			PrimitiveDef::View(v) => {
@@ -145,7 +141,6 @@ mod tests {
 
 		// Find primitive by PrimitiveId::View
 		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::View(view.id))
-			.await
 			.unwrap()
 			.expect("Primitive should exist");
 
@@ -157,31 +152,30 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_find_primitive_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_primitive_not_found() {
+		let mut txn = create_test_command_transaction();
 
 		// Non-existent table
-		let primitive = CatalogStore::find_primitive(&mut txn, TableId(999)).await.unwrap();
+		let primitive = CatalogStore::find_primitive(&mut txn, TableId(999)).unwrap();
 		assert!(primitive.is_none());
 
 		// Non-existent view
-		let primitive = CatalogStore::find_primitive(&mut txn, ViewId(999)).await.unwrap();
+		let primitive = CatalogStore::find_primitive(&mut txn, ViewId(999)).unwrap();
 		assert!(primitive.is_none());
 
 		// Non-existent virtual table
-		let primitive = CatalogStore::find_primitive(&mut txn, VTableId(999)).await.unwrap();
+		let primitive = CatalogStore::find_primitive(&mut txn, VTableId(999)).unwrap();
 		assert!(primitive.is_none());
 	}
 
-	#[tokio::test]
-	async fn test_find_primitive_vtable() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_primitive_vtable() {
+		let mut txn = create_test_command_transaction();
 
 		// Find the sequences virtual table
 		let sequences_id = crate::system::ids::vtable::SEQUENCES;
 		let primitive = CatalogStore::find_primitive(&mut txn, sequences_id)
-			.await
 			.unwrap()
 			.expect("Sequences virtual table should exist");
 
@@ -195,7 +189,6 @@ mod tests {
 
 		// Find primitive by PrimitiveId::TableVirtual
 		let primitive = CatalogStore::find_primitive(&mut txn, PrimitiveId::TableVirtual(sequences_id))
-			.await
 			.unwrap()
 			.expect("Primitive should exist");
 

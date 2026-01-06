@@ -5,11 +5,10 @@
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, QueryConfig};
+use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
 
 use crate::WsSubsystem;
 
@@ -24,6 +23,8 @@ pub struct WsConfig {
 	pub query_timeout: Duration,
 	/// Maximum WebSocket frame size in bytes.
 	pub max_frame_size: usize,
+	/// Optional shared runtime .
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl Default for WsConfig {
@@ -33,6 +34,7 @@ impl Default for WsConfig {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			max_frame_size: 16 << 20, // 16MB
+			runtime: None,
 		}
 	}
 }
@@ -66,6 +68,12 @@ impl WsConfig {
 		self.max_frame_size = size;
 		self
 	}
+
+	/// Set the shared runtime.
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
+		self.runtime = Some(runtime);
+		self
+	}
 }
 
 /// Factory for creating WebSocket subsystem instances.
@@ -82,9 +90,8 @@ impl WsSubsystemFactory {
 	}
 }
 
-#[async_trait]
 impl SubsystemFactory for WsSubsystemFactory {
-	async fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		let query_config = QueryConfig::new()
@@ -92,7 +99,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state);
+		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime);
 
 		Ok(Box::new(subsystem))
 	}

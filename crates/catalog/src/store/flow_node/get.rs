@@ -11,11 +11,11 @@ use reifydb_type::internal;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_flow_node(
+	pub fn get_flow_node(
 		txn: &mut impl IntoStandardTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<FlowNodeDef> {
-		CatalogStore::find_flow_node(txn, node_id).await?.ok_or_else(|| {
+		CatalogStore::find_flow_node(txn, node_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow node with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				node_id
@@ -34,26 +34,26 @@ mod tests {
 		test_utils::{create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[tokio::test]
-	async fn test_get_flow_node_ok() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_get_flow_node_ok() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]).await;
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]);
 
-		let result = CatalogStore::get_flow_node(&mut txn, node.id).await.unwrap();
+		let result = CatalogStore::get_flow_node(&mut txn, node.id).unwrap();
 		assert_eq!(result.id, node.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
 		assert_eq!(result.data.as_ref(), &[0x01, 0x02, 0x03]);
 	}
 
-	#[tokio::test]
-	async fn test_get_flow_node_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_flow_node_not_found() {
+		let mut txn = create_test_command_transaction();
 
-		let err = CatalogStore::get_flow_node(&mut txn, FlowNodeId(999)).await.unwrap_err();
+		let err = CatalogStore::get_flow_node(&mut txn, FlowNodeId(999)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("FlowNodeId(999)"));
 		assert!(err.message.contains("not found in catalog"));

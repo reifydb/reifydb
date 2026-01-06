@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{mem::take, pin::Pin};
+use std::mem::take;
 
-use futures_util::Stream;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	diagnostic::transaction,
@@ -68,14 +67,14 @@ enum TransactionState {
 impl StandardCommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
 	#[instrument(name = "transaction::standard::command::new", level = "debug", skip_all)]
-	pub async fn new(
+	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
 		cdc: TransactionCdc,
 		event_bus: EventBus,
 		interceptors: Interceptors,
 	) -> Result<Self> {
-		let cmd = multi.begin_command().await?;
+		let cmd = multi.begin_command()?;
 		let txn_id = cmd.tm.id();
 		Ok(Self {
 			cmd: Some(cmd),
@@ -113,10 +112,10 @@ impl StandardCommandTransaction {
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
 	#[instrument(name = "transaction::standard::command::commit", level = "debug", skip(self))]
-	pub async fn commit(&mut self) -> Result<CommitVersion> {
+	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
-		self.interceptors.pre_commit.execute(PreCommitContext::new()).await?;
+		self.interceptors.pre_commit.execute(PreCommitContext::new())?;
 
 		if let Some(mut multi) = self.cmd.take() {
 			let id = multi.tm.id();
@@ -125,11 +124,13 @@ impl StandardCommandTransaction {
 			let changes = take(&mut self.changes);
 			let row_changes = take(&mut self.row_changes);
 
-			let version = multi.commit().await?;
-			self.interceptors
-				.post_commit
-				.execute(PostCommitContext::new(id, version, changes, row_changes))
-				.await?;
+			let version = multi.commit()?;
+			self.interceptors.post_commit.execute(PostCommitContext::new(
+				id,
+				version,
+				changes,
+				row_changes,
+			))?;
 
 			Ok(version)
 		} else {
@@ -168,14 +169,14 @@ impl StandardCommandTransaction {
 
 	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::standard::command::with_single_query", level = "trace", skip(self, keys, f))]
-	pub async fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 		F: FnOnce(&mut SvlQueryTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_query(keys, f).await
+		self.single.with_query(keys, f)
 	}
 
 	/// Execute a function with query access to the single transaction.
@@ -184,31 +185,28 @@ impl StandardCommandTransaction {
 		level = "trace",
 		skip(self, keys, f)
 	)]
-	pub async fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
+	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey> + Send,
 		F: FnOnce(&mut SvlCommandTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
 		self.check_active()?;
-		self.single.with_command(keys, f).await
+		self.single.with_command(keys, f)
 	}
 
 	/// Execute a function with a query transaction view.
 	/// This creates a new query transaction using the stored multi-version storage.
 	/// The query transaction will operate independently but share the same single/CDC storage.
 	#[instrument(name = "transaction::standard::command::with_multi_query", level = "trace", skip(self, f))]
-	pub async fn with_multi_query<F, R>(&self, f: F) -> Result<R>
+	pub fn with_multi_query<F, R>(&self, f: F) -> Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query().await?,
-			self.single.clone(),
-			self.cdc.clone(),
-		);
+		let mut query_txn =
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
 
 		f(&mut query_txn)
 	}
@@ -218,19 +216,16 @@ impl StandardCommandTransaction {
 		level = "trace",
 		skip(self, f)
 	)]
-	pub async fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
+	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query().await?,
-			self.single.clone(),
-			self.cdc.clone(),
-		);
+		let mut query_txn =
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
 
-		query_txn.read_as_of_version_exclusive(version).await?;
+		query_txn.read_as_of_version_exclusive(version)?;
 
 		f(&mut query_txn)
 	}
@@ -240,17 +235,14 @@ impl StandardCommandTransaction {
 		level = "trace",
 		skip(self, f)
 	)]
-	pub async fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
+	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> Result<R>,
 	{
 		self.check_active()?;
 
-		let mut query_txn = StandardQueryTransaction::new(
-			self.multi.begin_query().await?,
-			self.single.clone(),
-			self.cdc.clone(),
-		);
+		let mut query_txn =
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 
@@ -259,29 +251,29 @@ impl StandardCommandTransaction {
 
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_query", level = "trace", skip(self, keys))]
-	pub async fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		self.check_active()?;
-		self.single.begin_query(keys).await
+		self.single.begin_query(keys)
 	}
 
 	/// Begin a CDC query transaction
 	#[instrument(name = "transaction::standard::command::begin_cdc_query", level = "trace", skip(self))]
-	pub async fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
+	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
 		self.check_active()?;
 		Ok(self.cdc.begin_query()?)
 	}
 
 	/// Begin a single-version command transaction for specific keys
 	#[instrument(name = "transaction::standard::command::begin_single_command", level = "trace", skip(self, keys))]
-	pub async fn begin_single_command<'a, I>(&self, keys: I) -> Result<SvlCommandTransaction<'_>>
+	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SvlCommandTransaction<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
+		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		self.check_active()?;
-		self.single.begin_command(keys).await
+		self.single.begin_command(keys)
 	}
 
 	/// Get reference to catalog changes for this transaction
@@ -308,35 +300,35 @@ impl StandardCommandTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub async fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().get(key).await?.map(|v| v.into_multi_version_values()))
+		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_values()))
 	}
 
 	/// Check if a key exists
 	#[inline]
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_key(key).await
+		self.cmd.as_mut().unwrap().contains_key(key)
 	}
 
 	/// Get a prefix batch
 	#[inline]
-	pub async fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix(prefix).await
+		self.cmd.as_mut().unwrap().prefix(prefix)
 	}
 
 	/// Get a reverse prefix batch
 	#[inline]
-	pub async fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix_rev(prefix).await
+		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
 
 	/// Read as of version exclusive
 	#[inline]
-	pub async fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version);
 		Ok(())
@@ -344,14 +336,14 @@ impl StandardCommandTransaction {
 
 	/// Set a key-value pair
 	#[inline]
-	pub async fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
 	/// Remove a key
 	#[inline]
-	pub async fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
 	}
@@ -362,7 +354,7 @@ impl StandardCommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
@@ -373,7 +365,7 @@ impl StandardCommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Pin<Box<dyn Stream<Item = Result<MultiVersionValues>> + Send + '_>>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, batch_size))
 	}

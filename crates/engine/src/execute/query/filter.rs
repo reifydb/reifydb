@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	BitVec, LazyBatch, LazyColumnMeta,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
@@ -35,21 +34,16 @@ impl FilterNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "query::filter::initialize")]
-	async fn initialize<'a>(
-		&mut self,
-		rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
 	#[instrument(level = "trace", skip_all, name = "query::filter::next")]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -59,12 +53,12 @@ impl QueryNode for FilterNode {
 
 		loop {
 			// Try lazy path first
-			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx).await? {
+			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx)? {
 				// Save column_metas before lazy_batch is consumed
 				let column_metas: Vec<_> = lazy_batch.column_metas().to_vec();
 
 				// Evaluate filter on lazy batch (decodes dictionaries for comparison)
-				let filter_result = self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, rx).await?;
+				let filter_result = self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, rx)?;
 
 				if let Some(filter_mask) = filter_result {
 					lazy_batch.apply_filter(&filter_mask);
@@ -78,7 +72,7 @@ impl QueryNode for FilterNode {
 				let mut columns = lazy_batch.into_columns();
 
 				// Decode dictionary columns for output
-				Self::decode_dictionary_columns(&mut columns, &column_metas, rx).await?;
+				Self::decode_dictionary_columns(&mut columns, &column_metas, rx)?;
 
 				return Ok(Some(Batch {
 					columns,
@@ -88,7 +82,7 @@ impl QueryNode for FilterNode {
 			// Fall back to materialized path
 			if let Some(Batch {
 				mut columns,
-			}) = self.input.next(rx, ctx).await?
+			}) = self.input.next(rx, ctx)?
 			{
 				let mut row_count = columns.row_count();
 
@@ -154,7 +148,7 @@ impl QueryNode for FilterNode {
 
 impl FilterNode {
 	/// Decode dictionary columns by replacing dictionary IDs with actual values.
-	async fn decode_dictionary_columns<'a>(
+	fn decode_dictionary_columns<'a>(
 		columns: &mut Columns,
 		column_metas: &[LazyColumnMeta],
 		rx: &mut StandardTransaction<'a>,
@@ -169,9 +163,7 @@ impl FilterNode {
 				for row_idx in 0..row_count {
 					let id_value = col.data().get_value(row_idx);
 					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-						if let Some(decoded) =
-							rx.get_from_dictionary(dictionary, entry_id).await?
-						{
+						if let Some(decoded) = rx.get_from_dictionary(dictionary, entry_id)? {
 							new_data.push_value(decoded);
 						} else {
 							new_data.push_value(Value::Undefined);
@@ -193,7 +185,7 @@ impl FilterNode {
 
 	/// Evaluate filter expressions on a lazy batch using column-oriented evaluation.
 	/// Returns a filter mask indicating which rows pass all filter expressions.
-	async fn evaluate_filter_on_lazy<'a>(
+	fn evaluate_filter_on_lazy<'a>(
 		&self,
 		lazy_batch: &LazyBatch,
 		ctx: &ExecutionContext,
@@ -208,7 +200,7 @@ impl FilterNode {
 		}
 
 		// Decode dictionaries BEFORE filter evaluation so comparisons work correctly
-		Self::decode_dictionary_columns(&mut columns, lazy_batch.column_metas(), rx).await?;
+		Self::decode_dictionary_columns(&mut columns, lazy_batch.column_metas(), rx)?;
 
 		let mut mask = BitVec::repeat(row_count, true);
 

@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) async fn alter_table_sequence<'a>(
+	pub(crate) fn alter_table_sequence<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterSequenceNode,
@@ -71,7 +71,7 @@ impl Executor {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		ColumnSequence::set_value(txn, table.id, column.id, value.clone()).await?;
+		ColumnSequence::set_value(txn, table.id, column.id, value.clone())?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.sequence.namespace().name().to_string())),

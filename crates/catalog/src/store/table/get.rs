@@ -11,8 +11,8 @@ use reifydb_type::internal;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<TableDef> {
-		CatalogStore::find_table(rx, table).await?.ok_or_else(|| {
+	pub fn get_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<TableDef> {
+		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
 			Error(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				table
@@ -31,38 +31,38 @@ mod tests {
 		test_utils::{create_namespace, create_table, ensure_test_namespace},
 	};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+		create_table(&mut txn, "namespace_one", "table_one", &[]);
+		create_table(&mut txn, "namespace_two", "table_two", &[]);
+		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::get_table(&mut txn, TableId(1026)).await.unwrap();
+		let result = CatalogStore::get_table(&mut txn, TableId(1026)).unwrap();
 
 		assert_eq!(result.id, TableId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "table_two");
 	}
 
-	#[tokio::test]
-	async fn test_not_found() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_table(&mut txn, "namespace_one", "table_one", &[]).await;
-		create_table(&mut txn, "namespace_two", "table_two", &[]).await;
-		create_table(&mut txn, "namespace_three", "table_three", &[]).await;
+		create_table(&mut txn, "namespace_one", "table_one", &[]);
+		create_table(&mut txn, "namespace_two", "table_two", &[]);
+		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let err = CatalogStore::get_table(&mut txn, TableId(42)).await.unwrap_err();
+		let err = CatalogStore::get_table(&mut txn, TableId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("TableId(42)"));

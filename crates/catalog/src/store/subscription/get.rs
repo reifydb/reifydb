@@ -11,11 +11,11 @@ use reifydb_type::internal;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_subscription(
+	pub fn get_subscription(
 		rx: &mut impl IntoStandardTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {
-		CatalogStore::find_subscription(rx, subscription).await?.ok_or_else(|| {
+		CatalogStore::find_subscription(rx, subscription)?.ok_or_else(|| {
 			Error(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				subscription
@@ -31,9 +31,9 @@ mod tests {
 
 	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
 
-	#[tokio::test]
-	async fn test_get_subscription_ok() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_subscription_ok() {
+		let mut txn = create_test_command_transaction();
 
 		let created = CatalogStore::create_subscription(
 			&mut txn,
@@ -41,19 +41,18 @@ mod tests {
 				columns: vec![],
 			},
 		)
-		.await
 		.unwrap();
 
-		let result = CatalogStore::get_subscription(&mut txn, created.id).await.unwrap();
+		let result = CatalogStore::get_subscription(&mut txn, created.id).unwrap();
 		assert_eq!(result.id, created.id);
 	}
 
-	#[tokio::test]
-	async fn test_get_subscription_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_subscription_not_found() {
+		let mut txn = create_test_command_transaction();
 
 		let non_existent = SubscriptionId::new();
-		let err = CatalogStore::get_subscription(&mut txn, non_existent).await.unwrap_err();
+		let err = CatalogStore::get_subscription(&mut txn, non_existent).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("not found in catalog"));

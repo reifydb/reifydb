@@ -11,8 +11,8 @@ use reifydb_type::internal;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_view(rx: &mut impl IntoStandardTransaction, view: ViewId) -> crate::Result<ViewDef> {
-		CatalogStore::find_view(rx, view).await?.ok_or_else(|| {
+	pub fn get_view(rx: &mut impl IntoStandardTransaction, view: ViewId) -> crate::Result<ViewDef> {
+		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				view
@@ -31,38 +31,38 @@ mod tests {
 		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
-		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
-		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).await.unwrap();
+		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
 	}
 
-	#[tokio::test]
-	async fn test_not_found() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_namespace(&mut txn).await;
-		create_namespace(&mut txn, "namespace_one").await;
-		create_namespace(&mut txn, "namespace_two").await;
-		create_namespace(&mut txn, "namespace_three").await;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "namespace_one", "view_one", &[]).await;
-		create_view(&mut txn, "namespace_two", "view_two", &[]).await;
-		create_view(&mut txn, "namespace_three", "view_three", &[]).await;
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let err = CatalogStore::get_view(&mut txn, ViewId(42)).await.unwrap_err();
+		let err = CatalogStore::get_view(&mut txn, ViewId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

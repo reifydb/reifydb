@@ -22,12 +22,12 @@ impl Bootloader {
 }
 
 impl Bootloader {
-	pub async fn load(&self) -> crate::Result<()> {
+	pub fn load(&self) -> crate::Result<()> {
 		let engine = self.engine.clone();
 		let eventbus = engine.event_bus();
 
-		eventbus.register(StartEventListener::new(engine.single_owned())).await;
-		eventbus.register(CreateEventListener::new(engine.clone())).await;
+		eventbus.register(StartEventListener::new(engine.single_owned()));
+		eventbus.register(CreateEventListener::new(engine.clone()));
 
 		Ok(())
 	}

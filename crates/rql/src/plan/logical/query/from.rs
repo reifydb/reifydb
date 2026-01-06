@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_from<T: IntoStandardTransaction>(
+	pub(crate) fn compile_from<T: IntoStandardTransaction>(
 		&self,
 		ast: AstFrom,
 		tx: &mut T,
@@ -24,8 +24,7 @@ impl Compiler {
 				source,
 				..
 			} => {
-				let resolved_source =
-					resolver::resolve_unresolved_source(&self.catalog, tx, &source).await?;
+				let resolved_source = resolver::resolve_unresolved_source(&self.catalog, tx, &source)?;
 
 				Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
 					source: resolved_source,

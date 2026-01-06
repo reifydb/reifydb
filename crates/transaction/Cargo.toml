@@ -16,12 +16,10 @@ reifydb-core = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
-async-stream = { workspace = true }
-async-trait = { workspace = true }
+crossbeam-channel = { workspace = true }
 crossbeam-skiplist = { workspace = true }
-futures-util = { workspace = true }
+parking_lot = { workspace = true }
 indexmap = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 

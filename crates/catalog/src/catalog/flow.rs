@@ -10,11 +10,7 @@ use crate::{Catalog, CatalogStore};
 
 impl Catalog {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self, txn))]
-	pub async fn find_flow<T: IntoStandardTransaction>(
-		&self,
-		txn: &mut T,
-		id: FlowId,
-	) -> crate::Result<Option<FlowDef>> {
+	pub fn find_flow<T: IntoStandardTransaction>(&self, txn: &mut T, id: FlowId) -> crate::Result<Option<FlowDef>> {
 		match txn.into_standard_transaction() {
 			StandardTransaction::Command(cmd) => {
 				// 1. Check transactional changes first
@@ -33,7 +29,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow(cmd, id).await? {
+				if let Some(flow) = CatalogStore::find_flow(cmd, id)? {
 					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(flow));
 				}
@@ -47,7 +43,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow(qry, id).await? {
+				if let Some(flow) = CatalogStore::find_flow(qry, id)? {
 					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(flow));
 				}
@@ -58,7 +54,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::find_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn find_flow_by_name<T: IntoStandardTransaction>(
+	pub fn find_flow_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -84,7 +80,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(cmd, namespace, name).await? {
+				if let Some(flow) = CatalogStore::find_flow_by_name(cmd, namespace, name)? {
 					warn!(
 						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -103,7 +99,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(qry, namespace, name).await? {
+				if let Some(flow) = CatalogStore::find_flow_by_name(qry, namespace, name)? {
 					warn!(
 						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -117,8 +113,8 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self, txn))]
-	pub async fn get_flow<T: IntoStandardTransaction>(&self, txn: &mut T, id: FlowId) -> crate::Result<FlowDef> {
-		self.find_flow(txn, id).await?.ok_or_else(|| {
+	pub fn get_flow<T: IntoStandardTransaction>(&self, txn: &mut T, id: FlowId) -> crate::Result<FlowDef> {
+		self.find_flow(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id

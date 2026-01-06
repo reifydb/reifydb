@@ -9,14 +9,12 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn create_dictionary(
+	pub(crate) fn create_dictionary(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: CreateDictionaryNode,
 	) -> crate::Result<Columns> {
-		if let Some(_) =
-			self.catalog.find_dictionary_by_name(txn, plan.namespace.id, plan.dictionary.text()).await?
-		{
+		if let Some(_) = self.catalog.find_dictionary_by_name(txn, plan.namespace.id, plan.dictionary.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.clone())),
@@ -35,8 +33,7 @@ impl Executor {
 				value_type: plan.value_type,
 				id_type: plan.id_type,
 			},
-		)
-		.await?;
+		)?;
 		txn.track_dictionary_def_created(result)?;
 
 		Ok(Columns::single_row([
@@ -60,12 +57,12 @@ mod tests {
 		test_utils::create_test_command_transaction,
 	};
 
-	#[tokio::test]
-	async fn test_create_dictionary() {
+	#[test]
+	fn test_create_dictionary() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let mut plan = CreateDictionaryNode {
 			namespace: namespace.clone(),
@@ -84,7 +81,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -101,7 +97,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -118,18 +113,17 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
 
-	#[tokio::test]
-	async fn test_create_same_dictionary_in_different_schema() {
+	#[test]
+	fn test_create_same_dictionary_in_different_schema() {
 		let instance = Executor::testing();
-		let mut txn = create_test_command_transaction().await;
+		let mut txn = create_test_command_transaction();
 
-		let namespace = ensure_test_namespace(&mut txn).await;
-		let another_schema = create_namespace(&mut txn, "another_schema").await;
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema = create_namespace(&mut txn, "another_schema");
 
 		let plan = CreateDictionaryNode {
 			namespace: namespace.clone(),
@@ -147,7 +141,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -169,7 +162,6 @@ mod tests {
 				Params::default(),
 				&mut stack,
 			)
-			.await
 			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));

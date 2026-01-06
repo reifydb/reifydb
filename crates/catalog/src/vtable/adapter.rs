@@ -37,12 +37,12 @@ impl<U: UserVTable> UserVTableAdapter<U> {
 
 #[async_trait]
 impl<U: UserVTable, T: QueryTransaction> VTable<T> for UserVTableAdapter<U> {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -91,7 +91,7 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 
 #[async_trait]
 impl<U: UserVTableIterator, T: QueryTransaction> VTable<T> for UserVTableIteratorAdapter<U> {
-	async fn initialize(&mut self, _txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
 		// Convert internal context to user pushdown context
 		let user_ctx = match ctx {
 			VTableContext::Basic {
@@ -105,18 +105,18 @@ impl<U: UserVTableIterator, T: QueryTransaction> VTable<T> for UserVTableIterato
 			}),
 		};
 
-		self.user_iter.initialize(user_ctx.as_ref()).await?;
+		self.user_iter.initialize(user_ctx.as_ref())?;
 		self.initialized = true;
 		Ok(())
 	}
 
-	async fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _txn: &mut T) -> crate::Result<Option<Batch>> {
 		if !self.initialized {
 			return Ok(None);
 		}
 
 		let user_columns = self.user_iter.columns();
-		let user_rows = self.user_iter.next_batch(self.batch_size).await?;
+		let user_rows = self.user_iter.next_batch(self.batch_size)?;
 
 		match user_rows {
 			None => Ok(None),

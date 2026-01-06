@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_type::{Fragment, diagnostic::runtime::variable_not_found, return_error};
@@ -30,18 +29,13 @@ impl VariableNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for VariableNode {
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,

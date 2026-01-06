@@ -19,31 +19,29 @@ use reifydb_testing::testscript::Command;
 use tokio::runtime::Runtime;
 
 pub fn create_server_instance(
-	runtime: &Arc<Runtime>,
+	_runtime: &Arc<Runtime>,
 	input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
 ) -> Database {
 	let (multi, single, cdc, eventbus) = input;
 
-	runtime.block_on(
-		ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_http(HttpConfig::default().bind_addr("::1:0"))
-			.with_ws(WsConfig::default().bind_addr("::1:0"))
-			.build(),
-	)
-	.unwrap()
+	ServerBuilder::new(multi, single, cdc, eventbus)
+		.with_http(HttpConfig::default().bind_addr("::1:0"))
+		.with_ws(WsConfig::default().bind_addr("::1:0"))
+		.build()
+		.unwrap()
 }
 
 /// Start server and return WebSocket port
 #[allow(dead_code)]
-pub fn start_server_and_get_ws_port(runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	runtime.block_on(server.start())?;
+pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
+	server.start()?;
 	Ok(server.sub_server_ws().unwrap().port().unwrap())
 }
 
 /// Start server and return HTTP port
 #[allow(dead_code)]
-pub fn start_server_and_get_http_port(runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	runtime.block_on(server.start())?;
+pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
+	server.start()?;
 	Ok(server.sub_server_http().unwrap().port().unwrap())
 }
 

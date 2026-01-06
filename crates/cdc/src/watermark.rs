@@ -8,7 +8,6 @@
 //! policies - versions at or above the watermark cannot be cleaned up because
 //! consumers still need them.
 
-use futures_util::TryStreamExt;
 use reifydb_core::{
 	CommitVersion,
 	interface::{CdcConsumerKeyRange, ConsumerState, EncodableKey},
@@ -41,13 +40,11 @@ use reifydb_transaction::IntoStandardTransaction;
 /// let watermark = compute_watermark(&mut txn)?;
 /// // Now retention can safely cleanup versions < watermark
 /// ```
-pub async fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<CommitVersion> {
+pub fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
-	let items: Vec<_> =
-		txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)?.try_collect().await?;
-
-	for multi in items {
+	for multi in txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)? {
+		let multi = multi?;
 		// Checkpoint values are stored as 8-byte big-endian u64
 		if multi.values.len() >= 8 {
 			let mut buffer = [0u8; 8];
@@ -68,15 +65,11 @@ pub async fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifyd
 }
 
 /// Retrieves the state of all CDC consumers
-pub async fn get_all_consumer_states(
-	txn: &mut impl IntoStandardTransaction,
-) -> reifydb_core::Result<Vec<ConsumerState>> {
+pub fn get_all_consumer_states(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<Vec<ConsumerState>> {
 	let mut states = Vec::new();
 
-	let items: Vec<_> =
-		txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)?.try_collect().await?;
-
-	for multi in items {
+	for multi in txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)? {
+		let multi = multi?;
 		let key = match CdcConsumerKey::decode(&multi.key) {
 			Some(k) => k,
 			None => continue,

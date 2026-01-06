@@ -13,7 +13,7 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_alter_sequence<T: IntoStandardTransaction>(
+	pub(crate) fn compile_alter_sequence<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
 		alter: logical::AlterSequenceNode,
@@ -24,13 +24,12 @@ impl Compiler {
 		// Query the catalog for the actual namespace
 		let namespace_def = self
 			.catalog
-			.find_namespace_by_name(rx, namespace_name)
-			.await?
+			.find_namespace_by_name(rx, namespace_name)?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace_def.id, table_name).await? else {
+		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace_def.id, table_name)? else {
 			return_error!(table_not_found(alter.sequence.name.clone(), &namespace_def.name, table_name));
 		};
 

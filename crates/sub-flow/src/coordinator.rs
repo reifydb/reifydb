@@ -5,7 +5,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use async_trait::async_trait;
 use reifydb_cdc::{CdcConsume, CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	CommitVersion, Result,
@@ -14,9 +13,10 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::load_flow;
+use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, debug_span, error, instrument};
+use tracing::{debug, error, instrument};
 
 use crate::{
 	FlowEngine, flow::FlowConsumer, provider::FlowChangeProvider, registry::FlowConsumerRegistry,
@@ -40,6 +40,7 @@ pub struct Coordinator {
 	shutdown: CancellationToken,
 	version_tx: broadcast::Sender<VersionBroadcast>,
 	provider: Arc<FlowChangeProvider>,
+	runtime: SharedRuntime,
 }
 
 /// Implementation of CDC consume logic for the coordinator.
@@ -53,6 +54,8 @@ struct CoordinatorConsumer {
 	version_tx: broadcast::Sender<VersionBroadcast>,
 	/// Shared provider for decoded changes.
 	provider: Arc<FlowChangeProvider>,
+	/// Shared runtime for spawning flow consumers.
+	runtime: SharedRuntime,
 }
 
 impl Coordinator {
@@ -62,13 +65,19 @@ impl Coordinator {
 		flow_engine: Arc<FlowEngine>,
 		registry: Arc<FlowConsumerRegistry>,
 		primitive_tracker: Arc<PrimitiveVersionTracker>,
+		runtime: Option<SharedRuntime>,
 	) -> Self {
+		let runtime = runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone());
 		let shutdown = CancellationToken::new();
 		let (version_tx, _) = broadcast::channel(1024);
 
 		// Spawn provider with its own version broadcast subscription for pre-fetching
-		let provider =
-			FlowChangeProvider::spawn(engine.clone(), version_tx.subscribe(), shutdown.child_token());
+		let provider = FlowChangeProvider::spawn(
+			engine.clone(),
+			version_tx.subscribe(),
+			shutdown.child_token(),
+			Some(runtime.clone()),
+		);
 
 		Self {
 			engine,
@@ -79,6 +88,7 @@ impl Coordinator {
 			shutdown,
 			version_tx,
 			provider,
+			runtime,
 		}
 	}
 
@@ -95,6 +105,7 @@ impl Coordinator {
 			shutdown: self.shutdown.clone(),
 			version_tx: self.version_tx.clone(),
 			provider: Arc::clone(&self.provider),
+			runtime: self.runtime.clone(),
 		};
 
 		// Configure consumer
@@ -126,25 +137,24 @@ impl Coordinator {
 		}
 
 		// Shutdown all flow consumers with timeout
-		self.registry.shutdown_all(timeout).await;
+		self.registry.shutdown_all(timeout);
 
 		debug!("flow coordinator shutdown complete");
 	}
 }
 
-#[async_trait]
 impl CdcConsume for CoordinatorConsumer {
 	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, txn, cdcs), fields(
 		cdc_count = cdcs.len(),
 	))]
-	async fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		for cdc in cdcs {
 			let version = cdc.version;
 
 			// Track primitive versions from all CDC changes
 			for change in &cdc.changes {
 				if let Some(Key::Row(row_key)) = Key::decode(change.key()) {
-					self.primitive_tracker.update(row_key.primitive, version).await;
+					self.primitive_tracker.update(row_key.primitive, version);
 				}
 			}
 
@@ -163,9 +173,9 @@ impl CdcConsume for CoordinatorConsumer {
 								let flow_id = flow_key.flow;
 
 								// Check if not already spawned
-								if !self.registry.contains(flow_id).await {
+								if !self.registry.contains(flow_id) {
 									// Load flow from catalog
-									match load_flow(txn, flow_id).await {
+									match load_flow(txn, flow_id) {
 										Ok(flow) => {
 											// Register with flow engine (no
 											// backfill)
@@ -174,9 +184,7 @@ impl CdcConsume for CoordinatorConsumer {
 												.register(
 													txn,
 													flow.clone(),
-												)
-												.await
-											{
+												) {
 												error!(flow_id = flow_id.0, error = %e, "failed to register flow with engine");
 												continue;
 											}
@@ -195,9 +203,10 @@ impl CdcConsume for CoordinatorConsumer {
 													.subscribe(),
 												self.shutdown
 													.child_token(),
+												self.runtime.clone(),
 											) {
 												Ok(consumer) => {
-													self.registry.register(flow_id, consumer).await;
+													self.registry.register(flow_id, consumer);
 													debug!(flow_id = flow_id.0, "spawned flow consumer");
 												}
 												Err(e) => {

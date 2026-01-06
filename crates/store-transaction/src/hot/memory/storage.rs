@@ -119,7 +119,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
 		let table_data = table_entry.read();
 
 		// Determine effective start bound based on cursor state

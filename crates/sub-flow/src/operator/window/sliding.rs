@@ -131,7 +131,7 @@ impl WindowOperator {
 }
 
 /// Process inserts for sliding windows
-async fn process_sliding_insert(
+fn process_sliding_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -151,8 +151,7 @@ async fn process_sliding_insert(
 
 	// Process each group
 	for (group_hash, group_columns) in groups {
-		let group_result =
-			process_sliding_group_insert(operator, txn, &group_columns, group_hash, evaluator).await?;
+		let group_result = process_sliding_group_insert(operator, txn, &group_columns, group_hash, evaluator)?;
 		result.extend(group_result);
 	}
 
@@ -160,7 +159,7 @@ async fn process_sliding_insert(
 }
 
 /// Process inserts for a single group in sliding windows
-async fn process_sliding_group_insert(
+fn process_sliding_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
@@ -188,7 +187,7 @@ async fn process_sliding_group_insert(
 				// For count-based windows, use current processing time and calculate
 				// proper sliding window IDs based on event index
 				let event_timestamp = operator.current_timestamp();
-				let group_count = operator.get_and_increment_global_count(txn, group_hash).await?;
+				let group_count = operator.get_and_increment_global_count(txn, group_hash)?;
 				let window_ids = operator.get_sliding_window_ids(group_count);
 				(event_timestamp, window_ids)
 			}
@@ -200,12 +199,12 @@ async fn process_sliding_group_insert(
 
 		for window_id in window_ids {
 			let window_key = operator.create_window_key(group_hash, window_id);
-			let mut window_state = operator.load_window_state(txn, &window_key).await?;
+			let mut window_state = operator.load_window_state(txn, &window_key)?;
 
 			// Calculate previous aggregation BEFORE adding the new event (for Update diff)
 			// Only calculate if previous state had enough events for aggregation
 			let previous_aggregation = if window_state.events.len() >= operator.min_events {
-				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator).await?
+				operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
 			} else {
 				None
 			};
@@ -227,9 +226,8 @@ async fn process_sliding_group_insert(
 
 			if should_trigger {
 				// Apply aggregations and emit result
-				if let Some((aggregated_row, is_new)) = operator
-					.apply_aggregations(txn, &window_key, &window_state.events, evaluator)
-					.await?
+				if let Some((aggregated_row, is_new)) =
+					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
 				{
 					if is_new {
 						// First time this window appears
@@ -261,7 +259,7 @@ async fn process_sliding_group_insert(
 }
 
 /// Apply changes for sliding windows
-pub async fn apply_sliding_window(
+pub fn apply_sliding_window(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	change: FlowChange,
@@ -271,7 +269,7 @@ pub async fn apply_sliding_window(
 	let current_timestamp = operator.current_timestamp();
 
 	// First, process any expired windows
-	let expired_diffs = operator.process_expired_windows(txn, current_timestamp).await?;
+	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
 	result.extend(expired_diffs);
 
 	// Process each incoming change (each diff may contain multiple rows)
@@ -280,7 +278,7 @@ pub async fn apply_sliding_window(
 			FlowDiff::Insert {
 				post,
 			} => {
-				let insert_result = process_sliding_insert(operator, txn, post, evaluator).await?;
+				let insert_result = process_sliding_insert(operator, txn, post, evaluator)?;
 				result.extend(insert_result);
 			}
 			FlowDiff::Update {
@@ -288,7 +286,7 @@ pub async fn apply_sliding_window(
 				post,
 			} => {
 				// For windows, updates are treated as insert of new value
-				let update_result = process_sliding_insert(operator, txn, post, evaluator).await?;
+				let update_result = process_sliding_insert(operator, txn, post, evaluator)?;
 				result.extend(update_result);
 			}
 			FlowDiff::Remove {

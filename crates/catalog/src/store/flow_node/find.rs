@@ -11,12 +11,12 @@ use reifydb_transaction::IntoStandardTransaction;
 use crate::{CatalogStore, store::flow_node::layout::flow_node};
 
 impl CatalogStore {
-	pub async fn find_flow_node(
+	pub fn find_flow_node(
 		rx: &mut impl IntoStandardTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<Option<FlowNodeDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id)).await? else {
+		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id))? else {
 			return Ok(None);
 		};
 
@@ -45,15 +45,15 @@ mod tests {
 		test_utils::{create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[tokio::test]
-	async fn test_find_flow_node_ok() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_find_flow_node_ok() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]).await;
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]);
 
-		let result = CatalogStore::find_flow_node(&mut txn, node.id).await.unwrap();
+		let result = CatalogStore::find_flow_node(&mut txn, node.id).unwrap();
 		assert!(result.is_some());
 		let found = result.unwrap();
 		assert_eq!(found.id, node.id);
@@ -61,11 +61,11 @@ mod tests {
 		assert_eq!(found.node_type, 1);
 	}
 
-	#[tokio::test]
-	async fn test_find_flow_node_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_flow_node_not_found() {
+		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_flow_node(&mut txn, FlowNodeId(999)).await.unwrap();
+		let result = CatalogStore::find_flow_node(&mut txn, FlowNodeId(999)).unwrap();
 		assert!(result.is_none());
 	}
 }

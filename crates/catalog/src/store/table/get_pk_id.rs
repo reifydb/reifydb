@@ -9,12 +9,12 @@ use crate::{CatalogStore, store::table::layout::table};
 impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
-	pub async fn get_table_pk_id(
+	pub fn get_table_pk_id(
 		rx: &mut impl IntoStandardTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
 		let mut txn = rx.into_standard_transaction();
-		let multi = match txn.get(&TableKey::encoded(table_id)).await? {
+		let multi = match txn.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
@@ -41,10 +41,10 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[tokio::test]
-	async fn test_get_table_pk_id_with_primary_key() {
-		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_get_table_pk_id_with_primary_key() {
+		let mut txn = create_test_command_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		// Create a column
 		let col = CatalogStore::create_column(
@@ -64,7 +64,6 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
 		// Create primary key
@@ -75,36 +74,34 @@ mod tests {
 				column_ids: vec![col.id],
 			},
 		)
-		.await
 		.unwrap();
 
 		// Get the primary key ID
 		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id)
-			.await
 			.unwrap()
 			.expect("Primary key ID should exist");
 
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
 
-	#[tokio::test]
-	async fn test_get_table_pk_id_without_primary_key() {
-		let mut txn = create_test_command_transaction().await;
-		let table = ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_get_table_pk_id_without_primary_key() {
+		let mut txn = create_test_command_transaction();
+		let table = ensure_test_table(&mut txn);
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).await.unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).unwrap();
 
 		assert!(pk_id.is_none());
 	}
 
-	#[tokio::test]
-	async fn test_get_table_pk_id_nonexistent_table() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_table_pk_id_nonexistent_table() {
+		let mut txn = create_test_command_transaction();
 
 		// Get the primary key ID for non-existent table - should be
 		// None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).await.unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).unwrap();
 
 		assert!(pk_id.is_none());
 	}

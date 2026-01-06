@@ -35,17 +35,17 @@ impl OperatorRetentionPolicies {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for OperatorRetentionPolicies {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_operator_retention_policies(txn).await?;
+		let policies = CatalogStore::list_operator_retention_policies(txn)?;
 
 		let mut operator_ids = ColumnData::uint8_with_capacity(policies.len());
 		let mut policy_types = ColumnData::utf8_with_capacity(policies.len());

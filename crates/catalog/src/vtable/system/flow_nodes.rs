@@ -34,17 +34,17 @@ impl FlowNodes {
 
 #[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowNodes {
-	async fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
+	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	async fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut T) -> crate::Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let nodes = CatalogStore::list_flow_nodes_all(txn).await?;
+		let nodes = CatalogStore::list_flow_nodes_all(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(nodes.len());
 		let mut flow_ids = ColumnData::uint8_with_capacity(nodes.len());

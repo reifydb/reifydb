@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use async_trait::async_trait;
 use reifydb_core::value::column::headers::ColumnHeaders;
 use tracing::instrument;
 
@@ -23,21 +22,20 @@ impl TakeNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for TakeNode {
 	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &ExecutionContext,
 	) -> crate::Result<()> {
-		self.input.initialize(rx, ctx).await?;
+		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
 	#[instrument(name = "query::take::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -50,7 +48,7 @@ impl QueryNode for TakeNode {
 
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(rx, ctx).await?
+		}) = self.input.next(rx, ctx)?
 		{
 			let row_count = columns.row_count();
 			if row_count == 0 {

@@ -11,12 +11,12 @@ use reifydb_transaction::IntoStandardTransaction;
 use crate::{CatalogStore, store::flow_edge::layout::flow_edge};
 
 impl CatalogStore {
-	pub async fn find_flow_edge(
+	pub fn find_flow_edge(
 		rx: &mut impl IntoStandardTransaction,
 		edge: FlowEdgeId,
 	) -> crate::Result<Option<FlowEdgeDef>> {
 		let mut txn = rx.into_standard_transaction();
-		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge)).await? else {
+		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge))? else {
 			return Ok(None);
 		};
 
@@ -45,17 +45,17 @@ mod tests {
 		test_utils::{create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[tokio::test]
-	async fn test_find_flow_edge_ok() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_find_flow_edge_ok() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]).await;
-		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id).await;
+		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		let result = CatalogStore::find_flow_edge(&mut txn, edge.id).await.unwrap();
+		let result = CatalogStore::find_flow_edge(&mut txn, edge.id).unwrap();
 		assert!(result.is_some());
 		let found = result.unwrap();
 		assert_eq!(found.id, edge.id);
@@ -64,11 +64,11 @@ mod tests {
 		assert_eq!(found.target, node2.id);
 	}
 
-	#[tokio::test]
-	async fn test_find_flow_edge_not_found() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_find_flow_edge_not_found() {
+		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).await.unwrap();
+		let result = CatalogStore::find_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
 		assert!(result.is_none());
 	}
 }

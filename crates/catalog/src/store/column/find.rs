@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnKey, PrimitiveId};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -11,7 +10,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn find_column_by_name(
+	pub fn find_column_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,
@@ -20,7 +19,7 @@ impl CatalogStore {
 		let mut stream = txn.range(ColumnKey::full_scan(source), 1024)?;
 
 		let mut found_id = None;
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.values;
 			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
@@ -35,7 +34,7 @@ impl CatalogStore {
 		drop(stream);
 
 		if let Some(id) = found_id {
-			Ok(Some(Self::get_column(&mut txn, id).await?))
+			Ok(Some(Self::get_column(&mut txn, id)?))
 		} else {
 			Ok(None)
 		}
@@ -50,14 +49,14 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]).await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").await.unwrap().unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").unwrap().unwrap();
 
 		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
@@ -65,12 +64,12 @@ mod tests {
 		assert_eq!(result.auto_increment, false);
 	}
 
-	#[tokio::test]
-	async fn test_not_found() {
-		let mut txn = create_test_command_transaction().await;
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]).await;
+	#[test]
+	fn test_not_found() {
+		let mut txn = create_test_command_transaction();
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 
-		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").await.unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").unwrap();
 
 		assert!(result.is_none());
 	}

@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_transactional_view<T: IntoStandardTransaction>(
+	pub(crate) fn compile_transactional_view<T: IntoStandardTransaction>(
 		&self,
 		ast: AstCreateTransactionalView,
 		tx: &mut T,
@@ -43,7 +43,7 @@ impl Compiler {
 		let view = ast.view;
 
 		let with = if let Some(as_statement) = ast.as_clause {
-			self.compile(as_statement, tx).await?
+			self.compile(as_statement, tx)?
 		} else {
 			vec![]
 		};

@@ -9,7 +9,7 @@ use crate::{Catalog, CatalogStore};
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub async fn find_dictionary<T: IntoStandardTransaction>(
+	pub fn find_dictionary<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		id: DictionaryId,
@@ -32,7 +32,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary(cmd, id).await? {
+				if let Some(dict) = CatalogStore::find_dictionary(cmd, id)? {
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -49,7 +49,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary(qry, id).await? {
+				if let Some(dict) = CatalogStore::find_dictionary(qry, id)? {
 					warn!(
 						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
 						id
@@ -63,7 +63,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::dictionary::find_by_name", level = "trace", skip(self, txn, name))]
-	pub async fn find_dictionary_by_name<T: IntoStandardTransaction>(
+	pub fn find_dictionary_by_name<T: IntoStandardTransaction>(
 		&self,
 		txn: &mut T,
 		namespace: NamespaceId,
@@ -91,7 +91,7 @@ impl Catalog {
 				}
 
 				// 4. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(cmd, namespace, name).await? {
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(cmd, namespace, name)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace
@@ -110,7 +110,7 @@ impl Catalog {
 				}
 
 				// 2. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(qry, namespace, name).await? {
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(qry, namespace, name)? {
 					warn!(
 						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 						name, namespace

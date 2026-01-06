@@ -5,8 +5,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use parking_lot::RwLock;
 use reifydb_core::{CommitVersion, interface::PrimitiveId};
-use tokio::sync::RwLock;
 
 /// Tracks the latest CDC version for each primitive (table/view/flow).
 ///
@@ -24,8 +24,8 @@ impl PrimitiveVersionTracker {
 	}
 
 	/// Update the latest version for a primitive.
-	pub async fn update(&self, primitive_id: PrimitiveId, version: CommitVersion) {
-		let mut versions = self.versions.write().await;
+	pub fn update(&self, primitive_id: PrimitiveId, version: CommitVersion) {
+		let mut versions = self.versions.write();
 		versions.entry(primitive_id)
 			.and_modify(|v| {
 				if version.0 > v.0 {
@@ -36,8 +36,8 @@ impl PrimitiveVersionTracker {
 	}
 
 	/// Get all tracked primitive versions.
-	pub async fn all(&self) -> HashMap<PrimitiveId, CommitVersion> {
-		let versions = self.versions.read().await;
+	pub fn all(&self) -> HashMap<PrimitiveId, CommitVersion> {
+		let versions = self.versions.read();
 		versions.clone()
 	}
 }

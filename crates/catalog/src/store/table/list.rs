@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{Key, NamespaceId, TableDef, TableKey};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::table::layout::table};
 
 impl CatalogStore {
-	pub async fn list_tables_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<TableDef>> {
+	pub fn list_tables_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<TableDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -16,7 +15,7 @@ impl CatalogStore {
 		let mut table_ids = Vec::new();
 		{
 			let mut stream = txn.range(TableKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next().await {
+			while let Some(entry) = stream.next() {
 				let entry = entry?;
 				if let Some(key) = Key::decode(&entry.key) {
 					if let Key::Table(table_key) = key {
@@ -34,8 +33,8 @@ impl CatalogStore {
 
 		// Now fetch details for each table
 		for (table_id, namespace_id, name) in table_ids {
-			let primary_key = Self::find_primary_key(&mut txn, table_id).await?;
-			let columns = Self::list_columns(&mut txn, table_id).await?;
+			let primary_key = Self::find_primary_key(&mut txn, table_id)?;
+			let columns = Self::list_columns(&mut txn, table_id)?;
 
 			let table_def = TableDef {
 				id: table_id,

@@ -13,6 +13,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use parking_lot::RwLock;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	CommitVersion, Error,
@@ -25,7 +26,6 @@ use reifydb_core::{
 use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
-use tokio::sync::RwLock;
 use tracing::{debug, error, instrument};
 
 use crate::{
@@ -152,12 +152,8 @@ impl FlowEngine {
 				output: convert_column_defs(&info.output_columns),
 				capabilities: info.capabilities,
 			};
-			// Only spawn if there's a tokio runtime available
-			if let Ok(handle) = tokio::runtime::Handle::try_current() {
-				handle.spawn(async move {
-					event_bus.emit(event).await;
-				});
-			}
+
+			event_bus.emit(event);
 		}
 
 		Ok(())
@@ -192,49 +188,49 @@ impl FlowEngine {
 		loader_read.has_operator(operator)
 	}
 
-	pub async fn has_registered_flows(&self) -> bool {
-		!self.inner.flows.read().await.is_empty()
+	pub fn has_registered_flows(&self) -> bool {
+		!self.inner.flows.read().is_empty()
 	}
 
 	/// Returns a set of all currently registered flow IDs
-	pub async fn flow_ids(&self) -> HashSet<FlowId> {
-		self.inner.flows.read().await.keys().copied().collect()
+	pub fn flow_ids(&self) -> HashSet<FlowId> {
+		self.inner.flows.read().keys().copied().collect()
 	}
 
 	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
-	pub async fn clear(&self) {
+	pub fn clear(&self) {
 		self.inner.operators.clear();
-		self.inner.flows.write().await.clear();
+		self.inner.flows.write().clear();
 		self.inner.sources.clear();
 		self.inner.sinks.clear();
-		self.inner.analyzer.write().await.clear();
-		self.inner.flow_creation_versions.write().await.clear();
+		self.inner.analyzer.write().clear();
+		self.inner.flow_creation_versions.write().clear();
 	}
 
-	pub async fn get_dependency_graph(&self) -> FlowDependencyGraph {
-		self.inner.analyzer.read().await.get_dependency_graph().clone()
+	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
+		self.inner.analyzer.read().get_dependency_graph().clone()
 	}
 
-	pub async fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read().await;
+	pub fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read();
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flows_depending_on_table(dependency_graph, table_id)
 	}
 
-	pub async fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read().await;
+	pub fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read();
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flows_depending_on_view(dependency_graph, view_id)
 	}
 
-	pub async fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
-		let analyzer = self.inner.analyzer.read().await;
+	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
+		let analyzer = self.inner.analyzer.read();
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
-	pub async fn calculate_execution_order(&self) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read().await;
+	pub fn calculate_execution_order(&self) -> Vec<FlowId> {
+		let analyzer = self.inner.analyzer.read();
 		let dependency_graph = analyzer.get_dependency_graph();
 		analyzer.calculate_execution_order(dependency_graph)
 	}

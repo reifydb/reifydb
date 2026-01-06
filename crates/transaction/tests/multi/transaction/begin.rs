@@ -3,16 +3,16 @@
 
 use reifydb_transaction::multi::TransactionMulti;
 
-#[tokio::test]
-async fn test_begin_query() {
-	let engine = TransactionMulti::testing().await;
-	let tx = engine.begin_query().await.unwrap();
+#[test]
+fn test_begin_query() {
+	let engine = TransactionMulti::testing();
+	let tx = engine.begin_query().unwrap();
 	assert_eq!(tx.version(), 1);
 }
 
-#[tokio::test]
-async fn test_begin_command() {
-	let engine = TransactionMulti::testing().await;
-	let tx = engine.begin_command().await.unwrap();
+#[test]
+fn test_begin_command() {
+	let engine = TransactionMulti::testing();
+	let tx = engine.begin_command().unwrap();
 	assert_eq!(tx.version(), 1);
 }

@@ -33,7 +33,7 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) async fn update_table<'a>(
+	pub(crate) fn update_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: UpdateTableNode,
@@ -43,12 +43,11 @@ impl Executor {
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace().name();
-			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name()).await?
-			else {
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -62,7 +61,7 @@ impl Executor {
 		let mut table_types: Vec<Type> = Vec::new();
 		for c in &table.columns {
 			if let Some(dict_id) = c.dictionary_id {
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
 					Ok(Some(d)) => d.id_type,
 					_ => c.constraint.get_type(),
 				};
@@ -93,14 +92,14 @@ impl Executor {
 
 		{
 			let mut wrapped_txn = StandardTransaction::from(txn);
-			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone())).await;
+			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
-			input_node.initialize(&mut wrapped_txn, &context).await?;
+			input_node.initialize(&mut wrapped_txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn, &mut mutable_context).await?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
 			{
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
@@ -146,8 +145,7 @@ impl Executor {
 							let dictionary = CatalogStore::find_dictionary(
 								wrapped_txn.command_mut(),
 								dict_id,
-							)
-							.await?
+							)?
 							.ok_or_else(|| {
 								internal_error!(
 									"Dictionary {:?} not found for column {}",
@@ -157,8 +155,7 @@ impl Executor {
 							})?;
 							let entry_id = wrapped_txn
 								.command_mut()
-								.insert_into_dictionary(&dictionary, &value)
-								.await?;
+								.insert_into_dictionary(&dictionary, &value)?;
 							entry_id.to_value()
 						} else {
 							value
@@ -210,25 +207,20 @@ impl Executor {
 					let row_key = RowKey::encoded(table.id, row_number);
 
 					if let Some(pk_def) =
-						primary_key::get_primary_key(wrapped_txn.command_mut(), &table).await?
+						primary_key::get_primary_key(wrapped_txn.command_mut(), &table)?
 					{
-						if let Some(old_row_data) =
-							wrapped_txn.command_mut().get(&row_key).await?
-						{
+						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key)? {
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &layout,
 							)?;
 
-							wrapped_txn
-								.command_mut()
-								.remove(&IndexEntryKey::new(
-									table.id,
-									IndexId::primary(pk_def.id),
-									old_key,
-								)
-								.encode())
-								.await?;
+							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
+								table.id,
+								IndexId::primary(pk_def.id),
+								old_key,
+							)
+							.encode())?;
 						}
 
 						let new_key = primary_key::encode_primary_key(
@@ -243,21 +235,18 @@ impl Executor {
 							u64::from(row_number),
 						);
 
-						wrapped_txn
-							.command_mut()
-							.set(
-								&IndexEntryKey::new(
-									table.id,
-									IndexId::primary(pk_def.id),
-									new_key,
-								)
-								.encode(),
-								row_number_encoded,
+						wrapped_txn.command_mut().set(
+							&IndexEntryKey::new(
+								table.id,
+								IndexId::primary(pk_def.id),
+								new_key,
 							)
-							.await?;
+							.encode(),
+							row_number_encoded,
+						)?;
 					}
 
-					wrapped_txn.command_mut().set(&row_key, row).await?;
+					wrapped_txn.command_mut().set(&row_key, row)?;
 
 					updated_count += 1;
 				}

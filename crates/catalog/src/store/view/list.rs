@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{Key, NamespaceId, ViewDef, ViewKey, ViewKind};
 use reifydb_transaction::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::view::layout::view};
 
 impl CatalogStore {
-	pub async fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
+	pub fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -16,7 +15,7 @@ impl CatalogStore {
 		let mut view_data = Vec::new();
 		{
 			let mut stream = txn.range(ViewKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next().await {
+			while let Some(entry) = stream.next() {
 				let entry = entry?;
 				if let Some(key) = Key::decode(&entry.key) {
 					if let Key::View(view_key) = key {
@@ -43,8 +42,8 @@ impl CatalogStore {
 
 		// Now fetch additional details for each view
 		for (view_id, namespace_id, name, kind) in view_data {
-			let primary_key = Self::find_primary_key(&mut txn, view_id).await?;
-			let columns = Self::list_columns(&mut txn, view_id).await?;
+			let primary_key = Self::find_primary_key(&mut txn, view_id)?;
+			let columns = Self::list_columns(&mut txn, view_id)?;
 
 			let view_def = ViewDef {
 				id: view_id,

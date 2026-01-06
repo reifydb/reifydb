@@ -3,7 +3,6 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use async_trait::async_trait;
 use reifydb_catalog::{
 	Catalog, MaterializedCatalog,
 	vtable::{
@@ -16,10 +15,8 @@ use reifydb_core::{
 	event::{Event, EventBus},
 	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
 	ioc::IocContainer,
-	stream::{ChannelFrameStream, FrameSender, SendableFrameStream, StreamError},
 };
 use reifydb_function::{Functions, math, series, subscription};
-use reifydb_rql::ast;
 use reifydb_rqlv2::Compiler;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
@@ -27,19 +24,17 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	Error, Fragment, TypeConstraint,
-	diagnostic::{self, catalog::namespace_not_found, engine::parallel_execution_error},
+	diagnostic::{self, catalog::namespace_not_found},
 };
 use reifydb_vm::{
 	collect,
 	vmcore::{VmContext, VmState},
 };
-use tokio::spawn;
-use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
 	bulk_insert::BulkInsertBuilder,
-	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query, parallel::can_parallelize},
+	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 };
 
@@ -54,7 +49,7 @@ impl WithEventBus for StandardEngine {
 // Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub async fn begin_command(&self) -> crate::Result<StandardCommandTransaction> {
+	pub fn begin_command(&self) -> crate::Result<StandardCommandTransaction> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors
@@ -68,44 +63,51 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 		)
-		.await
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	pub async fn begin_query(&self) -> crate::Result<StandardQueryTransaction> {
-		Ok(StandardQueryTransaction::new(
-			self.multi.begin_query().await?,
-			self.single.clone(),
-			self.cdc.clone(),
-		))
+	pub fn begin_query(&self) -> crate::Result<StandardQueryTransaction> {
+		Ok(StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone()))
 	}
 
 	#[instrument(name = "engine::command", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
-		let engine = self.clone();
-		let identity = identity.clone();
-		let rql = rql.to_string();
-		let cancel_token = CancellationToken::new();
-
-		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-
-		spawn(execute_command(engine, identity, rql, params, sender, cancel_token));
-
-		Box::pin(stream)
+	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+		(|| {
+			let mut txn = self.begin_command()?;
+			let frames = self.executor.execute_command(
+				&mut txn,
+				Command {
+					rql,
+					params,
+					identity,
+				},
+			)?;
+			txn.commit()?;
+			Ok(frames)
+		})()
+		.map_err(|mut err: Error| {
+			err.with_statement(rql.to_string());
+			err
+		})
 	}
 
 	#[instrument(name = "engine::query", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
-		let engine = self.clone();
-		let identity = identity.clone();
-		let rql = rql.to_string();
-		let cancel_token = CancellationToken::new();
-
-		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
-
-		spawn(execute_query(engine, identity, rql, params, sender, cancel_token));
-
-		Box::pin(stream)
+	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
+		(|| {
+			let mut txn = self.begin_query()?;
+			self.executor.execute_query(
+				&mut txn,
+				Query {
+					rql,
+					params,
+					identity,
+				},
+			)
+		})()
+		.map_err(|mut err: Error| {
+			err.with_statement(rql.to_string());
+			err
+		})
 	}
 
 	/// Register a user-defined virtual table.
@@ -198,7 +200,7 @@ impl StandardEngine {
 		let program = self.compiler.compile(&rql).await?;
 
 		// Step 2: Create a new transaction for execution
-		let mut exec_tx = self.begin_query().await.map_err(|e| {
+		let mut exec_tx = self.begin_query().map_err(|e| {
 			let diagnostic = diagnostic::Diagnostic {
 				code: "VM_ERROR".to_string(),
 				statement: Some(rql_for_errors.clone()),
@@ -220,7 +222,6 @@ impl StandardEngine {
 
 		let pipeline = vm
 			.execute(&mut exec_tx)
-			.await
 			.map_err(|e| {
 				let diagnostic = diagnostic::Diagnostic {
 					code: "VM_ERROR".to_string(),
@@ -253,7 +254,7 @@ impl StandardEngine {
 			})?;
 
 		// Step 4: Collect results
-		let columns = collect(pipeline).await.map_err(|e| {
+		let columns = collect(pipeline).map_err(|e| {
 			let diagnostic = diagnostic::Diagnostic {
 				code: "VM_ERROR".to_string(),
 				statement: Some(rql_for_errors.clone()),
@@ -273,259 +274,17 @@ impl StandardEngine {
 	}
 }
 
-/// Execute a command and send results to the stream.
-async fn execute_command(
-	engine: StandardEngine,
-	identity: Identity,
-	rql: String,
-	params: Params,
-	sender: FrameSender,
-	cancel_token: CancellationToken,
-) {
-	// Check for cancellation before starting
-	if cancel_token.is_cancelled() {
-		return;
-	}
-
-	// Begin transaction
-	let txn_result = engine.begin_command().await;
-	let mut txn = match txn_result {
-		Ok(txn) => txn,
-		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.clone())));
-			return;
-		}
-	};
-
-	// Execute command - call executor directly to avoid trait object indirection
-	let result = engine
-		.executor
-		.execute_command(
-			&mut txn,
-			Command {
-				rql: &rql,
-				params,
-				identity: &identity,
-			},
-		)
-		.await;
-
-	match result {
-		Ok(frames) => {
-			// Commit transaction
-			if let Err(e) = txn.commit().await {
-				let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
-				return;
-			}
-
-			// Send each frame through the channel
-			for frame in frames {
-				if cancel_token.is_cancelled() {
-					return;
-				}
-				if sender.send(Ok(frame)).await.is_err() {
-					return; // Receiver dropped
-				}
-			}
-		}
-		Err(e) => {
-			// Rollback on error (drop will handle it)
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
-		}
-	}
-}
-
-/// Execute a query and send results to the stream.
-async fn execute_query(
-	engine: StandardEngine,
-	identity: Identity,
-	rql: String,
-	params: Params,
-	sender: FrameSender,
-	cancel_token: CancellationToken,
-) {
-	// Check for cancellation before starting
-	if cancel_token.is_cancelled() {
-		return;
-	}
-
-	// Parse the RQL to check for parallel execution opportunity
-	let statements = match ast::parse_str(&rql) {
-		Ok(stmts) => stmts,
-		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e.into(), rql)));
-			return;
-		}
-	};
-
-	// Check if we can execute statements in parallel
-	if can_parallelize(&statements) {
-		execute_query_parallel(engine, rql, statements, params, sender, cancel_token).await;
-	} else {
-		execute_query_sequential(engine, identity, rql, params, sender, cancel_token).await;
-	}
-}
-
-/// Execute a query sequentially (original behavior).
-async fn execute_query_sequential(
-	engine: StandardEngine,
-	identity: Identity,
-	rql: String,
-	params: Params,
-	sender: FrameSender,
-	cancel_token: CancellationToken,
-) {
-	// Begin transaction
-	let txn_result = engine.begin_query().await;
-	let mut txn = match txn_result {
-		Ok(txn) => txn,
-		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.clone())));
-			return;
-		}
-	};
-
-	// Execute query - call executor directly to avoid trait object indirection
-	let result = engine
-		.executor
-		.execute_query(
-			&mut txn,
-			Query {
-				rql: &rql,
-				params,
-				identity: &identity,
-			},
-		)
-		.await;
-
-	match result {
-		Ok(frames) => {
-			// Send each frame through the channel
-			for frame in frames {
-				if cancel_token.is_cancelled() {
-					return;
-				}
-				if sender.send(Ok(frame)).await.is_err() {
-					return; // Receiver dropped
-				}
-			}
-		}
-		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
-		}
-	}
-}
-
-/// Execute independent statements in parallel.
-///
-/// Each statement gets its own transaction at the same snapshot version,
-/// ensuring consistent reads across all parallel executions.
-#[allow(dead_code)]
-async fn execute_query_parallel(
-	engine: StandardEngine,
-	rql: String,
-	statements: Vec<ast::AstStatement>,
-	params: Params,
-	sender: FrameSender,
-	cancel_token: CancellationToken,
-) {
-	// Begin initial transaction to get the snapshot version
-	let initial_txn = match engine.begin_query().await {
-		Ok(txn) => txn,
-		Err(e) => {
-			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql)));
-			return;
-		}
-	};
-
-	// Capture the snapshot version - all parallel tasks will use this same version
-	let version = initial_txn.version();
-	drop(initial_txn);
-
-	let statement_count = statements.len();
-
-	// Spawn parallel tasks for each statement
-	let handles: Vec<_> = statements
-		.into_iter()
-		.enumerate()
-		.map(|(idx, statement)| {
-			let engine = engine.clone();
-			let params = params.clone();
-
-			spawn(async move {
-				// Create a new transaction at the same snapshot version
-				let mut txn = engine.begin_query_at_version(version).await?;
-
-				// Execute the single statement
-				let frame =
-					engine.executor.execute_single_statement(&mut txn, statement, params).await?;
-
-				Ok::<_, Error>((idx, frame))
-			})
-		})
-		.collect();
-
-	// Collect results, preserving order
-	let mut results: Vec<Option<Frame>> = vec![None; statement_count];
-	let mut first_error: Option<Error> = None;
-
-	for handle in handles {
-		match handle.await {
-			Ok(Ok((idx, frame))) => {
-				results[idx] = frame;
-			}
-			Ok(Err(e)) => {
-				// Track the first error
-				if first_error.is_none() {
-					first_error = Some(e);
-				}
-			}
-			Err(join_err) => {
-				// Task panicked
-				if first_error.is_none() {
-					first_error = Some(Error(parallel_execution_error(format!(
-						"Task panicked: {}",
-						join_err
-					))));
-				}
-			}
-		}
-	}
-
-	// If there was an error, report it
-	if let Some(error) = first_error {
-		let _ = sender.try_send(Err(StreamError::query_with_statement(error, rql)));
-		return;
-	}
-
-	// Send results in order
-	for frame in results.into_iter().flatten() {
-		if cancel_token.is_cancelled() {
-			return;
-		}
-		if sender.send(Ok(frame)).await.is_err() {
-			return; // Receiver dropped
-		}
-	}
-}
-
-#[async_trait]
 impl ExecuteCommand for StandardEngine {
 	#[inline]
-	async fn execute_command(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		cmd: Command<'_>,
-	) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_command(txn, cmd).await
+	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
+		self.executor.execute_command(txn, cmd)
 	}
 }
 
-#[async_trait]
 impl ExecuteQuery for StandardEngine {
 	#[inline]
-	async fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
-		self.executor.execute_query(txn, qry).await
+	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+		self.executor.execute_query(txn, qry)
 	}
 }
 
@@ -556,7 +315,7 @@ pub struct Inner {
 }
 
 impl StandardEngine {
-	pub async fn new(
+	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
 		cdc: TransactionCdc,
@@ -583,7 +342,7 @@ impl StandardEngine {
 		// Create the flow operator store and register the event listener
 		let flow_operator_store = FlowOperatorStore::new();
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
-		event_bus.register(listener).await;
+		event_bus.register(listener);
 
 		let stats_tracker = multi.store().stats_tracker().clone();
 
@@ -614,9 +373,9 @@ impl StandardEngine {
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
-	pub async fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<StandardQueryTransaction> {
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<StandardQueryTransaction> {
 		Ok(StandardQueryTransaction::new(
-			self.multi.begin_query_at_version(version).await?,
+			self.multi.begin_query_at_version(version)?,
 			self.single.clone(),
 			self.cdc.clone(),
 		))
@@ -653,8 +412,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub async fn emit<E: Event>(&self, event: E) {
-		self.event_bus.emit(event).await
+	pub fn emit<E: Event>(&self, event: E) {
+		self.event_bus.emit(event)
 	}
 
 	#[inline]
@@ -677,8 +436,8 @@ impl StandardEngine {
 
 	/// Get the current version from the transaction manager
 	#[inline]
-	pub async fn current_version(&self) -> crate::Result<CommitVersion> {
-		self.multi.current_version().await
+	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+		self.multi.current_version()
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.

@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_type::{
-	Fragment, Value,
+	Fragment, RowNumber, Value,
 	diagnostic::{catalog::ringbuffer_not_found, engine},
 	return_error,
 };
@@ -22,25 +22,24 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) async fn delete_ringbuffer<'a>(
+	pub(crate) fn delete_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: DeleteRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata
-		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id).await? else {
+		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
@@ -72,8 +71,7 @@ impl Executor {
 						params: params.clone(),
 						stack: Stack::new(),
 					}),
-				)
-				.await;
+				);
 
 				let context = ExecutionContext {
 					executor: self.clone(),
@@ -84,12 +82,12 @@ impl Executor {
 				};
 
 				// Initialize the operator before execution
-				input_node.initialize(&mut std_txn, &context).await?;
+				input_node.initialize(&mut std_txn, &context)?;
 
 				let mut mutable_context = context.clone();
 				while let Some(Batch {
 					columns,
-				}) = input_node.next(&mut std_txn, &mut mutable_context).await?
+				}) = input_node.next(&mut std_txn, &mut mutable_context)?
 				{
 					// Get encoded numbers from the Columns structure
 					if columns.row_numbers.is_empty() {
@@ -112,13 +110,13 @@ impl Executor {
 
 			// Iterate from head to tail-1 (the range of row numbers in the buffer)
 			for row_num_value in metadata.head..metadata.tail {
-				let row_num = reifydb_type::RowNumber(row_num_value);
+				let row_num = RowNumber(row_num_value);
 				let key = RowKey::encoded(ringbuffer.id, row_num);
 
-				if txn.contains_key(&key).await? {
+				if txn.contains_key(&key)? {
 					if row_numbers_to_delete.contains(&row_num) {
 						// Delete this row
-						txn.remove_from_ringbuffer(ringbuffer.clone(), row_num).await?;
+						txn.remove_from_ringbuffer(ringbuffer.clone(), row_num)?;
 						deleted_count += 1;
 					} else {
 						// Track minimum remaining row number
@@ -145,12 +143,12 @@ impl Executor {
 
 			// Delete all entries in the row number range
 			for row_num_value in metadata.head..metadata.tail {
-				let row_number = reifydb_type::RowNumber(row_num_value);
+				let row_number = RowNumber(row_num_value);
 				let row_key = RowKey::encoded(ringbuffer.id, row_number);
 
 				// Only delete if the entry exists
-				if txn.contains_key(&row_key).await? {
-					txn.remove_from_ringbuffer(ringbuffer.clone(), row_number).await?;
+				if txn.contains_key(&row_key)? {
+					txn.remove_from_ringbuffer(ringbuffer.clone(), row_number)?;
 					deleted_count += 1;
 				}
 			}
@@ -161,7 +159,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		CatalogStore::update_ringbuffer_metadata(txn, metadata).await?;
+		CatalogStore::update_ringbuffer_metadata(txn, metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

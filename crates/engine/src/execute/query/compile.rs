@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_recursion::async_recursion;
 use reifydb_catalog::vtable::{
 	VTableContext, VTables,
 	system::{
@@ -66,9 +65,8 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan) -> Option<Fragment
 	}
 }
 
-#[async_recursion]
 #[instrument(name = "query::compile", level = "trace", skip(plan, rx, context))]
-pub(crate) async fn compile<'a>(
+pub(crate) fn compile<'a>(
 	plan: PhysicalPlan,
 	rx: &mut StandardTransaction<'a>,
 	context: Arc<ExecutionContext>,
@@ -79,7 +77,7 @@ pub(crate) async fn compile<'a>(
 			map,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context.clone()).await);
+			let input_node = Box::new(compile(*input, rx, context.clone()));
 			ExecutionPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
@@ -87,7 +85,7 @@ pub(crate) async fn compile<'a>(
 			conditions,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context).await);
+			let input_node = Box::new(compile(*input, rx, context));
 			ExecutionPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
@@ -101,11 +99,11 @@ pub(crate) async fn compile<'a>(
 				input: sort_input,
 			}) = *input
 			{
-				let input_node = Box::new(compile(*sort_input, rx, context).await);
+				let input_node = Box::new(compile(*sort_input, rx, context));
 				return ExecutionPlan::TopK(TopKNode::new(input_node, by, take));
 			}
 			// Fallback: regular Take
-			let input_node = Box::new(compile(*input, rx, context).await);
+			let input_node = Box::new(compile(*input, rx, context));
 			ExecutionPlan::Take(TakeNode::new(input_node, take))
 		}
 
@@ -113,7 +111,7 @@ pub(crate) async fn compile<'a>(
 			by,
 			input,
 		}) => {
-			let input_node = Box::new(compile(*input, rx, context).await);
+			let input_node = Box::new(compile(*input, rx, context));
 			ExecutionPlan::Sort(SortNode::new(input_node, by))
 		}
 
@@ -122,7 +120,7 @@ pub(crate) async fn compile<'a>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context).await);
+				let input_node = Box::new(compile(*input, rx, context));
 				ExecutionPlan::Map(MapNode::new(input_node, map))
 			} else {
 				ExecutionPlan::MapWithoutInput(MapWithoutInputNode::new(map))
@@ -134,7 +132,7 @@ pub(crate) async fn compile<'a>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node = Box::new(compile(*input, rx, context).await);
+				let input_node = Box::new(compile(*input, rx, context));
 				ExecutionPlan::Extend(ExtendNode::new(input_node, extend))
 			} else {
 				ExecutionPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
@@ -154,8 +152,8 @@ pub(crate) async fn compile<'a>(
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()).await);
-			let right_node = Box::new(compile(*right, rx, context.clone()).await);
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
 			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -172,8 +170,8 @@ pub(crate) async fn compile<'a>(
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()).await);
-			let right_node = Box::new(compile(*right, rx, context.clone()).await);
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
 			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
@@ -189,8 +187,8 @@ pub(crate) async fn compile<'a>(
 			let effective_alias =
 				alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())));
 
-			let left_node = Box::new(compile(*left, rx, context.clone()).await);
-			let right_node = Box::new(compile(*right, rx, context.clone()).await);
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
 			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
 				left_node,
 				right_node,
@@ -218,16 +216,16 @@ pub(crate) async fn compile<'a>(
 		}
 
 		PhysicalPlan::TableScan(node) => {
-			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).await.unwrap())
+			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
 		}
 
 		PhysicalPlan::ViewScan(node) => {
 			ExecutionPlan::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
 		}
 
-		PhysicalPlan::RingBufferScan(node) => ExecutionPlan::RingBufferScan(
-			RingBufferScan::new(node.source.clone(), context, rx).await.unwrap(),
-		),
+		PhysicalPlan::RingBufferScan(node) => {
+			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
+		}
 
 		PhysicalPlan::FlowScan(_node) => {
 			// TODO: Implement FlowScan execution
@@ -344,7 +342,7 @@ pub(crate) async fn compile<'a>(
 		PhysicalPlan::Environment(_) => ExecutionPlan::Environment(EnvironmentNode::new()),
 
 		PhysicalPlan::Scalarize(scalarize_node) => {
-			let input = compile(*scalarize_node.input, rx, context.clone()).await;
+			let input = compile(*scalarize_node.input, rx, context.clone());
 			ExecutionPlan::Scalarize(ScalarizeNode::new(Box::new(input)))
 		}
 

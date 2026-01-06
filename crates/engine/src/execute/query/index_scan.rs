@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	EncodedKey,
 	interface::{IndexId, TableDef},
@@ -47,18 +46,13 @@ impl IndexScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for IndexScanNode {
-	async fn initialize<'a>(
-		&mut self,
-		_rx: &mut StandardTransaction<'a>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,

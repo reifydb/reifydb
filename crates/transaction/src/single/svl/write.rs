@@ -4,17 +4,47 @@
 use std::mem::take;
 
 use indexmap::IndexMap;
+use parking_lot::{RwLock, RwLockWriteGuard};
 use reifydb_core::interface::SingleVersionValues;
 use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
-use tokio::sync::OwnedRwLockWriteGuard;
 
 use super::*;
 
-/// Simple wrapper around tokio's OwnedRwLockWriteGuard.
-/// OwnedRwLockWriteGuard is Send, so this struct is Send.
+/// Holds both the Arc and the guard to keep the lock alive
 #[allow(dead_code)]
-pub struct KeyWriteLock(pub(super) OwnedRwLockWriteGuard<()>);
+pub struct KeyWriteLock {
+	pub(super) _arc: Arc<RwLock<()>>,
+	pub(super) _guard: RwLockWriteGuard<'static, ()>,
+}
+
+impl KeyWriteLock {
+	/// Creates a new KeyWriteLock by taking a write guard and storing it with the Arc.
+	///
+	/// # Safety
+	/// This function uses unsafe code to extend the lifetime of the guard to 'static.
+	/// This is safe because:
+	/// 1. The guard borrows from the RwLock inside the Arc
+	/// 2. We store the Arc in this struct, keeping the RwLock alive
+	/// 3. The guard will be dropped before or with the Arc (due to field order)
+	/// 4. As long as this struct exists, the Arc exists, so the RwLock exists
+	pub(super) fn new(arc: Arc<RwLock<()>>) -> Self {
+		// Take the guard while we still have a reference to arc
+		let guard = arc.write();
+
+		// SAFETY: We're extending the guard's lifetime to 'static.
+		// This is sound because we're also storing the Arc, which keeps
+		// the underlying RwLock alive for as long as this struct exists.
+		let guard = unsafe {
+			std::mem::transmute::<RwLockWriteGuard<'_, ()>, RwLockWriteGuard<'static, ()>>(guard)
+		};
+
+		Self {
+			_arc: arc,
+			_guard: guard,
+		}
+	}
+}
 
 pub struct SvlCommandTransaction<'a> {
 	pub(super) inner: &'a TransactionSvlInner,
@@ -44,7 +74,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		}
 	}
 
-	pub async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -65,13 +95,13 @@ impl<'a> SvlCommandTransaction<'a> {
 			};
 		}
 
-		// Clone the store to avoid holding the lock across await
+		// Clone the store to avoid holding the lock
 		// TransactionStore is Arc-based, so clone is cheap
-		let store = self.inner.store.read().await.clone();
+		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -88,8 +118,8 @@ impl<'a> SvlCommandTransaction<'a> {
 			};
 		}
 
-		// Clone the store to avoid holding the lock across await
-		let store = self.inner.store.read().await.clone();
+		// Clone the store to avoid holding the lock
+		let store = self.inner.store.read().clone();
 		SingleVersionContains::contains(&store, key)
 	}
 
@@ -104,7 +134,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -116,11 +146,11 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub async fn commit(&mut self) -> crate::Result<()> {
+	pub fn commit(&mut self) -> crate::Result<()> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			let mut store = self.inner.store.write().await;
+			let mut store = self.inner.store.write();
 			SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))?;
 		}
 
@@ -128,7 +158,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub async fn rollback(&mut self) -> crate::Result<()> {
+	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

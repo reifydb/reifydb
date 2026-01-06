@@ -26,25 +26,24 @@ use crate::{
 
 impl Executor {
 	#[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
-	pub(crate) async fn insert_ringbuffer<'a>(
+	pub(crate) fn insert_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: InsertRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name).await?.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) =
-			CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name).await?
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
 		else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata
-		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id).await? else {
+		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
@@ -53,7 +52,7 @@ impl Executor {
 		let mut ringbuffer_types: Vec<Type> = Vec::new();
 		for c in &ringbuffer.columns {
 			if let Some(dict_id) = c.dictionary_id {
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id).await {
+				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
 					Ok(Some(d)) => d.id_type,
 					_ => c.constraint.get_type(),
 				};
@@ -81,18 +80,18 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone()).await;
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		let mut inserted_count = 0;
 
 		// Initialize the operator before execution
-		input_node.initialize(&mut std_txn, &execution_context).await?;
+		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches
 		let mut mutable_context = (*execution_context).clone();
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn, &mut mutable_context).await?
+		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 
@@ -135,8 +134,7 @@ impl Executor {
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
 						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)
-								.await?
+							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
 								.ok_or_else(|| {
 									internal_error!(
 										"Dictionary {:?} not found for column {}",
@@ -146,8 +144,7 @@ impl Executor {
 								})?;
 						let entry_id = std_txn
 							.command_mut()
-							.insert_into_dictionary(&dictionary, &value)
-							.await?;
+							.insert_into_dictionary(&dictionary, &value)?;
 						entry_id.to_value()
 					} else {
 						value
@@ -163,9 +160,7 @@ impl Executor {
 				// If buffer is full, delete the oldest entry first
 				if metadata.is_full() {
 					let oldest_row = RowNumber(metadata.head);
-					std_txn.command_mut()
-						.remove_from_ringbuffer(ringbuffer.clone(), oldest_row)
-						.await?;
+					std_txn.command_mut().remove_from_ringbuffer(ringbuffer.clone(), oldest_row)?;
 					// Advance head to next oldest item
 					metadata.head += 1;
 					metadata.count -= 1;
@@ -175,11 +170,10 @@ impl Executor {
 				let row_number = RowSequence::next_row_number_for_ringbuffer(
 					std_txn.command_mut(),
 					ringbuffer.id,
-				)
-				.await?;
+				)?;
 
 				// Store the row
-				std_txn.command_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row).await?;
+				std_txn.command_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
 
 				// Update metadata
 				if metadata.is_empty() {
@@ -193,7 +187,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		CatalogStore::update_ringbuffer_metadata(std_txn.command_mut(), metadata).await?;
+		CatalogStore::update_ringbuffer_metadata(std_txn.command_mut(), metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

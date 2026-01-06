@@ -3,7 +3,6 @@
 
 //! Test sorting on system virtual tables
 
-use futures_util::TryStreamExt;
 use reifydb_core::{Frame, interface::Identity};
 use reifydb_engine::test_utils::create_test_engine;
 
@@ -11,31 +10,19 @@ fn test_identity() -> Identity {
 	Identity::root()
 }
 
-#[tokio::test]
-async fn test_sort_system_namespaces() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_system_namespaces() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create some namespaces to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
 	// Query system.namespaces with sort
-	let frames: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.namespaces SORT name", Default::default())
-		.try_collect()
-		.await
-		.unwrap();
+	let frames: Vec<Frame> =
+		engine.query_as(&identity, "FROM system.namespaces SORT name", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -67,31 +54,19 @@ async fn test_sort_system_namespaces() {
 	}
 }
 
-#[tokio::test]
-async fn test_sort_system_namespaces_asc() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_system_namespaces_asc() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create some namespaces to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE zoo", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE alpha", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE beta", Default::default()).unwrap();
 
 	// Query system.namespaces with explicit ASC sort
-	let frames: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.namespaces SORT name ASC", Default::default())
-		.try_collect()
-		.await
-		.unwrap();
+	let frames: Vec<Frame> =
+		engine.query_as(&identity, "FROM system.namespaces SORT name ASC", Default::default()).unwrap();
 
 	// Extract namespace names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -117,35 +92,20 @@ async fn test_sort_system_namespaces_asc() {
 	}
 }
 
-#[tokio::test]
-async fn test_sort_system_tables() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_system_tables() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create some tables to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
 
 	// Query system.tables with sort
-	let frames: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.tables SORT name ASC", Default::default())
-		.try_collect()
-		.await
-		.unwrap();
+	let frames: Vec<Frame> =
+		engine.query_as(&identity, "FROM system.tables SORT name ASC", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -171,35 +131,20 @@ async fn test_sort_system_tables() {
 	}
 }
 
-#[tokio::test]
-async fn test_sort_system_tables_with_pipe_syntax() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_system_tables_with_pipe_syntax() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create some tables to have predictable data
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.zebra { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.apple { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.banana { id: int4 }", Default::default()).unwrap();
 
 	// Query system.tables with pipe syntax
-	let frames: Vec<Frame> = engine
-		.query_as(&identity, "from system.tables | sort name", Default::default())
-		.try_collect()
-		.await
-		.unwrap();
+	let frames: Vec<Frame> =
+		engine.query_as(&identity, "from system.tables | sort name", Default::default()).unwrap();
 
 	// Extract table names from results
 	let frame = frames.first().expect("Expected at least one frame");
@@ -225,35 +170,21 @@ async fn test_sort_system_tables_with_pipe_syntax() {
 	}
 }
 
-#[tokio::test]
-async fn test_sort_table_storage_stats_by_total_bytes() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_table_storage_stats_by_total_bytes() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create multiple tables and insert data of varying sizes to ensure different storage sizes
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.small { id: int4, name: text }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.medium { id: int4, name: text }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.small { id: int4, name: text }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.medium { id: int4, name: text }", Default::default()).unwrap();
 	engine.command_as(
 		&identity,
 		"CREATE TABLE test.large { id: int4, name: text, description: text }",
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Insert varying amounts of data to create clear size differences
@@ -267,8 +198,6 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Small: 1 row with small text
@@ -280,8 +209,6 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Medium: 3 rows with moderate text
@@ -297,8 +224,6 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Large: 5 rows with long text
@@ -316,18 +241,13 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	println!("\n=== Testing system.table_storage_stats Sorting ===\n");
 
 	// First, query WITHOUT sorting to show natural order
-	let frames_unsorted: Vec<Frame> = engine
-		.query_as(&identity, "FROM system.table_storage_stats", Default::default())
-		.try_collect()
-		.await
-		.unwrap();
+	let frames_unsorted: Vec<Frame> =
+		engine.query_as(&identity, "FROM system.table_storage_stats", Default::default()).unwrap();
 
 	let frame_unsorted = frames_unsorted.first().expect("Expected at least one frame");
 	let id_col_unsorted = frame_unsorted.columns.iter().find(|c| c.name == "id").unwrap();
@@ -348,8 +268,6 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	// Now query WITH sorting (ascending)
 	let frames_asc: Vec<Frame> = engine
 		.query_as(&identity, "FROM system.table_storage_stats SORT total_bytes ASC", Default::default())
-		.try_collect()
-		.await
 		.unwrap();
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
@@ -382,8 +300,6 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	// Now query WITH sorting (descending)
 	let frames_desc: Vec<Frame> = engine
 		.query_as(&identity, "FROM system.table_storage_stats SORT total_bytes DESC", Default::default())
-		.try_collect()
-		.await
 		.unwrap();
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
@@ -429,34 +345,23 @@ async fn test_sort_table_storage_stats_by_total_bytes() {
 	assert_eq!(byte_values_desc, asc_reversed, "DESC sort should be reverse of ASC sort");
 }
 
-#[tokio::test]
-async fn test_sort_table_storage_stats_multiline_syntax() {
-	let engine = create_test_engine().await;
+#[test]
+fn test_sort_table_storage_stats_multiline_syntax() {
+	let engine = create_test_engine();
 	let identity = test_identity();
 
 	// Create multiple tables with different sizes
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.tiny { id: int4 }", Default::default()).unwrap();
 	engine.command_as(
 		&identity,
 		"CREATE TABLE test.large { id: int4, name: text, description: text }",
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Insert minimal data
-	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.tiny"#, Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.tiny"#, Default::default()).unwrap();
 
 	// Insert lots of data
 	engine.command_as(
@@ -471,8 +376,6 @@ async fn test_sort_table_storage_stats_multiline_syntax() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	println!("\n=== Testing Multi-line Syntax ===\n");
@@ -483,8 +386,7 @@ sort total_bytes asc";
 
 	println!("Query:\n{}\n", multiline_query);
 
-	let frames: Vec<Frame> =
-		engine.query_as(&identity, multiline_query, Default::default()).try_collect().await.unwrap();
+	let frames: Vec<Frame> = engine.query_as(&identity, multiline_query, Default::default()).unwrap();
 
 	let frame = frames.first().expect("Expected at least one frame");
 	let id_col = frame.columns.iter().find(|c| c.name == "id").unwrap();
@@ -533,30 +435,18 @@ sort total_bytes asc";
 	println!("\n✅ Multi-line syntax test passed!");
 }
 
-#[tokio::test]
-async fn test_asc_is_not_desc() {
+#[test]
+fn test_asc_is_not_desc() {
 	// This test specifically checks that ASC doesn't behave like DESC
-	let engine = create_test_engine().await;
+	let engine = create_test_engine();
 	let identity = test_identity();
 
-	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.a { id: int4 }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
-	engine.command_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, "CREATE NAMESPACE test", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.a { id: int4 }", Default::default()).unwrap();
+	engine.command_as(&identity, "CREATE TABLE test.b { id: int4, data: text }", Default::default()).unwrap();
 
 	// Insert different amounts to create size difference
-	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.a"#, Default::default())
-		.try_collect::<Vec<Frame>>()
-		.await
-		.unwrap();
+	engine.command_as(&identity, r#"FROM [{ id: 1 }] INSERT test.a"#, Default::default()).unwrap();
 	engine.command_as(
 		&identity,
 		r#"
@@ -569,22 +459,16 @@ async fn test_asc_is_not_desc() {
 	"#,
 		Default::default(),
 	)
-	.try_collect::<Vec<Frame>>()
-	.await
 	.unwrap();
 
 	// Get results with ASC
 	let frames_asc: Vec<Frame> = engine
 		.query_as(&identity, "from system.table_storage_stats\nsort total_bytes asc", Default::default())
-		.try_collect()
-		.await
 		.unwrap();
 
 	// Get results with DESC
 	let frames_desc: Vec<Frame> = engine
 		.query_as(&identity, "from system.table_storage_stats\nsort total_bytes desc", Default::default())
-		.try_collect()
-		.await
 		.unwrap();
 
 	// Extract first total_bytes from each

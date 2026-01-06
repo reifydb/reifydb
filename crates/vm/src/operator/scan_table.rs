@@ -46,13 +46,12 @@ impl ScanTableOp {
 	///
 	/// Called once by the VM when executing a Source instruction.
 	/// The returned ScanState is stored in the VM's active_scans map.
-	pub async fn initialize<'a>(&self, catalog: &Catalog, tx: &mut StandardTransaction<'a>) -> Result<ScanState> {
+	pub fn initialize<'a>(&self, catalog: &Catalog, tx: &mut StandardTransaction<'a>) -> Result<ScanState> {
 		// Resolve namespace and table name
 		let (namespace_id, table_name) = if let Some((ns, tbl)) = self.table_name.split_once('.') {
 			// Qualified name: look up namespace by name
 			let namespace_def = catalog
 				.find_namespace_by_name(tx, ns)
-				.await
 				.map_err(|e| VmError::CatalogError {
 					message: e.to_string(),
 				})?
@@ -68,7 +67,6 @@ impl ScanTableOp {
 		// Look up table from catalog
 		let table_def = catalog
 			.find_table_by_name(tx, namespace_id, table_name)
-			.await
 			.map_err(|e| VmError::CatalogError {
 				message: e.to_string(),
 			})?
@@ -93,13 +91,11 @@ impl ScanTableOp {
 	///
 	/// Called repeatedly by the VM to fetch batches one at a time.
 	/// Returns None when the scan is exhausted.
-	pub async fn next_batch<'a>(
+	pub fn next_batch<'a>(
 		state: &mut ScanState,
 		tx: &mut StandardTransaction<'a>,
 		batch_size: u64,
 	) -> Result<Option<Batch>> {
-		use futures_util::StreamExt;
-
 		if state.exhausted {
 			return Ok(None);
 		}
@@ -112,7 +108,7 @@ impl ScanTableOp {
 			.range(range, batch_size as usize)
 			.map_err(|e| VmError::Internal(format!("storage error: {}", e)))?;
 
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let item = entry.map_err(|e| VmError::Internal(format!("storage error: {}", e)))?;
 			items.push(item);
 			if items.len() >= batch_size as usize {

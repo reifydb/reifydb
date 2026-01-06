@@ -17,11 +17,10 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Example 1: Basic logical operations
 	info!("Example 1: Basic logical operations");
@@ -53,14 +52,13 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
 	}
 
 	// Set up sample data
-	db.command_as_root("create namespace inventory", Params::None).await.unwrap();
+	db.command_as_root("create namespace inventory", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table inventory.products {
@@ -76,7 +74,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -95,7 +92,7 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
+
 	.unwrap();
 
 	// Example 2: AND operator in filters
@@ -112,7 +109,6 @@ filter in_stock == true and on_sale == true"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -132,7 +128,6 @@ filter featured == true or on_sale == true"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -152,7 +147,6 @@ filter not in_stock"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -174,7 +168,6 @@ filter (category == "Electronics" or category == "Toys")
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -194,7 +187,6 @@ filter featured xor on_sale"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -214,7 +206,6 @@ filter category == "Toys" and in_stock == true and price < 30"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -235,7 +226,6 @@ filter on_sale == true or featured == true and category == "Electronics""#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -254,7 +244,6 @@ filter (on_sale == true or featured == true) and category == "Electronics""#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -286,7 +275,6 @@ map {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -310,7 +298,6 @@ filter ((category == "Toys" and min_age >= 5) or
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

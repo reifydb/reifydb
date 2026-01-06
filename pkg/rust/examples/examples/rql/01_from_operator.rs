@@ -14,16 +14,15 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Example 1: FROM with inline data (single encoded)
 	info!("Example 1: FROM with single inline encoded");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
-	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).await.unwrap() {
+	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +--------+-------+
@@ -53,7 +52,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -82,7 +80,6 @@ async fn main() {
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -99,7 +96,7 @@ async fn main() {
 
 	// First create a namespace and table
 	info!("Creating namespace and table...");
-	db.command_as_root(r#"create namespace demo"#, Params::None).await.unwrap();
+	db.command_as_root(r#"create namespace demo"#, Params::None).unwrap();
 
 	db.command_as_root(
 		r#"
@@ -112,7 +109,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Insert some data
@@ -128,12 +124,11 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Now query from the table
 	log_query(r#"from demo.users"#);
-	for frame in db.query_as_root(r#"from demo.users"#, Params::None).await.unwrap() {
+	for frame in db.query_as_root(r#"from demo.users"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output:
 		// +------+------------+----------------------+-------------+
@@ -148,7 +143,7 @@ async fn main() {
 	// Example 5: FROM with empty array
 	info!("\nExample 5: FROM with empty array");
 	log_query(r#"from []"#);
-	for frame in db.query_as_root(r#"from []"#, Params::None).await.unwrap() {
+	for frame in db.query_as_root(r#"from []"#, Params::None).unwrap() {
 		info!("{}", frame);
 		// Output: (empty result set)
 	}

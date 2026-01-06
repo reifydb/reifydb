@@ -15,11 +15,7 @@ use crate::{
 	},
 };
 
-pub async fn explain_logical_plan(
-	catalog: &Catalog,
-	rx: &mut StandardTransaction<'_>,
-	query: &str,
-) -> crate::Result<String> {
+pub fn explain_logical_plan(catalog: &Catalog, rx: &mut StandardTransaction<'_>, query: &str) -> crate::Result<String> {
 	let statements = parse_str(query)?;
 
 	let mut plans = Vec::new();
@@ -27,7 +23,7 @@ pub async fn explain_logical_plan(
 		let compiler = crate::plan::logical::Compiler {
 			catalog: catalog.clone(),
 		};
-		plans.extend(compiler.compile(statement, rx).await?);
+		plans.extend(compiler.compile(statement, rx)?);
 	}
 
 	explain_logical_plans(&plans)
@@ -412,10 +408,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				source.fully_qualified_name().unwrap_or_else(|| source.identifier().text().to_string())
 			};
 
-			// Since identifier is now just a Fragment, we can't check for alias
-			// Just use the name directly
 			let display_name = name;
-
 			let scan_type = if index.is_some() {
 				"IndexScan"
 			} else {

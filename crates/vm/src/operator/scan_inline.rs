@@ -26,6 +26,6 @@ impl ScanInlineOp {
 	/// Create a pipeline that yields the in-memory data as a single batch.
 	pub fn create(&self) -> Pipeline {
 		let data = self.data.clone();
-		Box::pin(futures_util::stream::once(async move { Ok(Batch::fully_materialized(data)) }))
+		Box::new(std::iter::once(Ok(Batch::fully_materialized(data))))
 	}
 }

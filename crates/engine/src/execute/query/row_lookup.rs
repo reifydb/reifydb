@@ -10,7 +10,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{RowKey, catalog::PrimitiveId, resolved::ResolvedPrimitive},
 	value::{
@@ -49,10 +48,9 @@ impl<'a> RowPointLookupNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "query::lookup::point::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -61,7 +59,7 @@ impl QueryNode for RowPointLookupNode {
 	}
 
 	#[instrument(name = "query::lookup::point::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
@@ -75,7 +73,7 @@ impl QueryNode for RowPointLookupNode {
 		let encoded_key = RowKey::encoded(source_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
-		if let Some(multi_values) = rx.get(&encoded_key).await? {
+		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_source(&self.source);
 			columns.append_rows(
 				&self.row_layout,
@@ -126,10 +124,9 @@ impl<'a> RowListLookupNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for RowListLookupNode {
 	#[instrument(name = "query::lookup::list::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -138,7 +135,7 @@ impl QueryNode for RowListLookupNode {
 	}
 
 	#[instrument(name = "query::lookup::list::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -161,7 +158,7 @@ impl QueryNode for RowListLookupNode {
 			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
 			// O(1) point lookup for each row
-			if let Some(multi_values) = rx.get(&encoded_key).await? {
+			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.values);
 				found_row_numbers.push(RowNumber(row_num));
 			}
@@ -173,7 +170,7 @@ impl QueryNode for RowListLookupNode {
 		if batch_rows.is_empty() {
 			// If no rows found in this batch but more to process, try next batch
 			if self.current_index < self.row_numbers.len() {
-				return self.next(rx, ctx).await;
+				return self.next(rx, ctx);
 			}
 			return Ok(None);
 		}
@@ -226,10 +223,9 @@ impl<'a> RowRangeScanNode {
 	}
 }
 
-#[async_trait]
 impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "query::scan::range::initialize", level = "trace", skip_all)]
-	async fn initialize<'a>(
+	fn initialize<'a>(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext,
@@ -238,7 +234,7 @@ impl QueryNode for RowRangeScanNode {
 	}
 
 	#[instrument(name = "query::scan::range::next", level = "trace", skip_all)]
-	async fn next<'a>(
+	fn next<'a>(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
@@ -260,7 +256,7 @@ impl QueryNode for RowRangeScanNode {
 		for row_num in self.current_row..=batch_end {
 			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
-			if let Some(multi_values) = rx.get(&encoded_key).await? {
+			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.values);
 				found_row_numbers.push(RowNumber(row_num));
 			}
@@ -275,7 +271,7 @@ impl QueryNode for RowRangeScanNode {
 		if batch_rows.is_empty() {
 			// No rows found in this range segment
 			if !self.exhausted {
-				return self.next(rx, ctx).await;
+				return self.next(rx, ctx);
 			}
 			return Ok(None);
 		}

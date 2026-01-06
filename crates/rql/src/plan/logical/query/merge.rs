@@ -9,13 +9,13 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) async fn compile_merge<T: IntoStandardTransaction>(
+	pub(crate) fn compile_merge<T: IntoStandardTransaction>(
 		&self,
 		ast: AstMerge,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan> {
 		// Compile the subquery into logical plans
-		let with = self.compile(ast.with.statement, tx).await?;
+		let with = self.compile(ast.with.statement, tx)?;
 		Ok(LogicalPlan::Merge(MergeNode {
 			with,
 		}))

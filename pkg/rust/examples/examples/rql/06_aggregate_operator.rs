@@ -15,14 +15,13 @@ use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().await.unwrap().build().await.unwrap();
-	db.start().await.unwrap();
+	let mut db = embedded::memory().build().unwrap();
+	db.start().unwrap();
 
 	// Set up sample sales data
-	db.command_as_root("create namespace sales", Params::None).await.unwrap();
+	db.command_as_root("create namespace sales", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table sales.transactions {
@@ -37,7 +36,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -58,7 +56,6 @@ async fn main() {
 		"#,
 		Params::None,
 	)
-	.await
 	.unwrap();
 
 	// Example 1: Simple average
@@ -75,7 +72,6 @@ aggregate math::avg(price) by product"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -97,7 +93,6 @@ sort category"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -119,7 +114,6 @@ sort region"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -141,7 +135,6 @@ aggregate { math::avg(price), math::sum(quantity) } by product"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -164,7 +157,6 @@ sort month"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -186,7 +178,6 @@ aggregate math::sum(revenue) by category"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -209,7 +200,6 @@ sort { category, region }"#,
 			"#,
 			Params::None,
 		)
-		.await
 		.unwrap()
 	{
 		info!("{}", frame);

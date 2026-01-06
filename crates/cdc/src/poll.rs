@@ -7,6 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread::{JoinHandle, sleep},
 	time::Duration,
 };
 
@@ -17,7 +18,6 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_transaction::{StandardCommandTransaction, cdc::CdcQueryTransaction};
-use tokio::{task::JoinHandle, time::sleep};
 use tracing::{debug, error};
 
 use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
@@ -77,7 +77,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 	/// Consume a batch of CDC events.
 	/// Returns the number of CDC transactions processed (0 if none available).
-	async fn consume_batch(
+	fn consume_batch(
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
@@ -85,9 +85,9 @@ impl<C: CdcConsume> PollConsumer<C> {
 	) -> Result<usize> {
 		let safe_version = engine.done_until();
 
-		let mut transaction = engine.begin_command().await?;
+		let mut transaction = engine.begin_command()?;
 
-		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key).await?;
+		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 		if safe_version <= checkpoint {
 			// there's nothing safe to fetch yet
 			transaction.rollback()?;
@@ -95,7 +95,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		// Only fetch CDC events up to safe_version to avoid race conditions
-		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size).await?;
+		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size)?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(0);
@@ -139,16 +139,16 @@ impl<C: CdcConsume> PollConsumer<C> {
 			.collect::<Vec<_>>();
 
 		if !relevant_cdcs.is_empty() {
-			consumer.consume(&mut transaction, relevant_cdcs).await?;
+			consumer.consume(&mut transaction, relevant_cdcs)?;
 		}
 
-		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version).await?;
-		transaction.commit().await?;
+		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
+		transaction.commit()?;
 
 		Ok(count)
 	}
 
-	async fn polling_loop(
+	fn polling_loop(
 		config: PollConsumerConfig,
 		engine: StandardEngine,
 		consumer: Box<C>,
@@ -157,17 +157,17 @@ impl<C: CdcConsume> PollConsumer<C> {
 		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size).await {
+			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
 				Ok(count) if count > 0 => {
 					// More events likely available - poll again immediately
 				}
 				Ok(_) => {
-					sleep(config.poll_interval).await;
+					sleep(config.poll_interval);
 				}
 				Err(error) => {
 					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 					// Sleep before retrying on error
-					sleep(config.poll_interval).await;
+					sleep(config.poll_interval);
 				}
 			}
 		}
@@ -191,7 +191,9 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
-		self.worker = Some(tokio::spawn(Self::polling_loop(config, engine, consumer, state)));
+		self.worker = Some(std::thread::spawn(move || {
+			Self::polling_loop(config, engine, consumer, state);
+		}));
 
 		Ok(())
 	}
@@ -202,8 +204,8 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 		}
 
 		if let Some(worker) = self.worker.take() {
-			// Abort the task - we don't need to wait for it to finish
-			worker.abort();
+			// Wait for thread to finish
+			let _ = worker.join();
 		}
 
 		Ok(())
@@ -214,7 +216,7 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 	}
 }
 
-async fn fetch_cdcs_until(
+fn fetch_cdcs_until(
 	txn: &mut StandardCommandTransaction,
 	since_version: CommitVersion,
 	until_version: CommitVersion,
@@ -227,7 +229,7 @@ async fn fetch_cdcs_until(
 		}
 		None => Bound::Included(until_version),
 	};
-	let cdc = txn.begin_cdc_query().await?;
-	let batch = cdc.range(Bound::Excluded(since_version), upper_bound).await?;
+	let cdc = txn.begin_cdc_query()?;
+	let batch = cdc.range(Bound::Excluded(since_version), upper_bound)?;
 	Ok(batch.items)
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use futures_util::StreamExt;
 use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind};
 use reifydb_transaction::IntoStandardTransaction;
 
@@ -11,7 +10,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub async fn list_column_policies(
+	pub fn list_column_policies(
 		rx: &mut impl IntoStandardTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
@@ -19,7 +18,7 @@ impl CatalogStore {
 		let mut stream = txn.range(ColumnPolicyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
-		while let Some(entry) = stream.next().await {
+		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.values;
 			let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
@@ -40,18 +39,16 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub async fn list_column_policies_all(
-		rx: &mut impl IntoStandardTransaction,
-	) -> crate::Result<Vec<ColumnPolicy>> {
+	pub fn list_column_policies_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
-		let columns = CatalogStore::list_columns_all(&mut txn).await?;
+		let columns = CatalogStore::list_columns_all(&mut txn)?;
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(&mut txn, info.column.id).await?;
+			let policies = CatalogStore::list_column_policies(&mut txn, info.column.id)?;
 			result.extend(policies);
 		}
 
@@ -73,10 +70,10 @@ mod tests {
 		test_utils::ensure_test_table,
 	};
 
-	#[tokio::test]
-	async fn test_ok() {
-		let mut txn = create_test_command_transaction().await;
-		ensure_test_table(&mut txn).await;
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_command_transaction();
+		ensure_test_table(&mut txn);
 
 		CatalogStore::create_column(
 			&mut txn,
@@ -95,12 +92,11 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
-		.await
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).await.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
-		let policies = CatalogStore::list_column_policies(&mut txn, column.id).await.unwrap();
+		let policies = CatalogStore::list_column_policies(&mut txn, column.id).unwrap();
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);

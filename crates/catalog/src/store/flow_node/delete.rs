@@ -10,16 +10,16 @@ use reifydb_transaction::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn delete_flow_node(txn: &mut StandardCommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub fn delete_flow_node(txn: &mut StandardCommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		// First, get the node to find the flow ID for index deletion
-		let node = CatalogStore::find_flow_node(txn, node_id).await?;
+		let node = CatalogStore::find_flow_node(txn, node_id)?;
 
 		if let Some(node_def) = node {
 			// Delete from main flow_node table
-			txn.remove(&FlowNodeKey::encoded(node_id)).await?;
+			txn.remove(&FlowNodeKey::encoded(node_id))?;
 
 			// Delete from flow_node_by_flow index
-			txn.remove(&FlowNodeByFlowKey::encoded(node_def.flow, node_id)).await?;
+			txn.remove(&FlowNodeByFlowKey::encoded(node_def.flow, node_id))?;
 		}
 
 		Ok(())
@@ -36,70 +36,70 @@ mod tests {
 		test_utils::{create_flow_node, create_namespace, ensure_test_flow},
 	};
 
-	#[tokio::test]
-	async fn test_delete_flow_node() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_delete_flow_node() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		// Node should exist
-		assert!(CatalogStore::find_flow_node(&mut txn, node.id).await.unwrap().is_some());
+		assert!(CatalogStore::find_flow_node(&mut txn, node.id).unwrap().is_some());
 
 		// Delete node
-		CatalogStore::delete_flow_node(&mut txn, node.id).await.unwrap();
+		CatalogStore::delete_flow_node(&mut txn, node.id).unwrap();
 
 		// Node should no longer exist
-		assert!(CatalogStore::find_flow_node(&mut txn, node.id).await.unwrap().is_none());
+		assert!(CatalogStore::find_flow_node(&mut txn, node.id).unwrap().is_none());
 	}
 
-	#[tokio::test]
-	async fn test_delete_node_removes_from_index() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_delete_node_removes_from_index() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		// Node should be in flow index
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).await.unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 
 		// Delete node
-		CatalogStore::delete_flow_node(&mut txn, node.id).await.unwrap();
+		CatalogStore::delete_flow_node(&mut txn, node.id).unwrap();
 
 		// Node should be removed from flow index
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).await.unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
 		assert!(nodes.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_delete_nonexistent_node() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_delete_nonexistent_node() {
+		let mut txn = create_test_command_transaction();
 
 		// Deleting a non-existent node should succeed silently
-		CatalogStore::delete_flow_node(&mut txn, FlowNodeId(999)).await.unwrap();
+		CatalogStore::delete_flow_node(&mut txn, FlowNodeId(999)).unwrap();
 	}
 
-	#[tokio::test]
-	async fn test_delete_one_node_keeps_others() {
-		let mut txn = create_test_command_transaction().await;
-		let _namespace = create_namespace(&mut txn, "test_namespace").await;
-		let flow = ensure_test_flow(&mut txn).await;
+	#[test]
+	fn test_delete_one_node_keeps_others() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]).await;
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]).await;
+		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 
 		// Delete first node
-		CatalogStore::delete_flow_node(&mut txn, node1.id).await.unwrap();
+		CatalogStore::delete_flow_node(&mut txn, node1.id).unwrap();
 
 		// First node should be gone, second should remain
-		assert!(CatalogStore::find_flow_node(&mut txn, node1.id).await.unwrap().is_none());
-		assert!(CatalogStore::find_flow_node(&mut txn, node2.id).await.unwrap().is_some());
+		assert!(CatalogStore::find_flow_node(&mut txn, node1.id).unwrap().is_none());
+		assert!(CatalogStore::find_flow_node(&mut txn, node2.id).unwrap().is_some());
 
 		// List should only have second node
-		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).await.unwrap();
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node2.id);
 	}

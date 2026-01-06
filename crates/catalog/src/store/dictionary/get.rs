@@ -10,11 +10,11 @@ use reifydb_transaction::IntoStandardTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub async fn get_dictionary(
+	pub fn get_dictionary(
 		rx: &mut impl IntoStandardTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {
-		match Self::find_dictionary(rx, dictionary).await? {
+		match Self::find_dictionary(rx, dictionary)? {
 			Some(dict) => Ok(dict),
 			None => return_internal_error!(
 				"Dictionary with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -32,10 +32,10 @@ mod tests {
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 
-	#[tokio::test]
-	async fn test_get_dictionary_exists() {
-		let mut txn = create_test_command_transaction().await;
-		let test_namespace = ensure_test_namespace(&mut txn).await;
+	#[test]
+	fn test_get_dictionary_exists() {
+		let mut txn = create_test_command_transaction();
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id,
@@ -45,9 +45,9 @@ mod tests {
 			fragment: None,
 		};
 
-		let created = CatalogStore::create_dictionary(&mut txn, to_create).await.unwrap();
+		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
-		let result = CatalogStore::get_dictionary(&mut txn, created.id).await.unwrap();
+		let result = CatalogStore::get_dictionary(&mut txn, created.id).unwrap();
 
 		assert_eq!(result.id, created.id);
 		assert_eq!(result.name, "test_dict");
@@ -55,12 +55,12 @@ mod tests {
 		assert_eq!(result.id_type, Type::Uint2);
 	}
 
-	#[tokio::test]
-	async fn test_get_dictionary_not_exists() {
-		let mut txn = create_test_command_transaction().await;
+	#[test]
+	fn test_get_dictionary_not_exists() {
+		let mut txn = create_test_command_transaction();
 
 		let result = CatalogStore::get_dictionary(&mut txn, DictionaryId(999));
 
-		assert!(result.await.is_err());
+		assert!(result.is_err());
 	}
 }

@@ -16,7 +16,7 @@ use reifydb_type::{
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) async fn alter_table<'a>(
+	pub(crate) fn alter_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: AlterTableNode,
@@ -26,7 +26,7 @@ impl Executor {
 		let table_name = plan.node.table.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name).await? else {
+		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan
 				.node
 				.table
@@ -37,7 +37,7 @@ impl Executor {
 		};
 
 		// Find the table
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name).await? else {
+		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
 			return_error!(table_not_found(plan.node.table.name.clone(), &namespace.name, table_name,));
 		};
 
@@ -52,7 +52,7 @@ impl Executor {
 				} => {
 					// Get all columns for the table to
 					// validate and resolve column IDs
-					let table_columns = CatalogStore::list_columns(txn, table.id).await?;
+					let table_columns = CatalogStore::list_columns(txn, table.id)?;
 
 					let mut column_ids = Vec::new();
 					for alter_column in columns {
@@ -76,8 +76,7 @@ impl Executor {
 							source: PrimitiveId::Table(table.id),
 							column_ids,
 						},
-					)
-					.await?;
+					)?;
 
 					let pk_name = name
 						.map(|n| n.text().to_string())

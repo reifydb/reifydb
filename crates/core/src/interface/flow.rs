@@ -3,8 +3,6 @@
 
 //! Flow lag tracking interface for virtual table support.
 
-use async_trait::async_trait;
-
 use crate::interface::{PrimitiveId, catalog::FlowId};
 
 /// A row in the system.flow_lags virtual table.
@@ -25,11 +23,10 @@ pub struct FlowLagRow {
 ///
 /// Implemented by `FlowLagsProvider` in the sub-flow crate.
 /// Used by the `FlowLags` virtual table in the engine crate.
-#[async_trait]
 pub trait FlowLagsProvider: Send + Sync {
 	/// Get all flow lag rows.
 	///
 	/// Returns one row per (flow, source) pair, showing how far behind
 	/// each flow is for each of its subscribed sources.
-	async fn all_lags(&self) -> Vec<FlowLagRow>;
+	fn all_lags(&self) -> Vec<FlowLagRow>;
 }
