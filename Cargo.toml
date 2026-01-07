@@ -200,19 +200,12 @@ httparse = { version = "1.10.1" }
 # Async runtime and networking (tokio stack)
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
 tokio-tungstenite = { version = "0.28.0" }
-tokio-stream = { version = "0.1.17" }
-tokio-util = { version = "0.7.17" }
-tokio-rusqlite = { version = "0.7.0" }
-
 
 axum = { version = "0.8.7" }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 tower = { version = "0.5.2", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.6", features = ["trace", "timeout"] }
 futures-util = { version = "0.3.31", features = ["sink"] }
-async-trait = { version = "0.1" }
-async-recursion = { version = "1.1" }
-async-stream = { version = "0.3" }
 
 # sqlite
 rusqlite = { version = "0.37.0", features = ["bundled"] }

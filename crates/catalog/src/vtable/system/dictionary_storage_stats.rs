@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{PrimitiveId, VTableDef},
 	value::column::{Column, ColumnData, Columns},
@@ -42,7 +41,6 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-#[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for DictionaryStorageStats {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;

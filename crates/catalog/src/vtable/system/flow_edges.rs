@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::VTableDef,
 	value::column::{Column, ColumnData, Columns},
@@ -32,7 +31,6 @@ impl FlowEdges {
 	}
 }
 
-#[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowEdges {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;

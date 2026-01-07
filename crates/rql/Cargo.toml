@@ -16,7 +16,6 @@ tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 postcard = { workspace = true }
-async-recursion = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

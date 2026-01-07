@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_abi::{
 	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
 	has_capability,
@@ -38,7 +37,6 @@ impl FlowOperators {
 	}
 }
 
-#[async_trait]
 impl<T: IntoStandardTransaction> VTable<T> for FlowOperators {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;

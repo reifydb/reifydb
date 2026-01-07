@@ -19,7 +19,6 @@ reifydb-client = { workspace = true }
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { workspace = true }
 rand = { workspace = true }
-async-trait = { workspace = true }
 hdrhistogram = { workspace = true }
 num_cpus = { workspace = true }
 reqwest = { workspace = true }

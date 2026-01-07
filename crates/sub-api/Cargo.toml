@@ -12,7 +12,6 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
-async-trait = { workspace = true}
 
 [dev-dependencies]
 reifydb-store-transaction = { workspace = true}

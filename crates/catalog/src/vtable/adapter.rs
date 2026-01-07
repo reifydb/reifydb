@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	interface::{Batch, QueryTransaction, VTableDef},
 	value::column::{Column, ColumnData, Columns},
@@ -35,7 +34,6 @@ impl<U: UserVTable> UserVTableAdapter<U> {
 	}
 }
 
-#[async_trait]
 impl<U: UserVTable, T: QueryTransaction> VTable<T> for UserVTableAdapter<U> {
 	fn initialize(&mut self, _txn: &mut T, _ctx: VTableContext) -> crate::Result<()> {
 		self.exhausted = false;
@@ -89,7 +87,6 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 	}
 }
 
-#[async_trait]
 impl<U: UserVTableIterator, T: QueryTransaction> VTable<T> for UserVTableIteratorAdapter<U> {
 	fn initialize(&mut self, _txn: &mut T, ctx: VTableContext) -> crate::Result<()> {
 		// Convert internal context to user pushdown context

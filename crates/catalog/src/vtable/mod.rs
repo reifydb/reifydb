@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use reifydb_core::{
 	SortKey,
 	interface::{Params, VTableDef, VTableId},
@@ -50,7 +49,6 @@ pub enum VTableContext {
 }
 
 /// Trait for virtual table instances that follow the volcano iterator pattern
-#[async_trait]
 pub trait VTable<T: IntoStandardTransaction>: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins

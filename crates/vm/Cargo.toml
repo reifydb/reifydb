@@ -18,12 +18,9 @@ reifydb-catalog = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-transaction = { workspace = true }
 
-async-recursion = { workspace = true }
-async-trait = { workspace = true }
 bumpalo = { workspace = true }
 futures-util = { workspace = true }
 tokio = { workspace = true }
-tokio-stream = { workspace = true }
 thiserror = "2.0"
 
 [dev-dependencies]

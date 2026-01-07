@@ -38,7 +38,6 @@
 mod builder;
 mod registry;
 
-use async_trait::async_trait;
 pub use builder::UserVTableBuilder;
 pub use registry::{UserVTableEntry, UserVTableRegistry};
 use reifydb_core::value::column::Columns;
@@ -107,7 +106,6 @@ pub struct UserVTablePushdownContext {
 ///
 /// Unlike [`UserVTable`], implementations of this trait are instantiated
 /// fresh for each query. The factory creates a new instance per query execution.
-#[async_trait]
 pub trait UserVTableIterator: Send + Sync + 'static {
 	/// Return the column definitions for this table.
 	fn columns(&self) -> Vec<UserVTableColumnDef>;
