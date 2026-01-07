@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_catalog::{
 	Catalog, MaterializedCatalog,
@@ -446,6 +446,13 @@ impl StandardEngine {
 	#[inline]
 	pub fn done_until(&self) -> CommitVersion {
 		self.multi.done_until()
+	}
+
+	/// Wait for the watermark to reach the given version with a timeout.
+	/// Returns true if the watermark reached the target, false if timeout occurred.
+	#[inline]
+	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
+		self.multi.wait_for_mark_timeout(version, timeout)
 	}
 
 	#[inline]

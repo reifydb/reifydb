@@ -16,6 +16,7 @@ use std::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
+	thread::JoinHandle,
 	time::Duration,
 };
 
@@ -30,7 +31,7 @@ pub struct WatermarkInner {
 	pub(crate) done_until: AtomicU64,
 	pub(crate) last_index: AtomicU64,
 	pub(crate) tx: Sender<Mark>,
-	pub(crate) processor_thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+	pub(crate) processor_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 #[derive(Debug)]

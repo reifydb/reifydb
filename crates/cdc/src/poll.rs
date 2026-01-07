@@ -83,6 +83,12 @@ impl<C: CdcConsume> PollConsumer<C> {
 		consumer: &C,
 		max_batch_size: Option<u64>,
 	) -> Result<usize> {
+		// Get current version and wait for watermark to catch up.
+		// This ensures we can fetch CDC events up to the latest committed version
+		// rather than always chasing a lagging done_until.
+		let current_version = engine.current_version()?;
+		engine.wait_for_mark_timeout(current_version, Duration::from_millis(200));
+
 		let safe_version = engine.done_until();
 
 		let mut transaction = engine.begin_command()?;

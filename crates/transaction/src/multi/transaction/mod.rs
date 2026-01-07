@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
 use reifydb_store_transaction::{MultiVersionContains, MultiVersionGet, TransactionStore};
@@ -123,6 +123,13 @@ where
 	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
 	pub fn done_until(&self) -> CommitVersion {
 		self.inner.command.done_until()
+	}
+
+	/// Wait for the watermark to reach the given version with a timeout.
+	/// Returns true if the watermark reached the target, false if timeout occurred.
+	#[instrument(name = "transaction::manager::wait_for_mark_timeout", level = "trace", skip(self))]
+	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
+		self.inner.command.wait_for_mark_timeout(version, timeout)
 	}
 }
 
