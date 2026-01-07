@@ -26,12 +26,10 @@ pub use auth::{
 	extract_identity_from_ws_auth, root_identity,
 };
 // Query execution exports
-pub use execute::{
-	ExecuteError, ExecuteResult, execute_command, execute_command_single, execute_query, execute_query_single,
-};
+pub use execute::{ExecuteError, ExecuteResult, execute_command, execute_query};
 // Response conversion exports
 pub use response::{ResponseColumn, ResponseFrame, convert_frames};
 // Runtime exports
 pub use runtime::{DEFAULT_RUNTIME, SharedRuntime};
 // State exports
-pub use state::{AppState, QueryConfig};
+pub use state::{AppState, StateConfig};

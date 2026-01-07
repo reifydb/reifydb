@@ -104,7 +104,8 @@ pub async fn handle_query(
 	let params = request.params.unwrap_or(Params::None);
 
 	// Execute with timeout
-	let frames = execute_query(state.engine_clone(), query, identity, params, state.query_timeout()).await?;
+	let frames = execute_query(state.pool(), state.engine_clone(), query, identity, params, state.query_timeout())
+		.await?;
 
 	Ok(Json(QueryResponse {
 		frames: convert_frames(frames),
@@ -149,8 +150,15 @@ pub async fn handle_command(
 	let params = request.params.unwrap_or(Params::None);
 
 	// Execute with timeout
-	let frames = execute_command(state.engine_clone(), request.statements, identity, params, state.query_timeout())
-		.await?;
+	let frames = execute_command(
+		state.pool(),
+		state.engine_clone(),
+		request.statements,
+		identity,
+		params,
+		state.query_timeout(),
+	)
+	.await?;
 
 	Ok(Json(QueryResponse {
 		frames: convert_frames(frames),

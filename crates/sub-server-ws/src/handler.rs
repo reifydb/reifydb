@@ -137,7 +137,7 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
 
-			match execute_query(state.engine_clone(), query, id, params, timeout).await {
+			match execute_query(state.pool(), state.engine_clone(), query, id, params, timeout).await {
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
 					build_response(&request.id, "Query", json!({ "frames": ws_frames }))
@@ -155,7 +155,9 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 			let params = c.params.unwrap_or(Params::None);
 			let timeout = state.query_timeout();
 
-			match execute_command(state.engine_clone(), c.statements, id, params, timeout).await {
+			match execute_command(state.pool(), state.engine_clone(), c.statements, id, params, timeout)
+				.await
+			{
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
 					build_response(&request.id, "Command", json!({ "frames": ws_frames }))

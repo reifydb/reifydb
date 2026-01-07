@@ -35,7 +35,7 @@ use crate::routes::router;
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(engine, QueryConfig::default());
+/// let state = AppState::new(pool, engine, QueryConfig::default());
 ///
 /// let mut http = HttpSubsystem::new(
 ///     "0.0.0.0:8090".to_string(),

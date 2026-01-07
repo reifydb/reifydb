@@ -8,25 +8,24 @@
 
 use std::time::Duration;
 
+use reifydb_core::compute::ComputePool;
 use reifydb_engine::StandardEngine;
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
-pub struct QueryConfig {
+pub struct StateConfig {
 	/// Timeout for individual query execution.
 	/// If a query takes longer than this, it will be cancelled.
 	pub query_timeout: Duration,
-
 	/// Timeout for entire HTTP request lifecycle.
 	/// This includes reading the request, executing the query, and writing the response.
 	pub request_timeout: Duration,
-
 	/// Maximum concurrent connections allowed.
 	/// New connections beyond this limit will be rejected.
 	pub max_connections: usize,
 }
 
-impl Default for QueryConfig {
+impl Default for StateConfig {
 	fn default() -> Self {
 		Self {
 			query_timeout: Duration::from_secs(30),
@@ -36,7 +35,7 @@ impl Default for QueryConfig {
 	}
 }
 
-impl QueryConfig {
+impl StateConfig {
 	/// Create a new QueryConfig with default values.
 	pub fn new() -> Self {
 		Self::default()
@@ -69,27 +68,38 @@ impl QueryConfig {
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(engine, QueryConfig::default());
+/// let state = AppState::new(pool, engine, QueryConfig::default());
 ///
 /// // In an axum handler:
 /// async fn handle_query(State(state): State<AppState>, ...) {
+///     let pool = state.pool();
 ///     let engine = state.engine();
 ///     // ...
 /// }
 /// ```
 #[derive(Clone)]
 pub struct AppState {
+	pool: ComputePool,
 	engine: StandardEngine,
-	config: QueryConfig,
+	config: StateConfig,
 }
 
 impl AppState {
-	/// Create a new AppState with the given engine and configuration.
-	pub fn new(engine: StandardEngine, config: QueryConfig) -> Self {
+	/// Create a new AppState with the given compute pool, engine, and configuration.
+	pub fn new(pool: ComputePool, engine: StandardEngine, config: StateConfig) -> Self {
 		Self {
+			pool,
 			engine,
 			config,
 		}
+	}
+
+	/// Get a clone of the compute pool.
+	///
+	/// This is cheap since `ComputePool` uses `Arc` internally.
+	#[inline]
+	pub fn pool(&self) -> ComputePool {
+		self.pool.clone()
 	}
 
 	/// Get a reference to the database engine.
@@ -108,7 +118,7 @@ impl AppState {
 
 	/// Get a reference to the query configuration.
 	#[inline]
-	pub fn config(&self) -> &QueryConfig {
+	pub fn config(&self) -> &StateConfig {
 		&self.config
 	}
 
@@ -137,7 +147,7 @@ mod tests {
 
 	#[test]
 	fn test_query_config_defaults() {
-		let config = QueryConfig::default();
+		let config = StateConfig::default();
 		assert_eq!(config.query_timeout, Duration::from_secs(30));
 		assert_eq!(config.request_timeout, Duration::from_secs(60));
 		assert_eq!(config.max_connections, 10_000);
@@ -145,7 +155,7 @@ mod tests {
 
 	#[test]
 	fn test_query_config_builder() {
-		let config = QueryConfig::new()
+		let config = StateConfig::new()
 			.query_timeout(Duration::from_secs(60))
 			.request_timeout(Duration::from_secs(120))
 			.max_connections(5_000);

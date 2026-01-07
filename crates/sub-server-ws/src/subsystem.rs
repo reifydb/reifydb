@@ -42,7 +42,7 @@ use crate::handler::handle_connection;
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(engine, QueryConfig::default());
+/// let state = AppState::new(pool, engine, QueryConfig::default());
 ///
 /// let mut ws = WsSubsystem::new(
 ///     "0.0.0.0:8091".to_string(),

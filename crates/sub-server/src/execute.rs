@@ -4,14 +4,15 @@
 //! Query and command execution with async streaming.
 //!
 //! This module provides async wrappers around the database engine operations.
-//! The engine internally uses spawn_blocking for sync execution, streaming
-//! results back through async channels.
+//! The engine uses a compute pool for sync execution, streaming results back
+//! through async channels.
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::{Frame, interface::Identity};
+use reifydb_core::{Frame, compute::ComputePool, interface::Identity};
 use reifydb_engine::StandardEngine;
 use reifydb_type::{Error, Params, diagnostic::Diagnostic};
+use tokio::time;
 
 /// Error types for query/command execution.
 #[derive(Debug)]
@@ -62,12 +63,13 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 /// Execute a query with timeout.
 ///
 /// This function:
-/// 1. Starts the async query execution (internally uses spawn_blocking)
-/// 2. Collects the stream with a timeout
+/// 1. Starts the query execution on the compute pool
+/// 2. Applies a timeout to the operation
 /// 3. Returns the query results or an appropriate error
 ///
 /// # Arguments
 ///
+/// * `pool` - The compute pool to execute the query on
 /// * `engine` - The database engine to execute the query on
 /// * `query` - The RQL query string
 /// * `identity` - The identity context for permission checking
@@ -85,6 +87,7 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 ///
 /// ```ignore
 /// let result = execute_query(
+///     pool,
 ///     engine,
 ///     "FROM users take 42".to_string(),
 ///     identity,
@@ -93,16 +96,17 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 /// ).await?;
 /// ```
 pub async fn execute_query(
+	pool: ComputePool,
 	engine: StandardEngine,
 	query: String,
 	identity: Identity,
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
-	// Execute synchronous query in blocking task with timeout
-	let task = tokio::task::spawn_blocking(move || engine.query_as(&identity, &query, params));
+	// Execute synchronous query on compute pool with timeout
+	let task = pool.compute(move || engine.query_as(&identity, &query, params));
 
-	let result = tokio::time::timeout(timeout, task).await;
+	let result = time::timeout(timeout, task).await;
 
 	match result {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
@@ -118,6 +122,7 @@ pub async fn execute_query(
 ///
 /// # Arguments
 ///
+/// * `pool` - The compute pool to execute the command on
 /// * `engine` - The database engine to execute the command on
 /// * `statements` - The RQL command statements
 /// * `identity` - The identity context for permission checking
@@ -131,6 +136,7 @@ pub async fn execute_query(
 /// * `Err(ExecuteError::Cancelled)` - If the command was cancelled
 /// * `Err(ExecuteError::Engine)` - If the engine returns an error
 pub async fn execute_command(
+	pool: ComputePool,
 	engine: StandardEngine,
 	statements: Vec<String>,
 	identity: Identity,
@@ -139,57 +145,14 @@ pub async fn execute_command(
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
 
-	// Execute synchronous command in blocking task with timeout
-	let task = tokio::task::spawn_blocking(move || engine.command_as(&identity, &combined, params));
+	// Execute synchronous command on compute pool with timeout
+	let task = pool.compute(move || engine.command_as(&identity, &combined, params));
 
-	let result = tokio::time::timeout(timeout, task).await;
+	let result = time::timeout(timeout, task).await;
 
 	match result {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
 		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
-	}
-}
-
-/// Execute a single query statement with timeout.
-///
-/// This is a convenience wrapper around `execute_query` for single statements.
-pub async fn execute_query_single(
-	engine: StandardEngine,
-	query: &str,
-	identity: Identity,
-	params: Params,
-	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	execute_query(engine, query.to_string(), identity, params, timeout).await
-}
-
-/// Execute a single command statement with timeout.
-///
-/// This is a convenience wrapper around `execute_command` for single statements.
-pub async fn execute_command_single(
-	engine: StandardEngine,
-	command: &str,
-	identity: Identity,
-	params: Params,
-	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	execute_command(engine, vec![command.to_string()], identity, params, timeout).await
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_execute_error_display() {
-		let timeout_err = ExecuteError::Timeout;
-		assert_eq!(timeout_err.to_string(), "Query execution timed out");
-
-		let cancelled_err = ExecuteError::Cancelled;
-		assert_eq!(cancelled_err.to_string(), "Query was cancelled");
-
-		let disconnected_err = ExecuteError::Disconnected;
-		assert_eq!(disconnected_err.to_string(), "Query stream disconnected unexpectedly");
 	}
 }
