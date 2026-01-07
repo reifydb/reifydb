@@ -72,7 +72,7 @@ pub mod test {
 			todo!()
 		}
 
-		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 			unimplemented!()
 		}
 	}

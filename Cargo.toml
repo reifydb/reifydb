@@ -46,7 +46,6 @@ members = [
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
-    "pkg/rust/benches",
 ]
 
 default-members = [

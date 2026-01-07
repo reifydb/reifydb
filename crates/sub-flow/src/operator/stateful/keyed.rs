@@ -39,21 +39,31 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> reifydb_type::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save state for a specific key
-	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> crate::Result<()> {
+	fn save_state(
+		&self,
+		txn: &mut FlowTransaction,
+		key_values: &[Value],
+		row: EncodedValues,
+	) -> reifydb_type::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> crate::Result<EncodedValues>
+	fn update_state<F>(
+		&self,
+		txn: &mut FlowTransaction,
+		key_values: &[Value],
+		f: F,
+	) -> reifydb_type::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
+		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> reifydb_type::Result<()>,
 	{
 		let layout = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
@@ -63,7 +73,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Remove state for a key
-	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> crate::Result<()> {
+	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> reifydb_type::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
 	}

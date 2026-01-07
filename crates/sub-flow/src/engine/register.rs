@@ -28,7 +28,7 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> reifydb_type::Result<()> {
 		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -43,7 +43,7 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
+	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> reifydb_type::Result<()> {
 		debug_assert!(!self.inner.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 

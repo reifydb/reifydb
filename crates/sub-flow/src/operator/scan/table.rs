@@ -40,11 +40,11 @@ impl Operator for PrimitiveTableOperator {
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		Ok(change)
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		if rows.is_empty() {
 			return Ok(Columns::from_table_def(&self.table));
 		}

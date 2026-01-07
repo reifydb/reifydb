@@ -4,7 +4,7 @@
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, cow_vec,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -15,6 +15,7 @@ use reifydb_store_transaction::{
 	TransactionStoreConfig, hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
+use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }

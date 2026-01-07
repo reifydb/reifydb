@@ -54,13 +54,13 @@ impl SubsystemFactory for FlowSubsystemFactory {
 
 		let engine = ioc.resolve::<StandardEngine>()?;
 
-		// Get operators_dir from config if configurator is present
-		let operators_dir = if let Some(configurator) = self.configurator {
-			configurator(FlowBuilder::new()).build_config().operators_dir
+		// Extract full config from builder
+		let config = if let Some(configurator) = self.configurator {
+			configurator(FlowBuilder::new()).build_config()
 		} else {
-			None
+			FlowBuilder::new().build_config()
 		};
 
-		Ok(Box::new(FlowSubsystem::new(engine, operators_dir, ioc, None)))
+		Ok(Box::new(FlowSubsystem::new(engine, config.operators_dir, config.num_workers, ioc)))
 	}
 }

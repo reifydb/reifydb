@@ -4,7 +4,7 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::CdcConsumerId,
+	interface::{CdcConsumerId, FlowId},
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
@@ -25,6 +25,12 @@ impl ToConsumerKey for CdcConsumerId {
 			consumer: self.clone(),
 		}
 		.encode()
+	}
+}
+
+impl ToConsumerKey for FlowId {
+	fn to_consumer_key(&self) -> EncodedKey {
+		CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}", self.0)))
 	}
 }
 
@@ -106,8 +112,8 @@ impl CdcConsumerKeyRange {
 mod tests {
 	use std::ops::RangeBounds;
 
-	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey};
-	use crate::interface::CdcConsumerId;
+	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey, ToConsumerKey};
+	use crate::interface::{CdcConsumerId, FlowId};
 
 	#[test]
 	fn test_encode_decode_cdc_consumer() {
@@ -146,5 +152,28 @@ mod tests {
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
 		assert!(range.contains(&key3), "consumer-z key should be in range");
+	}
+
+	#[test]
+	fn test_flow_id_to_consumer_key() {
+		let flow_id = FlowId(42);
+		let encoded = flow_id.to_consumer_key();
+
+		// Decode and verify it creates the expected consumer key format
+		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
+		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
+	}
+
+	#[test]
+	fn test_flow_id_keys_within_range() {
+		let flow1 = FlowId(1).to_consumer_key();
+		let flow2 = FlowId(100).to_consumer_key();
+		let flow3 = FlowId(999).to_consumer_key();
+
+		let range = CdcConsumerKeyRange::full_scan();
+
+		assert!(range.contains(&flow1), "flow:1 key should be in range");
+		assert!(range.contains(&flow2), "flow:100 key should be in range");
+		assert!(range.contains(&flow3), "flow:999 key should be in range");
 	}
 }

@@ -18,7 +18,7 @@ pub mod value;
 pub use common::*;
 pub use compute::ComputePool;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::{Error, Result, cow_vec, diagnostic, err, error, return_error, return_internal_error};
+pub use reifydb_type::{Error, Result, diagnostic, err, error, return_error, return_internal_error};
 pub use row::Row;
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, RetryError, WaitGroup, ioc, retry};

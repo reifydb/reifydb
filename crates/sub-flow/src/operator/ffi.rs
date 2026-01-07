@@ -17,7 +17,6 @@ use reifydb_type::RowNumber;
 use tracing::{Span, debug_span, instrument};
 
 use crate::{
-	Result,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::{Operator, info::OperatorInfo},
 	transaction::FlowTransaction,
@@ -105,7 +104,7 @@ impl Operator for FFIOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		let total_start = std::time::Instant::now();
 
 		// Lock the marshaller for this operation
@@ -172,7 +171,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.lock();
 

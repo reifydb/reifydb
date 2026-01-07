@@ -26,21 +26,21 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Load the operator's single state encoded
-	fn load_state(&self, txn: &mut FlowTransaction) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<EncodedValues> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save the operator's single state encoded
-	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedValues) -> crate::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedValues) -> reifydb_type::Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> crate::Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> reifydb_type::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
+		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> reifydb_type::Result<()>,
 	{
 		let layout = self.layout();
 		let mut row = self.load_state(txn)?;
@@ -50,7 +50,7 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Clear state
-	fn clear_state(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
+	fn clear_state(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<()> {
 		let key = self.key();
 		utils::state_remove(self.id(), txn, &key)
 	}

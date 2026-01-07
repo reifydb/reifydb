@@ -89,7 +89,7 @@ impl Operator for MergeOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		// Determine which parent this change came from
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
 			Error(internal!("Merge received change from unknown node: {:?}", change.origin))
@@ -202,7 +202,7 @@ impl Operator for MergeOperator {
 		Ok(FlowChange::internal(self.node, change.version, result_diffs))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {

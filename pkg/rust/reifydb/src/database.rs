@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::HealthStatus;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::FlowSubsystem;
+use reifydb_sub_flow::subsystem::FlowSubsystem;
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]

@@ -42,7 +42,7 @@ impl Operator for SinkViewOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		// Write rows to the view storage
 		let view_def = self.view.def().clone();
 		let layout: EncodedValuesNamedLayout = (&view_def).into();
@@ -106,7 +106,7 @@ impl Operator for SinkViewOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		unreachable!()
 	}
 }

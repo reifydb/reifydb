@@ -73,7 +73,7 @@ fn process_tumbling_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -102,7 +102,7 @@ fn process_tumbling_group_insert(
 	columns: &Columns,
 	group_hash: Hash128,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -188,7 +188,7 @@ pub fn apply_tumbling_window(
 	txn: &mut FlowTransaction,
 	change: FlowChange,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<FlowChange> {
+) -> reifydb_type::Result<FlowChange> {
 	let mut result = Vec::new();
 	let current_timestamp = operator.current_timestamp();
 

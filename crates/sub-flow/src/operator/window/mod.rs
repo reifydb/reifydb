@@ -170,7 +170,7 @@ impl WindowOperator {
 	}
 
 	/// Compute group keys for all rows in Columns
-	pub fn compute_group_keys(&self, columns: &Columns) -> crate::Result<Vec<Hash128>> {
+	pub fn compute_group_keys(&self, columns: &Columns) -> reifydb_type::Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -214,7 +214,7 @@ impl WindowOperator {
 	}
 
 	/// Extract timestamps for all rows in Columns
-	pub fn extract_timestamps(&self, columns: &Columns) -> crate::Result<Vec<u64>> {
+	pub fn extract_timestamps(&self, columns: &Columns) -> reifydb_type::Result<Vec<u64>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -278,7 +278,7 @@ impl WindowOperator {
 	}
 
 	/// Extract timestamp from row data
-	pub fn extract_timestamp_from_row(&self, row: &Row) -> crate::Result<u64> {
+	pub fn extract_timestamp_from_row(&self, row: &Row) -> reifydb_type::Result<u64> {
 		match &self.window_type {
 			WindowType::Time(time_mode) => match time_mode {
 				WindowTimeMode::Processing => Ok(self.current_timestamp()),
@@ -312,7 +312,7 @@ impl WindowOperator {
 		&self,
 		events: &[WindowEvent],
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<(Vec<Value>, Vec<String>)> {
+	) -> reifydb_type::Result<(Vec<Value>, Vec<String>)> {
 		if events.is_empty() || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
@@ -323,7 +323,7 @@ impl WindowOperator {
 	}
 
 	/// Convert window events to columnar format for aggregation
-	pub fn events_to_columns(&self, events: &[WindowEvent]) -> crate::Result<Columns> {
+	pub fn events_to_columns(&self, events: &[WindowEvent]) -> reifydb_type::Result<Columns> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
 		}
@@ -361,7 +361,7 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
 		row_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<Option<(Row, bool)>> {
+	) -> reifydb_type::Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
 		}
@@ -437,7 +437,7 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		current_timestamp: u64,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		let result = Vec::new();
 
 		// For time-based windows, expire windows that are older than the window size + slide
@@ -462,7 +462,7 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
-	) -> crate::Result<WindowState> {
+	) -> reifydb_type::Result<WindowState> {
 		let state_row = self.load_state(txn, window_key)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -484,7 +484,7 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		state: &WindowState,
-	) -> crate::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
@@ -500,7 +500,7 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		group_hash: Hash128,
-	) -> crate::Result<u64> {
+	) -> reifydb_type::Result<u64> {
 		let count_key = self.create_count_key(group_hash);
 		let count_row = self.load_state(txn, &count_key)?;
 
@@ -559,7 +559,7 @@ impl Operator for WindowOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		// For window operators, we need  operation but trait requires sync.
 		// We'll need to refactor the architecture to support this properly.
 		// For now, return an error indicating  is needed.
@@ -570,7 +570,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		todo!()
 	}
 }

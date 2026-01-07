@@ -26,7 +26,7 @@ impl InnerHashJoin {
 		_side: JoinSide,
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -41,7 +41,7 @@ impl InnerHashJoin {
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -57,7 +57,7 @@ impl InnerHashJoin {
 		_state: &mut JoinState,
 		_operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
@@ -72,7 +72,7 @@ impl InnerHashJoin {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -126,7 +126,7 @@ impl InnerHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -193,7 +193,7 @@ impl InnerHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}

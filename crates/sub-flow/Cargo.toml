@@ -27,6 +27,7 @@ serde_bytes = { workspace = true }
 postcard = { workspace = true }
 libloading = { workspace = true }
 parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
 
 dashmap = { workspace = true }
 indexmap = { workspace = true }

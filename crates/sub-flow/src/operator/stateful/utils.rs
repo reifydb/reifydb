@@ -13,7 +13,11 @@ use crate::transaction::FlowTransaction;
 /// Helper functions for state operations that can be used by any stateful trait
 
 /// Get raw bytes for a key
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+pub fn state_get(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+) -> reifydb_type::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
@@ -29,7 +33,7 @@ pub fn state_set(
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
-) -> crate::Result<()> {
+) -> reifydb_type::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.set(&encoded_key, value)?;
@@ -37,7 +41,7 @@ pub fn state_set(
 }
 
 /// Remove a key
-pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
+pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> reifydb_type::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
@@ -49,7 +53,7 @@ pub fn internal_state_get(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
-) -> crate::Result<Option<EncodedValues>> {
+) -> reifydb_type::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
@@ -65,7 +69,7 @@ pub fn internal_state_set(
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
-) -> crate::Result<()> {
+) -> reifydb_type::Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.set(&encoded_key, value)?;
@@ -73,7 +77,7 @@ pub fn internal_state_set(
 }
 
 /// Remove a key from internal state
-pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
+pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> reifydb_type::Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
@@ -81,7 +85,7 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 }
 
 /// Scan all keys for this operator
-pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<super::StateIterator> {
+pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> reifydb_type::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
 	let mut stream = txn.range(range, 1024);
 	let mut items = Vec::new();
@@ -101,7 +105,7 @@ pub fn state_range(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	range: EncodedKeyRange,
-) -> crate::Result<super::StateIterator> {
+) -> reifydb_type::Result<super::StateIterator> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 	let mut stream = txn.range(prefixed_range, 1024);
 	let mut items = Vec::new();
@@ -117,7 +121,7 @@ pub fn state_range(
 }
 
 /// Clear all state for this operator
-pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
+pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> reifydb_type::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let keys_to_remove = {
 		let mut stream = txn.range(range, 1024);
@@ -141,7 +145,7 @@ pub fn load_or_create_row(
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	layout: &EncodedValuesLayout,
-) -> crate::Result<EncodedValues> {
+) -> reifydb_type::Result<EncodedValues> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
 		None => Ok(layout.allocate()),
@@ -149,7 +153,12 @@ pub fn load_or_create_row(
 }
 
 /// Save state encoded
-pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+pub fn save_row(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+	row: EncodedValues,
+) -> reifydb_type::Result<()> {
 	state_set(id, txn, key, row)
 }
 

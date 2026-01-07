@@ -39,11 +39,11 @@ impl Operator for ApplyOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		self.inner.apply(txn, change, evaluator)
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

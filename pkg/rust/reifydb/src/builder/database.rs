@@ -19,7 +19,7 @@ use reifydb_rqlv2;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
+use reifydb_sub_flow::{FlowBuilder, subsystem::FlowSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_transaction::{

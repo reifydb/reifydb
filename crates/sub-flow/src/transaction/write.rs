@@ -7,13 +7,13 @@ use super::FlowTransaction;
 
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
-	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> crate::Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> reifydb_type::Result<()> {
 		self.pending.insert(key.clone(), value);
 		Ok(())
 	}
 
 	/// Remove a key, buffering the deletion in pending operations
-	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
 		self.pending.remove(key.clone());
 		Ok(())
 	}

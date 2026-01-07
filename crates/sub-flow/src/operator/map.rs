@@ -36,7 +36,7 @@ impl MapOperator {
 	}
 
 	/// Project all rows in Columns using expressions
-	fn project(&self, columns: &Columns) -> crate::Result<Columns> {
+	fn project(&self, columns: &Columns) -> reifydb_type::Result<Columns> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Columns::empty());
@@ -96,7 +96,7 @@ impl Operator for MapOperator {
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {
@@ -147,7 +147,7 @@ impl Operator for MapOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

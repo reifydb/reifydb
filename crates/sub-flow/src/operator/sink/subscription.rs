@@ -67,7 +67,7 @@ impl Operator for SinkSubscriptionOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		let subscription_def = self.subscription.def().clone();
 		let layout: EncodedValuesNamedLayout = (&subscription_def).into();
 
@@ -136,7 +136,7 @@ impl Operator for SinkSubscriptionOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		unreachable!()
 	}
 }

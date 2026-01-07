@@ -3,31 +3,31 @@
 
 mod factory;
 
-use std::{any::Any, path::PathBuf, sync::Arc};
+use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
+use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		FlowLagsProvider, WithEventBus,
+		CdcConsumerId, FlowLagsProvider, WithEventBus,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use tracing::info;
 
 use crate::{
-	FlowEngine,
-	lag::FlowLags,
-	r#loop::{FlowLoop, FlowLoopConfig},
-	operator::transform::registry::TransformOperatorRegistry,
+	FlowEngine, coordinator::FlowCoordinator, lag::FlowLags,
+	operator::transform::registry::TransformOperatorRegistry, pool::FlowWorkerPool,
 	tracker::PrimitiveVersionTracker,
 };
 
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
-	flow_loop: FlowLoop,
+	consumer: PollConsumer<FlowCoordinator>,
 	running: bool,
 }
 
@@ -36,35 +36,46 @@ impl FlowSubsystem {
 	pub fn new(
 		engine: StandardEngine,
 		operators_dir: Option<PathBuf>,
+		num_workers: Option<usize>,
 		ioc: &IocContainer,
-		_runtime: Option<()>, // Ignored in single-threaded version
 	) -> Self {
-		// Create operator registry
 		let operator_registry = TransformOperatorRegistry::new();
 
-		// Create FlowEngine
-		let flow_engine = FlowEngine::new(
+		let flow_engine = Arc::new(FlowEngine::new(
 			engine.catalog(),
 			StandardColumnEvaluator::default(),
 			engine.executor(),
 			operator_registry,
 			engine.event_bus().clone(),
 			operators_dir,
-		);
+		));
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
-		// Create lag provider (simplified - uses primitive tracker + engine for checkpoints)
-		let lags_provider = Arc::new(FlowLags::new_simple(primitive_tracker.clone(), engine.clone()));
+		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new_simple(
+			primitive_tracker.clone(),
+			flow_engine.clone(),
+			engine.clone(),
+		)));
 
-		// Register in IoC for virtual table access
-		ioc.register_service::<Arc<dyn FlowLagsProvider>>(lags_provider);
+		let num_workers = num_workers.unwrap_or(1);
+		info!(num_workers, "initializing flow worker pool");
 
-		let config = FlowLoopConfig::default();
-		let flow_loop = FlowLoop::new(engine, Arc::new(flow_engine), primitive_tracker, config);
+		let worker_pool =
+			FlowWorkerPool::new(num_workers, flow_engine.clone(), engine.clone(), engine.catalog());
+
+		let coordinator = FlowCoordinator::new(engine.clone(), flow_engine, primitive_tracker, worker_pool);
+
+		let poll_config = PollConsumerConfig::new(
+			CdcConsumerId::new("flow-coordinator"),
+			Duration::from_micros(100),
+			Some(50),
+		);
+
+		let consumer = PollConsumer::new(poll_config, engine, coordinator);
 
 		Self {
-			flow_loop,
+			consumer,
 			running: false,
 		}
 	}
@@ -80,7 +91,7 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
-		self.flow_loop.start()?;
+		self.consumer.start()?;
 		self.running = true;
 		Ok(())
 	}
@@ -90,7 +101,7 @@ impl Subsystem for FlowSubsystem {
 			return Ok(());
 		}
 
-		self.flow_loop.stop()?;
+		self.consumer.stop()?;
 		self.running = false;
 		Ok(())
 	}

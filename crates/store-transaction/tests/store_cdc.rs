@@ -6,7 +6,7 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path, time::Du
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, cow_vec,
+	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
 	interface::{Cdc, CdcChange, CdcSequencedChange},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -17,6 +17,7 @@ use reifydb_store_transaction::{
 	hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
+use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as backend_cdc_memory => test_memory }

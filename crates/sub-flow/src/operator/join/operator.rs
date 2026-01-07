@@ -92,7 +92,7 @@ impl JoinOperator {
 		&self,
 		columns: &Columns,
 		exprs: &[Expression],
-	) -> crate::Result<Vec<Option<Hash128>>> {
+	) -> reifydb_type::Result<Vec<Option<Hash128>>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -162,7 +162,7 @@ impl JoinOperator {
 		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_idx: usize,
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		let left_row_number = left.row_numbers[left_idx];
 
 		// Create composite key for this unmatched row
@@ -189,7 +189,7 @@ impl JoinOperator {
 		txn: &mut FlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		if left_indices.is_empty() {
 			return Ok(Columns::empty());
 		}
@@ -221,7 +221,11 @@ impl JoinOperator {
 
 	/// Clean up all join results for a given left row
 	/// This removes both matched and unmatched join results
-	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> crate::Result<()> {
+	pub(crate) fn cleanup_left_row_joins(
+		&self,
+		txn: &mut FlowTransaction,
+		left_number: u64,
+	) -> reifydb_type::Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
@@ -239,7 +243,7 @@ impl JoinOperator {
 		left_idx: usize,
 		right: &Columns,
 		right_idx: usize,
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		let left_row_number = left.row_numbers[left_idx];
 		let right_row_number = right.row_numbers[right_idx];
 
@@ -296,7 +300,7 @@ impl JoinOperator {
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		let right_count = right.row_count();
 		if right_count == 0 {
 			return Ok(Columns::empty());
@@ -329,7 +333,7 @@ impl JoinOperator {
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		let left_count = left.row_count();
 		if left_count == 0 {
 			return Ok(Columns::empty());
@@ -362,7 +366,7 @@ impl JoinOperator {
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
-	) -> crate::Result<Columns> {
+	) -> reifydb_type::Result<Columns> {
 		let left_count = left_indices.len();
 		let right_count = right.row_count();
 		if left_count == 0 || right_count == 0 {
@@ -426,7 +430,7 @@ impl Operator for JoinOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
@@ -611,7 +615,7 @@ impl Operator for JoinOperator {
 	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
 	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
 	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {

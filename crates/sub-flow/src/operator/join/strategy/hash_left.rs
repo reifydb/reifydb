@@ -27,7 +27,7 @@ impl LeftHashJoin {
 		side: JoinSide,
 		_state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match side {
 			JoinSide::Left => {
 				// Undefined key in left join still emits the row
@@ -53,7 +53,7 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		let row_number = pre.row_numbers[row_idx];
 
 		match side {
@@ -83,7 +83,7 @@ impl LeftHashJoin {
 		_state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match side {
 			JoinSide::Left => {
 				// Both keys are undefined - update the row
@@ -111,7 +111,7 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -195,7 +195,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		_version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -299,7 +299,7 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}

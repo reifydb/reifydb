@@ -11,7 +11,8 @@ pub mod registry;
 pub trait TransformOperator: Operator {}
 
 pub trait TransformOperatorFactory: Send + Sync {
-	fn create_from_expressions(node: FlowNodeId, expressions: &[Expression]) -> crate::Result<BoxedOperator>;
+	fn create_from_expressions(node: FlowNodeId, expressions: &[Expression])
+	-> reifydb_type::Result<BoxedOperator>;
 }
 
 pub mod extract {
@@ -19,7 +20,7 @@ pub mod extract {
 
 	use super::*;
 
-	pub fn int(expr: &Expression) -> crate::Result<i64> {
+	pub fn int(expr: &Expression) -> reifydb_type::Result<i64> {
 		match expr {
 			Expression::Constant(ConstantExpression::Number {
 				fragment,
@@ -33,7 +34,7 @@ pub mod extract {
 	}
 
 	/// Extract float from expression
-	pub fn float(expr: &Expression) -> crate::Result<f64> {
+	pub fn float(expr: &Expression) -> reifydb_type::Result<f64> {
 		match expr {
 			Expression::Constant(ConstantExpression::Number {
 				fragment,
@@ -47,7 +48,7 @@ pub mod extract {
 	}
 
 	/// Extract string from expression
-	pub fn string(expr: &Expression) -> crate::Result<String> {
+	pub fn string(expr: &Expression) -> reifydb_type::Result<String> {
 		match expr {
 			Expression::Constant(ConstantExpression::Text {
 				fragment,

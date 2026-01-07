@@ -51,9 +51,9 @@ pub trait Operator: Send + Sync {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange>;
+	) -> reifydb_type::Result<FlowChange>;
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns>;
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator>;
@@ -82,7 +82,7 @@ impl Operators {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		match self {
 			Operators::Filter(op) => op.apply(txn, change, evaluator),
 			Operators::Map(op) => op.apply(txn, change, evaluator),
@@ -102,7 +102,7 @@ impl Operators {
 		}
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		match self {
 			Operators::Filter(op) => op.pull(txn, rows),
 			Operators::Map(op) => op.pull(txn, rows),

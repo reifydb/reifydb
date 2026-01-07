@@ -54,7 +54,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
+	fn load_take_state(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<TakeState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -70,7 +70,7 @@ impl TakeOperator {
 			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
+	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> reifydb_type::Result<()> {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
@@ -81,7 +81,11 @@ impl TakeOperator {
 		self.save_state(txn, state_row)
 	}
 
-	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> crate::Result<Vec<FlowDiff>> {
+	fn promote_candidates(
+		&self,
+		state: &mut TakeState,
+		txn: &mut FlowTransaction,
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -105,7 +109,7 @@ impl TakeOperator {
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 		let candidate_limit = self.limit * 4;
 
@@ -153,7 +157,7 @@ impl Operator for TakeOperator {
 		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;
@@ -272,7 +276,7 @@ impl Operator for TakeOperator {
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		self.parent.pull(txn, rows)
 	}
 }

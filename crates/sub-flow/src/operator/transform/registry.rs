@@ -8,7 +8,7 @@ use reifydb_rql::expression::Expression;
 
 use crate::operator::BoxedOperator;
 
-type OperatorFactoryFn = Box<dyn Fn(FlowNodeId, &[Expression]) -> crate::Result<BoxedOperator> + Send + Sync>;
+type OperatorFactoryFn = Box<dyn Fn(FlowNodeId, &[Expression]) -> reifydb_type::Result<BoxedOperator> + Send + Sync>;
 
 pub struct TransformOperatorRegistry {
 	factories: HashMap<String, OperatorFactoryFn>,
@@ -23,7 +23,7 @@ impl TransformOperatorRegistry {
 
 	pub fn register<F>(&mut self, name: String, factory: F)
 	where
-		F: Fn(FlowNodeId, &[Expression]) -> crate::Result<BoxedOperator> + Send + Sync + 'static,
+		F: Fn(FlowNodeId, &[Expression]) -> reifydb_type::Result<BoxedOperator> + Send + Sync + 'static,
 	{
 		self.factories.insert(name, Box::new(factory));
 	}
@@ -33,7 +33,7 @@ impl TransformOperatorRegistry {
 		name: &str,
 		node: FlowNodeId,
 		expressions: &[Expression],
-	) -> crate::Result<BoxedOperator> {
+	) -> reifydb_type::Result<BoxedOperator> {
 		let factory = self.factories.get(name).unwrap_or_else(|| panic!("Unknown operator: {}", name));
 
 		factory(node, expressions)

@@ -7,8 +7,8 @@ use reifydb_engine::StandardCommandTransaction;
 use tracing::instrument;
 
 mod commit;
-mod iter_range;
 mod pending;
+mod range;
 mod read;
 mod state;
 #[cfg(test)]
@@ -115,29 +115,29 @@ pub struct FlowTransaction {
 	/// Source data reads see the database state as of this CDC version.
 	/// This guarantees proper snapshot isolation - the flow processes data as it existed when
 	/// the CDC event was created, regardless of concurrent modifications.
-	version: CommitVersion,
+	pub(crate) version: CommitVersion,
 
 	/// Local write buffer for uncommitted changes.
 	///
 	/// Stores all `set()` and `remove()` operations made by this transaction.
 	/// NOT shared with other FlowTransactions. Changes are invisible until commit().
-	pending: PendingWrites,
+	pub(crate) pending: PendingWrites,
 
 	/// Read-only query transaction for accessing storage primitive data at CDC snapshot version.
 	///
 	/// Provides snapshot reads at `version`. Used for reading storage primitives tables/views
 	/// to ensure consistent view of the data being processed by the flow.
-	primitive_query: StandardQueryTransaction,
+	pub(crate) primitive_query: StandardQueryTransaction,
 
 	/// Read-only query transaction for accessing flow state at latest version.
 	///
 	/// Reads at the latest committed version. Used for reading flow state
 	/// (join tables, distinct values, counters) that must be visible across
 	/// all CDC versions to maintain continuity.
-	state_query: StandardQueryTransaction,
+	pub(crate) state_query: StandardQueryTransaction,
 
 	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
-	catalog: Catalog,
+	pub(crate) catalog: Catalog,
 }
 
 impl FlowTransaction {

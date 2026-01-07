@@ -30,7 +30,7 @@ impl FlowTransaction {
 		validation_time_us = tracing::field::Empty,
 		merge_time_ms = tracing::field::Empty
 	))]
-	pub fn commit(&mut self, parent: &mut StandardCommandTransaction) -> crate::Result<()> {
+	pub fn commit(&mut self, parent: &mut StandardCommandTransaction) -> reifydb_type::Result<()> {
 		// Phase 1: Validation - Check for any overlapping keys with the parent's pending writes.
 		// This enforces that FlowTransactions operate on non-overlapping keyspaces.
 		let validation_span = debug_span!("flow::commit::validate");

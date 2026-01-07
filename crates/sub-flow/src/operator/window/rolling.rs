@@ -57,7 +57,7 @@ fn process_rolling_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -96,7 +96,7 @@ fn process_rolling_group_insert(
 	group_hash: Hash128,
 	current_timestamp: u64,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<Vec<FlowDiff>> {
+) -> reifydb_type::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -179,7 +179,7 @@ pub fn apply_rolling_window(
 	txn: &mut FlowTransaction,
 	change: FlowChange,
 	evaluator: &StandardColumnEvaluator,
-) -> crate::Result<FlowChange> {
+) -> reifydb_type::Result<FlowChange> {
 	let mut result = Vec::new();
 
 	// Process each incoming change (each diff may contain multiple rows)

@@ -38,7 +38,7 @@ impl JoinStrategy {
 		side: JoinSide,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_insert_undefined(txn, post, row_idx, side, state, operator)
@@ -59,7 +59,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_remove_undefined(txn, pre, row_idx, side, state, operator, version)
@@ -81,7 +81,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_update_undefined(txn, pre, post, row_idx, side, state, operator, version)
@@ -102,7 +102,7 @@ impl JoinStrategy {
 		key_hash: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_insert(txn, post, indices, side, key_hash, state, operator)
@@ -124,7 +124,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => {
 				s.handle_remove(txn, pre, indices, side, key_hash, state, operator, version)
@@ -148,7 +148,7 @@ impl JoinStrategy {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	) -> reifydb_type::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => s.handle_update(
 				txn, pre, post, indices, side, old_key, new_key, state, operator, version,

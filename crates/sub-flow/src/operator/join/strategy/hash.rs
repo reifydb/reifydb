@@ -24,7 +24,7 @@ pub(crate) fn add_to_state_entry(
 	key_hash: &Hash128,
 	columns: &Columns,
 	row_idx: usize,
-) -> crate::Result<()> {
+) -> reifydb_type::Result<()> {
 	let row_number = columns.row_numbers[row_idx];
 	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
 		rows: Vec::new(),
@@ -41,7 +41,7 @@ pub(crate) fn add_to_state_entry_batch(
 	key_hash: &Hash128,
 	columns: &Columns,
 	indices: &[usize],
-) -> crate::Result<()> {
+) -> reifydb_type::Result<()> {
 	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
 		rows: Vec::new(),
 	})?;
@@ -58,7 +58,7 @@ pub(crate) fn remove_from_state_entry(
 	store: &mut Store,
 	key_hash: &Hash128,
 	row_number: RowNumber,
-) -> crate::Result<bool> {
+) -> reifydb_type::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash)? {
 		entry.rows.retain(|&r| r != row_number);
 
@@ -81,7 +81,7 @@ pub(crate) fn update_row_in_entry(
 	key_hash: &Hash128,
 	old_row_number: RowNumber,
 	new_row_number: RowNumber,
-) -> crate::Result<bool> {
+) -> reifydb_type::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash)? {
 		for row in &mut entry.rows {
 			if *row == old_row_number {
@@ -99,7 +99,7 @@ pub(crate) fn has_right_rows(
 	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
-) -> crate::Result<bool> {
+) -> reifydb_type::Result<bool> {
 	Ok(right_store.contains_key(txn, key_hash)?)
 }
 
@@ -108,7 +108,7 @@ pub(crate) fn is_first_right_row(
 	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
-) -> crate::Result<bool> {
+) -> reifydb_type::Result<bool> {
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
@@ -118,7 +118,7 @@ pub(crate) fn pull_from_store(
 	store: &Store,
 	key_hash: &Hash128,
 	parent: &Arc<Operators>,
-) -> crate::Result<Columns> {
+) -> reifydb_type::Result<Columns> {
 	if let Some(entry) = store.get(txn, key_hash)? {
 		parent.pull(txn, &entry.rows)
 	} else {
@@ -137,7 +137,7 @@ pub(crate) fn emit_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -167,7 +167,7 @@ pub(crate) fn emit_remove_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -198,7 +198,7 @@ pub(crate) fn emit_update_joined_columns(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<FlowDiff>> {
 	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
@@ -235,7 +235,7 @@ pub(crate) fn emit_joined_columns_batch(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<FlowDiff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
@@ -275,7 +275,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	opposite_parent: &Arc<Operators>,
-) -> crate::Result<Option<FlowDiff>> {
+) -> reifydb_type::Result<Option<FlowDiff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
@@ -308,6 +308,6 @@ pub(crate) fn pull_left_columns(
 	left_store: &Store,
 	key_hash: &Hash128,
 	left_parent: &Arc<Operators>,
-) -> crate::Result<Columns> {
+) -> reifydb_type::Result<Columns> {
 	pull_from_store(txn, left_store, key_hash, left_parent)
 }

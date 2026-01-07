@@ -16,7 +16,12 @@ impl FlowEngine {
 		diff_count = change.diffs.len(),
 		nodes_processed = tracing::field::Empty
 	))]
-	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange, flow_id: FlowId) -> crate::Result<()> {
+	pub fn process(
+		&self,
+		txn: &mut FlowTransaction,
+		change: FlowChange,
+		flow_id: FlowId,
+	) -> reifydb_type::Result<()> {
 		let mut nodes_processed = 0;
 
 		match change.origin {
@@ -84,7 +89,12 @@ impl FlowEngine {
 		lock_wait_us = tracing::field::Empty,
 		apply_time_us = tracing::field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: FlowChange) -> crate::Result<FlowChange> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		node: &FlowNode,
+		change: FlowChange,
+	) -> reifydb_type::Result<FlowChange> {
 		let lock_start = std::time::Instant::now();
 		let operator = self.inner.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
@@ -110,7 +120,7 @@ impl FlowEngine {
 		flow: &Flow,
 		node: &FlowNode,
 		change: FlowChange,
-	) -> crate::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;
 

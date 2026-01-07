@@ -44,7 +44,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		keys: I,
-	) -> crate::Result<Vec<(RowNumber, bool)>>
+	) -> reifydb_type::Result<Vec<(RowNumber, bool)>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -101,7 +101,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
-	) -> crate::Result<(RowNumber, bool)> {
+	) -> reifydb_type::Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers(txn, once(key))?.into_iter().next().unwrap())
 	}
 
@@ -110,7 +110,7 @@ impl RowNumberProvider {
 		&self,
 		txn: &mut FlowTransaction,
 		row_number: RowNumber,
-	) -> crate::Result<Option<EncodedKey>> {
+	) -> reifydb_type::Result<Option<EncodedKey>> {
 		let reverse_key = self.make_reverse_map_key(row_number);
 		if let Some(key_bytes) = internal_state_get(self.node, txn, &reverse_key)? {
 			Ok(Some(EncodedKey::new(key_bytes.as_ref().to_vec())))
@@ -120,7 +120,7 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	fn load_counter(&self, txn: &mut FlowTransaction) -> crate::Result<u64> {
+	fn load_counter(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<u64> {
 		let key = self.make_counter_key();
 		match internal_state_get(self.node, txn, &key)? {
 			None => Ok(1), // First time, start at 1
@@ -140,7 +140,7 @@ impl RowNumberProvider {
 	}
 
 	/// Save the counter value
-	fn save_counter(&self, txn: &mut FlowTransaction, counter: u64) -> crate::Result<()> {
+	fn save_counter(&self, txn: &mut FlowTransaction, counter: u64) -> reifydb_type::Result<()> {
 		let key = self.make_counter_key();
 		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
 		internal_state_set(self.node, txn, &key, value)?;
@@ -172,7 +172,7 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> crate::Result<()> {
+	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> reifydb_type::Result<()> {
 		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();

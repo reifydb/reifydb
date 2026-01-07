@@ -6,9 +6,7 @@ use std::{collections::HashMap, sync::LazyLock};
 use reifydb_core::{interface::Params, value::column::Columns};
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_rql::expression::Expression;
-use reifydb_type::Value;
-
-use crate::Result;
+use reifydb_type::{Result, Value};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());

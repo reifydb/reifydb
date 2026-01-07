@@ -3,6 +3,3 @@
 
 #[cfg(test)]
 mod oracle_stress;
-
-#[cfg(test)]
-mod watermark_stress;

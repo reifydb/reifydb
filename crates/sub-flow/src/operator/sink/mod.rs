@@ -22,7 +22,7 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(Stack::new);
 
 /// Coerce columns to match target schema types
-pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> crate::Result<Columns> {
+pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> reifydb_type::Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -81,7 +81,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 pub(crate) fn coerce_subscription_columns(
 	columns: &Columns,
 	target_columns: &[SubscriptionColumnDef],
-) -> crate::Result<Columns> {
+) -> reifydb_type::Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());

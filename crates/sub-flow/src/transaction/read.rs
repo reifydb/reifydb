@@ -15,7 +15,7 @@ use super::{FlowTransaction, Pending};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then querying multi-version store
-	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<EncodedValues>> {
 		if self.pending.is_removed(key) {
 			return Ok(None);
 		}
@@ -37,7 +37,7 @@ impl FlowTransaction {
 	}
 
 	/// Check if a key exists
-	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
 		if self.pending.is_removed(key) {
 			return Ok(false);
 		}
@@ -56,7 +56,7 @@ impl FlowTransaction {
 	}
 
 	/// Prefix scan
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> reifydb_type::Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::prefix(prefix);
 		let items = self.range(range, 1024).collect::<Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
@@ -86,7 +86,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
 		// Collect pending writes in range as owned data
 		let pending: Vec<(EncodedKey, Pending)> = self
 			.pending
@@ -120,7 +120,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = reifydb_type::Result<MultiVersionValues>> + Send + '_> {
 		// Collect pending writes in range as owned data (reversed)
 		let pending: Vec<(EncodedKey, Pending)> = self
 			.pending
@@ -161,7 +161,7 @@ impl<I> Iterator for FlowMergePendingIterator<I>
 where
 	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
 {
-	type Item = crate::Result<MultiVersionValues>;
+	type Item = reifydb_type::Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		use std::cmp::Ordering;
@@ -261,7 +261,7 @@ impl<I> Iterator for FlowMergePendingIteratorRev<I>
 where
 	I: Iterator<Item = reifydb_type::Result<MultiVersionValues>>,
 {
-	type Item = crate::Result<MultiVersionValues>;
+	type Item = reifydb_type::Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		use std::cmp::Ordering;

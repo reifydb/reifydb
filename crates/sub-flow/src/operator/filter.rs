@@ -41,7 +41,7 @@ impl FilterOperator {
 
 	/// Evaluate filter on all rows in Columns
 	/// Returns a boolean mask indicating which rows pass the filter
-	fn evaluate(&self, columns: &Columns) -> crate::Result<Vec<bool>> {
+	fn evaluate(&self, columns: &Columns) -> reifydb_type::Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -119,7 +119,7 @@ impl Operator for FilterOperator {
 		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
-	) -> crate::Result<FlowChange> {
+	) -> reifydb_type::Result<FlowChange> {
 		let _guard = operator_context_guard!(self);
 		let mut result = Vec::new();
 
@@ -191,7 +191,7 @@ impl Operator for FilterOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Columns> {
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 		let _guard = operator_context_guard!(self);
 		self.parent.pull(txn, rows)
 	}

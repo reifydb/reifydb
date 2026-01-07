@@ -166,7 +166,7 @@ impl FlowEngine {
 		operator: &str,
 		node_id: FlowNodeId,
 		config: &HashMap<String, Value>,
-	) -> crate::Result<BoxedOperator> {
+	) -> reifydb_type::Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write().unwrap();
 
