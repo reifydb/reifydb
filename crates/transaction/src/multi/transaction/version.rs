@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
+};
 
 use parking_lot::Mutex;
 use reifydb_core::{
@@ -20,6 +23,7 @@ pub trait VersionProvider: Send + Sync + Clone {
 	fn current(&self) -> crate::Result<CommitVersion>;
 }
 
+/// Helper struct for initial block setup
 #[derive(Debug)]
 struct VersionBlock {
 	last: u64,
@@ -33,25 +37,17 @@ impl VersionBlock {
 			current: start,
 		}
 	}
-
-	fn next(&mut self) -> Option<CommitVersion> {
-		if self.current < self.last {
-			self.current += 1;
-			Some(CommitVersion(self.current))
-		} else {
-			None
-		}
-	}
-
-	fn current(&self) -> CommitVersion {
-		CommitVersion(self.current)
-	}
 }
 
 #[derive(Clone)]
 pub struct StandardVersionProvider {
 	single: TransactionSingle,
-	current_block: Arc<Mutex<VersionBlock>>,
+	// Lock-free atomic counter for fast-path version allocation
+	next_version: Arc<AtomicU64>,
+	// Block boundary tracking (only accessed when crossing block boundaries)
+	current_block_end: Arc<AtomicU64>,
+	// Mutex for block boundary persistence (rare - 1 in BLOCK_SIZE operations)
+	block_persist_lock: Arc<Mutex<()>>,
 }
 
 impl StandardVersionProvider {
@@ -65,7 +61,9 @@ impl StandardVersionProvider {
 
 		Ok(Self {
 			single,
-			current_block: Arc::new(Mutex::new(first_block)),
+			next_version: Arc::new(AtomicU64::new(first_block.current)),
+			current_block_end: Arc::new(AtomicU64::new(first_block.last)),
+			block_persist_lock: Arc::new(Mutex::new(())),
 		})
 	}
 
@@ -94,33 +92,42 @@ impl StandardVersionProvider {
 
 impl VersionProvider for StandardVersionProvider {
 	fn next(&self) -> crate::Result<CommitVersion> {
-		// Fast path: try to get version from current block
-		let mut block = self.current_block.lock();
+		// FAST PATH: Lock-free atomic increment
+		let version = self.next_version.fetch_add(1, Ordering::SeqCst) + 1;
 
-		if let Some(version) = block.next() {
-			return Ok(version);
+		// Check if we're still within the current block
+		let block_end = self.current_block_end.load(Ordering::SeqCst);
+		if version <= block_end {
+			return Ok(CommitVersion(version));
 		}
 
-		// Slow path: block exhausted, allocate new block
-		// Allocate new block starting from current end
-		let new_start = block.last;
-		let new_block = VersionBlock::new(new_start);
+		// SLOW PATH: We've crossed a block boundary, need to persist
+		// This is rare (1 in BLOCK_SIZE = 100,000 operations)
+		let _lock = self.block_persist_lock.lock();
 
-		// Persist new block end to storage (expensive operation)
-		Self::persist_version(&self.single, new_block.last)?;
-
-		*block = new_block;
-
-		if let Some(version) = block.next() {
-			return Ok(version);
+		// Double-check: another thread may have already extended the block
+		let block_end = self.current_block_end.load(Ordering::SeqCst);
+		if version <= block_end {
+			return Ok(CommitVersion(version));
 		}
 
-		panic!("Failed to allocate version from new block")
+		// Calculate new block boundary
+		// The version we allocated may be beyond the current block_end
+		// We need to allocate enough blocks to cover it
+		let new_block_start = (version / BLOCK_SIZE) * BLOCK_SIZE;
+		let new_block_end = new_block_start + BLOCK_SIZE;
+
+		// Persist the new block boundary to storage
+		Self::persist_version(&self.single, new_block_end)?;
+
+		// Update the block end atomically
+		self.current_block_end.store(new_block_end, Ordering::SeqCst);
+
+		Ok(CommitVersion(version))
 	}
 
 	fn current(&self) -> crate::Result<CommitVersion> {
-		let block = self.current_block.lock();
-		Ok(block.current())
+		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst)))
 	}
 }
 
@@ -243,33 +250,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_version_block_behavior() {
-		let mut block = VersionBlock::new(100);
+	fn test_version_block_initialization() {
+		let block = VersionBlock::new(100);
 
-		// Should start at the given version
-		assert_eq!(block.current(), 100);
-
-		// Should return sequential versions
-		assert_eq!(block.next().unwrap(), 101);
-		assert_eq!(block.current(), 101);
-
-		assert_eq!(block.next().unwrap(), 102);
-		assert_eq!(block.current(), 102);
-	}
-
-	#[test]
-	fn test_version_block_exhaustion() {
-		let mut block = VersionBlock::new(0);
-
-		for _ in 0..BLOCK_SIZE - 2 {
-			block.next();
-		}
-
-		assert_eq!(block.next().unwrap(), BLOCK_SIZE - 1);
-		assert_eq!(block.next().unwrap(), BLOCK_SIZE);
-
-		// exhausted
-		assert_eq!(block.next(), None);
+		// Should have correct start and end
+		assert_eq!(block.current, 100);
+		assert_eq!(block.last, 100 + BLOCK_SIZE);
 	}
 
 	#[test]

@@ -11,13 +11,18 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{BinaryHeap, HashMap},
+	collections::{BinaryHeap, HashMap, HashSet},
 	sync::{Arc, atomic::Ordering},
 };
 
 use crossbeam_channel::{Receiver, select};
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
+
+// Maximum orphaned done() entries before cleanup
+const MAX_ORPHANED: usize = 10000;
+// Threshold for cleaning up old orphaned entries
+const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 use crate::multi::watermark::{
 	Closer,
 	watermark::{WaiterHandle, WatermarkInner},
@@ -29,9 +34,16 @@ impl WatermarkInner {
 		let mut pending: HashMap<u64, i64> = HashMap::new();
 		let mut waiters: HashMap<u64, Vec<Arc<WaiterHandle>>> = HashMap::new();
 
+		// Track begun versions explicitly for gap-tolerant processing
+		let mut begun: HashSet<u64> = HashSet::new();
+		// Track orphaned done() calls that arrived before begin()
+		let mut orphaned_done: HashSet<u64> = HashSet::new();
+
 		let process_one = |idx: u64,
 		                   done: bool,
 		                   pending: &mut HashMap<u64, i64>,
+		                   begun: &mut HashSet<u64>,
+		                   orphaned_done: &mut HashSet<u64>,
 		                   waiters: &mut HashMap<u64, Vec<Arc<WaiterHandle>>>,
 		                   indices: &mut BinaryHeap<Reverse<u64>>| {
 			// Prevent unbounded growth
@@ -40,6 +52,7 @@ impl WatermarkInner {
 				let done_until = self.done_until.load(Ordering::SeqCst);
 				let cutoff = done_until.saturating_sub(PENDING_CLEANUP_THRESHOLD);
 				pending.retain(|&k, _| k > cutoff);
+				begun.retain(|&k| k > cutoff);
 			}
 
 			if waiters.len() > MAX_WAITERS {
@@ -59,40 +72,64 @@ impl WatermarkInner {
 				});
 			}
 
-			if !pending.contains_key(&idx) {
-				indices.push(Reverse(idx));
+			if orphaned_done.len() > MAX_ORPHANED {
+				let done_until = self.done_until.load(Ordering::SeqCst);
+				let cutoff = done_until.saturating_sub(ORPHAN_CLEANUP_THRESHOLD);
+				orphaned_done.retain(|&v| v > cutoff);
 			}
 
-			let mut delta = 1;
 			if done {
-				delta = -1;
+				if begun.contains(&idx) {
+					// Normal case: begin() was called first
+					pending.entry(idx).and_modify(|v| *v -= 1).or_insert(-1);
+				} else {
+					// Out-of-order: done() arrived before begin()
+					// Store it and wait for begin() to arrive
+					orphaned_done.insert(idx);
+					return; // Don't advance watermark yet
+				}
+			} else {
+				// begin() call
+				begun.insert(idx);
+
+				// Check if done() already arrived (orphaned)
+				if orphaned_done.remove(&idx) {
+					// Both begin and done have arrived, count is 0
+					pending.insert(idx, 0);
+				} else {
+					pending.entry(idx).and_modify(|v| *v += 1).or_insert(1);
+				}
+
+				// Add to indices only on begin() - this ensures we track all versions
+				if !pending.contains_key(&idx) || !indices.iter().any(|Reverse(v)| *v == idx) {
+					indices.push(Reverse(idx));
+				}
 			}
-			pending.entry(idx).and_modify(|v| *v += delta).or_insert(delta);
 
 			// Update mark by going through all indices in order;
 			// and checking if they have been done. Stop at the
-			// first index, which isn't done.
+			// first index, which isn't done OR hasn't been begun.
 			let done_until = self.done_until.load(Ordering::SeqCst);
-
-			// Marks can arrive out of order due to concurrent sends to the channel.
-			// If we skip late-arriving begin() marks, those versions will never be
-			// tracked and the watermark will incorrectly skip them.
-			// We must process ALL marks to ensure watermark advancement is correct.
 
 			let mut until = done_until;
 
 			while !indices.is_empty() {
 				let min = indices.peek().unwrap().0;
 
+				// CRITICAL: Only advance if version was begun (gap-tolerant check)
+				if !begun.contains(&min) {
+					break; // Gap detected - wait for begin()
+				}
+
 				if let Some(done) = pending.get(&min) {
 					if done.gt(&0) {
-						break; // len(indices) will be > 0.
+						break; // Still pending (begin called but not done)
 					}
 				}
-				// Even if done is called multiple times causing
-				// it to become negative, we should still pop the index.
+				// Version is complete (begun and done count <= 0)
 				indices.pop();
 				pending.remove(&min);
+				begun.remove(&min);
 				until = min;
 			}
 
@@ -156,7 +193,7 @@ impl WatermarkInner {
 									waiters.entry(mark.version).or_default().push(waiter);
 								}
 							} else {
-								process_one(mark.version, mark.done, &mut pending, &mut waiters, &mut indices);
+								process_one(mark.version, mark.done, &mut pending, &mut begun, &mut orphaned_done, &mut waiters, &mut indices);
 							}
 						}
 						Err(_) => {

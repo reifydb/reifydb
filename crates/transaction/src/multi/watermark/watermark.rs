@@ -197,12 +197,12 @@ mod tests {
 
 	#[test]
 	fn test_basic() {
-		init_and_close(|_| async {});
+		init_and_close(|_| {});
 	}
 
 	#[test]
 	fn test_begin_done() {
-		init_and_close(|watermark| async move {
+		init_and_close(|watermark| {
 			watermark.begin(CommitVersion(1));
 			watermark.begin(CommitVersion(2));
 			watermark.begin(CommitVersion(3));
@@ -215,7 +215,7 @@ mod tests {
 
 	#[test]
 	fn test_wait_for_mark() {
-		init_and_close(|watermark| async move {
+		init_and_close(|watermark| {
 			watermark.begin(CommitVersion(1));
 			watermark.begin(CommitVersion(2));
 			watermark.begin(CommitVersion(3));
@@ -234,7 +234,7 @@ mod tests {
 
 	#[test]
 	fn test_done_until() {
-		init_and_close(|watermark| async move {
+		init_and_close(|watermark| {
 			watermark.done_until.store(1, Ordering::SeqCst);
 			assert_eq!(watermark.done_until(), 1);
 		});
@@ -322,7 +322,7 @@ mod tests {
 
 	#[test]
 	fn test_old_version_rejection() {
-		init_and_close(|watermark| async move {
+		init_and_close(|watermark| {
 			// Advance done_until significantly
 			for i in 1..=100 {
 				watermark.begin(CommitVersion(i));
@@ -348,7 +348,7 @@ mod tests {
 
 	#[test]
 	fn test_timeout_behavior() {
-		init_and_close(|watermark| async move {
+		init_and_close(|watermark| {
 			// Begin but don't complete a version
 			watermark.begin(CommitVersion(1));
 
@@ -366,10 +366,78 @@ mod tests {
 		});
 	}
 
-	fn init_and_close<F, Fut>(f: F)
+	#[test]
+	fn test_out_of_order_begin() {
+		// Test that begin() calls can arrive out of order with gap-tolerant processing
+		init_and_close(|watermark| {
+			// Begin versions out of order
+			watermark.begin(CommitVersion(3));
+			watermark.begin(CommitVersion(1));
+			watermark.begin(CommitVersion(2));
+
+			// Complete in order
+			watermark.done(CommitVersion(1));
+			watermark.done(CommitVersion(2));
+			watermark.done(CommitVersion(3));
+
+			// Wait for processing
+			sleep(Duration::from_millis(50));
+
+			// Watermark should advance to 3
+			let done = watermark.done_until();
+			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
+		});
+	}
+
+	#[test]
+	fn test_orphaned_done_before_begin() {
+		// Test that done() arriving before begin() is handled correctly
+		init_and_close(|watermark| {
+			// done() arrives before begin() - this is an "orphaned" done
+			watermark.done(CommitVersion(1));
+
+			// Wait a bit for processing
+			sleep(Duration::from_millis(20));
+
+			// Watermark should NOT advance yet (begin hasn't arrived)
+			assert_eq!(watermark.done_until().0, 0);
+
+			// Now begin() arrives
+			watermark.begin(CommitVersion(1));
+
+			// Wait for processing
+			sleep(Duration::from_millis(50));
+
+			// Now watermark should advance
+			let done = watermark.done_until();
+			assert_eq!(done.0, 1, "Watermark should advance to 1 after begin, got {}", done.0);
+		});
+	}
+
+	#[test]
+	fn test_mixed_out_of_order() {
+		// Test complex out-of-order scenario
+		init_and_close(|watermark| {
+			// Interleaved begin/done in various orders
+			watermark.begin(CommitVersion(2));
+			watermark.done(CommitVersion(3)); // orphaned
+			watermark.begin(CommitVersion(1));
+			watermark.done(CommitVersion(1));
+			watermark.begin(CommitVersion(3));
+			watermark.done(CommitVersion(2));
+
+			// Wait for processing
+			sleep(Duration::from_millis(50));
+
+			// All versions complete, watermark should be at 3
+			let done = watermark.done_until();
+			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
+		});
+	}
+
+	fn init_and_close<F>(f: F)
 	where
-		F: FnOnce(Arc<WaterMark>) -> Fut,
-		Fut: Future<Output = ()>,
+		F: FnOnce(Arc<WaterMark>),
 	{
 		let closer = Closer::new(1);
 

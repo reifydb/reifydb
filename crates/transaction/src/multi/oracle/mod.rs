@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-#[cfg(test)]
-use std::sync::OnceLock;
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
@@ -10,7 +8,7 @@ use std::{
 };
 
 use cleanup::cleanup_old_windows;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
 use tracing::{Span, instrument};
 
@@ -21,29 +19,6 @@ use crate::multi::{
 };
 
 mod cleanup;
-#[cfg(test)]
-mod test_regression;
-#[cfg(test)]
-pub mod testing;
-
-// =============================================================================
-// Test Hook Infrastructure (debug builds only)
-// =============================================================================
-//
-// This hook allows tests to inject behavior between version allocation and
-// the begin() call in new_commit(). This is used to reliably trigger the
-// watermark race condition for regression testing.
-
-#[cfg(test)]
-type TestHookFn = Arc<dyn Fn(CommitVersion) + Send + Sync>;
-
-#[cfg(test)]
-static ORACLE_TEST_HOOK: OnceLock<Mutex<Option<TestHookFn>>> = OnceLock::new();
-
-#[cfg(test)]
-fn get_oracle_test_hook() -> &'static Mutex<Option<TestHookFn>> {
-	ORACLE_TEST_HOOK.get_or_init(|| Mutex::new(None))
-}
 
 /// Configuration for the efficient oracle
 const DEFAULT_WINDOW_SIZE: u64 = 1000;
@@ -143,19 +118,13 @@ where
 {
 	// Using RwLock allows multiple concurrent readers during conflict detection
 	pub(crate) inner: RwLock<OracleInner<L>>,
-
-	/// Version provider lock for serializing version generation only
-	pub(crate) version_lock: Mutex<()>,
-
 	/// Used by DB
 	pub(crate) query: WaterMark,
 	/// Used to block new transaction, so all previous commits are visible
 	/// to a new query.
 	pub(crate) command: WaterMark,
-
 	/// Shutdown signal for cleanup thread
 	shutdown_signal: Arc<RwLock<bool>>,
-
 	/// closer is used to stop watermarks.
 	closer: Closer,
 }
@@ -177,7 +146,6 @@ where
 				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
 			}),
-			version_lock: Mutex::new(()),
 			query: WaterMark::new("txn-mark-query".into(), closer.clone()),
 			command: WaterMark::new("txn-mark-cmd".into(), closer.clone()),
 			shutdown_signal,
@@ -196,7 +164,6 @@ where
 		inner_read_lock_us = tracing::field::Empty,
 		find_windows_us = tracing::field::Empty,
 		conflict_check_us = tracing::field::Empty,
-		version_lock_us = tracing::field::Empty,
 		clock_next_us = tracing::field::Empty,
 		inner_write_lock_us = tracing::field::Empty,
 		add_txn_us = tracing::field::Empty,
@@ -330,12 +297,8 @@ where
 			*done_read = true;
 		}
 
-		// Get commit version with minimal locking
+		// Get commit version - lock-free with gap-tolerant watermark
 		let commit_version = {
-			let version_lock_start = Instant::now();
-			let _version_guard = self.version_lock.lock();
-			Span::current().record("version_lock_us", version_lock_start.elapsed().as_micros() as u64);
-
 			let clock = {
 				let inner = self.inner.read();
 				inner.clock.clone()
@@ -345,21 +308,8 @@ where
 			let version = clock.next()?;
 			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
-			// TEST HOOK: Inject behavior between version allocation and begin()
-			// This runs INSIDE the version_lock, so with the fix applied, other
-			// transactions cannot interleave. If the fix is reverted (begin moved
-			// outside lock), this hook would also move outside, allowing races.
-			#[cfg(test)]
-			{
-				let hook_guard = get_oracle_test_hook().lock();
-				if let Some(ref hook_fn) = *hook_guard {
-					let hook_clone = hook_fn.clone();
-					drop(hook_guard); // Release hook lock before calling hook
-					hook_clone(version);
-				}
-			}
-
-			// This ensures watermark advancement respects transaction completion order
+			// Register with watermark - can arrive out of order
+			// The gap-tolerant watermark processor handles this correctly
 			self.command.begin(version);
 
 			version
