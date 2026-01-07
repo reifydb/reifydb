@@ -2006,6 +2006,7 @@ dependencies = [
 name = "reifydb-store-transaction"
 version = "0.2.0"
 dependencies = [
+ "crossbeam-skiplist",
  "dashmap",
  "indexmap",
  "parking_lot",

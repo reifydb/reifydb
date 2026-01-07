@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
+use crossbeam_skiplist::SkipMap;
 use dashmap::DashMap;
-use parking_lot::RwLock;
 
 use crate::tier::EntryKind;
 
-/// Type alias for the inner table storage (ordered key-value map)
-pub(super) type Inner = BTreeMap<Vec<u8>, Option<Vec<u8>>>;
+/// Type alias for the inner table storage (lock-free ordered key-value map)
+pub(super) type Inner = SkipMap<Vec<u8>, Option<Vec<u8>>>;
 
-/// Type alias for a table entry with -compatible lock
-pub(super) type Entry = Arc<RwLock<Inner>>;
+/// Type alias for a table entry (lock-free, no RwLock needed)
+pub(super) type Entry = Arc<Inner>;
 
 /// Convert Store to a unique string key for storage in DashMap
 pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
