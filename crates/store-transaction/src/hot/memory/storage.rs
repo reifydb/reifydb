@@ -3,11 +3,15 @@
 
 //! Memory implementation of PrimitiveStorage.
 //!
-//! Uses DashMap for per-table sharding and crossbeam-skiplist for lock-free ordered key-value storage.
+//! Uses DashMap for per-table sharding and BTreeMap for ordered key-value storage.
 
-use std::{collections::HashMap, ops::Bound, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+	sync::Arc,
+};
 
-use crossbeam_skiplist::SkipMap;
+use parking_lot::RwLock;
 use reifydb_type::Result;
 use tracing::instrument;
 
@@ -16,8 +20,7 @@ use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, Tie
 
 /// Memory-based primitive storage implementation.
 ///
-/// Uses DashMap for per-table sharding with lock-free SkipMap for concurrent access.
-/// All operations are lock-free, enabling high concurrency under load.
+/// Uses DashMap for per-table sharding with RwLock per table for concurrent access.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -38,10 +41,16 @@ impl MemoryPrimitiveStorage {
 		}
 	}
 
-	/// Get or create a table entry, returning a cloned Arc for use
+	/// Get or create a table entry, returning a cloned Arc for  use
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
-		self.inner.entries.data.entry(table_key).or_insert_with(|| Arc::new(SkipMap::new())).value().clone()
+		self.inner
+			.entries
+			.data
+			.entry(table_key)
+			.or_insert_with(|| Arc::new(RwLock::new(BTreeMap::new())))
+			.value()
+			.clone()
 	}
 }
 
@@ -53,8 +62,9 @@ impl TierStorage for MemoryPrimitiveStorage {
 			Some(entry) => entry.value().clone(),
 			None => return Ok(None),
 		};
-		// Lock-free get via SkipMap
-		Ok(table_entry.get(key).map(|e| e.value().clone()).flatten())
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read();
+		Ok(table_data.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
@@ -64,17 +74,24 @@ impl TierStorage for MemoryPrimitiveStorage {
 			Some(entry) => entry.value().clone(),
 			None => return Ok(false),
 		};
-		// Lock-free contains via SkipMap - key exists and is not a tombstone
-		Ok(table_entry.get(key).map_or(false, |e| e.value().is_some()))
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read();
+		// Key exists and is not a tombstone
+		Ok(table_data.get(key).map_or(false, |v| v.is_some()))
 	}
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(table_count = batches.len()))]
 	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
-		// Lock-free inserts via SkipMap - no lock ordering needed
-		for (table, entries) in batches {
+		// Sort tables by key to ensure consistent lock acquisition order across concurrent operations.
+		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
+		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
+		sorted_batches.sort_by(|(a, _), (b, _)| entry_id_to_key(*a).cmp(&entry_id_to_key(*b)));
+
+		for (table, entries) in sorted_batches {
 			let table_entry = self.get_or_create_table(table);
+			let mut table_data = table_entry.write();
 			for (key, value) in entries {
-				table_entry.insert(key, value);
+				table_data.insert(key, value);
 			}
 		}
 		Ok(())
@@ -102,30 +119,23 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// Lock-free iteration via SkipMap
+		let table_data = table_entry.read();
+
 		// Determine effective start bound based on cursor state
-		let effective_start: Bound<Vec<u8>> = match &cursor.last_key {
-			Some(last) => Bound::Excluded(last.clone()),
-			None => match start {
-				Bound::Included(k) => Bound::Included(k.to_vec()),
-				Bound::Excluded(k) => Bound::Excluded(k.to_vec()),
-				Bound::Unbounded => Bound::Unbounded,
-			},
+		let effective_start: Bound<&[u8]> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => start,
 		};
 
-		let effective_end: Bound<Vec<u8>> = match end {
-			Bound::Included(k) => Bound::Included(k.to_vec()),
-			Bound::Excluded(k) => Bound::Excluded(k.to_vec()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+		let range_bounds = make_range_bounds_ref(effective_start, end);
 
 		// Fetch batch_size + 1 to determine if there are more entries
-		let entries: Vec<RawEntry> = table_entry
-			.range((effective_start, effective_end))
+		let entries: Vec<RawEntry> = table_data
+			.range::<[u8], _>(range_bounds)
 			.take(batch_size + 1)
-			.map(|e| RawEntry {
-				key: e.key().clone(),
-				value: e.value().clone(),
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
 			})
 			.collect();
 
@@ -172,32 +182,25 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// Lock-free reverse iteration via SkipMap
-		let effective_start: Bound<Vec<u8>> = match start {
-			Bound::Included(k) => Bound::Included(k.to_vec()),
-			Bound::Excluded(k) => Bound::Excluded(k.to_vec()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
+		let table_data = table_entry.read();
 
 		// For reverse iteration, effective end bound based on cursor
-		let effective_end: Bound<Vec<u8>> = match &cursor.last_key {
-			Some(last) => Bound::Excluded(last.clone()),
-			None => match end {
-				Bound::Included(k) => Bound::Included(k.to_vec()),
-				Bound::Excluded(k) => Bound::Excluded(k.to_vec()),
-				Bound::Unbounded => Bound::Unbounded,
-			},
+		let effective_end: Bound<&[u8]> = match &cursor.last_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => end,
 		};
 
+		let range_bounds = make_range_bounds_ref(start, effective_end);
+
 		// Fetch batch_size + 1 to determine if there are more entries
-		// SkipMap range iterators support .rev() for reverse iteration
-		let entries: Vec<RawEntry> = table_entry
-			.range((effective_start, effective_end))
+		let entries: Vec<RawEntry> = table_data
+			.range::<[u8], _>(range_bounds)
 			.rev()
 			.take(batch_size + 1)
-			.map(|e| RawEntry {
-				key: e.key().clone(),
-				value: e.value().clone(),
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
 			})
 			.collect();
 
@@ -232,14 +235,23 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
-		// Replace the entire SkipMap with a new empty one
-		// This is atomic via DashMap's entry API
-		self.inner.entries.data.insert(table_key, Arc::new(SkipMap::new()));
+		let table_entry = match self.inner.entries.data.get(&table_key) {
+			Some(entry) => entry.value().clone(),
+			None => return Ok(()),
+		};
+		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
+		let mut table_data = table_entry.write();
+		table_data.clear();
 		Ok(())
 	}
 }
 
 impl TierBackend for MemoryPrimitiveStorage {}
+
+/// Convert Bound<&[u8]> to a tuple for BTreeMap range queries.
+fn make_range_bounds_ref<'a>(start: Bound<&'a [u8]>, end: Bound<&'a [u8]>) -> (Bound<&'a [u8]>, Bound<&'a [u8]>) {
+	(start, end)
+}
 
 #[cfg(test)]
 mod tests {
