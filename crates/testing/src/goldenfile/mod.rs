@@ -191,7 +191,7 @@ impl Drop for GoldenFile {
 }
 
 /// Creates a git-like unified diff between expected and actual content
-fn create_diff(expected: &str, actual: &str) -> String {
+pub fn create_diff(expected: &str, actual: &str) -> String {
 	let mut output = String::new();
 
 	// Split into lines for comparison
