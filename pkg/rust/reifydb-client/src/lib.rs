@@ -38,6 +38,8 @@ pub enum RequestPayload {
 	Auth(AuthRequest),
 	Command(CommandRequest),
 	Query(QueryRequest),
+	Subscribe(SubscribeRequest),
+	Unsubscribe(UnsubscribeRequest),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +57,16 @@ pub struct CommandRequest {
 pub struct QueryRequest {
 	pub statements: Vec<String>,
 	pub params: Option<Params>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubscribeRequest {
+	pub query: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnsubscribeRequest {
+	pub subscription_id: String,
 }
 
 // ============================================================================
@@ -75,6 +87,8 @@ pub enum ResponsePayload {
 	Err(ErrResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
+	Subscribed(SubscribedResponse),
+	Unsubscribed(UnsubscribedResponse),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +109,16 @@ pub struct QueryResponse {
 	pub frames: Vec<WebsocketFrame>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubscribedResponse {
+	pub subscription_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnsubscribedResponse {
+	pub subscription_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketFrame {
 	pub row_numbers: Vec<u64>,
@@ -106,4 +130,23 @@ pub struct WebsocketColumn {
 	pub name: String,
 	pub r#type: Type,
 	pub data: Vec<String>,
+}
+
+// ============================================================================
+// Server Push Types (server-initiated, no request id)
+// ============================================================================
+
+/// Server-initiated push message (no request id).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
+pub enum ServerPush {
+	Change(ChangePayload),
+}
+
+/// Payload for subscription change notifications.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePayload {
+	pub subscription_id: String,
+	/// The frame containing change data.
+	pub frame: WebsocketFrame,
 }

@@ -12,6 +12,7 @@
 //! - Full WebSocket protocol support (RFC 6455)
 //! - Authentication via initial Auth message
 //! - Query and command execution over persistent connections
+//! - Subscription support for real-time push notifications
 //! - Connection limits via semaphore
 //! - Graceful shutdown with connection draining
 //!
@@ -22,8 +23,17 @@
 //! ```json
 //! {
 //!   "id": "unique-request-id",
-//!   "type": "Auth|Query|Command",
+//!   "type": "Auth|Query|Command|Subscribe|Unsubscribe",
 //!   "payload": { ... }
+//! }
+//! ```
+//!
+//! Server-initiated push messages have this structure:
+//!
+//! ```json
+//! {
+//!   "type": "Change",
+//!   "payload": { "subscription_id": "...", ... }
 //! }
 //! ```
 //!
@@ -53,12 +63,16 @@
 pub mod factory;
 pub mod handler;
 pub mod protocol;
+pub mod subscription;
 pub mod subsystem;
 
 // Re-export common types from sub-server
 // Local exports
 pub use factory::{WsConfig, WsSubsystemFactory};
 pub use handler::handle_connection;
-pub use protocol::{AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload};
+pub use protocol::{
+	AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload, SubscribeRequest, UnsubscribeRequest,
+};
 pub use reifydb_sub_server::{ResponseColumn, ResponseFrame, convert_frames};
+pub use subscription::{PushMessage, SubscriptionRegistry};
 pub use subsystem::WsSubsystem;

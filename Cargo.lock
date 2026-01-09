@@ -1507,6 +1507,7 @@ dependencies = [
  "futures-util",
  "reifydb",
  "reifydb-catalog",
+ "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-transaction",
@@ -2131,6 +2132,7 @@ dependencies = [
 name = "reifydb-sub-server-ws"
 version = "0.2.0"
 dependencies = [
+ "dashmap",
  "futures-util",
  "reifydb-core",
  "reifydb-engine",
@@ -2142,6 +2144,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

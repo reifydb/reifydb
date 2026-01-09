@@ -8,7 +8,8 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-	AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
+	AuthRequest, ChangePayload, CommandRequest, QueryRequest, Request, RequestPayload, Response, ResponsePayload,
+	ServerPush, SubscribeRequest, UnsubscribeRequest,
 	session::{CommandResult, QueryResult, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
@@ -20,6 +21,8 @@ pub struct WsClient {
 	request_tx: mpsc::Sender<(Request, oneshot::Sender<Response>)>,
 	shutdown_tx: Option<mpsc::Sender<()>>,
 	is_authenticated: bool,
+	/// Channel for receiving server-initiated Change messages.
+	change_rx: mpsc::Receiver<ChangePayload>,
 }
 
 impl WsClient {
@@ -57,19 +60,23 @@ impl WsClient {
 		// Channel for shutdown signal
 		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
 
+		// Channel for receiving server-initiated Change messages
+		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
+
 		// Pending requests map
 		let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
 		// Spawn the connection management task
 		let pending_clone = pending.clone();
 		tokio::spawn(async move {
-			Self::connection_loop(write, read, request_rx, shutdown_rx, pending_clone).await;
+			Self::connection_loop(write, read, request_rx, shutdown_rx, pending_clone, change_tx).await;
 		});
 
 		Ok(Self {
 			request_tx,
 			shutdown_tx: Some(shutdown_tx),
 			is_authenticated: false,
+			change_rx,
 		})
 	}
 
@@ -85,6 +92,7 @@ impl WsClient {
 		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<Response>)>,
 		mut shutdown_rx: mpsc::Receiver<()>,
 		pending: PendingRequests,
+		change_tx: mpsc::Sender<ChangePayload>,
 	) {
 		loop {
 			tokio::select! {
@@ -92,10 +100,19 @@ impl WsClient {
 				Some(msg) = read.next() => {
 					match msg {
 						Ok(Message::Text(text)) => {
+							// First try to parse as Response (has id field)
 							if let Ok(response) = serde_json::from_str::<Response>(&text) {
 								let mut pending_guard = pending.lock().await;
 								if let Some(tx) = pending_guard.remove(&response.id) {
 									let _ = tx.send(response);
+								}
+							}
+							// Then try to parse as ServerPush (no id field)
+							else if let Ok(push) = serde_json::from_str::<ServerPush>(&text) {
+								match push {
+									ServerPush::Change(change) => {
+										let _ = change_tx.send(change).await;
+									}
 								}
 							}
 						}
@@ -238,6 +255,66 @@ impl WsClient {
 
 		let response = self.send_request(request).await?;
 		parse_query_response(response)
+	}
+
+	/// Subscribe to real-time changes for a query.
+	///
+	/// Returns the subscription ID. Use `recv()` or `try_recv()` to receive
+	/// Change messages from the server.
+	///
+	/// # Arguments
+	/// * `query` - RQL query to subscribe to
+	pub async fn subscribe(&self, query: &str) -> Result<String, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Subscribe(SubscribeRequest {
+				query: query.to_string(),
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		match response.payload {
+			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => Err(Error(diagnostic::internal("Unexpected response type for subscribe"))),
+		}
+	}
+
+	/// Unsubscribe from a subscription.
+	///
+	/// # Arguments
+	/// * `subscription_id` - The subscription ID returned from `subscribe()`
+	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Unsubscribe(UnsubscribeRequest {
+				subscription_id: subscription_id.to_string(),
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+		match response.payload {
+			ResponsePayload::Unsubscribed(_) => Ok(()),
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => Err(Error(diagnostic::internal("Unexpected response type for unsubscribe"))),
+		}
+	}
+
+	/// Receive the next change notification, waiting if necessary.
+	///
+	/// Returns `None` if the connection is closed.
+	pub async fn recv(&mut self) -> Option<ChangePayload> {
+		self.change_rx.recv().await
+	}
+
+	/// Try to receive a change notification without blocking.
+	///
+	/// Returns `Ok(payload)` if a change is available, or an error if the
+	/// channel is empty or disconnected.
+	pub fn try_recv(&mut self) -> Result<ChangePayload, mpsc::error::TryRecvError> {
+		self.change_rx.try_recv()
 	}
 
 	/// Send a request and wait for the response.

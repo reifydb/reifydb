@@ -13,6 +13,7 @@ use std::{
 		Arc, RwLock,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
+	time::Duration,
 };
 
 use reifydb_core::{
@@ -21,15 +22,17 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, SharedRuntime};
+use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, ResponseColumn, ResponseFrame, SharedRuntime};
+use reifydb_type::Type;
 use tokio::{
 	net::TcpListener,
 	select,
 	sync::{Semaphore, watch},
+	time::interval,
 };
 use tracing::info;
 
-use crate::handler::handle_connection;
+use crate::{handler::handle_connection, subscription::SubscriptionRegistry};
 
 /// WebSocket server subsystem.
 ///
@@ -38,6 +41,7 @@ use crate::handler::handle_connection;
 /// - Graceful startup and shutdown
 /// - Active connection tracking
 /// - Health monitoring with connection count warnings
+/// - Subscription push notifications
 ///
 /// # Example
 ///
@@ -72,6 +76,8 @@ pub struct WsSubsystem {
 	connection_semaphore: Arc<Semaphore>,
 	/// Shared tokio runtime.
 	runtime: SharedRuntime,
+	/// Subscription registry for push notifications.
+	registry: Arc<SubscriptionRegistry>,
 }
 
 impl WsSubsystem {
@@ -93,6 +99,7 @@ impl WsSubsystem {
 			shutdown_tx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
+			registry: Arc::new(SubscriptionRegistry::new()),
 		}
 	}
 
@@ -154,6 +161,38 @@ impl Subsystem for WsSubsystem {
 		let semaphore = self.connection_semaphore.clone();
 		let runtime = self.runtime.clone();
 		let runtime_inner = runtime.clone();
+		let registry = self.registry.clone();
+
+		// Spawn the test push thread that broadcasts to all subscriptions every 2 seconds
+		let push_registry = registry.clone();
+		let mut push_shutdown_rx = rx.clone();
+		runtime.spawn(async move {
+			let mut tick = interval(Duration::from_secs(2));
+			loop {
+				select! {
+					biased;
+
+					result = push_shutdown_rx.changed() => {
+						if result.is_err() || *push_shutdown_rx.borrow() {
+							tracing::debug!("Push thread shutting down");
+							break;
+						}
+					}
+
+					_ = tick.tick() => {
+						let frame = ResponseFrame {
+							row_numbers: vec![0],
+							columns: vec![ResponseColumn {
+								name: "answer".to_string(),
+								r#type: Type::Int8,
+								data: vec!["42".to_string()],
+							}],
+						};
+						push_registry.broadcast(frame).await;
+					}
+				}
+			}
+		});
 
 		runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
@@ -185,6 +224,7 @@ impl Subsystem for WsSubsystem {
 								};
 
 								let conn_state = state.clone();
+								let conn_registry = registry.clone();
 								let shutdown_rx = rx.clone();
 								let active = active_connections.clone();
 								let runtime_handle = runtime_inner.clone();
@@ -193,7 +233,7 @@ impl Subsystem for WsSubsystem {
 								tracing::debug!("Accepted connection from {}", peer);
 
 								runtime_handle.spawn(async move {
-									handle_connection(stream, conn_state, shutdown_rx).await;
+									handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
 									active.fetch_sub(1, Ordering::SeqCst);
 									drop(permit); // Release connection slot
 								});

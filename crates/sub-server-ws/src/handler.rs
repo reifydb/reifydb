@@ -8,18 +8,28 @@
 //! - Message parsing and routing
 //! - Authentication state management
 //! - Query and command execution
+//! - Subscription management for push notifications
+
+use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::Identity;
 use reifydb_sub_server::{
 	AppState, ExecuteError, convert_frames, execute_command, execute_query, extract_identity_from_ws_auth,
 };
-use reifydb_type::Params;
+use reifydb_type::{Params, Uuid7};
 use serde_json::json;
-use tokio::{net::TcpStream, sync::watch};
+use tokio::{
+	net::TcpStream,
+	sync::{mpsc, watch},
+};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
+use uuid::Uuid as StdUuid;
 
-use crate::protocol::{Request, RequestPayload};
+use crate::{
+	protocol::{Request, RequestPayload},
+	subscription::{PushMessage, SubscriptionRegistry},
+};
 
 /// Handle a single WebSocket connection.
 ///
@@ -27,15 +37,24 @@ use crate::protocol::{Request, RequestPayload};
 /// 1. Completes the WebSocket handshake
 /// 2. Manages authentication state per connection
 /// 3. Routes messages to appropriate handlers
-/// 4. Responds to shutdown signals
+/// 4. Handles subscription push messages
+/// 5. Responds to shutdown signals
+/// 6. Cleans up subscriptions on disconnect
 ///
 /// # Arguments
 ///
 /// * `stream` - Raw TCP stream from accept
 /// * `state` - Shared application state
+/// * `registry` - Subscription registry for push notifications
 /// * `shutdown` - Watch channel for shutdown signal
-pub async fn handle_connection(stream: TcpStream, state: AppState, mut shutdown: watch::Receiver<bool>) {
+pub async fn handle_connection(
+	stream: TcpStream,
+	state: AppState,
+	registry: Arc<SubscriptionRegistry>,
+	mut shutdown: watch::Receiver<bool>,
+) {
 	let peer = stream.peer_addr().ok();
+	let connection_id = Uuid7::generate();
 
 	let ws_stream = match accept_async(stream).await {
 		Ok(ws) => ws,
@@ -45,8 +64,11 @@ pub async fn handle_connection(stream: TcpStream, state: AppState, mut shutdown:
 		}
 	};
 
-	tracing::debug!("WebSocket connection established from {:?}", peer);
+	tracing::debug!("WebSocket connection {} established from {:?}", connection_id, peer);
 	let (mut sender, mut receiver) = ws_stream.split();
+
+	// Channel for receiving push messages from the registry
+	let (push_tx, mut push_rx) = mpsc::channel::<PushMessage>(100);
 
 	// Connection starts unauthenticated
 	let mut identity: Option<Identity> = None;
@@ -64,14 +86,42 @@ pub async fn handle_connection(stream: TcpStream, state: AppState, mut shutdown:
 				}
 			}
 
+			// Handle push messages from the subscription registry
+			Some(push) = push_rx.recv() => {
+				let msg = match push {
+					PushMessage::Change { subscription_id, frame } => {
+						json!({
+							"type": "Change",
+							"payload": {
+								"subscription_id": subscription_id.to_string(),
+								"frame": frame
+							}
+						}).to_string()
+					}
+				};
+				if sender.send(Message::Text(msg.into())).await.is_err() {
+					tracing::debug!("Failed to send push message to {:?}", peer);
+					break;
+				}
+			}
+
 			// Handle incoming messages
 			msg = receiver.next() => {
 				match msg {
 					Some(Ok(Message::Text(text))) => {
-						let response = process_message(&text, &state, &mut identity).await;
-						if sender.send(Message::Text(response.into())).await.is_err() {
-							tracing::debug!("Failed to send response to {:?}", peer);
-							break;
+						let response = process_message(
+							&text,
+							&state,
+							&mut identity,
+							connection_id,
+							&registry,
+							push_tx.clone(),
+						).await;
+						if let Some(resp) = response {
+							if sender.send(Message::Text(resp.into())).await.is_err() {
+								tracing::debug!("Failed to send response to {:?}", peer);
+								break;
+							}
 						}
 					}
 					Some(Ok(Message::Ping(data))) => {
@@ -105,16 +155,31 @@ pub async fn handle_connection(stream: TcpStream, state: AppState, mut shutdown:
 			}
 		}
 	}
+
+	// Cleanup all subscriptions for this connection
+	registry.cleanup_connection(connection_id);
+	tracing::debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
 }
+
+/// Connection ID type alias for clarity.
+type ConnectionId = Uuid7;
 
 /// Process a single WebSocket message.
 ///
 /// Parses the message and routes to the appropriate handler based on type.
-async fn process_message(text: &str, state: &AppState, identity: &mut Option<Identity>) -> String {
+/// Returns None if no response should be sent (e.g., for internal errors already logged).
+async fn process_message(
+	text: &str,
+	state: &AppState,
+	identity: &mut Option<Identity>,
+	connection_id: ConnectionId,
+	registry: &SubscriptionRegistry,
+	push_tx: mpsc::Sender<PushMessage>,
+) -> Option<String> {
 	let request: Request = match serde_json::from_str(text) {
 		Ok(r) => r,
 		Err(e) => {
-			return build_error("0", "PARSE_ERROR", &format!("Invalid JSON: {}", e));
+			return Some(build_error("0", "PARSE_ERROR", &format!("Invalid JSON: {}", e)));
 		}
 	};
 
@@ -122,15 +187,21 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
 			Ok(id) => {
 				*identity = Some(id);
-				build_response(&request.id, "Auth", json!({}))
+				Some(build_response(&request.id, "Auth", json!({})))
 			}
-			Err(e) => build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e)),
+			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
 		},
 
 		RequestPayload::Query(q) => {
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
-				None => return build_error(&request.id, "AUTH_REQUIRED", "Authentication required"),
+				None => {
+					return Some(build_error(
+						&request.id,
+						"AUTH_REQUIRED",
+						"Authentication required",
+					));
+				}
 			};
 
 			let params = q.params.unwrap_or(Params::None);
@@ -140,16 +211,22 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 			match execute_query(state.pool(), state.engine_clone(), query, id, params, timeout).await {
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
-					build_response(&request.id, "Query", json!({ "frames": ws_frames }))
+					Some(build_response(&request.id, "Query", json!({ "frames": ws_frames })))
 				}
-				Err(e) => error_to_response(&request.id, e),
+				Err(e) => Some(error_to_response(&request.id, e)),
 			}
 		}
 
 		RequestPayload::Command(c) => {
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
-				None => return build_error(&request.id, "AUTH_REQUIRED", "Authentication required"),
+				None => {
+					return Some(build_error(
+						&request.id,
+						"AUTH_REQUIRED",
+						"Authentication required",
+					));
+				}
 			};
 
 			let params = c.params.unwrap_or(Params::None);
@@ -160,9 +237,58 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 			{
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
-					build_response(&request.id, "Command", json!({ "frames": ws_frames }))
+					Some(build_response(&request.id, "Command", json!({ "frames": ws_frames })))
 				}
-				Err(e) => error_to_response(&request.id, e),
+				Err(e) => Some(error_to_response(&request.id, e)),
+			}
+		}
+
+		RequestPayload::Subscribe(sub) => {
+			// Register the subscription
+			let subscription_id = registry.subscribe(connection_id, sub.query, push_tx);
+
+			tracing::info!(
+				"Connection {} subscribed with query, subscription_id: {}",
+				connection_id,
+				subscription_id
+			);
+
+			Some(build_response(
+				&request.id,
+				"Subscribed",
+				json!({ "subscription_id": subscription_id.to_string() }),
+			))
+		}
+
+		RequestPayload::Unsubscribe(unsub) => {
+			// Parse the subscription ID
+			let subscription_id = match unsub.subscription_id.parse::<StdUuid>() {
+				Ok(uuid) => Uuid7::from(uuid),
+				Err(_) => {
+					return Some(build_error(
+						&request.id,
+						"INVALID_SUBSCRIPTION_ID",
+						"Invalid subscription ID format",
+					));
+				}
+			};
+
+			// Unsubscribe
+			let removed = registry.unsubscribe(subscription_id);
+
+			if removed {
+				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
+				Some(build_response(
+					&request.id,
+					"Unsubscribed",
+					json!({ "subscription_id": subscription_id.to_string() }),
+				))
+			} else {
+				Some(build_error(
+					&request.id,
+					"SUBSCRIPTION_NOT_FOUND",
+					"Subscription not found or already unsubscribed",
+				))
 			}
 		}
 	}

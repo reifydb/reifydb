@@ -24,12 +24,16 @@ pub struct Request {
 /// - `"Auth"` - Authentication request
 /// - `"Command"` - Write command (INSERT, UPDATE, DELETE, DDL)
 /// - `"Query"` - Read query (SELECT)
+/// - `"Subscribe"` - Subscribe to real-time changes
+/// - `"Unsubscribe"` - Unsubscribe from a subscription
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
 	Auth(AuthRequest),
 	Command(CommandRequest),
 	Query(QueryRequest),
+	Subscribe(SubscribeRequest),
+	Unsubscribe(UnsubscribeRequest),
 }
 
 /// Authentication request payload.
@@ -55,4 +59,23 @@ pub struct QueryRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the queries.
 	pub params: Option<Params>,
+}
+
+/// Subscribe request payload.
+///
+/// Subscribes to real-time changes from a query. The server will push
+/// Change messages whenever the query results change.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SubscribeRequest {
+	/// RQL query to subscribe to.
+	pub query: String,
+}
+
+/// Unsubscribe request payload.
+///
+/// Stops receiving changes for a previously created subscription.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UnsubscribeRequest {
+	/// The subscription ID returned from a Subscribe response.
+	pub subscription_id: String,
 }

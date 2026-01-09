@@ -19,11 +19,13 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
 
+dashmap = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
