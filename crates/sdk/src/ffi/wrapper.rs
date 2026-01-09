@@ -14,12 +14,12 @@ use reifydb_abi::*;
 use reifydb_type::RowNumber;
 use tracing::{Span, debug_span, instrument, warn};
 
-use crate::{FFIOperator, OperatorContext, marshal::Marshaller};
+use crate::{FFIOperator, OperatorContext, ffi::Arena};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
 	operator: Mutex<O>,
-	marshaller: RefCell<Marshaller>,
+	arena: RefCell<Arena>,
 }
 
 impl<O: FFIOperator> OperatorWrapper<O> {
@@ -27,7 +27,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	pub fn new(operator: O) -> Self {
 		Self {
 			operator: Mutex::new(operator),
-			marshaller: RefCell::new(Marshaller::new()),
+			arena: RefCell::new(Arena::new()),
 		}
 	}
 
@@ -64,13 +64,13 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 				}
 			};
 
-			let mut marshaller = wrapper.marshaller.borrow_mut();
-			marshaller.clear();
+			let mut arena = wrapper.arena.borrow_mut();
+			arena.clear();
 
-			// Unmarshal input using the marshaller
+			// Unmarshal input using the arena
 			let unmarshal_span = debug_span!("unmarshal");
 			let _guard = unmarshal_span.enter();
-			let input_change = match marshaller.unmarshal_flow_change(&*input) {
+			let input_change = match arena.unmarshal_flow_change(&*input) {
 				Ok(change) => {
 					Span::current().record("input_diffs", change.diffs.len());
 					change
@@ -101,7 +101,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			// Marshal output
 			let marshal_span = debug_span!("marshal");
 			let _guard = marshal_span.enter();
-			*output = marshaller.marshal_flow_change(&output_change);
+			*output = arena.marshal_flow_change(&output_change);
 			drop(_guard);
 
 			0 // Success
@@ -137,8 +137,8 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 				}
 			};
 
-			let mut marshaller = wrapper.marshaller.borrow_mut();
-			marshaller.clear();
+			let mut arena = wrapper.arena.borrow_mut();
+			arena.clear();
 
 			// Convert row numbers
 			let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
@@ -165,7 +165,7 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 				}
 			};
 
-			*output = marshaller.marshal_columns(&columns);
+			*output = arena.marshal_columns(&columns);
 
 			0 // Success
 		}

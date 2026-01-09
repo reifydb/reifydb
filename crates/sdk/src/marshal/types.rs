@@ -8,9 +8,9 @@ use reifydb_core::value::container::BoolContainer;
 use reifydb_type::{Date, DateTime, Duration, IdentityId, IsNumber, Time, Uuid4, Uuid7, Value};
 use serde::de::DeserializeOwned;
 
-use super::Marshaller;
+use crate::ffi::Arena;
 
-impl Marshaller {
+impl Arena {
 	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI, bitvec: reifydb_type::BitVec) -> BoolContainer {
 		use reifydb_core::value::container::BoolContainer;
 

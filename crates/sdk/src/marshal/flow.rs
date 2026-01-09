@@ -11,15 +11,15 @@ use reifydb_core::{
 	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId},
 };
 
-use crate::{FlowChange, FlowChangeOrigin, FlowDiff, marshal::Marshaller};
+use crate::{FlowChange, FlowChangeOrigin, FlowDiff, ffi::Arena};
 
-impl Marshaller {
+impl Arena {
 	/// Marshal a flow change to FFI representation
 	pub fn marshal_flow_change(&mut self, change: &FlowChange) -> FlowChangeFFI {
 		// Allocate array for diffs
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
-			let diffs_array = self.arena.alloc(diffs_count * size_of::<FlowDiffFFI>()) as *mut FlowDiffFFI;
+			let diffs_array = self.alloc(diffs_count * size_of::<FlowDiffFFI>()) as *mut FlowDiffFFI;
 
 			// Marshal each diff
 			unsafe {

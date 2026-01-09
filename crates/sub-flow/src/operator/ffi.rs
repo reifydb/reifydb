@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FFIError, FlowChange, marshal::Marshaller};
+use reifydb_sdk::{FFIError, FlowChange, ffi::Arena};
 use reifydb_type::RowNumber;
 use tracing::{Span, debug_span, instrument};
 
@@ -36,8 +36,8 @@ pub struct FFIOperator {
 	/// ID for this operator
 	operator_id: FlowNodeId,
 
-	/// Marshaller for type conversions
-	marshaller: Mutex<Marshaller>,
+	/// Arena for type conversions
+	arena: Mutex<Arena>,
 }
 
 // SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
@@ -54,7 +54,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id,
-			marshaller: Mutex::new(Marshaller::new()),
+			arena: Mutex::new(Arena::new()),
 		}
 	}
 
@@ -107,14 +107,14 @@ impl Operator for FFIOperator {
 	) -> reifydb_type::Result<FlowChange> {
 		let total_start = std::time::Instant::now();
 
-		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.lock();
+		// Lock the arena for this operation
+		let mut arena = self.arena.lock();
 
 		// Phase 1: Marshal the flow change
 		let marshal_span = debug_span!("flow::ffi::marshal");
 		let _marshal_guard = marshal_span.enter();
 		let marshal_start = std::time::Instant::now();
-		let ffi_input = marshaller.marshal_flow_change(&change);
+		let ffi_input = arena.marshal_flow_change(&change);
 		let marshal_us = marshal_start.elapsed().as_micros() as u64;
 		drop(_marshal_guard);
 
@@ -155,12 +155,12 @@ impl Operator for FFIOperator {
 		let unmarshal_span = debug_span!("flow::ffi::unmarshal");
 		let _unmarshal_guard = unmarshal_span.enter();
 		let unmarshal_start = std::time::Instant::now();
-		let output_change = marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
+		let output_change = arena.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
 		let unmarshal_us = unmarshal_start.elapsed().as_micros() as u64;
 		drop(_unmarshal_guard);
 
-		// Clear the marshaller's arena after operation
-		marshaller.clear();
+		// Clear the arena's arena after operation
+		arena.clear();
 
 		Span::current().record("output_diff_count", output_change.diffs.len());
 		Span::current().record("marshal_time_us", marshal_us);
@@ -172,8 +172,8 @@ impl Operator for FFIOperator {
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
-		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.lock();
+		// Lock the arena for this operation
+		let mut arena = self.arena.lock();
 
 		// Convert row numbers to u64 array
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
@@ -212,10 +212,10 @@ impl Operator for FFIOperator {
 		}
 
 		// Unmarshal the columns
-		let columns = marshaller.unmarshal_columns(&ffi_output);
+		let columns = arena.unmarshal_columns(&ffi_output);
 
-		// Clear the marshaller's arena after operation
-		marshaller.clear();
+		// Clear the arena's arena after operation
+		arena.clear();
 
 		Ok(columns)
 	}

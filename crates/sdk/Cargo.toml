@@ -9,6 +9,7 @@ repository.workspace = true
 description = "SDK for building ReifyDB operators"
 
 [dependencies]
+bumpalo.workspace = true
 reifydb-abi.workspace = true
 reifydb-core.workspace = true
 reifydb-type.workspace = true

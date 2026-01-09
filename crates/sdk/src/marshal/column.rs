@@ -8,18 +8,19 @@ use std::mem::size_of;
 use reifydb_abi::{BufferFFI, ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI};
 use reifydb_core::value::column::{Column, ColumnData, Columns};
 use reifydb_type::{
-	Date, DateTime, Decimal, Duration, Fragment, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7,
+	BitVec, Date, DateTime, Decimal, Duration, Fragment, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7,
 	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 };
 use serde::Serialize;
 
-use super::{Marshaller, util::column_data_to_type_code};
+use super::util::column_data_to_type_code;
+use crate::ffi::Arena;
 
 // ============================================================================
 // High-level Columns marshalling
 // ============================================================================
 
-impl Marshaller {
+impl Arena {
 	/// Marshal Columns to FFI representation
 	pub fn marshal_columns(&mut self, columns: &Columns) -> ColumnsFFI {
 		let row_count = columns.row_count();
@@ -32,7 +33,7 @@ impl Marshaller {
 		// Marshal row numbers
 		let row_numbers_ptr = if !columns.row_numbers.is_empty() {
 			let size = columns.row_numbers.len() * size_of::<u64>();
-			let ptr = self.arena.alloc(size) as *mut u64;
+			let ptr = self.alloc(size) as *mut u64;
 			if !ptr.is_null() {
 				unsafe {
 					for (i, rn) in columns.row_numbers.iter().enumerate() {
@@ -47,7 +48,7 @@ impl Marshaller {
 
 		// Marshal each column
 		let columns_size = column_count * size_of::<ColumnFFI>();
-		let columns_ptr = self.arena.alloc(columns_size) as *mut ColumnFFI;
+		let columns_ptr = self.alloc(columns_size) as *mut ColumnFFI;
 
 		if !columns_ptr.is_null() {
 			unsafe {
@@ -99,11 +100,11 @@ impl Marshaller {
 // Individual Column marshalling
 // ============================================================================
 
-impl Marshaller {
+impl Arena {
 	pub(super) fn marshal_column(&mut self, column: &Column) -> ColumnFFI {
 		// Marshal column name
 		let name_bytes = column.name.text().as_bytes();
-		let name_ptr = self.arena.copy_bytes(name_bytes);
+		let name_ptr = self.copy_bytes(name_bytes);
 		let name = BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
@@ -155,14 +156,14 @@ impl Marshaller {
 	}
 
 	/// Marshal a bitvec by iterating and packing bits
-	fn marshal_bitvec(&mut self, bitvec: &reifydb_type::BitVec) -> BufferFFI {
+	fn marshal_bitvec(&mut self, bitvec: &BitVec) -> BufferFFI {
 		let len = bitvec.len();
 		if len == 0 {
 			return BufferFFI::empty();
 		}
 
 		let byte_count = (len + 7) / 8;
-		let ptr = self.arena.alloc(byte_count);
+		let ptr = self.alloc(byte_count);
 		if ptr.is_null() {
 			return BufferFFI::empty();
 		}
@@ -344,7 +345,7 @@ impl Marshaller {
 	}
 
 	/// Unmarshal bitvec from raw bytes
-	fn unmarshal_bitvec(&self, ffi: &BufferFFI, len: usize) -> reifydb_type::BitVec {
+	fn unmarshal_bitvec(&self, ffi: &BufferFFI, len: usize) -> BitVec {
 		use reifydb_type::BitVec;
 
 		if ffi.is_empty() || len == 0 {
@@ -373,7 +374,7 @@ impl Marshaller {
 // ColumnData byte-level marshalling helpers
 // ============================================================================
 
-impl Marshaller {
+impl Arena {
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnData) -> (BufferFFI, BufferFFI) {
 		match data {
 			// Fixed-size numeric types - use Deref to get slice
@@ -381,7 +382,7 @@ impl Marshaller {
 				// BoolContainer stores packed bits internally
 				let len = container.len();
 				let byte_count = (len + 7) / 8;
-				let ptr = self.arena.alloc(byte_count);
+				let ptr = self.alloc(byte_count);
 				if !ptr.is_null() {
 					unsafe {
 						std::ptr::write_bytes(ptr, 0, byte_count);
@@ -448,7 +449,7 @@ impl Marshaller {
 				let ids: &[IdentityId] = &**container;
 				let bytes: Vec<u8> =
 					ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
-				let ptr = self.arena.copy_bytes(&bytes);
+				let ptr = self.copy_bytes(&bytes);
 				(
 					BufferFFI {
 						ptr,
@@ -462,7 +463,7 @@ impl Marshaller {
 				let uuids: &[Uuid4] = &**container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
-				let ptr = self.arena.copy_bytes(&bytes);
+				let ptr = self.copy_bytes(&bytes);
 				(
 					BufferFFI {
 						ptr,
@@ -476,7 +477,7 @@ impl Marshaller {
 				let uuids: &[Uuid7] = &**container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
-				let ptr = self.arena.copy_bytes(&bytes);
+				let ptr = self.copy_bytes(&bytes);
 				(
 					BufferFFI {
 						ptr,
@@ -551,7 +552,7 @@ impl Marshaller {
 			return (BufferFFI::empty(), BufferFFI::empty());
 		}
 
-		let ptr = self.arena.alloc(byte_len);
+		let ptr = self.alloc(byte_len);
 		if !ptr.is_null() {
 			unsafe {
 				std::ptr::copy_nonoverlapping(slice.as_ptr() as *const u8, ptr, byte_len);
@@ -612,9 +613,9 @@ impl Marshaller {
 
 	/// Helper: marshal data and offsets to arena
 	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (BufferFFI, BufferFFI) {
-		let data_ptr = self.arena.copy_bytes(data);
+		let data_ptr = self.copy_bytes(data);
 		let offsets_byte_len = offsets.len() * size_of::<u64>();
-		let offsets_ptr = self.arena.alloc(offsets_byte_len) as *mut u64;
+		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
 		if !offsets_ptr.is_null() {
 			unsafe {
 				std::ptr::copy_nonoverlapping(offsets.as_ptr(), offsets_ptr, offsets.len());

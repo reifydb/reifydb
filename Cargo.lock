@@ -1805,6 +1805,7 @@ dependencies = [
 name = "reifydb-sdk"
 version = "0.2.0"
 dependencies = [
+ "bumpalo",
  "postcard",
  "reifydb-abi",
  "reifydb-core",
