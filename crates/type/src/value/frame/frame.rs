@@ -9,7 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::FrameColumn;
-use crate::{RowNumber, util::unicode::UnicodeWidthStr};
+use crate::{RowNumber, Value, util::unicode::UnicodeWidthStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
@@ -50,6 +50,15 @@ impl Frame {
 			row_numbers,
 			columns,
 		}
+	}
+
+	pub fn to_rows(&self) -> Vec<Vec<(String, Value)>> {
+		let row_count = self.first().map_or(0, |c| c.data.len());
+		(0..row_count)
+			.map(|row_idx| {
+				self.columns.iter().map(|col| (col.name.clone(), col.data.get_value(row_idx))).collect()
+			})
+			.collect()
 	}
 }
 
