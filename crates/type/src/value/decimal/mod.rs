@@ -4,7 +4,7 @@
 use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},
-	ops::Deref,
+	ops::{Add, Deref, Div, Mul, Sub},
 	str::FromStr,
 };
 
@@ -208,6 +208,72 @@ impl From<Int> for Decimal {
 impl From<Uint> for Decimal {
 	fn from(value: Uint) -> Self {
 		Self(BigDecimalInner::from_bigint(value.0, 0))
+	}
+}
+
+// Arithmetic operations
+impl Add for Decimal {
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self::Output {
+		Self(self.0 + rhs.0)
+	}
+}
+
+impl Sub for Decimal {
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self::Output {
+		Self(self.0 - rhs.0)
+	}
+}
+
+impl Mul for Decimal {
+	type Output = Self;
+
+	fn mul(self, rhs: Self) -> Self::Output {
+		Self(self.0 * rhs.0)
+	}
+}
+
+impl Div for Decimal {
+	type Output = Self;
+
+	fn div(self, rhs: Self) -> Self::Output {
+		Self(self.0 / rhs.0)
+	}
+}
+
+// Reference arithmetic operations (to avoid cloning)
+impl Add<&Decimal> for &Decimal {
+	type Output = Decimal;
+
+	fn add(self, rhs: &Decimal) -> Self::Output {
+		Decimal(&self.0 + &rhs.0)
+	}
+}
+
+impl Sub<&Decimal> for &Decimal {
+	type Output = Decimal;
+
+	fn sub(self, rhs: &Decimal) -> Self::Output {
+		Decimal(&self.0 - &rhs.0)
+	}
+}
+
+impl Mul<&Decimal> for &Decimal {
+	type Output = Decimal;
+
+	fn mul(self, rhs: &Decimal) -> Self::Output {
+		Decimal(&self.0 * &rhs.0)
+	}
+}
+
+impl Div<&Decimal> for &Decimal {
+	type Output = Decimal;
+
+	fn div(self, rhs: &Decimal) -> Self::Output {
+		Decimal(&self.0 / &rhs.0)
 	}
 }
 
