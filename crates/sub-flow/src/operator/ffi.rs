@@ -3,22 +3,22 @@
 
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
-use std::{
-	ffi::c_void,
-	panic::{AssertUnwindSafe, catch_unwind},
-};
-
 use parking_lot::Mutex;
 use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::{FFIError, FlowChange, ffi::Arena};
 use reifydb_type::RowNumber;
+use std::cell::RefCell;
+use std::{
+	ffi::c_void,
+	panic::{AssertUnwindSafe, catch_unwind},
+};
 use tracing::{Span, debug_span, instrument};
 
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::{Operator, info::OperatorInfo},
+	operator::Operator,
 	transaction::FlowTransaction,
 };
 
@@ -26,23 +26,15 @@ use crate::{
 pub struct FFIOperator {
 	/// Operator descriptor from the FFI library
 	descriptor: OperatorDescriptorFFI,
-
 	/// Virtual function table for calling FFI functions
 	vtable: OperatorVTableFFI,
-
 	/// Pointer to the FFI operator instance
 	instance: *mut c_void,
-
 	/// ID for this operator
 	operator_id: FlowNodeId,
-
 	/// Arena for type conversions
-	arena: Mutex<Arena>,
+	arena: RefCell<Arena>,
 }
-
-// SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
-unsafe impl Send for FFIOperator {}
-unsafe impl Sync for FFIOperator {}
 
 impl FFIOperator {
 	/// Create a new FFI operator
@@ -54,7 +46,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id,
-			arena: Mutex::new(Arena::new()),
+			arena: RefCell::new(Arena::new()),
 		}
 	}
 
@@ -70,18 +62,6 @@ impl Drop for FFIOperator {
 		if !self.instance.is_null() {
 			(self.vtable.destroy)(self.instance);
 		}
-	}
-}
-
-impl OperatorInfo for FFIOperator {
-	fn operator_name(&self) -> &'static str {
-		// FFI operators have dynamic names, but OperatorInfo requires &'static str
-		// We use a static placeholder; the actual name is in the descriptor
-		"FFI"
-	}
-
-	fn operator_id(&self) -> FlowNodeId {
-		self.operator_id
 	}
 }
 
@@ -107,8 +87,7 @@ impl Operator for FFIOperator {
 	) -> reifydb_type::Result<FlowChange> {
 		let total_start = std::time::Instant::now();
 
-		// Lock the arena for this operation
-		let mut arena = self.arena.lock();
+		let mut arena = self.arena.borrow_mut();
 
 		// Phase 1: Marshal the flow change
 		let marshal_span = debug_span!("flow::ffi::marshal");
@@ -172,9 +151,7 @@ impl Operator for FFIOperator {
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
-		// Lock the arena for this operation
-		let mut arena = self.arena.lock();
-
+		let mut arena = self.arena.borrow_mut();
 		// Convert row numbers to u64 array
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 

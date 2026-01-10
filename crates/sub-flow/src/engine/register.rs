@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use FlowNodeType::{Aggregate, SinkSubscription, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
 use reifydb_core::{
@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
-	Flow, FlowNode, FlowNodeType,
+	FlowDag, FlowNode, FlowNodeType,
 	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Merge, Sort, Take, Window},
 };
 use reifydb_type::internal;
@@ -28,23 +28,28 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> reifydb_type::Result<()> {
-		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
+	pub fn register(&mut self, txn: &mut StandardCommandTransaction, flow: FlowDag) -> reifydb_type::Result<()> {
+		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
 			self.add(txn, &flow, node)?;
 		}
 
-		self.inner.analyzer.write().add(flow.clone());
-		self.inner.flows.write().insert(flow.id, flow);
+		self.analyzer.add(flow.clone());
+		self.flows.insert(flow.id, flow);
 
 		Ok(())
 	}
 
 	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
-	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> reifydb_type::Result<()> {
-		debug_assert!(!self.inner.operators.contains_key(&node.id), "Operator already registered");
+	fn add(
+		&mut self,
+		txn: &mut StandardCommandTransaction,
+		flow: &FlowDag,
+		node: &FlowNode,
+	) -> reifydb_type::Result<()> {
+		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
 		match node.ty {
@@ -56,32 +61,32 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = self.inner.catalog.get_table(txn, table)?;
+				let table = self.catalog.get_table(txn, table)?;
 
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id));
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
+					Rc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
 				);
 			}
 			SourceView {
 				view,
 			} => {
-				let view = self.inner.catalog.get_view(txn, view)?;
+				let view = self.catalog.get_view(txn, view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
+					Rc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
 				);
 			}
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = self.inner.catalog.get_flow(txn, source_flow)?;
+				let source_flow_def = self.catalog.get_flow(txn, source_flow)?;
 				self.add_source(flow.id, node.id, PrimitiveId::flow(source_flow_def.id));
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
+					Rc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
 						node.id,
 						source_flow_def,
 					))),
@@ -91,24 +96,22 @@ impl FlowEngine {
 				view,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 
 				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
-				let resolved = self.inner.catalog.resolve_view(txn, view)?;
-				self.inner.operators.insert(
+				let resolved = self.catalog.resolve_view(txn, view)?;
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
+					Rc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
 				);
 			}
 			SinkSubscription {
 				subscription,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
@@ -116,10 +119,10 @@ impl FlowEngine {
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
 				// which uses PrimitiveId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self.inner.catalog.resolve_subscription(txn, subscription)?;
-				self.inner.operators.insert(
+				let resolved = self.catalog.resolve_subscription(txn, subscription)?;
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
+					Rc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
 						parent, node.id, resolved,
 					))),
 				);
@@ -128,70 +131,65 @@ impl FlowEngine {
 				conditions,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Filter(FilterOperator::new(parent, node.id, conditions))),
+					Rc::new(Operators::Filter(FilterOperator::new(parent, node.id, conditions))),
 				);
 			}
 			Map {
 				expressions,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Map(MapOperator::new(parent, node.id, expressions))),
+					Rc::new(Operators::Map(MapOperator::new(parent, node.id, expressions))),
 				);
 			}
 			Extend {
 				expressions,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Extend(ExtendOperator::new(parent, node.id, expressions))),
+					Rc::new(Operators::Extend(ExtendOperator::new(parent, node.id, expressions))),
 				);
 			}
 			Sort {
 				by: _,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Sort(SortOperator::new(parent, node.id, Vec::new()))),
+					Rc::new(Operators::Sort(SortOperator::new(parent, node.id, Vec::new()))),
 				);
 			}
 			Take {
 				limit,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
+					Rc::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
 				);
 			}
 			Join {
@@ -210,22 +208,20 @@ impl FlowEngine {
 				let right_node = node.inputs[1];
 
 				let left_parent = self
-					.inner
 					.operators
 					.get(&left_node)
 					.ok_or_else(|| Error(internal!("Left parent operator not found")))?
 					.clone();
 
 				let right_parent = self
-					.inner
 					.operators
 					.get(&right_node)
 					.ok_or_else(|| Error(internal!("Right parent operator not found")))?
 					.clone();
 
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Join(JoinOperator::new(
+					Rc::new(Operators::Join(JoinOperator::new(
 						left_parent,
 						right_parent,
 						node.id,
@@ -235,7 +231,7 @@ impl FlowEngine {
 						left,
 						right,
 						alias,
-						self.inner.executor.clone(),
+						self.executor.clone(),
 					))),
 				);
 			}
@@ -243,14 +239,13 @@ impl FlowEngine {
 				expressions,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Distinct(DistinctOperator::new(
+					Rc::new(Operators::Distinct(DistinctOperator::new(
 						parent,
 						node.id,
 						expressions,
@@ -267,7 +262,6 @@ impl FlowEngine {
 
 				for input_node_id in &node.inputs {
 					let parent = self
-						.inner
 						.operators
 						.get(input_node_id)
 						.ok_or_else(|| {
@@ -280,9 +274,9 @@ impl FlowEngine {
 					parents.push(parent);
 				}
 
-				self.inner.operators.insert(
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Merge(MergeOperator::new(
+					Rc::new(Operators::Merge(MergeOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),
@@ -294,31 +288,21 @@ impl FlowEngine {
 				expressions,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 
-				// Check if this is an FFI operator and use the appropriate creation method
-				let operator = if self.is_ffi_operator(operator.as_str()) {
-					let config = evaluate_operator_config(
-						expressions.as_slice(),
-						&self.inner.evaluator,
-					)?;
-					self.create_ffi_operator(operator.as_str(), node.id, &config)?
-				} else {
-					// Use registry for non-FFI operators
-					self.inner.registry.create_operator(
-						operator.as_str(),
-						node.id,
-						expressions.as_slice(),
-					)?
-				};
+				if !self.is_ffi_operator(operator.as_str()) {
+					unimplemented!("only ffi operators can be used")
+				}
 
-				self.inner.operators.insert(
+				let config = evaluate_operator_config(expressions.as_slice(), &self.evaluator)?;
+				let operator = self.create_ffi_operator(operator.as_str(), node.id, &config)?;
+
+				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
+					Rc::new(Operators::Apply(ApplyOperator::new(parent, node.id, operator))),
 				);
 			}
 			Aggregate {
@@ -335,7 +319,6 @@ impl FlowEngine {
 				max_window_age,
 			} => {
 				let parent = self
-					.inner
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
@@ -352,15 +335,15 @@ impl FlowEngine {
 					max_window_count.clone(),
 					max_window_age.clone(),
 				);
-				self.inner.operators.insert(node.id, Arc::new(Operators::Window(operator)));
+				self.operators.insert(node.id, Rc::new(Operators::Window(operator)));
 			}
 		}
 
 		Ok(())
 	}
 
-	fn add_source(&self, flow: FlowId, node: FlowNodeId, source: PrimitiveId) {
-		let mut nodes = self.inner.sources.entry(source).or_insert_with(Vec::new);
+	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, source: PrimitiveId) {
+		let nodes = self.sources.entry(source).or_insert_with(Vec::new);
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
@@ -368,8 +351,8 @@ impl FlowEngine {
 		}
 	}
 
-	fn add_sink(&self, flow: FlowId, node: FlowNodeId, sink: PrimitiveId) {
-		let mut nodes = self.inner.sinks.entry(sink).or_insert_with(Vec::new);
+	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: PrimitiveId) {
+		let nodes = self.sinks.entry(sink).or_insert_with(Vec::new);
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {

@@ -8,7 +8,7 @@ use reifydb_core::{CommitVersion, Result, interface::FlowId};
 use reifydb_transaction::cdc::CdcQueryTransaction;
 use tracing::{debug, info};
 
-use crate::{coordinator::FlowCoordinator, transaction::Pending, worker::Batch};
+use crate::{convert, coordinator::FlowCoordinator, transaction::Pending, worker::Batch};
 
 impl FlowCoordinator {
 	pub(crate) fn backfill(&self, flow_id: FlowId, up_to_version: CommitVersion) -> Result<()> {
@@ -28,7 +28,7 @@ impl FlowCoordinator {
 			return Ok(());
 		}
 
-		info!(
+		debug!(
 			flow_id = flow_id.0,
 			start_version = start_version.0,
 			up_to_version = up_to_version.0,
@@ -43,14 +43,14 @@ impl FlowCoordinator {
 		let mut batches = Vec::new();
 		for cdc in batch.items {
 			let version = cdc.version;
-			let changes = self.decode_cdc(&cdc, version)?;
+			let changes = convert::to_flow_change(&self.engine, &self.catalog, &cdc, version)?;
 			batches.push(Batch {
 				version,
 				changes,
 			});
 		}
 
-		let pending_writes = self.pool.process(batches, state_version)?;
+		let pending_writes = self.pool.submit(batches, state_version)?;
 		for (key, pending) in pending_writes.iter_sorted() {
 			match pending {
 				Pending::Set(value) => {

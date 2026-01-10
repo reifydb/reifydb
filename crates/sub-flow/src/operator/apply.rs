@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
@@ -14,13 +14,13 @@ use crate::{
 };
 
 pub struct ApplyOperator {
-	parent: Arc<Operators>,
+	parent: Rc<Operators>,
 	node: FlowNodeId,
 	inner: BoxedOperator,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, inner: BoxedOperator) -> Self {
+	pub fn new(parent: Rc<Operators>, node: FlowNodeId, inner: BoxedOperator) -> Self {
 		Self {
 			parent,
 			node,

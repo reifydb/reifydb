@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 
-use crate::{FlowEngine, tracker::PrimitiveVersionTracker};
+use crate::{catalog::FlowCatalog, tracker::PrimitiveVersionTracker};
 
 /// Provides flow lag data for virtual table queries.
 ///
@@ -21,21 +21,21 @@ use crate::{FlowEngine, tracker::PrimitiveVersionTracker};
 /// processing semantics during backfill restarts.
 pub struct FlowLags {
 	primitive_tracker: Arc<PrimitiveVersionTracker>,
-	flow_engine: Arc<FlowEngine>,
 	engine: StandardEngine,
+	catalog: FlowCatalog,
 }
 
 impl FlowLags {
 	/// Create a new flow lags provider.
-	pub fn new_simple(
+	pub fn new(
 		primitive_tracker: Arc<PrimitiveVersionTracker>,
-		flow_engine: Arc<FlowEngine>,
 		engine: StandardEngine,
+		catalog: FlowCatalog,
 	) -> Self {
 		Self {
 			primitive_tracker,
-			flow_engine,
 			engine,
+			catalog,
 		}
 	}
 }
@@ -54,14 +54,19 @@ impl FlowLagsProvider for FlowLags {
 		};
 
 		let mut rows = Vec::new();
-		for flow_id in self.flow_engine.flow_ids() {
-			let flow_version = CdcCheckpoint::fetch(&mut txn, &flow_id).unwrap_or(CommitVersion(0)).0;
 
-			// Calculate lag for each primitive
+		// Get registered flows from catalog
+		let registered = self.catalog.get_flow_ids();
+
+		// Calculate lags only for registered flows
+		for flow_id in &registered {
+			let flow_version = CdcCheckpoint::fetch(&mut txn, flow_id)
+				.unwrap_or(CommitVersion(0)).0;
+
 			for (primitive_id, version) in &primitive_versions {
 				let lag = version.0.saturating_sub(flow_version);
 				rows.push(FlowLagRow {
-					flow_id,
+					flow_id: *flow_id,
 					primitive_id: *primitive_id,
 					lag,
 				});

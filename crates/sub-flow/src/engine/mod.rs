@@ -5,158 +5,64 @@ mod eval;
 mod process;
 mod register;
 
-use std::{
-	collections::{HashMap, HashSet},
-	fs::read_dir,
-	path::PathBuf,
-	sync::Arc,
-};
-
-use dashmap::DashMap;
-use parking_lot::RwLock;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	CommitVersion, Error,
-	event::{
-		EventBus,
-		flow::{FlowOperatorLoadedEvent, OperatorColumnDef},
-	},
+	event::EventBus,
 	interface::{FlowId, FlowNodeId, PrimitiveId, TableId, ViewId},
 };
 use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
-use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
+use reifydb_rql::flow::{FlowDag, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
-use tracing::{debug, error, instrument};
+use std::{
+	collections::{HashMap, HashSet},
+	rc::Rc,
+};
+use tracing::instrument;
 
 use crate::{
-	ffi::loader::{ColumnDefInfo, ffi_operator_loader},
-	operator::{BoxedOperator, Operators, transform::registry::TransformOperatorRegistry},
+	ffi::loader::ffi_operator_loader,
+	operator::{BoxedOperator, Operators},
 };
 
-pub(crate) struct FlowEngineInner {
+pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) evaluator: StandardColumnEvaluator,
 	pub(crate) executor: Executor,
-	pub(crate) registry: TransformOperatorRegistry,
-	pub(crate) operators: DashMap<FlowNodeId, Arc<Operators>>,
-	pub(crate) flows: RwLock<HashMap<FlowId, Flow>>,
-	pub(crate) sources: DashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: DashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
+	pub(crate) operators: HashMap<FlowNodeId, Rc<Operators>>,
+	pub(crate) flows: HashMap<FlowId, FlowDag>,
+	pub(crate) sources: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
-	pub(crate) flow_creation_versions: RwLock<HashMap<FlowId, CommitVersion>>,
-}
-
-pub struct FlowEngine {
-	pub(crate) inner: Arc<FlowEngineInner>,
-}
-
-impl Clone for FlowEngine {
-	fn clone(&self) -> Self {
-		Self {
-			inner: Arc::clone(&self.inner),
-		}
-	}
+	pub(crate) flow_creation_versions: HashMap<FlowId, CommitVersion>,
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "info", skip(catalog, evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
+	#[instrument(
+		name = "flow::engine::new",
+		level = "info",
+		skip(catalog, evaluator, executor, event_bus)
+	)]
 	pub fn new(
 		catalog: Catalog,
 		evaluator: StandardColumnEvaluator,
 		executor: Executor,
-		registry: TransformOperatorRegistry,
 		event_bus: EventBus,
-		operators_dir: Option<PathBuf>,
 	) -> Self {
-		// Load FFI operators if directory specified
-		if let Some(dir) = operators_dir {
-			if let Err(e) = Self::load_ffi_operators(&dir, &event_bus) {
-				error!("Failed to load FFI operators from {:?}: {}", dir, e);
-			}
-		}
-
 		Self {
-			inner: Arc::new(FlowEngineInner {
-				catalog,
-				evaluator,
-				executor,
-				registry,
-				operators: DashMap::new(),
-				flows: RwLock::new(HashMap::new()),
-				sources: DashMap::new(),
-				sinks: DashMap::new(),
-				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
-				event_bus,
-				flow_creation_versions: RwLock::new(HashMap::new()),
-			}),
+			catalog,
+			evaluator,
+			executor,
+			operators: HashMap::new(),
+			flows: HashMap::new(),
+			sources: HashMap::new(),
+			sinks: HashMap::new(),
+			analyzer: FlowGraphAnalyzer::new(),
+			event_bus,
+			flow_creation_versions: HashMap::new(),
 		}
-	}
-
-	/// Load FFI operators from a directory into the global loader.
-	///
-	/// This can be called at startup to eagerly load operators before any flows exist.
-	#[instrument(name = "flow::engine::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
-	pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
-		let loader = ffi_operator_loader();
-
-		// Scan directory for shared libraries
-		let entries = read_dir(dir).unwrap();
-
-		for entry in entries {
-			let entry = entry.unwrap();
-			let path = entry.path();
-
-			if !path.is_file() {
-				continue;
-			}
-
-			let is_shared_lib = path.extension().map_or(false, |ext| ext == "so" || ext == "dylib");
-			if !is_shared_lib {
-				continue;
-			}
-
-			// Register the operator without instantiating it
-			let mut guard = loader.write().unwrap();
-			let info = match guard.register_operator(&path)? {
-				Some(info) => info,
-				None => {
-					// Not a valid FFI operator, skip silently
-					continue;
-				}
-			};
-
-			debug!("Registered FFI operator: {} from {:?}", info.operator, path);
-
-			// Convert column definitions to event format
-			fn convert_column_defs(columns: &[ColumnDefInfo]) -> Vec<OperatorColumnDef> {
-				columns.iter()
-					.map(|c| OperatorColumnDef {
-						name: c.name.clone(),
-						field_type: c.field_type,
-						description: c.description.clone(),
-					})
-					.collect()
-			}
-
-			// Emit event for loaded operator
-			let event_bus = event_bus.clone();
-			let event = FlowOperatorLoadedEvent {
-				operator: info.operator,
-				library_path: info.library_path,
-				api: info.api,
-				version: info.version,
-				description: info.description,
-				input: convert_column_defs(&info.input_columns),
-				output: convert_column_defs(&info.output_columns),
-				capabilities: info.capabilities,
-			};
-
-			event_bus.emit(event);
-		}
-
-		Ok(())
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
@@ -188,50 +94,42 @@ impl FlowEngine {
 		loader_read.has_operator(operator)
 	}
 
-	pub fn has_registered_flows(&self) -> bool {
-		!self.inner.flows.read().is_empty()
-	}
-
 	/// Returns a set of all currently registered flow IDs
 	pub fn flow_ids(&self) -> HashSet<FlowId> {
-		self.inner.flows.read().keys().copied().collect()
+		self.flows.keys().copied().collect()
 	}
 
 	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
-	pub fn clear(&self) {
-		self.inner.operators.clear();
-		self.inner.flows.write().clear();
-		self.inner.sources.clear();
-		self.inner.sinks.clear();
-		self.inner.analyzer.write().clear();
-		self.inner.flow_creation_versions.write().clear();
+	pub fn clear(&mut self) {
+		self.operators.clear();
+		self.flows.clear();
+		self.sources.clear();
+		self.sinks.clear();
+		self.analyzer.clear();
+		self.flow_creation_versions.clear();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
-		self.inner.analyzer.read().get_dependency_graph().clone()
+		self.analyzer.get_dependency_graph().clone()
 	}
 
 	pub fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
-		let dependency_graph = analyzer.get_dependency_graph();
-		analyzer.get_flows_depending_on_table(dependency_graph, table_id)
+		let dependency_graph = self.analyzer.get_dependency_graph();
+		self.analyzer.get_flows_depending_on_table(dependency_graph, table_id)
 	}
 
 	pub fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
-		let dependency_graph = analyzer.get_dependency_graph();
-		analyzer.get_flows_depending_on_view(dependency_graph, view_id)
+		let dependency_graph = self.analyzer.get_dependency_graph();
+		self.analyzer.get_flows_depending_on_view(dependency_graph, view_id)
 	}
 
 	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
-		let analyzer = self.inner.analyzer.read();
-		let dependency_graph = analyzer.get_dependency_graph();
-		analyzer.get_flow_producing_view(dependency_graph, view_id)
+		let dependency_graph = self.analyzer.get_dependency_graph();
+		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
 	pub fn calculate_execution_order(&self) -> Vec<FlowId> {
-		let analyzer = self.inner.analyzer.read();
-		let dependency_graph = analyzer.get_dependency_graph();
-		analyzer.calculate_execution_order(dependency_graph)
+		let dependency_graph = self.analyzer.get_dependency_graph();
+		self.analyzer.calculate_execution_order(dependency_graph)
 	}
 }

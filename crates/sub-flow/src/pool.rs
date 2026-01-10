@@ -3,14 +3,12 @@
 
 //! Worker pool for parallel flow processing across N workers.
 
-use std::sync::Arc;
-
 use reifydb_catalog::Catalog;
 use reifydb_core::{CommitVersion, Error, Result};
 use reifydb_engine::StandardEngine;
 use reifydb_type::internal;
 use tracing::debug;
-
+use reifydb_type::util::hex::encode;
 use crate::{
 	FlowEngine,
 	transaction::PendingWrites,
@@ -26,16 +24,21 @@ impl FlowWorkerPool {
 	/// Create a new worker pool with N workers.
 	///
 	/// Each worker gets a unique ID (0..N-1) and processes flows assigned via hash partitioning.
-	/// Workers share the FlowEngine (Arc-cloned) and each runs in its own OS thread.
-	pub fn new(num_workers: usize, flow_engine: Arc<FlowEngine>, engine: StandardEngine, catalog: Catalog) -> Self {
+	/// Each worker gets its own FlowEngine instance created by the factory function.
+	pub fn new<F, Fac>(num_workers: usize, factory_builder: F, engine: StandardEngine, catalog: Catalog) -> Self
+	where
+		F: Fn() -> Fac + Send + 'static,
+		Fac: FnOnce() -> FlowEngine + Send + 'static,
+	{
 		debug!(num_workers, "creating flow worker pool");
 
 		let workers = (0..num_workers)
 			.map(|worker_id| {
+				let worker_factory = factory_builder();
 				FlowWorker::new(
 					worker_id,
 					num_workers,
-					flow_engine.clone(),
+					worker_factory,
 					engine.clone(),
 					catalog.clone(),
 				)
@@ -47,21 +50,30 @@ impl FlowWorkerPool {
 		}
 	}
 
-	/// Process versioned batches of decoded changes across all workers.
+	/// Submit versioned batches of decoded changes to all workers for processing.
 	///
 	/// Broadcasts batches to all workers, each processing only their assigned flows.
 	/// Aggregates PendingWrites from all workers with keyspace overlap validation.
-	pub fn process(&self, batches: Vec<Batch>, state_version: CommitVersion) -> Result<PendingWrites> {
-		// Broadcast batches to all workers in parallel
+	pub fn submit(&self, batches: Vec<Batch>, state_version: CommitVersion) -> Result<PendingWrites> {
 		let mut results = Vec::with_capacity(self.workers.len());
 
 		for worker in &self.workers {
-			let result = worker.process(batches.clone(), state_version)?;
-			results.push(result);
+			results.push(worker.process(batches.clone(), state_version)?);
 		}
 
 		// Aggregate results with keyspace validation
 		self.aggregate_pending_writes(results)
+	}
+
+	/// Register a flow in the assigned worker's FlowEngine.
+	///
+	/// Uses hash partitioning to assign flow to specific worker: (flow_id % num_workers)
+	pub fn register_flow(&self, flow: reifydb_rql::flow::FlowDag) -> Result<()> {
+		let flow_id = flow.id;
+		let worker_id = (flow_id.0 as usize) % self.workers.len();
+
+		self.workers[worker_id].register_flow(flow)?;
+		Ok(())
 	}
 
 	/// Aggregate PendingWrites from multiple workers with keyspace overlap detection.
@@ -76,7 +88,7 @@ impl FlowWorkerPool {
 				if combined.contains_key(&key) {
 					return Err(Error(internal!(
 						"keyspace overlap detected during worker aggregation: {}",
-						reifydb_type::util::hex::encode(key.as_ref())
+						encode(key.as_ref())
 					)));
 				}
 

@@ -15,8 +15,8 @@ use reifydb_core::{
 	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, SubscriptionDef, ViewDef},
 };
 use reifydb_rql::{
-	flow::{Flow, FlowBuilder, FlowEdge, FlowNode, FlowNodeType},
-	plan::physical::PhysicalPlan,
+    flow::{FlowDag, FlowBuilder, FlowEdge, FlowNode, FlowNodeType},
+    plan::physical::PhysicalPlan,
 };
 use reifydb_type::Blob;
 
@@ -37,7 +37,7 @@ pub fn compile_flow(
 	plan: PhysicalPlan,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
-) -> Result<Flow> {
+) -> Result<FlowDag> {
 	let compiler = FlowCompiler::new(flow_id);
 	compiler.compile(txn, plan, sink)
 }
@@ -47,7 +47,7 @@ pub fn compile_subscription_flow(
 	plan: PhysicalPlan,
 	subscription: &SubscriptionDef,
 	flow_id: FlowId,
-) -> Result<Flow> {
+) -> Result<FlowDag> {
 	let compiler = FlowCompiler::new(flow_id);
 	compiler.compile_with_subscription(txn, plan, subscription)
 }
@@ -64,7 +64,7 @@ impl FlowCompiler {
 	/// Creates a new FlowCompiler instance with an existing flow ID
 	pub fn new(flow_id: FlowId) -> Self {
 		Self {
-			builder: Flow::builder(flow_id),
+			builder: FlowDag::builder(flow_id),
 			sink: None,
 		}
 	}
@@ -141,7 +141,7 @@ impl FlowCompiler {
 		txn: &mut StandardCommandTransaction,
 		plan: PhysicalPlan,
 		sink: Option<&ViewDef>,
-	) -> Result<Flow> {
+	) -> Result<FlowDag> {
 		// Store sink view for terminal nodes (if provided)
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(txn, plan)?;
@@ -167,7 +167,7 @@ impl FlowCompiler {
 		txn: &mut StandardCommandTransaction,
 		plan: PhysicalPlan,
 		subscription: &SubscriptionDef,
-	) -> Result<Flow> {
+	) -> Result<FlowDag> {
 		let root_node_id = self.compile_plan(txn, plan)?;
 
 		// Add SinkSubscription node

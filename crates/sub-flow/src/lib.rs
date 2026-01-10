@@ -22,7 +22,4 @@ pub(crate) mod worker;
 pub use builder::FlowBuilder;
 pub use engine::*;
 pub use lag::FlowLags;
-pub use operator::{
-	Operator, stateful,
-	transform::{TransformOperator, TransformOperatorFactory, extract},
-};
+pub use operator::{Operator, stateful};

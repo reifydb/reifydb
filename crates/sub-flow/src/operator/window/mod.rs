@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
@@ -22,7 +22,6 @@ use crate::{
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
-		transform::TransformOperator,
 	},
 	transaction::FlowTransaction,
 };
@@ -119,7 +118,7 @@ impl Default for WindowState {
 
 /// The main window operator
 pub struct WindowOperator {
-	pub parent: Arc<Operators>,
+	pub parent: Rc<Operators>,
 	pub node: FlowNodeId,
 	pub window_type: WindowType,
 	pub size: WindowSize,
@@ -136,7 +135,7 @@ pub struct WindowOperator {
 
 impl WindowOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: Rc<Operators>,
 		node: FlowNodeId,
 		window_type: WindowType,
 		size: WindowSize,
@@ -538,8 +537,6 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 }
-
-impl TransformOperator for WindowOperator {}
 
 impl RawStatefulOperator for WindowOperator {}
 

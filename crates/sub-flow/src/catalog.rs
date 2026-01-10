@@ -12,8 +12,9 @@ use parking_lot::RwLock;
 use reifydb_catalog::Catalog;
 use reifydb_core::{
 	Result,
-	interface::{ColumnDef, DictionaryDef, PrimitiveId},
+	interface::{ColumnDef, DictionaryDef, FlowId, PrimitiveId},
 };
+use reifydb_rql::flow::{FlowDag, load_flow_dag};
 use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Type;
 
@@ -40,6 +41,7 @@ pub struct PrimitiveMetadata {
 pub struct FlowCatalog {
 	catalog: Catalog,
 	sources: RwLock<HashMap<PrimitiveId, Arc<PrimitiveMetadata>>>,
+	flows: RwLock<HashMap<FlowId, FlowDag>>,
 }
 
 impl FlowCatalog {
@@ -47,6 +49,7 @@ impl FlowCatalog {
 		Self {
 			catalog,
 			sources: RwLock::new(HashMap::new()),
+			flows: RwLock::new(HashMap::new()),
 		}
 	}
 
@@ -125,6 +128,46 @@ impl FlowCatalog {
 			dictionaries,
 			has_dictionary_columns,
 		})
+	}
+
+	/// Get or load flow from catalog with caching (double-check locking pattern).
+	/// Returns (FlowDag, is_new) where is_new is true if the flow was newly cached.
+	pub fn get_or_load_flow<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		flow_id: FlowId,
+	) -> Result<(FlowDag, bool)> {
+		// Fast path: read lock - flow already cached
+		{
+			let cache = self.flows.read();
+			if let Some(flow) = cache.get(&flow_id) {
+				return Ok((flow.clone(), false));
+			}
+		}
+
+		// Slow path: load and cache
+		let flow = load_flow_dag(txn, flow_id)?;
+		let mut cache = self.flows.write();
+
+		let is_new = !cache.contains_key(&flow_id);
+		let cached_flow = cache.entry(flow_id).or_insert(flow).clone();
+
+		Ok((cached_flow, is_new))
+	}
+
+	/// Get all registered flow IDs
+	pub fn get_flow_ids(&self) -> Vec<FlowId> {
+		self.flows.read().keys().copied().collect()
+	}
+}
+
+impl Clone for FlowCatalog {
+	fn clone(&self) -> Self {
+		Self {
+			catalog: self.catalog.clone(),
+			sources: RwLock::new(HashMap::new()),
+			flows: RwLock::new(HashMap::new()),
+		}
 	}
 }
 

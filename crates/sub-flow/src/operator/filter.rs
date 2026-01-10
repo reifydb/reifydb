@@ -1,36 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::rc::Rc;
+use std::sync::LazyLock;
 
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
 use reifydb_rql::expression::Expression;
 use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Params, RowNumber, Value, flow_operator_err};
+use reifydb_type::{Params, RowNumber, Value, internal_err};
 
 use crate::{
-	impl_operator_info,
-	operator::{Operator, Operators, capture_operator_chain},
-	operator_context_guard,
+	operator::{Operator, Operators},
 	transaction::FlowTransaction,
 };
 
-// Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 pub struct FilterOperator {
-	parent: Arc<Operators>,
+	parent: Rc<Operators>,
 	node: FlowNodeId,
 	conditions: Vec<Expression>,
 	column_evaluator: StandardColumnEvaluator,
 }
 
-impl_operator_info!(FilterOperator, "Filter");
-
 impl FilterOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, conditions: Vec<Expression>) -> Self {
+	pub fn new(parent: Rc<Operators>, node: FlowNodeId, conditions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -70,8 +66,7 @@ impl FilterOperator {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => mask[row_idx] = false,
 						result => {
-							return flow_operator_err!(
-								capture_operator_chain(),
+							return internal_err!(
 								"Filter condition did not evaluate to boolean, got: {:?}",
 								result
 							);
@@ -120,7 +115,6 @@ impl Operator for FilterOperator {
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<FlowChange> {
-		let _guard = operator_context_guard!(self);
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -192,7 +186,6 @@ impl Operator for FilterOperator {
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
-		let _guard = operator_context_guard!(self);
 		self.parent.pull(txn, rows)
 	}
 }

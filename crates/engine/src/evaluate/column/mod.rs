@@ -24,6 +24,7 @@ mod prefix;
 mod tuple;
 mod variable;
 
+#[derive(Clone)]
 pub struct StandardColumnEvaluator {
 	functions: Functions,
 }

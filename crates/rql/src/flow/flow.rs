@@ -12,18 +12,18 @@ use super::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Flow {
-	inner: Arc<FlowInner>,
+pub struct FlowDag {
+	inner: Arc<Inner>,
 }
 
 #[derive(Debug)]
-pub struct FlowInner {
+pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
 }
 
-impl Deref for Flow {
-	type Target = FlowInner;
+impl Deref for FlowDag {
+	type Target = Inner;
 
 	fn deref(&self) -> &Self::Target {
 		&self.inner
@@ -77,9 +77,9 @@ impl FlowBuilder {
 	}
 
 	/// Build the immutable Flow from this builder
-	pub fn build(self) -> Flow {
-		Flow {
-			inner: Arc::new(FlowInner {
+	pub fn build(self) -> FlowDag {
+		FlowDag {
+			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
 			}),
@@ -87,7 +87,7 @@ impl FlowBuilder {
 	}
 }
 
-impl Flow {
+impl FlowDag {
 	/// Create a new FlowBuilder for constructing a Flow
 	pub fn builder(id: impl Into<FlowId>) -> FlowBuilder {
 		FlowBuilder::new(id)

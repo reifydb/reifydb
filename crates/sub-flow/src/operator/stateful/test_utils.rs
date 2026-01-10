@@ -17,10 +17,7 @@ pub mod test {
 	use reifydb_sdk::FlowChange;
 	use reifydb_type::{RowNumber, Type, Value};
 
-	use crate::{
-		operator::{Operator, transform::TransformOperator},
-		transaction::FlowTransaction,
-	};
+	use crate::{operator::Operator, transaction::FlowTransaction};
 
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
@@ -75,13 +72,6 @@ pub mod test {
 		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> reifydb_type::Result<Columns> {
 			unimplemented!()
 		}
-	}
-
-	impl TransformOperator for TestOperator {}
-
-	/// Helper to create test values
-	pub fn test_values() -> Vec<Value> {
-		vec![Value::Utf8("test_key".to_string()), Value::Int4(42)]
 	}
 
 	/// Helper to create test encoded

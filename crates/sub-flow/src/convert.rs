@@ -5,14 +5,17 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec, Result, Row,
-	interface::{CdcChange, PrimitiveId},
+	interface::{Cdc, CdcChange, PrimitiveId},
+	key::Key,
 	value::{
 		column::Columns,
 		encoded::{EncodedValues, EncodedValuesNamedLayout},
 	},
 };
+use reifydb_engine::StandardEngine;
 use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::RowNumber;
+use tracing::warn;
 
 use crate::catalog::FlowCatalog;
 
@@ -144,4 +147,56 @@ pub(crate) fn create_row(
 		encoded,
 		layout: value_layout,
 	})
+}
+
+/// Convert all CDC changes in a batch to FlowChanges.
+///
+/// Processes all row changes from the CDC batch, skipping non-row changes
+/// and delete events without pre-images.
+pub(crate) fn to_flow_change(
+	engine: &StandardEngine,
+	catalog_cache: &FlowCatalog,
+	cdc: &Cdc,
+	version: CommitVersion,
+) -> Result<Vec<FlowChange>> {
+	let mut changes = Vec::new();
+
+	let mut query_txn = engine.begin_query_at_version(version)?;
+
+	for cdc_change in &cdc.changes {
+		if let Some(Key::Row(row_key)) = Key::decode(cdc_change.key()) {
+			let source_id = row_key.primitive;
+			let row_number = row_key.row;
+
+			// Skip Delete events with no pre-image
+			if let CdcChange::Delete {
+				pre: None,
+				..
+			} = &cdc_change.change
+			{
+				continue;
+			}
+
+			match convert_cdc_to_flow_change(
+				&mut query_txn,
+				catalog_cache,
+				source_id,
+				row_number,
+				&cdc_change.change,
+				version,
+			) {
+				Ok(change) => changes.push(change),
+				Err(e) => {
+					warn!(
+						source = ?source_id,
+						row = row_number.0,
+						error = %e,
+						"failed to decode CDC change"
+					);
+				}
+			}
+		}
+	}
+
+	Ok(changes)
 }

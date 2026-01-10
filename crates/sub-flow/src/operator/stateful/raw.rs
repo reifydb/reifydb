@@ -4,11 +4,11 @@
 use reifydb_core::{EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
 
 use super::utils;
-use crate::{operator::transform::TransformOperator, transaction::FlowTransaction};
+use crate::{Operator, transaction::FlowTransaction};
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
-pub trait RawStatefulOperator: TransformOperator {
+pub trait RawStatefulOperator: Operator {
 	/// Get raw bytes for a key
 	fn state_get(
 		&self,
@@ -59,12 +59,10 @@ mod tests {
 
 	use reifydb_catalog::Catalog;
 	use reifydb_core::{CommitVersion, interface::FlowNodeId, util::CowVec};
-	use reifydb_engine::test_utils::create_test_engine;
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
-	// Test implementation of SimpleStatefulOperator
 	impl RawStatefulOperator for TestOperator {}
 
 	#[test]
@@ -266,34 +264,5 @@ mod tests {
 		// Should have 3 entries left (0, 2, 4)
 		let remaining: Vec<_> = operator.state_scan(&mut txn).unwrap().collect();
 		assert_eq!(remaining.len(), 3);
-	}
-
-	#[test]
-	fn test_transaction_isolation() {
-		let engine = create_test_engine();
-		let operator = TestOperator::simple(FlowNodeId(8));
-		let key = test_key("isolation");
-
-		// Transaction 1: Write a value
-		let mut parent_txn1 = engine.begin_command().unwrap();
-		let mut flow_txn1 = FlowTransaction::new(&parent_txn1, CommitVersion(1), Catalog::default());
-		let value1 = EncodedValues(CowVec::new(vec![1]));
-		operator.state_set(&mut flow_txn1, &key, value1.clone()).unwrap();
-
-		// Transaction 2: Should not see uncommitted value
-		let parent_txn2 = engine.begin_command().unwrap();
-		let mut flow_txn2 = FlowTransaction::new(&parent_txn2, CommitVersion(2), Catalog::default());
-		assert!(operator.state_get(&mut flow_txn2, &key).unwrap().is_none());
-
-		// Commit transaction 1
-		flow_txn1.commit(&mut parent_txn1).unwrap();
-		parent_txn1.commit().unwrap();
-
-		// Transaction 3: Should now see the value
-		let parent_txn3 = engine.begin_command().unwrap();
-		let mut flow_txn3 = FlowTransaction::new(&parent_txn3, CommitVersion(3), Catalog::default());
-		let result = operator.state_get(&mut flow_txn3, &key).unwrap();
-		assert!(result.is_some());
-		assert_row_eq(&result.unwrap(), &value1);
 	}
 }

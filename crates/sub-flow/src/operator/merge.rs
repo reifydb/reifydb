@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use reifydb_core::{
 	EncodedKey, Error, interface::FlowNodeId, util::encoding::keycode::KeySerializer, value::column::Columns,
@@ -20,7 +20,7 @@ use crate::{
 pub struct MergeOperator {
 	node: FlowNodeId,
 	/// Parent operators indexed by their position (0..N)
-	parents: Vec<Arc<Operators>>,
+	parents: Vec<Rc<Operators>>,
 	/// Input node IDs for matching FlowChangeOrigin
 	input_nodes: Vec<FlowNodeId>,
 	/// Row number provider for stable output row numbers
@@ -28,7 +28,7 @@ pub struct MergeOperator {
 }
 
 impl MergeOperator {
-	pub fn new(node: FlowNodeId, parents: Vec<Arc<Operators>>, input_nodes: Vec<FlowNodeId>) -> Self {
+	pub fn new(node: FlowNodeId, parents: Vec<Rc<Operators>>, input_nodes: Vec<FlowNodeId>) -> Self {
 		debug_assert_eq!(parents.len(), input_nodes.len());
 		debug_assert!(parents.len() >= 2, "Merge requires at least 2 inputs");
 

@@ -4,23 +4,24 @@
 //! Flow worker that handles flow processing logic.
 
 use std::{
+	collections::HashMap,
 	mem::take,
-	sync::Arc,
 	thread::{JoinHandle, spawn},
 };
-
-use crossbeam_channel::{Receiver, Sender};
-use reifydb_catalog::Catalog;
-use reifydb_core::{CommitVersion, Error, Result};
-use reifydb_engine::StandardEngine;
-use reifydb_sdk::FlowChange;
-use reifydb_type::internal;
-use tracing::error;
-
 use crate::{
 	FlowEngine,
 	transaction::{FlowTransaction, PendingWrites},
 };
+use WorkerRequest::Process;
+use crossbeam_channel::{Receiver, Sender, bounded};
+use reifydb_catalog::Catalog;
+use reifydb_cdc::CdcCheckpoint;
+use reifydb_core::{CommitVersion, Error, Result, interface::FlowId};
+use reifydb_engine::StandardEngine;
+use reifydb_rql::flow::FlowDag;
+use reifydb_sdk::FlowChange;
+use reifydb_type::internal;
+use tracing::error;
 
 /// A batch of changes that all belong to the same CDC version.
 #[derive(Clone)]
@@ -31,9 +32,13 @@ pub(crate) struct Batch {
 
 /// Message types for worker communication.
 enum WorkerRequest {
-	ProcessVersionedBatches {
+	Process {
 		batches: Vec<Batch>,
 		state_version: CommitVersion,
+		response: Sender<WorkerResponse>,
+	},
+	Register {
+		flow: FlowDag,
 		response: Sender<WorkerResponse>,
 	},
 	Stop,
@@ -52,16 +57,21 @@ pub(crate) struct FlowWorker {
 
 impl FlowWorker {
 	/// Create a new flow worker with its own OS thread.
-	pub fn new(
+	pub fn new<F>(
 		worker_id: usize,
 		num_workers: usize,
-		flow_engine: Arc<FlowEngine>,
+		engine_factory: F,
 		engine: StandardEngine,
 		catalog: Catalog,
-	) -> Self {
+	) -> Self
+	where
+		F: FnOnce() -> FlowEngine + Send + 'static,
+	{
 		let (tx, rx) = crossbeam_channel::unbounded();
 
 		let thread_handle = spawn(move || {
+			// Create FlowEngine INSIDE worker thread (Rc is thread-local)
+			let flow_engine = engine_factory();
 			Self::worker_thread(rx, flow_engine, engine, catalog, worker_id, num_workers);
 		});
 
@@ -77,17 +87,33 @@ impl FlowWorker {
 	/// each version sequentially with correct snapshot isolation, accumulating
 	/// pending writes across all versions.
 	pub fn process(&self, batches: Vec<Batch>, state_version: CommitVersion) -> Result<PendingWrites> {
-		let (resp_tx, resp_rx) = crossbeam_channel::bounded(1);
+		let (response, rx) = bounded(1);
 
-		self.tx.send(WorkerRequest::ProcessVersionedBatches {
+		self.tx.send(Process {
 			batches,
 			state_version,
+			response,
+		})
+		.map_err(|_| Error(internal!("Worker thread died")))?;
+
+		match rx.recv().map_err(|_| Error(internal!("Worker response error")))? {
+			WorkerResponse::Success(pending) => Ok(pending),
+			WorkerResponse::Error(e) => Err(Error(internal!("{}", e))),
+		}
+	}
+
+	/// Register a flow in this worker's FlowEngine.
+	pub fn register_flow(&self, flow: FlowDag) -> Result<()> {
+		let (resp_tx, resp_rx) = bounded(1);
+
+		self.tx.send(WorkerRequest::Register {
+			flow,
 			response: resp_tx,
 		})
 		.map_err(|_| Error(internal!("Worker thread died")))?;
 
 		match resp_rx.recv().map_err(|_| Error(internal!("Worker response error")))? {
-			WorkerResponse::Success(pending) => Ok(pending),
+			WorkerResponse::Success(_) => Ok(()),
 			WorkerResponse::Error(e) => Err(Error(internal!("{}", e))),
 		}
 	}
@@ -103,7 +129,7 @@ impl FlowWorker {
 	/// Worker thread main loop.
 	fn worker_thread(
 		rx: Receiver<WorkerRequest>,
-		flow_engine: Arc<FlowEngine>,
+		mut flow_engine: FlowEngine,
 		engine: StandardEngine,
 		catalog: Catalog,
 		worker_id: usize,
@@ -111,13 +137,13 @@ impl FlowWorker {
 	) {
 		while let Ok(req) = rx.recv() {
 			match req {
-				WorkerRequest::ProcessVersionedBatches {
+				Process {
 					batches,
 					state_version,
 					response,
 				} => {
-					let result = Self::process_versioned_batches_impl(
-						&flow_engine,
+					let result = Self::process_request(
+						&mut flow_engine,
 						&engine,
 						&catalog,
 						batches,
@@ -132,6 +158,20 @@ impl FlowWorker {
 					};
 					response.send(resp).ok();
 				}
+				WorkerRequest::Register {
+					flow,
+					response,
+				} => {
+					let result = engine
+						.begin_command()
+						.and_then(|mut txn| flow_engine.register(&mut txn, flow));
+
+					let resp = match result {
+						Ok(_) => WorkerResponse::Success(PendingWrites::new()),
+						Err(e) => WorkerResponse::Error(e.to_string()),
+					};
+					response.send(resp).ok();
+				}
 				WorkerRequest::Stop => {
 					break;
 				}
@@ -139,15 +179,8 @@ impl FlowWorker {
 		}
 	}
 
-	/// Process versioned batches of changes and return accumulated pending writes.
-	///
-	/// Each batch contains changes from a single CDC version. This method processes
-	/// each version sequentially with correct snapshot isolation, accumulating pending
-	/// writes across all versions to maintain state continuity for stateful operators.
-	///
-	/// Only processes flows assigned to this worker based on hash partitioning.
-	fn process_versioned_batches_impl(
-		flow_engine: &Arc<FlowEngine>,
+	fn process_request(
+		flow_engine: &mut FlowEngine,
 		engine: &StandardEngine,
 		catalog: &Catalog,
 		batches: Vec<Batch>,
@@ -157,16 +190,25 @@ impl FlowWorker {
 	) -> Result<PendingWrites> {
 		let mut pending = PendingWrites::new();
 
+		// Load checkpoints for all flows this worker manages
+		let mut flow_checkpoints: HashMap<FlowId, CommitVersion> = HashMap::new();
+		{
+			let mut query_txn = engine.begin_query()?;
+			for flow_id in flow_engine.flow_ids() {
+				let checkpoint = CdcCheckpoint::fetch(&mut query_txn, &flow_id)
+					.unwrap_or(CommitVersion(0));
+				flow_checkpoints.insert(flow_id, checkpoint);
+			}
+		}
+
 		// Process each version group sequentially
 		for batch in batches {
 			let primitive_version = batch.version;
 
-			// Create query transactions at appropriate versions
 			let primitive_query = engine.multi().begin_query_at_version(primitive_version)?;
 			let state_query = engine.multi().begin_query_at_version(state_version)?;
 
-			// Create FlowTransaction with accumulated pending from previous versions
-			let mut flow_txn = FlowTransaction {
+			let mut txn = FlowTransaction {
 				version: primitive_version,
 				pending,
 				primitive_query,
@@ -174,23 +216,39 @@ impl FlowWorker {
 				catalog: catalog.clone(),
 			};
 
-			// Process all changes at this version
-			let flow_ids = flow_engine.flow_ids();
-			for flow_id in flow_ids {
-				// Only process flows assigned to this worker via hash partitioning
+			for flow_id in flow_engine.flow_ids() {
 				if (flow_id.0 as usize) % num_workers != worker_id {
 					continue;
 				}
 
+				// Skip this batch if flow has already processed it
+				let checkpoint = flow_checkpoints.get(&flow_id).copied().unwrap_or(CommitVersion(0));
+				if batch.version <= checkpoint {
+					println!(
+						"[WORKER DEBUG] Skipping batch v{} for flow {} (checkpoint={})",
+						batch.version.0,
+						flow_id.0,
+						checkpoint.0
+					);
+					continue;
+				}
+
+				println!(
+					"[WORKER DEBUG] Processing batch v{} for flow {} (checkpoint={})",
+					batch.version.0,
+					flow_id.0,
+					checkpoint.0
+				);
+
 				for change in &batch.changes {
-					if let Err(e) = flow_engine.process(&mut flow_txn, change.clone(), flow_id) {
+					if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
 						error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 					}
 				}
 			}
 
 			// Extract accumulated pending for next iteration
-			pending = take(&mut flow_txn.pending);
+			pending = take(&mut txn.pending);
 		}
 
 		Ok(pending)

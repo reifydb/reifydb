@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::rc::Rc;
+use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -24,7 +25,6 @@ use crate::{
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
-		transform::TransformOperator,
 	},
 	transaction::FlowTransaction,
 };
@@ -157,7 +157,7 @@ impl Default for DistinctState {
 }
 
 pub struct DistinctOperator {
-	parent: Arc<Operators>,
+	parent: Rc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	layout: EncodedValuesLayout,
@@ -165,7 +165,7 @@ pub struct DistinctOperator {
 }
 
 impl DistinctOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: Rc<Operators>, node: FlowNodeId, expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -437,8 +437,6 @@ impl DistinctOperator {
 		Ok(result)
 	}
 }
-
-impl TransformOperator for DistinctOperator {}
 
 impl RawStatefulOperator for DistinctOperator {}
 

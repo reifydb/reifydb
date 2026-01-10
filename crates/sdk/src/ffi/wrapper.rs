@@ -7,7 +7,6 @@ use std::{
 	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
-	sync::Mutex,
 };
 
 use reifydb_abi::*;
@@ -18,7 +17,7 @@ use crate::{FFIOperator, OperatorContext, ffi::Arena};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
-	operator: Mutex<O>,
+	operator: O,
 	arena: RefCell<Arena>,
 }
 
@@ -26,7 +25,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	/// Create a new operator wrapper
 	pub fn new(operator: O) -> Self {
 		Self {
-			operator: Mutex::new(operator),
+			operator,
 			arena: RefCell::new(Arena::new()),
 		}
 	}
@@ -56,13 +55,6 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		unsafe {
 			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-			let mut operator = match wrapper.operator.lock() {
-				Ok(op) => op,
-				Err(_) => {
-					warn!("Failed to lock operator");
-					return -1;
-				}
-			};
 
 			let mut arena = wrapper.arena.borrow_mut();
 			arena.clear();
@@ -86,7 +78,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			let apply_span = debug_span!("operator_apply");
 			let _guard = apply_span.enter();
 			let mut op_ctx = OperatorContext::new(ctx);
-			let output_change = match operator.apply(&mut op_ctx, input_change) {
+			let output_change = match wrapper.operator.apply(&mut op_ctx, input_change) {
 				Ok(change) => {
 					Span::current().record("output_diffs", change.diffs.len());
 					change
@@ -98,7 +90,6 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			};
 			drop(_guard);
 
-			// Marshal output
 			let marshal_span = debug_span!("marshal");
 			let _guard = marshal_span.enter();
 			*output = arena.marshal_flow_change(&output_change);
@@ -129,13 +120,6 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		unsafe {
 			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-			let mut operator = match wrapper.operator.lock() {
-				Ok(op) => op,
-				Err(_) => {
-					warn!("Failed to lock operator");
-					return -1;
-				}
-			};
 
 			let mut arena = wrapper.arena.borrow_mut();
 			arena.clear();
@@ -154,7 +138,7 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 			let mut op_ctx = OperatorContext::new(ctx);
 
 			// Call the operator
-			let columns = match operator.pull(&mut op_ctx, &numbers) {
+			let columns = match wrapper.operator.pull(&mut op_ctx, &numbers) {
 				Ok(cols) => {
 					Span::current().record("rows_returned", cols.row_count());
 					cols

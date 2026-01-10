@@ -2,10 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 mod factory;
+mod ffi;
 
-use std::{any::Any, path::PathBuf, sync::Arc, time::Duration};
+use std::{any::Any, sync::Arc, time::Duration};
 
+use crate::builder::FlowBuilderConfig;
+use crate::{
+	FlowEngine, coordinator::FlowCoordinator, lag::FlowLags, pool::FlowWorkerPool, tracker::PrimitiveVersionTracker,
+};
 pub use factory::FlowSubsystemFactory;
+use ffi::load_ffi_operators;
 use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
@@ -19,12 +25,6 @@ use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use tracing::info;
 
-use crate::{
-	FlowEngine, coordinator::FlowCoordinator, lag::FlowLags,
-	operator::transform::registry::TransformOperatorRegistry, pool::FlowWorkerPool,
-	tracker::PrimitiveVersionTracker,
-};
-
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
 	consumer: PollConsumer<FlowCoordinator>,
@@ -33,43 +33,46 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	/// Create a new flow subsystem.
-	pub fn new(
-		engine: StandardEngine,
-		operators_dir: Option<PathBuf>,
-		num_workers: Option<usize>,
-		ioc: &IocContainer,
-	) -> Self {
-		let operator_registry = TransformOperatorRegistry::new();
+	pub(crate) fn new(config: FlowBuilderConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
+		let catalog = engine.catalog();
+		let executor = engine.executor();
+		let event_bus = engine.event_bus().clone();
 
-		let flow_engine = Arc::new(FlowEngine::new(
-			engine.catalog(),
-			StandardColumnEvaluator::default(),
-			engine.executor(),
-			operator_registry,
-			engine.event_bus().clone(),
-			operators_dir,
-		));
+		if let Some(ref operators_dir) = config.operators_dir {
+			if let Err(e) = load_ffi_operators(operators_dir, &event_bus) {
+				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);
+			}
+		}
+
+		let factory_builder = move || {
+			let cat = catalog.clone();
+			let exec = executor.clone();
+			let bus = event_bus.clone();
+
+			move || FlowEngine::new(cat, StandardColumnEvaluator::default(), exec, bus)
+		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
-		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new_simple(
-			primitive_tracker.clone(),
-			flow_engine.clone(),
-			engine.clone(),
-		)));
-
-		let num_workers = num_workers.unwrap_or(1);
+		let num_workers = config.num_workers;
 		info!(num_workers, "initializing flow worker pool");
 
-		let worker_pool =
-			FlowWorkerPool::new(num_workers, flow_engine.clone(), engine.clone(), engine.catalog());
+		let worker_pool = FlowWorkerPool::new(num_workers, factory_builder, engine.clone(), engine.catalog());
 
-		let coordinator = FlowCoordinator::new(engine.clone(), flow_engine, primitive_tracker, worker_pool);
+		let coordinator = FlowCoordinator::new(engine.clone(), primitive_tracker.clone(), worker_pool);
+
+		// Register FlowLags with access to the flow catalog
+		let catalog = coordinator.catalog.clone();
+		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new(
+			primitive_tracker,
+			engine.clone(),
+			catalog,
+		)));
 
 		let poll_config = PollConsumerConfig::new(
 			CdcConsumerId::new("flow-coordinator"),
 			Duration::from_micros(100),
-			Some(50),
+			Some(10),
 		);
 
 		let consumer = PollConsumer::new(poll_config, engine, coordinator);
@@ -141,7 +144,6 @@ impl HasVersion for FlowSubsystem {
 impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
 		if self.running {
-			// Best effort - can't await in Drop
 			self.running = false;
 		}
 	}

@@ -237,36 +237,3 @@ macro_rules! flow_operator {
 		)
 	};
 }
-
-/// Macro to create a flow operator Error with automatic source location capture
-#[macro_export]
-macro_rules! flow_operator_error {
-	($reason:expr, $chain:expr) => {
-		$crate::Error($crate::flow_operator!($reason, $chain))
-	};
-	($chain:expr, $fmt:expr, $($arg:tt)*) => {
-		$crate::Error($crate::flow_operator!($chain, $fmt, $($arg)*))
-	};
-}
-
-/// Macro to create a flow operator Err result with automatic source location capture
-#[macro_export]
-macro_rules! flow_operator_err {
-	($reason:expr, $chain:expr) => {
-		Err($crate::flow_operator_error!($reason, $chain))
-	};
-	($chain:expr, $fmt:expr, $($arg:tt)*) => {
-		Err($crate::flow_operator_error!($chain, $fmt, $($arg)*))
-	};
-}
-
-/// Macro to return a flow operator error with automatic source location capture
-#[macro_export]
-macro_rules! return_flow_operator_error {
-	($reason:expr, $chain:expr) => {
-		return $crate::flow_operator_err!($reason, $chain)
-	};
-	($chain:expr, $fmt:expr, $($arg:tt)*) => {
-		return $crate::flow_operator_err!($chain, $fmt, $($arg)*)
-	};
-}

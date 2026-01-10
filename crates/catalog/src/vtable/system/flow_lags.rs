@@ -46,7 +46,6 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowLags {
 			return Ok(None);
 		}
 
-		// Lazily resolve the provider from IoC - if not registered yet, return empty
 		let rows = match self.ioc.resolve::<Arc<dyn FlowLagsProvider>>() {
 			Ok(provider) => provider.all_lags(),
 			Err(_) => vec![],

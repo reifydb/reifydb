@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::FlowId;
-use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
+use reifydb_rql::flow::{FlowDag, FlowNode, FlowNodeType::SourceInlineData};
 use reifydb_sdk::{FlowChange, FlowChangeOrigin};
 use tracing::{Span, instrument};
 
@@ -26,7 +26,7 @@ impl FlowEngine {
 
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
-				let node_registrations = self.inner.sources.get(&source).map(|r| r.clone());
+				let node_registrations = self.sources.get(&source).cloned();
 
 				if let Some(node_registrations) = node_registrations {
 					for (registered_flow_id, node_id) in node_registrations {
@@ -35,13 +35,9 @@ impl FlowEngine {
 							continue;
 						}
 
-						let flow_and_node = {
-							let flows = self.inner.flows.read();
-							flows.get(&registered_flow_id).and_then(|flow| {
-								flow.get_node(&node_id)
-									.map(|node| (flow.clone(), node.clone()))
-							})
-						};
+						let flow_and_node = self.flows.get(&registered_flow_id).and_then(|flow| {
+							flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
+						});
 
 						if let Some((flow, node)) = flow_and_node {
 							self.process_change(
@@ -63,12 +59,9 @@ impl FlowEngine {
 				// Internal changes are already scoped to a specific node
 				// This path is used by the partition logic to directly process a node's changes
 				// Use the flow_id parameter for direct lookup instead of iterating all flows
-				let flow_and_node = {
-					let flows = self.inner.flows.read();
-					flows.get(&flow_id).and_then(|flow| {
-						flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
-					})
-				};
+				let flow_and_node = self.flows.get(&flow_id).and_then(|flow| {
+					flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
+				});
 
 				if let Some((flow, node)) = flow_and_node {
 					self.process_change(txn, &flow, &node, change)?;
@@ -96,11 +89,11 @@ impl FlowEngine {
 		change: FlowChange,
 	) -> reifydb_type::Result<FlowChange> {
 		let lock_start = std::time::Instant::now();
-		let operator = self.inner.operators.get(&node.id).unwrap().clone();
+		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		let apply_start = std::time::Instant::now();
-		let result = operator.apply(txn, change, &self.inner.evaluator)?;
+		let result = operator.apply(txn, change, &self.evaluator)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
@@ -115,11 +108,11 @@ impl FlowEngine {
 		propagation_time_us = tracing::field::Empty
 	))]
 	fn process_change(
-		&self,
-		txn: &mut FlowTransaction,
-		flow: &Flow,
-		node: &FlowNode,
-		change: FlowChange,
+        &self,
+        txn: &mut FlowTransaction,
+        flow: &FlowDag,
+        node: &FlowNode,
+        change: FlowChange,
 	) -> reifydb_type::Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;

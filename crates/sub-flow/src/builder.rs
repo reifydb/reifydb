@@ -42,7 +42,7 @@ impl FlowBuilder {
 	pub(crate) fn build_config(self) -> FlowBuilderConfig {
 		FlowBuilderConfig {
 			operators_dir: self.operators_dir,
-			num_workers: self.num_workers,
+			num_workers: self.num_workers.unwrap_or(1),
 		}
 	}
 }
@@ -50,5 +50,5 @@ impl FlowBuilder {
 /// Internal configuration extracted from FlowBuilder
 pub(crate) struct FlowBuilderConfig {
 	pub operators_dir: Option<PathBuf>,
-	pub num_workers: Option<usize>,
+	pub num_workers: usize,
 }

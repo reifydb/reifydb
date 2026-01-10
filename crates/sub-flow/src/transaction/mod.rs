@@ -6,7 +6,6 @@ use reifydb_core::CommitVersion;
 use reifydb_engine::StandardCommandTransaction;
 use tracing::instrument;
 
-mod commit;
 mod pending;
 mod range;
 mod read;
@@ -25,7 +24,7 @@ use reifydb_transaction::multi::StandardQueryTransaction;
 /// FlowTransaction provides **dual-version reads** critical for stateful flow processing:
 /// 1. **Source data** - Read at CDC event version (snapshot isolation)
 /// 2. **Flow state** - Read at latest version (state continuity across CDC events)
-/// 3. **Isolated writes** - Local PendingWrites buffer merged back to parent at commit
+/// 3. **Isolated writes** - Local PendingWrites buffer returned to caller
 ///
 /// This dual-version approach allows stateful operators (joins, aggregates, distinct) to:
 /// - Process source data at a consistent snapshot (the CDC event version)
@@ -80,30 +79,34 @@ use reifydb_transaction::multi::StandardQueryTransaction;
 ///
 /// # Current Usage Pattern
 ///
-/// FlowTransaction is used in the task-based flow architecture where each flow
-/// processes CDC batches sequentially:
+/// FlowTransaction is used in worker threads to process CDC batches:
 ///
 /// ```ignore
-/// // In flow coordinator task (one transaction per batch)
-/// let mut txn = engine.begin_command()?;
-/// let mut flow_txn = FlowTransaction::new(&txn, batch.version);
+/// // In flow worker thread
+/// let primitive_query = engine.multi().begin_query_at_version(batch.version)?;
+/// let state_query = engine.multi().begin_query_at_version(state_version)?;
+///
+/// let mut txn = FlowTransaction {
+///     version: batch.version,
+///     pending: PendingWrites::new(),
+///     primitive_query,
+///     state_query,
+///     catalog: catalog.clone(),
+/// };
 ///
 /// for change in batch.changes {
-///     // Operators use dual-version reads internally
-///     flow_engine.process(&mut flow_txn, change, flow_id)?;
+///     flow_engine.process(&mut txn, change, flow_id)?;
 /// }
 ///
-/// // Merge pending writes back to parent
-/// flow_txn.commit(&mut txn)?;
-/// txn.commit()?;
+/// // Extract pending writes to merge into parent transaction
+/// let pending = txn.pending;
 /// ```
 ///
 /// # Write Path
 ///
 /// All writes (`set`, `remove`) go to the local `pending` buffer:
-/// - Writes are NOT visible to the parent transaction until commit
 /// - Reads check pending buffer first, then delegate to query transactions
-/// - Buffered writes are merged to parent via `commit()`
+/// - Pending writes are extracted and applied to parent transaction by caller
 ///
 /// # Thread Safety
 ///
@@ -117,10 +120,10 @@ pub struct FlowTransaction {
 	/// the CDC event was created, regardless of concurrent modifications.
 	pub(crate) version: CommitVersion,
 
-	/// Local write buffer for uncommitted changes.
+	/// Local write buffer for pending changes.
 	///
 	/// Stores all `set()` and `remove()` operations made by this transaction.
-	/// NOT shared with other FlowTransactions. Changes are invisible until commit().
+	/// Returned to caller for application to parent transaction.
 	pub(crate) pending: PendingWrites,
 
 	/// Read-only query transaction for accessing storage primitive data at CDC snapshot version.

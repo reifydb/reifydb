@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use reifydb_core::interface::{FlowId, FlowNodeId, TableId, ViewId};
 use serde::{Deserialize, Serialize};
 
-use super::{Flow, FlowNodeType};
+use super::{FlowDag, FlowNodeType};
 
 /// Represents a reference to a data source
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub struct FlowDependencyGraph {
 }
 
 pub struct FlowGraphAnalyzer {
-	flows: Vec<Flow>,
+	flows: Vec<FlowDag>,
 	dependency_graph: FlowDependencyGraph,
 }
 
@@ -72,7 +72,7 @@ impl FlowGraphAnalyzer {
 	}
 
 	/// Add a flow to the analyzer
-	pub fn add(&mut self, flow: Flow) -> FlowSummary {
+	pub fn add(&mut self, flow: FlowDag) -> FlowSummary {
 		let result = Self::analyze_flow(&flow);
 		self.flows.push(flow);
 		self.dependency_graph = self.calculate();
@@ -80,7 +80,7 @@ impl FlowGraphAnalyzer {
 	}
 
 	/// Analyze a flow without adding it to the analyzer
-	fn analyze_flow(flow: &Flow) -> FlowSummary {
+	fn analyze_flow(flow: &FlowDag) -> FlowSummary {
 		let sources = Self::get_sources(flow);
 		let sinks = Self::get_sinks(flow);
 		let execution_order = flow.topological_order().unwrap_or_default();
@@ -95,7 +95,7 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	fn get_sources(flow: &Flow) -> Vec<PrimitiveReference> {
+	fn get_sources(flow: &FlowDag) -> Vec<PrimitiveReference> {
 		let mut sources = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -119,7 +119,7 @@ impl FlowGraphAnalyzer {
 		sources
 	}
 
-	fn get_sinks(flow: &Flow) -> Vec<SinkReference> {
+	fn get_sinks(flow: &FlowDag) -> Vec<SinkReference> {
 		let mut sinks = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -244,7 +244,7 @@ impl FlowGraphAnalyzer {
 	}
 
 	/// Get all stored flows
-	pub fn flows(&self) -> &[Flow] {
+	pub fn flows(&self) -> &[FlowDag] {
 		&self.flows
 	}
 
@@ -323,10 +323,10 @@ mod tests {
 	use reifydb_core::interface::{FlowId, FlowNodeId, TableId, ViewId};
 
 	use super::*;
-	use crate::flow::{Flow, FlowNode, FlowNodeType};
+	use crate::flow::{FlowDag, FlowNode, FlowNodeType};
 
-	fn create_test_flow_with_nodes(id: u64, node_types: Vec<FlowNodeType>) -> Flow {
-		let mut builder = Flow::builder(FlowId(id));
+	fn create_test_flow_with_nodes(id: u64, node_types: Vec<FlowNodeType>) -> FlowDag {
+		let mut builder = FlowDag::builder(FlowId(id));
 
 		for (i, node_type) in node_types.into_iter().enumerate() {
 			let node = FlowNode::new(FlowNodeId(i as u64 + 1), node_type);

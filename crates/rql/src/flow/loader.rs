@@ -8,10 +8,10 @@ use reifydb_core::{Error, interface::FlowId};
 use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::internal;
 
-use super::{Flow, FlowEdge, FlowNode, FlowNodeType};
+use super::{FlowDag, FlowEdge, FlowNode, FlowNodeType};
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<Flow> {
+pub fn load_flow_dag<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<FlowDag> {
 	// Load all nodes for this flow
 	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id)?;
 
@@ -19,7 +19,7 @@ pub fn load_flow<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> cr
 	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
 
 	// Create a new FlowBuilder
-	let mut builder = Flow::builder(flow_id);
+	let mut builder = FlowDag::builder(flow_id);
 
 	// Deserialize and add all nodes
 	for node_def in node_defs {

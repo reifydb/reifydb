@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use reifydb_core::{
 	interface::{FlowNodeId, IMPLICIT_COLUMN_OP, ResolvedSubscription},
@@ -25,13 +25,13 @@ const OP_DELETE: u8 = 2;
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: Rc<Operators>,
 	node: FlowNodeId,
 	subscription: ResolvedSubscription,
 }
 
 impl SinkSubscriptionOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
+	pub fn new(parent: Rc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
 		Self {
 			parent,
 			node,

@@ -8,12 +8,10 @@ use reifydb_type::RowNumber;
 use crate::transaction::FlowTransaction;
 
 mod apply;
-pub mod context;
 mod distinct;
 mod extend;
 mod ffi;
 mod filter;
-pub mod info;
 pub mod join;
 mod map;
 mod merge;
@@ -22,17 +20,13 @@ mod sink;
 mod sort;
 pub mod stateful;
 mod take;
-pub mod transform;
 mod window;
 
 pub use apply::ApplyOperator;
-#[allow(unused_imports)]
-pub use context::{OperatorContextEntry, OperatorContextGuard, capture_operator_chain};
 pub use distinct::DistinctOperator;
 pub use extend::ExtendOperator;
 pub use ffi::FFIOperator;
 pub use filter::FilterOperator;
-pub use info::OperatorInfo;
 pub use join::JoinOperator;
 pub use map::MapOperator;
 pub use merge::MergeOperator;
@@ -43,8 +37,8 @@ pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use window::WindowOperator;
 
-pub trait Operator: Send + Sync {
-	fn id(&self) -> FlowNodeId; // FIXME replace by operator id
+pub trait Operator {
+	fn id(&self) -> FlowNodeId;
 
 	fn apply(
 		&self,
@@ -119,48 +113,6 @@ impl Operators {
 			Operators::SourceTable(op) => op.pull(txn, rows),
 			Operators::SourceView(op) => op.pull(txn, rows),
 			Operators::SourceFlow(op) => op.pull(txn, rows),
-		}
-	}
-}
-
-impl OperatorInfo for Operators {
-	fn operator_name(&self) -> &'static str {
-		match self {
-			Operators::SourceTable(_) => "SourceTable",
-			Operators::SourceView(_) => "SourceView",
-			Operators::SourceFlow(_) => "SourceFlow",
-			Operators::Filter(_) => "Filter",
-			Operators::Map(_) => "Map",
-			Operators::Extend(_) => "Extend",
-			Operators::Join(_) => "Join",
-			Operators::Sort(_) => "Sort",
-			Operators::Take(_) => "Take",
-			Operators::Distinct(_) => "Distinct",
-			Operators::Merge(_) => "Merge",
-			Operators::Apply(_) => "Apply",
-			Operators::SinkView(_) => "SinkView",
-			Operators::SinkSubscription(_) => "SinkSubscription",
-			Operators::Window(_) => "Window",
-		}
-	}
-
-	fn operator_id(&self) -> FlowNodeId {
-		match self {
-			Operators::SourceTable(op) => op.id(),
-			Operators::SourceView(op) => op.id(),
-			Operators::SourceFlow(op) => op.id(),
-			Operators::Filter(op) => op.id(),
-			Operators::Map(op) => op.id(),
-			Operators::Extend(op) => op.id(),
-			Operators::Join(op) => op.id(),
-			Operators::Sort(op) => op.id(),
-			Operators::Take(op) => op.id(),
-			Operators::Distinct(op) => op.id(),
-			Operators::Merge(op) => op.id(),
-			Operators::Apply(op) => op.id(),
-			Operators::SinkView(op) => op.id(),
-			Operators::SinkSubscription(op) => op.id(),
-			Operators::Window(op) => op.id(),
 		}
 	}
 }

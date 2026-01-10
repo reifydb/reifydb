@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::rc::Rc;
+use std::collections::BTreeMap;
 
 use reifydb_core::{
 	Error,
@@ -17,7 +18,6 @@ use crate::{
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
-		transform::TransformOperator,
 	},
 	transaction::FlowTransaction,
 };
@@ -38,14 +38,14 @@ impl Default for TakeState {
 }
 
 pub struct TakeOperator {
-	parent: Arc<Operators>,
+	parent: Rc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
 	layout: EncodedValuesLayout,
 }
 
 impl TakeOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: Rc<Operators>, node: FlowNodeId, limit: usize) -> Self {
 		Self {
 			parent,
 			node,
@@ -136,8 +136,6 @@ impl TakeOperator {
 		Ok(output_diffs)
 	}
 }
-
-impl TransformOperator for TakeOperator {}
 
 impl RawStatefulOperator for TakeOperator {}
 
