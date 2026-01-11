@@ -63,19 +63,28 @@ export class WsClient {
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
-        console.log(`Connecting to WebSocket at ${options.url}`);
         const socket = await createWebSocket(options.url);
 
-        // Wait for connection to open if not already open
+        // Wait for connection to open if not already open, with timeout
         if (socket.readyState !== 1) {
+            const connectionTimeoutMs = 30000; // 30 second connection timeout
             await new Promise<void>((resolve, reject) => {
+                const connectionTimeout = setTimeout(() => {
+                    socket.removeEventListener("open", onOpen);
+                    socket.removeEventListener("error", onError);
+                    socket.close();
+                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
+                }, connectionTimeoutMs);
+
                 const onOpen = () => {
+                    clearTimeout(connectionTimeout);
                     socket.removeEventListener("open", onOpen);
                     socket.removeEventListener("error", onError);
                     resolve();
                 };
 
                 const onError = () => {
+                    clearTimeout(connectionTimeout);
                     socket.removeEventListener("open", onOpen);
                     socket.removeEventListener("error", onError);
                     reject(new Error("WebSocket connection failed"));
@@ -88,7 +97,6 @@ export class WsClient {
 
         socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
 
-        console.log("Connected successfully to WebSocket");
         return new WsClient(socket, options);
     }
 
@@ -338,9 +346,6 @@ export class WsClient {
 
         const baseDelay = this.options.reconnectDelayMs ?? 1000;
         const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
-        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
-
-        console.log(`Attempting reconnection (${this.reconnectAttempts}/${maxAttempts}): waiting ${delay}ms with exponential backoff`);
 
         await new Promise(resolve => setTimeout(resolve, delay));
 
@@ -348,14 +353,24 @@ export class WsClient {
             const socket = await createWebSocket(this.options.url);
 
             if (socket.readyState !== 1) {
+                const connectionTimeoutMs = 30000; // 30 second connection timeout
                 await new Promise<void>((resolve, reject) => {
+                    const connectionTimeout = setTimeout(() => {
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
+                        socket.close();
+                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
+                    }, connectionTimeoutMs);
+
                     const onOpen = () => {
+                        clearTimeout(connectionTimeout);
                         socket.removeEventListener("open", onOpen);
                         socket.removeEventListener("error", onError);
                         resolve();
                     };
 
                     const onError = () => {
+                        clearTimeout(connectionTimeout);
                         socket.removeEventListener("open", onOpen);
                         socket.removeEventListener("error", onError);
                         reject(new Error("WebSocket connection failed"));
@@ -372,9 +387,7 @@ export class WsClient {
             this.setupSocketHandlers();
             this.reconnectAttempts = 0;
             this.isReconnecting = false;
-            console.log("Successfully reconnected to WebSocket");
         } catch (error) {
-            console.error("Reconnection attempt failed:", error);
             this.isReconnecting = false;
             this.handleDisconnect();
         }

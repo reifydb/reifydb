@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Wrapper that bridges Rust operators to FFI interface
+//! Wrapper that bridges Rust operators to FFI interface.
+//!
+//! FFI function return codes:
+//! - `< 0`: Unrecoverable error - process will abort immediately
+//! - `0`: Success
+//! - `> 0`: Recoverable error (reserved for future use)
 
 use std::{
 	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
+	process::abort,
 };
 
 use reifydb_abi::*;
 use reifydb_type::RowNumber;
-use tracing::{Span, debug_span, instrument, warn};
+use tracing::{Span, debug_span, error, instrument, warn};
 
 use crate::{FFIOperator, OperatorContext, ffi::Arena};
 
@@ -99,10 +105,15 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 		}
 	}));
 
-	result.unwrap_or_else(|e| {
-		warn!(?e, "Panic in ffi_apply");
+	let code = result.unwrap_or_else(|e| {
+		error!(?e, "Panic in ffi_apply");
 		-99
-	})
+	});
+	if code < 0 {
+		error!(code, "ffi_apply failed - aborting");
+		abort();
+	}
+	code
 }
 
 #[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
@@ -155,10 +166,15 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 		}
 	}));
 
-	result.unwrap_or_else(|e| {
-		warn!(?e, "Panic in ffi_pull");
+	let code = result.unwrap_or_else(|e| {
+		error!(?e, "Panic in ffi_pull");
 		-99
-	})
+	});
+	if code < 0 {
+		error!(code, "ffi_pull failed - aborting");
+		abort();
+	}
+	code
 }
 
 pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
@@ -172,8 +188,9 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 		// Wrapper will be dropped here, cleaning up the operator
 	}));
 
-	if result.is_err() {
-		eprintln!("FFI operator panicked during destroy");
+	if let Err(e) = result {
+		error!(?e, "Panic in ffi_destroy - aborting");
+		abort();
 	}
 }
 

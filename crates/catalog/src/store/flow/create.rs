@@ -59,7 +59,6 @@ impl CatalogStore {
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
 		let key = FlowKey::encoded(flow);
-		println!("[store_flow] Writing FlowKey: {:?} for flow_id={}", key, flow.0);
 		txn.set(&key, row)?;
 
 		Ok(())
@@ -75,10 +74,6 @@ impl CatalogStore {
 		flow_namespace::LAYOUT.set_u64(&mut row, flow_namespace::ID, flow);
 		flow_namespace::LAYOUT.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);
-		println!(
-			"[link_flow_to_namespace] Writing NamespaceFlowKey: {:?} for namespace={} flow={}",
-			key, namespace.0, flow.0
-		);
 		txn.set(&key, row)?;
 		Ok(())
 	}

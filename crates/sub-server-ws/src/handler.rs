@@ -11,6 +11,7 @@
 //! - Subscription management for push notifications
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::Identity;
@@ -19,11 +20,9 @@ use reifydb_sub_server::{
 };
 use reifydb_type::{Params, Uuid7};
 use serde_json::json;
-use tokio::{
-	net::TcpStream,
-	sync::{mpsc, watch},
-};
+use tokio::{net::TcpStream, select, sync::{mpsc, watch}, time::timeout};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tracing::{debug, info, warn};
 use uuid::Uuid as StdUuid;
 
 use crate::{
@@ -53,18 +52,57 @@ pub async fn handle_connection(
 	registry: Arc<SubscriptionRegistry>,
 	mut shutdown: watch::Receiver<bool>,
 ) {
+	let handler_start = Instant::now();
 	let peer = stream.peer_addr().ok();
 	let connection_id = Uuid7::generate();
 
-	let ws_stream = match accept_async(stream).await {
-		Ok(ws) => ws,
-		Err(e) => {
-			tracing::warn!("WebSocket handshake failed from {:?}: {}", peer, e);
+	println!(
+		"[TIMING] Connection {} from {:?}: handler started at T+0ms",
+		connection_id,
+		peer
+	);
+
+	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
+	if let Err(e) = stream.set_nodelay(true) {
+		warn!("Failed to set TCP_NODELAY for {:?}: {}", peer, e);
+	}
+
+	// Wrap accept_async with a 30-second timeout to prevent hanging on slow/malicious clients
+	let ws_stream = match timeout(Duration::from_secs(30), accept_async(stream)).await {
+		Ok(Ok(ws)) => {
+			let handshake_duration = handler_start.elapsed();
+			println!(
+				"[TIMING] Connection {} from {:?}: handshake completed at T+{}ms",
+				connection_id,
+				peer,
+				handshake_duration.as_millis()
+			);
+			ws
+		}
+		Ok(Err(e)) => {
+			let duration = handler_start.elapsed();
+			println!(
+				"[TIMING] Connection {} from {:?}: handshake failed at T+{}ms: {}",
+				connection_id,
+				peer,
+				duration.as_millis(),
+				e
+			);
+			return;
+		}
+		Err(_) => {
+			let duration = handler_start.elapsed();
+			println!(
+				"[TIMING] Connection {} from {:?}: handshake timeout at T+{}ms",
+				connection_id,
+				peer,
+				duration.as_millis()
+			);
 			return;
 		}
 	};
 
-	tracing::debug!("WebSocket connection {} established from {:?}", connection_id, peer);
+	debug!("WebSocket connection {} established from {:?}", connection_id, peer);
 	let (mut sender, mut receiver) = ws_stream.split();
 
 	// Channel for receiving push messages from the registry
@@ -74,13 +112,13 @@ pub async fn handle_connection(
 	let mut identity: Option<Identity> = None;
 
 	loop {
-		tokio::select! {
+		select! {
 			biased;
 
 			// Check shutdown first
 			result = shutdown.changed() => {
 				if result.is_err() || *shutdown.borrow() {
-					tracing::debug!("WebSocket connection {:?} shutting down", peer);
+					debug!("WebSocket connection {:?} shutting down", peer);
 					let _ = sender.send(Message::Close(None)).await;
 					break;
 				}
@@ -100,7 +138,7 @@ pub async fn handle_connection(
 					}
 				};
 				if sender.send(Message::Text(msg.into())).await.is_err() {
-					tracing::debug!("Failed to send push message to {:?}", peer);
+					debug!("Failed to send push message to {:?}", peer);
 					break;
 				}
 			}
@@ -119,7 +157,7 @@ pub async fn handle_connection(
 						).await;
 						if let Some(resp) = response {
 							if sender.send(Message::Text(resp.into())).await.is_err() {
-								tracing::debug!("Failed to send response to {:?}", peer);
+								debug!("Failed to send response to {:?}", peer);
 								break;
 							}
 						}
@@ -133,7 +171,7 @@ pub async fn handle_connection(
 						// Client responded to our ping, connection is alive
 					}
 					Some(Ok(Message::Close(frame))) => {
-						tracing::debug!("Client {:?} closed connection: {:?}", peer, frame);
+						debug!("Client {:?} closed connection: {:?}", peer, frame);
 						break;
 					}
 					Some(Ok(Message::Binary(_))) => {
@@ -144,11 +182,11 @@ pub async fn handle_connection(
 						// Raw frame, ignore
 					}
 					Some(Err(e)) => {
-						tracing::warn!("WebSocket error from {:?}: {}", peer, e);
+						warn!("WebSocket error from {:?}: {}", peer, e);
 						break;
 					}
 					None => {
-						tracing::debug!("Client {:?} disconnected", peer);
+						debug!("Client {:?} disconnected", peer);
 						break;
 					}
 				}
@@ -158,7 +196,7 @@ pub async fn handle_connection(
 
 	// Cleanup all subscriptions for this connection
 	registry.cleanup_connection(connection_id);
-	tracing::debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
+	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
 }
 
 /// Connection ID type alias for clarity.
@@ -247,7 +285,7 @@ async fn process_message(
 			// Register the subscription
 			let subscription_id = registry.subscribe(connection_id, sub.query, push_tx);
 
-			tracing::info!(
+			info!(
 				"Connection {} subscribed with query, subscription_id: {}",
 				connection_id,
 				subscription_id
@@ -277,7 +315,7 @@ async fn process_message(
 			let removed = registry.unsubscribe(subscription_id);
 
 			if removed {
-				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
+				info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
 				Some(build_response(
 					&request.id,
 					"Unsubscribed",

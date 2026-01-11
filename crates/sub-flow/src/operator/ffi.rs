@@ -12,8 +12,9 @@ use std::cell::RefCell;
 use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
+	process::abort,
 };
-use tracing::{Span, debug_span, instrument};
+use tracing::{Span, debug_span, error, instrument};
 
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
@@ -114,11 +115,19 @@ impl Operator for FFIOperator {
 		let ffi_us = ffi_start.elapsed().as_micros() as u64;
 		drop(_ffi_guard);
 
-		// Handle panics from FFI code
+		// Handle panics from FFI code - abort process on panic
 		let result_code = match result {
 			Ok(code) => code,
-			Err(_) => {
-				return Err(FFIError::Other("FFI operator panicked during apply".to_string()).into());
+			Err(panic_info) => {
+				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+					s.to_string()
+				} else if let Some(s) = panic_info.downcast_ref::<String>() {
+					s.clone()
+				} else {
+					"Unknown panic".to_string()
+				};
+				error!(operator_id = self.operator_id.0, "FFI operator panicked during apply: {}", msg);
+				abort();
 			}
 		};
 
@@ -172,11 +181,19 @@ impl Operator for FFIOperator {
 			)
 		}));
 
-		// Handle panics from FFI code
+		// Handle panics from FFI code - abort process on panic
 		let result_code = match result {
 			Ok(code) => code,
-			Err(_) => {
-				return Err(FFIError::Other("FFI operator panicked during pull".to_string()).into());
+			Err(panic_info) => {
+				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+					s.to_string()
+				} else if let Some(s) = panic_info.downcast_ref::<String>() {
+					s.clone()
+				} else {
+					"Unknown panic".to_string()
+				};
+				error!(operator_id = self.operator_id.0, "FFI operator panicked during pull: {}", msg);
+				abort();
 			}
 		};
 

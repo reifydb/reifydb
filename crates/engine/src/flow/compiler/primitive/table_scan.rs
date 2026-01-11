@@ -23,10 +23,11 @@ impl From<TableScanNode> for TableScanCompiler {
 
 impl CompileOperator for TableScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
+		let table_id = self.table_scan.source.def().id;
 		compiler.add_node(
 			txn,
 			SourceTable {
-				table: self.table_scan.source.def().id,
+				table: table_id,
 			},
 		)
 	}

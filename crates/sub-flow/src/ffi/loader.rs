@@ -262,32 +262,6 @@ impl FFIOperatorLoader {
 		self.operator_paths.contains_key(operator)
 	}
 
-	/// Unload a library
-	///
-	/// # Arguments
-	/// * `path` - Path to the library to unload
-	///
-	/// # Safety
-	/// This will invalidate any operators created from this library.
-	/// Ensure all operators from this library are destroyed first.
-	pub fn unload_library(&mut self, path: &Path) -> FFIResult<()> {
-		if self.loaded_libraries.remove(path).is_some() {
-			Ok(())
-		} else {
-			Err(FFIError::Other(format!("Library not loaded: {}", path.display())))
-		}
-	}
-
-	/// Get the number of loaded libraries
-	pub fn loaded_count(&self) -> usize {
-		self.loaded_libraries.len()
-	}
-
-	/// Check if a library is loaded
-	pub fn is_loaded(&self, path: &Path) -> bool {
-		self.loaded_libraries.contains_key(path)
-	}
-
 	/// List all loaded operators with their metadata
 	pub fn list_loaded_operators(&self) -> Vec<LoadedOperatorInfo> {
 		let mut operators = Vec::new();
