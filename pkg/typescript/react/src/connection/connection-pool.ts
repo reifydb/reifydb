@@ -21,6 +21,10 @@ export function getConnection(config?: ConnectionConfig): Connection {
     // Create singleton on first call
     if (!defaultConnection) {
         defaultConnection = new Connection(effectiveConfig);
+        // Start connection immediately - don't wait for React's useEffect
+        defaultConnection.connect().catch(err => {
+            console.error('[ConnectionPool] Eager connect failed:', err);
+        });
     } else {
         // Update config on existing connection if provided
         defaultConnection.setConfig(effectiveConfig);
