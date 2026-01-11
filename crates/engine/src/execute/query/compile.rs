@@ -262,7 +262,7 @@ pub(crate) fn compile<'a>(
 					"primary_keys" => VTables::PrimaryKeys(PrimaryKeys::new()),
 					"primary_key_columns" => VTables::PrimaryKeyColumns(PrimaryKeyColumns::new()),
 					"column_policies" => VTables::ColumnPolicies(ColumnPolicies::new()),
-					"versions" => VTables::Versions(Versions::new()),
+					"versions" => VTables::Versions(Versions::new(context.executor.ioc.clone())),
 					"primitive_retention_policies" => {
 						VTables::PrimitiveRetentionPolicies(PrimitiveRetentionPolicies::new())
 					}

@@ -10,8 +10,6 @@ mod pending;
 mod range;
 mod read;
 mod state;
-#[cfg(test)]
-mod utils;
 mod write;
 
 pub use pending::{Pending, PendingWrites};

@@ -224,21 +224,8 @@ impl FlowWorker {
 				// Skip this batch if flow has already processed it
 				let checkpoint = flow_checkpoints.get(&flow_id).copied().unwrap_or(CommitVersion(0));
 				if batch.version <= checkpoint {
-					println!(
-						"[WORKER DEBUG] Skipping batch v{} for flow {} (checkpoint={})",
-						batch.version.0,
-						flow_id.0,
-						checkpoint.0
-					);
 					continue;
 				}
-
-				println!(
-					"[WORKER DEBUG] Processing batch v{} for flow {} (checkpoint={})",
-					batch.version.0,
-					flow_id.0,
-					checkpoint.0
-				);
 
 				for change in &batch.changes {
 					if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {

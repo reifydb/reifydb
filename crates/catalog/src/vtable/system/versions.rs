@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{VTableDef, version::SystemVersion},
+	interface::VTableDef,
+	ioc::IocContainer,
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_transaction::IntoStandardTransaction;
@@ -18,25 +19,15 @@ use crate::{
 /// Virtual table that exposes system version information
 pub struct Versions {
 	pub(crate) definition: Arc<VTableDef>,
-	/// Versions data is stored here since it's static and set once at system initialization
-	versions: Vec<SystemVersion>,
+	ioc: IocContainer,
 	exhausted: bool,
 }
 
 impl Versions {
-	pub fn new() -> Self {
+	pub fn new(ioc: IocContainer) -> Self {
 		Self {
 			definition: SystemCatalog::get_system_versions_table_def().clone(),
-			versions: Vec::new(),
-			exhausted: false,
-		}
-	}
-
-	/// Create a new Versions table with the provided version data
-	pub fn with_versions(versions: Vec<SystemVersion>) -> Self {
-		Self {
-			definition: SystemCatalog::get_system_versions_table_def().clone(),
-			versions,
+			ioc,
 			exhausted: false,
 		}
 	}
@@ -53,8 +44,10 @@ impl<T: IntoStandardTransaction> VTable<T> for Versions {
 			return Ok(None);
 		}
 
-		// Versions are stored in the struct since they're static
-		let versions = &self.versions;
+		let versions = match self.ioc.resolve::<SystemCatalog>() {
+			Ok(catalog) => catalog.get_system_versions().to_vec(),
+			Err(_) => vec![],
+		};
 
 		let mut names_to_insert = ColumnData::utf8_with_capacity(versions.len());
 

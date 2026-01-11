@@ -15,7 +15,7 @@ pub mod test {
 	};
 	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, test_utils::create_test_engine};
 	use reifydb_sdk::FlowChange;
-	use reifydb_type::{RowNumber, Type, Value};
+	use reifydb_type::{RowNumber, Type};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
 
