@@ -10,7 +10,7 @@ use reifydb_transaction::interceptor::StandardInterceptorBuilder;
 ///
 /// This trait provides a consistent lifecycle and monitoring interface
 /// for all subsystems managed by the Database.
-pub trait Subsystem: Send + Sync + Any + HasVersion {
+pub trait Subsystem:  Any + HasVersion {
 	/// Get the unique name of this subsystem
 	fn name(&self) -> &'static str;
 	/// Start the subsystem

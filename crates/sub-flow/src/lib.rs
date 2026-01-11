@@ -3,17 +3,18 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-mod backfill;
 pub mod builder;
 pub(crate) mod catalog;
 pub(crate) mod convert;
 pub(crate) mod coordinator;
 mod engine;
 pub mod ffi;
+pub(crate) mod instruction;
 pub(crate) mod lag;
 #[allow(dead_code)]
 mod operator;
 pub(crate) mod pool;
+pub(crate) mod state;
 pub mod subsystem;
 pub(crate) mod tracker;
 pub mod transaction;

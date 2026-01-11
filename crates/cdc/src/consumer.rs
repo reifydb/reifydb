@@ -6,12 +6,12 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for CDC transaction processing functions
-pub trait CdcConsume: Send + Sync + 'static {
+pub trait CdcConsume {
 	fn consume(&self, txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()>;
 }
 
 /// Trait for CDC event stream consumers
-pub trait CdcConsumer: Send + Sync {
+pub trait CdcConsumer {
 	fn start(&mut self) -> Result<()>;
 	fn stop(&mut self) -> Result<()>;
 	fn is_running(&self) -> bool;

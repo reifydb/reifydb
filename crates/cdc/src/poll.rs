@@ -10,7 +10,7 @@ use std::{
 	thread::{JoinHandle, sleep},
 	time::Duration,
 };
-
+use std::thread::spawn;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
@@ -182,7 +182,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 	}
 }
 
-impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
+impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
 	fn start(&mut self) -> Result<()> {
 		assert!(self.worker.is_none(), "start() can only be called once");
 
@@ -197,7 +197,7 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
-		self.worker = Some(std::thread::spawn(move || {
+		self.worker = Some(spawn(move || {
 			Self::polling_loop(config, engine, consumer, state);
 		}));
 
