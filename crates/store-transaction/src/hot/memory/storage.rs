@@ -12,7 +12,7 @@ use std::{
 };
 use std::time::Instant;
 use parking_lot::RwLock;
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 use tracing::{debug_span, instrument, Span};
 
 use super::entry::{Entries, Entry, entry_id_to_key};
@@ -56,7 +56,7 @@ impl MemoryPrimitiveStorage {
 
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let table_key = entry_id_to_key(table);
 		let table_entry = match self.inner.entries.data.get(&table_key) {
 			Some(entry) => entry.value().clone(),
@@ -64,6 +64,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		};
 		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
 		let table_data = table_entry.read();
+		// Borrow<[u8]> impl allows lookup with &[u8] on BTreeMap<CowVec<u8>, _>
 		Ok(table_data.get(key).cloned().flatten())
 	}
 
@@ -87,7 +88,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		lock_wait_us = tracing::field::Empty,
 		insert_time_us = tracing::field::Empty
 	))]
-	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		// Phase 1: Sort tables by key to ensure consistent lock acquisition order.
 		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
 		let sort_span = debug_span!("store::memory::set::sort");
@@ -309,17 +310,17 @@ mod tests {
 		let storage = MemoryPrimitiveStorage::new();
 
 		// Put and get
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))])]))
 			.unwrap();
 		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
-		assert_eq!(value, Some(b"value1".to_vec()));
+		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
 		// Contains
 		assert!(storage.contains(EntryKind::Multi, b"key1").unwrap());
 		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), None)])])).unwrap();
 		assert!(!storage.contains(EntryKind::Multi, b"key1").unwrap());
 	}
 
@@ -327,13 +328,13 @@ mod tests {
 	fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"multi".to_vec())))])]))
 			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Single, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"single".to_vec())))])]))
 			.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"multi".as_slice()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap().as_deref(), Some(b"single".as_slice()));
 	}
 
 	#[test]
@@ -347,26 +348,26 @@ mod tests {
 
 		storage.set(HashMap::from([(
 			EntryKind::Source(source1),
-			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table1".to_vec())))],
 		)]))
 		.unwrap();
 		storage.set(HashMap::from([(
 			EntryKind::Source(source2),
-			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table2".to_vec())))],
 		)]))
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(), Some(b"table1".as_slice()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(), Some(b"table2".as_slice()));
 	}
 
 	#[test]
 	fn test_range_next() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -376,18 +377,18 @@ mod tests {
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
-		assert_eq!(batch.entries[0].key, b"a".to_vec());
-		assert_eq!(batch.entries[1].key, b"b".to_vec());
-		assert_eq!(batch.entries[2].key, b"c".to_vec());
+		assert_eq!(&*batch.entries[0].key, b"a");
+		assert_eq!(&*batch.entries[1].key, b"b");
+		assert_eq!(&*batch.entries[2].key, b"c");
 	}
 
 	#[test]
 	fn test_range_rev_next() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -397,9 +398,9 @@ mod tests {
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
-		assert_eq!(batch.entries[0].key, b"c".to_vec());
-		assert_eq!(batch.entries[1].key, b"b".to_vec());
-		assert_eq!(batch.entries[2].key, b"a".to_vec());
+		assert_eq!(&*batch.entries[0].key, b"c");
+		assert_eq!(&*batch.entries[1].key, b"b");
+		assert_eq!(&*batch.entries[2].key, b"a");
 	}
 
 	#[test]
@@ -408,7 +409,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -421,8 +422,8 @@ mod tests {
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch1.entries[0].key, vec![0]);
-		assert_eq!(batch1.entries[2].key, vec![2]);
+		assert_eq!(&*batch1.entries[0].key, &[0]);
+		assert_eq!(&*batch1.entries[2].key, &[2]);
 
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
@@ -431,8 +432,8 @@ mod tests {
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch2.entries[0].key, vec![3]);
-		assert_eq!(batch2.entries[2].key, vec![5]);
+		assert_eq!(&*batch2.entries[0].key, &[3]);
+		assert_eq!(&*batch2.entries[2].key, &[5]);
 
 		// Third batch of 3
 		let batch3 = storage
@@ -441,8 +442,8 @@ mod tests {
 		assert_eq!(batch3.entries.len(), 3);
 		assert!(batch3.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch3.entries[0].key, vec![6]);
-		assert_eq!(batch3.entries[2].key, vec![8]);
+		assert_eq!(&*batch3.entries[0].key, &[6]);
+		assert_eq!(&*batch3.entries[2].key, &[8]);
 
 		// Fourth batch - only 1 entry remaining
 		let batch4 = storage
@@ -451,7 +452,7 @@ mod tests {
 		assert_eq!(batch4.entries.len(), 1);
 		assert!(!batch4.has_more);
 		assert!(cursor.exhausted);
-		assert_eq!(batch4.entries[0].key, vec![9]);
+		assert_eq!(&*batch4.entries[0].key, &[9]);
 
 		// Fifth call - exhausted
 		let batch5 = storage
@@ -466,7 +467,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
 		}
 
 		// Use a single cursor to stream in reverse
@@ -479,8 +480,8 @@ mod tests {
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch1.entries[0].key, vec![9]);
-		assert_eq!(batch1.entries[2].key, vec![7]);
+		assert_eq!(&*batch1.entries[0].key, &[9]);
+		assert_eq!(&*batch1.entries[2].key, &[7]);
 
 		// Second batch
 		let batch2 = storage
@@ -489,7 +490,7 @@ mod tests {
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch2.entries[0].key, vec![6]);
-		assert_eq!(batch2.entries[2].key, vec![4]);
+		assert_eq!(&*batch2.entries[0].key, &[6]);
+		assert_eq!(&*batch2.entries[2].key, &[4]);
 	}
 }

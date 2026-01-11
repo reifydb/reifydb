@@ -5,11 +5,12 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use dashmap::DashMap;
 use parking_lot::RwLock;
+use reifydb_type::CowVec;
 
 use crate::tier::EntryKind;
 
 /// Type alias for the inner table storage (ordered key-value map)
-pub(super) type Inner = BTreeMap<Vec<u8>, Option<Vec<u8>>>;
+pub(super) type Inner = BTreeMap<CowVec<u8>, Option<CowVec<u8>>>;
 
 /// Type alias for a table entry with -compatible lock
 pub(super) type Entry = Arc<RwLock<Inner>>;

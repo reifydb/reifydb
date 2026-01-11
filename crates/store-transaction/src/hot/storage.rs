@@ -8,7 +8,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 
 use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -45,7 +45,7 @@ impl HotStorage {
 
 impl TierStorage for HotStorage {
 	#[inline]
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(table, key),
 			Self::Sqlite(s) => s.get(table, key),
@@ -61,7 +61,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(batches),
 			Self::Sqlite(s) => s.set(batches),
@@ -125,18 +125,18 @@ mod tests {
 	fn test_memory_backend() {
 		let storage = HotStorage::memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])]))
 			.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"value".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
 	#[test]
 	fn test_sqlite_backend() {
 		let storage = HotStorage::sqlite_in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"value".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])]))
 			.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"value".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
 	#[test]
@@ -146,9 +146,9 @@ mod tests {
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
 			vec![
-				(b"a".to_vec(), Some(b"1".to_vec())),
-				(b"b".to_vec(), Some(b"2".to_vec())),
-				(b"c".to_vec(), Some(b"3".to_vec())),
+				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 			],
 		)]))
 		.unwrap();
@@ -170,9 +170,9 @@ mod tests {
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
 			vec![
-				(b"a".to_vec(), Some(b"1".to_vec())),
-				(b"b".to_vec(), Some(b"2".to_vec())),
-				(b"c".to_vec(), Some(b"3".to_vec())),
+				(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+				(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+				(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 			],
 		)]))
 		.unwrap();

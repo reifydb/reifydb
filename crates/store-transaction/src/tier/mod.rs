@@ -9,7 +9,7 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::interface::{FlowNodeId, PrimitiveId};
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 
 /// Identifies a logical table/namespace in storage.
 ///
@@ -33,8 +33,8 @@ pub enum EntryKind {
 /// Value is None for tombstones (deletions).
 #[derive(Debug, Clone)]
 pub struct RawEntry {
-	pub key: Vec<u8>,
-	pub value: Option<Vec<u8>>,
+	pub key: CowVec<u8>,
+	pub value: Option<CowVec<u8>>,
 }
 
 /// A batch of range results with continuation info for pagination.
@@ -68,7 +68,7 @@ impl RangeBatch {
 #[derive(Debug, Clone)]
 pub struct RangeCursor {
 	/// Last key seen in the previous batch (for Bound::Excluded continuation)
-	pub last_key: Option<Vec<u8>>,
+	pub last_key: Option<CowVec<u8>>,
 	/// Whether this stream is exhausted
 	pub exhausted: bool,
 }
@@ -103,7 +103,7 @@ impl Default for RangeCursor {
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>>;
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>>;
 
 	/// Check if a key exists in storage.
 	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
@@ -114,7 +114,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()>;
+	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()>;
 
 	/// Fetch the next batch of entries in key order (descending).
 	///

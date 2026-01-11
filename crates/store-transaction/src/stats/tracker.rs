@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_core::key::{Key, KeyKind};
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 
 use super::{
 	persistence::{
@@ -380,22 +380,22 @@ impl StorageTracker {
 		// Ensure the single-version table exists
 		storage.ensure_table(EntryKind::Single)?;
 
-		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
+		let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> = {
 			let inner = self.inner.read().unwrap();
 
 			let mut entries = Vec::new();
 
 			// Write per-type stats
 			for ((tier, kind), stats) in &inner.by_type {
-				let key = encode_type_stats_key(*tier, *kind);
-				let value = encode_stats(stats);
+				let key = CowVec::new(encode_type_stats_key(*tier, *kind));
+				let value = CowVec::new(encode_stats(stats));
 				entries.push((key, Some(value)));
 			}
 
 			// Write per-object stats
 			for ((tier, object_id), stats) in &inner.by_object {
-				let key = encode_object_stats_key(*tier, *object_id);
-				let value = encode_stats(stats);
+				let key = CowVec::new(encode_object_stats_key(*tier, *object_id));
+				let value = CowVec::new(encode_stats(stats));
 				entries.push((key, Some(value)));
 			}
 

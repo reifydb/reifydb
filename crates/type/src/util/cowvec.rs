@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{borrow::Borrow, ops::Deref, sync::Arc};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -208,6 +208,12 @@ impl<T: Clone + PartialEq> Deref for CowVec<T> {
 	type Target = [T];
 
 	fn deref(&self) -> &Self::Target {
+		self.as_slice()
+	}
+}
+
+impl<T: Clone + PartialEq> Borrow<[T]> for CowVec<T> {
+	fn borrow(&self) -> &[T] {
 		self.as_slice()
 	}
 }

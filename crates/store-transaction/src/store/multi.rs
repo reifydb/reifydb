@@ -45,7 +45,7 @@ impl MultiVersionGet for StandardTransactionStore {
 				} => {
 					return Ok(Some(MultiVersionValues {
 						key: key.clone(),
-						values: EncodedValues(CowVec::new(value)),
+						values: EncodedValues(value),
 						version: v,
 					}));
 				}
@@ -63,7 +63,7 @@ impl MultiVersionGet for StandardTransactionStore {
 				} => {
 					return Ok(Some(MultiVersionValues {
 						key: key.clone(),
-						values: EncodedValues(CowVec::new(value)),
+						values: EncodedValues(value),
 						version: v,
 					}));
 				}
@@ -81,7 +81,7 @@ impl MultiVersionGet for StandardTransactionStore {
 				} => {
 					return Ok(Some(MultiVersionValues {
 						key: key.clone(),
-						values: EncodedValues(CowVec::new(value)),
+						values: EncodedValues(value),
 						version: v,
 					}));
 				}
@@ -188,7 +188,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		})?;
 
 		// Batch deltas by table for efficient storage writes
-		let mut batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
+		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
 
 		for delta in all_deltas.iter() {
 			let table = classify_key(delta.key());
@@ -198,15 +198,15 @@ impl MultiVersionCommit for StandardTransactionStore {
 					key,
 					values,
 				} => {
-					let versioned_key = encode_versioned_key(key.as_ref(), version);
+					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
 					batches.entry(table)
 						.or_default()
-						.push((versioned_key, Some(values.as_ref().to_vec())));
+						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					let versioned_key = encode_versioned_key(key.as_ref(), version);
+					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
 					batches.entry(table).or_default().push((versioned_key, None));
 				}
 				Delta::Drop {
@@ -266,7 +266,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 				self.stats_tracker.record_cdc_for_change(Tier::Hot, change_key, per_change_overhead, 1);
 			}
 
-			Some((cdc_key.to_vec(), encoded.to_vec()))
+			Some((CowVec::new(cdc_key.to_vec()), CowVec::new(encoded.to_vec())))
 		} else {
 			None
 		};
@@ -435,7 +435,7 @@ impl StandardTransactionStore {
 		let batch_size = batch_size as usize;
 
 		// Collected entries: logical_key -> (version, value)
-		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
+		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
@@ -506,7 +506,7 @@ impl StandardTransactionStore {
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionValues {
 					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(CowVec::new(val)),
+					values: EncodedValues(val),
 					version: v,
 				})
 			})
@@ -530,7 +530,7 @@ impl StandardTransactionStore {
 		end: &[u8],
 		version: CommitVersion,
 		range: &EncodedKeyRange,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)>,
+		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> crate::Result<bool> {
 		use super::version::{extract_key, extract_version};
 
@@ -643,7 +643,7 @@ impl StandardTransactionStore {
 		let batch_size = batch_size as usize;
 
 		// Collected entries: logical_key -> (version, value)
-		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
+		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
@@ -715,7 +715,7 @@ impl StandardTransactionStore {
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionValues {
 					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(CowVec::new(val)),
+					values: EncodedValues(val),
 					version: v,
 				})
 			})
@@ -739,7 +739,7 @@ impl StandardTransactionStore {
 		end: &[u8],
 		version: CommitVersion,
 		range: &EncodedKeyRange,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)>,
+		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> crate::Result<bool> {
 		use super::version::{extract_key, extract_version};
 

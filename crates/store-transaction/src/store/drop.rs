@@ -10,6 +10,7 @@
 use std::ops::Bound;
 
 use reifydb_core::CommitVersion;
+use reifydb_type::CowVec;
 
 use super::version::{encode_versioned_key, extract_version, key_version_range};
 use crate::tier::{EntryKind, RangeCursor, TierStorage};
@@ -18,7 +19,7 @@ use crate::tier::{EntryKind, RangeCursor, TierStorage};
 #[derive(Debug, Clone)]
 pub struct DropEntry {
 	/// The versioned key to delete
-	pub versioned_key: Vec<u8>,
+	pub versioned_key: CowVec<u8>,
 	/// Size of the value being dropped (0 if tombstone)
 	pub value_bytes: u64,
 }
@@ -42,7 +43,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	let (start, end) = key_version_range(key);
 
 	// Collect all versioned keys for this logical key, including value sizes
-	let mut versioned_entries: Vec<(Vec<u8>, CommitVersion, u64)> = Vec::new();
+	let mut versioned_entries: Vec<(CowVec<u8>, CommitVersion, u64)> = Vec::new();
 
 	let mut cursor = RangeCursor::new();
 	loop {
@@ -71,7 +72,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	if let Some(pending_ver) = pending_version {
 		// Add a placeholder entry for the pending version
 		// value_bytes=0 is fine since this entry will never be dropped (it's the newest)
-		let pending_key = encode_versioned_key(key, pending_ver);
+		let pending_key = CowVec::new(encode_versioned_key(key, pending_ver));
 		versioned_entries.push((pending_key, pending_ver, 0));
 	}
 
@@ -128,8 +129,8 @@ mod tests {
 		let entries: Vec<_> = versions
 			.iter()
 			.map(|v| {
-				let versioned_key = encode_versioned_key(key, CommitVersion(*v));
-				(versioned_key, Some(vec![*v as u8])) // value = version byte
+				let versioned_key = CowVec::new(encode_versioned_key(key, CommitVersion(*v)));
+				(versioned_key, Some(CowVec::new(vec![*v as u8]))) // value = version byte
 			})
 			.collect();
 

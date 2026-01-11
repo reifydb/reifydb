@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
@@ -19,11 +19,11 @@ use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 pub enum ColdStorage {}
 
 impl TierStorage for ColdStorage {
-	fn get(&self, _table: EntryKind, _key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, _table: EntryKind, _key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match *self {}
 	}
 
-	fn set(&self, _batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, _batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		match *self {}
 	}
 

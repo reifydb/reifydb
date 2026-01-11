@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, ops::Bound};
 
-use reifydb_core::{CommitVersion, CowVec, interface::Cdc, value::encoded::EncodedValues};
+use reifydb_core::{CommitVersion, interface::Cdc, value::encoded::EncodedValues};
 
 use crate::{
 	CdcStore, StandardTransactionStore,
@@ -32,7 +32,7 @@ fn get_internal_cdc<S: TierStorage>(storage: &S, version: CommitVersion) -> reif
 	let key = version_to_key(version);
 
 	if let Some(value) = storage.get(table, &key)? {
-		let encoded = EncodedValues(CowVec::new(value));
+		let encoded = EncodedValues(value);
 		let internal = decode_internal_cdc(&encoded)?;
 		Ok(Some(internal))
 	} else {
@@ -99,7 +99,7 @@ impl CdcRange for StandardTransactionStore {
 				for entry in batch.entries {
 					if let Some(version) = key_to_version(&entry.key) {
 						if let Some(value) = entry.value {
-							let encoded = EncodedValues(CowVec::new(value));
+							let encoded = EncodedValues(value);
 							if let Ok(internal) = decode_internal_cdc(&encoded) {
 								// Only insert if not already present (first tier wins)
 								all_entries.entry(version).or_insert(internal);

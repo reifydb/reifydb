@@ -12,7 +12,7 @@
 use std::ops::Bound;
 
 use reifydb_core::CommitVersion;
-use reifydb_type::Result;
+use reifydb_type::{CowVec, Result};
 
 use crate::tier::{EntryKind, RangeCursor, TierStorage};
 
@@ -31,7 +31,7 @@ const TERMINATOR: [u8; 2] = [0x00, 0x00];
 /// higher versions encode to lower byte values, sorting first.
 pub fn encode_versioned_key(key: &[u8], version: CommitVersion) -> Vec<u8> {
 	// Estimate capacity: key + potential escapes + terminator + version
-	let mut result = Vec::with_capacity(key.len() + key.len() / 10 + VERSION_SIZE);
+	let mut result = Vec::with_capacity(key.len() + VERSION_SIZE);
 
 	// Escape 0x00 bytes in key (0x00 -> 0x00 0xFF)
 	for &byte in key {
@@ -143,7 +143,7 @@ pub fn key_version_range(key: &[u8]) -> (Vec<u8>, Vec<u8>) {
 pub enum VersionedGetResult {
 	/// Found a value at this version
 	Value {
-		value: Vec<u8>,
+		value: CowVec<u8>,
 		version: CommitVersion,
 	},
 	/// Found a tombstone (deletion) at this version

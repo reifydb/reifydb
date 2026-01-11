@@ -31,7 +31,7 @@ impl SingleVersionGet for StandardTransactionStore {
 			if let Some(value) = hot.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
-					values: EncodedValues(CowVec::new(value)),
+					values: EncodedValues(value),
 				}));
 			}
 		}
@@ -41,7 +41,7 @@ impl SingleVersionGet for StandardTransactionStore {
 			if let Some(value) = warm.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
-					values: EncodedValues(CowVec::new(value)),
+					values: EncodedValues(value),
 				}));
 			}
 		}
@@ -51,7 +51,7 @@ impl SingleVersionGet for StandardTransactionStore {
 			if let Some(value) = cold.get(table, key.as_ref())? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
-					values: EncodedValues(CowVec::new(value)),
+					values: EncodedValues(value),
 				}));
 			}
 		}
@@ -104,14 +104,14 @@ impl SingleVersionCommit for StandardTransactionStore {
 				Delta::Set {
 					key,
 					values,
-				} => (key.as_ref().to_vec(), Some(values.as_ref().to_vec())),
+				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec()))),
 				Delta::Remove {
 					key,
-				} => (key.as_ref().to_vec(), None),
+				} => (CowVec::new(key.as_ref().to_vec()), None),
 				Delta::Drop {
 					key,
 					..
-				} => (key.as_ref().to_vec(), None),
+				} => (CowVec::new(key.as_ref().to_vec()), None),
 			})
 			.collect();
 
@@ -128,7 +128,7 @@ impl SingleVersionRange for StandardTransactionStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = EntryKind::Single;
-		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
+		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
@@ -138,7 +138,7 @@ impl SingleVersionRange for StandardTransactionStore {
 			table: EntryKind,
 			start: &Bound<Vec<u8>>,
 			end: &Bound<Vec<u8>>,
-			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+			all_entries: &mut BTreeMap<CowVec<u8>, Option<CowVec<u8>>>,
 		) -> crate::Result<()> {
 			let mut cursor = RangeCursor::new();
 
@@ -180,8 +180,8 @@ impl SingleVersionRange for StandardTransactionStore {
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionValues {
-					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(CowVec::new(val)),
+					key: EncodedKey(key_bytes),
+					values: EncodedValues(val),
 				})
 			})
 			.take(batch_size as usize)
@@ -200,7 +200,7 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = EntryKind::Single;
-		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
+		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
@@ -210,7 +210,7 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 			table: EntryKind,
 			start: &Bound<Vec<u8>>,
 			end: &Bound<Vec<u8>>,
-			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+			all_entries: &mut BTreeMap<CowVec<u8>, Option<CowVec<u8>>>,
 		) -> crate::Result<()> {
 			let mut cursor = RangeCursor::new();
 
@@ -253,8 +253,8 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 			.rev() // Reverse for descending order
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionValues {
-					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(CowVec::new(val)),
+					key: EncodedKey(key_bytes),
+					values: EncodedValues(val),
 				})
 			})
 			.take(batch_size as usize)

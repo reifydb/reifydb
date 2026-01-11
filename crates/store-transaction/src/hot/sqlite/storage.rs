@@ -10,7 +10,7 @@
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use parking_lot::Mutex;
-use reifydb_type::{Result, diagnostic::internal::internal, error};
+use reifydb_type::{CowVec, Result, diagnostic::internal::internal, error};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 
@@ -80,7 +80,7 @@ impl SqlitePrimitiveStorage {
 
 impl TierStorage for SqlitePrimitiveStorage {
 	#[instrument(name = "store::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
-	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let table_name = entry_id_to_name(table);
 		let conn = self.inner.conn.lock();
 
@@ -91,7 +91,8 @@ impl TierStorage for SqlitePrimitiveStorage {
 		);
 
 		match result {
-			Ok(value) => Ok(value),
+			Ok(Some(value)) => Ok(Some(CowVec::new(value))),
+			Ok(None) => Ok(None),
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) if e.to_string().contains("no such table") => Ok(None),
 			Err(e) => Err(error!(internal(format!("Failed to get: {}", e)))),
@@ -118,7 +119,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 
 	#[instrument(name = "store::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len()))]
-	fn set(&self, batches: HashMap<EntryKind, Vec<(Vec<u8>, Option<Vec<u8>>)>>) -> Result<()> {
+	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}
@@ -173,7 +174,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		// Determine effective start bound based on cursor state
 		let effective_start: Bound<Vec<u8>> = match &cursor.last_key {
-			Some(last) => Bound::Excluded(last.clone()),
+			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
 			None => bound_to_owned(start),
 		};
 		let end_owned = bound_to_owned(end);
@@ -197,9 +198,11 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
+				let key: Vec<u8> = row.get(0)?;
+				let value: Option<Vec<u8>> = row.get(1)?;
 				Ok(RawEntry {
-					key: row.get(0)?,
-					value: row.get(1)?,
+					key: CowVec::new(key),
+					value: value.map(CowVec::new),
 				})
 			})
 			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
@@ -247,7 +250,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		// For reverse iteration, effective end bound based on cursor
 		let start_owned = bound_to_owned(start);
 		let effective_end: Bound<Vec<u8>> = match &cursor.last_key {
-			Some(last) => Bound::Excluded(last.clone()),
+			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
 			None => bound_to_owned(end),
 		};
 
@@ -270,9 +273,11 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		let entries: Vec<RawEntry> = stmt
 			.query_map(params_refs.as_slice(), |row| {
+				let key: Vec<u8> = row.get(0)?;
+				let value: Option<Vec<u8>> = row.get(1)?;
 				Ok(RawEntry {
-					key: row.get(0)?,
-					value: row.get(1)?,
+					key: CowVec::new(key),
+					value: value.map(CowVec::new),
 				})
 			})
 			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
@@ -358,12 +363,12 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 fn insert_entries_in_tx(
 	tx: &rusqlite::Transaction,
 	table_name: &str,
-	entries: &[(Vec<u8>, Option<Vec<u8>>)],
+	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
 ) -> rusqlite::Result<()> {
 	for (key, value) in entries {
 		tx.execute(
 			&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
-			params![key, value.as_deref()],
+			params![key.as_slice(), value.as_ref().map(|v| v.as_slice())],
 		)?;
 	}
 	Ok(())
@@ -380,17 +385,17 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Put and get
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))])]))
 			.unwrap();
 		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
-		assert_eq!(value, Some(b"value1".to_vec()));
+		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
 		// Contains
 		assert!(storage.contains(EntryKind::Multi, b"key1").unwrap());
 		assert!(!storage.contains(EntryKind::Multi, b"nonexistent").unwrap());
 
 		// Delete (tombstone)
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key1".to_vec(), None)])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), None)])])).unwrap();
 		assert!(!storage.contains(EntryKind::Multi, b"key1").unwrap());
 	}
 
@@ -398,13 +403,13 @@ mod tests {
 	fn test_separate_tables() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"multi".to_vec())))])]))
 			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))])]))
+		storage.set(HashMap::from([(EntryKind::Single, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"single".to_vec())))])]))
 			.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"multi".as_slice()));
+		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap().as_deref(), Some(b"single".as_slice()));
 	}
 
 	#[test]
@@ -418,26 +423,26 @@ mod tests {
 
 		storage.set(HashMap::from([(
 			EntryKind::Source(source1),
-			vec![(b"key".to_vec(), Some(b"table1".to_vec()))],
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table1".to_vec())))],
 		)]))
 		.unwrap();
 		storage.set(HashMap::from([(
 			EntryKind::Source(source2),
-			vec![(b"key".to_vec(), Some(b"table2".to_vec()))],
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"table2".to_vec())))],
 		)]))
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(), Some(b"table1".as_slice()));
+		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(), Some(b"table2".as_slice()));
 	}
 
 	#[test]
 	fn test_range_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -447,18 +452,18 @@ mod tests {
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
-		assert_eq!(batch.entries[0].key, b"a".to_vec());
-		assert_eq!(batch.entries[1].key, b"b".to_vec());
-		assert_eq!(batch.entries[2].key, b"c".to_vec());
+		assert_eq!(&*batch.entries[0].key, b"a");
+		assert_eq!(&*batch.entries[1].key, b"b");
+		assert_eq!(&*batch.entries[2].key, b"c");
 	}
 
 	#[test]
 	fn test_range_rev_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -468,9 +473,9 @@ mod tests {
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
-		assert_eq!(batch.entries[0].key, b"c".to_vec());
-		assert_eq!(batch.entries[1].key, b"b".to_vec());
-		assert_eq!(batch.entries[2].key, b"a".to_vec());
+		assert_eq!(&*batch.entries[0].key, b"c");
+		assert_eq!(&*batch.entries[1].key, b"b");
+		assert_eq!(&*batch.entries[2].key, b"a");
 	}
 
 	#[test]
@@ -479,7 +484,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -492,8 +497,8 @@ mod tests {
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch1.entries[0].key, vec![0]);
-		assert_eq!(batch1.entries[2].key, vec![2]);
+		assert_eq!(&*batch1.entries[0].key, &[0]);
+		assert_eq!(&*batch1.entries[2].key, &[2]);
 
 		// Second batch of 3 - cursor automatically continues
 		let batch2 = storage
@@ -502,8 +507,8 @@ mod tests {
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch2.entries[0].key, vec![3]);
-		assert_eq!(batch2.entries[2].key, vec![5]);
+		assert_eq!(&*batch2.entries[0].key, &[3]);
+		assert_eq!(&*batch2.entries[2].key, &[5]);
 	}
 
 	#[test]
@@ -512,7 +517,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(vec![i], Some(vec![i * 10]))])])).unwrap();
+			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
 		}
 
 		// Use a single cursor to stream in reverse
@@ -525,8 +530,8 @@ mod tests {
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch1.entries[0].key, vec![9]);
-		assert_eq!(batch1.entries[2].key, vec![7]);
+		assert_eq!(&*batch1.entries[0].key, &[9]);
+		assert_eq!(&*batch1.entries[2].key, &[7]);
 
 		// Second batch
 		let batch2 = storage
@@ -535,8 +540,8 @@ mod tests {
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
-		assert_eq!(batch2.entries[0].key, vec![6]);
-		assert_eq!(batch2.entries[2].key, vec![4]);
+		assert_eq!(&*batch2.entries[0].key, &[6]);
+		assert_eq!(&*batch2.entries[2].key, &[4]);
 	}
 
 	#[test]
