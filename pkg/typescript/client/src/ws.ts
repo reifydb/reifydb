@@ -347,6 +347,8 @@ export class WsClient {
         const baseDelay = this.options.reconnectDelayMs ?? 1000;
         const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
 
+        console.log(`Attempting reconnection in ${delay}ms`);
+
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
