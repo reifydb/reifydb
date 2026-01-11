@@ -3,7 +3,6 @@
 
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
-use parking_lot::Mutex;
 use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;

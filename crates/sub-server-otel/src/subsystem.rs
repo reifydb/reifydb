@@ -12,6 +12,7 @@ use std::{
 };
 
 use opentelemetry::{global, trace::TracerProvider};
+use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use reifydb_core::{
 	diagnostic::subsystem::init_failed,
@@ -19,6 +20,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
 
 use crate::config::OtelConfig;
 
@@ -60,6 +62,8 @@ pub struct OtelSubsystem {
 	running: Arc<AtomicBool>,
 	/// The tracer provider (held to prevent premature drop)
 	tracer_provider: Arc<Mutex<Option<SdkTracerProvider>>>,
+	/// Shared runtime for async operations
+	runtime: SharedRuntime,
 }
 
 impl OtelSubsystem {
@@ -69,10 +73,12 @@ impl OtelSubsystem {
 	///
 	/// * `config` - OpenTelemetry configuration
 	pub fn new(config: OtelConfig) -> Self {
+		let runtime = config.runtime.clone().unwrap_or_else(|| DEFAULT_RUNTIME.clone());
 		Self {
 			config,
 			running: Arc::new(AtomicBool::new(false)),
 			tracer_provider: Arc::new(Mutex::new(None)),
+			runtime,
 		}
 	}
 
@@ -109,7 +115,7 @@ impl OtelSubsystem {
 			.build();
 
 		// Build the OTLP exporter
-		let exporter = opentelemetry_otlp::SpanExporter::builder()
+		let exporter = SpanExporter::builder()
 			.with_tonic()
 			.with_endpoint(&self.config.endpoint)
 			.with_timeout(self.config.export_timeout)
@@ -166,7 +172,8 @@ impl Subsystem for OtelSubsystem {
 
 		#[cfg(feature = "otlp")]
 		let provider = {
-			// Already in async context, no need to enter runtime
+			// Enter runtime context for tonic/hyper initialization
+			let _guard = self.runtime.handle().enter();
 			self.build_otlp_tracer_provider().map_err(|e| error!(init_failed("OpenTelemetry", e)))?
 		};
 

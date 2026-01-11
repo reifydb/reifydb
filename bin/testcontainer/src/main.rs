@@ -9,24 +9,11 @@ use reifydb::{
 use tracing::{info, info_span};
 
 fn main() {
-	tokio::runtime::Builder::new_multi_thread()
-		.worker_threads(num_cpus::get())
-		.max_blocking_threads(128)
-		.thread_name("testcontainer")
-		.enable_all()
-		.build()
-		.unwrap()
-		.block_on(async_main());
-}
-
-async fn async_main() {
 	let http_config = HttpConfig::default();
 	let ws_config = WsConfig::default();
 
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
-		.with_http(http_config)
-		.with_ws(ws_config)
 		.with_tracing_otel(
 			OtelConfig::new()
 				.service_name("testcontainer")
@@ -37,6 +24,8 @@ async fn async_main() {
 				.without_console()  // Disable console logging for better performance
 				.with_filter("trace"),  // Only affects OpenTelemetry layer
 		)
+		.with_http(http_config)
+		.with_ws(ws_config)
 		.with_flow(|flow| flow)
 		// .with_admin(AdminConfig::default())
 		.build()
