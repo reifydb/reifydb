@@ -195,15 +195,15 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 	}
 }
 
-pub struct FlowNodeTypeToJson;
+pub struct FlowNodeToJson;
 
-impl FlowNodeTypeToJson {
+impl FlowNodeToJson {
 	pub fn new() -> Self {
 		Self
 	}
 }
 
-impl ScalarFunction for FlowNodeTypeToJson {
+impl ScalarFunction for FlowNodeToJson {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
@@ -277,7 +277,7 @@ impl ScalarFunction for FlowNodeTypeToJson {
 
 				Ok(ColumnData::utf8_with_bitvec(result_data, container.bitvec().clone()))
 			}
-			_ => Err(reifydb_core::Error(internal!("flow::to_json only supports Blob input"))),
+			_ => Err(reifydb_core::Error(internal!("flow_node::to_json only supports Blob input"))),
 		}
 	}
 }
@@ -361,7 +361,7 @@ mod tests {
 	}
 
 	fn test_node_type(node_type: FlowNodeType, expected_json: &str) {
-		let function = FlowNodeTypeToJson::new();
+		let function = FlowNodeToJson::new();
 		let blob = create_blob_from_node_type(&node_type);
 
 		let input_column = Column {
@@ -575,7 +575,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_multiple_rows() {
-		let function = FlowNodeTypeToJson::new();
+		let function = FlowNodeToJson::new();
 
 		let node_type1 = FlowNodeType::SourceTable {
 			table: TableId(1),
@@ -627,7 +627,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_invalid_blob_should_error() {
-		let function = FlowNodeTypeToJson::new();
+		let function = FlowNodeToJson::new();
 
 		// Create an invalid blob that can't be deserialized as FlowNodeType
 		let invalid_blob = Blob::new(vec![0xFF, 0xFF, 0xFF]);
@@ -652,7 +652,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_with_null_data() {
-		let function = FlowNodeTypeToJson::new();
+		let function = FlowNodeToJson::new();
 
 		let node_type = FlowNodeType::SourceTable {
 			table: TableId(1),

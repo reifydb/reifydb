@@ -3,7 +3,7 @@
 
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
-use reifydb_abi::{ColumnsFFI, OperatorDescriptorFFI, OperatorVTableFFI};
+use reifydb_abi::{ColumnsFFI, ContextFFI, OperatorDescriptorFFI, OperatorVTableFFI};
 use reifydb_core::{interface::FlowNodeId, value::column::Columns};
 use reifydb_engine::StandardColumnEvaluator;
 use reifydb_sdk::{FFIError, FlowChange, ffi::Arena};
@@ -14,6 +14,7 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
+use std::time::Instant;
 use tracing::{Span, debug_span, error, instrument};
 
 use crate::{
@@ -85,14 +86,14 @@ impl Operator for FFIOperator {
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<FlowChange> {
-		let total_start = std::time::Instant::now();
+		let total_start = Instant::now();
 
 		let mut arena = self.arena.borrow_mut();
 
 		// Phase 1: Marshal the flow change
 		let marshal_span = debug_span!("flow::ffi::marshal");
 		let _marshal_guard = marshal_span.enter();
-		let marshal_start = std::time::Instant::now();
+		let marshal_start = Instant::now();
 		let ffi_input = arena.marshal_flow_change(&change);
 		let marshal_us = marshal_start.elapsed().as_micros() as u64;
 		drop(_marshal_guard);
@@ -102,12 +103,12 @@ impl Operator for FFIOperator {
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_abi::ContextFFI;
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		// Phase 2: Call FFI vtable
 		let ffi_span = debug_span!("flow::ffi::vtable_call");
 		let _ffi_guard = ffi_span.enter();
-		let ffi_start = std::time::Instant::now();
+		let ffi_start = Instant::now();
 
 		let result = catch_unwind(AssertUnwindSafe(|| {
 			(self.vtable.apply)(self.instance, ffi_ctx_ptr, &ffi_input, &mut ffi_output)
@@ -141,7 +142,7 @@ impl Operator for FFIOperator {
 		// Phase 3: Unmarshal the output
 		let unmarshal_span = debug_span!("flow::ffi::unmarshal");
 		let _unmarshal_guard = unmarshal_span.enter();
-		let unmarshal_start = std::time::Instant::now();
+		let unmarshal_start = Instant::now();
 		let output_change = arena.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
 		let unmarshal_us = unmarshal_start.elapsed().as_micros() as u64;
 		drop(_unmarshal_guard);
@@ -168,7 +169,7 @@ impl Operator for FFIOperator {
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_abi::ContextFFI;
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		// Call FFI pull function
 		let result = catch_unwind(AssertUnwindSafe(|| {
