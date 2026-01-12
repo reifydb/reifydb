@@ -30,7 +30,7 @@ use reifydb_rql::flow::FlowGraphAnalyzer;
 use reifydb_sdk::FlowChange;
 use reifydb_sdk::FlowChangeOrigin::External;
 use reifydb_transaction::cdc::CdcQueryTransaction;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument, Span};
 
 /// Flow coordinator that implements CDC consumption logic.
 pub(crate) struct FlowCoordinator {
@@ -60,7 +60,24 @@ impl FlowCoordinator {
 }
 
 impl CdcConsume for FlowCoordinator {
+	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, txn, cdcs), fields(
+		cdc_count = cdcs.len(),
+		version_start = tracing::field::Empty,
+		version_end = tracing::field::Empty,
+		batch_count = tracing::field::Empty,
+		elapsed_us = tracing::field::Empty
+	))]
 	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+		let consume_start = std::time::Instant::now();
+
+		// Record version range
+		if let Some(first) = cdcs.first() {
+			Span::current().record("version_start", first.version.0);
+		}
+		if let Some(last) = cdcs.last() {
+			Span::current().record("version_end", last.version.0);
+		}
+
 		let state_version = self.get_parent_snapshot_version(txn)?;
 
 		let latest_version = cdcs.last().map(|c| c.version);
@@ -87,6 +104,9 @@ impl CdcConsume for FlowCoordinator {
 		if let Some(to_version) = latest_version {
 			let worker_batches = self.route_and_group_changes(&all_changes, to_version, state_version);
 
+			// Record batch count
+			Span::current().record("batch_count", worker_batches.len());
+
 			// Submit targeted batches to workers
 			if !worker_batches.is_empty() {
 				let pending_writes = self.pool.submit(worker_batches)?;
@@ -109,8 +129,11 @@ impl CdcConsume for FlowCoordinator {
 			}
 
 			self.advance_backfilling_flows(txn, to_version, state_version)?;
+		} else {
+			Span::current().record("batch_count", 0usize);
 		}
 
+		Span::current().record("elapsed_us", consume_start.elapsed().as_micros() as u64);
 		Ok(())
 	}
 }
@@ -124,7 +147,12 @@ impl FlowCoordinator {
 	}
 
 	/// Detect new flow registrations from CDC.
+	#[instrument(name = "flow::coordinator::handle_new_flows", level = "debug", skip(self, txn, cdc), fields(
+		change_count = cdc.changes.len(),
+		new_flows = tracing::field::Empty
+	))]
 	fn handle_new_flows(&self, txn: &mut StandardCommandTransaction, cdc: &Cdc) -> Result<()> {
+		let mut new_flows = 0u32;
 		for change in &cdc.changes {
 			if let Some(kind) = Key::kind(change.key()) {
 				if kind == KeyKind::Flow {
@@ -142,6 +170,7 @@ impl FlowCoordinator {
 								self.pool.register_flow(flow.clone())?;
 								self.analyzer.borrow_mut().add(flow.clone());
 								self.states.borrow_mut().register_backfilling(flow_id);
+								new_flows += 1;
 
 								debug!(
 									flow_id = flow_id.0,
@@ -154,6 +183,7 @@ impl FlowCoordinator {
 			}
 		}
 
+		Span::current().record("new_flows", new_flows);
 		Ok(())
 	}
 
@@ -162,6 +192,10 @@ impl FlowCoordinator {
 	/// Uses the flow analyzer to determine which sources the flow depends on,
 	/// then filters changes to only include those from subscribed sources.
 	/// Maintains original CDC sequence order.
+	#[instrument(name = "flow::coordinator::filter_cdc", level = "trace", skip(self, changes), fields(
+		input = changes.len(),
+		output = tracing::field::Empty
+	))]
 	fn filter_cdc_for_flow(&self, flow_id: FlowId, changes: &[FlowChange]) -> Vec<FlowChange> {
 		let analyzer = self.analyzer.borrow();
 		let dependency_graph = analyzer.get_dependency_graph();
@@ -184,7 +218,7 @@ impl FlowCoordinator {
 		}
 
 		// Filter changes to only those from this flow's sources
-		changes.iter()
+		let result: Vec<FlowChange> = changes.iter()
 			.filter(|change| {
 				if let External(source) = change.origin {
 					flow_sources.contains(&source)
@@ -194,25 +228,38 @@ impl FlowCoordinator {
 				}
 			})
 			.cloned()
-			.collect()
+			.collect();
+
+		Span::current().record("output", result.len());
+		result
 	}
 
 	/// Route CDC changes to flows and group by worker.
 	///
 	/// Returns a map of worker_id -> WorkerBatch containing only the
 	/// changes relevant to each worker's assigned flows.
+	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, changes), fields(
+		changes = changes.len(),
+		active_flows = tracing::field::Empty,
+		batches = tracing::field::Empty,
+		elapsed_us = tracing::field::Empty
+	))]
 	fn route_and_group_changes(
 		&self,
 		changes: &[FlowChange],
 		to_version: CommitVersion,
 		state_version: CommitVersion,
 	) -> HashMap<usize, WorkerBatch> {
+		let start = std::time::Instant::now();
 		let states = self.states.borrow();
 		let num_workers = self.pool.num_workers();
 		let mut worker_batches: HashMap<usize, WorkerBatch> = HashMap::new();
 
+		let active_flow_ids: Vec<_> = states.active_flow_ids();
+		Span::current().record("active_flows", active_flow_ids.len());
+
 		// Only process active flows (not backfilling)
-		for flow_id in states.active_flow_ids() {
+		for flow_id in active_flow_ids {
 			let flow_changes = self.filter_cdc_for_flow(flow_id, changes);
 
 			// Skip flows with no relevant changes
@@ -227,6 +274,8 @@ impl FlowCoordinator {
 			batch.add_instruction(FlowInstruction::new(flow_id, to_version, flow_changes));
 		}
 
+		Span::current().record("batches", worker_batches.len());
+		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		worker_batches
 	}
 
@@ -234,15 +283,23 @@ impl FlowCoordinator {
 	///
 	/// This method processes backfilling flows incrementally, allowing them to
 	/// gradually catch up to the current version without blocking the pipeline.
+	#[instrument(name = "flow::coordinator::advance_backfill", level = "debug", skip(self, txn), fields(
+		backfilling = tracing::field::Empty,
+		processed = tracing::field::Empty,
+		elapsed_us = tracing::field::Empty
+	))]
 	fn advance_backfilling_flows(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		current_version: CommitVersion,
 		state_version: CommitVersion,
 	) -> Result<()> {
+		let start = std::time::Instant::now();
 		const BACKFILL_CHUNK_SIZE: u64 = 1_000;
 
 		let backfilling_flows: Vec<FlowId> = self.states.borrow().backfilling_flow_ids();
+		Span::current().record("backfilling", backfilling_flows.len());
+		let mut processed = 0u32;
 
 		for flow_id in backfilling_flows {
 			// Get current checkpoint for this flow
@@ -326,6 +383,7 @@ impl FlowCoordinator {
 				state.update_checkpoint(to_version);
 			}
 
+			processed += 1;
 			debug!(
 				flow_id = flow_id.0,
 				from = from_version.0,
@@ -342,6 +400,8 @@ impl FlowCoordinator {
 			}
 		}
 
+		Span::current().record("processed", processed);
+		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		Ok(())
 	}
 }

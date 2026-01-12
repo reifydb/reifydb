@@ -19,7 +19,7 @@ use std::{
 	mem::take,
 	thread::{JoinHandle, spawn},
 };
-use tracing::error;
+use tracing::{error, instrument, Span};
 
 /// Message types for worker communication.
 enum WorkerRequest {
@@ -149,12 +149,21 @@ impl FlowWorker {
 		}
 	}
 
+	#[instrument(name = "flow::worker::process", level = "debug", skip(flow_engine, engine, catalog, batch), fields(
+		instructions = batch.instructions.len(),
+		total_changes = tracing::field::Empty,
+		elapsed_us = tracing::field::Empty
+	))]
 	fn process_request(
 		flow_engine: &mut FlowEngine,
 		engine: &StandardEngine,
 		catalog: &Catalog,
 		batch: WorkerBatch,
 	) -> Result<PendingWrites> {
+		let start = std::time::Instant::now();
+		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
+		Span::current().record("total_changes", total_changes);
+
 		let mut pending = PendingWrites::new();
 
 		// Process each flow instruction
@@ -191,6 +200,7 @@ impl FlowWorker {
 			pending = take(&mut txn.pending);
 		}
 
+		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		Ok(pending)
 	}
 }

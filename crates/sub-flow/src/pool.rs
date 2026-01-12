@@ -10,7 +10,7 @@ use reifydb_engine::StandardEngine;
 use reifydb_type::internal;
 use reifydb_type::util::hex::encode;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, instrument, Span};
 
 /// Pool of N flow workers for parallel flow processing.
 pub(crate) struct FlowWorkerPool {
@@ -67,7 +67,16 @@ impl FlowWorkerPool {
 		self.workers[worker_id].process(batch)
 	}
 
+	#[instrument(name = "flow::pool::submit", level = "debug", skip(self, batches), fields(
+		batches = batches.len(),
+		instructions = tracing::field::Empty,
+		elapsed_us = tracing::field::Empty
+	))]
 	pub fn submit(&self, batches: HashMap<usize, WorkerBatch>) -> Result<PendingWrites> {
+		let start = std::time::Instant::now();
+		let total_instructions: usize = batches.values().map(|b| b.instructions.len()).sum();
+		Span::current().record("instructions", total_instructions);
+
 		let mut results = Vec::with_capacity(batches.len());
 
 		for (worker_id, batch) in batches {
@@ -79,7 +88,9 @@ impl FlowWorkerPool {
 		}
 
 		// Aggregate results with keyspace validation
-		self.aggregate_pending_writes(results)
+		let result = self.aggregate_pending_writes(results);
+		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
+		result
 	}
 
 	/// Aggregate PendingWrites from multiple workers with keyspace overlap detection.

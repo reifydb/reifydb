@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 use reifydb_sdk::{FlowChange, FlowDiff};
 use reifydb_type::RowNumber;
-use tracing::warn;
+use tracing::{instrument, warn, Span};
 
 use crate::catalog::FlowCatalog;
 
@@ -153,12 +153,18 @@ pub(crate) fn create_row(
 ///
 /// Processes all row changes from the CDC batch, skipping non-row changes
 /// and delete events without pre-images.
+#[instrument(name = "flow::convert::to_flow_change", level = "debug", skip(engine, catalog_cache, cdc), fields(
+	input = cdc.changes.len(),
+	output = tracing::field::Empty,
+	elapsed_us = tracing::field::Empty
+))]
 pub(crate) fn to_flow_change(
 	engine: &StandardEngine,
 	catalog_cache: &FlowCatalog,
 	cdc: &Cdc,
 	version: CommitVersion,
 ) -> Result<Vec<FlowChange>> {
+	let start = std::time::Instant::now();
 	let mut changes = Vec::new();
 
 	let mut query_txn = engine.begin_query_at_version(version)?;
@@ -198,5 +204,7 @@ pub(crate) fn to_flow_change(
 		}
 	}
 
+	Span::current().record("output", changes.len());
+	Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 	Ok(changes)
 }
