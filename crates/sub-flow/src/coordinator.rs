@@ -107,7 +107,6 @@ impl CdcConsume for FlowCoordinator {
 			// Record batch count
 			Span::current().record("batch_count", worker_batches.len());
 
-			// Submit targeted batches to workers
 			if !worker_batches.is_empty() {
 				let pending_writes = self.pool.submit(worker_batches)?;
 

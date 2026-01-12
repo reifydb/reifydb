@@ -75,6 +75,18 @@ impl MemoryPrimitiveStorage {
 		let mut writer = entry.writer.lock();
 		writer.publish();
 	}
+
+	/// Process a single table batch: get/create table, append entries, publish
+	#[inline]
+	#[instrument(name = "store::memory::set::table", level = "trace", skip(self, entries), fields(
+		table = ?table,
+		entry_count = entries.len(),
+	))]
+	fn process_table(&self, table: EntryKind, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
+		let table_entry = self.get_or_create_table(table);
+		Self::append_entries(&table_entry, entries);
+		Self::publish_entry(table_entry);
+	}
 }
 
 impl TierStorage for MemoryPrimitiveStorage {
@@ -129,9 +141,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
 
 		for (table, entries) in sorted_batches {
-			let table_entry = self.get_or_create_table(table);
-			Self::append_entries(&table_entry, entries);
-			Self::publish_entry(table_entry);
+			self.process_table(table, entries);
 		}
 
 		Span::current().record("total_entry_count", total_entries);

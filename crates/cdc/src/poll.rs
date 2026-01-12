@@ -27,6 +27,8 @@ use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
 pub struct PollConsumerConfig {
 	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
+	/// Thread name for the poll worker
+	pub thread_name: String,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
 	/// Maximum batch size for fetching CDC events (None = unbounded)
@@ -34,9 +36,15 @@ pub struct PollConsumerConfig {
 }
 
 impl PollConsumerConfig {
-	pub fn new(consumer_id: CdcConsumerId, poll_interval: Duration, max_batch_size: Option<u64>) -> Self {
+	pub fn new(
+		consumer_id: CdcConsumerId,
+		thread_name: impl Into<String>,
+		poll_interval: Duration,
+		max_batch_size: Option<u64>,
+	) -> Self {
 		Self {
 			consumer_id,
+			thread_name: thread_name.into(),
 			poll_interval,
 			max_batch_size,
 		}
@@ -199,7 +207,7 @@ impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
 
 		self.worker = Some(
 			thread::Builder::new()
-				.name("cdc-poll".to_string())
+				.name(config.thread_name.clone())
 				.spawn(move || {
 					Self::polling_loop(config, engine, consumer, state);
 				})
