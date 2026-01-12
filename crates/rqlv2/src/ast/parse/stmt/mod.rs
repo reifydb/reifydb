@@ -5,6 +5,7 @@
 
 mod control;
 mod ddl;
+mod describe;
 mod dml;
 mod r#fn;
 mod for_;

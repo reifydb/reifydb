@@ -3,30 +3,9 @@
 
 //! DML statement parsing (INSERT, UPDATE, DELETE).
 //!
-//! Currently stubs - to be implemented.
-
-use super::super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
-};
-use crate::ast::Statement;
-
-impl<'bump, 'src> Parser<'bump, 'src> {
-	/// Parse INSERT statement.
-	pub(in crate::ast::parse) fn parse_insert(&mut self) -> Result<Statement<'bump>, ParseError> {
-		// TODO: Implement INSERT parsing
-		Err(self.error(ParseErrorKind::NotImplemented("INSERT")))
-	}
-
-	/// Parse UPDATE statement.
-	pub(in crate::ast::parse) fn parse_update(&mut self) -> Result<Statement<'bump>, ParseError> {
-		// TODO: Implement UPDATE parsing
-		Err(self.error(ParseErrorKind::NotImplemented("UPDATE")))
-	}
-
-	/// Parse DELETE statement.
-	pub(in crate::ast::parse) fn parse_delete(&mut self) -> Result<Statement<'bump>, ParseError> {
-		// TODO: Implement DELETE parsing
-		Err(self.error(ParseErrorKind::NotImplemented("DELETE")))
-	}
-}
+//! The actual implementations are in the `parse::dml` module:
+//! - `parse::dml::table_insert` - INSERT parsing
+//! - `parse::dml::table_update` - UPDATE parsing
+//! - `parse::dml::table_delete` - DELETE parsing
+//!
+//! This file is kept for backwards compatibility with module structure.

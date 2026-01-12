@@ -6,19 +6,24 @@
 //! This module implements a Pratt parser that produces bump-allocated AST nodes.
 
 mod aggregate;
+mod apply;
+mod ddl;
 mod distinct;
+mod dml;
 mod error;
 mod extend;
 mod filter;
 mod from;
 mod join;
 mod map;
+mod merge;
 mod namespace;
 mod pratt;
 mod primary;
 mod sort;
 mod stmt;
 mod take;
+mod window;
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 pub use error::{ParseError, ParseErrorKind};
@@ -324,6 +329,9 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			TokenKind::Keyword(Keyword::Update) => self.parse_update(),
 			TokenKind::Keyword(Keyword::Delete) => self.parse_delete(),
 
+			// Utility
+			TokenKind::Keyword(Keyword::Describe) => self.parse_describe(),
+
 			// Query pipeline or expression
 			_ => self.parse_pipeline_or_expr(),
 		}
@@ -402,6 +410,517 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Ok(self.advance().span)
 		} else {
 			Err(self.error(ParseErrorKind::ExpectedOperator(op)))
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+
+	use crate::{
+		ast::{Expr, Statement},
+		ast::expr::{BinaryOp, FromExpr, Literal},
+		token::tokenize,
+	};
+
+	#[test]
+	fn test_pipe_operator_simple() {
+		let bump = Bump::new();
+		let source = "FROM users | SORT { name }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		// Should be a single pipeline statement
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Pipeline(p) => {
+				assert_eq!(p.stages.len(), 2);
+				// Verify FROM source name
+				match &p.stages[0] {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.name, "users");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+				// Verify SORT has a sort column
+				match &p.stages[1] {
+					Expr::Sort(sort) => {
+						assert_eq!(sort.columns.len(), 1);
+					}
+					_ => panic!("Expected SORT"),
+				}
+			}
+			_ => panic!("Expected Pipeline statement"),
+		}
+	}
+
+	#[test]
+	fn test_pipe_operator_multiple() {
+		let bump = Bump::new();
+		let source = "FROM users | FILTER age > 18 | SORT { name } | TAKE 10";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Pipeline(p) => {
+				assert_eq!(p.stages.len(), 4);
+				// Verify FROM
+				match &p.stages[0] {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.name, "users");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+				// Verify FILTER has predicate with "age"
+				match &p.stages[1] {
+					Expr::Filter(f) => {
+						match f.predicate {
+							Expr::Binary(b) => {
+								assert_eq!(b.op, BinaryOp::Gt);
+							}
+							_ => panic!("Expected Binary predicate"),
+						}
+					}
+					_ => panic!("Expected FILTER"),
+				}
+				// Verify SORT
+				match &p.stages[2] {
+					Expr::Sort(sort) => {
+						assert_eq!(sort.columns.len(), 1);
+					}
+					_ => panic!("Expected SORT"),
+				}
+				// Verify TAKE
+				match &p.stages[3] {
+					Expr::Take(take) => {
+						match take.count {
+							Expr::Literal(Literal::Integer { value, .. }) => {
+								assert_eq!(*value, "10");
+							}
+							_ => panic!("Expected integer literal"),
+						}
+					}
+					_ => panic!("Expected TAKE"),
+				}
+			}
+			_ => panic!("Expected Pipeline statement"),
+		}
+	}
+
+	#[test]
+	fn test_pipe_with_qualified_table() {
+		let bump = Bump::new();
+		let source = "FROM system.tables | SORT { id }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Pipeline(p) => {
+				assert_eq!(p.stages.len(), 2);
+				// Verify qualified FROM
+				match &p.stages[0] {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.namespace, Some("system"));
+						assert_eq!(s.name, "tables");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+				// Verify SORT
+				match &p.stages[1] {
+					Expr::Sort(sort) => {
+						assert_eq!(sort.columns.len(), 1);
+					}
+					_ => panic!("Expected SORT"),
+				}
+			}
+			_ => panic!("Expected Pipeline statement"),
+		}
+	}
+
+	#[test]
+	fn test_semicolon_statement_separation() {
+		let bump = Bump::new();
+		let source = "let $x = 1; FROM users";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 2);
+		// Verify first statement is LET with variable name
+		match program.statements[0] {
+			Statement::Let(l) => {
+				assert_eq!(l.name, "x");
+			}
+			_ => panic!("Expected LET statement"),
+		}
+
+		// Second statement is an expression/pipeline with FROM
+		match program.statements[1] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.name, "users");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+			}
+			Statement::Pipeline(p) => {
+				match &p.stages[0] {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.name, "users");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+			}
+			_ => panic!("Expected Expression or Pipeline statement"),
+		}
+	}
+
+	#[test]
+	fn test_between_expression() {
+		let bump = Bump::new();
+		let source = "x BETWEEN 1 AND 10";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::Between(b) => {
+						// Verify value is identifier "x"
+						match b.value {
+							Expr::Identifier(id) => {
+								assert_eq!(id.name, "x");
+							}
+							_ => panic!("Expected identifier"),
+						}
+						// Verify lower bound
+						match b.lower {
+							Expr::Literal(Literal::Integer { value, .. }) => {
+								assert_eq!(*value, "1");
+							}
+							_ => panic!("Expected integer literal"),
+						}
+						// Verify upper bound
+						match b.upper {
+							Expr::Literal(Literal::Integer { value, .. }) => {
+								assert_eq!(*value, "10");
+							}
+							_ => panic!("Expected integer literal"),
+						}
+					}
+					_ => panic!("Expected BETWEEN expression"),
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_in_expression() {
+		let bump = Bump::new();
+		let source = "x IN [1, 2, 3]";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::In(in_expr) => {
+						// Verify value is identifier "x"
+						match in_expr.value {
+							Expr::Identifier(id) => {
+								assert_eq!(id.name, "x");
+							}
+							_ => panic!("Expected identifier"),
+						}
+						// Verify list has 3 elements
+						match in_expr.list {
+							Expr::List(l) => {
+								assert_eq!(l.elements.len(), 3);
+							}
+							_ => panic!("Expected list"),
+						}
+						assert!(!in_expr.negated);
+					}
+					_ => panic!("Expected IN expression"),
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_not_in_expression() {
+		let bump = Bump::new();
+		let source = "x NOT IN [1, 2, 3]";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				if let Expr::In(in_expr) = e.expr {
+					assert!(in_expr.negated);
+				} else {
+					panic!("Expected In expression");
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_single_expression() {
+		let bump = Bump::new();
+		let source = "1 + 2 * 3";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::Binary(b) => {
+						// Due to precedence, this is (1 + (2 * 3))
+						assert_eq!(b.op, BinaryOp::Add);
+						match b.left {
+							Expr::Literal(Literal::Integer { value, .. }) => {
+								assert_eq!(*value, "1");
+							}
+							_ => panic!("Expected integer literal"),
+						}
+						match b.right {
+							Expr::Binary(inner) => {
+								assert_eq!(inner.op, BinaryOp::Mul);
+							}
+							_ => panic!("Expected Binary on right"),
+						}
+					}
+					_ => panic!("Expected Binary expression"),
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_function_call() {
+		let bump = Bump::new();
+		let source = "count(*)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::Call(c) => {
+						// Verify function name
+						match c.function {
+							Expr::Identifier(id) => {
+								assert_eq!(id.name, "count");
+							}
+							_ => panic!("Expected function identifier"),
+						}
+						// Verify single wildcard argument
+						assert_eq!(c.arguments.len(), 1);
+						match &c.arguments[0] {
+							Expr::Wildcard(_) => {}
+							_ => panic!("Expected wildcard argument"),
+						}
+					}
+					_ => panic!("Expected Call expression"),
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_multiple_statements() {
+		let bump = Bump::new();
+		let source = "let $a = 1; let $b = 2; let $c = $a + $b";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 3);
+		// Verify variable names
+		match program.statements[0] {
+			Statement::Let(l) => assert_eq!(l.name, "a"),
+			_ => panic!("Expected LET statement"),
+		}
+		match program.statements[1] {
+			Statement::Let(l) => assert_eq!(l.name, "b"),
+			_ => panic!("Expected LET statement"),
+		}
+		match program.statements[2] {
+			Statement::Let(l) => assert_eq!(l.name, "c"),
+			_ => panic!("Expected LET statement"),
+		}
+	}
+
+	#[test]
+	fn test_empty_program() {
+		let bump = Bump::new();
+		let source = "";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 0);
+	}
+
+	#[test]
+	fn test_only_semicolons() {
+		let bump = Bump::new();
+		let source = ";;;";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 0);
+	}
+
+	#[test]
+	fn test_literal_values() {
+		let bump = Bump::new();
+
+		// Integer
+		let result = tokenize("42", &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, "42").unwrap();
+		assert_eq!(program.statements.len(), 1);
+
+		// Float
+		let result = tokenize("3.14", &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, "3.14").unwrap();
+		assert_eq!(program.statements.len(), 1);
+
+		// String
+		let result = tokenize("'hello'", &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, "'hello'").unwrap();
+		assert_eq!(program.statements.len(), 1);
+
+		// Boolean
+		let result = tokenize("true", &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, "true").unwrap();
+		assert_eq!(program.statements.len(), 1);
+	}
+
+	#[test]
+	fn test_variable_reference() {
+		let bump = Bump::new();
+		let source = "$my_var";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Expression(e) => {
+				match e.expr {
+					Expr::Variable(v) => {
+						assert_eq!(v.name, "my_var");
+					}
+					_ => panic!("Expected Variable expression"),
+				}
+			}
+			_ => panic!("Expected Expression statement"),
+		}
+	}
+
+	#[test]
+	fn test_pipeline_with_filter_and_map() {
+		let bump = Bump::new();
+		let source = "FROM orders | FILTER total > 100 | MAP { id, total }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Pipeline(p) => {
+				assert_eq!(p.stages.len(), 3);
+				// Verify FROM
+				match &p.stages[0] {
+					Expr::From(FromExpr::Source(s)) => {
+						assert_eq!(s.name, "orders");
+					}
+					_ => panic!("Expected FROM Source"),
+				}
+				// Verify FILTER
+				match &p.stages[1] {
+					Expr::Filter(f) => {
+						match f.predicate {
+							Expr::Binary(b) => {
+								assert_eq!(b.op, BinaryOp::Gt);
+								match b.left {
+									Expr::Identifier(id) => {
+										assert_eq!(id.name, "total");
+									}
+									_ => panic!("Expected identifier"),
+								}
+								match b.right {
+									Expr::Literal(Literal::Integer { value, .. }) => {
+										assert_eq!(*value, "100");
+									}
+									_ => panic!("Expected integer literal"),
+								}
+							}
+							_ => panic!("Expected Binary expression"),
+						}
+					}
+					_ => panic!("Expected FILTER"),
+				}
+				// Verify MAP
+				match &p.stages[2] {
+					Expr::Map(m) => {
+						assert_eq!(m.projections.len(), 2);
+					}
+					_ => panic!("Expected MAP"),
+				}
+			}
+			_ => panic!("Expected Pipeline statement"),
+		}
+	}
+
+	#[test]
+	fn test_ddl_create_table() {
+		let bump = Bump::new();
+		let source = "CREATE TABLE test.users { id: Int4, name: Text }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Create(crate::ast::stmt::ddl::CreateStmt::Table(t)) => {
+				assert_eq!(t.namespace, Some("test"));
+				assert_eq!(t.name, "users");
+				assert_eq!(t.columns.len(), 2);
+				assert_eq!(t.columns[0].name, "id");
+				assert_eq!(t.columns[0].data_type, "Int4");
+				assert_eq!(t.columns[1].name, "name");
+				assert_eq!(t.columns[1].data_type, "Text");
+			}
+			_ => panic!("Expected CREATE TABLE statement"),
+		}
+	}
+
+	#[test]
+	fn test_dml_insert() {
+		let bump = Bump::new();
+		// RQL v2 INSERT syntax: just INSERT table (data comes from pipeline)
+		let source = "INSERT test.users";
+		let result = tokenize(source, &bump).unwrap();
+		let program = super::parse(&bump, &result.tokens, source).unwrap();
+
+		assert_eq!(program.statements.len(), 1);
+		match program.statements[0] {
+			Statement::Insert(i) => {
+				assert_eq!(i.namespace, Some("test"));
+				assert_eq!(i.table, "users");
+			}
+			_ => panic!("Expected INSERT statement"),
 		}
 	}
 }

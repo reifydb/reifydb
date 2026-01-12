@@ -243,6 +243,9 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			Keyword::Take => self.parse_take(),
 			Keyword::Distinct => self.parse_distinct(),
 			Keyword::Aggregate => self.parse_aggregate(),
+			Keyword::Apply => self.parse_apply(),
+			Keyword::Merge => self.parse_merge(),
+			Keyword::Window => self.parse_window(),
 			Keyword::If => self.parse_if_expr(),
 			Keyword::Exists => self.parse_exists(false),
 			// JOIN variants

@@ -39,3 +39,91 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		))))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+
+	use crate::{ast::Expr, token::tokenize};
+
+	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+		match stmt {
+			crate::ast::Statement::Pipeline(p) => {
+				assert!(!p.stages.is_empty());
+				&p.stages[0]
+			}
+			crate::ast::Statement::Expression(e) => e.expr,
+			_ => panic!("Expected Pipeline or Expression statement"),
+		}
+	}
+
+	fn extract_distinct<'a>(
+		stmt: crate::ast::Statement<'a>,
+	) -> &'a crate::ast::expr::DistinctExpr<'a> {
+		let expr = get_first_expr(stmt);
+		match expr {
+			Expr::Distinct(d) => d,
+			_ => panic!("Expected DISTINCT expression, got {:?}", expr),
+		}
+	}
+
+	#[test]
+	fn test_distinct_empty() {
+		let bump = Bump::new();
+		let source = "DISTINCT {}";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let distinct = extract_distinct(stmt);
+
+		assert_eq!(distinct.columns.len(), 0);
+	}
+
+	#[test]
+	fn test_distinct_single_column() {
+		let bump = Bump::new();
+		let source = "DISTINCT { name }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let distinct = extract_distinct(stmt);
+
+		assert_eq!(distinct.columns.len(), 1);
+		match &distinct.columns[0] {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_distinct_multiple_columns() {
+		let bump = Bump::new();
+		let source = "DISTINCT { name, age }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let distinct = extract_distinct(stmt);
+
+		assert_eq!(distinct.columns.len(), 2);
+		match &distinct.columns[0] {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+		match &distinct.columns[1] {
+			Expr::Identifier(id) => assert_eq!(id.name, "age"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_distinct_lowercase() {
+		let bump = Bump::new();
+		let source = "distinct { name }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let distinct = extract_distinct(stmt);
+
+		assert_eq!(distinct.columns.len(), 1);
+	}
+}

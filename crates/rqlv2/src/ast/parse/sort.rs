@@ -54,3 +54,175 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		Ok(self.alloc(Expr::Sort(SortExpr::new(columns.into_bump_slice(), start_span.merge(&end_span)))))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+
+	use crate::{ast::Expr, ast::expr::SortDirection, token::tokenize};
+
+	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+		match stmt {
+			crate::ast::Statement::Pipeline(p) => {
+				assert!(!p.stages.is_empty());
+				&p.stages[0]
+			}
+			crate::ast::Statement::Expression(e) => e.expr,
+			_ => panic!("Expected Pipeline or Expression statement"),
+		}
+	}
+
+	fn extract_sort<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::SortExpr<'a> {
+		let expr = get_first_expr(stmt);
+		match expr {
+			Expr::Sort(s) => s,
+			_ => panic!("Expected SORT expression, got {:?}", expr),
+		}
+	}
+
+	#[test]
+	fn test_sort_single_column() {
+		let bump = Bump::new();
+		let source = "SORT { name }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, None);
+
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_sort_keyword_column() {
+		let bump = Bump::new();
+		let source = "SORT { value: ASC }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, Some(SortDirection::Asc));
+
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "value"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_sort_single_column_asc() {
+		let bump = Bump::new();
+		let source = "SORT { name: ASC }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, Some(SortDirection::Asc));
+	}
+
+	#[test]
+	fn test_sort_single_column_desc() {
+		let bump = Bump::new();
+		let source = "SORT { name: DESC }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, Some(SortDirection::Desc));
+	}
+
+	#[test]
+	fn test_sort_multiple_columns() {
+		let bump = Bump::new();
+		let source = "SORT { name, age }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 2);
+
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+
+		match sort.columns[1].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "age"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_sort_multiple_columns_asc_desc() {
+		let bump = Bump::new();
+		let source = "SORT { name: ASC, age: DESC }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 2);
+
+		assert_eq!(sort.columns[0].direction, Some(SortDirection::Asc));
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+
+		assert_eq!(sort.columns[1].direction, Some(SortDirection::Desc));
+		match sort.columns[1].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "age"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_sort_lowercase() {
+		let bump = Bump::new();
+		let source = "sort { name }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, None);
+
+		// Verify column name
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+
+	#[test]
+	fn test_sort_lowercase_direction() {
+		let bump = Bump::new();
+		let source = "sort { name: asc }";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let sort = extract_sort(stmt);
+
+		assert_eq!(sort.columns.len(), 1);
+		assert_eq!(sort.columns[0].direction, Some(SortDirection::Asc));
+
+		// Verify column name
+		match sort.columns[0].expr {
+			Expr::Identifier(id) => assert_eq!(id.name, "name"),
+			_ => panic!("Expected identifier"),
+		}
+	}
+}

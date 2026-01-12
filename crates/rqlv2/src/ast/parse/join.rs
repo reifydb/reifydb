@@ -221,3 +221,388 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		Ok(UsingClause::new(pairs.into_bump_slice(), start_span.merge(&end_span)))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+
+	use crate::{ast::Expr, ast::expr::{BinaryOp, JoinConnector, JoinExpr}, token::tokenize};
+
+	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+		match stmt {
+			crate::ast::Statement::Pipeline(p) => {
+				assert!(!p.stages.is_empty());
+				&p.stages[0]
+			}
+			crate::ast::Statement::Expression(e) => e.expr,
+			_ => panic!("Expected Pipeline or Expression statement"),
+		}
+	}
+
+	fn extract_join<'a>(stmt: crate::ast::Statement<'a>) -> &'a JoinExpr<'a> {
+		let expr = get_first_expr(stmt);
+		match expr {
+			Expr::Join(j) => j,
+			_ => panic!("Expected JOIN expression, got {:?}", expr),
+		}
+	}
+
+	#[test]
+	fn test_left_join_with_subquery() {
+		let bump = Bump::new();
+		let source = "LEFT JOIN { FROM namespace.orders } AS orders USING (id, orders.user_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "orders");
+				assert_eq!(left.using_clause.pairs.len(), 1);
+				// Verify pair content
+				let pair = &left.using_clause.pairs[0];
+				match pair.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier for left side"),
+				}
+				match pair.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "orders"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "user_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression for right side"),
+				}
+				assert!(pair.connector.is_none());
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_left_join_with_alias() {
+		let bump = Bump::new();
+		let source = "LEFT JOIN { FROM test.customers } AS c USING (id, c.customer_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "c");
+				assert_eq!(left.using_clause.pairs.len(), 1);
+				// Verify pair content
+				let pair = &left.using_clause.pairs[0];
+				match pair.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier for left side"),
+				}
+				match pair.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "c"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "customer_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression for right side"),
+				}
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_left_join_with_multiple_conditions() {
+		let bump = Bump::new();
+		let source = "LEFT JOIN { FROM orders } AS o USING (id, o.user_id) AND (tenant, o.tenant)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "o");
+				assert_eq!(left.using_clause.pairs.len(), 2);
+				// First pair: (id, o.user_id) with AND connector
+				let pair0 = &left.using_clause.pairs[0];
+				match pair0.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier"),
+				}
+				match pair0.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "o"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "user_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression"),
+				}
+				assert_eq!(pair0.connector, Some(JoinConnector::And));
+				// Second pair: (tenant, o.tenant) with no connector
+				let pair1 = &left.using_clause.pairs[1];
+				match pair1.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "tenant"),
+					_ => panic!("Expected identifier"),
+				}
+				match pair1.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "o"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "tenant"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression"),
+				}
+				assert!(pair1.connector.is_none());
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_left_join_with_or_connector() {
+		let bump = Bump::new();
+		let source = "LEFT JOIN { FROM orders } AS o USING (id, o.user_id) OR (tenant, o.tenant)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "o");
+				assert_eq!(left.using_clause.pairs.len(), 2);
+				// First pair with OR connector
+				let pair0 = &left.using_clause.pairs[0];
+				match pair0.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier"),
+				}
+				assert_eq!(pair0.connector, Some(JoinConnector::Or));
+				// Second pair with no connector
+				let pair1 = &left.using_clause.pairs[1];
+				match pair1.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "tenant"),
+					_ => panic!("Expected identifier"),
+				}
+				assert!(pair1.connector.is_none());
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_natural_join() {
+		let bump = Bump::new();
+		let source = "NATURAL JOIN { FROM orders } AS o";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Natural(natural) => {
+				assert_eq!(natural.alias, "o");
+			}
+			_ => panic!("Expected NATURAL JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_natural_left_join() {
+		let bump = Bump::new();
+		let source = "NATURAL LEFT JOIN { FROM orders } AS o";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Natural(natural) => {
+				assert_eq!(natural.alias, "o");
+			}
+			_ => panic!("Expected NATURAL JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_natural_inner_join() {
+		let bump = Bump::new();
+		let source = "NATURAL INNER JOIN { FROM orders } AS o";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Natural(natural) => {
+				assert_eq!(natural.alias, "o");
+			}
+			_ => panic!("Expected NATURAL JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_inner_join() {
+		let bump = Bump::new();
+		let source = "INNER JOIN { FROM orders } AS o USING (id, o.user_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Inner(inner) => {
+				assert_eq!(inner.alias, "o");
+				assert_eq!(inner.using_clause.pairs.len(), 1);
+				// Verify pair content
+				let pair = &inner.using_clause.pairs[0];
+				match pair.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier"),
+				}
+				match pair.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "o"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "user_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression"),
+				}
+			}
+			_ => panic!("Expected INNER JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_join_implicit_inner() {
+		let bump = Bump::new();
+		let source = "JOIN { FROM orders } AS o USING (id, o.user_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Inner(inner) => {
+				assert_eq!(inner.alias, "o");
+				assert_eq!(inner.using_clause.pairs.len(), 1);
+				// Verify pair content
+				let pair = &inner.using_clause.pairs[0];
+				match pair.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier"),
+				}
+				match pair.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "o"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "user_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression"),
+				}
+			}
+			_ => panic!("Expected INNER JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_left_join_primitive_table() {
+		let bump = Bump::new();
+		let source = "LEFT JOIN namespace.orders AS o USING (id, o.user_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "o");
+				// Check that it's a primitive source
+				match &left.source {
+					crate::ast::expr::JoinSource::Primitive(prim) => {
+						assert_eq!(prim.source.namespace, Some("namespace"));
+						assert_eq!(prim.source.name, "orders");
+					}
+					_ => panic!("Expected primitive source"),
+				}
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+
+	#[test]
+	fn test_join_lowercase() {
+		let bump = Bump::new();
+		let source = "left join { from orders } as o using (id, o.user_id)";
+		let result = tokenize(source, &bump).unwrap();
+		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let stmt = program.statements.first().copied().unwrap();
+		let join = extract_join(stmt);
+
+		match join {
+			JoinExpr::Left(left) => {
+				assert_eq!(left.alias, "o");
+				assert_eq!(left.using_clause.pairs.len(), 1);
+				// Verify pair content
+				let pair = &left.using_clause.pairs[0];
+				match pair.left {
+					Expr::Identifier(id) => assert_eq!(id.name, "id"),
+					_ => panic!("Expected identifier"),
+				}
+				match pair.right {
+					Expr::Binary(b) => {
+						assert_eq!(b.op, BinaryOp::Dot);
+						match b.left {
+							Expr::Identifier(id) => assert_eq!(id.name, "o"),
+							_ => panic!("Expected identifier"),
+						}
+						match b.right {
+							Expr::Identifier(id) => assert_eq!(id.name, "user_id"),
+							_ => panic!("Expected identifier"),
+						}
+					}
+					_ => panic!("Expected binary dot expression"),
+				}
+			}
+			_ => panic!("Expected LEFT JOIN"),
+		}
+	}
+}

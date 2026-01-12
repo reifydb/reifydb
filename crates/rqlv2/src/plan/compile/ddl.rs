@@ -61,19 +61,23 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 			}
 
 			AstCreate::Index(index) => {
-				let table = self.resolve_table(None, index.table, index.span)?;
+				let table = self.resolve_table(index.namespace, index.table, index.span)?;
 				let mut columns = BumpVec::with_capacity_in(index.columns.len(), self.bump);
-				for col_name in index.columns.iter() {
+				for idx_col in index.columns.iter() {
 					// Find the column in the table
-					let col = table.columns.iter().find(|c| c.name == *col_name).ok_or_else(
+					let col = table.columns.iter().find(|c| c.name == idx_col.name).ok_or_else(
 						|| PlanError {
-							kind: PlanErrorKind::ColumnNotFound(col_name.to_string()),
-							span: index.span,
+							kind: PlanErrorKind::ColumnNotFound(idx_col.name.to_string()),
+							span: idx_col.span,
 						},
 					)?;
 					columns.push(IndexColumnDef {
 						column: col,
-						direction: SortDirection::Asc,
+						direction: if idx_col.descending {
+							SortDirection::Desc
+						} else {
+							SortDirection::Asc
+						},
 					});
 				}
 
@@ -81,7 +85,7 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 					table,
 					name: self.bump.alloc_str(index.name),
 					columns: columns.into_bump_slice(),
-					unique: false, // TODO: parse from AST if available
+					unique: index.unique,
 					filter: None,
 					span: index.span,
 				})))
@@ -102,6 +106,26 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 
 			AstCreate::Flow(_flow) => Err(PlanError {
 				kind: PlanErrorKind::Unsupported("CREATE FLOW not yet implemented".to_string()),
+				span: create_stmt.span(),
+			}),
+
+			AstCreate::Dictionary(_dict) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("CREATE DICTIONARY not yet implemented".to_string()),
+				span: create_stmt.span(),
+			}),
+
+			AstCreate::RingBuffer(_rb) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("CREATE RINGBUFFER not yet implemented".to_string()),
+				span: create_stmt.span(),
+			}),
+
+			AstCreate::Series(_series) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("CREATE SERIES not yet implemented".to_string()),
+				span: create_stmt.span(),
+			}),
+
+			AstCreate::Subscription(_sub) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("CREATE SUBSCRIPTION not yet implemented".to_string()),
 				span: create_stmt.span(),
 			}),
 		}
@@ -180,6 +204,18 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 					span: drop_stmt.span,
 				});
 			}
+			DropObjectType::Dictionary => {
+				return Err(PlanError {
+					kind: PlanErrorKind::Unsupported("DROP DICTIONARY not yet implemented".to_string()),
+					span: drop_stmt.span,
+				});
+			}
+			DropObjectType::RingBuffer => {
+				return Err(PlanError {
+					kind: PlanErrorKind::Unsupported("DROP RINGBUFFER not yet implemented".to_string()),
+					span: drop_stmt.span,
+				});
+			}
 		};
 
 		Ok(Plan::Drop(DropNode {
@@ -235,6 +271,18 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 				Err(PlanError {
 					kind: PlanErrorKind::Unsupported("ALTER SEQUENCE resolution".to_string()),
 					span: seq.span,
+				})
+			}
+			AstAlter::View(view) => {
+				Err(PlanError {
+					kind: PlanErrorKind::Unsupported("ALTER VIEW not yet implemented".to_string()),
+					span: view.span,
+				})
+			}
+			AstAlter::Flow(flow) => {
+				Err(PlanError {
+					kind: PlanErrorKind::Unsupported("ALTER FLOW not yet implemented".to_string()),
+					span: flow.span,
 				})
 			}
 		}
