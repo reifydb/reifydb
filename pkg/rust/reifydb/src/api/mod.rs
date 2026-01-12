@@ -26,6 +26,7 @@ pub fn memory() -> (TransactionStore, TransactionSingle, TransactionCdc, EventBu
 		retention: Default::default(),
 		merge_config: Default::default(),
 		stats: Default::default(),
+		event_bus: eventbus.clone(),
 	});
 
 	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)
@@ -45,6 +46,7 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingle, Tra
 		retention: Default::default(),
 		merge_config: Default::default(),
 		stats: Default::default(),
+		event_bus: eventbus.clone(),
 	});
 
 	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)

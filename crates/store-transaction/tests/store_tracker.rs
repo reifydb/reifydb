@@ -12,11 +12,18 @@
 //! - Persistence (checkpoint/restore round-trip)
 //! - Invariants (byte totals, count totals, no negative counts)
 
-use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
+use std::{
+	error::Error as StdError,
+	fmt::Write,
+	path::Path,
+	sync::{Arc, Condvar, Mutex},
+	time::Duration,
+};
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	delta::Delta,
+	event::{EventBus, EventListener, store::StatsProcessed},
 	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
@@ -34,25 +41,76 @@ test_each_path! { in "crates/store-transaction/tests/scripts/tracker" as store_t
 
 fn test_memory(path: &Path) {
 	let storage = HotStorage::memory();
-	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+	let event_bus = EventBus::new();
+	let stats_waiter = StatsWaiter::new();
+	event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
+	testscript::run_path(&mut Runner::new(storage, event_bus, stats_waiter), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let storage = HotStorage::sqlite_in_memory();
-		testscript::run_path(&mut Runner::new(storage), path)
+		let event_bus = EventBus::new();
+		let stats_waiter = StatsWaiter::new();
+		event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
+		testscript::run_path(&mut Runner::new(storage, event_bus, stats_waiter), path)
 	})
 	.expect("test failed")
+}
+
+/// Waiter for stats processing events.
+/// Allows tests to wait until stats have been processed up to a specific version.
+#[derive(Clone)]
+struct StatsWaiter {
+	inner: Arc<StatsWaiterInner>,
+}
+
+struct StatsWaiterInner {
+	processed_up_to: Mutex<CommitVersion>,
+	condvar: Condvar,
+}
+
+impl StatsWaiter {
+	fn new() -> Self {
+		Self {
+			inner: Arc::new(StatsWaiterInner {
+				processed_up_to: Mutex::new(CommitVersion(0)),
+				condvar: Condvar::new(),
+			}),
+		}
+	}
+
+	/// Wait until stats have been processed up to the given version.
+	fn wait_until(&self, version: CommitVersion, timeout: Duration) -> bool {
+		let guard = self.inner.processed_up_to.lock().unwrap();
+		let result = self
+			.inner
+			.condvar
+			.wait_timeout_while(guard, timeout, |v| *v < version)
+			.unwrap();
+		!result.1.timed_out()
+	}
+}
+
+impl EventListener<StatsProcessed> for StatsWaiter {
+	fn on(&self, event: &StatsProcessed) {
+		let mut v = self.inner.processed_up_to.lock().unwrap();
+		if event.up_to > *v {
+			*v = event.up_to;
+		}
+		self.inner.condvar.notify_all();
+	}
 }
 
 /// Test runner for storage tracker tests.
 pub struct Runner {
 	store: StandardTransactionStore,
 	version: CommitVersion,
+	stats_waiter: StatsWaiter,
 }
 
 impl Runner {
-	fn new(storage: HotStorage) -> Self {
+	fn new(storage: HotStorage, event_bus: EventBus, stats_waiter: StatsWaiter) -> Self {
 		Self {
 			store: StandardTransactionStore::new(TransactionStoreConfig {
 				hot: Some(HotConfig {
@@ -64,9 +122,11 @@ impl Runner {
 				retention: Default::default(),
 				merge_config: Default::default(),
 				stats: Default::default(),
+				event_bus,
 			})
 			.unwrap(),
 			version: CommitVersion(0),
+			stats_waiter,
 		}
 	}
 }
@@ -130,7 +190,12 @@ impl testscript::Runner for Runner {
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let values = EncodedValues(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
-					CommitVersion(v)
+					let v = CommitVersion(v);
+					// Update self.version to track highest version used
+					if v > self.version {
+						self.version = v;
+					}
+					v
 				} else {
 					self.version.0 += 1;
 					self.version
@@ -153,7 +218,11 @@ impl testscript::Runner for Runner {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
-					CommitVersion(v)
+					let v = CommitVersion(v);
+					if v > self.version {
+						self.version = v;
+					}
+					v
 				} else {
 					self.version.0 += 1;
 					self.version
@@ -177,7 +246,11 @@ impl testscript::Runner for Runner {
 				let up_to_version = args.lookup_parse::<u64>("up_to_version")?.map(CommitVersion);
 				let keep_last_versions = args.lookup_parse::<usize>("keep_last_versions")?;
 				let version = if let Some(v) = args.lookup_parse("version")? {
-					CommitVersion(v)
+					let v = CommitVersion(v);
+					if v > self.version {
+						self.version = v;
+					}
+					v
 				} else {
 					self.version.0 += 1;
 					self.version
@@ -203,6 +276,9 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Auto-sync before reading stats
+				self.stats_waiter.wait_until(self.version, Duration::from_secs(5));
+
 				let stats = self.store.stats_tracker().total_stats();
 				let hot = &stats.hot;
 
@@ -223,6 +299,9 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Auto-sync before reading stats
+				self.stats_waiter.wait_until(self.version, Duration::from_secs(5));
+
 				let stats = self.store.stats_tracker().total_stats();
 				let hot = &stats.hot;
 
@@ -235,6 +314,9 @@ impl testscript::Runner for Runner {
 			"stats_historical" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
+
+				// Auto-sync before reading stats
+				self.stats_waiter.wait_until(self.version, Duration::from_secs(5));
 
 				let stats = self.store.stats_tracker().total_stats();
 				let hot = &stats.hot;
@@ -249,6 +331,9 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Auto-sync before reading stats
+				self.stats_waiter.wait_until(self.version, Duration::from_secs(5));
+
 				let stats = self.store.stats_tracker().total_stats();
 				let hot = &stats.hot;
 
@@ -262,6 +347,9 @@ impl testscript::Runner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Auto-sync before reading stats
+				self.stats_waiter.wait_until(self.version, Duration::from_secs(5));
+
 				let stats = self.store.stats_tracker().total_stats();
 				let hot = &stats.hot;
 
@@ -269,6 +357,17 @@ impl testscript::Runner for Runner {
 				writeln!(output, "current_bytes: {}", hot.current_bytes())?;
 				writeln!(output, "historical_bytes: {}", hot.historical_bytes())?;
 				writeln!(output, "total_bytes: {}", hot.total_bytes())?;
+			}
+
+			// sync_stats - waits until stats have been processed up to current version
+			"sync_stats" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+
+				// Wait for stats to be processed up to current version
+				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+					return Err("timeout waiting for stats to be processed".into());
+				}
 			}
 
 			name => {

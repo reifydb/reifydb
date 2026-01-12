@@ -12,10 +12,12 @@ reifydb-core = { workspace = true }
 reifydb-testing = { workspace = true }
 reifydb-type = { workspace = true }
 
+crossbeam-channel = { workspace = true }
 dashmap = { workspace = true }
 indexmap = { workspace = true }
+parking_lot = { workspace = true }
+left-right = {workspace = true}
 tracing = { workspace = true }
-parking_lot = {workspace = true}
 
 rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { workspace = true }

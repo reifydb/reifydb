@@ -3,23 +3,22 @@
 
 //! Memory implementation of PrimitiveStorage.
 //!
-//! Uses DashMap for per-table sharding and BTreeMap for ordered key-value storage.
+//! Uses DashMap for per-table sharding and left-right for lock-free reads.
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::HashMap,
 	ops::Bound,
 	sync::Arc,
 };
-use parking_lot::RwLock;
 use reifydb_type::{CowVec, Result};
 use tracing::{instrument, Span};
 
-use super::entry::{Entries, Entry, entry_id_to_key};
+use super::entry::{Entries, Entry, Op, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
-/// Uses DashMap for per-table sharding with RwLock per table for concurrent access.
+/// Uses DashMap for per-table sharding with left-right for lock-free reads.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -40,14 +39,14 @@ impl MemoryPrimitiveStorage {
 		}
 	}
 
-	/// Get or create a table entry, returning a cloned Arc for  use
+	/// Get or create a table entry
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
 		self.inner
 			.entries
 			.data
 			.entry(table_key)
-			.or_insert_with(|| Arc::new(RwLock::new(BTreeMap::new())))
+			.or_insert_with(Entry::new)
 			.value()
 			.clone()
 	}
@@ -61,13 +60,21 @@ impl MemoryPrimitiveStorage {
 		sorted_batches
 	}
 
-	/// Acquire lock and insert entries into table
+	/// Append entries to a table (acquires writer lock)
 	#[inline]
-	#[instrument(name = "store::memory::set::insert", level = "trace", skip_all)]
-	fn acquire_lock_and_insert(table_entry: Entry, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
-		let mut table_data = table_entry.write();
-		for (key, value) in entries {
-			table_data.insert(key, value);
+	#[instrument(name = "store::memory::set::append", level = "trace", skip_all)]
+	fn append_entries(table_entry: &Entry, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
+		let mut writer = table_entry.writer.lock();
+		writer.append(Op::InsertBatch(entries));
+	}
+
+	/// Publish all pending writes to make them visible to readers
+	#[inline]
+	#[instrument(name = "store::memory::set::publish", level = "trace", skip_all)]
+	fn publish_entries(entries_to_publish: Vec<Entry>) {
+		for entry in entries_to_publish {
+			let mut writer = entry.writer.lock();
+			writer.publish();
 		}
 	}
 }
@@ -76,27 +83,40 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	fn get(&self, table: EntryKind, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let table_key = entry_id_to_key(table);
-		let table_entry = match self.inner.entries.data.get(&table_key) {
-			Some(entry) => entry.value().clone(),
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e.value().clone(),
 			None => return Ok(None),
 		};
-		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read();
+
+		// Wait-free read - no blocking on writers!
+		// Get a thread-local ReadHandle from the factory
+		let reader = entry.reader_factory.handle();
+		let guard = match reader.enter() {
+			Some(g) => g,
+			None => return Ok(None), // Table was dropped
+		};
+
 		// Borrow<[u8]> impl allows lookup with &[u8] on BTreeMap<CowVec<u8>, _>
-		Ok(table_data.get(key).cloned().flatten())
+		Ok(guard.0.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
 	fn contains(&self, table: EntryKind, key: &[u8]) -> Result<bool> {
 		let table_key = entry_id_to_key(table);
-		let table_entry = match self.inner.entries.data.get(&table_key) {
-			Some(entry) => entry.value().clone(),
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e.value().clone(),
 			None => return Ok(false),
 		};
-		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read();
+
+		// Wait-free read - no blocking on writers!
+		let reader = entry.reader_factory.handle();
+		let guard = match reader.enter() {
+			Some(g) => g,
+			None => return Ok(false),
+		};
+
 		// Key exists and is not a tombstone
-		Ok(table_data.get(key).map_or(false, |v| v.is_some()))
+		Ok(guard.0.get(key).map_or(false, |v| v.is_some()))
 	}
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(
@@ -111,11 +131,17 @@ impl TierStorage for MemoryPrimitiveStorage {
 		// Count total entries for metrics
 		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
 
-		// Phase 2: Table operations
+		// Phase 2: Append operations (writers only contend with each other, not readers)
+		let mut entries_to_publish: Vec<Entry> = Vec::with_capacity(sorted_batches.len());
+
 		for (table, entries) in sorted_batches {
 			let table_entry = self.get_or_create_table(table);
-			Self::acquire_lock_and_insert(table_entry, entries);
+			Self::append_entries(&table_entry, entries);
+			entries_to_publish.push(table_entry);
 		}
+
+		// Phase 3: Publish all tables (makes writes visible to readers)
+		Self::publish_entries(entries_to_publish);
 
 		Span::current().record("total_entry_count", total_entries);
 
@@ -136,15 +162,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 		}
 
 		let table_key = entry_id_to_key(table);
-		let table_entry = match self.inner.entries.data.get(&table_key) {
-			Some(entry) => entry.value().clone(),
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e.value().clone(),
 			None => {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
 		};
-
-		let table_data = table_entry.read();
 
 		// Determine effective start bound based on cursor state
 		let effective_start: Bound<&[u8]> = match &cursor.last_key {
@@ -152,17 +176,30 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => start,
 		};
 
-		let range_bounds = make_range_bounds_ref(effective_start, end);
+		// Minimize ReadGuard hold time - collect data and release immediately
+		// This prevents blocking publish() calls from writers
+		let entries: Vec<RawEntry> = {
+			let reader = entry.reader_factory.handle();
+			let guard = match reader.enter() {
+				Some(g) => g,
+				None => {
+					cursor.exhausted = true;
+					return Ok(RangeBatch::empty());
+				}
+			};
 
-		// Fetch batch_size + 1 to determine if there are more entries
-		let entries: Vec<RawEntry> = table_data
-			.range::<[u8], _>(range_bounds)
-			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
-				key: k.clone(),
-				value: v.clone(),
-			})
-			.collect();
+			let range_bounds = make_range_bounds_ref(effective_start, end);
+
+			// Fetch batch_size + 1 to determine if there are more entries
+			guard.0
+				.range::<[u8], _>(range_bounds)
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect()
+		};
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -199,16 +236,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 		}
 
 		let table_key = entry_id_to_key(table);
-		let table_entry = match self.inner.entries.data.get(&table_key) {
-			Some(entry) => entry.value().clone(),
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e.value().clone(),
 			None => {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
 		};
-
-		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read();
 
 		// For reverse iteration, effective end bound based on cursor
 		let effective_end: Bound<&[u8]> = match &cursor.last_key {
@@ -216,18 +250,31 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => end,
 		};
 
-		let range_bounds = make_range_bounds_ref(start, effective_end);
+		// Minimize ReadGuard hold time - collect data and release immediately
+		// This prevents blocking publish() calls from writers
+		let entries: Vec<RawEntry> = {
+			let reader = entry.reader_factory.handle();
+			let guard = match reader.enter() {
+				Some(g) => g,
+				None => {
+					cursor.exhausted = true;
+					return Ok(RangeBatch::empty());
+				}
+			};
 
-		// Fetch batch_size + 1 to determine if there are more entries
-		let entries: Vec<RawEntry> = table_data
-			.range::<[u8], _>(range_bounds)
-			.rev()
-			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
-				key: k.clone(),
-				value: v.clone(),
-			})
-			.collect();
+			let range_bounds = make_range_bounds_ref(start, effective_end);
+
+			// Fetch batch_size + 1 to determine if there are more entries
+			guard.0
+				.range::<[u8], _>(range_bounds)
+				.rev()
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect()
+		};
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -252,7 +299,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
-		// Use get_or_create to ensure table exists
 		let _ = self.get_or_create_table(table);
 		Ok(())
 	}
@@ -260,13 +306,15 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
-		let table_entry = match self.inner.entries.data.get(&table_key) {
-			Some(entry) => entry.value().clone(),
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e.value().clone(),
 			None => return Ok(()),
 		};
-		// DashMap ref released, only holding Arc<RwLock<BTreeMap>>
-		let mut table_data = table_entry.write();
-		table_data.clear();
+
+		let mut writer = entry.writer.lock();
+		writer.append(Op::Clear);
+		writer.publish();
+
 		Ok(())
 	}
 }

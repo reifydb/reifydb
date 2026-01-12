@@ -17,13 +17,16 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
+	version::{
+		PreviousVersionInfo, VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version,
+		get_previous_version_info,
+	},
 };
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
 	hot::{EntryKind::Multi, delta_optimizer::optimize_deltas},
-	stats::{PreVersionInfo, Tier},
+	stats::{PreVersionInfo as StatsPreVersionInfo, StatsOp, Tier},
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
 
@@ -112,44 +115,38 @@ impl MultiVersionCommit for StandardTransactionStore {
 		// Optimize deltas first (cancel insert+delete pairs, coalesce updates)
 		let optimized_deltas = optimize_deltas(deltas.iter().cloned());
 
-		// For flow state keys (single-version semantics), inject Drop deltas to clean up old versions.
-		// Track which keys have pending Set operations so Drop can account for the version being written.
-		let (all_deltas, pending_set_keys): (Vec<Delta>, HashSet<Vec<u8>>) = {
-			let mut result = Vec::with_capacity(optimized_deltas.len() * 2);
-			let mut pending_keys = HashSet::new();
-			for delta in optimized_deltas.iter() {
-				result.push(delta.clone());
+		// For flow state keys (single-version semantics), track pending Set operations.
+		// Drops are queued to a background worker after the commit.
+		let pending_set_keys: HashSet<Vec<u8>> = optimized_deltas
+			.iter()
+			.filter_map(|delta| {
 				if let Delta::Set {
 					key,
 					..
 				} = delta
 				{
 					if is_single_version_semantics_key(key) {
-						pending_keys.insert(key.as_ref().to_vec());
-						result.push(Delta::Drop {
-							key: key.clone(),
-							up_to_version: None,
-							keep_last_versions: Some(1),
-						});
+						return Some(key.as_ref().to_vec());
 					}
 				}
-			}
-			(result, pending_keys)
-		};
+				None
+			})
+			.collect();
 
-		let previous_versions = self.collect_previous_versions(&optimized_deltas);
+		// Combined lookup: get previous version info for all deltas in one pass.
+		// This replaces both `collect_previous_versions` and `get_previous_value_info` loops.
+		let previous_info: HashMap<Vec<u8>, PreviousVersionInfo> =
+			self.collect_previous_info(&optimized_deltas);
 
-		// Track storage statistics
-		// TODO this should happen in the background
+		// Collect storage statistics for batch sending
+		let mut stats_ops: Vec<StatsOp> = Vec::new();
 		for delta in optimized_deltas.iter() {
 			let key = delta.key();
 			let key_bytes = key.as_ref();
-			let table = classify_key(key);
-
-			// Look up previous value to calculate size delta
-			let pre_version_info = self.get_previous_value_info(table, key_bytes);
-
-			// Versioned key size = original key + VERSION_SIZE
+			let pre_version_info = previous_info.get(key_bytes).map(|info| StatsPreVersionInfo {
+				key_bytes: info.key_bytes,
+				value_bytes: info.value_bytes,
+			});
 			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
 
 			match delta {
@@ -157,40 +154,34 @@ impl MultiVersionCommit for StandardTransactionStore {
 					values,
 					..
 				} => {
-					self.stats_tracker.record_write(
-						Tier::Hot,
-						key_bytes,
-						versioned_key_bytes,
-						values.len() as u64,
-						pre_version_info,
-					);
+					stats_ops.push(StatsOp::Write {
+						tier: Tier::Hot,
+						key: key_bytes.to_vec(),
+						key_bytes: versioned_key_bytes,
+						value_bytes: values.len() as u64,
+						pre_info: pre_version_info,
+					});
 				}
 				Delta::Remove {
 					..
 				} => {
-					self.stats_tracker.record_delete(
-						Tier::Hot,
-						key_bytes,
-						versioned_key_bytes,
-						pre_version_info,
-					);
+					stats_ops.push(StatsOp::Delete {
+						tier: Tier::Hot,
+						key: key_bytes.to_vec(),
+						key_bytes: versioned_key_bytes,
+						pre_info: pre_version_info,
+					});
 				}
 				Delta::Drop {
 					..
-				} => {
-					// Drop operations are internal cleanup - stats tracked per deleted version
-				}
+				} => {}
 			}
 		}
-
-		let cdc_changes = process_deltas_for_cdc(optimized_deltas, version, |key| {
-			previous_versions.get(key.as_ref()).copied()
-		})?;
 
 		// Batch deltas by table for efficient storage writes
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
 
-		for delta in all_deltas.iter() {
+		for delta in optimized_deltas.iter() {
 			let table = classify_key(delta.key());
 
 			match delta {
@@ -231,18 +222,39 @@ impl MultiVersionCommit for StandardTransactionStore {
 						pending_version,
 					)?;
 					for entry in entries_to_drop {
-						// Track storage reduction for each dropped entry
-						self.stats_tracker.record_drop(
-							Tier::Hot,
-							key.as_ref(),
-							entry.versioned_key.len() as u64,
-							entry.value_bytes,
-						);
+						// Collect stats for each dropped entry
+						stats_ops.push(StatsOp::Drop {
+							tier: Tier::Hot,
+							key: key.as_ref().to_vec(),
+							versioned_key_bytes: entry.versioned_key.len() as u64,
+							value_bytes: entry.value_bytes,
+						});
 						batches.entry(table).or_default().push((entry.versioned_key, None));
 					}
 				}
 			}
 		}
+
+		// Queue deferred drops for single-version-semantics keys to background worker
+		let drop_worker = self.drop_worker.lock();
+		for key_bytes in pending_set_keys.iter() {
+			let key = CowVec::new(key_bytes.clone());
+			let table = classify_key(&EncodedKey(key.clone()));
+			drop_worker.queue_drop(
+				table,
+				key,
+				None,          // up_to_version
+				Some(1),       // keep_last_versions
+				Some(version), // pending_version
+				version,       // version for stats tracking
+			);
+		}
+		drop(drop_worker); // Release lock before CDC processing
+
+		// Process CDC using the combined lookup results
+		let cdc_changes = process_deltas_for_cdc(optimized_deltas, version, |key| {
+			previous_info.get(key.as_ref()).map(|info| info.version)
+		})?;
 
 		// Add CDC to batches
 		let cdc_data = if !cdc_changes.is_empty() {
@@ -254,7 +266,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			let encoded = encode_internal_cdc(&internal_cdc)?;
 			let cdc_key = version.0.to_be_bytes();
 
-			// Track CDC bytes per source object
+			// Collect CDC stats per source object
 			let num_changes = internal_cdc.changes.len() as u64;
 			let total_key_bytes: u64 =
 				internal_cdc.changes.iter().map(|c| c.change.key().len() as u64).sum();
@@ -263,7 +275,12 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 			for change in &internal_cdc.changes {
 				let change_key = change.change.key();
-				self.stats_tracker.record_cdc_for_change(Tier::Hot, change_key, per_change_overhead, 1);
+				stats_ops.push(StatsOp::Cdc {
+					tier: Tier::Hot,
+					key: change_key.to_vec(),
+					value_bytes: per_change_overhead,
+					count: 1,
+				});
 			}
 
 			Some((CowVec::new(cdc_key.to_vec()), CowVec::new(encoded.to_vec())))
@@ -277,109 +294,62 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 		storage.set(batches)?;
 
-		// Checkpoint stats if needed
-		if self.stats_tracker.should_checkpoint() {
-			self.stats_tracker.checkpoint(storage)?;
-		}
+		self.stats_worker.record_batch(stats_ops, version);
 
 		Ok(())
 	}
 }
 
 impl StandardTransactionStore {
-	/// Get information about the previous value of a key for stats tracking .
-	fn get_previous_value_info(&self, table: EntryKind, key: &[u8]) -> Option<PreVersionInfo> {
-		// Try to get the latest version from any tier
-		fn get_value<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Option<(u64, u64)> {
-			match get_at_version(storage, table, key, CommitVersion(u64::MAX)) {
-				Ok(VersionedGetResult::Value {
-					value,
-					..
-				}) => {
-					let versioned_key_bytes = (key.len() + VERSION_SIZE) as u64;
-					Some((versioned_key_bytes, value.len() as u64))
-				}
-				_ => None,
-			}
-		}
-
-		// Check tiers in order
-		if let Some(hot) = &self.hot {
-			if let Some((key_bytes, value_bytes)) = get_value(hot, table, key) {
-				return Some(PreVersionInfo {
-					key_bytes,
-					value_bytes,
-				});
-			}
-		}
-		if let Some(warm) = &self.warm {
-			if let Some((key_bytes, value_bytes)) = get_value(warm, table, key) {
-				return Some(PreVersionInfo {
-					key_bytes,
-					value_bytes,
-				});
-			}
-		}
-		if let Some(cold) = &self.cold {
-			if let Some((key_bytes, value_bytes)) = get_value(cold, table, key) {
-				return Some(PreVersionInfo {
-					key_bytes,
-					value_bytes,
-				});
-			}
-		}
-
-		None
-	}
-
-	/// Collect previous versions for all keys in the delta list.
-	/// Used for CDC to determine Insert vs Update operations.
-	fn collect_previous_versions(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, CommitVersion> {
-		use super::version::get_latest_version;
-
-		let mut version_map = HashMap::new();
-
-		for delta in deltas {
-			let key = delta.key();
-			let key_bytes = key.as_ref();
-			let table = classify_key(key);
-
-			// Only need to check for Set and Remove operations
-			match delta {
+	/// Collect previous version info for all deltas.
+	///
+	/// This combines what `collect_previous_versions` and `get_previous_value_info`
+	/// did separately, doing a single lookup per key across all tiers.
+	///
+	/// Note: Using sequential iteration instead of parallel (rayon) because parallel
+	/// tier lookups cause race conditions with the storage layer's read locks.
+	fn collect_previous_info(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, PreviousVersionInfo> {
+		// Filter to only Set/Remove deltas (Drop doesn't need previous version info)
+		let keys_to_lookup: Vec<_> = deltas
+			.iter()
+			.filter_map(|delta| match delta {
 				Delta::Set {
+					key,
 					..
 				}
 				| Delta::Remove {
-					..
-				} => {
-					// Check all tiers for the latest version
-					if let Some(hot) = &self.hot {
-						if let Ok(Some(version)) = get_latest_version(hot, table, key_bytes) {
-							version_map.insert(key_bytes.to_vec(), version);
-							continue;
-						}
-					}
-					if let Some(warm) = &self.warm {
-						if let Ok(Some(version)) = get_latest_version(warm, table, key_bytes) {
-							version_map.insert(key_bytes.to_vec(), version);
-							continue;
-						}
-					}
-					if let Some(cold) = &self.cold {
-						if let Ok(Some(version)) = get_latest_version(cold, table, key_bytes) {
-							version_map.insert(key_bytes.to_vec(), version);
-						}
-					}
-				}
+					key,
+				} => Some(key.as_ref().to_vec()),
 				Delta::Drop {
 					..
-				} => {
-					// Drop operations don't need CDC tracking
-				}
-			}
-		}
+				} => None,
+			})
+			.collect();
 
-		version_map
+		keys_to_lookup
+			.into_iter()
+			.filter_map(|key_bytes| {
+				let table = classify_key(&EncodedKey(CowVec::new(key_bytes.clone())));
+
+				// Try each tier in order until we find the key
+				if let Some(hot) = &self.hot {
+					if let Ok(Some(info)) = get_previous_version_info(hot, table, &key_bytes) {
+						return Some((key_bytes, info));
+					}
+				}
+				if let Some(warm) = &self.warm {
+					if let Ok(Some(info)) = get_previous_version_info(warm, table, &key_bytes) {
+						return Some((key_bytes, info));
+					}
+				}
+				if let Some(cold) = &self.cold {
+					if let Ok(Some(info)) = get_previous_version_info(cold, table, &key_bytes) {
+						return Some((key_bytes, info));
+					}
+				}
+				None
+			})
+			.collect()
 	}
 }
 

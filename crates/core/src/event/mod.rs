@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 
 pub mod flow;
 pub mod lifecycle;
+pub mod store;
 pub mod transaction;
 
 pub trait Event: Any + Send + Sync + Clone + 'static {
