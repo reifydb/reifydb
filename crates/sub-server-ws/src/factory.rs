@@ -5,10 +5,10 @@
 
 use std::time::Duration;
 
-use reifydb_core::{compute::ComputePool, ioc::IocContainer};
+use reifydb_core::{SharedRuntime, ioc::IocContainer};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, SharedRuntime, StateConfig};
+use reifydb_sub_server::{AppState, StateConfig};
 
 use crate::WsSubsystem;
 
@@ -92,15 +92,15 @@ impl WsSubsystemFactory {
 
 impl SubsystemFactory for WsSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
-		let pool = ioc.resolve::<ComputePool>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
+		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 
 		let query_config = StateConfig::new()
 			.query_timeout(self.config.query_timeout)
 			.max_connections(self.config.max_connections);
 
-		let state = AppState::new(pool, engine, query_config);
-		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime);
+		let state = AppState::new(ioc_runtime.compute_pool(), engine, query_config);
+		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime.unwrap_or(ioc_runtime));
 
 		Ok(Box::new(subsystem))
 	}

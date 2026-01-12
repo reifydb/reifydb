@@ -12,7 +12,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{JoinHandle, spawn},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
@@ -105,9 +105,12 @@ impl DropWorker {
 		let running = Arc::new(AtomicBool::new(true));
 
 		let worker_running = Arc::clone(&running);
-		let worker = spawn(move || {
-			Self::worker_loop(receiver, storage, stats_callback, config, worker_running);
-		});
+		let worker = thread::Builder::new()
+			.name("store-worker".to_string())
+			.spawn(move || {
+				Self::worker_loop(receiver, storage, stats_callback, config, worker_running);
+			})
+			.expect("Failed to spawn store worker thread");
 
 		Self {
 			sender,

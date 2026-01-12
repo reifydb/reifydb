@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{ComputePool, event::EventBus};
+use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus};
 use reifydb_function::FunctionsBuilder;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -23,10 +23,10 @@ pub struct EmbeddedBuilder {
 	single: TransactionSingle,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
+	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: StandardInterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
@@ -45,15 +45,23 @@ impl EmbeddedBuilder {
 			single,
 			cdc,
 			eventbus,
+			runtime_config: None,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
-			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 		}
+	}
+
+	/// Configure the shared runtime.
+	///
+	/// If not set, a default configuration will be used.
+	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
+		self.runtime_config = Some(config);
+		self
 	}
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
@@ -74,26 +82,19 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
-		self.compute_pool = Some(pool);
-		self
-	}
-
 	pub fn build(self) -> crate::Result<Database> {
-		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
-			.with_interceptor_builder(self.interceptors);
 
-		// Pass functions configurator if provided
+		let runtime_config = self.runtime_config.unwrap_or_default();
+		let runtime = SharedRuntime::from_config(runtime_config);
+
+		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
+			.with_interceptor_builder(self.interceptors)
+			.with_runtime(runtime);
+
 		if let Some(configurator) = self.functions_configurator {
 			builder = builder.with_functions_configurator(configurator);
 		}
 
-		// Pass compute pool if provided
-		if let Some(pool) = self.compute_pool {
-			builder = builder.with_compute_pool(pool);
-		}
-
-		// Add configured subsystems using the proper methods
 		#[cfg(feature = "sub_tracing")]
 		if let Some(configurator) = self.tracing_configurator {
 			builder = builder.with_tracing(configurator);
@@ -104,7 +105,6 @@ impl EmbeddedBuilder {
 			builder = builder.with_flow(configurator);
 		}
 
-		// Add any other custom subsystem factories
 		for factory in self.subsystem_factories {
 			builder = builder.add_subsystem_factory(factory);
 		}

@@ -5,8 +5,6 @@
 
 use std::time::Duration;
 
-use reifydb_sub_server::SharedRuntime;
-
 /// OpenTelemetry exporter backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExporterType {
@@ -45,9 +43,6 @@ pub struct OtelConfig {
 
 	/// Export timeout
 	pub export_timeout: Duration,
-
-	/// Optional shared runtime (uses DEFAULT_RUNTIME if not provided)
-	pub runtime: Option<SharedRuntime>,
 }
 
 impl Default for OtelConfig {
@@ -62,7 +57,6 @@ impl Default for OtelConfig {
 			scheduled_delay: Duration::from_millis(5000),
 			max_queue_size: 2048,
 			export_timeout: Duration::from_secs(30),
-			runtime: None,
 		}
 	}
 }
@@ -124,12 +118,6 @@ impl OtelConfig {
 	/// Set the export timeout.
 	pub fn export_timeout(mut self, timeout: Duration) -> Self {
 		self.export_timeout = timeout;
-		self
-	}
-
-	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
 		self
 	}
 }

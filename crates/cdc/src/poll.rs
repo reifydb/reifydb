@@ -10,7 +10,7 @@ use std::{
 	thread::{JoinHandle, sleep},
 	time::Duration,
 };
-use std::thread::spawn;
+use std::thread;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
@@ -197,9 +197,14 @@ impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
-		self.worker = Some(spawn(move || {
-			Self::polling_loop(config, engine, consumer, state);
-		}));
+		self.worker = Some(
+			thread::Builder::new()
+				.name("cdc-poll".to_string())
+				.spawn(move || {
+					Self::polling_loop(config, engine, consumer, state);
+				})
+				.expect("Failed to spawn CDC poll thread"),
+		);
 
 		Ok(())
 	}

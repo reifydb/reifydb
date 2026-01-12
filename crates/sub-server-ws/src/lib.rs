@@ -40,7 +40,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_sub_server::{AppState, QueryConfig, SharedRuntime};
+//! use reifydb_core::SharedRuntime;
+//! use reifydb_sub_server::{AppState, QueryConfig};
 //! use reifydb_sub_server_ws::WsSubsystem;
 //!
 //! // Create shared runtime

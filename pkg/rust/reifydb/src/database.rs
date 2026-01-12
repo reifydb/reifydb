@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_core::{
-	Frame, Result,
+	Frame, Result, SharedRuntime,
 	event::lifecycle::OnStartEvent,
 	interface::{Identity, Params, WithEventBus},
 };
@@ -77,6 +77,7 @@ pub struct Database {
 	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
+	shared_runtime: SharedRuntime,
 	running: bool,
 }
 
@@ -103,6 +104,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
+		shared_runtime: SharedRuntime,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -110,12 +112,17 @@ impl Database {
 			subsystems: subsystem_manager,
 			config,
 			health_monitor,
+			shared_runtime,
 			running: false,
 		}
 	}
 
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	pub fn shared_runtime(&self) -> &SharedRuntime {
+		&self.shared_runtime
 	}
 
 	pub fn config(&self) -> &DatabaseConfig {

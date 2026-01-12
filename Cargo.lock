@@ -1716,6 +1716,7 @@ dependencies = [
  "indexmap",
  "num-bigint",
  "num-traits",
+ "num_cpus",
  "once_cell",
  "parking_lot",
  "rayon",

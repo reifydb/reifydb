@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use reifydb_core::compute::ComputePool;
+use reifydb_core::ComputePool;
 use reifydb_engine::StandardEngine;
 
 /// Configuration for query execution.

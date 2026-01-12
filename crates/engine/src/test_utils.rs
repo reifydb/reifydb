@@ -8,7 +8,8 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_core::{ComputePool, event::EventBus, ioc::IocContainer};
+use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus, ioc::IocContainer};
+use reifydb_rqlv2::Compiler;
 use reifydb_store_transaction::TransactionStore;
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
@@ -84,14 +85,6 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 }
 
 /// Create a test StandardEngine with all required dependencies registered.
-///
-/// This function:
-/// - Creates an in-memory transaction store
-/// - Sets up EventBus, Single, CDC, and Multi transactions
-/// - Registers ComputePool with default settings (available CPU cores, 64 max in-flight)
-/// - Registers MaterializedCatalog
-/// - Registers Compiler
-/// - Returns a fully configured StandardEngine ready for testing
 pub fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	reifydb_core::util::mock_time_set(1000);
@@ -102,20 +95,17 @@ pub fn create_test_engine() -> StandardEngine {
 	let cdc = TransactionCdc::new(store.clone());
 	let multi = TransactionMulti::new(store, single.clone(), eventbus.clone()).unwrap();
 
-	// Create and register dependencies in IocContainer
 	let mut ioc = IocContainer::new();
 
-	// Register MaterializedCatalog
 	let materialized_catalog = MaterializedCatalog::new();
 	ioc = ioc.register(materialized_catalog.clone());
 
-	// Register ComputePool with sensible defaults
-	let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-	let compute_pool = ComputePool::new(num_threads, 64);
-	ioc = ioc.register(compute_pool.clone());
+	let runtime = SharedRuntime::from_config(
+		SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(2),
+	);
+	ioc = ioc.register(runtime.clone());
 
-	// Register Compiler
-	let compiler = reifydb_rqlv2::Compiler::new(compute_pool, materialized_catalog.clone());
+	let compiler = Compiler::new(runtime.compute_pool(), materialized_catalog.clone());
 	ioc = ioc.register(compiler);
 
 	StandardEngine::new(

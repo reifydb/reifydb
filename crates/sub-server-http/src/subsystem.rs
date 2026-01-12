@@ -15,13 +15,14 @@ use std::{
 	},
 };
 
+use reifydb_core::SharedRuntime;
 use reifydb_core::{
 	diagnostic::subsystem::{address_unavailable, bind_failed},
 	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, SharedRuntime};
+use reifydb_sub_server::AppState;
 use tokio::{net::TcpListener, sync::oneshot};
 
 use crate::routes::router;
@@ -72,8 +73,8 @@ impl HttpSubsystem {
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
 	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Optional shared runtime
-	pub fn new(bind_addr: String, state: AppState, runtime: Option<SharedRuntime>) -> Self {
+	/// * `runtime` - Shared runtime
+	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -81,7 +82,7 @@ impl HttpSubsystem {
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
-			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
+			runtime,
 		}
 	}
 

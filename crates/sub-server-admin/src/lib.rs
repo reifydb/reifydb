@@ -30,7 +30,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_sub_server::SharedRuntime;
+//! use reifydb_core::SharedRuntime;
 //! use reifydb_sub_server_admin::{AdminConfig, AdminSubsystem, AdminState};
 //!
 //! // Create shared runtime
