@@ -17,7 +17,7 @@ use std::{
 
 use reifydb_abi::*;
 use reifydb_type::RowNumber;
-use tracing::{Span, debug_span, error, instrument, warn};
+use tracing::{Span, error, instrument, warn};
 
 use crate::{FFIOperator, OperatorContext, ffi::Arena};
 
@@ -47,6 +47,51 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
+/// Unmarshal FFI input to FlowChange
+#[inline]
+#[instrument(name = "unmarshal", level = "trace", skip_all)]
+fn unmarshal_input<O: FFIOperator>(
+	arena: &mut Arena,
+	input: *const FlowChangeFFI,
+) -> Result<crate::FlowChange, i32> {
+	unsafe {
+		match arena.unmarshal_flow_change(&*input) {
+			Ok(change) => Ok(change),
+			Err(e) => {
+				warn!(?e, "Unmarshal failed");
+				Err(-3)
+			}
+		}
+	}
+}
+
+/// Apply the operator
+#[inline]
+#[instrument(name = "operator_apply", level = "trace", skip_all)]
+fn apply_operator<O: FFIOperator>(
+	operator: &mut O,
+	ctx: *mut ContextFFI,
+	input_change: crate::FlowChange,
+) -> Result<crate::FlowChange, i32> {
+	let mut op_ctx = OperatorContext::new(ctx);
+	match operator.apply(&mut op_ctx, input_change) {
+		Ok(change) => Ok(change),
+		Err(e) => {
+			warn!(?e, "Apply failed");
+			Err(-2)
+		}
+	}
+}
+
+/// Marshal FlowChange to FFI output
+#[inline]
+#[instrument(name = "marshal", level = "trace", skip_all)]
+fn marshal_output(arena: &mut Arena, output_change: &crate::FlowChange, output: *mut FlowChangeFFI) {
+	unsafe {
+		*output = arena.marshal_flow_change(output_change);
+	}
+}
+
 #[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
 	operator_type = std::any::type_name::<O>(),
 	input_diffs,
@@ -59,50 +104,33 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 	output: *mut FlowChangeFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
-		unsafe {
-			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 
-			let mut arena = wrapper.arena.borrow_mut();
-			arena.clear();
+		let mut arena = wrapper.arena.borrow_mut();
+		arena.clear();
 
-			// Unmarshal input using the arena
-			let unmarshal_span = debug_span!("unmarshal");
-			let _guard = unmarshal_span.enter();
-			let input_change = match arena.unmarshal_flow_change(&*input) {
-				Ok(change) => {
-					Span::current().record("input_diffs", change.diffs.len());
-					change
-				}
-				Err(e) => {
-					warn!(?e, "Unmarshal failed");
-					return -3;
-				}
-			};
-			drop(_guard);
+		// Unmarshal input
+		let input_change = match unmarshal_input::<O>(&mut arena, input) {
+			Ok(change) => {
+				Span::current().record("input_diffs", change.diffs.len());
+				change
+			}
+			Err(code) => return code,
+		};
 
-			// Create context and apply operator
-			let apply_span = debug_span!("operator_apply");
-			let _guard = apply_span.enter();
-			let mut op_ctx = OperatorContext::new(ctx);
-			let output_change = match wrapper.operator.apply(&mut op_ctx, input_change) {
-				Ok(change) => {
-					Span::current().record("output_diffs", change.diffs.len());
-					change
-				}
-				Err(e) => {
-					warn!(?e, "Apply failed");
-					return -2;
-				}
-			};
-			drop(_guard);
+		// Apply operator
+		let output_change = match apply_operator::<O>(&mut wrapper.operator, ctx, input_change) {
+			Ok(change) => {
+				Span::current().record("output_diffs", change.diffs.len());
+				change
+			}
+			Err(code) => return code,
+		};
 
-			let marshal_span = debug_span!("marshal");
-			let _guard = marshal_span.enter();
-			*output = arena.marshal_flow_change(&output_change);
-			drop(_guard);
+		// Marshal output
+		marshal_output(&mut arena, &output_change, output);
 
-			0 // Success
-		}
+		0 // Success
 	}));
 
 	let code = result.unwrap_or_else(|e| {

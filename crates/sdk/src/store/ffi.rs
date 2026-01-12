@@ -10,7 +10,7 @@ use reifydb_core::{
 	CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use tracing::instrument;
+use tracing::{instrument, Span};
 
 use crate::{
 	OperatorContext,
@@ -158,7 +158,7 @@ pub(super) unsafe fn collect_iterator_results(
 	iterator: *mut StoreIteratorFFI,
 ) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	if iterator.is_null() {
-		tracing::Span::current().record("result_count", 0);
+		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
 	}
 
@@ -213,6 +213,6 @@ pub(super) unsafe fn collect_iterator_results(
 	}
 
 	unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
-	tracing::Span::current().record("result_count", results.len());
+	Span::current().record("result_count", results.len());
 	Ok(results)
 }

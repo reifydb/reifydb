@@ -13,7 +13,7 @@ use reifydb_core::{
 	CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use tracing::instrument;
+use tracing::{instrument, Span};
 
 use crate::{
 	OperatorContext,
@@ -46,18 +46,18 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 		if result == FFI_OK {
 			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
-				tracing::Span::current().record("found", false);
+				Span::current().record("found", false);
 				Ok(None)
 			} else {
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
 				// Free the buffer allocated by host
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-				tracing::Span::current().record("found", true);
+				Span::current().record("found", true);
 				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			// Key not found
-			tracing::Span::current().record("found", false);
+			Span::current().record("found", false);
 			Ok(None)
 		} else {
 			Err(FFIError::Other(format!("host_state_get failed with code {}", result)))
@@ -141,7 +141,7 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 		}
 
 		if iterator.is_null() {
-			tracing::Span::current().record("result_count", 0);
+			Span::current().record("result_count", 0);
 			return Ok(Vec::new());
 		}
 
@@ -196,7 +196,7 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 		}
 
 		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-		tracing::Span::current().record("result_count", results.len());
+		Span::current().record("result_count", results.len());
 		Ok(results)
 	}
 }

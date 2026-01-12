@@ -6,7 +6,7 @@ use std::time::Duration;
 use reifydb::{
 	WithSubsystem, server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig, sub_server_ws::WsConfig,
 };
-use tracing::{info, info_span};
+use tracing::info;
 
 fn main() {
 	let http_config = HttpConfig::default();
@@ -31,12 +31,7 @@ fn main() {
 		.build()
 		.unwrap();
 
-	// Test spans to verify OpenTelemetry is working
-	{
-		let span = info_span!("testcontainer_startup", service = "testcontainer");
-		let _guard = span.enter();
-		info!("Database built successfully, testing OpenTelemetry pipeline");
-	}
+	info!("Database built successfully");
 
 	// Start the database and wait for signal
 	println!("Starting database...");

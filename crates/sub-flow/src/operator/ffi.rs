@@ -14,8 +14,7 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
-use std::time::Instant;
-use tracing::{Span, debug_span, error, instrument};
+use tracing::{Span, error, instrument};
 
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
@@ -66,6 +65,51 @@ impl Drop for FFIOperator {
 	}
 }
 
+/// Marshal a flow change to FFI format
+#[inline]
+#[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
+fn marshal_input(arena: &mut Arena, change: &FlowChange) -> reifydb_abi::FlowChangeFFI {
+	arena.marshal_flow_change(change)
+}
+
+/// Call the FFI vtable apply function
+#[inline]
+#[instrument(name = "flow::ffi::vtable_call", level = "trace", skip_all, fields(operator_id = operator_id.0))]
+fn call_vtable(
+	vtable: &OperatorVTableFFI,
+	instance: *mut c_void,
+	ffi_ctx_ptr: *mut ContextFFI,
+	ffi_input: &reifydb_abi::FlowChangeFFI,
+	ffi_output: &mut reifydb_abi::FlowChangeFFI,
+	operator_id: FlowNodeId,
+) -> i32 {
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		(vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)
+	}));
+
+	match result {
+		Ok(code) => code,
+		Err(panic_info) => {
+			let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+				s.to_string()
+			} else if let Some(s) = panic_info.downcast_ref::<String>() {
+				s.clone()
+			} else {
+				"Unknown panic".to_string()
+			};
+			error!(operator_id = operator_id.0, "FFI operator panicked during apply: {}", msg);
+			abort();
+		}
+	}
+}
+
+/// Unmarshal FFI output to FlowChange
+#[inline]
+#[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
+fn unmarshal_output(arena: &mut Arena, ffi_output: &reifydb_abi::FlowChangeFFI) -> Result<FlowChange, String> {
+	arena.unmarshal_flow_change(ffi_output)
+}
+
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
@@ -74,11 +118,7 @@ impl Operator for FFIOperator {
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
-		output_diff_count = tracing::field::Empty,
-		marshal_time_us = tracing::field::Empty,
-		ffi_call_time_us = tracing::field::Empty,
-		unmarshal_time_us = tracing::field::Empty,
-		total_time_ms = tracing::field::Empty
+		output_diff_count = tracing::field::Empty
 	))]
 	fn apply(
 		&self,
@@ -86,17 +126,10 @@ impl Operator for FFIOperator {
 		change: FlowChange,
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<FlowChange> {
-		let total_start = Instant::now();
-
 		let mut arena = self.arena.borrow_mut();
 
 		// Phase 1: Marshal the flow change
-		let marshal_span = debug_span!("flow::ffi::marshal");
-		let _marshal_guard = marshal_span.enter();
-		let marshal_start = Instant::now();
-		let ffi_input = arena.marshal_flow_change(&change);
-		let marshal_us = marshal_start.elapsed().as_micros() as u64;
-		drop(_marshal_guard);
+		let ffi_input = marshal_input(&mut arena, &change);
 
 		// Create output holder
 		let mut ffi_output = reifydb_abi::FlowChangeFFI::empty();
@@ -106,31 +139,14 @@ impl Operator for FFIOperator {
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		// Phase 2: Call FFI vtable
-		let ffi_span = debug_span!("flow::ffi::vtable_call");
-		let _ffi_guard = ffi_span.enter();
-		let ffi_start = Instant::now();
-
-		let result = catch_unwind(AssertUnwindSafe(|| {
-			(self.vtable.apply)(self.instance, ffi_ctx_ptr, &ffi_input, &mut ffi_output)
-		}));
-		let ffi_us = ffi_start.elapsed().as_micros() as u64;
-		drop(_ffi_guard);
-
-		// Handle panics from FFI code - abort process on panic
-		let result_code = match result {
-			Ok(code) => code,
-			Err(panic_info) => {
-				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-					s.to_string()
-				} else if let Some(s) = panic_info.downcast_ref::<String>() {
-					s.clone()
-				} else {
-					"Unknown panic".to_string()
-				};
-				error!(operator_id = self.operator_id.0, "FFI operator panicked during apply: {}", msg);
-				abort();
-			}
-		};
+		let result_code = call_vtable(
+			&self.vtable,
+			self.instance,
+			ffi_ctx_ptr,
+			&ffi_input,
+			&mut ffi_output,
+			self.operator_id,
+		);
 
 		// Check result code
 		if result_code != 0 {
@@ -140,21 +156,12 @@ impl Operator for FFIOperator {
 		}
 
 		// Phase 3: Unmarshal the output
-		let unmarshal_span = debug_span!("flow::ffi::unmarshal");
-		let _unmarshal_guard = unmarshal_span.enter();
-		let unmarshal_start = Instant::now();
-		let output_change = arena.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
-		let unmarshal_us = unmarshal_start.elapsed().as_micros() as u64;
-		drop(_unmarshal_guard);
+		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(|e| FFIError::Other(e))?;
 
-		// Clear the arena's arena after operation
+		// Clear the arena after operation
 		arena.clear();
 
 		Span::current().record("output_diff_count", output_change.diffs.len());
-		Span::current().record("marshal_time_us", marshal_us);
-		Span::current().record("ffi_call_time_us", ffi_us);
-		Span::current().record("unmarshal_time_us", unmarshal_us);
-		Span::current().record("total_time_ms", total_start.elapsed().as_millis() as u64);
 
 		Ok(output_change)
 	}

@@ -10,10 +10,9 @@ use std::{
 	ops::Bound,
 	sync::Arc,
 };
-use std::time::Instant;
 use parking_lot::RwLock;
 use reifydb_type::{CowVec, Result};
-use tracing::{debug_span, instrument, Span};
+use tracing::{instrument, Span};
 
 use super::entry::{Entries, Entry, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
@@ -52,6 +51,25 @@ impl MemoryPrimitiveStorage {
 			.value()
 			.clone()
 	}
+
+	/// Sort batches by table key for consistent lock acquisition order
+	#[inline]
+	#[instrument(name = "store::memory::set::sort", level = "trace", skip_all)]
+	fn sort_batches(batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Vec<(EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>)> {
+		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
+		sorted_batches.sort_by(|(a, _), (b, _)| entry_id_to_key(*a).cmp(&entry_id_to_key(*b)));
+		sorted_batches
+	}
+
+	/// Acquire lock and insert entries into table
+	#[inline]
+	#[instrument(name = "store::memory::set::insert", level = "trace", skip_all)]
+	fn acquire_lock_and_insert(table_entry: Entry, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
+		let mut table_data = table_entry.write();
+		for (key, value) in entries {
+			table_data.insert(key, value);
+		}
+	}
 }
 
 impl TierStorage for MemoryPrimitiveStorage {
@@ -83,62 +101,23 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(
 		table_count = batches.len(),
-		total_entry_count = tracing::field::Empty,
-		sort_time_us = tracing::field::Empty,
-		lock_wait_us = tracing::field::Empty,
-		insert_time_us = tracing::field::Empty
+		total_entry_count = tracing::field::Empty
 	))]
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		// Phase 1: Sort tables by key to ensure consistent lock acquisition order.
 		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
-		let sort_span = debug_span!("store::memory::set::sort");
-		let _sort_guard = sort_span.enter();
-		let sort_start = Instant::now();
-
-		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
-		sorted_batches.sort_by(|(a, _), (b, _)| entry_id_to_key(*a).cmp(&entry_id_to_key(*b)));
-
-		let sort_us = sort_start.elapsed().as_micros() as u64;
-		drop(_sort_guard);
+		let sorted_batches = Self::sort_batches(batches);
 
 		// Count total entries for metrics
 		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
 
-		// Phase 2: Table operations with lock timing
-		let mut total_lock_wait_us: u64 = 0;
-		let mut total_insert_us: u64 = 0;
-
+		// Phase 2: Table operations
 		for (table, entries) in sorted_batches {
 			let table_entry = self.get_or_create_table(table);
-
-			// Measure lock acquisition time (contention)
-			let lock_span = debug_span!("store::memory::set::lock");
-			let _lock_guard = lock_span.enter();
-			let lock_start = Instant::now();
-
-			let mut table_data = table_entry.write();
-
-			total_lock_wait_us += lock_start.elapsed().as_micros() as u64;
-			drop(_lock_guard);
-
-			// Measure insert time
-			let insert_span = debug_span!("store::memory::set::insert");
-			let _insert_guard = insert_span.enter();
-			let insert_start = Instant::now();
-
-			for (key, value) in entries {
-				table_data.insert(key, value);
-			}
-
-			total_insert_us += insert_start.elapsed().as_micros() as u64;
-			drop(_insert_guard);
+			Self::acquire_lock_and_insert(table_entry, entries);
 		}
 
-		// Record metrics to parent span
 		Span::current().record("total_entry_count", total_entries);
-		Span::current().record("sort_time_us", sort_us);
-		Span::current().record("lock_wait_us", total_lock_wait_us);
-		Span::current().record("insert_time_us", total_insert_us);
 
 		Ok(())
 	}

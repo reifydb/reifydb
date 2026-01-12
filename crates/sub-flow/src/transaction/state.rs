@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_store_transaction::MultiVersionBatch;
-use tracing::{Span, debug_span, instrument};
+use tracing::{Span, instrument};
 
 use super::FlowTransaction;
 
@@ -17,16 +17,13 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
-		found = tracing::field::Empty,
-		query_time_us = tracing::field::Empty
+		found = tracing::field::Empty
 	))]
 	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> reifydb_type::Result<Option<EncodedValues>> {
-		let query_start = std::time::Instant::now();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		let result = self.get(&encoded_key)?;
 		Span::current().record("found", result.is_some());
-		Span::current().record("query_time_us", query_start.elapsed().as_micros() as u64);
 		Ok(result)
 	}
 
@@ -61,11 +58,9 @@ impl FlowTransaction {
 	/// Scan all state for a specific flow node
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0,
-		result_count = tracing::field::Empty,
-		scan_time_ms = tracing::field::Empty
+		result_count = tracing::field::Empty
 	))]
 	pub fn state_scan(&mut self, id: FlowNodeId) -> reifydb_type::Result<MultiVersionBatch> {
-		let scan_start = std::time::Instant::now();
 		let range = FlowNodeStateKey::node_range(id);
 		let mut iter = self.range(range, 1024);
 		let mut items = Vec::new();
@@ -73,7 +68,6 @@ impl FlowTransaction {
 			items.push(result?);
 		}
 		Span::current().record("result_count", items.len());
-		Span::current().record("scan_time_ms", scan_start.elapsed().as_millis() as u64);
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -102,50 +96,43 @@ impl FlowTransaction {
 	}
 
 	/// Clear all state for a specific flow node
-	#[instrument(name = "flow::state::clear", level = "debug", skip(self), fields(
+	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		node_id = id.0,
-		keys_removed = tracing::field::Empty,
-		scan_time_ms = tracing::field::Empty,
-		remove_time_ms = tracing::field::Empty,
-		total_time_ms = tracing::field::Empty
+		keys_removed = tracing::field::Empty
 	))]
 	pub fn state_clear(&mut self, id: FlowNodeId) -> reifydb_type::Result<()> {
-		let total_start = std::time::Instant::now();
-
 		// Phase 1: Scan to collect all keys
-		let scan_span = debug_span!("flow::state::clear::scan");
-		let _scan_guard = scan_span.enter();
-		let scan_start = std::time::Instant::now();
-
-		let range = FlowNodeStateKey::node_range(id);
-		let keys_to_remove = {
-			let mut iter = self.range(range, 1024);
-			let mut keys = Vec::new();
-			while let Some(result) = iter.next() {
-				let multi = result?;
-				keys.push(multi.key);
-			}
-			keys
-		};
-		let scan_ms = scan_start.elapsed().as_millis() as u64;
-		drop(_scan_guard);
+		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
 		// Phase 2: Remove all collected keys
-		let remove_span = debug_span!("flow::state::clear::remove");
-		let _remove_guard = remove_span.enter();
-		let remove_start = std::time::Instant::now();
-
 		let count = keys_to_remove.len();
-		for key in keys_to_remove {
-			self.remove(&key)?;
-		}
-		let remove_ms = remove_start.elapsed().as_millis() as u64;
-		drop(_remove_guard);
+		self.remove_keys(keys_to_remove)?;
 
 		Span::current().record("keys_removed", count);
-		Span::current().record("scan_time_ms", scan_ms);
-		Span::current().record("remove_time_ms", remove_ms);
-		Span::current().record("total_time_ms", total_start.elapsed().as_millis() as u64);
+		Ok(())
+	}
+
+	/// Scan and collect all keys for a node (used by state_clear)
+	#[inline]
+	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
+	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> reifydb_type::Result<Vec<EncodedKey>> {
+		let range = FlowNodeStateKey::node_range(id);
+		let mut iter = self.range(range, 1024);
+		let mut keys = Vec::new();
+		while let Some(result) = iter.next() {
+			let multi = result?;
+			keys.push(multi.key);
+		}
+		Ok(keys)
+	}
+
+	/// Remove a list of keys (used by state_clear)
+	#[inline]
+	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
+	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> reifydb_type::Result<()> {
+		for key in keys {
+			self.remove(&key)?;
+		}
 		Ok(())
 	}
 
@@ -163,11 +150,11 @@ impl FlowTransaction {
 	) -> reifydb_type::Result<EncodedValues> {
 		match self.state_get(id, key)? {
 			Some(row) => {
-				tracing::Span::current().record("created", false);
+				Span::current().record("created", false);
 				Ok(row)
 			}
 			None => {
-				tracing::Span::current().record("created", true);
+				Span::current().record("created", true);
 				Ok(layout.allocate())
 			}
 		}
