@@ -14,6 +14,8 @@ pub mod persistence;
 mod query;
 mod tracker;
 mod types;
+pub mod worker;
 
 pub use tracker::{PreVersionInfo, StorageTracker, StorageTrackerConfig};
 pub use types::{ObjectId, StorageStats, Tier, TierStats};
+pub use worker::{StatsEvent, StatsOp, StatsWorker, StatsWorkerConfig};

@@ -1829,9 +1829,11 @@ dependencies = [
 name = "reifydb-store-transaction"
 version = "0.2.0"
 dependencies = [
+ "crossbeam-channel",
  "dashmap",
  "indexmap",
  "parking_lot",
+ "rayon",
  "reifydb-core",
  "reifydb-testing",
  "reifydb-type",

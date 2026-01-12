@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use reifydb_core::event::EventBus;
+
 use crate::hot::HotStorage;
 
 #[derive(Clone)]
@@ -13,6 +15,7 @@ pub struct TransactionStoreConfig {
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub stats: StorageStatsConfig,
+	pub event_bus: EventBus,
 }
 
 /// Configuration for storage statistics tracking.
@@ -20,12 +23,15 @@ pub struct TransactionStoreConfig {
 pub struct StorageStatsConfig {
 	/// Time between checkpoint persists.
 	pub checkpoint_interval: Duration,
+	/// Channel capacity for the stats worker.
+	pub worker_channel_capacity: usize,
 }
 
 impl Default for StorageStatsConfig {
 	fn default() -> Self {
 		Self {
 			checkpoint_interval: Duration::from_secs(10),
+			worker_channel_capacity: 10_000,
 		}
 	}
 }
@@ -78,6 +84,7 @@ impl Default for TransactionStoreConfig {
 				enable_auto_eviction: true,
 			},
 			stats: StorageStatsConfig::default(),
+			event_bus: EventBus::new(),
 		}
 	}
 }
