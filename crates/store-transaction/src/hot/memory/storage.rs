@@ -165,25 +165,25 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		let table_data = table_entry.read();
-
-		// Determine effective start bound based on cursor state
+		// Compute effective bounds before acquiring lock
 		let effective_start: Bound<&[u8]> = match &cursor.last_key {
 			Some(last) => Bound::Excluded(last.as_slice()),
 			None => start,
 		};
-
 		let range_bounds = make_range_bounds_ref(effective_start, end);
 
-		// Fetch batch_size + 1 to determine if there are more entries
-		let entries: Vec<RawEntry> = table_data
-			.range::<[u8], _>(range_bounds)
-			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
-				key: k.clone(),
-				value: v.clone(),
-			})
-			.collect();
+		// Acquire lock, collect data, release lock immediately
+		let entries: Vec<RawEntry> = {
+			let table_data = table_entry.read();
+			table_data
+				.range::<[u8], _>(range_bounds)
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect()
+		};
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -228,27 +228,26 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// DashMap entry is now released, only holding Arc<RwLock<BTreeMap>>
-		let table_data = table_entry.read();
-
 		// For reverse iteration, effective end bound based on cursor
 		let effective_end: Bound<&[u8]> = match &cursor.last_key {
 			Some(last) => Bound::Excluded(last.as_slice()),
 			None => end,
 		};
-
 		let range_bounds = make_range_bounds_ref(start, effective_end);
 
-		// Fetch batch_size + 1 to determine if there are more entries
-		let entries: Vec<RawEntry> = table_data
-			.range::<[u8], _>(range_bounds)
-			.rev()
-			.take(batch_size + 1)
-			.map(|(k, v)| RawEntry {
-				key: k.clone(),
-				value: v.clone(),
-			})
-			.collect();
+		// Acquire lock, collect data, release lock immediately
+		let entries: Vec<RawEntry> = {
+			let table_data = table_entry.read();
+			table_data
+				.range::<[u8], _>(range_bounds)
+				.rev()
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect()
+		};
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
