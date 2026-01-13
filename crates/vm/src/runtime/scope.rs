@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use super::state::OperandValue;
+use super::operand::OperandValue;
 
 /// A single scope level.
 #[derive(Debug, Clone)]

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Application state shared across admin request handlers.
+//! Application state shared across admin request handler.
 
 use std::time::Duration;
 
 use reifydb_engine::StandardEngine;
 
-/// Shared application state for admin handlers.
+/// Shared application state for admin handler.
 ///
 /// This struct is cloneable and cheap to clone since `StandardEngine` uses
 /// `Arc` internally.

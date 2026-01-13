@@ -37,7 +37,7 @@ struct SubscriptionState {
 
 /// Registry tracking subscriptions across all WebSocket connections.
 ///
-/// The registry is thread-safe and can be shared across connection handlers
+/// The registry is thread-safe and can be shared across connection handler
 /// and the push broadcast thread.
 pub struct SubscriptionRegistry {
 	/// subscription_id → subscription state

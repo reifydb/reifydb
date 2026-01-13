@@ -10,7 +10,7 @@
 //! - **Execution**: Async wrappers around synchronous database operations
 //! - **Response**: Frame conversion for JSON serialization
 //! - **Runtime**: Shared tokio runtime management
-//! - **State**: Application state for request handlers
+//! - **State**: Application state for request handler
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 

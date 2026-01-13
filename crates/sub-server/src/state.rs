@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Application state shared across request handlers.
+//! Application state shared across request handler.
 //!
 //! This module provides the shared state that is passed to all HTTP and WebSocket
-//! handlers, including the database engine and query configuration.
+//! handler, including the database engine and query configuration.
 
 use std::time::Duration;
 
@@ -60,7 +60,7 @@ impl StateConfig {
 	}
 }
 
-/// Shared application state passed to all request handlers.
+/// Shared application state passed to all request handler.
 ///
 /// This struct is cloneable and cheap to clone since `StandardEngine` uses
 /// `Arc` internally. Each handler receives a clone of this state.

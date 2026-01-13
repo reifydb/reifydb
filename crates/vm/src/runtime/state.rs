@@ -5,8 +5,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_catalog::Catalog;
-use reifydb_core::value::column::{Column, Columns};
 use reifydb_rqlv2::{
 	bytecode::{CompiledProgram, Constant},
 	expression::{CompiledExpr, CompiledFilter},
@@ -14,218 +12,18 @@ use reifydb_rqlv2::{
 use reifydb_type::Value;
 
 #[cfg(feature = "trace")]
-use super::trace::VmTracer;
-use super::{call_stack::CallStack, scope::ScopeChain};
+use crate::trace::VmTracer;
+use super::{
+	stack::CallStack,
+	context::VmContext,
+	operand::{OperandValue, PipelineHandle},
+	scope::ScopeChain,
+};
 use crate::{
 	error::{Result, VmError},
 	operator::{ScanState, sort::SortSpec},
 	pipeline::Pipeline,
 };
-
-/// A record is a single row with named fields.
-#[derive(Debug, Clone)]
-pub struct Record {
-	/// Field name -> value pairs.
-	pub fields: Vec<(String, Value)>,
-}
-
-impl Record {
-	/// Create a new record from field name-value pairs.
-	pub fn new(fields: Vec<(String, Value)>) -> Self {
-		Self {
-			fields,
-		}
-	}
-
-	/// Get a field value by name.
-	pub fn get(&self, name: &str) -> Option<&Value> {
-		self.fields.iter().find(|(n, _)| n == name).map(|(_, v)| v)
-	}
-}
-
-/// Values that can live on the operand stack.
-#[derive(Debug, Clone)]
-pub enum OperandValue {
-	/// Scalar value (literals, computed results).
-	Scalar(Value),
-
-	/// Single column (vectorized value for columnar operations).
-	Column(Column),
-
-	/// Reference to an expression in the program.
-	ExprRef(u16),
-
-	/// Column reference by name.
-	ColRef(String),
-
-	/// List of column names (for select).
-	ColList(Vec<String>),
-
-	/// Materialized frame (collected pipeline result).
-	Frame(Columns),
-
-	/// Reference to a user-defined function.
-	FunctionRef(u16),
-
-	/// Pipeline reference (for storing pipelines in variables).
-	PipelineRef(PipelineHandle),
-
-	/// Sort specification reference.
-	SortSpecRef(u16),
-
-	/// Extension specification reference.
-	ExtSpecRef(u16),
-
-	/// Record (single row with named fields).
-	Record(Record),
-}
-
-impl OperandValue {
-	/// Check if this is a scalar value.
-	pub fn is_scalar(&self) -> bool {
-		matches!(self, OperandValue::Scalar(_))
-	}
-
-	/// Check if this is a column value.
-	pub fn is_column(&self) -> bool {
-		matches!(self, OperandValue::Column(_))
-	}
-
-	/// Try to get as a scalar value.
-	pub fn as_scalar(&self) -> Option<&Value> {
-		match self {
-			OperandValue::Scalar(v) => Some(v),
-			_ => None,
-		}
-	}
-
-	/// Try to get as a column.
-	pub fn as_column(&self) -> Option<&Column> {
-		match self {
-			OperandValue::Column(c) => Some(c),
-			_ => None,
-		}
-	}
-
-	/// Try to take as a column (consumes self).
-	pub fn into_column(self) -> Option<Column> {
-		match self {
-			OperandValue::Column(c) => Some(c),
-			_ => None,
-		}
-	}
-
-	/// Try to get as an integer.
-	pub fn as_int(&self) -> Option<i64> {
-		match self {
-			OperandValue::Scalar(Value::Int8(n)) => Some(*n),
-			_ => None,
-		}
-	}
-
-	/// Try to get as a boolean.
-	pub fn as_bool(&self) -> Option<bool> {
-		match self {
-			OperandValue::Scalar(Value::Boolean(b)) => Some(*b),
-			_ => None,
-		}
-	}
-
-	/// Try to get as a string.
-	pub fn as_string(&self) -> Option<&str> {
-		match self {
-			OperandValue::Scalar(Value::Utf8(s)) => Some(s),
-			_ => None,
-		}
-	}
-}
-
-/// Handle to a pipeline (can be cloned, represents shared ownership).
-#[derive(Debug, Clone)]
-pub struct PipelineHandle {
-	/// Unique identifier for lookup in pipeline registry.
-	pub id: u64,
-}
-
-/// VM configuration.
-#[derive(Debug, Clone)]
-pub struct VmConfig {
-	/// Maximum operand stack depth.
-	pub max_operand_stack: usize,
-
-	/// Maximum pipeline stack depth.
-	pub max_pipeline_stack: usize,
-
-	/// Maximum call stack depth.
-	pub max_call_depth: usize,
-
-	/// Maximum scope depth.
-	pub max_scope_depth: usize,
-
-	/// Batch size for table scans.
-	pub batch_size: u64,
-}
-
-impl Default for VmConfig {
-	fn default() -> Self {
-		Self {
-			max_operand_stack: 1024,
-			max_pipeline_stack: 64,
-			max_call_depth: 256,
-			max_scope_depth: 256,
-			batch_size: 1000,
-		}
-	}
-}
-
-/// Execution context providing external resources.
-pub struct VmContext {
-	/// VM configuration.
-	pub config: VmConfig,
-
-	/// Optional catalog for real storage lookups.
-	pub catalog: Option<Catalog>,
-}
-
-impl VmContext {
-	/// Create a new VM context with default configuration.
-	pub fn new() -> Self {
-		Self {
-			config: VmConfig::default(),
-			catalog: None,
-		}
-	}
-
-	/// Create a new VM context with custom configuration.
-	pub fn with_config(config: VmConfig) -> Self {
-		Self {
-			config,
-			catalog: None,
-		}
-	}
-
-	/// Create a new VM context with a catalog.
-	pub fn with_catalog(catalog: Catalog) -> Self {
-		Self {
-			config: VmConfig::default(),
-			catalog: Some(catalog),
-		}
-	}
-
-	/// Create a new VM context with both custom config and catalog.
-	pub fn with_config_and_catalog(config: VmConfig, catalog: Catalog) -> Self {
-		Self {
-			config,
-			catalog: Some(catalog),
-		}
-	}
-}
-
-impl Default for VmContext {
-	fn default() -> Self {
-		Self::new()
-	}
-}
 
 /// Main VM execution state.
 pub struct VmState {
@@ -297,7 +95,7 @@ impl VmState {
 
 	/// Take the trace entries after execution.
 	#[cfg(feature = "trace")]
-	pub fn take_trace(&mut self) -> Option<Vec<super::trace::TraceEntry>> {
+	pub fn take_trace(&mut self) -> Option<Vec<crate::trace::TraceEntry>> {
 		self.tracer.take().map(|t| t.take_entries())
 	}
 

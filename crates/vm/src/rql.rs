@@ -31,7 +31,8 @@ use reifydb_transaction::IntoStandardTransaction;
 use crate::{
 	error::VmError,
 	pipeline::Pipeline,
-	vmcore::{VmContext, VmState},
+	runtime::context::VmContext,
+	runtime::state::VmState,
 };
 
 /// Execute a compiled bytecode program with catalog access.

@@ -9,10 +9,11 @@ use super::entry::{
 	CallFrameSnapshot, ColumnSnapshot, DispatchResultSnapshot, FrameSnapshot, OperandSnapshot, OperatorSnapshot,
 	RecordSnapshot, ScopeSnapshot, StateSnapshot,
 };
-use crate::vmcore::{
-	call_stack::CallFrame,
-	interpreter::DispatchResult,
-	state::{OperandValue, Record, VmState},
+use crate::runtime::{
+	stack::CallFrame,
+	dispatch::DispatchResult,
+	operand::{OperandValue, Record},
+	state::VmState,
 };
 
 /// Create a state snapshot from the current VM state.

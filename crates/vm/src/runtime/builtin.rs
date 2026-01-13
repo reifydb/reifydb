@@ -5,10 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::{
-	error::{Result, VmError},
-	vmcore::state::OperandValue,
-};
+use crate::error::{Result, VmError};
+use super::operand::OperandValue;
 
 /// Builtin function signature: takes arguments, returns optional result.
 pub type BuiltinFn = fn(&[OperandValue]) -> Result<Option<OperandValue>>;

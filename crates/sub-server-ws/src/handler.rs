@@ -35,7 +35,7 @@ use crate::{
 /// This function:
 /// 1. Completes the WebSocket handshake
 /// 2. Manages authentication state per connection
-/// 3. Routes messages to appropriate handlers
+/// 3. Routes messages to appropriate handler
 /// 4. Handles subscription push messages
 /// 5. Responds to shutdown signals
 /// 6. Cleans up subscriptions on disconnect

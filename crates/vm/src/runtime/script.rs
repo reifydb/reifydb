@@ -12,7 +12,12 @@ use reifydb_rqlv2::{
 };
 use reifydb_type::Value;
 
-use crate::vmcore::{VmContext, VmState};
+use super::{
+	context::VmContext,
+	dispatch::DispatchResult,
+	operand::OperandValue,
+	state::VmState,
+};
 
 /// Executes script functions by running their bytecode.
 ///
@@ -55,8 +60,6 @@ impl ScriptFunctionCaller for BytecodeScriptCaller {
 
 /// Execute the VM until a return is encountered at the top level.
 fn execute_until_return(vm: &mut VmState) -> Result<Value, EvalError> {
-	use super::state::OperandValue;
-
 	// Execute steps until we get a result
 	loop {
 		// We need a transaction for execution, but for pure functions we don't need one.
@@ -65,8 +68,8 @@ fn execute_until_return(vm: &mut VmState) -> Result<Value, EvalError> {
 		})?;
 
 		match result {
-			super::DispatchResult::Continue => continue,
-			super::DispatchResult::Halt => {
+			DispatchResult::Continue => continue,
+			DispatchResult::Halt => {
 				// Function returned, get value from operand stack
 				let operand = vm.pop_operand().map_err(|e| EvalError::UnsupportedOperation {
 					operation: format!("script function returned no value: {:?}", e),
@@ -83,7 +86,7 @@ fn execute_until_return(vm: &mut VmState) -> Result<Value, EvalError> {
 					}
 				}
 			}
-			super::DispatchResult::Yield(_) => {
+			DispatchResult::Yield(_) => {
 				// Script functions shouldn't yield pipelines
 				return Err(EvalError::UnsupportedOperation {
 					operation: "script function yielded a pipeline (expected scalar)".to_string(),

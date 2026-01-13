@@ -27,10 +27,7 @@ use reifydb_type::{
 	Error, Fragment, TypeConstraint,
 	diagnostic::{self, catalog::namespace_not_found},
 };
-use reifydb_vm::{
-	collect,
-	vmcore::{VmContext, VmState},
-};
+use reifydb_vm::{VmContext, VmState, collect};
 use tracing::instrument;
 
 use crate::{

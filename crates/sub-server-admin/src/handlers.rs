@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP endpoint handlers for the admin server.
+//! HTTP endpoint handler for the admin server.
 //!
-//! This module provides handlers for:
+//! This module provides handler for:
 //! - `/health` - Health check
 //! - `/v1/auth/*` - Authentication endpoints
 //! - `/v1/config` - Configuration endpoints

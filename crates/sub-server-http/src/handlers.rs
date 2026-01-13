@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP endpoint handlers for query and command execution.
+//! HTTP endpoint handler for query and command execution.
 //!
-//! This module provides the request handlers for:
+//! This module provides the request handler for:
 //! - `/health` - Health check endpoint
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
