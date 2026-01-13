@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::Cdc;
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_transaction::StandardCommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for CDC transaction processing functions

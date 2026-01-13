@@ -4,6 +4,7 @@
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod builder;
+pub(crate) mod backfill;
 pub(crate) mod catalog;
 pub(crate) mod convert;
 pub(crate) mod coordinator;

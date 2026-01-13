@@ -14,7 +14,6 @@ use tracing::instrument;
 
 use crate::{
 	TransactionId,
-	cdc::TransactionCdc,
 	change::{
 		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
@@ -29,17 +28,15 @@ use crate::{
 pub struct StandardQueryTransaction {
 	pub(crate) multi: QueryTransaction,
 	pub(crate) single: TransactionSingle,
-	pub(crate) cdc: TransactionCdc,
 }
 
 impl StandardQueryTransaction {
 	/// Creates a new active query transaction
 	#[instrument(name = "transaction::standard::query::new", level = "debug", skip_all)]
-	pub fn new(multi: QueryTransaction, single: TransactionSingle, cdc: TransactionCdc) -> Self {
+	pub fn new(multi: QueryTransaction, single: TransactionSingle) -> Self {
 		Self {
 			multi,
 			single,
-			cdc,
 		}
 	}
 
@@ -127,12 +124,6 @@ impl StandardQueryTransaction {
 		f(&mut self.multi)
 	}
 
-	/// Get access to the CDC transaction interface
-	#[instrument(name = "transaction::standard::query::cdc", level = "trace", skip(self))]
-	pub fn cdc(&self) -> &TransactionCdc {
-		&self.cdc
-	}
-
 	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::standard::query::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
@@ -140,12 +131,6 @@ impl StandardQueryTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		self.single.begin_query(keys)
-	}
-
-	/// Begin a CDC query transaction
-	#[instrument(name = "transaction::standard::query::begin_cdc_query", level = "trace", skip(self))]
-	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
-		Ok(self.cdc.begin_query()?)
 	}
 }
 

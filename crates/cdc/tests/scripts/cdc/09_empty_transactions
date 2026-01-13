@@ -1,0 +1,84 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test getting CDC for non-existent version
+cdc_get 1
+---
+None
+
+cdc_get 999
+---
+None
+
+# Test getting non-existent sequence from non-existent version
+cdc_get 1 1
+---
+None
+
+# Test empty range queries
+cdc_range_included 1 5
+---
+ok
+
+cdc_range_excluded_excluded 10 20
+---
+ok
+
+# Create one transaction
+insert 5 a=1
+commit
+---
+ok
+
+# Test ranges that don't include our version
+cdc_range_included 1 4
+---
+ok
+
+cdc_range_included 6 10
+---
+ok
+
+cdc_range_excluded_excluded 4 6
+---
+v5 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+
+# Test getting wrong sequence from existing version
+cdc_get 5 2
+---
+None
+
+cdc_get 5 0
+---
+None
+
+cdc_get 5 999
+---
+None
+
+# Test that our actual data is there
+cdc_get 5 1
+---
+Change { seq: 1, change: Insert { key: "a", post: "1" } }
+
+cdc_get 5
+---
+Cdc { version: 5, ts: 1000, changes: [{ seq: 1, change: Insert { key: "a", post: "1" } }] }
+
+# Test count for versions with no CDC
+cdc_count 1
+---
+count: 0
+
+cdc_count 4
+---
+count: 0
+
+cdc_count 6
+---
+count: 0
+
+# Verify our version has count
+cdc_count 5
+---
+count: 1

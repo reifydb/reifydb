@@ -9,7 +9,7 @@ use std::{
 use drop::find_keys_to_drop;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
-	util::clock::now_millis, value::encoded::EncodedValues,
+	value::encoded::EncodedValues,
 };
 use reifydb_type::util::hex;
 use tracing::instrument;
@@ -17,15 +17,15 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version, get_previous_version_info},
+	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
 };
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
-	cdc::CommitLog,
-	hot::{EntryKind::Multi, delta_optimizer::optimize_deltas},
+	hot::EntryKind::Multi,
 	stats::{PreVersionInfo, StatsOp, Tier},
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
+use crate::store::version::get_previous_version_info;
 
 /// Fixed chunk size for internal tier scans.
 /// This is the number of versioned entries fetched per tier per iteration.
@@ -109,12 +109,9 @@ impl MultiVersionCommit for StandardTransactionStore {
 			return Ok(());
 		};
 
-		// Optimize deltas first (cancel insert+delete pairs, coalesce updates)
-		let optimized_deltas = optimize_deltas(deltas.iter().cloned());
-
 		// For flow state keys (single-version semantics), track pending Set operations.
 		// Drops are queued to a background worker after the commit.
-		let pending_set_keys: HashSet<Vec<u8>> = optimized_deltas
+		let pending_set_keys: HashSet<Vec<u8>> = deltas
 			.iter()
 			.filter_map(|delta| {
 				if let Delta::Set {
@@ -130,15 +127,12 @@ impl MultiVersionCommit for StandardTransactionStore {
 			})
 			.collect();
 
-		// Build commit record for async CDC processing (before storage write)
-		let commit_record = CommitLog::build_record(version, now_millis(), &optimized_deltas);
-
 		// Collect storage statistics for batch sending.
 		// Pre-version info is looked up BEFORE writing to storage so we can
 		// correctly track inserts vs updates and historical byte counts.
 		// CDC stats are collected by the async CDC shard workers.
 		let mut stats_ops: Vec<StatsOp> = Vec::new();
-		for delta in optimized_deltas.iter() {
+		for delta in deltas.iter() {
 			let key = delta.key();
 			let key_bytes = key.as_ref();
 			let table = classify_key(key);
@@ -185,7 +179,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 		// Batch deltas by table for efficient storage writes
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
 
-		for delta in optimized_deltas.iter() {
+		for delta in deltas.iter() {
 			let table = classify_key(delta.key());
 
 			match delta {
@@ -255,14 +249,11 @@ impl MultiVersionCommit for StandardTransactionStore {
 		}
 		drop(drop_worker);
 
-		// Write versioned entries to storage (NO CDC - handled async)
+		// Write versioned entries to storage
 		storage.set(batches)?;
 
 		// Record stats for this commit
 		self.stats_worker.record_batch(stats_ops, version);
-
-		// Append to commit log for async CDC generation
-		self.commit_log.append(commit_record);
 
 		Ok(())
 	}

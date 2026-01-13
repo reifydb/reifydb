@@ -17,9 +17,9 @@ current_value_bytes: 1
 historical_count: 0
 historical_key_bytes: 0
 historical_value_bytes: 0
-cdc_count: 1
-cdc_key_bytes: 1
-cdc_value_bytes: 76
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 12
 
 # First update - adds to historical

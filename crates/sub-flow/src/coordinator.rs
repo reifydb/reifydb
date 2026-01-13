@@ -4,9 +4,7 @@
 //! Flow coordinator that handles CDC consumption and orchestration.
 
 use std::cell::RefCell;
-use std::cmp::min;
 use std::collections::HashMap;
-use std::ops::Bound;
 use std::sync::Arc;
 
 use crate::{
@@ -18,7 +16,7 @@ use crate::{
 	tracker::PrimitiveVersionTracker,
 	transaction::Pending,
 };
-use reifydb_cdc::{CdcCheckpoint, CdcConsume};
+use reifydb_cdc::{CdcCheckpoint, CdcConsume, CdcStore};
 use reifydb_core::interface::{CdcChange, FlowId, PrimitiveId};
 use reifydb_core::{
 	CommitVersion, Result,
@@ -29,8 +27,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_rql::flow::FlowGraphAnalyzer;
 use reifydb_sdk::FlowChange;
 use reifydb_sdk::FlowChangeOrigin::External;
-use reifydb_transaction::cdc::CdcQueryTransaction;
-use tracing::{debug, info, instrument, Span};
+use tracing::{debug, instrument, Span};
 
 /// Flow coordinator that implements CDC consumption logic.
 pub(crate) struct FlowCoordinator {
@@ -42,11 +39,18 @@ pub(crate) struct FlowCoordinator {
 	pub(crate) states: RefCell<FlowStates>,
 	/// Analyzer for source-to-flow mapping.
 	pub(crate) analyzer: RefCell<FlowGraphAnalyzer>,
+	/// CDC storage for reading historical CDC entries during backfill.
+	pub(crate) cdc_store: CdcStore,
 }
 
 impl FlowCoordinator {
 	/// Create a new flow coordinator.
-	pub fn new(engine: StandardEngine, tracker: Arc<PrimitiveVersionTracker>, pool: FlowWorkerPool) -> Self {
+	pub fn new(
+		engine: StandardEngine,
+		tracker: Arc<PrimitiveVersionTracker>,
+		pool: FlowWorkerPool,
+		cdc_store: CdcStore,
+	) -> Self {
 		let catalog = FlowCatalog::new(engine.catalog());
 		Self {
 			engine,
@@ -55,6 +59,7 @@ impl FlowCoordinator {
 			tracker,
 			states: RefCell::new(FlowStates::new()),
 			analyzer: RefCell::new(FlowGraphAnalyzer::new()),
+			cdc_store,
 		}
 	}
 }
@@ -195,7 +200,7 @@ impl FlowCoordinator {
 		input = changes.len(),
 		output = tracing::field::Empty
 	))]
-	fn filter_cdc_for_flow(&self, flow_id: FlowId, changes: &[FlowChange]) -> Vec<FlowChange> {
+	pub(crate) fn filter_cdc_for_flow(&self, flow_id: FlowId, changes: &[FlowChange]) -> Vec<FlowChange> {
 		let analyzer = self.analyzer.borrow();
 		let dependency_graph = analyzer.get_dependency_graph();
 
@@ -278,129 +283,4 @@ impl FlowCoordinator {
 		worker_batches
 	}
 
-	/// Advance backfilling flows by one chunk each.
-	///
-	/// This method processes backfilling flows incrementally, allowing them to
-	/// gradually catch up to the current version without blocking the pipeline.
-	#[instrument(name = "flow::coordinator::advance_backfill", level = "debug", skip(self, txn), fields(
-		backfilling = tracing::field::Empty,
-		processed = tracing::field::Empty,
-		elapsed_us = tracing::field::Empty
-	))]
-	fn advance_backfilling_flows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		current_version: CommitVersion,
-		state_version: CommitVersion,
-	) -> Result<()> {
-		let start = std::time::Instant::now();
-		const BACKFILL_CHUNK_SIZE: u64 = 1_000;
-
-		let backfilling_flows: Vec<FlowId> = self.states.borrow().backfilling_flow_ids();
-		Span::current().record("backfilling", backfilling_flows.len());
-		let mut processed = 0u32;
-
-		for flow_id in backfilling_flows {
-			// Get current checkpoint for this flow
-			let from_version = {
-				let mut query = self.engine.begin_query()?;
-				CdcCheckpoint::fetch(&mut query, &flow_id).unwrap_or(CommitVersion(0))
-			};
-
-			// Check if already caught up
-			if from_version >= current_version {
-				if let Some(state) = self.states.borrow_mut().get_mut(&flow_id) {
-					state.activate();
-					state.update_checkpoint(current_version);
-				}
-				info!(flow_id = flow_id.0, "backfill complete, flow now active");
-				continue;
-			}
-
-			// Calculate chunk range
-			let to_version = CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, current_version.0));
-
-			// Fetch CDC for this chunk
-			let cdc_txn = txn.begin_cdc_query()?;
-			let batch = cdc_txn.range(Bound::Excluded(from_version), Bound::Included(to_version))?;
-
-			if batch.items.is_empty() {
-				// No CDC in this range, advance checkpoint
-				CdcCheckpoint::persist(txn, &flow_id, to_version)?;
-				{
-					let mut states = self.states.borrow_mut();
-					if let Some(state) = states.get_mut(&flow_id) {
-						state.update_checkpoint(to_version);
-					}
-				}
-				continue;
-			}
-
-			// Convert CDC to flow changes
-			let mut chunk_changes = Vec::new();
-			for cdc in &batch.items {
-				let changes = convert::to_flow_change(&self.engine, &self.catalog, cdc, cdc.version)?;
-				chunk_changes.extend(changes);
-			}
-
-			// Filter to only changes relevant to this flow
-			let flow_changes = self.filter_cdc_for_flow(flow_id, &chunk_changes);
-
-			if flow_changes.is_empty() {
-				// CDC exists but no relevant changes for this flow, advance checkpoint
-				CdcCheckpoint::persist(txn, &flow_id, to_version)?;
-				if let Some(state) = self.states.borrow_mut().get_mut(&flow_id) {
-					state.update_checkpoint(to_version);
-				}
-				continue;
-			}
-
-			// Create instruction and send to worker
-			let instruction = FlowInstruction::new(flow_id, to_version, flow_changes);
-			let worker_id = (flow_id.0 as usize) % self.pool.num_workers();
-
-			let mut worker_batch = WorkerBatch::new(state_version);
-			worker_batch.add_instruction(instruction);
-
-			let pending_writes = self.pool.submit_to_worker(worker_id, worker_batch)?;
-
-			// Apply pending writes
-			for (key, pending) in pending_writes.iter_sorted() {
-				match pending {
-					Pending::Set(value) => {
-						txn.set(key, value.clone())?;
-					}
-					Pending::Remove => {
-						txn.remove(key)?;
-					}
-				}
-			}
-
-			// Update checkpoint
-			CdcCheckpoint::persist(txn, &flow_id, to_version)?;
-			if let Some(state) = self.states.borrow_mut().get_mut(&flow_id) {
-				state.update_checkpoint(to_version);
-			}
-
-			processed += 1;
-			debug!(
-				flow_id = flow_id.0,
-				from = from_version.0,
-				to = to_version.0,
-				"advanced backfilling flow by one chunk"
-			);
-
-			// Check if now caught up
-			if to_version >= current_version {
-				if let Some(state) = self.states.borrow_mut().get_mut(&flow_id) {
-					state.activate();
-				}
-				info!(flow_id = flow_id.0, "backfill complete, flow now active");
-			}
-		}
-
-		Span::current().record("processed", processed);
-		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
-		Ok(())
-	}
 }

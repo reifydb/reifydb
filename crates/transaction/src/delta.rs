@@ -26,7 +26,7 @@ enum OptimizedDeltaState {
 /// - Insert+Delete pairs are canceled out completely
 /// - Multiple updates are coalesced into a single update
 /// - Only the final state for each key is returned
-pub(crate) fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
+pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 	// Track the optimized state for each key
 	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
 	let mut key_states: IndexMap<Vec<u8>, (OptimizedDeltaState, usize)> = IndexMap::new();

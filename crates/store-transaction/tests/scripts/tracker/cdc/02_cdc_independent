@@ -29,6 +29,6 @@ ok
 # cdc_count: number of changes, cdc_key_bytes/cdc_value_bytes: cumulative sizes
 stats_cdc
 ---
-cdc_count: 4
-cdc_key_bytes: 16
-cdc_value_bytes: 304
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0

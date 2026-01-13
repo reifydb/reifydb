@@ -1622,15 +1622,16 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.2.0"
 dependencies = [
- "futures-util",
+ "crossbeam-channel",
+ "parking_lot",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-store-transaction",
- "reifydb-sub-api",
+ "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
- "tokio",
+ "test_each_file",
  "tracing",
 ]
 
@@ -1683,7 +1684,6 @@ dependencies = [
  "parking_lot",
  "rayon",
  "reifydb-catalog",
- "reifydb-cdc",
  "reifydb-engine",
  "reifydb-store-transaction",
  "reifydb-transaction",
@@ -1714,6 +1714,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-auth",
  "reifydb-catalog",
+ "reifydb-cdc",
  "reifydb-core",
  "reifydb-function",
  "reifydb-hash",
@@ -1833,7 +1834,6 @@ version = "0.2.0"
 dependencies = [
  "crossbeam-channel",
  "dashmap",
- "indexmap",
  "parking_lot",
  "rayon",
  "reifydb-core",

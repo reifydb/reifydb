@@ -101,7 +101,7 @@ current_value_bytes: 7
 historical_count: 4
 historical_key_bytes: 44
 historical_value_bytes: 4
-cdc_count: 9
-cdc_key_bytes: 9
-cdc_value_bytes: 684
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 88

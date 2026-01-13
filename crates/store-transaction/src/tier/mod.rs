@@ -20,8 +20,6 @@ pub enum EntryKind {
 	Multi,
 	/// Single-version storage (no version history)
 	Single,
-	/// Change Data Capture entries (keyed by version)
-	Cdc,
 	/// Per-source table for row data
 	Source(PrimitiveId),
 	/// Per-operator table for flow node state

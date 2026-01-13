@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+//! CDC event listener for PostCommitEvent.
+//!
+//! Listens to transaction commit events and forwards them to the CDC worker
+//! for background processing.
+
+use crossbeam_channel::Sender;
+use reifydb_core::{
+	event::{EventListener, transaction::PostCommitEvent},
+	util::now_millis,
+};
+
+use super::worker::CdcWorkItem;
+
+/// Listens to PostCommitEvent and forwards to CdcWorker.
+///
+/// This listener implements the EventListener trait and can be registered
+/// on an EventBus. When a transaction commits, it creates a CdcWorkItem
+/// from the commit deltas and sends it to the worker via a non-blocking
+/// channel send.
+pub struct CdcEventListener {
+	sender: Sender<CdcWorkItem>,
+}
+
+impl CdcEventListener {
+	/// Create a new CDC event listener.
+	///
+	/// # Arguments
+	/// - `sender`: The channel sender to forward work items to the CdcWorker
+	pub fn new(sender: Sender<CdcWorkItem>) -> Self {
+		Self { sender }
+	}
+}
+
+impl EventListener<PostCommitEvent> for CdcEventListener {
+	fn on(&self, event: &PostCommitEvent) {
+		let item = CdcWorkItem {
+			version: event.version,
+			timestamp: now_millis(),
+			deltas: event.deltas.iter().cloned().collect(),
+		};
+
+		let _ = self.sender.send(item);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crossbeam_channel::unbounded;
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
+
+	fn make_key(s: &str) -> EncodedKey {
+		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
+	}
+
+	fn make_values(s: &str) -> EncodedValues {
+		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	}
+
+	#[test]
+	fn test_listener_forwards_event() {
+		let (sender, receiver) = unbounded();
+		let listener = CdcEventListener::new(sender);
+
+		let deltas = CowVec::new(vec![
+			Delta::Set {
+				key: make_key("key1"),
+				values: make_values("value1"),
+			},
+			Delta::Remove {
+				key: make_key("key2"),
+			},
+		]);
+
+		let event = PostCommitEvent {
+			deltas,
+			version: CommitVersion(42),
+		};
+
+		listener.on(&event);
+
+		let item = receiver.try_recv().unwrap();
+		assert_eq!(item.version, CommitVersion(42));
+		assert_eq!(item.deltas.len(), 2);
+	}
+}

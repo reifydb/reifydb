@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub use cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange, ToConsumerKey};
+pub use cdc_exclude::should_exclude_from_cdc;
 pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
@@ -44,6 +45,7 @@ pub use view::ViewKey;
 use crate::{EncodedKey, EncodedKeyRange, util::encoding::keycode};
 
 mod cdc_consumer;
+mod cdc_exclude;
 mod column;
 mod column_policy;
 mod column_sequence;

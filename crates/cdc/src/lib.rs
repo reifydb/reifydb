@@ -5,15 +5,18 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
-mod checkpoint;
-mod consumer;
-mod poll;
-mod watermark;
+pub mod error;
+pub mod produce;
+pub mod storage;
+pub mod consume;
 
-pub use checkpoint::CdcCheckpoint;
-pub use consumer::{CdcConsume, CdcConsumer};
-pub use poll::{PollConsumer, PollConsumerConfig};
-pub use watermark::{compute_watermark, get_all_consumer_states};
+pub use error::{CdcError, CdcResult};
+pub use produce::{CdcWorker, CdcWorkItem, CdcEventListener};
+pub use storage::{CdcStorage, CdcStorageResult, CdcStore, MemoryCdcStorage};
+pub use consume::{
+	CdcCheckpoint, CdcConsume, CdcConsumer, CdcHost, PollConsumer, PollConsumerConfig,
+	compute_watermark,
+};
 
 pub struct CdcVersion;
 

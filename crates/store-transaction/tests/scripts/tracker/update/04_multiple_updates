@@ -17,9 +17,9 @@ current_value_bytes: 1
 historical_count: 0
 historical_key_bytes: 0
 historical_value_bytes: 0
-cdc_count: 1
-cdc_key_bytes: 1
-cdc_value_bytes: 76
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 12
 
 # First update
@@ -35,9 +35,9 @@ current_value_bytes: 1
 historical_count: 1
 historical_key_bytes: 11
 historical_value_bytes: 1
-cdc_count: 2
-cdc_key_bytes: 2
-cdc_value_bytes: 152
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 24
 
 # Second update
@@ -53,9 +53,9 @@ current_value_bytes: 1
 historical_count: 2
 historical_key_bytes: 22
 historical_value_bytes: 2
-cdc_count: 3
-cdc_key_bytes: 3
-cdc_value_bytes: 228
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 36
 
 # Third update
@@ -71,7 +71,7 @@ current_value_bytes: 1
 historical_count: 3
 historical_key_bytes: 33
 historical_value_bytes: 3
-cdc_count: 4
-cdc_key_bytes: 4
-cdc_value_bytes: 304
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 total_bytes: 48

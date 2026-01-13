@@ -20,6 +20,7 @@ use reifydb_type::{Error, util::hex};
 use tracing::instrument;
 
 use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
+use crate::delta::optimize_deltas;
 use crate::multi::types::TransactionValue;
 
 pub struct CommandTransaction {
@@ -56,11 +57,13 @@ impl CommandTransaction {
 			return Ok(CommitVersion(0));
 		}
 
-		// Collect deltas for storage commit
-		let mut deltas = CowVec::with_capacity(entries.len());
+		// Collect and optimize deltas for storage commit
+		let mut raw_deltas = CowVec::with_capacity(entries.len());
 		for pending in &entries {
-			deltas.push(pending.delta.clone());
+			raw_deltas.push(pending.delta.clone());
 		}
+		let optimized = optimize_deltas(raw_deltas.iter().cloned());
+		let deltas = CowVec::new(optimized);
 
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 

@@ -134,7 +134,7 @@ reifydb-client-derive = { version = "0.2.0", path = "pkg/rust/reifydb-client-der
 reifydb-auth = { version = "0.2.0", path = "crates/auth" }
 reifydb-function = { version = "0.2.0", path = "crates/function" }
 reifydb-catalog = { version = "0.2.0", path = "crates/catalog" }
-reifydb-cdc = { version = "0.2.0", path = "crates/cdc" }
+reifydb-cdc = { version = "0.2.0", path = "crates/cdc", default-features = false }
 reifydb-compression = { version = "0.2.0", path = "crates/compression" }
 reifydb-core = { version = "0.2.0", path = "crates/core" }
 reifydb-engine = { version = "0.2.0", path = "crates/engine" }

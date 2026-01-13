@@ -125,7 +125,6 @@ impl Runner {
 				merge_config: Default::default(),
 				stats: Default::default(),
 				event_bus,
-				cdc: Default::default(),
 			})
 			.unwrap(),
 			version: CommitVersion(0),

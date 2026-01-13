@@ -3,6 +3,11 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use crate::{
+	bulk_insert::BulkInsertBuilder,
+	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
+	interceptor::catalog::MaterializedCatalogInterceptor,
+};
 use reifydb_catalog::{
 	Catalog, MaterializedCatalog,
 	vtable::{
@@ -10,6 +15,7 @@ use reifydb_catalog::{
 		system::{FlowOperatorEventListener, FlowOperatorStore},
 	},
 };
+use reifydb_cdc::{CdcHost, CdcStore};
 use reifydb_core::{
 	CommitVersion, Frame,
 	event::{Event, EventBus},
@@ -20,7 +26,7 @@ use reifydb_core::{
 use reifydb_function::{Functions, math, series, subscription};
 use reifydb_rqlv2::Compiler;
 use reifydb_transaction::{
-	StandardCommandTransaction, StandardQueryTransaction, cdc::TransactionCdc, interceptor::InterceptorFactory,
+	StandardCommandTransaction, StandardQueryTransaction, interceptor::InterceptorFactory,
 	multi::TransactionMultiVersion, single::TransactionSingle,
 };
 use reifydb_type::{
@@ -29,12 +35,6 @@ use reifydb_type::{
 };
 use reifydb_vm::{VmContext, VmState, collect};
 use tracing::instrument;
-
-use crate::{
-	bulk_insert::BulkInsertBuilder,
-	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
-	interceptor::catalog::MaterializedCatalogInterceptor,
-};
 
 pub struct StandardEngine(Arc<Inner>);
 
@@ -57,7 +57,6 @@ impl StandardEngine {
 		StandardCommandTransaction::new(
 			self.multi.clone(),
 			self.single.clone(),
-			self.cdc.clone(),
 			self.event_bus.clone(),
 			interceptors,
 		)
@@ -65,7 +64,7 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
 	pub fn begin_query(&self) -> crate::Result<StandardQueryTransaction> {
-		Ok(StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone()))
+		Ok(StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 	}
 
 	#[instrument(name = "engine::command", level = "info", skip(self, params), fields(rql = %rql))]
@@ -185,12 +184,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::query_new", level = "info", skip(self, _params), fields(rql = %rql))]
-	pub fn query_new_as(
-		&self,
-		_identity: &Identity,
-		rql: &str,
-		_params: Params,
-	) -> Result<Vec<Frame>, Error> {
+	pub fn query_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
 		let catalog = self.catalog();
 		let rql_for_errors = rql.to_string();
 
@@ -274,12 +268,7 @@ impl StandardEngine {
 	///
 	/// This is similar to `command_as()` but uses the new bytecode-based execution.
 	#[instrument(name = "engine::command_new", level = "info", skip(self, _params), fields(rql = %rql))]
-	pub fn command_new_as(
-		&self,
-		_identity: &Identity,
-		rql: &str,
-		_params: Params,
-	) -> Result<Vec<Frame>, Error> {
+	pub fn command_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
 		let catalog = self.catalog();
 		let rql_for_errors = rql.to_string();
 
@@ -307,23 +296,21 @@ impl StandardEngine {
 		let context = Arc::new(VmContext::with_catalog(catalog));
 		let mut vm = VmState::new(program, context);
 
-		let pipeline = vm
-			.execute(&mut exec_tx)
-			.map_err(|e| {
-				let diagnostic = diagnostic::Diagnostic {
-					code: "VM_ERROR".to_string(),
-					statement: Some(rql_for_errors.clone()),
-					message: format!("Command execution failed: {}", e),
-					column: None,
-					fragment: Fragment::default(),
-					label: None,
-					help: None,
-					notes: Vec::new(),
-					cause: None,
-					operator_chain: None,
-				};
-				Error(diagnostic)
-			})?;
+		let pipeline = vm.execute(&mut exec_tx).map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Command execution failed: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
 
 		// Step 4: Collect results
 		let columns = if let Some(pipeline) = pipeline {
@@ -375,6 +362,24 @@ impl ExecuteCommand for StandardEngine {
 	}
 }
 
+impl CdcHost for StandardEngine {
+	fn begin_command(&self) -> reifydb_core::Result<StandardCommandTransaction> {
+		StandardEngine::begin_command(self)
+	}
+
+	fn current_version(&self) -> reifydb_core::Result<CommitVersion> {
+		StandardEngine::current_version(self)
+	}
+
+	fn done_until(&self) -> CommitVersion {
+		StandardEngine::done_until(self)
+	}
+
+	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
+		StandardEngine::wait_for_mark_timeout(self, version, timeout)
+	}
+}
+
 impl ExecuteQuery for StandardEngine {
 	#[inline]
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
@@ -399,7 +404,6 @@ impl Deref for StandardEngine {
 pub struct Inner {
 	multi: TransactionMultiVersion,
 	single: TransactionSingle,
-	cdc: TransactionCdc,
 	event_bus: EventBus,
 	executor: Executor,
 	interceptors: Box<dyn InterceptorFactory>,
@@ -412,7 +416,6 @@ impl StandardEngine {
 	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
-		cdc: TransactionCdc,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory>,
 		catalog: Catalog,
@@ -445,7 +448,6 @@ impl StandardEngine {
 		Self(Arc::new(Inner {
 			multi,
 			single,
-			cdc,
 			event_bus,
 			executor: Executor::new(
 				catalog.clone(),
@@ -468,11 +470,7 @@ impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
 	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<StandardQueryTransaction> {
-		Ok(StandardQueryTransaction::new(
-			self.multi.begin_query_at_version(version)?,
-			self.single.clone(),
-			self.cdc.clone(),
-		))
+		Ok(StandardQueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
 	}
 
 	#[inline]
@@ -493,16 +491,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn single_owned(&self) -> TransactionSingle {
 		self.single.clone()
-	}
-
-	#[inline]
-	pub fn cdc(&self) -> &TransactionCdc {
-		&self.cdc
-	}
-
-	#[inline]
-	pub fn cdc_owned(&self) -> TransactionCdc {
-		self.cdc.clone()
 	}
 
 	#[inline]
@@ -552,6 +540,15 @@ impl StandardEngine {
 	#[inline]
 	pub fn executor(&self) -> Executor {
 		self.executor.clone()
+	}
+
+	/// Get the CDC store from the IoC container.
+	///
+	/// Returns the CdcStore that was registered during engine construction.
+	/// Panics if CdcStore was not registered.
+	#[inline]
+	pub fn cdc_store(&self) -> CdcStore {
+		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
 	}
 
 	/// Start a bulk insert operation with full validation.

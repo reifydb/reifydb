@@ -223,12 +223,4 @@ impl<'a> StandardTransaction<'a> {
 			StandardTransaction::Query(txn) => txn.begin_single_query(keys),
 		}
 	}
-
-	/// Begin a CDC query transaction
-	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
-		match self {
-			StandardTransaction::Command(txn) => txn.begin_cdc_query(),
-			StandardTransaction::Query(txn) => txn.begin_cdc_query(),
-		}
-	}
 }

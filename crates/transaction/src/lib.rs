@@ -11,15 +11,15 @@ use std::{
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_type::{Error, Uuid7, return_internal_error};
 
-pub mod cdc;
 pub mod change;
+pub mod delta;
 pub mod interceptor;
 pub mod multi;
 pub mod single;
 pub mod standard;
 
 pub use interceptor::WithInterceptors;
-pub use reifydb_store_transaction::{ObjectId, StorageStats, StorageTracker, Tier, TierStats, TransactionStore};
+pub use reifydb_store_transaction::{ObjectId, StorageStats, StorageTracker, StatsOp, StatsWorker, Tier, TierStats, TransactionStore};
 pub use reifydb_type::Result;
 pub use standard::{
 	IntoStandardTransaction, StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,

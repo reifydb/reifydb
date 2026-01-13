@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::KeyKind;
+//! Key exclusion logic for CDC generation.
+//!
+//! Determines which key kinds should be excluded from CDC to avoid
+//! generating events for internal system state.
+
+use super::KeyKind;
 
 /// Returns true if the KeyKind should be excluded from CDC generation.
 ///
@@ -15,7 +20,7 @@ use reifydb_core::interface::KeyKind;
 /// - SystemVersion, TransactionVersion: Internal version tracking
 /// - RingBufferMetadata: Ring buffer internal state (head/tail pointers)
 /// - Index: Index metadata (derived from Row changes)
-pub(crate) fn should_exclude_from_cdc(kind: KeyKind) -> bool {
+pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 	matches!(
 		kind,
 		// Flow operator state

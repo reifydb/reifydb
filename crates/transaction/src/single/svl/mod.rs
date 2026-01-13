@@ -118,13 +118,7 @@ mod tests {
 		time::Duration,
 	};
 
-	use reifydb_core::runtime::ComputePool;
-
 	use super::*;
-
-	fn test_compute_pool() -> ComputePool {
-		ComputePool::new(2, 8)
-	}
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
@@ -135,7 +129,7 @@ mod tests {
 	}
 
 	fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(TransactionStore::testing_memory(test_compute_pool()), EventBus::default())
+		TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default())
 	}
 
 	#[test]

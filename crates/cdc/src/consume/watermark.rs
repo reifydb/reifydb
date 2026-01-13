@@ -8,11 +8,7 @@
 //! policies - versions at or above the watermark cannot be cleaned up because
 //! consumers still need them.
 
-use reifydb_core::{
-	CommitVersion,
-	interface::{CdcConsumerKeyRange, ConsumerState, EncodableKey},
-	key::CdcConsumerKey,
-};
+use reifydb_core::{CommitVersion, interface::CdcConsumerKeyRange};
 use reifydb_transaction::IntoStandardTransaction;
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
@@ -62,30 +58,4 @@ pub fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core
 	// If no consumers exist, return CommitVersion(1) as safe default
 	// This prevents any cleanup when there are no consumers registered
 	Ok(min_version.unwrap_or(CommitVersion(1)))
-}
-
-/// Retrieves the state of all CDC consumers
-pub fn get_all_consumer_states(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<Vec<ConsumerState>> {
-	let mut states = Vec::new();
-
-	for multi in txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)? {
-		let multi = multi?;
-		let key = match CdcConsumerKey::decode(&multi.key) {
-			Some(k) => k,
-			None => continue,
-		};
-
-		if multi.values.len() >= 8 {
-			let mut buffer = [0u8; 8];
-			buffer.copy_from_slice(&multi.values[0..8]);
-			let checkpoint = CommitVersion(u64::from_be_bytes(buffer));
-
-			states.push(ConsumerState {
-				consumer_id: key.consumer,
-				checkpoint,
-			});
-		}
-	}
-
-	Ok(states)
 }

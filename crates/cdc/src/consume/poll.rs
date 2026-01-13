@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::{
+	CommitVersion, EncodedKey, Result,
+	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
+	key::{CdcConsumerKey, EncodableKey},
+};
+use std::thread;
 use std::{
 	ops::Bound,
 	sync::{
@@ -10,17 +16,10 @@ use std::{
 	thread::{JoinHandle, sleep},
 	time::Duration,
 };
-use std::thread;
-use reifydb_core::{
-	CommitVersion, EncodedKey, Result,
-	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
-	key::{CdcConsumerKey, EncodableKey},
-};
-use reifydb_engine::StandardEngine;
-use reifydb_transaction::{StandardCommandTransaction, cdc::CdcQueryTransaction};
 use tracing::{debug, error};
+use crate::CdcStore;
 
-use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
+use super::{CdcCheckpoint, CdcConsume, CdcConsumer, CdcHost};
 
 /// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]
@@ -51,12 +50,13 @@ impl PollConsumerConfig {
 	}
 }
 
-pub struct PollConsumer<F: CdcConsume> {
-	engine: Option<StandardEngine>,
+pub struct PollConsumer<H: CdcHost, F: CdcConsume> {
+	host: Option<H>,
 	consumer: Option<Box<F>>,
 	config: PollConsumerConfig,
 	state: Arc<ConsumerState>,
 	worker: Option<JoinHandle<()>>,
+	store: Option<CdcStore>,
 }
 
 struct ConsumerState {
@@ -64,15 +64,15 @@ struct ConsumerState {
 	running: AtomicBool,
 }
 
-impl<C: CdcConsume> PollConsumer<C> {
-	pub fn new(config: PollConsumerConfig, engine: StandardEngine, consume: C) -> Self {
+impl<H: CdcHost, C: CdcConsume> PollConsumer<H, C> {
+	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
 		}
 		.encode();
 
 		Self {
-			engine: Some(engine),
+			host: Some(host),
 			consumer: Some(Box::new(consume)),
 			config,
 			state: Arc::new(ConsumerState {
@@ -80,6 +80,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 				running: AtomicBool::new(false),
 			}),
 			worker: None,
+			store: Some(store),
 		}
 	}
 
@@ -87,19 +88,20 @@ impl<C: CdcConsume> PollConsumer<C> {
 	/// Returns the number of CDC transactions processed (0 if none available).
 	fn consume_batch(
 		state: &ConsumerState,
-		engine: &StandardEngine,
+		host: &H,
 		consumer: &C,
+		store: &CdcStore,
 		max_batch_size: Option<u64>,
 	) -> Result<usize> {
 		// Get current version and wait for watermark to catch up.
 		// This ensures we can fetch CDC events up to the latest committed version
 		// rather than always chasing a lagging done_until.
-		let current_version = engine.current_version()?;
-		engine.wait_for_mark_timeout(current_version, Duration::from_millis(200));
+		let current_version = host.current_version()?;
+		host.wait_for_mark_timeout(current_version, Duration::from_millis(200));
 
-		let safe_version = engine.done_until();
+		let safe_version = host.done_until();
 
-		let mut transaction = engine.begin_command()?;
+		let mut transaction = host.begin_command()?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 		if safe_version <= checkpoint {
@@ -109,7 +111,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		// Only fetch CDC events up to safe_version to avoid race conditions
-		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size)?;
+		let transactions = fetch_cdcs_until(store, checkpoint, safe_version, max_batch_size)?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(0);
@@ -164,14 +166,15 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 	fn polling_loop(
 		config: PollConsumerConfig,
-		engine: StandardEngine,
+		host: H,
 		consumer: Box<C>,
+		store: CdcStore,
 		state: Arc<ConsumerState>,
 	) {
 		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
+			match Self::consume_batch(&state, &host, &consumer, &store, config.max_batch_size) {
 				Ok(count) if count > 0 => {
 					// More events likely available - poll again immediately
 				}
@@ -190,7 +193,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 	}
 }
 
-impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
+impl<H: CdcHost, F: CdcConsume + Send + 'static> CdcConsumer for PollConsumer<H, F> {
 	fn start(&mut self) -> Result<()> {
 		assert!(self.worker.is_none(), "start() can only be called once");
 
@@ -198,21 +201,19 @@ impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
 			return Ok(());
 		}
 
-		let engine = self.engine.take().expect("engine already consumed");
-
+		let host = self.host.take().expect("host already consumed");
 		let consumer = self.consumer.take().expect("consumer already consumed");
+		let store = self.store.take().expect("cdc_store already consumed");
 
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
 
-		self.worker = Some(
-			thread::Builder::new()
-				.name(config.thread_name.clone())
-				.spawn(move || {
-					Self::polling_loop(config, engine, consumer, state);
-				})
-				.expect("Failed to spawn CDC poll thread"),
-		);
+		self.worker = Some(thread::Builder::new()
+			.name(config.thread_name.clone())
+			.spawn(move || {
+				Self::polling_loop(config, host, consumer, store, state);
+			})
+			.expect("Failed to spawn CDC poll thread"));
 
 		Ok(())
 	}
@@ -236,19 +237,12 @@ impl<F: CdcConsume + Send +'static> CdcConsumer for PollConsumer<F> {
 }
 
 fn fetch_cdcs_until(
-	txn: &mut StandardCommandTransaction,
+	cdc_store: &CdcStore,
 	since_version: CommitVersion,
 	until_version: CommitVersion,
 	max_batch_size: Option<u64>,
 ) -> Result<Vec<Cdc>> {
-	let upper_bound = match max_batch_size {
-		Some(size) => {
-			let batch_limit = CommitVersion(since_version.0.saturating_add(size));
-			Bound::Included(batch_limit.min(until_version))
-		}
-		None => Bound::Included(until_version),
-	};
-	let cdc = txn.begin_cdc_query()?;
-	let batch = cdc.range(Bound::Excluded(since_version), upper_bound)?;
+	let batch_size = max_batch_size.unwrap_or(1024);
+	let batch = cdc_store.read_range(Bound::Excluded(since_version), Bound::Included(until_version), batch_size)?;
 	Ok(batch.items)
 }

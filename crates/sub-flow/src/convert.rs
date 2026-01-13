@@ -56,10 +56,17 @@ pub(crate) fn convert_cdc_to_flow_change(
 			pre,
 			..
 		} => {
-			let pre_bytes = pre.as_ref().map(|v| v.to_vec()).unwrap_or_default();
-			let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes)?;
-			let diff = FlowDiff::Remove {
-				pre: Columns::from_row(&row),
+			let diff = if let Some(pre_values) = pre {
+				let pre_bytes = pre_values.to_vec();
+				let row = create_row(txn, catalog_cache, source_id, row_number, pre_bytes)?;
+				FlowDiff::Remove {
+					pre: Columns::from_row(&row),
+				}
+			} else {
+				// No pre-image available, create remove with empty columns
+				FlowDiff::Remove {
+					pre: Columns::new(Vec::new()),
+				}
 			};
 			Ok(FlowChange::external(source_id, version, vec![diff]))
 		}
@@ -173,15 +180,6 @@ pub(crate) fn to_flow_change(
 		if let Some(Key::Row(row_key)) = Key::decode(cdc_change.key()) {
 			let source_id = row_key.primitive;
 			let row_number = row_key.row;
-
-			// Skip Delete events with no pre-image
-			if let CdcChange::Delete {
-				pre: None,
-				..
-			} = &cdc_change.change
-			{
-				continue;
-			}
 
 			match convert_cdc_to_flow_change(
 				&mut query_txn,

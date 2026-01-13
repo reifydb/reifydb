@@ -24,9 +24,9 @@ ok
 
 stats_cdc
 ---
-cdc_count: 4
-cdc_key_bytes: 4
-cdc_value_bytes: 304
+cdc_count: 0
+cdc_key_bytes: 0
+cdc_value_bytes: 0
 
 # Current and historical should have normal values
 stats_current

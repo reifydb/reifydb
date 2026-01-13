@@ -15,7 +15,6 @@ reifydb-type = { workspace = true }
 crossbeam-channel = { workspace = true }
 dashmap = { workspace = true }
 rayon = { workspace = true }
-indexmap = { workspace = true }
 parking_lot = { workspace = true }
 tracing = { workspace = true }
 

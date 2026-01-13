@@ -10,7 +10,6 @@ use reifydb_core::event::EventBus;
 use reifydb_core::runtime::ComputePool;
 use crate::{
 	HotConfig,
-	cdc::{CdcShardPool, CommitLog},
 	cold::ColdStorage,
 	config::TransactionStoreConfig,
 	hot::HotStorage,
@@ -18,14 +17,15 @@ use crate::{
 	warm::WarmStorage,
 };
 
-mod cdc;
 mod drop;
 pub mod worker;
 mod multi;
+pub mod resolver;
 pub mod router;
 mod single;
 pub mod version;
 
+pub use resolver::StorageResolver;
 pub use worker::{DropWorker, DropWorkerConfig, DropStatsCallback};
 
 #[derive(Clone)]
@@ -40,10 +40,6 @@ pub struct StandardTransactionStoreInner {
 	pub(crate) stats_worker: Arc<StatsWorker>,
 	/// Background drop worker.
 	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
-	/// Commit log for async CDC processing.
-	pub(crate) commit_log: CommitLog,
-	/// CDC shard worker pool.
-	pub(crate) cdc_shard_pool: Arc<CdcShardPool>,
 }
 
 impl StandardTransactionStore {
@@ -89,15 +85,6 @@ impl StandardTransactionStore {
 			tracker: stats_tracker.clone(),
 		});
 
-		// Create commit log and CDC shard pool
-		let (commit_log, commit_receiver) = CommitLog::new(config.cdc.commit_log.clone());
-		let cdc_shard_pool = Arc::new(CdcShardPool::new(
-			storage.clone(),
-			config.cdc.shard.clone(),
-			commit_receiver,
-			stats_worker.clone(),
-		));
-
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,
 			warm,
@@ -105,8 +92,6 @@ impl StandardTransactionStore {
 			stats_tracker,
 			stats_worker,
 			drop_worker: Arc::new(Mutex::new(drop_worker)),
-			commit_log,
-			cdc_shard_pool,
 		})))
 	}
 
@@ -115,19 +100,16 @@ impl StandardTransactionStore {
 		&self.stats_tracker
 	}
 
-	/// Get CDC watermark for a specific shard.
-	pub fn cdc_shard_watermark(&self, shard_id: usize) -> Option<CommitVersion> {
-		self.cdc_shard_pool.shard_watermark(shard_id)
+	/// Get access to the stats worker for CDC tracking.
+	pub fn stats_worker(&self) -> &Arc<StatsWorker> {
+		&self.stats_worker
 	}
 
-	/// Get minimum CDC watermark across all shards (global CDC progress).
-	pub fn cdc_min_watermark(&self) -> Option<CommitVersion> {
-		self.cdc_shard_pool.min_watermark()
-	}
-
-	/// Get the number of CDC shards.
-	pub fn cdc_num_shards(&self) -> usize {
-		self.cdc_shard_pool.num_shards()
+	/// Get access to the hot storage tier.
+	///
+	/// Returns `None` if the hot tier is not configured.
+	pub fn hot(&self) -> Option<&HotStorage> {
+		self.hot.as_ref()
 	}
 }
 
@@ -140,10 +122,10 @@ impl Deref for StandardTransactionStore {
 }
 
 impl StandardTransactionStore {
-	pub fn testing_memory(compute_pool: ComputePool) -> Self {
+	pub fn testing_memory() -> Self {
 		Self::new(TransactionStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotStorage::memory(compute_pool),
+				storage: HotStorage::memory(ComputePool::new(1,1)),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,
@@ -152,7 +134,6 @@ impl StandardTransactionStore {
 			merge_config: Default::default(),
 			stats: Default::default(),
 			event_bus: EventBus::new(),
-			cdc: Default::default(),
 		})
 		.unwrap()
 	}

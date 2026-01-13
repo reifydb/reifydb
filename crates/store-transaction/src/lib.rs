@@ -4,7 +4,6 @@
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_core::runtime::ComputePool;
 pub use reifydb_type::Result;
 
 pub mod cold;
@@ -12,7 +11,6 @@ pub mod hot;
 pub mod tier;
 pub mod warm;
 
-pub(crate) mod cdc;
 pub mod config;
 mod multi;
 // pub mod retention;
@@ -20,9 +18,6 @@ mod single;
 pub mod stats;
 mod store;
 
-use std::collections::Bound;
-
-pub use cdc::{CdcBatch, CdcCount, CdcGet, CdcRange, CdcStore};
 pub use config::{
 	ColdConfig, HotConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig, WarmConfig,
 };
@@ -30,11 +25,11 @@ pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
-	interface::{Cdc, MultiVersionValues, SingleVersionValues},
+	interface::{MultiVersionValues, SingleVersionValues},
 };
 pub use single::*;
-pub use stats::{ObjectId, StorageStats, StorageTracker, Tier, TierStats};
-pub use store::StandardTransactionStore;
+pub use stats::{ObjectId, StorageStats, StorageTracker, StatsOp, StatsWorker, Tier, TierStats};
+pub use store::{StandardTransactionStore, StorageResolver};
 
 pub mod memory {
 	pub use crate::hot::memory::MemoryPrimitiveStorage;
@@ -70,14 +65,30 @@ impl TransactionStore {
 }
 
 impl TransactionStore {
-	pub fn testing_memory(compute_pool: ComputePool) -> Self {
-		TransactionStore::Standard(StandardTransactionStore::testing_memory(compute_pool))
+	pub fn testing_memory() -> Self {
+		TransactionStore::Standard(StandardTransactionStore::testing_memory())
 	}
 
 	/// Get access to the storage tracker.
 	pub fn stats_tracker(&self) -> &StorageTracker {
 		match self {
 			TransactionStore::Standard(store) => store.stats_tracker(),
+		}
+	}
+
+	/// Get access to the stats worker for CDC tracking.
+	pub fn stats_worker(&self) -> &std::sync::Arc<StatsWorker> {
+		match self {
+			TransactionStore::Standard(store) => store.stats_worker(),
+		}
+	}
+
+	/// Get access to the hot storage tier.
+	///
+	/// Returns `None` if the hot tier is not configured.
+	pub fn hot(&self) -> Option<&hot::HotStorage> {
+		match self {
+			TransactionStore::Standard(store) => store.hot(),
 		}
 	}
 }
@@ -201,41 +212,6 @@ impl SingleVersionRangeRev for TransactionStore {
 	}
 }
 
-// CDC trait implementations
-
-impl CdcGet for TransactionStore {
-	#[inline]
-	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		match self {
-			TransactionStore::Standard(store) => CdcGet::get(store, version),
-		}
-	}
-}
-
-impl CdcRange for TransactionStore {
-	#[inline]
-	fn range_batch(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-		batch_size: u64,
-	) -> Result<CdcBatch> {
-		match self {
-			TransactionStore::Standard(store) => CdcRange::range_batch(store, start, end, batch_size),
-		}
-	}
-}
-
-impl CdcCount for TransactionStore {
-	#[inline]
-	fn count(&self, version: CommitVersion) -> Result<usize> {
-		match self {
-			TransactionStore::Standard(store) => CdcCount::count(store, version),
-		}
-	}
-}
-
 // High-level trait implementations
 impl MultiVersionStore for TransactionStore {}
 impl SingleVersionStore for TransactionStore {}
-impl CdcStore for TransactionStore {}

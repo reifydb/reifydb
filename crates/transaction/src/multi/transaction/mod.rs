@@ -12,7 +12,7 @@
 use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use reifydb_core::{CommitVersion, EncodedKey, event::EventBus, runtime::ComputePool};
+use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
 use reifydb_store_transaction::{MultiVersionContains, MultiVersionGet, TransactionStore};
 use reifydb_type::util::hex;
 use tracing::instrument;
@@ -177,8 +177,8 @@ impl Inner {
 }
 
 impl TransactionMulti {
-	pub fn testing(compute_pool: ComputePool) -> Self {
-		let store = TransactionStore::testing_memory(compute_pool);
+	pub fn testing() -> Self {
+		let store = TransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
 			store.clone(),

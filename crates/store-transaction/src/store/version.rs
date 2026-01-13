@@ -193,38 +193,10 @@ pub fn get_at_version<S: TierStorage>(
 	Ok(VersionedGetResult::NotFound)
 }
 
-/// Get the latest version number for a key (if any exists).
-#[allow(dead_code)]
-pub fn get_latest_version<S: TierStorage>(storage: &S, table: EntryKind, key: &[u8]) -> Result<Option<CommitVersion>> {
-	let (start, end) = key_version_range(key);
-
-	// Forward scan finds newest version first (just need 1 entry)
-	let mut cursor = RangeCursor::new();
-	let batch = storage.range_next(
-		table,
-		&mut cursor,
-		Bound::Included(start.as_slice()),
-		Bound::Included(end.as_slice()),
-		1,
-	)?;
-
-	if let Some(entry) = batch.entries.first() {
-		if let Some(entry_key) = extract_key(&entry.key) {
-			if entry_key == key {
-				return Ok(extract_version(&entry.key));
-			}
-		}
-	}
-
-	Ok(None)
-}
-
 /// Combined info about a previous version of a key.
 /// Used to combine stats tracking and CDC lookups in a single pass.
 #[derive(Debug, Clone)]
 pub struct PreviousVersionInfo {
-	/// The version of the previous entry
-	pub version: CommitVersion,
 	/// Size of the versioned key in bytes
 	pub key_bytes: u64,
 	/// Size of the value in bytes (0 if tombstone)
@@ -234,7 +206,6 @@ pub struct PreviousVersionInfo {
 /// Get combined info about the latest version of a key.
 /// Returns version, key size, and value size in a single lookup.
 /// This combines what `get_latest_version` and `get_previous_value_info` do separately.
-#[allow(dead_code)]
 pub fn get_previous_version_info<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
@@ -255,61 +226,12 @@ pub fn get_previous_version_info<S: TierStorage>(
 	if let Some(entry) = batch.entries.first() {
 		if let Some(entry_key) = extract_key(&entry.key) {
 			if entry_key == key {
-				if let Some(version) = extract_version(&entry.key) {
-					let key_bytes = entry.key.len() as u64;
-					let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-					return Ok(Some(PreviousVersionInfo {
-						version,
-						key_bytes,
-						value_bytes,
-					}));
-				}
-			}
-		}
-	}
-
-	Ok(None)
-}
-
-/// Get info about the latest version of a key BEFORE the given version.
-/// Used by async CDC workers to find the previous state.
-pub fn get_version_info_before<S: TierStorage>(
-	storage: &S,
-	table: EntryKind,
-	key: &[u8],
-	before_version: CommitVersion,
-) -> Result<Option<PreviousVersionInfo>> {
-	// If before_version is 0 or 1, there can't be a previous version
-	if before_version.0 <= 1 {
-		return Ok(None);
-	}
-
-	// Scan from before_version - 1 down to 0
-	// With complement encoding, lower versions have higher byte values
-	let start = encode_versioned_key(key, CommitVersion(before_version.0 - 1));
-	let end = encode_versioned_key(key, CommitVersion(0));
-
-	let mut cursor = RangeCursor::new();
-	let batch = storage.range_next(
-		table,
-		&mut cursor,
-		Bound::Included(start.as_slice()),
-		Bound::Included(end.as_slice()),
-		1,
-	)?;
-
-	if let Some(entry) = batch.entries.first() {
-		if let Some(entry_key) = extract_key(&entry.key) {
-			if entry_key == key {
-				if let Some(version) = extract_version(&entry.key) {
-					let key_bytes = entry.key.len() as u64;
-					let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-					return Ok(Some(PreviousVersionInfo {
-						version,
-						key_bytes,
-						value_bytes,
-					}));
-				}
+				let key_bytes = entry.key.len() as u64;
+				let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
+				return Ok(Some(PreviousVersionInfo {
+					key_bytes,
+					value_bytes,
+				}));
 			}
 		}
 	}

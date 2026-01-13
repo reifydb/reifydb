@@ -73,10 +73,10 @@ impl EmbeddedBuilder {
 
 		// Create storage with the runtime's compute pool
 		let compute_pool = runtime.compute_pool();
-		let (store, single, cdc, eventbus) = self.storage_factory.create(compute_pool);
-		let (multi, single, cdc, eventbus) = transaction((store, single, cdc, eventbus));
+		let (store, single, eventbus) = self.storage_factory.create(compute_pool);
+		let (multi, single, eventbus) = transaction((store, single, eventbus));
 
-		let mut builder = DatabaseBuilder::new(multi, single, cdc, eventbus)
+		let mut builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime);
 

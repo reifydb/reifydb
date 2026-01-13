@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
-use reifydb_cdc::CdcVersion;
+use reifydb_cdc::{CdcEventListener, CdcStore, CdcVersion, CdcWorker};
+use reifydb_core::event::transaction::PostCommitEvent;
 use reifydb_core::{
 	CoreVersion, SharedRuntime,
 	event::EventBus,
@@ -18,14 +19,14 @@ use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2;
 use reifydb_rqlv2::Compiler;
-use reifydb_store_transaction::TransactionStoreVersion;
+use reifydb_store_transaction::{StorageResolver, TransactionStoreVersion};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, subsystem::FlowSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_transaction::{
-	TransactionVersion, cdc::TransactionCdc, interceptor::StandardInterceptorBuilder,
+	TransactionVersion, interceptor::StandardInterceptorBuilder,
 	multi::TransactionMultiVersion, single::TransactionSingle,
 };
 use tracing::debug;
@@ -46,15 +47,13 @@ impl DatabaseBuilder {
 	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
-		cdc: TransactionCdc,
 		eventbus: EventBus,
 	) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
 			.register(eventbus)
 			.register(multi)
-			.register(single)
-			.register(cdc);
+			.register(single);
 
 		Self {
 			interceptors: StandardInterceptorBuilder::new(),
@@ -137,15 +136,27 @@ impl DatabaseBuilder {
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
 		let single = self.ioc.resolve::<TransactionSingle>()?;
-		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
+		Self::load_materialized_catalog(&multi, &single, &catalog)?;
 
 		// Create and register Compiler (requires SharedRuntime to be registered first)
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let compiler = Compiler::new(catalog.clone());
 		self.ioc = self.ioc.register(compiler);
+
+		// Create and register CdcStore for CDC storage
+		let cdc_store = CdcStore::memory();
+		self.ioc = self.ioc.register(cdc_store.clone());
+
+		// Create CDC worker with stats tracking and register event listener
+		// The worker is stored in IoC to keep it alive for the database lifetime
+		let stats_worker = multi.store().stats_worker().clone();
+		let hot_storage = multi.store().hot().cloned().expect("hot tier required for CDC");
+		let resolver = Arc::new(StorageResolver::new(hot_storage));
+		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, resolver, Some(stats_worker)));
+		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
+		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
@@ -166,7 +177,6 @@ impl DatabaseBuilder {
 		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
-			cdc.clone(),
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
 			Catalog::new(catalog),
@@ -243,10 +253,9 @@ impl DatabaseBuilder {
 	fn load_materialized_catalog(
 		multi: &TransactionMultiVersion,
 		single: &TransactionSingle,
-		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone(), cdc.clone());
+		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone());
 
 		debug!("Loading materialized catalog");
 		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;

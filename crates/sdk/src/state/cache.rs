@@ -54,7 +54,7 @@
 
 use std::hash::Hash;
 
-use reifydb_core::util::{CowVec, ConcurrentLruCache};
+use reifydb_core::util::{CowVec, LruCache};
 use reifydb_core::value::encoded::EncodedValues;
 use reifydb_core::IntoEncodedKey;
 use serde::{Serialize, de::DeserializeOwned};
@@ -69,7 +69,7 @@ use crate::error::{FFIError, Result};
 ///
 /// The cache is thread-safe (`Send + Sync`) using `ConcurrentLruCache` internally.
 pub struct StateCache<K, V> {
-	cache: ConcurrentLruCache<K, V>,
+	cache: LruCache<K, V>,
 }
 
 impl<K, V> StateCache<K, V>
@@ -78,32 +78,13 @@ where
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Serialize + DeserializeOwned,
 {
-	/// Default cache capacity.
-	const DEFAULT_CAPACITY: usize = 1000;
 
 	/// Create a new state cache with default capacity (1000 entries).
-	pub fn new() -> Self {
+	pub fn new(capacity: usize) -> Self {
 		Self {
-			cache: ConcurrentLruCache::new(Self::DEFAULT_CAPACITY),
+			cache: LruCache::new(capacity),
 		}
 	}
-
-	/// Create a new state cache with specified capacity.
-	///
-	/// # Arguments
-	///
-	/// * `capacity` - Maximum number of entries to cache. When full, least recently
-	///   used entries are evicted.
-	///
-	/// # Panics
-	///
-	/// Panics if capacity is 0.
-	pub fn with_capacity(capacity: usize) -> Self {
-		Self {
-			cache: ConcurrentLruCache::new(capacity),
-		}
-	}
-
 	/// Get a value - checks cache first, falls back to FFI + deserialize.
 	///
 	/// # Arguments
@@ -282,23 +263,17 @@ mod tests {
 
 	#[test]
 	fn test_cache_capacity() {
-		let cache: StateCache<String, i32> = StateCache::with_capacity(100);
+		let cache: StateCache<String, i32> = StateCache::new(100);
 		assert_eq!(cache.capacity(), 100);
 		assert!(cache.is_empty());
 		assert_eq!(cache.len(), 0);
 	}
 
-	#[test]
-	fn test_cache_default_capacity() {
-		let cache: StateCache<String, i32> = StateCache::new();
-		assert_eq!(cache.capacity(), 1000);
-		assert!(cache.is_empty());
-	}
 
 	#[test]
 	#[should_panic(expected = "capacity must be greater than 0")]
 	fn test_zero_capacity_panics() {
-		let _cache: StateCache<String, i32> = StateCache::with_capacity(0);
+		let _cache: StateCache<String, i32> = StateCache::new(0);
 	}
 
 	#[test]

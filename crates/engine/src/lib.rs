@@ -14,6 +14,7 @@ pub mod execute;
 pub mod flow;
 pub(crate) mod interceptor;
 pub mod stack;
+#[allow(unused)]
 pub mod test_utils;
 pub mod transaction;
 

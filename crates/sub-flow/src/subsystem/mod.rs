@@ -12,7 +12,7 @@ use crate::{
 };
 pub use factory::FlowSubsystemFactory;
 use ffi::load_ffi_operators;
-use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
+use reifydb_cdc::{CdcConsumer, CdcStore, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
@@ -27,7 +27,7 @@ use tracing::info;
 
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
-	consumer: PollConsumer<FlowCoordinator>,
+	consumer: PollConsumer<StandardEngine, FlowCoordinator>,
 	running: bool,
 }
 
@@ -54,12 +54,20 @@ impl FlowSubsystem {
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
+		let cdc_store = ioc.resolve::<CdcStore>()
+			.expect("CdcStore must be registered");
+
 		let num_workers = config.num_workers;
 		info!(num_workers, "initializing flow worker pool");
 
 		let worker_pool = FlowWorkerPool::new(num_workers, factory_builder, engine.clone(), engine.catalog());
 
-		let coordinator = FlowCoordinator::new(engine.clone(), primitive_tracker.clone(), worker_pool);
+		let coordinator = FlowCoordinator::new(
+			engine.clone(),
+			primitive_tracker.clone(),
+			worker_pool,
+			cdc_store.clone(),
+		);
 
 		// Register FlowLags with access to the flow catalog
 		let catalog = coordinator.catalog.clone();
@@ -76,7 +84,7 @@ impl FlowSubsystem {
 			Some(10),
 		);
 
-		let consumer = PollConsumer::new(poll_config, engine, coordinator);
+		let consumer = PollConsumer::new(poll_config, engine, coordinator, cdc_store);
 
 		Self {
 			consumer,

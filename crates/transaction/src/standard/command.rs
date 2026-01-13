@@ -17,7 +17,6 @@ use tracing::instrument;
 
 use crate::{
 	TransactionId,
-	cdc::TransactionCdc,
 	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
 	interceptor::{
 		Chain, Interceptors, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
@@ -45,7 +44,6 @@ use crate::{
 pub struct StandardCommandTransaction {
 	pub multi: TransactionMultiVersion,
 	pub single: TransactionSingle,
-	pub cdc: TransactionCdc,
 	state: TransactionState,
 
 	pub cmd: Option<crate::multi::CommandTransaction>,
@@ -70,7 +68,6 @@ impl StandardCommandTransaction {
 	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingle,
-		cdc: TransactionCdc,
 		event_bus: EventBus,
 		interceptors: Interceptors,
 	) -> Result<Self> {
@@ -80,7 +77,6 @@ impl StandardCommandTransaction {
 			cmd: Some(cmd),
 			multi,
 			single,
-			cdc,
 			state: TransactionState::Active,
 			event_bus,
 			interceptors,
@@ -152,12 +148,6 @@ impl StandardCommandTransaction {
 		}
 	}
 
-	/// Get access to the CDC transaction interface
-	#[instrument(name = "transaction::standard::command::cdc", level = "trace", skip(self))]
-	pub fn cdc(&self) -> &TransactionCdc {
-		&self.cdc
-	}
-
 	/// Get access to the pending writes in this transaction
 	///
 	/// This allows checking for key conflicts when committing FlowTransactions
@@ -206,7 +196,7 @@ impl StandardCommandTransaction {
 		self.check_active()?;
 
 		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		f(&mut query_txn)
 	}
@@ -223,7 +213,7 @@ impl StandardCommandTransaction {
 		self.check_active()?;
 
 		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.read_as_of_version_exclusive(version)?;
 
@@ -242,7 +232,7 @@ impl StandardCommandTransaction {
 		self.check_active()?;
 
 		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.cdc.clone());
+			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 
@@ -257,13 +247,6 @@ impl StandardCommandTransaction {
 	{
 		self.check_active()?;
 		self.single.begin_query(keys)
-	}
-
-	/// Begin a CDC query transaction
-	#[instrument(name = "transaction::standard::command::begin_cdc_query", level = "trace", skip(self))]
-	pub fn begin_cdc_query(&self) -> Result<crate::cdc::StandardCdcQueryTransaction> {
-		self.check_active()?;
-		Ok(self.cdc.begin_query()?)
 	}
 
 	/// Begin a single-version command transaction for specific keys
