@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::util::LruCache;
+use reifydb_core::util::ConcurrentLruCache;
 use reifydb_hash::{Hash128, xxh3_128};
 
 use crate::{CompiledProgram, RqlError, compile_script};
@@ -14,7 +14,7 @@ use crate::{CompiledProgram, RqlError, compile_script};
 const DEFAULT_CACHE_CAPACITY: usize = 1000;
 
 struct Inner {
-	cache: LruCache<Hash128, CompiledProgram>,
+	cache: ConcurrentLruCache<Hash128, CompiledProgram>,
 	catalog: MaterializedCatalog,
 }
 
@@ -28,7 +28,7 @@ impl Compiler {
 	pub fn new(catalog: MaterializedCatalog) -> Self {
 		Self {
 			inner: Arc::new(Inner {
-				cache: LruCache::new(DEFAULT_CACHE_CAPACITY),
+				cache: ConcurrentLruCache::new(DEFAULT_CACHE_CAPACITY),
 				catalog,
 			}),
 		}
@@ -37,7 +37,7 @@ impl Compiler {
 	pub fn compile(&self, source: &str) -> Result<CompiledProgram, RqlError> {
 		let cache_key = xxh3_128(source.as_bytes());
 		if let Some(program) = self.inner.cache.get(&cache_key) {
-			return Ok(program);
+			return Ok(program.clone());
 		}
 
 		// Cache miss: compile directly

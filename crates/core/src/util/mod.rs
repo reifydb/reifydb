@@ -23,7 +23,7 @@ pub use clock::{
 };
 pub use clock::{now, now_micros, now_millis, now_nanos};
 pub use either::Either;
-pub use lru::LruCache;
+pub use lru::{ConcurrentLruCache, LruCache};
 pub use multi::MultiVersionContainer;
 pub use reifydb_type::{BitVec, CowVec};
 pub use retry::{RetryError, retry};
