@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus};
+use reifydb_core::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_function::FunctionsBuilder;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -16,21 +16,14 @@ use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
 use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_transaction::{
-	cdc::TransactionCdc,
-	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	multi::TransactionMultiVersion,
-	single::TransactionSingle,
-};
+use reifydb_transaction::interceptor::{RegisterInterceptor, StandardInterceptorBuilder};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
+use crate::api::{StorageFactory, transaction};
 
 pub struct ServerBuilder {
-	multi: TransactionMultiVersion,
-	single: TransactionSingle,
-	cdc: TransactionCdc,
-	eventbus: EventBus,
+	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: StandardInterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
@@ -44,17 +37,9 @@ pub struct ServerBuilder {
 }
 
 impl ServerBuilder {
-	pub fn new(
-		multi: TransactionMultiVersion,
-		single: TransactionSingle,
-		cdc: TransactionCdc,
-		eventbus: EventBus,
-	) -> Self {
+	pub fn new(storage_factory: StorageFactory) -> Self {
 		Self {
-			multi,
-			single,
-			cdc,
-			eventbus,
+			storage_factory,
 			runtime_config: None,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
@@ -162,7 +147,12 @@ impl ServerBuilder {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
-		let mut database_builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
+		// Create storage with the runtime's compute pool
+		let compute_pool = runtime.compute_pool();
+		let (store, single, cdc, eventbus) = self.storage_factory.create(compute_pool);
+		let (multi, single, cdc, eventbus) = transaction((store, single, cdc, eventbus));
+
+		let mut database_builder = DatabaseBuilder::new(multi, single, cdc, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone());
 

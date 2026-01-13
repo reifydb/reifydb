@@ -10,8 +10,17 @@ mod version;
 mod write;
 mod write_skew;
 
-use reifydb_core::{CowVec, value::encoded::EncodedValues};
+use reifydb_core::{CowVec, runtime::ComputePool, value::encoded::EncodedValues};
 pub use reifydb_core::{EncodedKey, util::encoding::keycode};
+pub use reifydb_transaction::multi::TransactionMulti;
+
+pub fn test_compute_pool() -> ComputePool {
+	ComputePool::new(2, 8)
+}
+
+pub fn test_multi() -> TransactionMulti {
+	TransactionMulti::testing(test_compute_pool())
+}
 
 pub trait IntoValues {
 	fn into_values(self) -> EncodedValues;

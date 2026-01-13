@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::multi::TransactionMulti;
-
+use super::test_multi;
 use crate::{as_key, as_values};
 
 #[test]
 fn test_read_after_write() {
 	const N: u64 = 100;
 
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	let handles = (0..N)
 		.map(|i| {

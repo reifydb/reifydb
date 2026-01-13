@@ -12,12 +12,10 @@ mod session;
 pub mod subsystem;
 pub mod vendor;
 
-use std::time::Duration;
-
 pub use api::*;
 pub use builder::{DatabaseBuilder, EmbeddedBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
-pub use database::{Database, DatabaseConfig};
+pub use database::Database;
 pub use event::{OnCreateContext, WithEventBus};
 pub use health::HealthMonitor;
 pub use reifydb_auth as auth;
@@ -58,17 +56,3 @@ pub use reifydb_type::{
 	FromValueError, OrderedF32, OrderedF64, TryFromValue, TryFromValueCoerce, Type, Value,
 };
 pub use session::{CommandSession, IntoCommandSession, QuerySession, Session};
-
-/// Default configuration values
-pub mod defaults {
-	use super::Duration;
-
-	/// Default graceful shutdown timeout (30 seconds)
-	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
-
-	/// Default health check interval (5 seconds)
-	pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
-
-	/// Default maximum startup time (60 seconds)
-	pub const MAX_STARTUP_TIME: Duration = Duration::from_secs(60);
-}

@@ -3,16 +3,15 @@
 
 use reifydb_store_transaction::hot::sqlite::SqliteConfig;
 
-use crate::{ServerBuilder, memory as memory_store, sqlite as sqlite_store, transaction};
+use crate::ServerBuilder;
+use crate::api::StorageFactory;
 
+/// Create a server with in-memory storage.
 pub fn memory() -> ServerBuilder {
-	let (store, single, cdc, bus) = memory_store();
-	let (multi, single, cdc, bus) = transaction((store, single, cdc, bus));
-	ServerBuilder::new(multi, single, cdc, bus)
+	ServerBuilder::new(StorageFactory::Memory)
 }
 
+/// Create a server with SQLite storage.
 pub fn sqlite(config: SqliteConfig) -> ServerBuilder {
-	let (store, single, cdc, bus) = sqlite_store(config);
-	let (multi, single, cdc, bus) = transaction((store, single, cdc, bus));
-	ServerBuilder::new(multi, single, cdc, bus)
+	ServerBuilder::new(StorageFactory::Sqlite(config))
 }

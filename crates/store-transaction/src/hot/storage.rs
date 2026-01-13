@@ -8,6 +8,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
+use reifydb_core::runtime::ComputePool;
 use reifydb_type::{CowVec, Result};
 
 use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
@@ -27,9 +28,9 @@ pub enum HotStorage {
 }
 
 impl HotStorage {
-	/// Create a new in-memory backend for testing
-	pub fn memory() -> Self {
-		Self::Memory(MemoryPrimitiveStorage::new())
+	/// Create a new in-memory backend
+	pub fn memory(compute_pool: ComputePool) -> Self {
+		Self::Memory(MemoryPrimitiveStorage::new(compute_pool))
 	}
 
 	/// Create a new SQLite backend with in-memory database
@@ -119,11 +120,17 @@ impl TierBackend for HotStorage {}
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::runtime::ComputePool;
+
 	use super::*;
+
+	fn test_compute_pool() -> ComputePool {
+		ComputePool::new(2, 8)
+	}
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = HotStorage::memory();
+		let storage = HotStorage::memory(test_compute_pool());
 
 		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])]))
 			.unwrap();
@@ -141,7 +148,7 @@ mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = HotStorage::memory();
+		let storage = HotStorage::memory(test_compute_pool());
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,

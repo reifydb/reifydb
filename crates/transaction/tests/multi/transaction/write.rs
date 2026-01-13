@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::multi::TransactionMulti;
-
+use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_write() {
 	let key = as_key!("foo");
 
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	{
 		let mut tx = engine.begin_command().unwrap();
 		assert_eq!(tx.version(), 1);
@@ -30,7 +29,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	{
 		let mut txn = engine.begin_command().unwrap();

@@ -8,9 +8,13 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus, ioc::IocContainer};
+use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus, ioc::IocContainer, runtime::ComputePool};
 use reifydb_rqlv2::Compiler;
 use reifydb_store_transaction::TransactionStore;
+
+fn test_compute_pool() -> ComputePool {
+	ComputePool::new(2, 8)
+}
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
 	cdc::TransactionCdc,
@@ -22,7 +26,7 @@ use reifydb_type::{Type, TypeConstraint};
 use crate::{StandardCommandTransaction, StandardEngine};
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction {
-	let store = TransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory(test_compute_pool());
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
@@ -34,7 +38,7 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction {
 }
 
 pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
-	let store = TransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory(test_compute_pool());
 
 	let event_bus = EventBus::new();
 	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
@@ -89,7 +93,7 @@ pub fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	reifydb_core::util::mock_time_set(1000);
 
-	let store = TransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory(test_compute_pool());
 	let eventbus = EventBus::new();
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());

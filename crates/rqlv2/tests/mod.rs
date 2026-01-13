@@ -4,8 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use bumpalo::Bump;
-use reifydb::{Database, EmbeddedBuilder, memory, transaction, vendor::tokio::runtime::Runtime};
-use reifydb_core::event::EventBus;
+use reifydb::{Database, embedded, vendor::tokio::runtime::Runtime};
 use reifydb_rqlv2::{
 	ast::{
 		explain_ast,
@@ -16,7 +15,6 @@ use reifydb_rqlv2::{
 	token::{explain_tokenize, tokenize},
 };
 use reifydb_testing::{testscript, testscript::Command};
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 use reifydb_type::Params;
 use test_each_file::test_each_path;
 
@@ -137,13 +135,9 @@ impl testscript::Runner for Runner {
 }
 
 impl Runner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
-		let (multi, single, cdc, eventbus) = input;
+	pub fn new(runtime: Arc<Runtime>) -> Self {
 		Self {
-			instance: Some(EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap()),
+			instance: Some(embedded::memory().build().unwrap()),
 			runtime: Some(runtime),
 		}
 	}
@@ -168,6 +162,5 @@ fn run_test(path: &Path) {
 fn run_plan_test(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	let input = transaction(memory());
-	testscript::run_path(&mut Runner::new(input, Arc::clone(&runtime)), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(Arc::clone(&runtime)), path).expect("test failed")
 }

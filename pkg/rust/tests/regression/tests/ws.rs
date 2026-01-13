@@ -3,14 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{
-	Database, ServerBuilder,
-	core::{event::EventBus, retry},
-	memory,
-	sub_server_ws::WsConfig,
-	transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
-};
+use reifydb::{Database, core::retry, server, sub_server_ws::WsConfig};
 use reifydb_client::WsClient;
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -23,12 +16,8 @@ pub struct WsRunner {
 }
 
 impl WsRunner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
-		let (multi, single, cdc, eventbus) = input;
-		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
+	pub fn new(runtime: Arc<Runtime>) -> Self {
+		let instance = server::memory()
 			.with_ws(WsConfig::default().bind_addr("::1:0"))
 			.build()
 			.unwrap();
@@ -113,8 +102,7 @@ fn test_ws(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = transaction(memory());
-		testscript::run_path(&mut WsRunner::new(input, Arc::clone(&runtime)), path)
+		testscript::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

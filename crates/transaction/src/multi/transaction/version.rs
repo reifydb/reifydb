@@ -135,11 +135,17 @@ impl VersionProvider for StandardVersionProvider {
 mod tests {
 	use std::sync::Arc;
 
+	use reifydb_core::runtime::ComputePool;
+
 	use super::*;
+
+	fn test_compute_pool() -> ComputePool {
+		ComputePool::new(2, 8)
+	}
 
 	#[test]
 	fn test_new_version_provider() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
@@ -148,7 +154,7 @@ mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -163,7 +169,7 @@ mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 
 		// Create first provider and get some versions
 		{
@@ -182,7 +188,7 @@ mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
@@ -202,7 +208,7 @@ mod tests {
 
 	#[test]
 	fn test_concurrent_version_allocation() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 		let provider = Arc::new(StandardVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
@@ -260,7 +266,7 @@ mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let single = TransactionSingle::testing();
+		let single = TransactionSingle::testing(test_compute_pool());
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
@@ -28,14 +28,9 @@ use reifydb_transaction::{
 };
 use tracing::debug;
 
-use crate::{
-	database::{Database, DatabaseConfig},
-	health::HealthMonitor,
-	subsystem::Subsystems,
-};
+use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 pub struct DatabaseBuilder {
-	config: DatabaseConfig,
 	interceptors: StandardInterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
@@ -62,7 +57,6 @@ impl DatabaseBuilder {
 			.register(cdc);
 
 		Self {
-			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
@@ -72,26 +66,6 @@ impl DatabaseBuilder {
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 		}
-	}
-
-	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
-		self.config = self.config.with_graceful_shutdown_timeout(timeout);
-		self
-	}
-
-	pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
-		self.config = self.config.with_health_check_interval(interval);
-		self
-	}
-
-	pub fn with_max_startup_time(mut self, timeout: Duration) -> Self {
-		self.config = self.config.with_max_startup_time(timeout);
-		self
-	}
-
-	pub fn with_config(mut self, config: DatabaseConfig) -> Self {
-		self.config = config;
-		self
 	}
 
 	#[cfg(feature = "sub_tracing")]
@@ -136,10 +110,6 @@ impl DatabaseBuilder {
 	pub fn with_runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.ioc = self.ioc.register(runtime);
 		self
-	}
-
-	pub fn config(&self) -> &DatabaseConfig {
-		&self.config
 	}
 
 	pub fn subsystem_count(&self) -> usize {
@@ -266,7 +236,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, self.config, health_monitor, runtime))
+		Ok(Database::new(engine, subsystems, health_monitor, runtime))
 	}
 
 	/// Load the materialized catalog from storage

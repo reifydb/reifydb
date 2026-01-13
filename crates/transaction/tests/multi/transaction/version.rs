@@ -10,13 +10,13 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
-use reifydb_transaction::multi::TransactionMulti;
 
+use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_versions() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	let k0 = as_key!(0);
 

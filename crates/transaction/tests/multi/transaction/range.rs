@@ -10,13 +10,13 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
-use reifydb_transaction::multi::TransactionMulti;
 
+use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_range() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -43,7 +43,7 @@ fn test_range() {
 
 #[test]
 fn test_range2() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -91,7 +91,7 @@ fn test_range2() {
 
 #[test]
 fn test_range3() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
@@ -144,7 +144,7 @@ fn test_range3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_range_edge() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// c1
 	{
@@ -275,7 +275,7 @@ fn test_range_edge() {
 /// - Query correctly returns newest version
 #[test]
 fn test_range_stream_returns_newest_version() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Create many versions of the SAME key
 	// Each commit creates a new version
@@ -303,7 +303,7 @@ fn test_range_stream_returns_newest_version() {
 /// Test that streaming works correctly across multiple keys, each with many versions.
 #[test]
 fn test_range_stream_multiple_keys_many_versions() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	const NUM_KEYS: u64 = 5;
 	const VERSIONS_PER_KEY: u64 = 20;

@@ -5,6 +5,8 @@
 //!
 //! Uses DashMap for per-table sharding and RwLock<BTreeMap> for concurrent access.
 
+use rayon::prelude::*;
+use reifydb_core::runtime::ComputePool;
 use reifydb_type::{CowVec, Result};
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 use tracing::{Span, instrument};
@@ -23,14 +25,17 @@ pub struct MemoryPrimitiveStorage {
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each type
 	entries: Entries,
+	/// Compute pool for parallel processing
+	compute_pool: ComputePool,
 }
 
 impl MemoryPrimitiveStorage {
-	#[instrument(name = "store::memory::new", level = "debug")]
-	pub fn new() -> Self {
+	#[instrument(name = "store::memory::new", level = "debug", skip(compute_pool))]
+	pub fn new(compute_pool: ComputePool) -> Self {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
 				entries: Entries::default(),
+				compute_pool,
 			}),
 		}
 	}
@@ -42,26 +47,6 @@ impl MemoryPrimitiveStorage {
 		let table_key = entry_id_to_key(table);
 		self.inner.entries.data.entry(table_key).or_insert_with(Entry::new).value().clone()
 	}
-
-	/// Sort batches by table key for consistent lock acquisition order
-	#[inline]
-	#[instrument(name = "store::memory::set::sort", level = "trace", skip_all)]
-	fn sort_batches(
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Vec<(EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>)> {
-		// Pre-compute keys once (Schwartzian transform) to avoid repeated allocations during sort
-		let mut keyed: Vec<_> = batches
-			.into_iter()
-			.map(|(table, entries)| (entry_id_to_key(table), table, entries))
-			.collect();
-
-		// Sort by pre-computed key
-		keyed.sort_by(|(key_a, _, _), (key_b, _, _)| key_a.cmp(key_b));
-
-		// Discard keys
-		keyed.into_iter().map(|(_, table, entries)| (table, entries)).collect()
-	}
-
 
 	/// Process a single table batch: get/create table, write entries
 	#[inline]
@@ -109,14 +94,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 		total_entry_count = tracing::field::Empty
 	))]
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
-		// Sort tables by key to ensure consistent lock acquisition order.
-		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
-		let sorted_batches = Self::sort_batches(batches);
+		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
-		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
-		for (table, entries) in sorted_batches {
-			self.process_table(table, entries);
-		}
+		self.inner.compute_pool.install(|| {
+			batches.into_par_iter().for_each(|(table, entries)| {
+				self.process_table(table, entries);
+			});
+		});
 
 		Span::current().record("total_entry_count", total_entries);
 		Ok(())
@@ -266,12 +250,17 @@ impl TierBackend for MemoryPrimitiveStorage {}
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::TableId as CoreTableId;
+	use reifydb_core::runtime::ComputePool;
 
 	use super::*;
 
+	fn test_compute_pool() -> ComputePool {
+		ComputePool::new(2, 8)
+	}
+
 	#[test]
 	fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Put and get
 		storage.set(HashMap::from([(
@@ -293,7 +282,7 @@ mod tests {
 
 	#[test]
 	fn test_separate_tables() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -314,7 +303,7 @@ mod tests {
 	fn test_source_tables() {
 		use reifydb_core::interface::PrimitiveId;
 
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		let source1 = PrimitiveId::Table(CoreTableId(1));
 		let source2 = PrimitiveId::Table(CoreTableId(2));
@@ -342,7 +331,7 @@ mod tests {
 
 	#[test]
 	fn test_range_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -375,7 +364,7 @@ mod tests {
 
 	#[test]
 	fn test_range_rev_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		storage.set(HashMap::from([(
 			EntryKind::Multi,
@@ -408,7 +397,7 @@ mod tests {
 
 	#[test]
 	fn test_range_streaming_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Insert 10 entries
 		for i in 0..10u8 {
@@ -470,7 +459,7 @@ mod tests {
 
 	#[test]
 	fn test_range_reving_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Insert 10 entries
 		for i in 0..10u8 {
