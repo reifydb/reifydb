@@ -406,6 +406,99 @@ impl IntoEncodedKey for i8 {
 	}
 }
 
+// Value types - using extend_value for proper encoding
+impl IntoEncodedKey for Value {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_value(&self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &Value {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_value(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for Vec<Value> {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		for value in self.iter() {
+			serializer.extend_value(value);
+		}
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &[Value] {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		for value in self.iter() {
+			serializer.extend_value(value);
+		}
+		serializer.to_encoded_key()
+	}
+}
+
+// Tuple types - composite keys
+impl IntoEncodedKey for (String, String) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &(String, String) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for (&str, &str) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(self.0);
+		serializer.extend_str(self.1);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for (String, String, String) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.extend_str(&self.2);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &(String, String, String) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.extend_str(&self.2);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &String {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(self);
+		serializer.to_encoded_key()
+	}
+}
+
 #[derive(Clone, Debug)]
 pub struct EncodedKeyRange {
 	pub start: Bound<EncodedKey>,

@@ -3,6 +3,7 @@
 
 //! State management utilities for operators
 
+mod cache;
 mod ffi;
 pub mod keyed;
 pub mod row;
@@ -12,7 +13,9 @@ pub mod window;
 
 use std::ops::Bound;
 
-// Re-export traits
+// Re-export traits and types
+pub use cache::StateCache;
+pub use reifydb_core::IntoEncodedKey;
 pub use keyed::FFIKeyedStateful;
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues};
 pub use row::RowNumberProvider;
