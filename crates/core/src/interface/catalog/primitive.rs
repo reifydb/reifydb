@@ -58,6 +58,19 @@ impl PrimitiveId {
 	pub fn dictionary(id: impl Into<DictionaryId>) -> Self {
 		Self::Dictionary(id.into())
 	}
+
+	/// Get the inner u64 value from the ID variant.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		match self {
+			PrimitiveId::Table(id) => id.to_u64(),
+			PrimitiveId::View(id) => id.to_u64(),
+			PrimitiveId::Flow(id) => id.to_u64(),
+			PrimitiveId::TableVirtual(id) => id.to_u64(),
+			PrimitiveId::RingBuffer(id) => id.to_u64(),
+			PrimitiveId::Dictionary(id) => id.to_u64(),
+		}
+	}
 }
 
 impl From<TableId> for PrimitiveId {

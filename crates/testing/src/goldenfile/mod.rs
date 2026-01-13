@@ -282,20 +282,6 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 			let expected_line = expected_lines.get(i).copied();
 			let actual_line = actual_lines.get(i).copied();
 
-			// Truncate long lines for readability
-			let truncate_line = |line: &str| -> String {
-				if line.len() > 100 {
-					// Use char boundary-safe truncation
-					let mut char_boundary = 97;
-					while !line.is_char_boundary(char_boundary) && char_boundary > 0 {
-						char_boundary -= 1;
-					}
-					format!("{}...", &line[..char_boundary])
-				} else {
-					line.to_string()
-				}
-			};
-
 			match (expected_line, actual_line) {
 				(Some(e), Some(a)) if e == a => {
 					// Context line - show line number in
@@ -303,7 +289,7 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 					output.push_str(&format!(
 						"{}  {}\n",
 						format!("{:04}", line_num).bright_black(),
-						truncate_line(e)
+						e
 					));
 				}
 				(Some(e), Some(a)) => {
@@ -313,9 +299,9 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 						"{} {}{}\n",
 						format!("{:04}", line_num).bright_black(),
 						"-".red(),
-						truncate_line(e).red()
+						e.red()
 					));
-					output.push_str(&format!("     {}{}\n", "+".green(), truncate_line(a).green()));
+					output.push_str(&format!("     {}{}\n", "+".green(), a.green()));
 				}
 				(Some(e), None) => {
 					// Deleted line
@@ -323,7 +309,7 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 						"{} {}{}\n",
 						format!("{:04}", line_num).bright_black(),
 						"-".red(),
-						truncate_line(e).red()
+						e.red()
 					));
 				}
 				(None, Some(a)) => {
@@ -332,7 +318,7 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 						"{} {}{}\n",
 						format!("{:04}", line_num).bright_black(),
 						"+".green(),
-						truncate_line(a).green()
+						a.green()
 					));
 				}
 				(None, None) => unreachable!(),

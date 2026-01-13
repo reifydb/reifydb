@@ -36,6 +36,14 @@ impl From<FlowId> for u64 {
 	}
 }
 
+impl FlowId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
+	}
+}
+
 impl From<u64> for FlowId {
 	fn from(value: u64) -> Self {
 		Self(value)
@@ -101,6 +109,14 @@ impl PartialEq<u64> for FlowNodeId {
 impl From<FlowNodeId> for u64 {
 	fn from(value: FlowNodeId) -> Self {
 		value.0
+	}
+}
+
+impl FlowNodeId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
 	}
 }
 

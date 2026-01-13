@@ -301,6 +301,14 @@ impl From<TableId> for u64 {
 	}
 }
 
+impl TableId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
+	}
+}
+
 impl From<i32> for TableId {
 	fn from(value: i32) -> Self {
 		Self(value as u64)
@@ -372,6 +380,14 @@ impl PartialEq<u64> for ViewId {
 impl From<ViewId> for u64 {
 	fn from(value: ViewId) -> Self {
 		value.0
+	}
+}
+
+impl ViewId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
 	}
 }
 
@@ -523,6 +539,14 @@ impl From<RingBufferId> for u64 {
 	}
 }
 
+impl RingBufferId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
+	}
+}
+
 impl From<i32> for RingBufferId {
 	fn from(value: i32) -> Self {
 		Self(value as u64)
@@ -594,6 +618,14 @@ impl PartialEq<u64> for DictionaryId {
 impl From<DictionaryId> for u64 {
 	fn from(value: DictionaryId) -> Self {
 		value.0
+	}
+}
+
+impl DictionaryId {
+	/// Get the inner u64 value.
+	#[inline]
+	pub fn to_u64(self) -> u64 {
+		self.0
 	}
 }
 

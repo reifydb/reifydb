@@ -73,6 +73,24 @@ pub struct Runner {
 }
 
 impl Runner {
+	/// Wait for CDC processing to complete up to the given version.
+	fn wait_for_cdc(&self, version: CommitVersion) {
+		// Wait up to 5 seconds for CDC to be processed
+		let start = std::time::Instant::now();
+		let timeout = Duration::from_secs(5);
+
+		while start.elapsed() < timeout {
+			if let Some(watermark) = self.store.cdc_min_watermark() {
+				if watermark >= version {
+					return;
+				}
+			}
+			std::thread::sleep(Duration::from_millis(1));
+		}
+	}
+}
+
+impl Runner {
 	fn new(store: StandardTransactionStore) -> Self {
 		Self {
 			store,
@@ -169,6 +187,8 @@ impl testscript::Runner for Runner {
 					],
 					version,
 				)?;
+				// Wait for async CDC processing
+				self.wait_for_cdc(version);
 				writeln!(output, "ok")?;
 			}
 
@@ -250,6 +270,8 @@ impl testscript::Runner for Runner {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
 					self.store.commit(deltas, version)?;
+					// Wait for async CDC processing
+					self.wait_for_cdc(version);
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -672,6 +694,8 @@ impl testscript::Runner for Runner {
 				}
 
 				self.store.commit(CowVec::new(deltas), version)?;
+				// Wait for async CDC processing
+				self.wait_for_cdc(version);
 				writeln!(output, "ok")?;
 			}
 

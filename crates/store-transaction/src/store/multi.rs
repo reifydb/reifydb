@@ -17,16 +17,13 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{
-		PreviousVersionInfo, VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version,
-		get_previous_version_info,
-	},
+	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version, get_previous_version_info},
 };
 use crate::{
 	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
-	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
+	cdc::CommitLog,
 	hot::{EntryKind::Multi, delta_optimizer::optimize_deltas},
-	stats::{PreVersionInfo as StatsPreVersionInfo, StatsOp, Tier},
+	stats::{PreVersionInfo, StatsOp, Tier},
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
 
@@ -133,21 +130,28 @@ impl MultiVersionCommit for StandardTransactionStore {
 			})
 			.collect();
 
-		// Combined lookup: get previous version info for all deltas in one pass.
-		// This replaces both `collect_previous_versions` and `get_previous_value_info` loops.
-		let previous_info: HashMap<Vec<u8>, PreviousVersionInfo> =
-			self.collect_previous_info(&optimized_deltas);
+		// Build commit record for async CDC processing (before storage write)
+		let commit_record = CommitLog::build_record(version, now_millis(), &optimized_deltas);
 
-		// Collect storage statistics for batch sending
+		// Collect storage statistics for batch sending.
+		// Pre-version info is looked up BEFORE writing to storage so we can
+		// correctly track inserts vs updates and historical byte counts.
+		// CDC stats are collected by the async CDC shard workers.
 		let mut stats_ops: Vec<StatsOp> = Vec::new();
 		for delta in optimized_deltas.iter() {
 			let key = delta.key();
 			let key_bytes = key.as_ref();
-			let pre_version_info = previous_info.get(key_bytes).map(|info| StatsPreVersionInfo {
-				key_bytes: info.key_bytes,
-				value_bytes: info.value_bytes,
-			});
+			let table = classify_key(key);
 			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
+
+			// Look up pre-version info before storage write
+			let pre_info = get_previous_version_info(storage, table, key_bytes)
+				.ok()
+				.flatten()
+				.map(|info| PreVersionInfo {
+					key_bytes: info.key_bytes,
+					value_bytes: info.value_bytes,
+				});
 
 			match delta {
 				Delta::Set {
@@ -159,7 +163,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 						key: key_bytes.to_vec(),
 						key_bytes: versioned_key_bytes,
 						value_bytes: values.len() as u64,
-						pre_info: pre_version_info,
+						pre_info,
 					});
 				}
 				Delta::Remove {
@@ -169,7 +173,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 						tier: Tier::Hot,
 						key: key_bytes.to_vec(),
 						key_bytes: versioned_key_bytes,
-						pre_info: pre_version_info,
+						pre_info,
 					});
 				}
 				Delta::Drop {
@@ -249,107 +253,18 @@ impl MultiVersionCommit for StandardTransactionStore {
 				version,       // version for stats tracking
 			);
 		}
-		drop(drop_worker); // Release lock before CDC processing
+		drop(drop_worker);
 
-		// Process CDC using the combined lookup results
-		let cdc_changes = process_deltas_for_cdc(optimized_deltas, version, |key| {
-			previous_info.get(key.as_ref()).map(|info| info.version)
-		})?;
-
-		// Add CDC to batches
-		let cdc_data = if !cdc_changes.is_empty() {
-			let internal_cdc = InternalCdc {
-				version,
-				timestamp: now_millis(),
-				changes: cdc_changes,
-			};
-			let encoded = encode_internal_cdc(&internal_cdc)?;
-			let cdc_key = version.0.to_be_bytes();
-
-			// Collect CDC stats per source object
-			let num_changes = internal_cdc.changes.len() as u64;
-			let total_key_bytes: u64 =
-				internal_cdc.changes.iter().map(|c| c.change.key().len() as u64).sum();
-			let overhead_bytes = (encoded.len() as u64).saturating_sub(total_key_bytes);
-			let per_change_overhead = overhead_bytes / num_changes.max(1);
-
-			for change in &internal_cdc.changes {
-				let change_key = change.change.key();
-				stats_ops.push(StatsOp::Cdc {
-					tier: Tier::Hot,
-					key: change_key.to_vec(),
-					value_bytes: per_change_overhead,
-					count: 1,
-				});
-			}
-
-			Some((CowVec::new(cdc_key.to_vec()), CowVec::new(encoded.to_vec())))
-		} else {
-			None
-		};
-
-		if let Some((cdc_key, encoded)) = cdc_data {
-			batches.entry(EntryKind::Cdc).or_default().push((cdc_key, Some(encoded)));
-		}
-
+		// Write versioned entries to storage (NO CDC - handled async)
 		storage.set(batches)?;
 
+		// Record stats for this commit
 		self.stats_worker.record_batch(stats_ops, version);
 
+		// Append to commit log for async CDC generation
+		self.commit_log.append(commit_record);
+
 		Ok(())
-	}
-}
-
-impl StandardTransactionStore {
-	/// Collect previous version info for all deltas.
-	///
-	/// This combines what `collect_previous_versions` and `get_previous_value_info`
-	/// did separately, doing a single lookup per key across all tiers.
-	///
-	/// Note: Using sequential iteration instead of parallel (rayon) because parallel
-	/// tier lookups cause race conditions with the storage layer's read locks.
-	fn collect_previous_info(&self, deltas: &[Delta]) -> HashMap<Vec<u8>, PreviousVersionInfo> {
-		// Filter to only Set/Remove deltas (Drop doesn't need previous version info)
-		let keys_to_lookup: Vec<_> = deltas
-			.iter()
-			.filter_map(|delta| match delta {
-				Delta::Set {
-					key,
-					..
-				}
-				| Delta::Remove {
-					key,
-				} => Some(key.as_ref().to_vec()),
-				Delta::Drop {
-					..
-				} => None,
-			})
-			.collect();
-
-		keys_to_lookup
-			.into_iter()
-			.filter_map(|key_bytes| {
-				let table = classify_key(&EncodedKey(CowVec::new(key_bytes.clone())));
-
-				// Try each tier in order until we find the key
-				if let Some(hot) = &self.hot {
-					if let Ok(Some(info)) = get_previous_version_info(hot, table, &key_bytes) {
-						return Some((key_bytes, info));
-					}
-				}
-				if let Some(warm) = &self.warm {
-					if let Ok(Some(info)) = get_previous_version_info(warm, table, &key_bytes) {
-						return Some((key_bytes, info));
-					}
-				}
-				if let Some(cold) = &self.cold {
-					if let Ok(Some(info)) = get_previous_version_info(cold, table, &key_bytes) {
-						return Some((key_bytes, info));
-					}
-				}
-				None
-			})
-			.collect()
 	}
 }
 

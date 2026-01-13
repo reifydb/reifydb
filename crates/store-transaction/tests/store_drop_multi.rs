@@ -25,7 +25,7 @@ test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as stor
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
 	let storage = HotStorage::memory(compute_pool);
-	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
@@ -54,7 +54,8 @@ impl Runner {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			stats: Default::default(),
-				event_bus: reifydb_core::event::EventBus::new(),
+			event_bus: reifydb_core::event::EventBus::new(),
+			cdc: Default::default(),
 		})
 		.unwrap();
 		Self {

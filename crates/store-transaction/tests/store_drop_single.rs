@@ -53,7 +53,8 @@ impl Runner {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			stats: Default::default(),
-				event_bus: reifydb_core::event::EventBus::new(),
+			event_bus: reifydb_core::event::EventBus::new(),
+			cdc: Default::default(),
 		})
 		.unwrap();
 		Self {

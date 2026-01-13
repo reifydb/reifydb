@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use reifydb_core::event::EventBus;
 
-use crate::hot::HotStorage;
+use crate::{
+	cdc::{CdcShardConfig, CommitLogConfig},
+	hot::HotStorage,
+};
 
 #[derive(Clone)]
 pub struct TransactionStoreConfig {
@@ -16,6 +19,26 @@ pub struct TransactionStoreConfig {
 	pub merge_config: MergeConfig,
 	pub stats: StorageStatsConfig,
 	pub event_bus: EventBus,
+	/// CDC (Change Data Capture) configuration.
+	pub cdc: CdcConfig,
+}
+
+/// Configuration for CDC (Change Data Capture).
+#[derive(Debug, Clone)]
+pub struct CdcConfig {
+	/// Shard worker configuration.
+	pub shard: CdcShardConfig,
+	/// Commit log configuration.
+	pub commit_log: CommitLogConfig,
+}
+
+impl Default for CdcConfig {
+	fn default() -> Self {
+		Self {
+			shard: CdcShardConfig::default(),
+			commit_log: CommitLogConfig::default(),
+		}
+	}
 }
 
 /// Configuration for storage statistics tracking.
@@ -85,6 +108,7 @@ impl Default for TransactionStoreConfig {
 			},
 			stats: StorageStatsConfig::default(),
 			event_bus: EventBus::new(),
+			cdc: CdcConfig::default(),
 		}
 	}
 }

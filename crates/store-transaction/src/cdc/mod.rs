@@ -5,6 +5,13 @@ pub(crate) mod codec;
 pub(crate) mod converter;
 mod exclude;
 mod layout;
+pub(crate) mod log;
+pub(crate) mod pool;
+pub(crate) mod shard;
+
+pub use log::{CommitEntry, CommitLog, CommitLogConfig, CommitOp, CommitRecord};
+pub use pool::CdcShardPool;
+pub use shard::{CdcShardConfig, CdcShardWorker, shard_for_partition};
 
 use std::collections::Bound;
 

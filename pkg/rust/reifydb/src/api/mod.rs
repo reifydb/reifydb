@@ -8,6 +8,7 @@ use reifydb_core::runtime::ComputePool;
 use reifydb_store_transaction::{
 	HotConfig, TransactionStore, TransactionStoreConfig, hot::HotStorage, sqlite::SqliteConfig,
 };
+use reifydb_store_transaction::config::CdcConfig;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle};
 
 pub mod embedded;
@@ -55,6 +56,7 @@ fn create_memory_store(
 		merge_config: Default::default(),
 		stats: Default::default(),
 		event_bus: eventbus.clone(),
+		cdc: CdcConfig::default()
 	});
 
 	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)
@@ -75,6 +77,7 @@ fn create_sqlite_store(config: SqliteConfig) -> (TransactionStore, TransactionSi
 		merge_config: Default::default(),
 		stats: Default::default(),
 		event_bus: eventbus.clone(),
+		cdc: CdcConfig::default()
 	});
 
 	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), TransactionCdc::new(store), eventbus)

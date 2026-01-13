@@ -102,7 +102,7 @@ pub fn create_test_engine() -> StandardEngine {
 	ioc = ioc.register(materialized_catalog.clone());
 
 	let runtime = SharedRuntime::from_config(
-		SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(2),
+		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(32),
 	);
 	ioc = ioc.register(runtime.clone());
 

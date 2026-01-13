@@ -10,6 +10,7 @@ use reifydb_core::event::EventBus;
 use reifydb_core::runtime::ComputePool;
 use crate::{
 	HotConfig,
+	cdc::{CdcShardPool, CommitLog},
 	cold::ColdStorage,
 	config::TransactionStoreConfig,
 	hot::HotStorage,
@@ -39,6 +40,10 @@ pub struct StandardTransactionStoreInner {
 	pub(crate) stats_worker: Arc<StatsWorker>,
 	/// Background drop worker.
 	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
+	/// Commit log for async CDC processing.
+	pub(crate) commit_log: CommitLog,
+	/// CDC shard worker pool.
+	pub(crate) cdc_shard_pool: Arc<CdcShardPool>,
 }
 
 impl StandardTransactionStore {
@@ -84,6 +89,15 @@ impl StandardTransactionStore {
 			tracker: stats_tracker.clone(),
 		});
 
+		// Create commit log and CDC shard pool
+		let (commit_log, commit_receiver) = CommitLog::new(config.cdc.commit_log.clone());
+		let cdc_shard_pool = Arc::new(CdcShardPool::new(
+			storage.clone(),
+			config.cdc.shard.clone(),
+			commit_receiver,
+			stats_worker.clone(),
+		));
+
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,
 			warm,
@@ -91,12 +105,29 @@ impl StandardTransactionStore {
 			stats_tracker,
 			stats_worker,
 			drop_worker: Arc::new(Mutex::new(drop_worker)),
+			commit_log,
+			cdc_shard_pool,
 		})))
 	}
 
 	/// Get access to the storage tracker.
 	pub fn stats_tracker(&self) -> &StorageTracker {
 		&self.stats_tracker
+	}
+
+	/// Get CDC watermark for a specific shard.
+	pub fn cdc_shard_watermark(&self, shard_id: usize) -> Option<CommitVersion> {
+		self.cdc_shard_pool.shard_watermark(shard_id)
+	}
+
+	/// Get minimum CDC watermark across all shards (global CDC progress).
+	pub fn cdc_min_watermark(&self) -> Option<CommitVersion> {
+		self.cdc_shard_pool.min_watermark()
+	}
+
+	/// Get the number of CDC shards.
+	pub fn cdc_num_shards(&self) -> usize {
+		self.cdc_shard_pool.num_shards()
 	}
 }
 
@@ -121,6 +152,7 @@ impl StandardTransactionStore {
 			merge_config: Default::default(),
 			stats: Default::default(),
 			event_bus: EventBus::new(),
+			cdc: Default::default(),
 		})
 		.unwrap()
 	}
