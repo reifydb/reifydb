@@ -6,12 +6,7 @@ mod common;
 use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_http_port};
-use reifydb::{
-	Database,
-	core::{event::EventBus, retry},
-	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
-};
+use reifydb::{Database, core::retry};
 use reifydb_client::HttpClient;
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -26,12 +21,9 @@ pub struct HttpRunner {
 }
 
 impl HttpRunner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
+	pub fn new(runtime: Arc<Runtime>) -> Self {
 		Self {
-			instance: Some(create_server_instance(&runtime, input)),
+			instance: Some(create_server_instance(&runtime)),
 			client: None,
 			runtime,
 		}
@@ -120,8 +112,7 @@ fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = transaction(memory());
-		testscript::run_path(&mut HttpRunner::new(input, Arc::clone(&runtime)), path)
+		testscript::run_path(&mut HttpRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

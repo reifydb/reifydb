@@ -509,8 +509,13 @@ mod tests {
 	use std::thread::sleep;
 
 	use reifydb_core::interface::PrimitiveId;
+	use reifydb_core::runtime::ComputePool;
 
 	use super::*;
+
+	fn test_compute_pool() -> ComputePool {
+		ComputePool::new(2, 8)
+	}
 
 	fn make_row_key(source_id: u64, row: u64) -> Vec<u8> {
 		use reifydb_core::key::RowKey;
@@ -705,7 +710,7 @@ mod tests {
 		use crate::hot::HotStorage;
 
 		// Create a memory storage backend
-		let storage = HotStorage::memory();
+		let storage = HotStorage::memory(test_compute_pool());
 
 		// Create tracker with some data
 		let config = StorageTrackerConfig {
@@ -757,7 +762,7 @@ mod tests {
 	fn test_checkpoint_resets_timer() {
 		use crate::hot::HotStorage;
 
-		let storage = HotStorage::memory();
+		let storage = HotStorage::memory(test_compute_pool());
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_millis(50),
 		};
@@ -785,7 +790,7 @@ mod tests {
 		use crate::hot::HotStorage;
 
 		// Create empty storage
-		let storage = HotStorage::memory();
+		let storage = HotStorage::memory(test_compute_pool());
 
 		let config = StorageTrackerConfig {
 			checkpoint_interval: Duration::from_secs(10),

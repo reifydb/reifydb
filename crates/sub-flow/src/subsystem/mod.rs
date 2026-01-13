@@ -71,6 +71,7 @@ impl FlowSubsystem {
 
 		let poll_config = PollConsumerConfig::new(
 			CdcConsumerId::new("flow-coordinator"),
+			"flow-cdc-poll",
 			Duration::from_micros(100),
 			Some(10),
 		);

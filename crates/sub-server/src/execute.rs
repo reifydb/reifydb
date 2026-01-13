@@ -9,7 +9,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::{Frame, compute::ComputePool, interface::Identity};
+use reifydb_core::{ComputePool, Frame, interface::Identity};
 use reifydb_engine::StandardEngine;
 use reifydb_type::{Error, Params, diagnostic::Diagnostic};
 use tokio::time;

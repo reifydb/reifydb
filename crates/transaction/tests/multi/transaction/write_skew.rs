@@ -10,8 +10,9 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_transaction::multi::{CommandTransaction, TransactionMulti};
+use reifydb_transaction::multi::CommandTransaction;
 
+use super::test_multi;
 use crate::{
 	as_key, as_values, from_key, from_values,
 	multi::transaction::{FromKey, FromValues},
@@ -23,7 +24,7 @@ fn test_write_skew() {
 	let a999: EncodedKey = as_key!(999);
 	let a888: EncodedKey = as_key!(888);
 
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Set balance to $100 in each account.
 	let mut txn = engine.begin_command().unwrap();
@@ -78,7 +79,7 @@ fn test_write_skew() {
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[test]
 fn test_black_white() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -145,7 +146,7 @@ fn test_black_white() {
 // https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[test]
 fn test_overdraft_protection() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	let key = as_key!("karen");
 
@@ -176,7 +177,7 @@ fn test_overdraft_protection() {
 // https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[test]
 fn test_primary_colors() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -278,7 +279,7 @@ fn test_primary_colors() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -356,7 +357,7 @@ fn test_intersecting_data() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data2() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -416,7 +417,7 @@ fn test_intersecting_data2() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data3() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// // Setup
 	let mut txn = engine.begin_command().unwrap();

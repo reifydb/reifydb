@@ -4,7 +4,8 @@
 use std::time::Duration;
 
 use reifydb::{
-	WithSubsystem, server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig, sub_server_ws::WsConfig,
+	WithSubsystem, server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig,
+	sub_server_ws::WsConfig,
 };
 use tracing::info;
 

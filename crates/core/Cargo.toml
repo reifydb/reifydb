@@ -24,6 +24,7 @@ tokio = { workspace = true }
 indexmap = { workspace = true }
 parking_lot = { workspace = true }
 rayon = { workspace = true }
+num_cpus = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = {workspace = true}

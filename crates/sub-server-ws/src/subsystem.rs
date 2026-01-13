@@ -22,7 +22,8 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{AppState, DEFAULT_RUNTIME, ResponseColumn, ResponseFrame, SharedRuntime};
+use reifydb_core::SharedRuntime;
+use reifydb_sub_server::{AppState, ResponseColumn, ResponseFrame};
 use reifydb_type::Type;
 use tokio::{
 	net::TcpListener,
@@ -87,8 +88,8 @@ impl WsSubsystem {
 	///
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
 	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Optional shared runtime
-	pub fn new(bind_addr: String, state: AppState, runtime: Option<SharedRuntime>) -> Self {
+	/// * `runtime` - Shared runtime
+	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
 		let max_connections = state.max_connections();
 		Self {
 			bind_addr,
@@ -98,7 +99,7 @@ impl WsSubsystem {
 			active_connections: Arc::new(AtomicUsize::new(0)),
 			shutdown_tx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
-			runtime: runtime.unwrap_or_else(|| DEFAULT_RUNTIME.clone()),
+			runtime,
 			registry: Arc::new(SubscriptionRegistry::new()),
 		}
 	}

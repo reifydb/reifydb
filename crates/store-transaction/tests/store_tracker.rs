@@ -25,6 +25,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::{EventBus, EventListener, store::StatsProcessed},
 	interface::MultiVersionValues,
+	runtime::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -40,7 +41,8 @@ test_each_path! { in "crates/store-transaction/tests/scripts/tracker" as store_t
 test_each_path! { in "crates/store-transaction/tests/scripts/tracker" as store_tracker_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let compute_pool = ComputePool::new(2, 8);
+	let storage = HotStorage::memory(compute_pool);
 	let event_bus = EventBus::new();
 	let stats_waiter = StatsWaiter::new();
 	event_bus.register::<StatsProcessed, _>(stats_waiter.clone());

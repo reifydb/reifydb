@@ -12,7 +12,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{JoinHandle, spawn},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 
@@ -109,16 +109,19 @@ impl StatsWorker {
 		let running = Arc::new(AtomicBool::new(true));
 
 		let worker_running = Arc::clone(&running);
-		let worker = spawn(move || {
-			Self::worker_loop(
-				receiver,
-				tracker,
-				storage,
-				config.checkpoint_interval,
-				worker_running,
-				event_bus,
-			);
-		});
+		let worker = thread::Builder::new()
+			.name("store-stats".to_string())
+			.spawn(move || {
+				Self::worker_loop(
+					receiver,
+					tracker,
+					storage,
+					config.checkpoint_interval,
+					worker_running,
+					event_bus,
+				);
+			})
+			.expect("Failed to spawn store stats thread");
 
 		Self {
 			sender,

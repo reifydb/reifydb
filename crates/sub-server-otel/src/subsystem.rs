@@ -20,7 +20,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::{DEFAULT_RUNTIME, SharedRuntime};
+use reifydb_core::SharedRuntime;
 
 use crate::config::OtelConfig;
 
@@ -72,8 +72,8 @@ impl OtelSubsystem {
 	/// # Arguments
 	///
 	/// * `config` - OpenTelemetry configuration
-	pub fn new(config: OtelConfig) -> Self {
-		let runtime = config.runtime.clone().unwrap_or_else(|| DEFAULT_RUNTIME.clone());
+	/// * `runtime` - Shared runtime
+	pub fn new(config: OtelConfig, runtime: SharedRuntime) -> Self {
 		Self {
 			config,
 			running: Arc::new(AtomicBool::new(false)),

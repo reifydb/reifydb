@@ -3,22 +3,20 @@
 
 //! Memory implementation of PrimitiveStorage.
 //!
-//! Uses DashMap for per-table sharding and left-right for lock-free reads.
+//! Uses DashMap for per-table sharding and RwLock<BTreeMap> for concurrent access.
 
-use std::{
-	collections::HashMap,
-	ops::Bound,
-	sync::Arc,
-};
+use rayon::prelude::*;
+use reifydb_core::runtime::ComputePool;
 use reifydb_type::{CowVec, Result};
-use tracing::{instrument, Span};
+use std::{collections::HashMap, ops::Bound, sync::Arc};
+use tracing::{Span, instrument};
 
-use super::entry::{Entries, Entry, Op, entry_id_to_key};
+use super::entry::{Entries, Entry, OrderedMap, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
-/// Uses DashMap for per-table sharding with left-right for lock-free reads.
+/// Uses DashMap for per-table sharding with RwLock<BTreeMap> for concurrent access.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -27,54 +25,40 @@ pub struct MemoryPrimitiveStorage {
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each type
 	entries: Entries,
+	/// Compute pool for parallel processing
+	compute_pool: ComputePool,
 }
 
 impl MemoryPrimitiveStorage {
-	#[instrument(name = "store::memory::new", level = "debug")]
-	pub fn new() -> Self {
+	#[instrument(name = "store::memory::new", level = "debug", skip(compute_pool))]
+	pub fn new(compute_pool: ComputePool) -> Self {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
 				entries: Entries::default(),
+				compute_pool,
 			}),
 		}
 	}
 
 	/// Get or create a table entry
+	#[inline]
+	#[instrument(name = "store::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
-		self.inner
-			.entries
-			.data
-			.entry(table_key)
-			.or_insert_with(Entry::new)
-			.value()
-			.clone()
+		self.inner.entries.data.entry(table_key).or_insert_with(Entry::new).value().clone()
 	}
 
-	/// Sort batches by table key for consistent lock acquisition order
+	/// Process a single table batch: get/create table, write entries
 	#[inline]
-	#[instrument(name = "store::memory::set::sort", level = "trace", skip_all)]
-	fn sort_batches(batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Vec<(EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>)> {
-		let mut sorted_batches: Vec<_> = batches.into_iter().collect();
-		sorted_batches.sort_by(|(a, _), (b, _)| entry_id_to_key(*a).cmp(&entry_id_to_key(*b)));
-		sorted_batches
-	}
-
-	/// Append entries to a table (acquires writer lock)
-	#[inline]
-	#[instrument(name = "store::memory::set::append", level = "trace", skip_all)]
-	fn append_entries(table_entry: &Entry, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
-		let mut writer = table_entry.writer.lock();
-		writer.append(Op::InsertBatch(entries));
-	}
-
-	/// Publish all pending writes to make them visible to readers
-	#[inline]
-	#[instrument(name = "store::memory::set::publish", level = "trace", skip_all)]
-	fn publish_entries(entries_to_publish: Vec<Entry>) {
-		for entry in entries_to_publish {
-			let mut writer = entry.writer.lock();
-			writer.publish();
+	#[instrument(name = "store::memory::set::table", level = "trace", skip(self, entries), fields(
+		table = ?table,
+		entry_count = entries.len(),
+	))]
+	fn process_table(&self, table: EntryKind, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
+		let table_entry = self.get_or_create_table(table);
+		let mut map = table_entry.data.write();
+		for (key, value) in entries {
+			map.insert(key, value);
 		}
 	}
 }
@@ -88,16 +72,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(None),
 		};
 
-		// Wait-free read - no blocking on writers!
-		// Get a thread-local ReadHandle from the factory
-		let reader = entry.reader_factory.handle();
-		let guard = match reader.enter() {
-			Some(g) => g,
-			None => return Ok(None), // Table was dropped
-		};
-
-		// Borrow<[u8]> impl allows lookup with &[u8] on BTreeMap<CowVec<u8>, _>
-		Ok(guard.0.get(key).cloned().flatten())
+		let map = entry.data.read();
+		Ok(map.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
@@ -108,15 +84,9 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(false),
 		};
 
-		// Wait-free read - no blocking on writers!
-		let reader = entry.reader_factory.handle();
-		let guard = match reader.enter() {
-			Some(g) => g,
-			None => return Ok(false),
-		};
-
-		// Key exists and is not a tombstone
-		Ok(guard.0.get(key).map_or(false, |v| v.is_some()))
+		let map = entry.data.read();
+		// Key exists and is not a tombstone (None value)
+		Ok(map.get(key).map_or(false, |v| v.is_some()))
 	}
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(
@@ -124,27 +94,15 @@ impl TierStorage for MemoryPrimitiveStorage {
 		total_entry_count = tracing::field::Empty
 	))]
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
-		// Phase 1: Sort tables by key to ensure consistent lock acquisition order.
-		// This prevents ABBA deadlock when two concurrent set() calls access overlapping tables.
-		let sorted_batches = Self::sort_batches(batches);
+		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
-		// Count total entries for metrics
-		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
-
-		// Phase 2: Append operations (writers only contend with each other, not readers)
-		let mut entries_to_publish: Vec<Entry> = Vec::with_capacity(sorted_batches.len());
-
-		for (table, entries) in sorted_batches {
-			let table_entry = self.get_or_create_table(table);
-			Self::append_entries(&table_entry, entries);
-			entries_to_publish.push(table_entry);
-		}
-
-		// Phase 3: Publish all tables (makes writes visible to readers)
-		Self::publish_entries(entries_to_publish);
+		self.inner.compute_pool.install(|| {
+			batches.into_par_iter().for_each(|(table, entries)| {
+				self.process_table(table, entries);
+			});
+		});
 
 		Span::current().record("total_entry_count", total_entries);
-
 		Ok(())
 	}
 
@@ -176,30 +134,17 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => start,
 		};
 
-		// Minimize ReadGuard hold time - collect data and release immediately
-		// This prevents blocking publish() calls from writers
-		let entries: Vec<RawEntry> = {
-			let reader = entry.reader_factory.handle();
-			let guard = match reader.enter() {
-				Some(g) => g,
-				None => {
-					cursor.exhausted = true;
-					return Ok(RangeBatch::empty());
-				}
-			};
+		let map = entry.data.read();
 
-			let range_bounds = make_range_bounds_ref(effective_start, end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			guard.0
-				.range::<[u8], _>(range_bounds)
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect()
-		};
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = map
+			.range::<[u8], _>((effective_start, end))
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
+			})
+			.collect();
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -250,31 +195,18 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => end,
 		};
 
-		// Minimize ReadGuard hold time - collect data and release immediately
-		// This prevents blocking publish() calls from writers
-		let entries: Vec<RawEntry> = {
-			let reader = entry.reader_factory.handle();
-			let guard = match reader.enter() {
-				Some(g) => g,
-				None => {
-					cursor.exhausted = true;
-					return Ok(RangeBatch::empty());
-				}
-			};
+		let map = entry.data.read();
 
-			let range_bounds = make_range_bounds_ref(start, effective_end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			guard.0
-				.range::<[u8], _>(range_bounds)
-				.rev()
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect()
-		};
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = map
+			.range::<[u8], _>((start, effective_end))
+			.rev()
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
+			})
+			.collect();
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -306,39 +238,36 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
-			None => return Ok(()),
-		};
-
-		let mut writer = entry.writer.lock();
-		writer.append(Op::Clear);
-		writer.publish();
-
+		if let Some(entry) = self.inner.entries.data.get(&table_key) {
+			*entry.value().data.write() = OrderedMap::new();
+		}
 		Ok(())
 	}
 }
 
 impl TierBackend for MemoryPrimitiveStorage {}
 
-/// Convert Bound<&[u8]> to a tuple for BTreeMap range queries.
-fn make_range_bounds_ref<'a>(start: Bound<&'a [u8]>, end: Bound<&'a [u8]>) -> (Bound<&'a [u8]>, Bound<&'a [u8]>) {
-	(start, end)
-}
-
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::TableId as CoreTableId;
+	use reifydb_core::runtime::ComputePool;
 
 	use super::*;
 
+	fn test_compute_pool() -> ComputePool {
+		ComputePool::new(2, 8)
+	}
+
 	#[test]
 	fn test_basic_operations() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Put and get
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))])]))
-			.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))],
+		)]))
+		.unwrap();
 		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
@@ -353,12 +282,18 @@ mod tests {
 
 	#[test]
 	fn test_separate_tables() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"multi".to_vec())))])]))
-			.unwrap();
-		storage.set(HashMap::from([(EntryKind::Single, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"single".to_vec())))])]))
-			.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"multi".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Single,
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"single".to_vec())))],
+		)]))
+		.unwrap();
 
 		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"multi".as_slice()));
 		assert_eq!(storage.get(EntryKind::Single, b"key").unwrap().as_deref(), Some(b"single".as_slice()));
@@ -368,7 +303,7 @@ mod tests {
 	fn test_source_tables() {
 		use reifydb_core::interface::PrimitiveId;
 
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		let source1 = PrimitiveId::Table(CoreTableId(1));
 		let source2 = PrimitiveId::Table(CoreTableId(2));
@@ -384,17 +319,35 @@ mod tests {
 		)]))
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(), Some(b"table1".as_slice()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(), Some(b"table2".as_slice()));
+		assert_eq!(
+			storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(),
+			Some(b"table1".as_slice())
+		);
+		assert_eq!(
+			storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(),
+			Some(b"table2".as_slice())
+		);
 	}
 
 	#[test]
 	fn test_range_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+		)]))
+		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -411,11 +364,23 @@ mod tests {
 
 	#[test]
 	fn test_range_rev_next() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+		)]))
+		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -432,11 +397,15 @@ mod tests {
 
 	#[test]
 	fn test_range_streaming_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
+			storage.set(HashMap::from([(
+				EntryKind::Multi,
+				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
+			)]))
+			.unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -490,11 +459,15 @@ mod tests {
 
 	#[test]
 	fn test_range_reving_pagination() {
-		let storage = MemoryPrimitiveStorage::new();
+		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
+			storage.set(HashMap::from([(
+				EntryKind::Multi,
+				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
+			)]))
+			.unwrap();
 		}
 
 		// Use a single cursor to stream in reverse

@@ -4,6 +4,7 @@
 //! Factory for creating OpenTelemetry subsystem instances.
 
 use reifydb_core::ioc::IocContainer;
+use reifydb_core::SharedRuntime;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use crate::{config::OtelConfig, subsystem::OtelSubsystem};
@@ -34,13 +35,14 @@ impl OtelSubsystemFactory {
 }
 
 impl SubsystemFactory for OtelSubsystemFactory {
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
 		if let Some(subsystem) = self.subsystem {
 			// Subsystem already created and started
 			Ok(Box::new(subsystem))
 		} else if let Some(config) = self.config {
 			// Normal path: create new subsystem
-			let subsystem = OtelSubsystem::new(config);
+			let runtime = ioc.resolve::<SharedRuntime>()?;
+			let subsystem = OtelSubsystem::new(config, runtime);
 			Ok(Box::new(subsystem))
 		} else {
 			unreachable!("OtelSubsystemFactory must have either subsystem or config")

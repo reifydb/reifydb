@@ -9,6 +9,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
 	interface::{Cdc, CdcChange, CdcSequencedChange},
+	runtime::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -27,9 +28,10 @@ fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 
+	let compute_pool = ComputePool::new(2, 8);
 	let config = TransactionStoreConfig {
 		hot: Some(HotConfig {
-			storage: HotStorage::memory(),
+			storage: HotStorage::memory(compute_pool),
 			retention_period: Duration::from_secs(300),
 		}),
 		warm: None,

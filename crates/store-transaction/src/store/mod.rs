@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 use tracing::instrument;
 use reifydb_core::CommitVersion;
 use reifydb_core::event::EventBus;
+use reifydb_core::runtime::ComputePool;
 use crate::{
 	HotConfig,
 	cold::ColdStorage,
@@ -108,10 +109,10 @@ impl Deref for StandardTransactionStore {
 }
 
 impl StandardTransactionStore {
-	pub fn testing_memory() -> Self {
+	pub fn testing_memory(compute_pool: ComputePool) -> Self {
 		Self::new(TransactionStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+				storage: HotStorage::memory(compute_pool),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{ComputePool, event::EventBus};
+use reifydb_core::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_function::FunctionsBuilder;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -16,25 +16,18 @@ use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
 use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
-use reifydb_transaction::{
-	cdc::TransactionCdc,
-	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	multi::TransactionMultiVersion,
-	single::TransactionSingle,
-};
+use reifydb_transaction::interceptor::{RegisterInterceptor, StandardInterceptorBuilder};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
+use crate::api::{StorageFactory, transaction};
 
 pub struct ServerBuilder {
-	multi: TransactionMultiVersion,
-	single: TransactionSingle,
-	cdc: TransactionCdc,
-	eventbus: EventBus,
+	storage_factory: StorageFactory,
+	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: StandardInterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
@@ -44,21 +37,13 @@ pub struct ServerBuilder {
 }
 
 impl ServerBuilder {
-	pub fn new(
-		multi: TransactionMultiVersion,
-		single: TransactionSingle,
-		cdc: TransactionCdc,
-		eventbus: EventBus,
-	) -> Self {
+	pub fn new(storage_factory: StorageFactory) -> Self {
 		Self {
-			multi,
-			single,
-			cdc,
-			eventbus,
+			storage_factory,
+			runtime_config: None,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
-			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
@@ -66,6 +51,14 @@ impl ServerBuilder {
 			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 			otel_tracing_config: None,
 		}
+	}
+
+	/// Configure the shared runtime.
+	///
+	/// If not set, a default configuration will be used.
+	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
+		self.runtime_config = Some(config);
+		self
 	}
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
@@ -83,11 +76,6 @@ impl ServerBuilder {
 		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
-		self.compute_pool = Some(pool);
 		self
 	}
 
@@ -156,51 +144,47 @@ impl ServerBuilder {
 	}
 
 	pub fn build(self) -> crate::Result<Database> {
-		let mut database_builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
-			.with_interceptor_builder(self.interceptors);
+		let runtime_config = self.runtime_config.unwrap_or_default();
+		let runtime = SharedRuntime::from_config(runtime_config);
 
-		// Pass functions configurator if provided
+		// Create storage with the runtime's compute pool
+		let compute_pool = runtime.compute_pool();
+		let (store, single, cdc, eventbus) = self.storage_factory.create(compute_pool);
+		let (multi, single, cdc, eventbus) = transaction((store, single, cdc, eventbus));
+
+		let mut database_builder = DatabaseBuilder::new(multi, single, cdc, eventbus)
+			.with_interceptor_builder(self.interceptors)
+			.with_runtime(runtime.clone());
+
 		if let Some(configurator) = self.functions_configurator {
 			database_builder = database_builder.with_functions_configurator(configurator);
 		}
 
-		// Pass compute pool if provided
-		if let Some(pool) = self.compute_pool {
-			database_builder = database_builder.with_compute_pool(pool);
-		}
-
-		// Handle OpenTelemetry + Tracing integration if configured
 		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 		if let Some((otel_config, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::Subsystem;
 
-			// Step 1: Create and start the OtelSubsystem
-			let mut otel_subsystem = OtelSubsystem::new(otel_config);
+			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
 			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
 
-			// Step 2: Get the concrete tracer from the initialized provider
 			let tracer =
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
 
-			// Step 3: Configure tracing with the OpenTelemetry layer
 			database_builder = database_builder.with_tracing(move |builder| {
 				let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 				let builder_with_otel = builder.with_layer(otel_layer);
 				tracing_configurator(builder_with_otel)
 			});
 
-			// Step 4: Store the pre-initialized subsystem to be added during build
 			let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
 			database_builder = database_builder.add_subsystem_factory(Box::new(factory));
 		} else {
-			// Normal tracing configuration without OpenTelemetry
 			#[cfg(feature = "sub_tracing")]
 			if let Some(configurator) = self.tracing_configurator {
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
 
-		// If otel_tracing_config was not set, handle normal tracing
 		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
 		{
 			#[cfg(feature = "sub_tracing")]
@@ -214,7 +198,6 @@ impl ServerBuilder {
 			database_builder = database_builder.with_flow(configurator);
 		}
 
-		// Add any other custom subsystem factories
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}

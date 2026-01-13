@@ -3,12 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb::{
-	Database, EmbeddedBuilder,
-	core::{event::EventBus, interface::Params},
-	memory, transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
-};
+use reifydb::{Database, core::interface::Params, embedded as db_embedded};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
@@ -17,10 +12,9 @@ pub struct Runner {
 }
 
 impl Runner {
-	pub fn new(input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus)) -> Self {
-		let (multi, single, cdc, eventbus) = input;
+	pub fn new() -> Self {
 		Self {
-			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
+			instance: db_embedded::memory().build().unwrap(),
 		}
 	}
 }
@@ -69,6 +63,5 @@ impl testscript::Runner for Runner {
 test_each_path! { in "pkg/rust/tests/limit/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-	let input = transaction(memory());
-	testscript::run_path(&mut Runner::new(input), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(), path).expect("test failed")
 }

@@ -7,24 +7,13 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{
-	Database, ServerBuilder,
-	core::event::EventBus,
-	sub_server_http::HttpConfig,
-	sub_server_ws::WsConfig,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
-};
+use reifydb::{Database, server, sub_server_http::HttpConfig, sub_server_ws::WsConfig};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::Command;
 use tokio::runtime::Runtime;
 
-pub fn create_server_instance(
-	_runtime: &Arc<Runtime>,
-	input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-) -> Database {
-	let (multi, single, cdc, eventbus) = input;
-
-	ServerBuilder::new(multi, single, cdc, eventbus)
+pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
+	server::memory()
 		.with_http(HttpConfig::default().bind_addr("::1:0"))
 		.with_ws(WsConfig::default().bind_addr("::1:0"))
 		.build()

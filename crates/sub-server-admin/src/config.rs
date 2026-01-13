@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use reifydb_sub_server::SharedRuntime;
+use reifydb_core::SharedRuntime;
 
 /// Configuration for the admin server subsystem.
 #[derive(Clone)]

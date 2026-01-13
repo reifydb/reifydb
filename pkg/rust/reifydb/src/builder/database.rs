@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
+use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
-	ComputePool, CoreVersion,
+	CoreVersion, SharedRuntime,
 	event::EventBus,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
@@ -16,6 +17,7 @@ use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
 use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2;
+use reifydb_rqlv2::Compiler;
 use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -28,19 +30,11 @@ use reifydb_transaction::{
 };
 use tracing::debug;
 
-use crate::{
-	database::{Database, DatabaseConfig},
-	health::HealthMonitor,
-	subsystem::Subsystems,
-};
-
 pub struct DatabaseBuilder {
-	config: DatabaseConfig,
 	interceptors: StandardInterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	compute_pool: Option<ComputePool>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
@@ -63,42 +57,15 @@ impl DatabaseBuilder {
 			.register(cdc);
 
 		Self {
-			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
-			compute_pool: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 		}
-	}
-
-	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
-		self.config = self.config.with_graceful_shutdown_timeout(timeout);
-		self
-	}
-
-	pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
-		self.config = self.config.with_health_check_interval(interval);
-		self
-	}
-
-	pub fn with_max_startup_time(mut self, timeout: Duration) -> Self {
-		self.config = self.config.with_max_startup_time(timeout);
-		self
-	}
-
-	pub fn with_config(mut self, config: DatabaseConfig) -> Self {
-		self.config = config;
-		self
-	}
-
-	pub fn with_compute_pool(mut self, pool: ComputePool) -> Self {
-		self.compute_pool = Some(pool);
-		self
 	}
 
 	#[cfg(feature = "sub_tracing")]
@@ -137,8 +104,12 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn config(&self) -> &DatabaseConfig {
-		&self.config
+	/// Set the shared runtime for the database.
+	///
+	/// This registers the runtime in the IoC container so subsystems can resolve it.
+	pub fn with_runtime(mut self, runtime: SharedRuntime) -> Self {
+		self.ioc = self.ioc.register(runtime);
+		self
 	}
 
 	pub fn subsystem_count(&self) -> usize {
@@ -163,16 +134,6 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		// Ensure ComputePool is always registered (use default if not configured)
-		let compute_pool = if let Some(pool) = self.compute_pool {
-			pool
-		} else {
-			// Default: use available CPU cores for threads, 64 for max in-flight
-			let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-			ComputePool::new(num_threads, 64)
-		};
-		self.ioc = self.ioc.register(compute_pool);
-
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
 		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
 		let single = self.ioc.resolve::<TransactionSingle>()?;
@@ -181,8 +142,9 @@ impl DatabaseBuilder {
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
 
-		// Create and register Compiler
-		let compiler = reifydb_rqlv2::Compiler::new(catalog.clone());
+		// Create and register Compiler (requires SharedRuntime to be registered first)
+		let runtime = self.ioc.resolve::<SharedRuntime>()?;
+		let compiler = Compiler::new(catalog.clone());
 		self.ioc = self.ioc.register(compiler);
 
 		let functions = if let Some(configurator) = self.functions_configurator {
@@ -274,7 +236,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, self.config, health_monitor))
+		Ok(Database::new(engine, subsystems, health_monitor, runtime))
 	}
 
 	/// Load the materialized catalog from storage

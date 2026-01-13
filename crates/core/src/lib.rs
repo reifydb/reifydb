@@ -4,19 +4,19 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod common;
-pub mod compute;
 pub mod delta;
 pub mod event;
 pub mod interface;
 pub mod key;
 pub mod retention;
+pub mod runtime;
 mod row;
 mod sort;
 pub mod util;
 pub mod value;
 
 pub use common::*;
-pub use compute::ComputePool;
+pub use runtime::{ComputePool, SharedRuntime, SharedRuntimeConfig};
 use interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::{Error, Result, diagnostic, err, error, return_error, return_internal_error};
 pub use row::Row;

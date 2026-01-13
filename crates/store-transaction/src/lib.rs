@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_core::runtime::ComputePool;
 pub use reifydb_type::Result;
 
 pub mod cold;
@@ -69,8 +70,8 @@ impl TransactionStore {
 }
 
 impl TransactionStore {
-	pub fn testing_memory() -> Self {
-		TransactionStore::Standard(StandardTransactionStore::testing_memory())
+	pub fn testing_memory(compute_pool: ComputePool) -> Self {
+		TransactionStore::Standard(StandardTransactionStore::testing_memory(compute_pool))
 	}
 
 	/// Get access to the storage tracker.

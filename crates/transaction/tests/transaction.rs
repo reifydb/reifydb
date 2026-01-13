@@ -15,6 +15,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
 	interface::MultiVersionValues,
+	runtime::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -39,7 +40,8 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_mu
 test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
-	let store = TransactionStore::testing_memory();
+	let compute_pool = ComputePool::new(2, 8);
+	let store = TransactionStore::testing_memory(compute_pool);
 	let bus = EventBus::default();
 	let engine = TransactionMulti::new(
 		store.clone(),

@@ -29,7 +29,7 @@ fn test_consumer_lifecycle() -> Result<()> {
 	let consumer = TestConsumer::new();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(100), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(100), None);
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	assert!(!test_instance.is_running());
@@ -58,7 +58,7 @@ fn test_event_processing() -> Result<()> {
 
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -103,7 +103,7 @@ fn test_checkpoint_persistence() -> Result<()> {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -117,7 +117,7 @@ fn test_checkpoint_persistence() -> Result<()> {
 
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
-	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), None);
+	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
@@ -152,7 +152,7 @@ fn test_error_handling() -> Result<()> {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -186,7 +186,7 @@ fn test_empty_events_handling() -> Result<()> {
 	let consumer_clone = consumer.clone();
 	let consumer_id = CdcConsumerId::flow_consumer();
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -222,10 +222,10 @@ fn test_multiple_consumers() -> Result<()> {
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
-	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50), None);
+	let config1 = PollConsumerConfig::new(consumer_id1.clone(), "cdc-poll-test-1", Duration::from_millis(50), None);
 	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1);
 
-	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75), None);
+	let config2 = PollConsumerConfig::new(consumer_id2.clone(), "cdc-poll-test-2", Duration::from_millis(75), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance1.start().expect("Failed to start consumer 1");
@@ -302,7 +302,7 @@ fn test_non_table_events_filtered() -> Result<()> {
 
 	txn.commit().expect("Failed to commit transaction");
 
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -346,7 +346,7 @@ fn test_rapid_start_stop() -> Result<()> {
 	let consumer_id = CdcConsumerId::flow_consumer();
 
 	for _ in 0..5 {
-		let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(100), None);
+		let config = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(100), None);
 		let mut test_instance = PollConsumer::new(config, engine.clone(), consumer.clone());
 
 		test_instance.start().expect("Failed to start consumer");
@@ -371,7 +371,7 @@ fn test_batch_size_limits_processing() -> Result<()> {
 	insert_test_events(&engine, 25).expect("Failed to insert test events");
 
 	// Set batch size to 10
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(10));
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), Some(10));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -400,7 +400,7 @@ fn test_batch_size_one_processes_sequentially() -> Result<()> {
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
 	// Set batch size to 1
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(1));
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), Some(1));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -429,7 +429,7 @@ fn test_batch_size_none_processes_all_at_once() -> Result<()> {
 	insert_test_events(&engine, 20).expect("Failed to insert test events");
 
 	// Set batch size to None (unbounded)
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), None);
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -458,7 +458,7 @@ fn test_batch_size_larger_than_events() -> Result<()> {
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
 	// Set batch size to 100 (much larger than number of events)
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(100));
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), Some(100));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -487,7 +487,7 @@ fn test_batch_size_with_checkpoint_resume() -> Result<()> {
 	insert_test_events(&engine, 15).expect("Failed to insert test events");
 
 	// Set batch size to 5
-	let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), Some(5));
+	let config = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), Some(5));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -505,7 +505,7 @@ fn test_batch_size_with_checkpoint_resume() -> Result<()> {
 	// Start a new consumer with same ID and batch size
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
-	let config2 = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(50), Some(5));
+	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), Some(5));
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance2.start().expect("Failed to start consumer");
@@ -531,7 +531,7 @@ fn test_batch_size_exact_match() -> Result<()> {
 	insert_test_events(&engine, 10).expect("Failed to insert test events");
 
 	// Set batch size to 10 (exact match)
-	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50), Some(10));
+	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), Some(10));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
 
 	test_instance.start().expect("Failed to start consumer");
@@ -565,11 +565,11 @@ fn test_multiple_consumers_different_batch_sizes() -> Result<()> {
 	insert_test_events(&engine, 10).expect("Failed to insert test events");
 
 	// Consumer 1 with batch size 3
-	let config1 = PollConsumerConfig::new(consumer_id1.clone(), Duration::from_millis(50), Some(3));
+	let config1 = PollConsumerConfig::new(consumer_id1.clone(), "cdc-poll-test-1", Duration::from_millis(50), Some(3));
 	let mut test_instance1 = PollConsumer::new(config1, engine.clone(), consumer1);
 
 	// Consumer 2 with no batch limit (None)
-	let config2 = PollConsumerConfig::new(consumer_id2.clone(), Duration::from_millis(75), None);
+	let config2 = PollConsumerConfig::new(consumer_id2.clone(), "cdc-poll-test-2", Duration::from_millis(75), None);
 	let mut test_instance2 = PollConsumer::new(config2, engine.clone(), consumer2);
 
 	test_instance1.start().expect("Failed to start consumer 1");

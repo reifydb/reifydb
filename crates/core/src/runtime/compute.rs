@@ -57,6 +57,18 @@ impl ComputePool {
 		}
 	}
 
+	/// Executes a closure on the rayon thread pool directly.
+	///
+	/// Unlike [`compute`], this is synchronous and bypasses admission control.
+	/// Use this when you're already in a synchronous context and need parallel execution.
+	pub fn install<R, F>(&self, f: F) -> R
+	where
+		R: Send,
+		F: FnOnce() -> R + Send,
+	{
+		self.inner.pool.install(f)
+	}
+
 	/// Runs a CPU-bound function on the compute pool.
 	///
 	/// The task is scheduled via `spawn_blocking` and executed on the

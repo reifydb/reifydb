@@ -3,14 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{
-	Database, ServerBuilder,
-	core::{event::EventBus, retry},
-	memory,
-	sub_server_http::HttpConfig,
-	transaction,
-	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingle},
-};
+use reifydb::{Database, core::retry, server, sub_server_http::HttpConfig};
 use reifydb_client::HttpClient;
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
@@ -23,12 +16,8 @@ pub struct HttpRunner {
 }
 
 impl HttpRunner {
-	pub fn new(
-		input: (TransactionMultiVersion, TransactionSingle, TransactionCdc, EventBus),
-		runtime: Arc<Runtime>,
-	) -> Self {
-		let (multi, single, cdc, eventbus) = input;
-		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
+	pub fn new(runtime: Arc<Runtime>) -> Self {
+		let instance = server::memory()
 			.with_http(HttpConfig::default().bind_addr("::1:0"))
 			.build()
 			.unwrap();
@@ -111,8 +100,7 @@ fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		let input = transaction(memory());
-		testscript::run_path(&mut HttpRunner::new(input, Arc::clone(&runtime)), path)
+		testscript::run_path(&mut HttpRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

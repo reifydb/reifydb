@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_core::{
-	Frame, Result,
+	Frame, Result, SharedRuntime,
 	event::lifecycle::OnStartEvent,
 	interface::{Identity, Params, WithEventBus},
 };
@@ -27,56 +27,17 @@ use tracing::{debug, error, instrument, warn};
 
 use crate::{
 	boot::Bootloader,
-	defaults::{GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
 	health::{ComponentHealth, HealthMonitor},
 	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
 	subsystem::Subsystems,
 };
 
-#[derive(Debug, Clone)]
-pub struct DatabaseConfig {
-	pub graceful_shutdown_timeout: Duration,
-	pub health_check_interval: Duration,
-	pub max_startup_time: Duration,
-}
-
-impl DatabaseConfig {
-	pub fn new() -> Self {
-		Self {
-			graceful_shutdown_timeout: GRACEFUL_SHUTDOWN_TIMEOUT,
-			health_check_interval: HEALTH_CHECK_INTERVAL,
-			max_startup_time: MAX_STARTUP_TIME,
-		}
-	}
-
-	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
-		self.graceful_shutdown_timeout = timeout;
-		self
-	}
-
-	pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
-		self.health_check_interval = interval;
-		self
-	}
-
-	pub fn with_max_startup_time(mut self, timeout: Duration) -> Self {
-		self.max_startup_time = timeout;
-		self
-	}
-}
-
-impl Default for DatabaseConfig {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 pub struct Database {
-	config: DatabaseConfig,
 	engine: StandardEngine,
 	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
+	shared_runtime: SharedRuntime,
 	running: bool,
 }
 
@@ -101,15 +62,15 @@ impl Database {
 	pub(crate) fn new(
 		engine: StandardEngine,
 		subsystem_manager: Subsystems,
-		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
+		shared_runtime: SharedRuntime,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
 			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
-			config,
 			health_monitor,
+			shared_runtime,
 			running: false,
 		}
 	}
@@ -118,8 +79,8 @@ impl Database {
 		&self.engine
 	}
 
-	pub fn config(&self) -> &DatabaseConfig {
-		&self.config
+	pub fn shared_runtime(&self) -> &SharedRuntime {
+		&self.shared_runtime
 	}
 
 	pub fn is_running(&self) -> bool {
@@ -143,7 +104,7 @@ impl Database {
 		self.engine.event_bus().emit(OnStartEvent {});
 
 		// Start all subsystems
-		match self.subsystems.start_all(self.config.max_startup_time) {
+		match self.subsystems.start_all() {
 			Ok(()) => {
 				self.running = true;
 				debug!("System started successfully");
@@ -174,32 +135,11 @@ impl Database {
 		debug!("Stopping system gracefully");
 
 		// Stop all subsystems
-		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
-
+		self.subsystems.stop_all()?;
 		self.running = false;
-
-		match result {
-			Ok(()) => {
-				debug!("System stopped successfully");
-				self.health_monitor.update_component_health(
-					"system".to_string(),
-					HealthStatus::Healthy,
-					false,
-				);
-				Ok(())
-			}
-			Err(e) => {
-				warn!("System shutdown completed with errors: {}", e);
-				self.health_monitor.update_component_health(
-					"system".to_string(),
-					HealthStatus::Warning {
-						description: format!("Shutdown completed with errors: {}", e),
-					},
-					false,
-				);
-				Err(e)
-			}
-		}
+		debug!("System stopped successfully");
+		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
+		Ok(())
 	}
 
 	pub fn health_status(&self) -> HealthStatus {
@@ -226,10 +166,6 @@ impl Database {
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
 		self.subsystems.get_subsystem_names()
-	}
-
-	pub fn get_stale_components(&self) -> Vec<String> {
-		self.health_monitor.get_stale_components(self.config.health_check_interval * 2)
 	}
 
 	pub fn subsystem<S: 'static>(&self) -> Option<&S> {

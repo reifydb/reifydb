@@ -7,6 +7,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	interface::MultiVersionValues,
+	runtime::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
@@ -22,7 +23,8 @@ test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as stor
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let compute_pool = ComputePool::new(2, 8);
+	let storage = HotStorage::memory(compute_pool);
 	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 

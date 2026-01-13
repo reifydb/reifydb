@@ -335,6 +335,91 @@ extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
 	}
 }
 
+/// Bound type constants for FFI
+const BOUND_UNBOUNDED: u8 = 0;
+const BOUND_INCLUDED: u8 = 1;
+const BOUND_EXCLUDED: u8 = 2;
+
+/// Create an iterator for state within a range
+#[unsafe(no_mangle)]
+extern "C" fn test_state_range(
+	_operator_id: u64,
+	ctx: *mut ContextFFI,
+	start_ptr: *const u8,
+	start_len: usize,
+	start_bound_type: u8,
+	end_ptr: *const u8,
+	end_len: usize,
+	end_bound_type: u8,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+
+		// Parse start bound
+		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
+			None
+		} else {
+			Some(from_raw_parts(start_ptr, start_len).to_vec())
+		};
+
+		// Parse end bound
+		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
+			None
+		} else {
+			Some(from_raw_parts(end_ptr, end_len).to_vec())
+		};
+
+		// Collect all matching key-value pairs from TestContext
+		let state_store = test_ctx.state_store();
+		let state = state_store.lock().unwrap();
+
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
+			.iter()
+			.filter(|(key, _)| {
+				let key_bytes = key.0.as_slice();
+
+				// Check start bound
+				let start_ok = match (&start_key, start_bound_type) {
+					(None, _) => true,
+					(Some(start), BOUND_INCLUDED) => key_bytes >= start.as_slice(),
+					(Some(start), BOUND_EXCLUDED) => key_bytes > start.as_slice(),
+					_ => true,
+				};
+
+				// Check end bound
+				let end_ok = match (&end_key, end_bound_type) {
+					(None, _) => true,
+					(Some(end), BOUND_INCLUDED) => key_bytes <= end.as_slice(),
+					(Some(end), BOUND_EXCLUDED) => key_bytes < end.as_slice(),
+					_ => true,
+				};
+
+				start_ok && end_ok
+			})
+			.map(|(key, value)| (key.0.to_vec(), value.0.to_vec()))
+			.collect();
+
+		// Sort by key for deterministic iteration order
+		items.sort_by(|a, b| a.0.cmp(&b.0));
+
+		// Create iterator structure
+		let iter = Box::new(TestStateIterator {
+			items,
+			position: 0,
+		});
+
+		// Leak the box and cast to opaque pointer
+		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+
+		FFI_OK
+	}
+}
+
 // ============================================================================
 // Log Callback (Capture to TestContext)
 // ============================================================================
@@ -479,6 +564,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			remove: test_state_remove,
 			clear: test_state_clear,
 			prefix: test_state_prefix,
+			range: test_state_range,
 			iterator_next: test_state_iterator_next,
 			iterator_free: test_state_iterator_free,
 		},

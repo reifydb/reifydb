@@ -10,13 +10,13 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
-use reifydb_transaction::multi::TransactionMulti;
 
+use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_iter() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -40,7 +40,7 @@ fn test_iter() {
 
 #[test]
 fn test_iter2() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -83,7 +83,7 @@ fn test_iter2() {
 
 #[test]
 fn test_iter3() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
@@ -133,7 +133,7 @@ fn test_iter3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// c1
 	{
@@ -230,7 +230,7 @@ fn test_iter_edge_case() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case2() {
-	let engine = TransactionMulti::testing();
+	let engine = test_multi();
 
 	// c1
 	{

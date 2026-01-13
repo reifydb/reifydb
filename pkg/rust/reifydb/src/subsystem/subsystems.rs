@@ -8,12 +8,11 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::Result;
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::health::HealthMonitor;
 
@@ -54,23 +53,16 @@ impl Subsystems {
 		self.subsystems.len()
 	}
 
-	pub fn start_all(&mut self, startup_timeout: Duration) -> Result<()> {
+	pub fn start_all(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already running
 		}
 
 		debug!("Starting {} subsystems...", self.subsystems.len());
 
-		let start_time = std::time::Instant::now();
 		let mut started_subsystems = Vec::new();
 
 		for subsystem in &mut self.subsystems {
-			if start_time.elapsed() > startup_timeout {
-				error!("Startup timeout exceeded");
-				self.stop_started_subsystems(&started_subsystems)?;
-				panic!("Startup timeout exceeded");
-			}
-
 			let name = subsystem.name().to_string();
 			debug!("Starting subsystem: {}", name);
 
@@ -104,7 +96,7 @@ impl Subsystems {
 		Ok(())
 	}
 
-	pub fn stop_all(&mut self, shutdown_timeout: Duration) -> Result<()> {
+	pub fn stop_all(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
@@ -115,15 +107,9 @@ impl Subsystems {
 			debug!("Stopping subsystem: {}", subsystem.name());
 		}
 
-		let start_time = std::time::Instant::now();
 		let mut errors = Vec::new();
 
 		for subsystem in self.subsystems.iter_mut().rev() {
-			if start_time.elapsed() > shutdown_timeout {
-				warn!("Shutdown timeout exceeded");
-				break;
-			}
-
 			let name = subsystem.name().to_string();
 
 			match subsystem.shutdown() {
