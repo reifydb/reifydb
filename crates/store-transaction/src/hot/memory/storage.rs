@@ -3,18 +3,18 @@
 
 //! Memory implementation of PrimitiveStorage.
 //!
-//! Uses DashMap for per-table sharding and left-right for lock-free reads.
+//! Uses DashMap for per-table sharding and RwLock<BTreeMap> for concurrent access.
 
 use reifydb_type::{CowVec, Result};
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 use tracing::{Span, instrument};
 
-use super::entry::{Entries, Entry, Op, entry_id_to_key};
+use super::entry::{Entries, Entry, OrderedMap, entry_id_to_key};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
-/// Uses DashMap for per-table sharding with left-right for lock-free reads.
+/// Uses DashMap for per-table sharding with RwLock<BTreeMap> for concurrent access.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -36,6 +36,8 @@ impl MemoryPrimitiveStorage {
 	}
 
 	/// Get or create a table entry
+	#[inline]
+	#[instrument(name = "store::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
 		let table_key = entry_id_to_key(table);
 		self.inner.entries.data.entry(table_key).or_insert_with(Entry::new).value().clone()
@@ -60,23 +62,8 @@ impl MemoryPrimitiveStorage {
 		keyed.into_iter().map(|(_, table, entries)| (table, entries)).collect()
 	}
 
-	/// Append entries to a table (acquires writer lock)
-	#[inline]
-	#[instrument(name = "store::memory::set::append", level = "trace", skip_all)]
-	fn append_entries(table_entry: &Entry, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
-		let mut writer = table_entry.writer.lock();
-		writer.append(Op::InsertBatch(entries));
-	}
 
-	/// Publish all pending writes to make them visible to readers
-	#[inline]
-	#[instrument(name = "store::memory::set::publish", level = "trace", skip_all)]
-	fn publish_entry(entry: Entry) {
-		let mut writer = entry.writer.lock();
-		writer.publish();
-	}
-
-	/// Process a single table batch: get/create table, append entries, publish
+	/// Process a single table batch: get/create table, write entries
 	#[inline]
 	#[instrument(name = "store::memory::set::table", level = "trace", skip(self, entries), fields(
 		table = ?table,
@@ -84,8 +71,10 @@ impl MemoryPrimitiveStorage {
 	))]
 	fn process_table(&self, table: EntryKind, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) {
 		let table_entry = self.get_or_create_table(table);
-		Self::append_entries(&table_entry, entries);
-		Self::publish_entry(table_entry);
+		let mut map = table_entry.data.write();
+		for (key, value) in entries {
+			map.insert(key, value);
+		}
 	}
 }
 
@@ -98,16 +87,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(None),
 		};
 
-		// Wait-free read - no blocking on writers!
-		// Get a thread-local ReadHandle from the factory
-		let reader = entry.reader_factory.handle();
-		let guard = match reader.enter() {
-			Some(g) => g,
-			None => return Ok(None), // Table was dropped
-		};
-
-		// Borrow<[u8]> impl allows lookup with &[u8] on BTreeMap<CowVec<u8>, _>
-		Ok(guard.0.get(key).cloned().flatten())
+		let map = entry.data.read();
+		Ok(map.get(key).cloned().flatten())
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
@@ -118,15 +99,9 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(false),
 		};
 
-		// Wait-free read - no blocking on writers!
-		let reader = entry.reader_factory.handle();
-		let guard = match reader.enter() {
-			Some(g) => g,
-			None => return Ok(false),
-		};
-
-		// Key exists and is not a tombstone
-		Ok(guard.0.get(key).map_or(false, |v| v.is_some()))
+		let map = entry.data.read();
+		// Key exists and is not a tombstone (None value)
+		Ok(map.get(key).map_or(false, |v| v.is_some()))
 	}
 
 	#[instrument(name = "store::memory::set", level = "trace", skip(self, batches), fields(
@@ -139,7 +114,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 		let sorted_batches = Self::sort_batches(batches);
 
 		let total_entries: usize = sorted_batches.iter().map(|(_, v)| v.len()).sum();
-
 		for (table, entries) in sorted_batches {
 			self.process_table(table, entries);
 		}
@@ -176,29 +150,17 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => start,
 		};
 
-		// Minimize ReadGuard hold time - collect data and release immediately
-		// This prevents blocking publish() calls from writers
-		let entries: Vec<RawEntry> = {
-			let reader = entry.reader_factory.handle();
-			let guard = match reader.enter() {
-				Some(g) => g,
-				None => {
-					cursor.exhausted = true;
-					return Ok(RangeBatch::empty());
-				}
-			};
+		let map = entry.data.read();
 
-			let range_bounds = make_range_bounds_ref(effective_start, end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			guard.0.range::<[u8], _>(range_bounds)
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect()
-		};
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = map
+			.range::<[u8], _>((effective_start, end))
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
+			})
+			.collect();
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -249,30 +211,18 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => end,
 		};
 
-		// Minimize ReadGuard hold time - collect data and release immediately
-		// This prevents blocking publish() calls from writers
-		let entries: Vec<RawEntry> = {
-			let reader = entry.reader_factory.handle();
-			let guard = match reader.enter() {
-				Some(g) => g,
-				None => {
-					cursor.exhausted = true;
-					return Ok(RangeBatch::empty());
-				}
-			};
+		let map = entry.data.read();
 
-			let range_bounds = make_range_bounds_ref(start, effective_end);
-
-			// Fetch batch_size + 1 to determine if there are more entries
-			guard.0.range::<[u8], _>(range_bounds)
-				.rev()
-				.take(batch_size + 1)
-				.map(|(k, v)| RawEntry {
-					key: k.clone(),
-					value: v.clone(),
-				})
-				.collect()
-		};
+		// Fetch batch_size + 1 to determine if there are more entries
+		let entries: Vec<RawEntry> = map
+			.range::<[u8], _>((start, effective_end))
+			.rev()
+			.take(batch_size + 1)
+			.map(|(k, v)| RawEntry {
+				key: k.clone(),
+				value: v.clone(),
+			})
+			.collect();
 
 		let has_more = entries.len() > batch_size;
 		let entries: Vec<RawEntry> = if has_more {
@@ -304,25 +254,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
-			Some(e) => e.value().clone(),
-			None => return Ok(()),
-		};
-
-		let mut writer = entry.writer.lock();
-		writer.append(Op::Clear);
-		writer.publish();
-
+		if let Some(entry) = self.inner.entries.data.get(&table_key) {
+			*entry.value().data.write() = OrderedMap::new();
+		}
 		Ok(())
 	}
 }
 
 impl TierBackend for MemoryPrimitiveStorage {}
-
-/// Convert Bound<&[u8]> to a tuple for BTreeMap range queries.
-fn make_range_bounds_ref<'a>(start: Bound<&'a [u8]>, end: Bound<&'a [u8]>) -> (Bound<&'a [u8]>, Bound<&'a [u8]>) {
-	(start, end)
-}
 
 #[cfg(test)]
 mod tests {
