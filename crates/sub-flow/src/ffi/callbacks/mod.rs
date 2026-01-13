@@ -41,6 +41,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			remove: state::host_state_remove,
 			clear: state::host_state_clear,
 			prefix: state::host_state_prefix,
+			range: state::host_state_range,
 			iterator_next: state::host_state_iterator_next,
 			iterator_free: state::host_state_iterator_free,
 		},

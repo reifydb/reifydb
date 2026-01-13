@@ -38,10 +38,10 @@ impl<'a> Store<'a> {
 		Ok(result)
 	}
 
-	#[instrument(name = "flow::operator::store::contains_key", level = "trace", skip(self), fields(
+	#[instrument(name = "flow::operator::store::contains", level = "trace", skip(self), fields(
 		key_len = key.as_bytes().len()
 	))]
-	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
+	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		raw_store_contains_key(self.ctx, key)
 	}
 

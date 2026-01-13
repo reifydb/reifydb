@@ -10,6 +10,8 @@ pub mod single;
 pub mod utils;
 pub mod window;
 
+use std::ops::Bound;
+
 // Re-export traits
 pub use keyed::FFIKeyedStateful;
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues};
@@ -68,6 +70,15 @@ impl<'a> State<'a> {
 		let entries = self.scan_prefix(prefix)?;
 		Ok(entries.into_iter().map(|(k, _)| k).collect())
 	}
+
+	/// Scan state entries within a given range
+	pub fn range(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+		ffi::raw_state_range(self.ctx, start, end)
+	}
 }
 
 /// Raw Stateful operations for FFI operators
@@ -125,5 +136,15 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 	/// Clear all state for this operator
 	fn state_clear(&self, ctx: &mut OperatorContext) -> Result<()> {
 		ctx.state().clear()
+	}
+
+	/// Scan all keys within a range
+	fn state_scan_range(
+		&self,
+		ctx: &mut OperatorContext,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+		ctx.state().range(start, end)
 	}
 }

@@ -91,6 +91,33 @@ pub struct StateCallbacks {
 		iterator_out: *mut *mut StateIteratorFFI,
 	) -> i32,
 
+	/// Create an iterator for state keys within a given range
+	///
+	/// # Parameters
+	/// - `operator_id`: Operator ID
+	/// - `ctx`: FFI context
+	/// - `start`: Start key bytes (null if unbounded)
+	/// - `start_len`: Length of start key
+	/// - `start_bound_type`: 0=Unbounded, 1=Included, 2=Excluded
+	/// - `end`: End key bytes (null if unbounded)
+	/// - `end_len`: Length of end key
+	/// - `end_bound_type`: 0=Unbounded, 1=Included, 2=Excluded
+	/// - `iterator_out`: Pointer to receive iterator handle
+	///
+	/// # Returns
+	/// - 0 on success, negative error code on failure
+	pub range: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		start: *const u8,
+		start_len: usize,
+		start_bound_type: u8,
+		end: *const u8,
+		end_len: usize,
+		end_bound_type: u8,
+		iterator_out: *mut *mut StateIteratorFFI,
+	) -> i32,
+
 	/// Get the next key-value pair from a state iterator
 	///
 	/// # Parameters

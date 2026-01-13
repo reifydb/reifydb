@@ -6,7 +6,7 @@
 //! Low-level state operations that directly call host FFI callbacks.
 //! These functions should not be used directly - use the State API instead.
 
-use std::{ptr::null_mut, slice::from_raw_parts};
+use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StateIteratorFFI};
 use reifydb_core::{
@@ -186,6 +186,110 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 				};
 
 				// Free buffers allocated by host
+				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
+				if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
+				}
+
+				results.push((key, value));
+			}
+		}
+
+		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+		Span::current().record("result_count", results.len());
+		Ok(results)
+	}
+}
+
+/// Bound type constants for FFI
+const BOUND_UNBOUNDED: u8 = 0;
+const BOUND_INCLUDED: u8 = 1;
+const BOUND_EXCLUDED: u8 = 2;
+
+/// Scan all keys within a range
+#[instrument(name = "flow::operator::state::range", level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	result_count
+))]
+pub(crate) fn raw_state_range(
+	ctx: &OperatorContext,
+	start: Bound<&EncodedKey>,
+	end: Bound<&EncodedKey>,
+) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	let mut iterator: *mut StateIteratorFFI = null_mut();
+
+	unsafe {
+		let (start_ptr, start_len, start_bound_type) = match start {
+			Bound::Unbounded => (std::ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
+			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+		};
+
+		let (end_ptr, end_len, end_bound_type) = match end {
+			Bound::Unbounded => (std::ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
+			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+		};
+
+		let result = ((*ctx.ctx).callbacks.state.range)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			start_ptr,
+			start_len,
+			start_bound_type,
+			end_ptr,
+			end_len,
+			end_bound_type,
+			&mut iterator,
+		);
+
+		if result != FFI_OK {
+			return Err(FFIError::Other(format!("host_state_range failed with code {}", result)));
+		}
+
+		if iterator.is_null() {
+			Span::current().record("result_count", 0);
+			return Ok(Vec::new());
+		}
+
+		let mut results = Vec::new();
+
+		loop {
+			let mut key_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+			let mut value_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+
+			let next_result =
+				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
+
+			if next_result == FFI_END_OF_ITERATION {
+				break;
+			} else if next_result != FFI_OK {
+				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+				return Err(FFIError::Other(format!(
+					"host_state_iterator_next failed with code {}",
+					next_result
+				)));
+			}
+
+			if !key_buf.ptr.is_null() && key_buf.len > 0 {
+				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
+				let key = EncodedKey(CowVec::new(key_bytes));
+
+				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
+					EncodedValues(CowVec::new(value_bytes))
+				} else {
+					EncodedValues(CowVec::new(Vec::new()))
+				};
+
 				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
 				if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
