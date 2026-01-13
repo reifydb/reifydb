@@ -54,7 +54,7 @@
 
 use std::hash::Hash;
 
-use reifydb_core::util::{CowVec, LruCache};
+use reifydb_core::util::{CowVec, ConcurrentLruCache};
 use reifydb_core::value::encoded::EncodedValues;
 use reifydb_core::IntoEncodedKey;
 use serde::{Serialize, de::DeserializeOwned};
@@ -65,20 +65,29 @@ use crate::error::{FFIError, Result};
 /// Generic LRU cache for operator state - caches deserialized domain types.
 ///
 /// `K` is the key type (must implement `Hash + Eq + Clone`, and `&K` must implement `IntoEncodedKey`)
-/// `V` is the state type (must implement `Clone + Default + Serialize + DeserializeOwned`)
+/// `V` is the state type (must implement `Clone + Serialize + DeserializeOwned`)
 ///
-/// The cache is single-threaded (`!Send + !Sync`) since operators run on dedicated
-/// worker threads.
+/// The cache is thread-safe (`Send + Sync`) using `ConcurrentLruCache` internally.
 pub struct StateCache<K, V> {
-	cache: LruCache<K, V>,
+	cache: ConcurrentLruCache<K, V>,
 }
 
 impl<K, V> StateCache<K, V>
 where
 	K: Hash + Eq + Clone,
 	for<'a> &'a K: IntoEncodedKey,
-	V: Clone + Default + Serialize + DeserializeOwned,
+	V: Clone + Serialize + DeserializeOwned,
 {
+	/// Default cache capacity.
+	const DEFAULT_CAPACITY: usize = 1000;
+
+	/// Create a new state cache with default capacity (1000 entries).
+	pub fn new() -> Self {
+		Self {
+			cache: ConcurrentLruCache::new(Self::DEFAULT_CAPACITY),
+		}
+	}
+
 	/// Create a new state cache with specified capacity.
 	///
 	/// # Arguments
@@ -89,9 +98,9 @@ where
 	/// # Panics
 	///
 	/// Panics if capacity is 0.
-	pub fn new(capacity: usize) -> Self {
+	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			cache: LruCache::new(capacity),
+			cache: ConcurrentLruCache::new(capacity),
 		}
 	}
 
@@ -124,23 +133,6 @@ where
 				Ok(Some(value))
 			}
 			None => Ok(None),
-		}
-	}
-
-	/// Get or create - loads from cache/FFI or creates default if not found.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context for FFI calls
-	/// * `key` - Application-level key
-	///
-	/// # Returns
-	///
-	/// The existing value or `V::default()` if not found.
-	pub fn get_or_default(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<V> {
-		match self.get(ctx, key)? {
-			Some(value) => Ok(value),
-			None => Ok(V::default()),
 		}
 	}
 
@@ -187,39 +179,6 @@ where
 		Ok(())
 	}
 
-	/// Update a value with a function - load, modify, save (all cached).
-	///
-	/// This is the most common pattern for stateful operators:
-	/// 1. Load existing state (from cache if available, or create default)
-	/// 2. Apply an update function
-	/// 3. Save the updated state (write-through)
-	/// 4. Return the updated value
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context for FFI calls
-	/// * `key` - Application-level key
-	/// * `updater` - Function that modifies the value in place
-	///
-	/// # Returns
-	///
-	/// The updated value (also cached).
-	pub fn update<U>(&mut self, ctx: &mut OperatorContext, key: &K, updater: U) -> Result<V>
-	where
-		U: FnOnce(&mut V) -> Result<()>,
-	{
-		// Load or create default
-		let mut value = self.get_or_default(ctx, key)?;
-
-		// Apply update
-		updater(&mut value)?;
-
-		// Save (write-through)
-		self.set(ctx, key, &value)?;
-
-		Ok(value)
-	}
-
 	/// Clear the cache (does NOT clear persistent state).
 	///
 	/// This only clears the in-memory cache. Persistent state in the FFI layer
@@ -259,22 +218,87 @@ where
 	}
 }
 
+/// Methods that require `V: Default`
+impl<K, V> StateCache<K, V>
+where
+	K: Hash + Eq + Clone,
+	for<'a> &'a K: IntoEncodedKey,
+	V: Clone + Default + Serialize + DeserializeOwned,
+{
+	/// Get or create - loads from cache/FFI or creates default if not found.
+	///
+	/// # Arguments
+	///
+	/// * `ctx` - The operator context for FFI calls
+	/// * `key` - Application-level key
+	///
+	/// # Returns
+	///
+	/// The existing value or `V::default()` if not found.
+	pub fn get_or_default(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<V> {
+		match self.get(ctx, key)? {
+			Some(value) => Ok(value),
+			None => Ok(V::default()),
+		}
+	}
+
+	/// Update a value with a function - load, modify, save (all cached).
+	///
+	/// This is the most common pattern for stateful operators:
+	/// 1. Load existing state (from cache if available, or create default)
+	/// 2. Apply an update function
+	/// 3. Save the updated state (write-through)
+	/// 4. Return the updated value
+	///
+	/// # Arguments
+	///
+	/// * `ctx` - The operator context for FFI calls
+	/// * `key` - Application-level key
+	/// * `updater` - Function that modifies the value in place
+	///
+	/// # Returns
+	///
+	/// The updated value (also cached).
+	pub fn update<U>(&mut self, ctx: &mut OperatorContext, key: &K, updater: U) -> Result<V>
+	where
+		U: FnOnce(&mut V) -> Result<()>,
+	{
+		// Load or create default
+		let mut value = self.get_or_default(ctx, key)?;
+
+		// Apply update
+		updater(&mut value)?;
+
+		// Save (write-through)
+		self.set(ctx, key, &value)?;
+
+		Ok(value)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	#[test]
 	fn test_cache_capacity() {
-		let cache: StateCache<String, i32> = StateCache::new(100);
+		let cache: StateCache<String, i32> = StateCache::with_capacity(100);
 		assert_eq!(cache.capacity(), 100);
 		assert!(cache.is_empty());
 		assert_eq!(cache.len(), 0);
 	}
 
 	#[test]
+	fn test_cache_default_capacity() {
+		let cache: StateCache<String, i32> = StateCache::new();
+		assert_eq!(cache.capacity(), 1000);
+		assert!(cache.is_empty());
+	}
+
+	#[test]
 	#[should_panic(expected = "capacity must be greater than 0")]
 	fn test_zero_capacity_panics() {
-		let _cache: StateCache<String, i32> = StateCache::new(0);
+		let _cache: StateCache<String, i32> = StateCache::with_capacity(0);
 	}
 
 	#[test]

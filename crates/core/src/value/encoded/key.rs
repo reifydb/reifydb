@@ -406,6 +406,68 @@ impl IntoEncodedKey for i8 {
 	}
 }
 
+// Reference implementations for numeric types (for StateCache)
+impl IntoEncodedKey for &u64 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &i64 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &u32 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &i32 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &u16 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &i16 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &u8 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &i8 {
+	fn into_encoded_key(self) -> EncodedKey {
+		(*self).into_encoded_key()
+	}
+}
+
+// RowNumber implementations (for StateCache with RowNumber keys)
+impl IntoEncodedKey for RowNumber {
+	fn into_encoded_key(self) -> EncodedKey {
+		self.0.into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &RowNumber {
+	fn into_encoded_key(self) -> EncodedKey {
+		self.0.into_encoded_key()
+	}
+}
+
 // Value types - using extend_value for proper encoding
 impl IntoEncodedKey for Value {
 	fn into_encoded_key(self) -> EncodedKey {
