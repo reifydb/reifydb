@@ -142,6 +142,25 @@ pub enum VmError {
 		message: String,
 	},
 
+	#[error("invalid DDL definition index: {index}")]
+	InvalidDdlDefIndex {
+		index: u16,
+	},
+
+	#[error("invalid DML target index: {index}")]
+	InvalidDmlTargetIndex {
+		index: u16,
+	},
+
+	#[error("transaction required for this operation")]
+	TransactionRequired,
+
+	#[error("unexpected DDL type: expected {expected}, found {found}")]
+	UnexpectedDdlType {
+		expected: String,
+		found: String,
+	},
+
 	// Function errors
 	#[error("return outside of function")]
 	ReturnOutsideFunction,

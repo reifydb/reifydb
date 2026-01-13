@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 mod create;
+mod delete;
 mod find;
 mod get;
 mod get_pk_id;

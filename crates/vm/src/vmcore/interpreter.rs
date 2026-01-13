@@ -9,8 +9,12 @@ use reifydb_core::{
 	util::CowVec,
 	value::column::{Column, ColumnData, Columns},
 };
+use std::str::FromStr;
+
+use reifydb_catalog::{CatalogStore, namespace::NamespaceToCreate, table::TableToCreate};
+use reifydb_core::interface::{CatalogTrackNamespaceChangeOperations, CatalogTrackTableChangeOperations};
 use reifydb_rqlv2::{
-	bytecode::{BytecodeReader, Opcode, OperatorKind, SubqueryDef},
+	bytecode::{BytecodeReader, DdlDef, Opcode, OperatorKind, SubqueryDef},
 	expression::{EvalContext, EvalValue},
 };
 use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
@@ -929,7 +933,498 @@ impl VmState {
 				return Ok(DispatchResult::Halt);
 			}
 
-			// DDL/DML opcodes not yet implemented
+			// ─────────────────────────────────────────────────────────
+			// DDL Operations
+			// ─────────────────────────────────────────────────────────
+			Opcode::CreateNamespace => {
+				let def_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				let def = self.program.ddl_defs.get(def_index as usize).ok_or(VmError::InvalidDdlDefIndex {
+					index: def_index,
+				})?;
+
+				if let DdlDef::CreateNamespace(ns_def) = def {
+					let rx = rx.ok_or(VmError::TransactionRequired)?;
+					let cmd_tx = rx.command_mut();
+
+					// Check if namespace already exists
+					if let Some(_) = CatalogStore::find_namespace_by_name(cmd_tx, &ns_def.name)
+						.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+					{
+						if ns_def.if_not_exists {
+							// Return success with created=false
+							let result = Columns::single_row([
+								("namespace", Value::Utf8(ns_def.name.clone())),
+								("created", Value::Boolean(false)),
+							]);
+							self.push_operand(OperandValue::Frame(result))?;
+							self.ip = next_ip;
+							return Ok(DispatchResult::Continue);
+						}
+						return Err(VmError::CatalogError {
+							message: format!("Namespace '{}' already exists", ns_def.name),
+						});
+					}
+
+					// Create the namespace
+					let result = CatalogStore::create_namespace(
+						cmd_tx,
+						NamespaceToCreate {
+							namespace_fragment: Some(Fragment::internal(ns_def.name.clone())),
+							name: ns_def.name.clone(),
+						},
+					)
+					.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+					cmd_tx.track_namespace_def_created(result.clone())
+						.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+					let columns = Columns::single_row([
+						("namespace", Value::Utf8(result.name)),
+						("created", Value::Boolean(true)),
+					]);
+					self.push_operand(OperandValue::Frame(columns))?;
+				} else {
+					return Err(VmError::UnexpectedDdlType {
+						expected: "CreateNamespace".into(),
+						found: format!("{:?}", def),
+					});
+				}
+
+				self.ip = next_ip;
+			}
+
+			Opcode::CreateTable => {
+				let def_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				let def = self.program.ddl_defs.get(def_index as usize).ok_or(VmError::InvalidDdlDefIndex {
+					index: def_index,
+				})?;
+
+				if let DdlDef::CreateTable(table_def) = def {
+					let rx = rx.ok_or(VmError::TransactionRequired)?;
+					let cmd_tx = rx.command_mut();
+
+					// Get namespace
+					let namespace_name = table_def.namespace.as_deref().unwrap_or("default");
+					let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
+						.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+						.ok_or_else(|| VmError::CatalogError {
+							message: format!("Namespace '{}' not found", namespace_name),
+						})?;
+
+					// Check if table already exists
+					if let Some(_) = CatalogStore::find_table_by_name(cmd_tx, namespace.id, &table_def.name)
+						.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+					{
+						if table_def.if_not_exists {
+							let result = Columns::single_row([
+								("namespace", Value::Utf8(namespace_name.to_string())),
+								("table", Value::Utf8(table_def.name.clone())),
+								("created", Value::Boolean(false)),
+							]);
+							self.push_operand(OperandValue::Frame(result))?;
+							self.ip = next_ip;
+							return Ok(DispatchResult::Continue);
+						}
+						return Err(VmError::CatalogError {
+							message: format!("Table '{}' already exists in namespace '{}'", table_def.name, namespace_name),
+						});
+					}
+
+					// Convert column definitions
+					use reifydb_catalog::table::TableColumnToCreate;
+					use reifydb_type::{Type, TypeConstraint};
+
+					let columns: Vec<TableColumnToCreate> = table_def
+						.columns
+						.iter()
+						.map(|col| {
+							let data_type = Type::from_str(&col.data_type).unwrap_or(Type::Any);
+							TableColumnToCreate {
+								name: col.name.clone(),
+								constraint: TypeConstraint::unconstrained(data_type),
+								policies: vec![],
+								auto_increment: false,
+								fragment: None,
+								dictionary_id: None,
+							}
+						})
+						.collect();
+
+					// Create the table
+					let table = CatalogStore::create_table(
+						cmd_tx,
+						TableToCreate {
+							fragment: Some(Fragment::internal(table_def.name.clone())),
+							table: table_def.name.clone(),
+							namespace: namespace.id,
+							columns,
+							retention_policy: None,
+						},
+					)
+					.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+					cmd_tx.track_table_def_created(table.clone())
+						.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+					let result = Columns::single_row([
+						("namespace", Value::Utf8(namespace_name.to_string())),
+						("table", Value::Utf8(table.name)),
+						("created", Value::Boolean(true)),
+					]);
+					self.push_operand(OperandValue::Frame(result))?;
+				} else {
+					return Err(VmError::UnexpectedDdlType {
+						expected: "CreateTable".into(),
+						found: format!("{:?}", def),
+					});
+				}
+
+				self.ip = next_ip;
+			}
+
+			Opcode::DropObject => {
+				let def_index = read_u16!(reader);
+				let _object_type = read_u8!(reader);
+				let next_ip = reader.position();
+
+				let def = self.program.ddl_defs.get(def_index as usize).ok_or(VmError::InvalidDdlDefIndex {
+					index: def_index,
+				})?;
+
+				if let DdlDef::Drop(drop_def) = def {
+					let rx = rx.ok_or(VmError::TransactionRequired)?;
+					let cmd_tx = rx.command_mut();
+
+					use reifydb_rqlv2::bytecode::ObjectType;
+
+					match drop_def.object_type {
+						ObjectType::Table => {
+							// Parse namespace.table from name
+							let parts: Vec<&str> = drop_def.name.split('.').collect();
+							let (namespace_name, table_name) = if parts.len() >= 2 {
+								(parts[0], parts[1])
+							} else {
+								("default", parts[0])
+							};
+
+							let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
+								.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+							if let Some(ns) = namespace {
+								let table = CatalogStore::find_table_by_name(cmd_tx, ns.id, table_name)
+									.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+								if let Some(t) = table {
+									CatalogStore::delete_table(cmd_tx, t.id)
+										.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+									cmd_tx.track_table_def_deleted(t.clone())
+										.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+									let result = Columns::single_row([
+										("object_type", Value::Utf8("table".to_string())),
+										("name", Value::Utf8(drop_def.name.clone())),
+										("dropped", Value::Boolean(true)),
+									]);
+									self.push_operand(OperandValue::Frame(result))?;
+								} else if !drop_def.if_exists {
+									return Err(VmError::CatalogError {
+										message: format!("Table '{}' not found", drop_def.name),
+									});
+								} else {
+									let result = Columns::single_row([
+										("object_type", Value::Utf8("table".to_string())),
+										("name", Value::Utf8(drop_def.name.clone())),
+										("dropped", Value::Boolean(false)),
+									]);
+									self.push_operand(OperandValue::Frame(result))?;
+								}
+							} else if !drop_def.if_exists {
+								return Err(VmError::CatalogError {
+									message: format!("Namespace '{}' not found", namespace_name),
+								});
+							} else {
+								let result = Columns::single_row([
+									("object_type", Value::Utf8("table".to_string())),
+									("name", Value::Utf8(drop_def.name.clone())),
+									("dropped", Value::Boolean(false)),
+								]);
+								self.push_operand(OperandValue::Frame(result))?;
+							}
+						}
+						ObjectType::Namespace => {
+							let namespace = CatalogStore::find_namespace_by_name(cmd_tx, &drop_def.name)
+								.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+							if let Some(ns) = namespace {
+								CatalogStore::delete_namespace(cmd_tx, ns.id)
+									.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+								cmd_tx.track_namespace_def_deleted(ns.clone())
+									.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+								let result = Columns::single_row([
+									("object_type", Value::Utf8("namespace".to_string())),
+									("name", Value::Utf8(drop_def.name.clone())),
+									("dropped", Value::Boolean(true)),
+								]);
+								self.push_operand(OperandValue::Frame(result))?;
+							} else if !drop_def.if_exists {
+								return Err(VmError::CatalogError {
+									message: format!("Namespace '{}' not found", drop_def.name),
+								});
+							} else {
+								let result = Columns::single_row([
+									("object_type", Value::Utf8("namespace".to_string())),
+									("name", Value::Utf8(drop_def.name.clone())),
+									("dropped", Value::Boolean(false)),
+								]);
+								self.push_operand(OperandValue::Frame(result))?;
+							}
+						}
+						_ => {
+							return Err(VmError::UnsupportedOperation {
+								operation: format!("DROP {:?} not yet implemented", drop_def.object_type),
+							});
+						}
+					}
+				} else {
+					return Err(VmError::UnexpectedDdlType {
+						expected: "Drop".into(),
+						found: format!("{:?}", def),
+					});
+				}
+
+				self.ip = next_ip;
+			}
+
+			// Other DDL opcodes - not yet implemented
+			Opcode::CreateView
+			| Opcode::CreateIndex
+			| Opcode::CreateSequence
+			| Opcode::CreateRingBuffer
+			| Opcode::CreateDictionary => {
+				return Err(VmError::UnsupportedOperation {
+					operation: format!("DDL opcode {:?} not yet implemented", opcode),
+				});
+			}
+
+			// ─────────────────────────────────────────────────────────
+			// DML Operations
+			// ─────────────────────────────────────────────────────────
+			Opcode::InsertRow => {
+				let target_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				let target = self.program.dml_targets.get(target_index as usize).ok_or(VmError::InvalidDmlTargetIndex {
+					index: target_index,
+				})?;
+
+				// Clone target info to avoid borrow issues
+				use reifydb_rqlv2::bytecode::DmlTargetType;
+				let target_type = target.target_type;
+				let target_name = target.name.clone();
+
+				let rx = rx.ok_or(VmError::TransactionRequired)?;
+				let cmd_tx = rx.command_mut();
+
+				match target_type {
+					DmlTargetType::Table => {
+						// Parse namespace.table from name
+						let parts: Vec<&str> = target_name.split('.').collect();
+						let (namespace_name, table_name) = if parts.len() >= 2 {
+							(parts[0], parts[1])
+						} else {
+							("default", parts[0])
+						};
+
+						let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
+							.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+							.ok_or_else(|| VmError::CatalogError {
+								message: format!("Namespace '{}' not found", namespace_name),
+							})?;
+
+						let table = CatalogStore::find_table_by_name(cmd_tx, namespace.id, table_name)
+							.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+							.ok_or_else(|| VmError::CatalogError {
+								message: format!("Table '{}' not found", table_name),
+							})?;
+
+						// Pop the input pipeline (rows to insert)
+						let input_pipeline = self.pop_pipeline()?;
+						let input_columns = pipeline::collect(input_pipeline)?;
+
+						// Build storage layout types
+						use reifydb_core::value::encoded::EncodedValuesLayout;
+						let table_types: Vec<reifydb_type::Type> = table.columns.iter()
+							.map(|c| c.constraint.get_type())
+							.collect();
+						let layout = EncodedValuesLayout::new(&table_types);
+
+						// Insert each row
+						use reifydb_catalog::sequence::RowSequence;
+						use reifydb_core::value::encoded::encode_value;
+						use reifydb_core::interface::RowKey;
+						use std::collections::HashMap;
+
+						let row_count = input_columns.row_count();
+						if row_count == 0 {
+							let result = Columns::single_row([
+								("namespace", Value::Utf8(namespace_name.to_string())),
+								("table", Value::Utf8(table_name.to_string())),
+								("inserted", Value::Uint8(0)),
+							]);
+							self.push_operand(OperandValue::Frame(result))?;
+							self.ip = next_ip;
+							return Ok(DispatchResult::Continue);
+						}
+
+						// Build column name to index map
+						let mut column_map: HashMap<&str, usize> = HashMap::new();
+						for (idx, col) in input_columns.iter().enumerate() {
+							column_map.insert(col.name().text(), idx);
+						}
+
+						// Allocate row numbers in batch
+						let row_numbers = RowSequence::next_row_number_batch(cmd_tx, table.id, row_count as u64)
+							.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+
+						// Insert each row
+						for row_idx in 0..row_count {
+							let mut row = layout.allocate();
+
+							for (table_idx, table_column) in table.columns.iter().enumerate() {
+								let value = if let Some(&input_idx) = column_map.get(table_column.name.as_str()) {
+									input_columns[input_idx].data().get_value(row_idx)
+								} else {
+									Value::Undefined
+								};
+
+								encode_value(&layout, &mut row, table_idx, &value);
+							}
+
+							// Insert the row using the RowKey
+							let row_key = RowKey::encoded(table.id, row_numbers[row_idx]);
+							cmd_tx.set(&row_key, row)
+								.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+						}
+
+						let result = Columns::single_row([
+							("namespace", Value::Utf8(namespace_name.to_string())),
+							("table", Value::Utf8(table_name.to_string())),
+							("inserted", Value::Uint8(row_count as u64)),
+						]);
+						self.push_operand(OperandValue::Frame(result))?;
+					}
+					_ => {
+						return Err(VmError::UnsupportedOperation {
+							operation: format!("INSERT into {:?} not yet implemented", target_type),
+						});
+					}
+				}
+
+				self.ip = next_ip;
+			}
+
+			Opcode::UpdateRow => {
+				let _target_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				// TODO: Implement UPDATE
+				return Err(VmError::UnsupportedOperation {
+					operation: "UPDATE not yet implemented".to_string(),
+				});
+
+				#[allow(unreachable_code)]
+				{
+					self.ip = next_ip;
+				}
+			}
+
+			Opcode::DeleteRow => {
+				let target_index = read_u16!(reader);
+				let next_ip = reader.position();
+
+				let target = self.program.dml_targets.get(target_index as usize).ok_or(VmError::InvalidDmlTargetIndex {
+					index: target_index,
+				})?;
+
+				// Clone target info to avoid borrow issues
+				use reifydb_rqlv2::bytecode::DmlTargetType;
+				let target_type = target.target_type;
+				let target_name = target.name.clone();
+
+				let rx = rx.ok_or(VmError::TransactionRequired)?;
+				let cmd_tx = rx.command_mut();
+
+				match target_type {
+					DmlTargetType::Table => {
+						// Parse namespace.table from name
+						let parts: Vec<&str> = target_name.split('.').collect();
+						let (namespace_name, table_name) = if parts.len() >= 2 {
+							(parts[0], parts[1])
+						} else {
+							("default", parts[0])
+						};
+
+						let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
+							.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+							.ok_or_else(|| VmError::CatalogError {
+								message: format!("Namespace '{}' not found", namespace_name),
+							})?;
+
+						let table = CatalogStore::find_table_by_name(cmd_tx, namespace.id, table_name)
+							.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+							.ok_or_else(|| VmError::CatalogError {
+								message: format!("Table '{}' not found", table_name),
+							})?;
+
+						// Pop the input pipeline (rows to delete - should contain row numbers)
+						let input_pipeline = self.pop_pipeline()?;
+						let input_columns = pipeline::collect(input_pipeline)?;
+
+						use reifydb_core::interface::RowKey;
+
+						// Find the row_number column
+						let row_number_col = input_columns.iter()
+							.find(|c| c.name().text() == "_row_number" || c.name().text() == "row_number");
+
+						let deleted_count = if let Some(row_num_col) = row_number_col {
+							let row_count = row_num_col.data().len();
+							for i in 0..row_count {
+								if let Value::Uint8(row_num) = row_num_col.data().get_value(i) {
+									let row_key = RowKey::encoded(table.id, reifydb_type::RowNumber::from(row_num));
+									cmd_tx.remove(&row_key)
+										.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+								}
+							}
+							row_count
+						} else {
+							// If no row number column, we can't delete anything
+							0
+						};
+
+						let result = Columns::single_row([
+							("namespace", Value::Utf8(namespace_name.to_string())),
+							("table", Value::Utf8(table_name.to_string())),
+							("deleted", Value::Uint8(deleted_count as u64)),
+						]);
+						self.push_operand(OperandValue::Frame(result))?;
+					}
+					_ => {
+						return Err(VmError::UnsupportedOperation {
+							operation: format!("DELETE from {:?} not yet implemented", target_type),
+						});
+					}
+				}
+
+				self.ip = next_ip;
+			}
+
 			_ => {
 				return Err(VmError::UnsupportedOperation {
 					operation: format!("Opcode {:?} not yet implemented", opcode),

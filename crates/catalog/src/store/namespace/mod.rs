@@ -7,6 +7,7 @@ use reifydb_core::interface::{MultiVersionValues, NamespaceDef, NamespaceId};
 use crate::store::namespace::layout::namespace;
 
 mod create;
+mod delete;
 mod find;
 mod get;
 mod layout;

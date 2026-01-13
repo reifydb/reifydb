@@ -15,6 +15,7 @@ use reifydb_core::{
 	event::{Event, EventBus},
 	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
 	ioc::IocContainer,
+	value::column::Columns,
 };
 use reifydb_function::{Functions, math, series, subscription};
 use reifydb_rqlv2::Compiler;
@@ -187,17 +188,16 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::query_new", level = "info", skip(self, _params), fields(rql = %rql))]
-	pub async fn query_new_as(
+	pub fn query_new_as(
 		&self,
 		_identity: &Identity,
 		rql: &str,
 		_params: Params,
 	) -> Result<Vec<Frame>, Error> {
 		let catalog = self.catalog();
-		let rql = rql.to_string();
-		let rql_for_errors = rql.clone();
+		let rql_for_errors = rql.to_string();
 
-		let program = self.compiler.compile(&rql).await?;
+		let program = self.compiler.compile(rql)?;
 
 		// Step 2: Create a new transaction for execution
 		let mut exec_tx = self.begin_query().map_err(|e| {
@@ -259,6 +259,103 @@ impl StandardEngine {
 				code: "VM_ERROR".to_string(),
 				statement: Some(rql_for_errors.clone()),
 				message: format!("Collection failed: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
+
+		Ok(vec![Frame::from(columns)])
+	}
+
+	/// Execute a DDL/DML command using the new RQLv2/VM stack.
+	///
+	/// This is similar to `command_as()` but uses the new bytecode-based execution.
+	#[instrument(name = "engine::command_new", level = "info", skip(self, _params), fields(rql = %rql))]
+	pub fn command_new_as(
+		&self,
+		_identity: &Identity,
+		rql: &str,
+		_params: Params,
+	) -> Result<Vec<Frame>, Error> {
+		let catalog = self.catalog();
+		let rql_for_errors = rql.to_string();
+
+		// Step 1: Compile to bytecode
+		let program = self.compiler.compile(rql)?;
+
+		// Step 2: Begin a command transaction
+		let mut exec_tx = self.begin_command().map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Failed to begin command transaction: {}", e),
+				column: None,
+				fragment: Fragment::default(),
+				label: None,
+				help: None,
+				notes: Vec::new(),
+				cause: None,
+				operator_chain: None,
+			};
+			Error(diagnostic)
+		})?;
+
+		// Step 3: Execute the bytecode
+		let context = Arc::new(VmContext::with_catalog(catalog));
+		let mut vm = VmState::new(program, context);
+
+		let pipeline = vm
+			.execute(&mut exec_tx)
+			.map_err(|e| {
+				let diagnostic = diagnostic::Diagnostic {
+					code: "VM_ERROR".to_string(),
+					statement: Some(rql_for_errors.clone()),
+					message: format!("Command execution failed: {}", e),
+					column: None,
+					fragment: Fragment::default(),
+					label: None,
+					help: None,
+					notes: Vec::new(),
+					cause: None,
+					operator_chain: None,
+				};
+				Error(diagnostic)
+			})?;
+
+		// Step 4: Collect results
+		let columns = if let Some(pipeline) = pipeline {
+			collect(pipeline).map_err(|e| {
+				let diagnostic = diagnostic::Diagnostic {
+					code: "VM_ERROR".to_string(),
+					statement: Some(rql_for_errors.clone()),
+					message: format!("Collection failed: {}", e),
+					column: None,
+					fragment: Fragment::default(),
+					label: None,
+					help: None,
+					notes: Vec::new(),
+					cause: None,
+					operator_chain: None,
+				};
+				Error(diagnostic)
+			})?
+		} else {
+			// Commands may not produce output (e.g., CREATE TABLE)
+			Columns::empty()
+		};
+
+		// Step 5: Commit the transaction
+		exec_tx.commit().map_err(|e| {
+			let diagnostic = diagnostic::Diagnostic {
+				code: "VM_ERROR".to_string(),
+				statement: Some(rql_for_errors.clone()),
+				message: format!("Failed to commit transaction: {}", e),
 				column: None,
 				fragment: Fragment::default(),
 				label: None,

@@ -115,7 +115,7 @@ pub fn create_test_engine() -> StandardEngine {
 	ioc = ioc.register(compute_pool.clone());
 
 	// Register Compiler
-	let compiler = reifydb_rqlv2::Compiler::new(compute_pool, materialized_catalog.clone());
+	let compiler = reifydb_rqlv2::Compiler::new(materialized_catalog.clone());
 	ioc = ioc.register(compiler);
 
 	StandardEngine::new(

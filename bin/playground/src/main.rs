@@ -3,141 +3,172 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::time::Duration;
+//! # RQLv2 + VM Command Execution Demo
+//!
+//! This demo shows the new RQLv2/VM-based command execution path:
+//! - DDL: CREATE NAMESPACE, CREATE TABLE (via VM)
+//! - DML: INSERT (via legacy path - VM DML pipeline integration pending)
+//! - Query: FROM, MAP (via VM)
+//!
+//! The new implementation compiles RQL to bytecode and executes it via the VM,
+//! replacing the legacy direct execution path.
 
-use reifydb::{WithSubsystem, server, sub_server_ws::WsConfig};
-use reifydb_client::WsClient;
-use tokio::time::{sleep, timeout};
+use reifydb::{Identity, Params, embedded};
 
 fn main() {
-	println!("=== WebSocket Subscription Demo ===\n");
+	println!("=== RQLv2 + VM Command Execution Demo ===\n");
 
-	// 1. Create server with WebSocket subsystem enabled (synchronous)
-	println!(">>> Creating database with WebSocket server...");
-	let mut db = server::memory()
-		.with_ws(WsConfig::default().bind_addr("127.0.0.1:8091"))
-		.with_flow(|f| f)
-		.build()
-		.unwrap();
-
-	println!("Database built with {} subsystems", db.subsystem_count());
-
-	// 2. Start the database (this starts the WS server)
-	println!(">>> Starting database...");
+	// 1. Create and start an in-memory database
+	println!(">>> Creating in-memory database...");
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
-	println!("Database started successfully!");
-	println!("WebSocket server listening on ws://127.0.0.1:8091");
+	println!("Database started!\n");
 
-	// 3. Create a runtime for the async client code
-	let rt = tokio::runtime::Runtime::new().unwrap();
-	rt.block_on(async {
-		// Give the server a moment to start accepting connections
-		sleep(Duration::from_millis(100)).await;
+	// Get the engine for direct access to the new methods
+	let engine = db.engine().clone();
+	let identity = Identity::root();
 
-		// 4. Connect WebSocket client
-		println!("\n>>> Connecting WebSocket client...");
-		let mut client = WsClient::connect("ws://127.0.0.1:8091").await.unwrap();
-		println!("Client connected!");
+	// ============================================================
+	// DDL Operations via new VM-based execution
+	// ============================================================
 
-		// 5. Authenticate
-		println!(">>> Authenticating with 'root' token...");
-		client.authenticate("root").await.unwrap();
-		println!("Authenticated successfully!");
+	// 2. Create a namespace using the new VM-based execution
+	println!(">>> CREATE NAMESPACE demo (via VM)...");
+	let result = engine.command_new_as(&identity, "CREATE NAMESPACE demo", Params::None);
+	match &result {
+		Ok(_) => println!("Namespace created successfully!"),
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		// 6. Create namespace and table via WebSocket
-		println!("\n>>> Creating namespace 'demo'...");
-		client.command("create namespace demo;", None).await.unwrap();
-		println!("Namespace created!");
+	// 3. Create a table using the new VM-based execution
+	println!(">>> CREATE TABLE demo.users (via VM)...");
+	let result = engine.command_new_as(
+		&identity,
+		r#"CREATE TABLE demo.users {
+			id: int4,
+			name: utf8,
+			email: utf8
+		}"#,
+		Params::None,
+	);
+	match &result {
+		Ok(_) => println!("Table created successfully!"),
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		println!(">>> Creating table 'demo.events'...");
-		client.command(
-			r#"create table demo.events {
-				id: int4,
-				message: utf8,
-				timestamp: uint8
-			}"#,
-			None,
-		)
-		.await
-		.unwrap();
-		println!("Table created!");
+	// ============================================================
+	// DML Operations - using legacy path for now
+	// (VM DML pipeline integration is still in progress)
+	// ============================================================
 
-		// 7. Subscribe to changes on demo.events
-		println!("\n>>> Subscribing to 'from demo.events'...");
-		let subscription_id = client.subscribe("from demo.events").await.unwrap();
-		println!("Subscribed! Subscription ID: {}", subscription_id);
+	// 4. Insert data using the legacy path
+	println!(">>> INSERT INTO demo.users (via legacy command path)...");
+	let result = db.command_as_root(
+		r#"FROM [{
+			id: 1,
+			name: "Alice",
+			email: "alice@example.com"
+		}, {
+			id: 2,
+			name: "Bob",
+			email: "bob@example.com"
+		}, {
+			id: 3,
+			name: "Charlie",
+			email: "charlie@example.com"
+		}] INSERT demo.users"#,
+		Params::None,
+	);
+	match &result {
+		Ok(_) => println!("Data inserted successfully!"),
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		// 8. Insert some test data
-		println!("\n>>> Inserting test data...");
-		client.command(
-			r#"from [{
-				id: 1,
-				message: "First event",
-				timestamp: 1000
-			}, {
-				id: 2,
-				message: "Second event",
-				timestamp: 2000
-			}, {
-				id: 3,
-				message: "Third event",
-				timestamp: 3000
-			}] insert demo.events"#,
-			None,
-		)
-		.await
-		.unwrap();
-		println!("Data inserted!");
+	// ============================================================
+	// Query Operations via new VM-based execution
+	// ============================================================
 
-		// 9. Receive change notifications
-		println!("\n>>> Waiting for change notifications...");
-		println!("    (The server sends test frames every 2 seconds)");
-
-		// Try to receive a few change notifications
-		for i in 1..=3 {
-			println!("\n--- Waiting for notification #{} ---", i);
-			match timeout(Duration::from_secs(5), client.recv()).await {
-				Ok(Some(change)) => {
-					println!("Received change notification!");
-					println!("  Subscription ID: {}", change.subscription_id);
-					println!("  Frame:");
-					for col in &change.frame.columns {
-						println!("    Column '{}' ({}): {:?}", col.name, col.r#type, col.data);
-					}
-				}
-				Ok(None) => {
-					println!("Connection closed");
-					break;
-				}
-				Err(_) => {
-					println!("Timeout waiting for notification");
-				}
+	// 5. Query the data using the new VM-based execution
+	println!(">>> SELECT * FROM demo.users (via VM)...");
+	let result = engine.query_new_as(&identity, "FROM demo.users", Params::None);
+	match &result {
+		Ok(frames) => {
+			println!("Query executed successfully!");
+			for frame in frames {
+				println!("{}", frame);
 			}
 		}
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		// 10. Query the table to verify data
-		println!("\n>>> Querying demo.events...");
-		let result = client.query("from demo.events", None).await.unwrap();
-		for frame in result.frames {
-			println!("Query result:");
-			println!("{}", frame);
+	let result =
+		engine.query_new_as(&identity, "FROM demo.users | MAP { name, email }", Params::None);
+	match &result {
+		Ok(frames) => {
+			println!("Query executed successfully!");
+			for frame in frames {
+				println!("{}", frame);
+			}
 		}
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		// 11. Unsubscribe
-		println!("\n>>> Unsubscribing...");
-		client.unsubscribe(&subscription_id).await.unwrap();
-		println!("Unsubscribed!");
+	let result = engine.query_new_as(
+		&identity,
+		r#"FROM demo.users | MAP { name, greeting: "Hello, " + name }"#,
+		Params::None,
+	);
+	match &result {
+		Ok(frames) => {
+			println!("Query executed successfully!");
+			for frame in frames {
+				println!("{}", frame);
+			}
+		}
+		Err(e) => println!("Error: {}", e),
+	}
+	println!();
 
-		// 12. Close client
-		println!("\n>>> Closing client...");
-		client.close().await.unwrap();
-		println!("Client closed!");
-	});
+	// ============================================================
+	// Comparison: Legacy vs VM execution
+	// ============================================================
 
-	// 13. Stop database
-	println!(">>> Stopping database...");
+	println!(">>> Comparing legacy vs VM execution...");
+	println!("\nLegacy query (FROM demo.users):");
+	match db.query_as_root("FROM demo.users", Params::None) {
+		Ok(frames) => {
+			for frame in frames {
+				println!("{}", frame);
+			}
+		}
+		Err(e) => println!("Error: {}", e),
+	}
+
+	println!("\nVM query (same query):");
+	let result = engine.query_new_as(&identity, "FROM demo.users", Params::None);
+	match &result {
+		Ok(frames) => {
+			for frame in frames {
+				println!("{}", frame);
+			}
+		}
+		Err(e) => println!("Error: {}", e),
+	}
+
+	// Clean shutdown
+	println!("\n>>> Stopping database...");
 	db.stop().unwrap();
 	println!("Database stopped!");
 
 	println!("\n=== Demo complete! ===");
+	println!("\nSummary:");
+	println!("  - DDL (CREATE NAMESPACE, CREATE TABLE): Working via VM");
+	println!("  - DML (INSERT): Using legacy path (VM pipeline integration pending)");
+	println!("  - Queries (FROM, MAP): Working via VM");
+	println!("  - Note: FILTER type coercion needs additional work");
 }
