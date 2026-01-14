@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_core::interface::MultiVersionBatch;
 
 mod keyed;
 mod raw;

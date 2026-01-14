@@ -1,0 +1,46 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests Delta::Unset for single-version store.
+# Unset preserves deleted values (for CDC), unlike remove which doesn't.
+
+set a=1
+---
+ok
+
+get a
+---
+"a" => "1"
+
+# Unset with preserved values
+unset a=1
+---
+ok
+
+get a
+---
+"a" => None
+
+# Key should not exist in scan
+scan
+---
+ok
+
+# Test unset of multiple keys
+set b=2
+set c=3
+---
+ok
+
+scan
+---
+"b" => "2"
+"c" => "3"
+
+unset b=2
+---
+ok
+
+scan
+---
+"c" => "3"

@@ -24,6 +24,7 @@ use reifydb_core::{
 	value::column::Columns,
 };
 use reifydb_function::{Functions, math, series, subscription};
+use reifydb_metric::MetricReader;
 use reifydb_rqlv2::Compiler;
 use reifydb_transaction::{
 	StandardCommandTransaction, StandardQueryTransaction, interceptor::InterceptorFactory,
@@ -441,7 +442,7 @@ impl StandardEngine {
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
-		let stats_tracker = multi.store().stats_tracker().clone();
+		let stats_reader = MetricReader::new(multi.store().clone());
 
 		let compiler = ioc.resolve::<Compiler>().expect("Compiler must be registered in IocContainer");
 
@@ -453,7 +454,7 @@ impl StandardEngine {
 				catalog.clone(),
 				functions,
 				flow_operator_store.clone(),
-				stats_tracker,
+				stats_reader,
 				ioc,
 			),
 			interceptors,

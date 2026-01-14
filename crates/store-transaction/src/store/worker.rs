@@ -17,14 +17,13 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender, bounded};
-use reifydb_core::CommitVersion;
+use reifydb_core::{CommitVersion, EncodedKey};
 use reifydb_type::CowVec;
 use tracing::{debug, error, trace};
 
 use super::drop::find_keys_to_drop;
 use crate::{
 	hot::HotStorage,
-	stats::Tier,
 	tier::{EntryKind, TierStorage},
 };
 
@@ -79,8 +78,7 @@ enum DropMessage {
 pub trait DropStatsCallback: Send + 'static {
 	fn record_drop(
 		&self,
-		tier: Tier,
-		key: &[u8],
+		key: EncodedKey,
 		versioned_key_bytes: u64,
 		value_bytes: u64,
 		version: CommitVersion,
@@ -235,8 +233,7 @@ impl DropWorker {
 					for entry in entries_to_drop {
 						// Record stats for the drop
 						stats_callback.record_drop(
-							Tier::Hot,
-							request.key.as_ref(),
+							EncodedKey(request.key.clone()),
 							entry.versioned_key.len() as u64,
 							entry.value_bytes,
 							request.version,

@@ -21,16 +21,13 @@ pub struct TransactionStoreConfig {
 /// Configuration for storage statistics tracking.
 #[derive(Clone, Debug)]
 pub struct StorageStatsConfig {
-	/// Time between checkpoint persists.
-	pub checkpoint_interval: Duration,
-	/// Channel capacity for the stats worker.
+	/// Channel capacity for the metrics worker.
 	pub worker_channel_capacity: usize,
 }
 
 impl Default for StorageStatsConfig {
 	fn default() -> Self {
 		Self {
-			checkpoint_interval: Duration::from_secs(10),
 			worker_channel_capacity: 10_000,
 		}
 	}

@@ -1,0 +1,16 @@
+[package]
+name = "reifydb-metric"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Storage and CDC metrics tracking for ReifyDB"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

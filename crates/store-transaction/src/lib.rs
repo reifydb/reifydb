@@ -12,24 +12,26 @@ pub mod tier;
 pub mod warm;
 
 pub mod config;
-mod multi;
 // pub mod retention;
-mod single;
-pub mod stats;
 mod store;
 
 pub use config::{
 	ColdConfig, HotConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig, WarmConfig,
 };
-pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
-	interface::{MultiVersionValues, SingleVersionValues},
+	interface::{
+		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
+		MultiVersionStore, MultiVersionValues,
+		SingleVersionBatch, SingleVersionCommit, SingleVersionContains,
+		SingleVersionGet, SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove,
+		SingleVersionSet, SingleVersionStore, SingleVersionValues,
+	},
 };
-pub use single::*;
-pub use stats::{ObjectId, StorageStats, StorageTracker, StatsOp, StatsWorker, Tier, TierStats};
-pub use store::{StandardTransactionStore, StorageResolver};
+
+
+pub use store::StandardTransactionStore;
 
 pub mod memory {
 	pub use crate::hot::memory::MemoryPrimitiveStorage;
@@ -69,18 +71,12 @@ impl TransactionStore {
 		TransactionStore::Standard(StandardTransactionStore::testing_memory())
 	}
 
-	/// Get access to the storage tracker.
-	pub fn stats_tracker(&self) -> &StorageTracker {
-		match self {
-			TransactionStore::Standard(store) => store.stats_tracker(),
-		}
-	}
-
-	/// Get access to the stats worker for CDC tracking.
-	pub fn stats_worker(&self) -> &std::sync::Arc<StatsWorker> {
-		match self {
-			TransactionStore::Standard(store) => store.stats_worker(),
-		}
+	/// Create a test store with a custom EventBus.
+	///
+	/// Use this when you need the store to emit events on a specific EventBus,
+	/// e.g., for testing metrics integration.
+	pub fn testing_memory_with_eventbus(event_bus: reifydb_core::event::EventBus) -> Self {
+		TransactionStore::Standard(StandardTransactionStore::testing_memory_with_eventbus(event_bus))
 	}
 
 	/// Get access to the hot storage tier.
@@ -118,6 +114,19 @@ impl MultiVersionCommit for TransactionStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
 			TransactionStore::Standard(store) => store.commit(deltas, version),
+		}
+	}
+}
+
+impl MultiVersionGetPrevious for TransactionStore {
+	#[inline]
+	fn get_previous_version(
+		&self,
+		key: &EncodedKey,
+		before_version: CommitVersion,
+	) -> reifydb_type::Result<Option<MultiVersionValues>> {
+		match self {
+			TransactionStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
 	}
 }

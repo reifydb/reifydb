@@ -11,9 +11,14 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_cdc::{CdcEventListener, CdcStore, CdcWorker};
-use reifydb_core::{SharedRuntime, SharedRuntimeConfig, event::EventBus, event::transaction::PostCommitEvent, ioc::IocContainer};
+use reifydb_core::{
+	SharedRuntime, SharedRuntimeConfig,
+	event::{CdcStatsRecordedEvent, EventBus, StorageStatsRecordedEvent, transaction::PostCommitEvent},
+	ioc::IocContainer,
+};
+use reifydb_metric::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_rqlv2::Compiler;
-use reifydb_store_transaction::{StorageResolver, TransactionStore};
+use reifydb_store_transaction::TransactionStore;
 
 pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
@@ -90,8 +95,9 @@ pub fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	reifydb_core::util::mock_time_set(1000);
 
-	let store = TransactionStore::testing_memory();
+	// Create EventBus first, then use it for the store so events flow correctly
 	let eventbus = EventBus::new();
+	let store = TransactionStore::testing_memory_with_eventbus(eventbus.clone());
 	let single = TransactionSingle::svl(store.clone(), eventbus.clone());
 	let multi = TransactionMulti::new(store.clone(), single.clone(), eventbus.clone()).unwrap();
 
@@ -108,14 +114,24 @@ pub fn create_test_engine() -> StandardEngine {
 	let compiler = Compiler::new(materialized_catalog.clone());
 	ioc = ioc.register(compiler);
 
-	// Create CDC pipeline with stats tracking
+	// Create transaction store Arc for workers
+	let transaction_store = Arc::new(store.clone());
+
+	// Create metrics worker and register event listeners
+	let metrics_worker = Arc::new(MetricsWorker::new(
+		MetricsWorkerConfig::default(),
+		store.clone(),
+		transaction_store.clone(),
+		eventbus.clone(),
+	));
+	eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
+	eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+	ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
+
+	// Create CDC pipeline
 	let cdc_store = CdcStore::memory();
 	ioc = ioc.register(cdc_store.clone());
-
-	let stats_worker = store.stats_worker().clone();
-	let hot_storage = store.hot().cloned().expect("hot tier required for CDC");
-	let resolver = Arc::new(StorageResolver::new(hot_storage));
-	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, resolver, Some(stats_worker)));
+	let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, transaction_store, eventbus.clone()));
 	eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
 	ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 

@@ -14,18 +14,21 @@ use reifydb_core::{
 use reifydb_type::util::hex;
 use tracing::instrument;
 
+use reifydb_core::event::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite};
+
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version},
+	version::{VersionedGetResult, encode_versioned_key, get_at_version},
+};
+use reifydb_core::interface::{
+	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+	MultiVersionGetPrevious, MultiVersionStore,
 };
 use crate::{
-	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
 	hot::EntryKind::Multi,
-	stats::{PreVersionInfo, StatsOp, Tier},
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
-use crate::store::version::get_previous_version_info;
 
 /// Fixed chunk size for internal tier scans.
 /// This is the number of versioned entries fetched per tier per iteration.
@@ -128,51 +131,32 @@ impl MultiVersionCommit for StandardTransactionStore {
 			.collect();
 
 		// Collect storage statistics for batch sending.
-		// Pre-version info is looked up BEFORE writing to storage so we can
-		// correctly track inserts vs updates and historical byte counts.
+		// Stats are emitted via EventBus for the metrics worker to process.
 		// CDC stats are collected by the async CDC shard workers.
-		let mut stats_ops: Vec<StatsOp> = Vec::new();
+		let mut writes: Vec<StorageWrite> = Vec::new();
+		let mut deletes: Vec<StorageDelete> = Vec::new();
+		let mut drops: Vec<StorageDrop> = Vec::new();
+
 		for delta in deltas.iter() {
 			let key = delta.key();
-			let key_bytes = key.as_ref();
-			let table = classify_key(key);
-			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
-
-			// Look up pre-version info before storage write
-			let pre_info = get_previous_version_info(storage, table, key_bytes)
-				.ok()
-				.flatten()
-				.map(|info| PreVersionInfo {
-					key_bytes: info.key_bytes,
-					value_bytes: info.value_bytes,
-				});
 
 			match delta {
 				Delta::Set {
 					values,
 					..
 				} => {
-					stats_ops.push(StatsOp::Write {
-						tier: Tier::Hot,
-						key: key_bytes.to_vec(),
-						key_bytes: versioned_key_bytes,
+					writes.push(StorageWrite {
+						key: key.clone(),
 						value_bytes: values.len() as u64,
-						pre_info,
 					});
 				}
-				Delta::Remove {
-					..
-				} => {
-					stats_ops.push(StatsOp::Delete {
-						tier: Tier::Hot,
-						key: key_bytes.to_vec(),
-						key_bytes: versioned_key_bytes,
-						pre_info,
+				Delta::Unset { values, .. } => {
+					deletes.push(StorageDelete {
+						key: key.clone(),
+						value_bytes: values.len() as u64,
 					});
 				}
-				Delta::Drop {
-					..
-				} => {}
+				Delta::Remove { .. } | Delta::Drop { .. } => {}
 			}
 		}
 
@@ -192,9 +176,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 						.or_default()
 						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
-				Delta::Remove {
-					key,
-				} => {
+				Delta::Unset { key, .. } | Delta::Remove { key } => {
 					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
 					batches.entry(table).or_default().push((versioned_key, None));
 				}
@@ -221,10 +203,8 @@ impl MultiVersionCommit for StandardTransactionStore {
 					)?;
 					for entry in entries_to_drop {
 						// Collect stats for each dropped entry
-						stats_ops.push(StatsOp::Drop {
-							tier: Tier::Hot,
-							key: key.as_ref().to_vec(),
-							versioned_key_bytes: entry.versioned_key.len() as u64,
+						drops.push(StorageDrop {
+							key: key.clone(),
 							value_bytes: entry.value_bytes,
 						});
 						batches.entry(table).or_default().push((entry.versioned_key, None));
@@ -252,8 +232,15 @@ impl MultiVersionCommit for StandardTransactionStore {
 		// Write versioned entries to storage
 		storage.set(batches)?;
 
-		// Record stats for this commit
-		self.stats_worker.record_batch(stats_ops, version);
+		// Emit storage stats event for this commit
+		if !writes.is_empty() || !deletes.is_empty() || !drops.is_empty() {
+			self.event_bus.emit(StorageStatsRecordedEvent {
+				writes,
+				deletes,
+				drops,
+				version,
+			});
+		}
 
 		Ok(())
 	}
@@ -659,6 +646,36 @@ impl StandardTransactionStore {
 		}
 
 		Ok(true)
+	}
+}
+
+impl MultiVersionGetPrevious for StandardTransactionStore {
+	fn get_previous_version(
+		&self,
+		key: &EncodedKey,
+		before_version: CommitVersion,
+	) -> reifydb_type::Result<Option<MultiVersionValues>> {
+		if before_version.0 == 0 {
+			return Ok(None);
+		}
+
+		// Hot storage must be available for version lookups
+		let storage = self.hot.as_ref().expect("hot storage required for version lookups");
+
+		let table = classify_key(key);
+		let prev_version = CommitVersion(before_version.0 - 1);
+
+		match get_at_version(storage, table, key.as_ref(), prev_version) {
+			Ok(VersionedGetResult::Value { value, version }) => {
+				Ok(Some(MultiVersionValues {
+					key: key.clone(),
+					values: EncodedValues(CowVec::new(value.to_vec())),
+					version,
+				}))
+			}
+			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
+			Err(e) => Err(e),
+		}
 	}
 }
 

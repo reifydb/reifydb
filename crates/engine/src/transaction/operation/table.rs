@@ -66,25 +66,17 @@ impl TableOperations for StandardCommandTransaction {
 	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey::encoded(table.id, id);
 
-		// Get the encoded before removing (for post-delete interceptor)
-		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
+		// Get the values before removing (for metrics tracking)
+		let deleted_values = match self.get(&key)? {
+			Some(v) => v.values,
+			None => return Ok(()), // Nothing to delete
+		};
 
 		// Execute pre-delete interceptors
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		// Remove the encoded from the database
-		self.remove(&key)?;
-
-		// Execute post-delete interceptors if we had a encoded
-		// if let Some(ref encoded) = deleted_row {
-		// 	TableInterceptor::post_delete(self, &table, id, encoded)?;
-		// }
-
-		// Track the removal for flow processing
-		// self.add_pending(PendingWrite::TableRemove {
-		// 	table,
-		// 	id,
-		// });
+		self.unset(&key, deleted_values)?;
 
 		Ok(())
 	}

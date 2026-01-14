@@ -11,6 +11,7 @@ members = [
     "crates/core",
     "crates/engine",
     "crates/hash",
+    "crates/metric",
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
@@ -58,6 +59,7 @@ default-members = [
     "crates/core",
     "crates/engine",
     "crates/hash",
+    "crates/metric",
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
@@ -139,6 +141,7 @@ reifydb-compression = { version = "0.2.0", path = "crates/compression" }
 reifydb-core = { version = "0.2.0", path = "crates/core" }
 reifydb-engine = { version = "0.2.0", path = "crates/engine" }
 reifydb-hash = { version = "0.2.0", path = "crates/hash" }
+reifydb-metric = { version = "0.2.0", path = "crates/metric" }
 reifydb-abi = { version = "0.2.0", path = "crates/abi" }
 reifydb-sdk = { version = "0.2.0", path = "crates/sdk" }
 reifydb-rql = { version = "0.2.0", path = "crates/rql" }

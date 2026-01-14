@@ -154,6 +154,25 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 			}
 
+			// tx: unset KEY=VALUE...
+			"unset" => {
+				let t = self.get_transaction(&command.prefix)?;
+				let mut args = command.consume_args();
+				for kv in args.rest_key() {
+					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
+					let values = EncodedValues(decode_binary(&kv.value));
+					match t {
+						TransactionHandle::Query(_) => {
+							unreachable!("can not call unset on rx")
+						}
+						TransactionHandle::Command(tx) => {
+							tx.unset(&key, values).unwrap();
+						}
+					}
+				}
+				args.reject_rest()?;
+			}
+
 			"version" => {
 				command.consume_args().reject_rest()?;
 				let t = self.get_transaction(&command.prefix)?;

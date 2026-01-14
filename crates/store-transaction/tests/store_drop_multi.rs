@@ -11,16 +11,16 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
+use reifydb_core::interface::{MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_store_transaction::{
-	HotConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, StandardTransactionStore,
-	TransactionStoreConfig, hot::HotStorage,
+	HotConfig, StandardTransactionStore, TransactionStoreConfig, hot::HotStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
@@ -206,6 +206,31 @@ impl testscript::Runner for Runner {
 					],
 					version,
 				)?
+			}
+
+			// unset KEY=VALUE [version=VERSION]
+			"unset" => {
+				let mut args = command.consume_args();
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let values = EncodedValues(decode_binary(&kv.value));
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					CommitVersion(v)
+				} else {
+					self.version.0 += 1;
+					self.version
+				};
+				args.reject_rest()?;
+
+				self.store.commit(
+					cow_vec![
+						(Delta::Unset {
+							key,
+							values
+						})
+					],
+					version,
+				)?;
 			}
 
 			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]

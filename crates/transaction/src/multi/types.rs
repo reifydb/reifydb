@@ -121,22 +121,13 @@ impl TransactionValue {
 					values,
 					version: item.version,
 				},
-				Delta::Remove {
-					key,
-					..
-				} => MultiVersionValues {
-					key,
-					values: EncodedValues(CowVec::default()),
-					version: item.version,
-				},
-				Delta::Drop {
-					key,
-					..
-				} => MultiVersionValues {
-					key,
-					values: EncodedValues(CowVec::default()),
-					version: item.version,
-				},
+				Delta::Unset { key, .. } | Delta::Remove { key } | Delta::Drop { key, .. } => {
+					MultiVersionValues {
+						key,
+						values: EncodedValues(CowVec::default()),
+						version: item.version,
+					}
+				}
 			},
 			Self::Committed(item) => MultiVersionValues {
 				key: item.key,
@@ -259,6 +250,6 @@ impl Pending {
 	}
 
 	pub fn was_removed(&self) -> bool {
-		matches!(self.delta, Delta::Remove { .. })
+		matches!(self.delta, Delta::Unset { .. } | Delta::Remove { .. })
 	}
 }

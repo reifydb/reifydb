@@ -1,23 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Key parsing utilities for extracting ObjectId from encoded keys.
+//! Key parsing utilities for extracting Id from encoded keys.
 
 use reifydb_core::{
 	interface::{DictionaryId, FlowNodeId, PrimitiveId},
-	key::KeyKind,
+	key::{Key, KeyKind},
 	util::encoding::keycode::KeyDeserializer,
 };
 
-use super::types::ObjectId;
+use crate::Id;
 
-/// Extract ObjectId from an encoded key based on its KeyKind.
+/// Extract Id from an encoded key.
+///
+/// Parses the key to determine its KeyKind and then extracts the appropriate ID.
+/// Returns Id::System for unrecognized keys.
+pub fn parse_id(key: &[u8]) -> Id {
+	let Some(kind) = Key::kind(key) else {
+		return Id::System;
+	};
+	extract_object_id(key, kind)
+}
+
+/// Extract Id from an encoded key based on its KeyKind.
 ///
 /// Different key types embed different IDs:
 /// - Row, Index, IndexEntry, etc. contain PrimitiveId
 /// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
 /// - Other keys are classified as System
-pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
+fn extract_object_id(key: &[u8], kind: KeyKind) -> Id {
 	match kind {
 		// Keys that contain PrimitiveId at bytes 2..11
 		KeyKind::Row
@@ -28,22 +39,22 @@ pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 		| KeyKind::ColumnPolicy
 		| KeyKind::Index
 		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_source_id(key).map(ObjectId::Source).unwrap_or(ObjectId::System),
+		| KeyKind::PrimaryKey => extract_source_id(key).map(Id::Source).unwrap_or(Id::System),
 
 		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
-				.map(|id| ObjectId::Source(PrimitiveId::Dictionary(DictionaryId(id))))
-				.unwrap_or(ObjectId::System)
+				.map(|id| Id::Source(PrimitiveId::Dictionary(DictionaryId(id))))
+				.unwrap_or(Id::System)
 		}
 
 		// Keys that contain FlowNodeId at bytes 2..10
 		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
-			extract_flow_node_id(key).map(ObjectId::FlowNode).unwrap_or(ObjectId::System)
+			extract_flow_node_id(key).map(Id::FlowNode).unwrap_or(Id::System)
 		}
 
 		// All other key types are system metadata
-		_ => ObjectId::System,
+		_ => Id::System,
 	}
 }
 
@@ -97,47 +108,47 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 mod tests {
 	use reifydb_core::{
 		interface::{DictionaryId, EncodableKey, FlowNodeId, PrimitiveId},
-		key::{DictionaryEntryKey, FlowNodeStateKey, KeyKind, RowKey},
+		key::{DictionaryEntryKey, FlowNodeStateKey, RowKey},
 	};
 	use reifydb_type::RowNumber;
 
 	use super::*;
 
 	#[test]
-	fn test_extract_object_id_row() {
+	fn test_parse_object_id_row() {
 		let source = PrimitiveId::table(42);
 		let encoded = RowKey::encoded(source, RowNumber(100));
 
-		let object_id = extract_object_id(encoded.as_slice(), KeyKind::Row);
-		assert_eq!(object_id, ObjectId::Source(source));
+		let id = parse_id(encoded.as_slice());
+		assert_eq!(id, Id::Source(source));
 	}
 
 	#[test]
-	fn test_extract_object_id_flow_node_state() {
+	fn test_parse_object_id_flow_node_state() {
 		let node = FlowNodeId(456);
 		let state_key = FlowNodeStateKey::new(node, vec![1, 2, 3]);
 		let encoded = state_key.encode();
 
-		let object_id = extract_object_id(encoded.as_slice(), KeyKind::FlowNodeState);
-		assert_eq!(object_id, ObjectId::FlowNode(node));
+		let id = parse_id(encoded.as_slice());
+		assert_eq!(id, Id::FlowNode(node));
 	}
 
 	#[test]
-	fn test_extract_object_id_system() {
-		// For system key kinds, should return ObjectId::System
+	fn test_parse_object_id_system() {
+		// For system key kinds, should return Id::System
 		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0]; // Namespace kind
-		let object_id = extract_object_id(&fake_key, KeyKind::Namespace);
-		assert_eq!(object_id, ObjectId::System);
+		let id = parse_id(&fake_key);
+		assert_eq!(id, Id::System);
 	}
 
 	#[test]
-	fn test_extract_object_id_dictionary() {
+	fn test_parse_object_id_dictionary() {
 		let dictionary_id = DictionaryId(789);
 		let hash = [0u8; 16]; // Mock hash
 		let key = DictionaryEntryKey::new(dictionary_id, hash);
 		let encoded = key.encode();
 
-		let object_id = extract_object_id(encoded.as_slice(), KeyKind::DictionaryEntry);
-		assert_eq!(object_id, ObjectId::Source(PrimitiveId::Dictionary(dictionary_id)));
+		let id = parse_id(encoded.as_slice());
+		assert_eq!(id, Id::Source(PrimitiveId::Dictionary(dictionary_id)));
 	}
 }

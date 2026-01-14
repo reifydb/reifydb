@@ -287,25 +287,25 @@ pub(crate) fn compile<'a>(
 					),
 					"ringbuffers" => VTables::RingBuffers(RingBuffers::new()),
 					"table_storage_stats" => VTables::TableStorageStats(TableStorageStats::new(
-						context.executor.stats_tracker.clone(),
+						context.executor.stats_reader.clone(),
 					)),
 					"view_storage_stats" => VTables::ViewStorageStats(ViewStorageStats::new(
-						context.executor.stats_tracker.clone(),
+						context.executor.stats_reader.clone(),
 					)),
 					"flow_storage_stats" => VTables::FlowStorageStats(FlowStorageStats::new(
-						context.executor.stats_tracker.clone(),
+						context.executor.stats_reader.clone(),
 					)),
 					"flow_node_storage_stats" => VTables::FlowNodeStorageStats(
-						FlowNodeStorageStats::new(context.executor.stats_tracker.clone()),
+						FlowNodeStorageStats::new(context.executor.stats_reader.clone()),
 					),
 					"index_storage_stats" => VTables::IndexStorageStats(IndexStorageStats::new(
-						context.executor.stats_tracker.clone(),
+						context.executor.stats_reader.clone(),
 					)),
 					"ringbuffer_storage_stats" => VTables::RingBufferStorageStats(
-						RingBufferStorageStats::new(context.executor.stats_tracker.clone()),
+						RingBufferStorageStats::new(context.executor.stats_reader.clone()),
 					),
 					"dictionary_storage_stats" => VTables::DictionaryStorageStats(
-						DictionaryStorageStats::new(context.executor.stats_tracker.clone()),
+						DictionaryStorageStats::new(context.executor.stats_reader.clone()),
 					),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}

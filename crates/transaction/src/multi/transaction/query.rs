@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_core::interface::MultiVersionBatch;
 
 use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;

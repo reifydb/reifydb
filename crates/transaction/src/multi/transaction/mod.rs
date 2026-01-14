@@ -13,7 +13,8 @@ use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
-use reifydb_store_transaction::{MultiVersionContains, MultiVersionGet, TransactionStore};
+use reifydb_core::interface::{MultiVersionContains, MultiVersionGet};
+use reifydb_store_transaction::TransactionStore;
 use reifydb_type::util::hex;
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};

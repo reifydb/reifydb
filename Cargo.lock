@@ -1570,6 +1570,7 @@ dependencies = [
  "reifydb-derive",
  "reifydb-engine",
  "reifydb-function",
+ "reifydb-metric",
  "reifydb-rql",
  "reifydb-rqlv2",
  "reifydb-store-transaction",
@@ -1610,6 +1611,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-metric",
  "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
@@ -1718,6 +1720,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-function",
  "reifydb-hash",
+ "reifydb-metric",
  "reifydb-rql",
  "reifydb-rqlv2",
  "reifydb-store-transaction",
@@ -1768,6 +1771,16 @@ name = "reifydb-macro-impl"
 version = "0.2.0"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "reifydb-metric"
+version = "0.2.0"
+dependencies = [
+ "crossbeam-channel",
+ "reifydb-core",
+ "reifydb-type",
+ "tracing",
 ]
 
 [[package]]

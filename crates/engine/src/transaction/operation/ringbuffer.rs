@@ -102,7 +102,7 @@ impl RingBufferOperations for StandardCommandTransaction {
 		RingBufferInterceptor::pre_delete(self, &ringbuffer, id)?;
 
 		// Remove the encoded from the database
-		self.remove(&key)?;
+		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
 

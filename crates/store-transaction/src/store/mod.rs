@@ -5,27 +5,24 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use parking_lot::Mutex;
 use tracing::instrument;
-use reifydb_core::CommitVersion;
-use reifydb_core::event::EventBus;
+use reifydb_core::{CommitVersion, EncodedKey};
+use reifydb_core::event::{EventBus, StorageDrop, StorageStatsRecordedEvent};
 use reifydb_core::runtime::ComputePool;
 use crate::{
 	HotConfig,
 	cold::ColdStorage,
 	config::TransactionStoreConfig,
 	hot::HotStorage,
-	stats::{StorageTracker, StorageTrackerConfig, StatsWorker, StatsWorkerConfig},
 	warm::WarmStorage,
 };
 
 mod drop;
 pub mod worker;
 mod multi;
-pub mod resolver;
 pub mod router;
 mod single;
 pub mod version;
 
-pub use resolver::StorageResolver;
 pub use worker::{DropWorker, DropWorkerConfig, DropStatsCallback};
 
 #[derive(Clone)]
@@ -35,9 +32,8 @@ pub struct StandardTransactionStoreInner {
 	pub(crate) hot: Option<HotStorage>,
 	pub(crate) warm: Option<WarmStorage>,
 	pub(crate) cold: Option<ColdStorage>,
-	pub(crate) stats_tracker: StorageTracker,
-	/// Background stats worker.
-	pub(crate) stats_worker: Arc<StatsWorker>,
+	/// Event bus for emitting storage stats events.
+	pub(crate) event_bus: EventBus,
 	/// Background drop worker.
 	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
 }
@@ -56,53 +52,23 @@ impl StandardTransactionStore {
 		let _ = config.warm;
 		let _ = config.cold;
 
-		let tracker_config = StorageTrackerConfig {
-			checkpoint_interval: config.stats.checkpoint_interval,
-		};
-
-		// Create a new stats tracker
-		let stats_tracker = StorageTracker::new(tracker_config);
-
 		// Create background workers (requires hot tier)
 		let storage = hot.as_ref().expect("hot tier is required");
+		let event_bus = config.event_bus;
 
-		// Stats worker
-		let stats_config = StatsWorkerConfig {
-			channel_capacity: config.stats.worker_channel_capacity,
-			checkpoint_interval: config.stats.checkpoint_interval,
-		};
-		let stats_worker = Arc::new(StatsWorker::new(
-			stats_config,
-			stats_tracker.clone(),
-			storage.clone(),
-			config.event_bus,
-		));
-
-		// Drop worker with stats callback
+		// Drop worker with event bus callback
 		let drop_config = DropWorkerConfig::default();
-		let drop_worker = DropWorker::new(drop_config, storage.clone(), StatsWorkerCallback {
-			worker: stats_worker.clone(),
-			tracker: stats_tracker.clone(),
+		let drop_worker = DropWorker::new(drop_config, storage.clone(), EventBusStatsCallback {
+			event_bus: event_bus.clone(),
 		});
 
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,
 			warm,
 			cold,
-			stats_tracker,
-			stats_worker,
+			event_bus,
 			drop_worker: Arc::new(Mutex::new(drop_worker)),
 		})))
-	}
-
-	/// Get access to the storage tracker.
-	pub fn stats_tracker(&self) -> &StorageTracker {
-		&self.stats_tracker
-	}
-
-	/// Get access to the stats worker for CDC tracking.
-	pub fn stats_worker(&self) -> &Arc<StatsWorker> {
-		&self.stats_worker
 	}
 
 	/// Get access to the hot storage tier.
@@ -123,6 +89,14 @@ impl Deref for StandardTransactionStore {
 
 impl StandardTransactionStore {
 	pub fn testing_memory() -> Self {
+		Self::testing_memory_with_eventbus(EventBus::new())
+	}
+
+	/// Create a test store with a custom EventBus.
+	///
+	/// Use this when you need the store to emit events on a specific EventBus,
+	/// e.g., for testing metrics integration.
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(TransactionStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotStorage::memory(ComputePool::new(1,1)),
@@ -133,28 +107,33 @@ impl StandardTransactionStore {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			stats: Default::default(),
-			event_bus: EventBus::new(),
+			event_bus,
 		})
 		.unwrap()
 	}
 }
 
-/// Callback for drop worker to record stats via the stats worker.
-pub(crate) struct StatsWorkerCallback {
-	pub(crate) worker: Arc<StatsWorker>,
-	#[allow(dead_code)]
-	pub(crate) tracker: StorageTracker,
+/// Callback for drop worker to emit storage stats events via the event bus.
+pub(crate) struct EventBusStatsCallback {
+	pub(crate) event_bus: EventBus,
 }
 
-impl DropStatsCallback for StatsWorkerCallback {
+impl DropStatsCallback for EventBusStatsCallback {
 	fn record_drop(
 		&self,
-		tier: crate::stats::Tier,
-		key: &[u8],
-		versioned_key_bytes: u64,
+		key: EncodedKey,
+		_versioned_key_bytes: u64,
 		value_bytes: u64,
 		version: CommitVersion,
 	) {
-		self.worker.record_drop(tier, key, versioned_key_bytes, value_bytes, version);
+		self.event_bus.emit(StorageStatsRecordedEvent {
+			writes: Vec::new(),
+			deletes: Vec::new(),
+			drops: vec![StorageDrop {
+				key,
+				value_bytes,
+			}],
+			version,
+		});
 	}
 }

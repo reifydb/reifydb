@@ -6,7 +6,7 @@ use std::mem::take;
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use reifydb_core::interface::SingleVersionValues;
-use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
+use reifydb_core::interface::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
 
 use super::*;
@@ -86,12 +86,7 @@ impl<'a> SvlCommandTransaction<'a> {
 					key: key.clone(),
 					values: values.clone(),
 				})),
-				Delta::Remove {
-					..
-				} => Ok(None),
-				Delta::Drop {
-					..
-				} => Ok(None),
+				Delta::Unset { .. } | Delta::Remove { .. } | Delta::Drop { .. } => Ok(None),
 			};
 		}
 
@@ -106,15 +101,8 @@ impl<'a> SvlCommandTransaction<'a> {
 
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
-				Delta::Set {
-					..
-				} => Ok(true),
-				Delta::Remove {
-					..
-				} => Ok(false),
-				Delta::Drop {
-					..
-				} => Ok(false),
+				Delta::Set { .. } => Ok(true),
+				Delta::Unset { .. } | Delta::Remove { .. } | Delta::Drop { .. } => Ok(false),
 			};
 		}
 
@@ -134,15 +122,23 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
 			key.clone(),
-			Delta::Remove {
+			Delta::Unset {
 				key: key.clone(),
+				values,
 			},
 		);
+		Ok(())
+	}
+
+	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+		self.check_key_allowed(key)?;
+
+		self.pending.insert(key.clone(), Delta::Remove { key: key.clone() });
 		Ok(())
 	}
 

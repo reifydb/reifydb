@@ -193,52 +193,6 @@ pub fn get_at_version<S: TierStorage>(
 	Ok(VersionedGetResult::NotFound)
 }
 
-/// Combined info about a previous version of a key.
-/// Used to combine stats tracking and CDC lookups in a single pass.
-#[derive(Debug, Clone)]
-pub struct PreviousVersionInfo {
-	/// Size of the versioned key in bytes
-	pub key_bytes: u64,
-	/// Size of the value in bytes (0 if tombstone)
-	pub value_bytes: u64,
-}
-
-/// Get combined info about the latest version of a key.
-/// Returns version, key size, and value size in a single lookup.
-/// This combines what `get_latest_version` and `get_previous_value_info` do separately.
-pub fn get_previous_version_info<S: TierStorage>(
-	storage: &S,
-	table: EntryKind,
-	key: &[u8],
-) -> Result<Option<PreviousVersionInfo>> {
-	let (start, end) = key_version_range(key);
-
-	// Forward scan finds newest version first (just need 1 entry)
-	let mut cursor = RangeCursor::new();
-	let batch = storage.range_next(
-		table,
-		&mut cursor,
-		Bound::Included(start.as_slice()),
-		Bound::Included(end.as_slice()),
-		1,
-	)?;
-
-	if let Some(entry) = batch.entries.first() {
-		if let Some(entry_key) = extract_key(&entry.key) {
-			if entry_key == key {
-				let key_bytes = entry.key.len() as u64;
-				let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
-				return Ok(Some(PreviousVersionInfo {
-					key_bytes,
-					value_bytes,
-				}));
-			}
-		}
-	}
-
-	Ok(None)
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;

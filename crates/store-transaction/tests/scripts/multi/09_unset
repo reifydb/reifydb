@@ -1,0 +1,37 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests Delta::Unset at multi-version store level.
+# Unset preserves deleted values (for CDC), unlike remove which doesn't.
+
+set a=1 version=1
+---
+ok
+
+get a version=1
+---
+"a" => "1"
+
+# Unset with preserved values
+unset a=1 version=2
+---
+ok
+
+get a version=2
+---
+"a" => None
+
+# Old version still visible (MVCC)
+get a version=1
+---
+"a" => "1"
+
+# Scan at version 2 should not include a
+scan version=2
+---
+ok
+
+# Scan at version 1 should include a
+scan version=1
+---
+"a" => "1"

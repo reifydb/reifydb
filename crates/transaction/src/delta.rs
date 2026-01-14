@@ -11,10 +11,10 @@ use reifydb_core::{CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValu
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
 	/// Key should be set to this value (Insert or Update)
-	Set {
-		values: EncodedValues,
-	},
-	/// Key should be removed
+	Set { values: EncodedValues },
+	/// Key should be unset, preserving the deleted values for CDC/metrics
+	Unset { values: EncodedValues },
+	/// Key should be removed without preserving values
 	Remove,
 	/// Key operations cancelled out (Insert+Delete), skip entirely
 	Cancelled,
@@ -55,23 +55,17 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
-							OptimizedDeltaState::Set {
-								values: old_values,
-							} => {
+							OptimizedDeltaState::Set { values: old_values } => {
 								// Update + Update = coalesce to final Update
 								*old_values = values;
 							}
-							OptimizedDeltaState::Remove => {
+							OptimizedDeltaState::Unset { .. } | OptimizedDeltaState::Remove => {
 								// Delete + Insert in same transaction = Set
-								*state = OptimizedDeltaState::Set {
-									values,
-								};
+								*state = OptimizedDeltaState::Set { values };
 							}
 							OptimizedDeltaState::Cancelled => {
 								// After complete cancellation, treat as new Insert
-								*state = OptimizedDeltaState::Set {
-									values,
-								};
+								*state = OptimizedDeltaState::Set { values };
 							}
 						}
 						// Keep the first index - don't update it
@@ -87,9 +81,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 					}
 				}
 			}
-			Delta::Remove {
-				key,
-			} => {
+			Delta::Unset { key, values } => {
 				// Check if this key has been seen before in this transaction
 				let key_bytes = key.as_ref().to_vec();
 				let entry = key_states.entry(key_bytes);
@@ -98,25 +90,53 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
-							OptimizedDeltaState::Set {
-								..
-							} => {
-								// Insert + Delete = Cancel
+							OptimizedDeltaState::Set { .. } => {
+								// Insert + Unset = Cancel
 								*state = OptimizedDeltaState::Cancelled;
 							}
-							OptimizedDeltaState::Remove => {
-								// Delete + Delete shouldn't happen, but keep the delete
+							OptimizedDeltaState::Unset { .. } | OptimizedDeltaState::Remove => {
+								// Unset + Unset shouldn't happen, but keep the unset
 								// Do nothing
 							}
 							OptimizedDeltaState::Cancelled => {
-								// After cancellation, a delete means remove it
+								// After cancellation, an unset means unset it
+								*state = OptimizedDeltaState::Unset { values };
+							}
+						}
+						// Keep the first index - don't update it
+					}
+					Vacant(vac) => {
+						// First time seeing this key in transaction - it's an unset
+						vac.insert((OptimizedDeltaState::Unset { values }, idx));
+					}
+				}
+			}
+			Delta::Remove { key } => {
+				// Check if this key has been seen before in this transaction
+				let key_bytes = key.as_ref().to_vec();
+				let entry = key_states.entry(key_bytes);
+				match entry {
+					Occupied(mut occ) => {
+						// Key was already modified in this transaction
+						let (state, _) = occ.get_mut();
+						match state {
+							OptimizedDeltaState::Set { .. } => {
+								// Insert + Remove = Cancel
+								*state = OptimizedDeltaState::Cancelled;
+							}
+							OptimizedDeltaState::Unset { .. } | OptimizedDeltaState::Remove => {
+								// Remove + Remove shouldn't happen, but keep the remove
+								// Do nothing
+							}
+							OptimizedDeltaState::Cancelled => {
+								// After cancellation, a remove means remove it
 								*state = OptimizedDeltaState::Remove;
 							}
 						}
 						// Keep the first index - don't update it
 					}
 					Vacant(vac) => {
-						// First time seeing this key in transaction - it's a delete
+						// First time seeing this key in transaction - it's a remove
 						vac.insert((OptimizedDeltaState::Remove, idx));
 					}
 				}
@@ -132,12 +152,19 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 
 	for (key_bytes, (state, idx)) in key_states {
 		match state {
-			OptimizedDeltaState::Set {
-				values,
-			} => {
+			OptimizedDeltaState::Set { values } => {
 				result.push((
 					idx,
 					Delta::Set {
+						key: EncodedKey(CowVec::new(key_bytes)),
+						values,
+					},
+				));
+			}
+			OptimizedDeltaState::Unset { values } => {
+				result.push((
+					idx,
+					Delta::Unset {
 						key: EncodedKey(CowVec::new(key_bytes)),
 						values,
 					},
@@ -183,8 +210,9 @@ mod tests {
 				key: make_key("key_a"),
 				values: make_values("value1"),
 			},
-			Delta::Remove {
+			Delta::Unset {
 				key: make_key("key_a"),
+				values: make_values("value1"),
 			},
 		];
 
@@ -238,8 +266,9 @@ mod tests {
 				key: make_key("key_a"),
 				values: make_values("value2"),
 			},
-			Delta::Remove {
+			Delta::Unset {
 				key: make_key("key_a"),
+				values: make_values("value2"),
 			},
 		];
 
@@ -260,8 +289,9 @@ mod tests {
 				key: make_key("key_b"),
 				values: make_values("value2"),
 			},
-			Delta::Remove {
+			Delta::Unset {
 				key: make_key("key_a"),
+				values: make_values("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_c"),

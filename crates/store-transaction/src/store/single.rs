@@ -14,11 +14,11 @@ use reifydb_type::util::hex;
 use tracing::instrument;
 
 use super::StandardTransactionStore;
-use crate::{
+use reifydb_core::interface::{
 	SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	tier::{EntryKind, RangeCursor, TierStorage},
 };
+use crate::tier::{EntryKind, RangeCursor, TierStorage};
 
 impl SingleVersionGet for StandardTransactionStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
@@ -101,17 +101,12 @@ impl SingleVersionCommit for StandardTransactionStore {
 		let entries: Vec<_> = deltas
 			.iter()
 			.map(|delta| match delta {
-				Delta::Set {
-					key,
-					values,
-				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec()))),
-				Delta::Remove {
-					key,
-				} => (CowVec::new(key.as_ref().to_vec()), None),
-				Delta::Drop {
-					key,
-					..
-				} => (CowVec::new(key.as_ref().to_vec()), None),
+				Delta::Set { key, values } => {
+					(CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec())))
+				}
+				Delta::Unset { key, .. } | Delta::Remove { key } | Delta::Drop { key, .. } => {
+					(CowVec::new(key.as_ref().to_vec()), None)
+				}
 			})
 			.collect();
 

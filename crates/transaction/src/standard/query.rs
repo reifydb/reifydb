@@ -8,7 +8,7 @@ use reifydb_core::{
 		RingBufferDef, RingBufferId, SubscriptionDef, SubscriptionId, TableDef, TableId, ViewDef, ViewId,
 	},
 };
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_core::interface::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 

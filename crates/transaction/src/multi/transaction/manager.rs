@@ -207,19 +207,39 @@ where
 	/// This is done by adding a delete marker for the key at commit
 	/// timestamp.  Any reads happening before this timestamp would be
 	/// unaffected. Any reads after this commit would see the deletion.
-	#[instrument(name = "transaction::command::remove", level = "debug", skip(self), fields(
+	///
+	/// The `values` parameter contains the deleted values for CDC and metrics.
+	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, values), fields(
 		txn_id = %self.id,
-		key_hex = %hex::encode(key.as_ref())
+		key_hex = %hex::encode(key.as_ref()),
+		value_len = values.len()
+	))]
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+		if self.discarded {
+			return_error!(transaction::transaction_rolled_back());
+		}
+		self.modify(Pending {
+			delta: Delta::Unset {
+				key: key.clone(),
+				values,
+			},
+			version: self.base_version(),
+		})
+	}
+
+	/// Remove an entry without preserving deleted values.
+	/// Use when only the key matters (e.g., index entries, catalog metadata).
+	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_len = key.len()
 	))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
 		self.modify(Pending {
-			delta: Delta::Remove {
-				key: key.clone(),
-			},
-			version: CommitVersion(0),
+			delta: Delta::Remove { key: key.clone() },
+			version: self.base_version(),
 		})
 	}
 
@@ -284,9 +304,7 @@ where
 						key: key.clone(),
 						values: values.clone(),
 					},
-					None => Delta::Remove {
-						key: key.clone(),
-					},
+					None => Delta::Remove { key: key.clone() },
 				},
 				version: v.version,
 			}))
@@ -315,7 +333,7 @@ where
 				key: key.clone(),
 				values,
 			},
-			version: self.base_version(), // Use base version for writes, not read version
+			version: self.base_version(),
 		})
 	}
 
@@ -360,9 +378,7 @@ where
 							key: old_key,
 							values: values.clone(),
 						},
-						None => Delta::Remove {
-							key: old_key,
-						},
+						None => Delta::Remove { key: old_key },
 					},
 					version,
 				})
@@ -411,20 +427,13 @@ where
 					entries.push(pending);
 				};
 
-				pending_writes.into_iter_insertion_order().for_each(|(k, v)| {
+				pending_writes.into_iter_insertion_order().for_each(|(_k, v)| {
+					let (ver, delta) = v.into_components();
 					process(
 						&mut all,
 						Pending {
-							delta: match v.values() {
-								Some(values) => Delta::Set {
-									key: k,
-									values: values.clone(),
-								},
-								None => Delta::Remove {
-									key: k,
-								},
-							},
-							version: v.version,
+							delta,
+							version: ver,
 						},
 					)
 				});
