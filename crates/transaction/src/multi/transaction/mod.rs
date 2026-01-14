@@ -13,7 +13,7 @@ use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
-use reifydb_store_transaction::{MultiVersionContains, MultiVersionGet, TransactionStore};
+use reifydb_store_multi::{MultiVersionContains, MultiVersionGet, MultiStore};
 use reifydb_type::util::hex;
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
@@ -141,7 +141,7 @@ pub struct TransactionMulti(Arc<Inner>);
 
 pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
-	pub(crate) store: TransactionStore,
+	pub(crate) store: MultiStore,
 	pub(crate) event_bus: EventBus,
 }
 
@@ -160,7 +160,7 @@ impl Clone for TransactionMulti {
 }
 
 impl Inner {
-	fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(version_provider)?;
 
@@ -178,11 +178,12 @@ impl Inner {
 
 impl TransactionMulti {
 	pub fn testing() -> Self {
-		let store = TransactionStore::testing_memory();
+		let multi_store = reifydb_store_multi::MultiStore::testing_memory();
+		let single_store = reifydb_store_single::SingleStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
-			store.clone(),
-			TransactionSingle::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
+			multi_store,
+			TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, event_bus.clone())),
 			event_bus,
 		)
 		.unwrap()
@@ -191,7 +192,7 @@ impl TransactionMulti {
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
-	pub fn new(store: TransactionStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
 		Ok(Self(Arc::new(Inner::new(store, single, event_bus)?)))
 	}
 }
@@ -241,7 +242,7 @@ impl TransactionMulti {
 	}
 
 	/// Get a reference to the underlying transaction store.
-	pub fn store(&self) -> &TransactionStore {
+	pub fn store(&self) -> &MultiStore {
 		&self.store
 	}
 }

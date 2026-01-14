@@ -8,7 +8,7 @@ use parking_lot::RwLock;
 use reifydb_core::{
 	CowVec, EncodedKey, delta::Delta, event::EventBus, interface::WithEventBus, value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::TransactionStore;
+use reifydb_store_single::SingleStore;
 
 mod read;
 mod write;
@@ -24,7 +24,7 @@ pub struct TransactionSvl {
 }
 
 struct TransactionSvlInner {
-	store: RwLock<TransactionStore>,
+	store: RwLock<SingleStore>,
 	event_bus: EventBus,
 	key_locks: SkipMap<EncodedKey, Arc<RwLock<()>>>,
 }
@@ -44,7 +44,7 @@ impl TransactionSvlInner {
 }
 
 impl TransactionSvl {
-	pub fn new(store: TransactionStore, event_bus: EventBus) -> Self {
+	pub fn new(store: SingleStore, event_bus: EventBus) -> Self {
 		Self {
 			inner: Arc::new(TransactionSvlInner {
 				store: RwLock::new(store),
@@ -129,7 +129,7 @@ mod tests {
 	}
 
 	fn create_test_svl() -> TransactionSvl {
-		TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default())
+		TransactionSvl::new(reifydb_store_single::SingleStore::testing_memory(), EventBus::default())
 	}
 
 	#[test]

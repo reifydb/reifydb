@@ -11,7 +11,7 @@ use reifydb_core::{
 	return_error,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 

@@ -17,7 +17,8 @@ reifydb-abi = { workspace = true }
 reifydb-hash = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
-reifydb-store-transaction = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-vm = { workspace = true }

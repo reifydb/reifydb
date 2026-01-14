@@ -29,6 +29,5 @@ num_cpus = { workspace = true }
 [dev-dependencies]
 reifydb-catalog = {workspace = true}
 reifydb-engine = {workspace = true}
-reifydb-store-transaction = {workspace = true}
 reifydb-transaction = {workspace = true}
 tokio = { workspace = true }

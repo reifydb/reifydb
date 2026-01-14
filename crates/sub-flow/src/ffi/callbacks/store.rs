@@ -13,7 +13,7 @@ use reifydb_abi::{
 	FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI,
 };
 use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 
 use super::{
 	memory::{host_alloc, host_free},

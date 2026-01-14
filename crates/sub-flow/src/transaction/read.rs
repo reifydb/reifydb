@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::KeyKind,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 
 use super::{FlowTransaction, Pending};
 

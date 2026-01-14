@@ -15,7 +15,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
+use reifydb_store_multi::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_type::{Error, util::hex};
 use tracing::instrument;
 

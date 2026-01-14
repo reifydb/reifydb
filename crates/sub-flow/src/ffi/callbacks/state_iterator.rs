@@ -9,7 +9,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 
 /// Handle to a state iterator
 pub type StateIteratorHandle = u64;

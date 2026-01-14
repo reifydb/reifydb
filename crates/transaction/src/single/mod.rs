@@ -4,7 +4,7 @@
 mod svl;
 
 use reifydb_core::{EncodedKey, event::EventBus, interface::WithEventBus};
-use reifydb_store_transaction::TransactionStore;
+use reifydb_store_single::SingleStore;
 pub use svl::{SvlCommandTransaction, SvlQueryTransaction, TransactionSvl};
 
 #[repr(u8)]
@@ -14,12 +14,12 @@ pub enum TransactionSingle {
 }
 
 impl TransactionSingle {
-	pub fn svl(store: TransactionStore, bus: EventBus) -> Self {
+	pub fn svl(store: SingleStore, bus: EventBus) -> Self {
 		Self::SingleVersionLock(TransactionSvl::new(store, bus))
 	}
 
 	pub fn testing() -> Self {
-		Self::SingleVersionLock(TransactionSvl::new(TransactionStore::testing_memory(), EventBus::default()))
+		Self::SingleVersionLock(TransactionSvl::new(SingleStore::testing_memory(), EventBus::default()))
 	}
 
 	/// Helper for single-version queries.

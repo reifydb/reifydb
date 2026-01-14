@@ -8,7 +8,7 @@
 use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 
 use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 
 use super::Pending;
 

@@ -7,7 +7,7 @@ use reifydb_core::{
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
-use reifydb_store_transaction::MultiVersionBatch;
+use reifydb_store_multi::MultiVersionBatch;
 use tracing::{Span, instrument};
 
 use super::FlowTransaction;

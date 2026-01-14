@@ -19,7 +19,8 @@ pub mod single;
 pub mod standard;
 
 pub use interceptor::WithInterceptors;
-pub use reifydb_store_transaction::{ObjectId, StorageStats, StorageTracker, StatsOp, StatsWorker, Tier, TierStats, TransactionStore};
+pub use reifydb_store_multi::MultiStore;
+pub use reifydb_store_single::SingleStore;
 pub use reifydb_type::Result;
 pub use standard::{
 	IntoStandardTransaction, StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,

@@ -18,7 +18,8 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::TransactionStore;
+use reifydb_store_multi::MultiStore;
+use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
@@ -39,11 +40,12 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_mu
 test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
-	let store = TransactionStore::testing_memory();
+	let multi_store = MultiStore::testing_memory();
+	let single_store = SingleStore::testing_memory();
 	let bus = EventBus::default();
 	let engine = TransactionMulti::new(
-		store.clone(),
-		TransactionSingle::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
+		multi_store,
+		TransactionSingle::SingleVersionLock(TransactionSvl::new(single_store, bus.clone())),
 		bus,
 	)
 	.unwrap();

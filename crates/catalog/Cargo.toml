@@ -10,7 +10,8 @@ description = "Database catalog and metadata management for ReifyDB"
 [dependencies]
 reifydb-abi = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-store-transaction = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 

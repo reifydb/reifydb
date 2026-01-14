@@ -16,7 +16,8 @@ reifydb-hash = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-store-transaction = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-transaction = { workspace = true }

@@ -1572,7 +1572,6 @@ dependencies = [
  "reifydb-function",
  "reifydb-rql",
  "reifydb-rqlv2",
- "reifydb-store-transaction",
  "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-sub-server",
@@ -1610,7 +1609,8 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -1627,7 +1627,8 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
@@ -1685,7 +1686,6 @@ dependencies = [
  "rayon",
  "reifydb-catalog",
  "reifydb-engine",
- "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -1720,7 +1720,8 @@ dependencies = [
  "reifydb-hash",
  "reifydb-rql",
  "reifydb-rqlv2",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
  "reifydb-vm",
@@ -1829,7 +1830,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-store-transaction"
+name = "reifydb-store-multi"
+version = "0.2.0"
+dependencies = [
+ "crossbeam-channel",
+ "dashmap",
+ "parking_lot",
+ "rayon",
+ "reifydb-core",
+ "reifydb-testing",
+ "reifydb-type",
+ "rusqlite",
+ "test_each_file",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "reifydb-store-single"
 version = "0.2.0"
 dependencies = [
  "crossbeam-channel",
@@ -1851,7 +1869,6 @@ version = "0.2.0"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
 ]
@@ -1875,7 +1892,8 @@ dependencies = [
  "reifydb-hash",
  "reifydb-rql",
  "reifydb-sdk",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-transaction",
@@ -2008,7 +2026,8 @@ dependencies = [
  "parking_lot",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-testing",
  "reifydb-type",
  "test_each_file",
@@ -2040,7 +2059,8 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-rqlv2",
- "reifydb-store-transaction",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
  "thiserror",

@@ -4,7 +4,7 @@
 use diagnostic::transaction::key_out_of_scope;
 use parking_lot::{RwLock, RwLockReadGuard};
 use reifydb_core::interface::SingleVersionValues;
-use reifydb_store_transaction::{SingleVersionContains, SingleVersionGet};
+use reifydb_store_single::{SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic, error, util::hex};
 
 use super::*;

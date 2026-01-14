@@ -6,7 +6,7 @@ use std::mem::take;
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use reifydb_core::interface::SingleVersionValues;
-use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
+use reifydb_store_single::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
 
 use super::*;

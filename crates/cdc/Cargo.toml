@@ -18,6 +18,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-store-transaction = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
