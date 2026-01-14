@@ -7,12 +7,10 @@
 //! and push channels to enable server-initiated message delivery.
 
 use dashmap::DashMap;
+pub use reifydb_core::interface::SubscriptionId;
 use reifydb_sub_server::ResponseFrame;
 use reifydb_type::Uuid7;
 use tokio::sync::mpsc;
-
-/// Unique identifier for a subscription.
-pub type SubscriptionId = Uuid7;
 
 /// Unique identifier for a WebSocket connection.
 pub type ConnectionId = Uuid7;
@@ -55,17 +53,16 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Register a new subscription for a connection.
+	/// Register a new subscription for a connection using the provided subscription ID.
 	///
-	/// Returns the generated subscription ID.
+	/// The subscription ID should be the database subscription ID returned from CREATE SUBSCRIPTION.
 	pub fn subscribe(
 		&self,
+		subscription_id: SubscriptionId,
 		connection_id: ConnectionId,
 		query: String,
 		push_tx: mpsc::Sender<PushMessage>,
-	) -> SubscriptionId {
-		let subscription_id = Uuid7::generate();
-
+	) {
 		// Store subscription state
 		self.subscriptions.insert(
 			subscription_id,
@@ -80,8 +77,13 @@ impl SubscriptionRegistry {
 		self.connections.entry(connection_id).or_default().push(subscription_id);
 
 		tracing::debug!("Registered subscription {} for connection {}", subscription_id, connection_id);
+	}
 
-		subscription_id
+	/// Get the push channel for a subscription.
+	///
+	/// Returns None if the subscription doesn't exist.
+	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::Sender<PushMessage>> {
+		self.subscriptions.get(subscription_id).map(|state| state.push_tx.clone())
 	}
 
 	/// Unsubscribe a specific subscription.
@@ -166,7 +168,8 @@ mod tests {
 		let (tx, mut rx) = mpsc::channel(10);
 
 		// Subscribe
-		let sub_id = registry.subscribe(connection_id, "FROM test".to_string(), tx);
+		let sub_id = SubscriptionId(uuid::Uuid::new_v4());
+		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a ResponseFrame
@@ -209,8 +212,10 @@ mod tests {
 		let (tx2, _rx2) = mpsc::channel(10);
 
 		// Subscribe twice
-		let _sub1 = registry.subscribe(connection_id, "FROM test1".to_string(), tx1);
-		let _sub2 = registry.subscribe(connection_id, "FROM test2".to_string(), tx2);
+		let sub1 = SubscriptionId(uuid::Uuid::new_v4());
+		let sub2 = SubscriptionId(uuid::Uuid::new_v4());
+		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
+		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
 		assert_eq!(registry.subscription_count(), 2);
 
 		// Cleanup connection

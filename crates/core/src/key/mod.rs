@@ -258,7 +258,7 @@ impl Key {
 			KeyKind::NamespaceDictionary => {
 				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
 			}
-			KeyKind::StorageTracker => {
+			KeyKind::Metric => {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None
 			}

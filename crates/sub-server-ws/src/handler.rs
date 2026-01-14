@@ -19,15 +19,14 @@ use reifydb_sub_server::{
 	AppState, ExecuteError, convert_frames, execute_command, execute_query, extract_identity_from_ws_auth,
 };
 use reifydb_type::{Params, Uuid7};
-use serde_json::json;
 use tokio::{net::TcpStream, select, sync::{mpsc, watch}, time::timeout};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use uuid::Uuid as StdUuid;
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	subscription::{PushMessage, SubscriptionRegistry},
+	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
 };
 
 /// Handle a single WebSocket connection.
@@ -45,11 +44,13 @@ use crate::{
 /// * `stream` - Raw TCP stream from accept
 /// * `state` - Shared application state
 /// * `registry` - Subscription registry for push notifications
+/// * `poller` - Subscription poller for consuming subscription data
 /// * `shutdown` - Watch channel for shutdown signal
 pub async fn handle_connection(
 	stream: TcpStream,
 	state: AppState,
 	registry: Arc<SubscriptionRegistry>,
+	poller: Arc<SubscriptionPoller>,
 	mut shutdown: watch::Receiver<bool>,
 ) {
 	let handler_start = Instant::now();
@@ -126,15 +127,11 @@ pub async fn handle_connection(
 
 			// Handle push messages from the subscription registry
 			Some(push) = push_rx.recv() => {
+				use crate::response::ServerPush;
+
 				let msg = match push {
 					PushMessage::Change { subscription_id, frame } => {
-						json!({
-							"type": "Change",
-							"payload": {
-								"subscription_id": subscription_id.to_string(),
-								"frame": frame
-							}
-						}).to_string()
+						ServerPush::change(subscription_id.to_string(), frame).to_json()
 					}
 				};
 				if sender.send(Message::Text(msg.into())).await.is_err() {
@@ -153,6 +150,7 @@ pub async fn handle_connection(
 							&mut identity,
 							connection_id,
 							&registry,
+							&poller,
 							push_tx.clone(),
 						).await;
 						if let Some(resp) = response {
@@ -212,6 +210,7 @@ async fn process_message(
 	identity: &mut Option<Identity>,
 	connection_id: ConnectionId,
 	registry: &SubscriptionRegistry,
+	poller: &SubscriptionPoller,
 	push_tx: mpsc::Sender<PushMessage>,
 ) -> Option<String> {
 	let request: Request = match serde_json::from_str(text) {
@@ -222,15 +221,21 @@ async fn process_message(
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
-			Ok(id) => {
-				*identity = Some(id);
-				Some(build_response(&request.id, "Auth", json!({})))
+		RequestPayload::Auth(auth) => {
+			use crate::response::Response;
+
+			match extract_identity_from_ws_auth(auth.token.as_deref()) {
+				Ok(id) => {
+					*identity = Some(id);
+					Some(Response::auth(&request.id).to_json())
+				}
+				Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
 			}
-			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
-		},
+		}
 
 		RequestPayload::Query(q) => {
+			use crate::response::Response;
+
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
 				None => {
@@ -249,13 +254,15 @@ async fn process_message(
 			match execute_query(state.pool(), state.engine_clone(), query, id, params, timeout).await {
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
-					Some(build_response(&request.id, "Query", json!({ "frames": ws_frames })))
+					Some(Response::query(&request.id, ws_frames).to_json())
 				}
 				Err(e) => Some(error_to_response(&request.id, e)),
 			}
 		}
 
 		RequestPayload::Command(c) => {
+			use crate::response::Response;
+
 			let id = match identity.as_ref() {
 				Some(id) => id.clone(),
 				None => {
@@ -275,33 +282,33 @@ async fn process_message(
 			{
 				Ok(frames) => {
 					let ws_frames = convert_frames(frames);
-					Some(build_response(&request.id, "Command", json!({ "frames": ws_frames })))
+					Some(Response::command(&request.id, ws_frames).to_json())
 				}
 				Err(e) => Some(error_to_response(&request.id, e)),
 			}
 		}
 
 		RequestPayload::Subscribe(sub) => {
-			// Register the subscription
-			let subscription_id = registry.subscribe(connection_id, sub.query, push_tx);
-
-			info!(
-				"Connection {} subscribed with query, subscription_id: {}",
-				connection_id,
-				subscription_id
-			);
-
-			Some(build_response(
+			crate::subscription::handle_subscribe(
 				&request.id,
-				"Subscribed",
-				json!({ "subscription_id": subscription_id.to_string() }),
-			))
+				sub,
+				identity.clone(),
+				connection_id,
+				state,
+				registry,
+				poller,
+				push_tx,
+			)
+			.await
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {
+			use crate::response::Response;
+			use reifydb_core::interface::SubscriptionId as DbSubscriptionId;
+
 			// Parse the subscription ID
 			let subscription_id = match unsub.subscription_id.parse::<StdUuid>() {
-				Ok(uuid) => Uuid7::from(uuid),
+				Ok(uuid) => DbSubscriptionId(uuid),
 				Err(_) => {
 					return Some(build_error(
 						&request.id,
@@ -311,16 +318,15 @@ async fn process_message(
 				}
 			};
 
-			// Unsubscribe
+			// Unregister from poller
+			poller.unregister(&subscription_id);
+
+			// Unsubscribe from registry
 			let removed = registry.unsubscribe(subscription_id);
 
 			if removed {
-				info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
-				Some(build_response(
-					&request.id,
-					"Unsubscribed",
-					json!({ "subscription_id": subscription_id.to_string() }),
-				))
+				tracing::info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
+				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {
 				Some(build_error(
 					&request.id,
@@ -333,13 +339,19 @@ async fn process_message(
 }
 
 /// Convert an ExecuteError to a JSON response string.
-fn error_to_response(id: &str, e: ExecuteError) -> String {
+pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
+	use crate::response::Response;
+
 	match e {
-		ExecuteError::Timeout => build_error(id, "QUERY_TIMEOUT", "Query execution timed out"),
-		ExecuteError::Cancelled => build_error(id, "QUERY_CANCELLED", "Query was cancelled"),
+		ExecuteError::Timeout => {
+			Response::internal_error(id, "QUERY_TIMEOUT", "Query execution timed out").to_json()
+		}
+		ExecuteError::Cancelled => {
+			Response::internal_error(id, "QUERY_CANCELLED", "Query was cancelled").to_json()
+		}
 		ExecuteError::Disconnected => {
 			tracing::error!("Query stream disconnected unexpectedly");
-			build_error(id, "INTERNAL_ERROR", "Internal server error")
+			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error").to_json()
 		}
 		ExecuteError::Engine {
 			diagnostic,
@@ -350,70 +362,13 @@ fn error_to_response(id: &str, e: ExecuteError) -> String {
 			if diag.statement.is_none() && !statement.is_empty() {
 				diag.statement = Some(statement);
 			}
-			json!({
-				"id": id,
-				"type": "Err",
-				"payload": {
-					"diagnostic": diag
-				}
-			})
-			.to_string()
+			Response::error(id, diag).to_json()
 		}
 	}
-}
-
-/// Build a success response JSON string.
-fn build_response(id: &str, msg_type: &str, data: serde_json::Value) -> String {
-	json!({
-		"id": id,
-		"type": msg_type,
-		"payload": data
-	})
-	.to_string()
 }
 
 /// Build an error response JSON string.
-fn build_error(id: &str, code: &str, message: &str) -> String {
-	json!({
-		"id": id,
-		"type": "Err",
-		"payload": {
-			"diagnostic": {
-				"code": code,
-				"statement": null,
-				"message": message,
-				"column": null,
-				"fragment": "None",
-				"label": null,
-				"help": null,
-				"notes": [],
-				"cause": null
-			}
-		}
-	})
-	.to_string()
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_build_response() {
-		let response = build_response("123", "query", json!({"result": "ok"}));
-		let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
-		assert_eq!(parsed["id"], "123");
-		assert_eq!(parsed["type"], "query");
-		assert_eq!(parsed["payload"]["result"], "ok");
-	}
-
-	#[test]
-	fn test_build_error() {
-		let response = build_error("456", "AUTH_REQUIRED", "Please authenticate");
-		let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
-		assert_eq!(parsed["id"], "456");
-		assert_eq!(parsed["type"], "Err");
-		assert_eq!(parsed["payload"]["diagnostic"]["code"], "AUTH_REQUIRED");
-		assert_eq!(parsed["payload"]["diagnostic"]["message"], "Please authenticate");
-	}
+pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
+	use crate::response::Response;
+	Response::internal_error(id, code, message).to_json()
 }

@@ -123,7 +123,7 @@ impl EncodableKeyRange for SubscriptionRowKeyRange {
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_bytes(self.subscription.as_bytes())
-			.extend_u64(u64::MAX); // End at maximum row number
+			.extend_u64(0u64); // End at minimum row number (largest bytes in descending encoding)
 		Some(serializer.to_encoded_key())
 	}
 

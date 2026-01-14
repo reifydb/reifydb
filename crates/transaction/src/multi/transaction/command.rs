@@ -15,7 +15,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_multi::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
+use reifydb_core::interface::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_type::{Error, util::hex};
 use tracing::instrument;
 
@@ -130,6 +130,11 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, values)
+	}
+
+	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.len()))]
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
+		self.tm.unset(key, values)
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]

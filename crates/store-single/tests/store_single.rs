@@ -20,9 +20,10 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_single::{
-	HotConfig, SingleStoreConfig, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-	SingleVersionRangeRev, StandardSingleStore, hot::HotTier,
+use reifydb_store_single::{HotConfig, SingleStoreConfig, StandardSingleStore, hot::HotTier};
+use reifydb_core::interface::{
+	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+	SingleVersionRangeRev,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use reifydb_type::cow_vec;
@@ -160,6 +161,22 @@ impl testscript::Runner for Runner {
 				self.store.commit(cow_vec![
 					(Delta::Remove {
 						key
+					})
+				])?
+			}
+
+			// unset KEY=VALUE
+			"unset" => {
+				let mut args = command.consume_args();
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let values = EncodedValues(decode_binary(&kv.value));
+				args.reject_rest()?;
+
+				self.store.commit(cow_vec![
+					(Delta::Unset {
+						key,
+						values
 					})
 				])?
 			}

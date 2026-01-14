@@ -64,6 +64,7 @@
 pub mod factory;
 pub mod handler;
 pub mod protocol;
+pub mod response;
 pub mod subscription;
 pub mod subsystem;
 
@@ -75,5 +76,5 @@ pub use protocol::{
 	AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload, SubscribeRequest, UnsubscribeRequest,
 };
 pub use reifydb_sub_server::{ResponseColumn, ResponseFrame, convert_frames};
-pub use subscription::{PushMessage, SubscriptionRegistry};
+pub use subscription::{SubscriptionRegistry};
 pub use subsystem::WsSubsystem;

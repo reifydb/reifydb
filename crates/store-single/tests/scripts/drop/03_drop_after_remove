@@ -1,0 +1,39 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests drop after remove (both result in key not existing).
+
+set a=1
+---
+ok
+
+contains a
+---
+"a" => true
+
+remove a
+---
+ok
+
+# After remove, key doesn't exist
+contains a
+---
+"a" => false
+
+get a
+---
+"a" => None
+
+# Drop should also work on already-removed key (no-op)
+drop a
+---
+ok
+
+# Still doesn't exist
+contains a
+---
+"a" => false
+
+get a
+---
+"a" => None

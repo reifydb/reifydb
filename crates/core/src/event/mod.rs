@@ -11,8 +11,13 @@ use parking_lot::RwLock;
 
 pub mod flow;
 pub mod lifecycle;
+pub mod metric;
 pub mod store;
 pub mod transaction;
+
+pub use metric::{
+	CdcEntryStats, CdcStatsRecordedEvent, StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite,
+};
 
 pub trait Event: Any + Send + Sync + Clone + 'static {
 	fn as_any(&self) -> &dyn Any;

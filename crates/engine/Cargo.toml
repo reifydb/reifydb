@@ -15,6 +15,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-hash = { workspace = true }
+reifydb-metric = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-store-multi = { workspace = true }

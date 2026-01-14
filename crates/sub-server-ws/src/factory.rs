@@ -25,6 +25,10 @@ pub struct WsConfig {
 	pub max_frame_size: usize,
 	/// Optional shared runtime .
 	pub runtime: Option<SharedRuntime>,
+	/// Subscription polling interval (how often to check for new data).
+	pub poll_interval: Duration,
+	/// Maximum rows to read per subscription per poll cycle.
+	pub poll_batch_size: usize,
 }
 
 impl Default for WsConfig {
@@ -35,6 +39,8 @@ impl Default for WsConfig {
 			query_timeout: Duration::from_secs(30),
 			max_frame_size: 16 << 20, // 16MB
 			runtime: None,
+			poll_interval: Duration::from_millis(250), // Poll every 250ms
+			poll_batch_size: 100, // Read up to 100 rows per poll
 		}
 	}
 }
@@ -74,6 +80,18 @@ impl WsConfig {
 		self.runtime = Some(runtime);
 		self
 	}
+
+	/// Set the subscription polling interval.
+	pub fn poll_interval(mut self, interval: Duration) -> Self {
+		self.poll_interval = interval;
+		self
+	}
+
+	/// Set the subscription polling batch size.
+	pub fn poll_batch_size(mut self, size: usize) -> Self {
+		self.poll_batch_size = size;
+		self
+	}
 }
 
 /// Factory for creating WebSocket subsystem instances.
@@ -99,8 +117,15 @@ impl SubsystemFactory for WsSubsystemFactory {
 			.query_timeout(self.config.query_timeout)
 			.max_connections(self.config.max_connections);
 
-		let state = AppState::new(ioc_runtime.compute_pool(), engine, query_config);
-		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, self.config.runtime.unwrap_or(ioc_runtime));
+		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
+		let state = AppState::new(runtime.compute_pool(), engine, query_config);
+		let subsystem = WsSubsystem::new(
+			self.config.bind_addr.clone(),
+			state,
+			runtime,
+			self.config.poll_interval,
+			self.config.poll_batch_size,
+		);
 
 		Ok(Box::new(subsystem))
 	}

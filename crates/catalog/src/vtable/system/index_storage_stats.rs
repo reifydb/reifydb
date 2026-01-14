@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::VTableDef,
-	value::column::{Column, ColumnData, Columns},
-};
-use reifydb_transaction::{IntoStandardTransaction, StorageTracker};
+use reifydb_core::interface::VTableDef;
+use reifydb_core::value::column::{Column, ColumnData, Columns};
+use reifydb_metric::MetricReader;
+use reifydb_store_single::SingleStore;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -24,15 +24,15 @@ pub struct IndexStorageStats {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 	#[allow(dead_code)]
-	stats_tracker: StorageTracker,
+	stats_reader: MetricReader<SingleStore>,
 }
 
 impl IndexStorageStats {
-	pub fn new(stats_tracker: StorageTracker) -> Self {
+	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
 			definition: SystemCatalog::get_system_index_storage_stats_table_def().clone(),
 			exhausted: false,
-			stats_tracker,
+			stats_reader,
 		}
 	}
 }
@@ -53,7 +53,7 @@ impl<T: IntoStandardTransaction> VTable<T> for IndexStorageStats {
 		// to extract IndexId, which is not currently implemented.
 		//
 		// Return empty result for now - this can be enhanced in the future to provide
-		// aggregate stats by KeyKind or by implementing per-index ObjectId tracking.
+		// aggregate stats by KeyKind or by implementing per-index Id tracking.
 
 		let columns = vec![
 			Column {

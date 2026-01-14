@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_store_transaction::hot::sqlite::SqliteConfig;
+use reifydb_store_multi::sqlite::SqliteConfig;
 
 use crate::EmbeddedBuilder;
 use crate::api::StorageFactory;

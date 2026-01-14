@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::{PrimitiveId, VTableDef},
-	value::column::{Column, ColumnData, Columns},
-};
-use reifydb_transaction::{IntoStandardTransaction, ObjectId, StorageTracker, Tier};
+use reifydb_core::interface::{PrimitiveId, VTableDef};
+use reifydb_core::value::column::{Column, ColumnData, Columns};
+use reifydb_metric::{Id, MetricReader, Tier};
+use reifydb_store_single::SingleStore;
+use reifydb_transaction::IntoStandardTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -20,15 +20,15 @@ use crate::{
 pub struct TableStorageStats {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
-	stats_tracker: StorageTracker,
+	stats_reader: MetricReader<SingleStore>,
 }
 
 impl TableStorageStats {
-	pub fn new(stats_tracker: StorageTracker) -> Self {
+	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
 			definition: SystemCatalog::get_system_table_storage_stats_table_def().clone(),
 			exhausted: false,
-			stats_tracker,
+			stats_reader,
 		}
 	}
 }
@@ -57,9 +57,10 @@ impl<T: IntoStandardTransaction> VTable<T> for TableStorageStats {
 		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = Vec::new();
 
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
-			for (obj_id, stats) in self.stats_tracker.objects_by_tier(tier) {
+			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
+			for (obj_id, stats) in tier_stats {
 				// Filter for table sources only
-				if let ObjectId::Source(PrimitiveId::Table(table_id)) = obj_id {
+				if let Id::Source(PrimitiveId::Table(table_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_table(txn, table_id)? {
 						Some(table_def) => table_def.namespace.0,
@@ -70,19 +71,19 @@ impl<T: IntoStandardTransaction> VTable<T> for TableStorageStats {
 						table_id.0,
 						namespace_id,
 						tier,
-						stats.current_key_bytes,
-						stats.current_value_bytes,
+						stats.storage.current_key_bytes,
+						stats.storage.current_value_bytes,
 						stats.current_bytes(),
-						stats.current_count,
-						stats.historical_key_bytes,
-						stats.historical_value_bytes,
+						stats.storage.current_count,
+						stats.storage.historical_key_bytes,
+						stats.storage.historical_value_bytes,
 						stats.historical_bytes(),
-						stats.historical_count,
+						stats.storage.historical_count,
 						stats.total_bytes(),
-						stats.cdc_key_bytes,
-						stats.cdc_value_bytes,
+						stats.cdc.key_bytes,
+						stats.cdc.value_bytes,
 						stats.cdc_total_bytes(),
-						stats.cdc_count,
+						stats.cdc.entry_count,
 					));
 				}
 			}

@@ -5,8 +5,14 @@ use std::time::Duration;
 
 use reifydb_core::event::EventBus;
 use reifydb_core::runtime::ComputePool;
-use reifydb_store_transaction::{
-	HotConfig, TransactionStore, TransactionStoreConfig, hot::HotStorage, sqlite::SqliteConfig,
+use reifydb_store_multi::{
+	HotConfig as MultiHotConfig, MultiStore, MultiStoreConfig, hot::HotStorage,
+	hot::sqlite::DbPath,
+	sqlite::SqliteConfig,
+};
+use reifydb_store_single::{
+	HotConfig as SingleHotConfig, SingleStore, SingleStoreConfig,
+	sqlite::SqliteConfig as SingleSqliteConfig,
 };
 use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingle};
 
@@ -30,7 +36,7 @@ impl StorageFactory {
 	pub(crate) fn create(
 		&self,
 		compute_pool: ComputePool,
-	) -> (TransactionStore, TransactionSingle, EventBus) {
+	) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 		match self {
 			StorageFactory::Memory => create_memory_store(compute_pool),
 			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone()),
@@ -41,49 +47,84 @@ impl StorageFactory {
 /// Internal: Create in-memory storage with the given compute pool.
 fn create_memory_store(
 	compute_pool: ComputePool,
-) -> (TransactionStore, TransactionSingle, EventBus) {
+) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = HotStorage::memory(compute_pool);
-	let store = TransactionStore::standard(TransactionStoreConfig {
-		hot: Some(HotConfig {
-			storage,
+
+	// Create multi-version store
+	let multi_storage = HotStorage::memory(compute_pool.clone());
+	let multi_store = MultiStore::standard(MultiStoreConfig {
+		hot: Some(MultiHotConfig {
+			storage: multi_storage,
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-		stats: Default::default(),
 		event_bus: eventbus.clone(),
 	});
 
-	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), eventbus)
+	// Create single-version store
+	let single_storage = reifydb_store_single::hot::HotTier::memory(compute_pool);
+	let single_store = SingleStore::standard(SingleStoreConfig {
+		hot: Some(SingleHotConfig { storage: single_storage }),
+		event_bus: eventbus.clone(),
+	});
+
+	let transaction_single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	(multi_store, single_store, transaction_single, eventbus)
 }
 
 /// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(config: SqliteConfig) -> (TransactionStore, TransactionSingle, EventBus) {
+fn create_sqlite_store(config: SqliteConfig) -> (MultiStore, SingleStore, TransactionSingle, EventBus) {
 	let eventbus = EventBus::new();
-	let storage = HotStorage::sqlite(config);
-	let store = TransactionStore::standard(TransactionStoreConfig {
-		hot: Some(HotConfig {
-			storage,
+
+	// Modify config to use multi.db in a directory named after the UUID
+	let multi_path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
+	};
+	let multi_config = SqliteConfig {
+		path: multi_path,
+		..config.clone()
+	};
+
+	// Create multi-version store
+	let multi_storage = HotStorage::sqlite(multi_config);
+	let multi_store = MultiStore::standard(MultiStoreConfig {
+		hot: Some(MultiHotConfig {
+			storage: multi_storage,
 			retention_period: Duration::from_millis(200),
 		}),
 		warm: None,
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-		stats: Default::default(),
 		event_bus: eventbus.clone(),
 	});
 
-	(store.clone(), TransactionSingle::svl(store.clone(), eventbus.clone()), eventbus)
+	// Create single-version config with single.db in same directory
+	let single_path = match &config.path {
+		DbPath::File(p) => p.with_extension("").join("single.db"),
+		DbPath::Memory(p) => p.with_extension("").join("single.db"),
+		DbPath::Tmpfs(p) => p.with_extension("").join("single.db"),
+	};
+	let single_config = SingleSqliteConfig::new(single_path);
+	let single_storage = reifydb_store_single::hot::HotTier::sqlite(single_config);
+	let single_store = SingleStore::standard(SingleStoreConfig {
+		hot: Some(SingleHotConfig { storage: single_storage }),
+		event_bus: eventbus.clone(),
+	});
+
+	let transaction_single = TransactionSingle::svl(single_store.clone(), eventbus.clone());
+	(multi_store, single_store, transaction_single, eventbus)
 }
 
 /// Convenience function to create a transaction layer
 pub(crate) fn transaction(
-	input: (TransactionStore, TransactionSingle, EventBus),
+	input: (MultiStore, SingleStore, TransactionSingle, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingle, EventBus) {
-	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.2.clone()).unwrap();
-	(multi, input.1, input.2)
+	let multi = TransactionMultiVersion::new(input.0, input.2.clone(), input.3.clone()).unwrap();
+	(multi, input.2, input.3)
 }

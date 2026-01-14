@@ -11,7 +11,7 @@ use reifydb_core::{
 	return_error,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_multi::MultiVersionBatch;
+use reifydb_core::interface::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 
@@ -324,7 +324,18 @@ impl StandardCommandTransaction {
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
-	/// Remove a key
+	/// Unset a key, preserving the deleted values.
+	///
+	/// The `values` parameter contains the deleted values for CDC and metrics.
+	#[inline]
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().unset(key, values)
+	}
+
+	/// Remove a key without preserving the deleted values.
+	///
+	/// Use when only the key matters (e.g., index entries, catalog metadata).
 	#[inline]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;

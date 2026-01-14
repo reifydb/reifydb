@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
-use reifydb_store_multi::MultiVersionBatch;
+use reifydb_core::interface::MultiVersionBatch;
 use reifydb_type::Result;
 
 use crate::TransactionId;

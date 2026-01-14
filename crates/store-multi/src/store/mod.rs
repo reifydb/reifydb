@@ -18,11 +18,9 @@ use crate::{
 mod drop;
 pub mod worker;
 mod multi;
-pub mod resolver;
 pub mod router;
 pub mod version;
 
-pub use resolver::StorageResolver;
 pub use worker::{DropWorker, DropWorkerConfig};
 
 #[derive(Clone)]
@@ -34,6 +32,8 @@ pub struct StandardMultiStoreInner {
 	pub(crate) cold: Option<ColdStorage>,
 	/// Background drop worker.
 	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
+	/// Event bus for emitting storage statistics events.
+	pub(crate) event_bus: EventBus,
 }
 
 impl StandardMultiStore {
@@ -60,6 +60,7 @@ impl StandardMultiStore {
 			warm,
 			cold,
 			drop_worker: Arc::new(Mutex::new(drop_worker)),
+			event_bus: config.event_bus,
 		})))
 	}
 
@@ -81,6 +82,10 @@ impl Deref for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
+		Self::testing_memory_with_eventbus(EventBus::new())
+	}
+
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotStorage::memory(ComputePool::new(1,1)),
@@ -90,7 +95,7 @@ impl StandardMultiStore {
 			cold: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			event_bus: EventBus::new(),
+			event_bus,
 		})
 		.unwrap()
 	}

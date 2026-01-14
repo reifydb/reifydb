@@ -75,11 +75,12 @@ pub trait ExecuteCommand {
 pub trait ExecuteQuery {
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }
+use reifydb_metric::MetricReader;
 use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
 };
-use reifydb_transaction::StorageTracker;
+use reifydb_store_single::SingleStore;
 use tracing::instrument;
 
 use crate::{
@@ -319,7 +320,7 @@ pub struct ExecutorInner {
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
-	pub stats_tracker: StorageTracker,
+	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
 }
 
@@ -342,7 +343,7 @@ impl Executor {
 		catalog: Catalog,
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
-		stats_tracker: StorageTracker,
+		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
 	) -> Self {
 		Self(Arc::new(ExecutorInner {
@@ -350,13 +351,14 @@ impl Executor {
 			functions,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
-			stats_tracker,
+			stats_reader,
 			ioc,
 		}))
 	}
 
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
+		let store = SingleStore::testing_memory();
 		Self::new(
 			Catalog::new(reifydb_catalog::MaterializedCatalog::new()),
 			Functions::builder()
@@ -371,7 +373,7 @@ impl Executor {
 				.register_generator("inspect_subscription", subscription::InspectSubscription::new)
 				.build(),
 			FlowOperatorStore::new(),
-			StorageTracker::with_defaults(),
+			MetricReader::new(store),
 			IocContainer::new(),
 		)
 	}

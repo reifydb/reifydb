@@ -38,7 +38,7 @@ pub trait FFIOperatorMetadata {
 
 /// Runtime operator behavior
 /// Operators must be Send + Sync for thread safety
-pub trait FFIOperator: Send + Sync + 'static {
+pub trait FFIOperator: 'static {
 	/// Create a new operator instance with the operator ID and configuration
 	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
 	where

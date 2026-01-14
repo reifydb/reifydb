@@ -7,19 +7,20 @@ use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::{CdcEventListener, CdcStore, CdcVersion, CdcWorker};
-use reifydb_core::event::transaction::PostCommitEvent;
 use reifydb_core::{
 	CoreVersion, SharedRuntime,
-	event::EventBus,
+	event::{CdcStatsRecordedEvent, EventBus, StorageStatsRecordedEvent, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
 };
+use reifydb_metric::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
 use reifydb_function::{Functions, FunctionsBuilder, math, series};
 use reifydb_rql::RqlVersion;
 use reifydb_rqlv2;
 use reifydb_rqlv2::Compiler;
-use reifydb_store_transaction::{StorageResolver, TransactionStoreVersion};
+use reifydb_store_multi::{MultiStore, MultiStoreVersion};
+use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, subsystem::FlowSubsystemFactory};
@@ -36,6 +37,8 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	multi_store: Option<MultiStore>,
+	single_store: Option<SingleStore>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
@@ -60,11 +63,20 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
+			multi_store: None,
+			single_store: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 		}
+	}
+
+	/// Store the underlying MultiStore and SingleStore for metrics worker
+	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore) -> Self {
+		self.multi_store = Some(multi);
+		self.single_store = Some(single);
+		self
 	}
 
 	#[cfg(feature = "sub_tracing")]
@@ -149,12 +161,27 @@ impl DatabaseBuilder {
 		let cdc_store = CdcStore::memory();
 		self.ioc = self.ioc.register(cdc_store.clone());
 
-		// Create CDC worker with stats tracking and register event listener
+		// Get the underlying stores for workers
+		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
+		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
+
+		// Create metrics worker and register event listeners
+		let metrics_worker = Arc::new(MetricsWorker::new(
+			MetricsWorkerConfig::default(),
+			single_store.clone(),
+			multi_store.clone(),
+			eventbus.clone(),
+		));
+		eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
+		eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
+
+		// Register single store in IoC for engine to access
+		self.ioc = self.ioc.register(single_store);
+
+		// Create CDC worker and register event listener
 		// The worker is stored in IoC to keep it alive for the database lifetime
-		let stats_worker = multi.store().stats_worker().clone();
-		let hot_storage = multi.store().hot().cloned().expect("hot tier required for CDC");
-		let resolver = Arc::new(StorageResolver::new(hot_storage));
-		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, resolver, Some(stats_worker)));
+		let cdc_worker = Arc::new(CdcWorker::spawn(cdc_store, multi_store, eventbus.clone()));
 		eventbus.register::<PostCommitEvent, _>(CdcEventListener::new(cdc_worker.sender()));
 		self.ioc.register_service::<Arc<CdcWorker>>(cdc_worker);
 
@@ -198,7 +225,8 @@ impl DatabaseBuilder {
 		all_versions.push(CoreVersion.version());
 		all_versions.push(EngineVersion.version());
 		all_versions.push(CatalogVersion.version());
-		all_versions.push(TransactionStoreVersion.version());
+		all_versions.push(MultiStoreVersion.version());
+		all_versions.push(SingleStoreVersion.version());
 		all_versions.push(TransactionVersion.version());
 		all_versions.push(AuthVersion.version());
 		all_versions.push(RqlVersion.version());

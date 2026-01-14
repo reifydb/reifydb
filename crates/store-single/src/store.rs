@@ -54,11 +54,15 @@ impl Deref for StandardSingleStore {
 
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
+		Self::testing_memory_with_eventbus(EventBus::new())
+	}
+
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(SingleStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotTier::memory(ComputePool::new(1, 1)),
 			}),
-			event_bus: EventBus::new(),
+			event_bus,
 		})
 		.unwrap()
 	}
@@ -107,17 +111,12 @@ impl SingleVersionCommit for StandardSingleStore {
 		let entries: Vec<_> = deltas
 			.iter()
 			.map(|delta| match delta {
-				Delta::Set {
-					key,
-					values,
-				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec()))),
-				Delta::Remove {
-					key,
-				} => (CowVec::new(key.as_ref().to_vec()), None),
-				Delta::Drop {
-					key,
-					..
-				} => (CowVec::new(key.as_ref().to_vec()), None),
+				Delta::Set { key, values } => {
+					(CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec())))
+				}
+				Delta::Unset { key, .. } | Delta::Remove { key } | Delta::Drop { key, .. } => {
+					(CowVec::new(key.as_ref().to_vec()), None)
+				}
 			})
 			.collect();
 

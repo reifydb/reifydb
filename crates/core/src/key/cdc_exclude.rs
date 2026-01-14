@@ -29,7 +29,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 		// CDC infrastructure
 			| KeyKind::CdcConsumer
 		// Internal tracking and statistics
-			| KeyKind::StorageTracker
+			| KeyKind::Metric
 		// Sequence generators (internal ID generation)
 			| KeyKind::SystemSequence
 			| KeyKind::RowSequence
@@ -101,7 +101,7 @@ mod tests {
 			KeyKind::DictionaryEntryIndex => {}
 			KeyKind::NamespaceDictionary => {}
 			KeyKind::DictionarySequence => {}
-			KeyKind::StorageTracker => {}
+			KeyKind::Metric => {}
 			KeyKind::FlowVersion => {}
 			KeyKind::Subscription => {}
 			KeyKind::SubscriptionRow => {}
@@ -134,7 +134,7 @@ mod tests {
 	// Internal tracking and statistics
 	#[test]
 	fn test_exclude_storage_tracker() {
-		assert!(should_exclude_from_cdc(KeyKind::StorageTracker));
+		assert!(should_exclude_from_cdc(KeyKind::Metric));
 	}
 
 	// Sequence generators

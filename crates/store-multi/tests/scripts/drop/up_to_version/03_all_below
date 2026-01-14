@@ -1,0 +1,32 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests when all versions are below the threshold (all dropped).
+
+set a=1 version=1
+set a=2 version=2
+set a=3 version=3
+---
+ok
+
+count_versions a
+---
+"a" => 3 versions
+
+# All versions are < 100, so all should be dropped
+drop a up_to_version=100
+---
+ok
+
+# All gone
+count_versions a
+---
+"a" => 0 versions
+
+contains a version=1
+contains a version=2
+contains a version=3
+---
+"a" => false
+"a" => false
+"a" => false

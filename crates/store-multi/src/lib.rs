@@ -3,6 +3,7 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::event::EventBus;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 
@@ -18,13 +19,14 @@ mod store;
 pub use config::{
 	ColdConfig, HotConfig, MergeConfig, RetentionConfig, MultiStoreConfig, WarmConfig,
 };
-pub use multi::*;
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	delta::Delta,
-	interface::MultiVersionValues,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
+	interface::{
+		MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+		MultiVersionGetPrevious, MultiVersionStore, MultiVersionValues,
+	},
 };
-pub use store::{StandardMultiStore, StorageResolver};
+pub use store::StandardMultiStore;
 
 pub mod memory {
 	pub use crate::hot::memory::MemoryPrimitiveStorage;
@@ -64,6 +66,10 @@ impl MultiStore {
 		MultiStore::Standard(StandardMultiStore::testing_memory())
 	}
 
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_eventbus(event_bus))
+	}
+
 	/// Get access to the hot storage tier.
 	///
 	/// Returns `None` if the hot tier is not configured.
@@ -99,6 +105,19 @@ impl MultiVersionCommit for MultiStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
 			MultiStore::Standard(store) => store.commit(deltas, version),
+		}
+	}
+}
+
+impl MultiVersionGetPrevious for MultiStore {
+	#[inline]
+	fn get_previous_version(
+		&self,
+		key: &EncodedKey,
+		before_version: CommitVersion,
+	) -> Result<Option<MultiVersionValues>> {
+		match self {
+			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
 	}
 }

@@ -3,6 +3,7 @@
 
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
+use reifydb_core::interface::{MultiVersionCommit, MultiVersionContains, MultiVersionGet};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	delta::Delta,
@@ -11,21 +12,18 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_multi::{
-	HotConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, StandardMultiStore,
-	MultiStoreConfig, hot::HotStorage,
-};
+use reifydb_store_multi::{HotConfig, MultiStoreConfig, StandardMultiStore, hot::HotStorage};
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use reifydb_type::cow_vec;
 
-// TODO: Drop test scripts need to be migrated from store-transaction
-// test_each_path! { in "crates/store-multi/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }
-// test_each_path! { in "crates/store-multi/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
+use test_each_file::test_each_path;
+test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
+test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
 	let storage = HotStorage::memory(compute_pool);
-testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
@@ -205,6 +203,31 @@ impl testscript::Runner for Runner {
 					],
 					version,
 				)?
+			}
+
+			// unset KEY=VALUE [version=VERSION]
+			"unset" => {
+				let mut args = command.consume_args();
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let values = EncodedValues(decode_binary(&kv.value));
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					CommitVersion(v)
+				} else {
+					self.version.0 += 1;
+					self.version
+				};
+				args.reject_rest()?;
+
+				self.store.commit(
+					cow_vec![
+						(Delta::Unset {
+							key,
+							values
+						})
+					],
+					version,
+				)?;
 			}
 
 			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]

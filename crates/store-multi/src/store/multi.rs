@@ -14,13 +14,20 @@ use reifydb_core::{
 use reifydb_type::util::hex;
 use tracing::instrument;
 
+use reifydb_core::{
+	event::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite},
+	interface::{
+		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+		MultiVersionGetPrevious, MultiVersionStore,
+	},
+};
+
 use super::{
 	StandardMultiStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
 	version::{VersionedGetResult, encode_versioned_key, get_at_version},
 };
 use crate::{
-	MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionStore,
 	hot::EntryKind::Multi,
 	tier::{EntryKind, RangeCursor, TierStorage},
 };
@@ -125,6 +132,36 @@ impl MultiVersionCommit for StandardMultiStore {
 			})
 			.collect();
 
+		// Collect storage statistics for batch sending.
+		// Stats are emitted via EventBus for the metrics worker to process.
+		// CDC stats are collected by the async CDC shard workers.
+		let mut writes: Vec<StorageWrite> = Vec::new();
+		let mut deletes: Vec<StorageDelete> = Vec::new();
+		let mut drops: Vec<StorageDrop> = Vec::new();
+
+		for delta in deltas.iter() {
+			let key = delta.key();
+
+			match delta {
+				Delta::Set {
+					values,
+					..
+				} => {
+					writes.push(StorageWrite {
+						key: key.clone(),
+						value_bytes: values.len() as u64,
+					});
+				}
+				Delta::Unset { values, .. } => {
+					deletes.push(StorageDelete {
+						key: key.clone(),
+						value_bytes: values.len() as u64,
+					});
+				}
+				Delta::Remove { .. } | Delta::Drop { .. } => {}
+			}
+		}
+
 		// Batch deltas by table for efficient storage writes
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
 
@@ -141,9 +178,7 @@ impl MultiVersionCommit for StandardMultiStore {
 						.or_default()
 						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
-				Delta::Remove {
-					key,
-				} => {
+				Delta::Unset { key, .. } | Delta::Remove { key } => {
 					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
 					batches.entry(table).or_default().push((versioned_key, None));
 				}
@@ -169,6 +204,12 @@ impl MultiVersionCommit for StandardMultiStore {
 						pending_version,
 					)?;
 					for entry in entries_to_drop {
+						// Collect stats for each dropped entry
+						// Note: value_bytes is 0 since we don't track it in DropEntry
+						drops.push(StorageDrop {
+							key: key.clone(),
+							value_bytes: 0,
+						});
 						batches.entry(table).or_default().push((entry.versioned_key, None));
 					}
 				}
@@ -192,6 +233,16 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		// Write versioned entries to storage
 		storage.set(batches)?;
+
+		// Emit storage stats event for this commit
+		if !writes.is_empty() || !deletes.is_empty() || !drops.is_empty() {
+			self.event_bus.emit(StorageStatsRecordedEvent {
+				writes,
+				deletes,
+				drops,
+				version,
+			});
+		}
 
 		Ok(())
 	}
@@ -597,6 +648,36 @@ impl StandardMultiStore {
 		}
 
 		Ok(true)
+	}
+}
+
+impl MultiVersionGetPrevious for StandardMultiStore {
+	fn get_previous_version(
+		&self,
+		key: &EncodedKey,
+		before_version: CommitVersion,
+	) -> crate::Result<Option<MultiVersionValues>> {
+		if before_version.0 == 0 {
+			return Ok(None);
+		}
+
+		// Hot storage must be available for version lookups
+		let storage = self.hot.as_ref().expect("hot storage required for version lookups");
+
+		let table = classify_key(key);
+		let prev_version = CommitVersion(before_version.0 - 1);
+
+		match get_at_version(storage, table, key.as_ref(), prev_version) {
+			Ok(VersionedGetResult::Value { value, version }) => {
+				Ok(Some(MultiVersionValues {
+					key: key.clone(),
+					values: EncodedValues(CowVec::new(value.to_vec())),
+					version,
+				}))
+			}
+			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
+			Err(e) => Err(e),
+		}
 	}
 }
 

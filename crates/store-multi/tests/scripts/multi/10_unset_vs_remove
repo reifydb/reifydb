@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Compares unset (CDC-generating) vs remove (no CDC).
+# Both delete data, but unset preserves values for CDC tracking.
+# This test verifies both operations result in the same visible state.
+
+set a=1 version=1
+set b=2 version=1
+---
+ok
+
+# Verify both keys exist
+get a version=1
+---
+"a" => "1"
+
+get b version=1
+---
+"b" => "2"
+
+# Unset preserves values (for CDC) - key a
+unset a=1 version=2
+---
+ok
+
+# Remove doesn't preserve values - key b
+remove b version=2
+---
+ok
+
+# Both keys are deleted at version 2
+get a version=2
+---
+"a" => None
+
+get b version=2
+---
+"b" => None
+
+# Both still visible at version 1
+get a version=1
+---
+"a" => "1"
+
+get b version=1
+---
+"b" => "2"
+
+# Scan at version 2 should be empty
+scan version=2
+---
+ok
+
+# Scan at version 1 should show both
+scan version=1
+---
+"a" => "1"
+"b" => "2"
+
+# Test contains at different versions
+contains a version=1
+---
+"a" => true
+
+contains a version=2
+---
+"a" => false
+
+contains b version=1
+---
+"b" => true
+
+contains b version=2
+---
+"b" => false

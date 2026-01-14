@@ -17,10 +17,10 @@ use crossbeam_channel::{Receiver, Sender, unbounded};
 use reifydb_core::{
 	CommitVersion,
 	delta::Delta,
-	interface::{Cdc, CdcChange, CdcSequencedChange, PreviousVersionResolver},
+	event::{CdcEntryStats, CdcStatsRecordedEvent, EventBus},
+	interface::{Cdc, CdcChange, CdcSequencedChange, MultiVersionGetPrevious},
 	key::{Key, should_exclude_from_cdc},
 };
-use reifydb_transaction::{StatsOp, StatsWorker, Tier};
 use tracing::{error, info, trace};
 use crate::storage::CdcStorage;
 
@@ -52,12 +52,12 @@ impl CdcWorker {
 	///
 	/// # Arguments
 	/// - `storage`: The CDC storage backend to write entries to
-	/// - `resolver`: Resolver for looking up previous versions (needed for Update/Delete CDC)
-	/// - `stats_worker`: Optional stats worker for tracking CDC storage consumption
-	pub fn spawn<S, R>(storage: S, resolver: Arc<R>, stats_worker: Option<Arc<StatsWorker>>) -> Self
+	/// - `transaction_store`: Transaction store for looking up previous versions (needed for Update/Delete CDC)
+	/// - `event_bus`: Event bus for emitting CDC stats events
+	pub fn spawn<S, T>(storage: S, transaction_store: T, event_bus: EventBus) -> Self
 	where
 		S: CdcStorage + Send + 'static,
-		R: PreviousVersionResolver + Send + Sync + 'static,
+		T: MultiVersionGetPrevious + Clone + Send + Sync + 'static,
 	{
 		let (sender, receiver) = unbounded();
 		let running = Arc::new(AtomicBool::new(true));
@@ -67,7 +67,7 @@ impl CdcWorker {
 			.name("cdc-worker".to_string())
 			.spawn(move || {
 				info!("CDC worker started");
-				worker_loop(storage, resolver, receiver, running_clone, stats_worker);
+				worker_loop(storage, transaction_store, receiver, running_clone, event_bus);
 				info!("CDC worker stopped");
 			})
 			.expect("Failed to spawn CDC worker");
@@ -113,21 +113,21 @@ impl Drop for CdcWorker {
 	}
 }
 
-fn worker_loop<S, R>(
+fn worker_loop<S, T>(
 	storage: S,
-	resolver: Arc<R>,
+	transaction_store: T,
 	receiver: Receiver<CdcWorkItem>,
 	running: Arc<AtomicBool>,
-	stats_worker: Option<Arc<StatsWorker>>,
+	event_bus: EventBus,
 )
 where
 	S: CdcStorage,
-	R: PreviousVersionResolver,
+	T: MultiVersionGetPrevious,
 {
 	while running.load(Ordering::SeqCst) {
 		match receiver.recv_timeout(RECV_TIMEOUT) {
 			Ok(item) => {
-				process_work_item(&storage, resolver.as_ref(), item, stats_worker.as_deref());
+				process_work_item(&storage, &transaction_store, item, &event_bus);
 			}
 			Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
 				// Just check the running flag and continue
@@ -140,10 +140,10 @@ where
 	}
 }
 
-fn process_work_item<S, R>(storage: &S, resolver: &R, item: CdcWorkItem, stats_worker: Option<&StatsWorker>)
+fn process_work_item<S, T>(storage: &S, transaction_store: &T, item: CdcWorkItem, event_bus: &EventBus)
 where
 	S: CdcStorage,
-	R: PreviousVersionResolver,
+	T: MultiVersionGetPrevious,
 {
 	let mut changes = Vec::new();
 	let mut seq = 0u16;
@@ -165,40 +165,29 @@ where
 		let change = match delta {
 			Delta::Set { key, values } => {
 				// Check if previous version exists to determine Insert vs Update
-				let pre = resolver
-					.resolve_previous_with_value(&key, item.version)
+				let pre = transaction_store
+					.get_previous_version(&key, item.version)
 					.ok()
 					.flatten();
 
-				if let Some(pre_info) = pre {
-					if let Some(pre_value) = pre_info.value {
-						CdcChange::Update {
-							key,
-							pre: pre_value,
-							post: values,
-						}
-					} else {
-						// Had previous version but no value - treat as insert
-						CdcChange::Insert { key, post: values }
+				if let Some(prev_values) = pre {
+					// Has previous version - this is an update
+					CdcChange::Update {
+						key,
+						pre: prev_values.values,
+						post: values,
 					}
 				} else {
 					// No previous version - this is an insert
 					CdcChange::Insert { key, post: values }
 				}
 			}
-			Delta::Remove { key } => {
-				// Look up previous version to get the pre-value (optional)
-				let pre = resolver
-					.resolve_previous_with_value(&key, item.version)
-					.ok()
-					.flatten()
-					.and_then(|p| p.value);
-
-				// Always emit delete event - pre-image is optional
+			Delta::Unset { key, values } => {
+				let pre = if values.is_empty() { None } else { Some(values) };
 				CdcChange::Delete { key, pre }
 			}
-			Delta::Drop { .. } => {
-				// Drop operations never generate CDC
+			Delta::Remove { .. } | Delta::Drop { .. } => {
+				// Remove (untracked) and Drop operations never generate CDC
 				continue;
 			}
 		};
@@ -213,23 +202,23 @@ where
 			return;
 		}
 
-		// Record CDC stats if stats_worker is available
-		if let Some(stats) = stats_worker {
-			let ops: Vec<StatsOp> = changes
-				.iter()
-				.map(|seq_change| {
-					let key = seq_change.change.key();
-					let value_bytes = seq_change.change.value_bytes() as u64;
-					StatsOp::Cdc {
-						tier: Tier::Hot,
-						key: key.as_ref().to_vec(),
-						value_bytes,
-						count: 1,
-					}
-				})
-				.collect();
-			stats.record_batch(ops, item.version);
-		}
+		// Emit CDC stats event
+		let entries: Vec<CdcEntryStats> = changes
+			.iter()
+			.map(|seq_change| {
+				let key = seq_change.change.key();
+				let value_bytes = seq_change.change.value_bytes() as u64;
+				CdcEntryStats {
+					key: key.clone(),
+					value_bytes,
+				}
+			})
+			.collect();
+
+		event_bus.emit(CdcStatsRecordedEvent {
+			entries,
+			version: item.version,
+		});
 	}
 }
 
@@ -237,7 +226,8 @@ where
 mod tests {
 	use super::*;
 	use crate::storage::MemoryCdcStorage;
-	use reifydb_core::{CowVec, EncodedKey, interface::NoOpResolver, value::encoded::EncodedValues};
+	use reifydb_core::{CowVec, EncodedKey, value::encoded::EncodedValues};
+	use reifydb_store_multi::MultiStore;
 	use std::thread::sleep;
 	use std::time::Duration;
 
@@ -252,8 +242,10 @@ mod tests {
 	#[test]
 	fn test_worker_processes_insert() {
 		let storage = MemoryCdcStorage::new();
-		let resolver = Arc::new(NoOpResolver);
-		let worker = CdcWorker::spawn(storage.clone(), resolver, None);
+		let store = MultiStore::testing_memory();
+		let resolver = store;
+		let event_bus = EventBus::new();
+		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus);
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
@@ -287,8 +279,10 @@ mod tests {
 	#[test]
 	fn test_worker_skips_drop_operations() {
 		let storage = MemoryCdcStorage::new();
-		let resolver = Arc::new(NoOpResolver);
-		let worker = CdcWorker::spawn(storage.clone(), resolver, None);
+		let store = MultiStore::testing_memory();
+		let resolver = store;
+		let event_bus = EventBus::new();
+		let worker = CdcWorker::spawn(storage.clone(), resolver, event_bus);
 
 		let deltas = vec![
 			Delta::Set {

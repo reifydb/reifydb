@@ -353,10 +353,20 @@ fn insert_entries_in_tx(
 	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
 ) -> rusqlite::Result<()> {
 	for (key, value) in entries {
-		tx.execute(
-			&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
-			params![key.as_slice(), value.as_ref().map(|v| v.as_slice())],
-		)?;
+		match value {
+			Some(v) => {
+				tx.execute(
+					&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
+					params![key.as_slice(), v.as_slice()],
+				)?;
+			}
+			None => {
+				tx.execute(
+					&format!("DELETE FROM \"{}\" WHERE key = ?1", table_name),
+					params![key.as_slice()],
+				)?;
+			}
+		}
 	}
 	Ok(())
 }

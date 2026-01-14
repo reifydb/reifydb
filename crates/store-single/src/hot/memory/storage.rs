@@ -58,7 +58,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		let mut map = self.inner.data.write();
 		for (key, value) in entries {
-			map.insert(key, value);
+			match value {
+				Some(v) => {
+					map.insert(key, Some(v));
+				}
+				None => {
+					map.remove(&key);
+				}
+			}
 		}
 		Ok(())
 	}

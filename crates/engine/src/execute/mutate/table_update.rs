@@ -215,12 +215,14 @@ impl Executor {
 								&pk_def, &old_row, &table, &layout,
 							)?;
 
-							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
-								table.id,
-								IndexId::primary(pk_def.id),
-								old_key,
-							)
-							.encode())?;
+							wrapped_txn.command_mut().remove(
+								&IndexEntryKey::new(
+									table.id,
+									IndexId::primary(pk_def.id),
+									old_key,
+								)
+								.encode(),
+							)?;
 						}
 
 						let new_key = primary_key::encode_primary_key(

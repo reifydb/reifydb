@@ -1,0 +1,33 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests unset operation - preserves values for CDC (unlike remove which doesn't).
+# Unset is semantically equivalent to "delete with values" for CDC tracking.
+
+import a=value1 b=value2
+---
+ok
+
+# Unset an existing key
+t1: begin
+t1: unset a=value1
+---
+ok
+
+t1: scan
+---
+t1: "b" => "value2"
+
+t1: commit
+---
+ok
+
+# Verify key is deleted
+t2: begin readonly
+t2: get a
+---
+t2: "a" => None
+
+t2: scan
+---
+t2: "b" => "value2"

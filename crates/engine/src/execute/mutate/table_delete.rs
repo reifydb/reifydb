@@ -119,26 +119,25 @@ impl Executor {
 			for row_number in row_numbers_to_delete {
 				let row_key = RowKey::encoded(table.id, row_number);
 
-				// Remove primary key index entry if table has
-				// one
-				if let Some(ref pk_def) = pk_def {
-					if let Some(row_data) = cmd.get(&row_key)? {
-						let row = row_data.values;
-						let layout = table.get_layout();
-						let index_key =
-							primary_key::encode_primary_key(pk_def, &row, &table, &layout)?;
+				// Get row values for metrics tracking (and for primary key encoding)
+				let row_values = match cmd.get(&row_key)? {
+					Some(v) => v.values,
+					None => continue, // Row doesn't exist, skip
+				};
 
-						cmd.remove(&IndexEntryKey::new(
-							table.id,
-							IndexId::primary(pk_def.id),
-							index_key,
-						)
-						.encode())?;
-					}
+				// Remove primary key index entry if table has one
+				if let Some(ref pk_def) = pk_def {
+					let layout = table.get_layout();
+					let index_key =
+						primary_key::encode_primary_key(pk_def, &row_values, &table, &layout)?;
+
+					cmd.remove(
+						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode(),
+					)?;
 				}
 
-				// Now remove the encoded
-				cmd.remove(&row_key)?;
+				// Now remove the row
+				cmd.unset(&row_key, row_values)?;
 				deleted_count += 1;
 			}
 		} else {
@@ -172,16 +171,18 @@ impl Executor {
 						&layout,
 					)?;
 
-					txn.remove(&IndexEntryKey::new(
-						table.id,
-						IndexId::primary(pk_def.id),
-						index_key,
-					)
-					.encode())?;
+					txn.remove(
+						&IndexEntryKey::new(
+							table.id,
+							IndexId::primary(pk_def.id),
+							index_key,
+						)
+						.encode(),
+					)?;
 				}
 
-				// Remove the encoded
-				txn.remove(&multi.key)?;
+				// Remove the row
+				txn.unset(&multi.key, multi.values.clone())?;
 				deleted_count += 1;
 			}
 		}

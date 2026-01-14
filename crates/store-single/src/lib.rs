@@ -3,6 +3,7 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::event::EventBus;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 
@@ -10,12 +11,18 @@ pub mod hot;
 pub mod tier;
 
 pub mod config;
-mod single;
 mod store;
 
 pub use config::{HotConfig, SingleStoreConfig};
-use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues};
-pub use single::*;
+use reifydb_core::{
+	CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
+	interface::{
+		SingleVersionBatch, SingleVersionCommit, SingleVersionContains,
+		SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+		SingleVersionRemove, SingleVersionSet, SingleVersionStore,
+		SingleVersionValues,
+	},
+};
 pub use store::StandardSingleStore;
 
 pub mod memory {
@@ -54,6 +61,10 @@ impl SingleStore {
 impl SingleStore {
 	pub fn testing_memory() -> Self {
 		SingleStore::Standard(StandardSingleStore::testing_memory())
+	}
+
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
+		SingleStore::Standard(StandardSingleStore::testing_memory_with_eventbus(event_bus))
 	}
 
 	/// Get access to the hot storage tier.

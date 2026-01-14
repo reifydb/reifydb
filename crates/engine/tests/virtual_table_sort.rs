@@ -3,8 +3,18 @@
 
 //! Test sorting on system virtual tables
 
+use std::thread;
+use std::time::Duration;
+
 use reifydb_core::{Frame, interface::Identity};
 use reifydb_engine::test_utils::create_test_engine;
+
+/// Wait for the metrics worker to process pending events.
+/// The metrics worker processes events asynchronously, so we need
+/// to give it time to process stats before querying them.
+fn wait_for_metrics_processing() {
+	thread::sleep(Duration::from_millis(150));
+}
 
 fn test_identity() -> Identity {
 	Identity::root()
@@ -243,6 +253,9 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	)
 	.unwrap();
 
+	// Wait for metrics worker to process the storage stats
+	wait_for_metrics_processing();
+
 	println!("\n=== Testing system.table_storage_stats Sorting ===\n");
 
 	// First, query WITHOUT sorting to show natural order
@@ -378,6 +391,9 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	)
 	.unwrap();
 
+	// Wait for metrics worker to process the storage stats
+	wait_for_metrics_processing();
+
 	println!("\n=== Testing Multi-line Syntax ===\n");
 
 	// Test with MULTI-LINE syntax (newline between from and sort) - EXACT USER SYNTAX
@@ -460,6 +476,9 @@ fn test_asc_is_not_desc() {
 		Default::default(),
 	)
 	.unwrap();
+
+	// Wait for metrics worker to process the storage stats
+	wait_for_metrics_processing();
 
 	// Get results with ASC
 	let frames_asc: Vec<Frame> = engine

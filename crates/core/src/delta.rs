@@ -14,6 +14,14 @@ pub enum Delta {
 		key: EncodedKey,
 		values: EncodedValues,
 	},
+	/// Unset an entry, preserving the deleted values.
+	/// Symmetric with Set - use when the deleted data matters (e.g., row data, CDC).
+	Unset {
+		key: EncodedKey,
+		values: EncodedValues,
+	},
+	/// Remove an entry without preserving the deleted values.
+	/// Use when only the key matters (e.g., index entries, catalog metadata).
 	Remove {
 		key: EncodedKey,
 	},
@@ -54,6 +62,10 @@ impl Delta {
 				key,
 				..
 			} => key,
+			Self::Unset {
+				key,
+				..
+			} => key,
 			Self::Remove {
 				key,
 			} => key,
@@ -68,9 +80,12 @@ impl Delta {
 	pub fn values(&self) -> Option<&EncodedValues> {
 		match self {
 			Self::Set {
-				values: row,
+				values,
 				..
-			} => Some(row),
+			} => Some(values),
+			Self::Unset {
+				..
+			} => None,
 			Self::Remove {
 				..
 			} => None,
@@ -86,10 +101,17 @@ impl Clone for Delta {
 		match self {
 			Self::Set {
 				key,
-				values: value,
+				values,
 			} => Self::Set {
 				key: key.clone(),
-				values: value.clone(),
+				values: values.clone(),
+			},
+			Self::Unset {
+				key,
+				values,
+			} => Self::Unset {
+				key: key.clone(),
+				values: values.clone(),
 			},
 			Self::Remove {
 				key,
