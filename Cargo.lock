@@ -1961,6 +1961,7 @@ version = "0.2.0"
 dependencies = [
  "dashmap",
  "futures-util",
+ "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-sub-api",

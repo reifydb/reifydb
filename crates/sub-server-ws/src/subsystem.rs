@@ -23,8 +23,7 @@ use reifydb_core::{
 };
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_core::SharedRuntime;
-use reifydb_sub_server::{AppState, ResponseColumn, ResponseFrame};
-use reifydb_type::Type;
+use reifydb_sub_server::AppState;
 use tokio::{
 	net::TcpListener,
 	select,
@@ -33,7 +32,7 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{handler::handle_connection, subscription::SubscriptionRegistry};
+use crate::{handler::handle_connection, subscription::{SubscriptionPoller, SubscriptionRegistry}};
 
 /// WebSocket server subsystem.
 ///
@@ -79,6 +78,10 @@ pub struct WsSubsystem {
 	runtime: SharedRuntime,
 	/// Subscription registry for push notifications.
 	registry: Arc<SubscriptionRegistry>,
+	/// Subscription polling interval.
+	poll_interval: Duration,
+	/// Maximum rows to read per subscription per poll.
+	poll_batch_size: usize,
 }
 
 impl WsSubsystem {
@@ -89,7 +92,15 @@ impl WsSubsystem {
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
 	/// * `state` - Shared application state with engine and config
 	/// * `runtime` - Shared runtime
-	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
+	/// * `poll_interval` - Subscription polling interval
+	/// * `poll_batch_size` - Maximum rows to read per subscription per poll
+	pub fn new(
+		bind_addr: String,
+		state: AppState,
+		runtime: SharedRuntime,
+		poll_interval: Duration,
+		poll_batch_size: usize,
+	) -> Self {
 		let max_connections = state.max_connections();
 		Self {
 			bind_addr,
@@ -101,6 +112,8 @@ impl WsSubsystem {
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
 			registry: Arc::new(SubscriptionRegistry::new()),
+			poll_interval,
+			poll_batch_size,
 		}
 	}
 
@@ -164,32 +177,31 @@ impl Subsystem for WsSubsystem {
 		let runtime_inner = runtime.clone();
 		let registry = self.registry.clone();
 
-		// Spawn the test push thread that broadcasts to all subscriptions every 2 seconds
-		let push_registry = registry.clone();
-		let mut push_shutdown_rx = rx.clone();
+		// Create subscription poller with configured values
+		let poll_interval = self.poll_interval;
+		let batch_size = self.poll_batch_size;
+		let poller = Arc::new(SubscriptionPoller::new(batch_size));
+
+		// Spawn the subscription poller thread
+		let poller_clone = poller.clone();
+		let poller_state = state.clone();
+		let poller_registry = registry.clone();
+		let mut poller_shutdown_rx = rx.clone();
 		runtime.spawn(async move {
-			let mut tick = interval(Duration::from_secs(2));
+			let mut tick = interval(poll_interval);
 			loop {
 				select! {
 					biased;
 
-					result = push_shutdown_rx.changed() => {
-						if result.is_err() || *push_shutdown_rx.borrow() {
-							tracing::debug!("Push thread shutting down");
+					result = poller_shutdown_rx.changed() => {
+						if result.is_err() || *poller_shutdown_rx.borrow() {
+							tracing::debug!("Subscription poller shutting down");
 							break;
 						}
 					}
 
 					_ = tick.tick() => {
-						let frame = ResponseFrame {
-							row_numbers: vec![0],
-							columns: vec![ResponseColumn {
-								name: "answer".to_string(),
-								r#type: Type::Int8,
-								data: vec!["42".to_string()],
-							}],
-						};
-						push_registry.broadcast(frame).await;
+						poller_clone.poll_all_subscriptions(&poller_state, &poller_registry).await;
 					}
 				}
 			}
@@ -226,6 +238,7 @@ impl Subsystem for WsSubsystem {
 
 								let conn_state = state.clone();
 								let conn_registry = registry.clone();
+								let conn_poller = poller.clone();
 								let shutdown_rx = rx.clone();
 								let active = active_connections.clone();
 								let runtime_handle = runtime_inner.clone();
@@ -234,7 +247,7 @@ impl Subsystem for WsSubsystem {
 								tracing::debug!("Accepted connection from {}", peer);
 
 								runtime_handle.spawn(async move {
-									handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
+									handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
 									active.fetch_sub(1, Ordering::SeqCst);
 									drop(permit); // Release connection slot
 								});
