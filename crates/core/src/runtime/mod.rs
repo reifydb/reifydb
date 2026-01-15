@@ -60,9 +60,9 @@ pub struct SharedRuntimeConfig {
 impl Default for SharedRuntimeConfig {
 	fn default() -> Self {
 		Self {
-			async_threads: 4,
-			compute_threads: 4,
-			compute_max_in_flight: 16,
+			async_threads: 1,
+			compute_threads: 1,
+			compute_max_in_flight: 32,
 		}
 	}
 }
