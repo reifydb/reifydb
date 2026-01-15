@@ -26,7 +26,7 @@ jobs:
 
   test:
     needs: discover-suites
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 15
     permissions:
       contents: read
