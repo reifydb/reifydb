@@ -205,10 +205,9 @@ impl MultiVersionCommit for StandardMultiStore {
 					)?;
 					for entry in entries_to_drop {
 						// Collect stats for each dropped entry
-						// Note: value_bytes is 0 since we don't track it in DropEntry
 						drops.push(StorageDrop {
 							key: key.clone(),
-							value_bytes: 0,
+							value_bytes: entry.value_bytes,
 						});
 						batches.entry(table).or_default().push((entry.versioned_key, None));
 					}

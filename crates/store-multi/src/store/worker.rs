@@ -17,7 +17,10 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender, bounded};
-use reifydb_core::CommitVersion;
+use reifydb_core::{
+	CommitVersion, EncodedKey,
+	event::{EventBus, StorageDrop, StorageStatsRecordedEvent},
+};
 use reifydb_type::CowVec;
 use tracing::{debug, error, trace};
 
@@ -84,6 +87,7 @@ impl DropWorker {
 	pub fn new(
 		config: DropWorkerConfig,
 		storage: HotStorage,
+		event_bus: EventBus,
 	) -> Self {
 		let (sender, receiver) = bounded(config.channel_capacity);
 		let running = Arc::new(AtomicBool::new(true));
@@ -92,7 +96,7 @@ impl DropWorker {
 		let worker = thread::Builder::new()
 			.name("store-worker".to_string())
 			.spawn(move || {
-				Self::worker_loop(receiver, storage, config, worker_running);
+				Self::worker_loop(receiver, storage, config, worker_running, event_bus);
 			})
 			.expect("Failed to spawn store worker thread");
 
@@ -144,6 +148,7 @@ impl DropWorker {
 		storage: HotStorage,
 		config: DropWorkerConfig,
 		running: Arc<AtomicBool>,
+		event_bus: EventBus,
 	) {
 		debug!("Drop worker started");
 
@@ -160,7 +165,7 @@ impl DropWorker {
 
 							// Flush if batch is full
 							if pending_requests.len() >= config.batch_size {
-								Self::process_batch(&storage, &mut pending_requests);
+								Self::process_batch(&storage, &mut pending_requests, &event_bus);
 								last_flush = std::time::Instant::now();
 							}
 						}
@@ -168,7 +173,7 @@ impl DropWorker {
 							debug!("Drop worker received shutdown signal");
 							// Process any remaining requests before shutdown
 							if !pending_requests.is_empty() {
-								Self::process_batch(&storage, &mut pending_requests);
+								Self::process_batch(&storage, &mut pending_requests, &event_bus);
 							}
 							break;
 						}
@@ -185,7 +190,7 @@ impl DropWorker {
 
 			// Periodic flush
 			if !pending_requests.is_empty() && last_flush.elapsed() >= config.flush_interval {
-				Self::process_batch(&storage, &mut pending_requests);
+				Self::process_batch(&storage, &mut pending_requests, &event_bus);
 				last_flush = std::time::Instant::now();
 			}
 		}
@@ -196,13 +201,24 @@ impl DropWorker {
 	fn process_batch(
 		storage: &HotStorage,
 		requests: &mut Vec<DropRequest>,
+		event_bus: &EventBus,
 	) {
 		trace!("Drop worker processing {} requests", requests.len());
 
 		// Collect all entries to delete, grouped by table
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
+		// Collect drop stats for metrics
+		let mut drops_with_stats = Vec::new();
+		let mut max_pending_version = CommitVersion(0);
 
 		for request in requests.drain(..) {
+			// Track highest version for event
+			if let Some(pv) = request.pending_version {
+				if pv > max_pending_version {
+					max_pending_version = pv;
+				}
+			}
+
 			match find_keys_to_drop(
 				storage,
 				request.table,
@@ -213,6 +229,12 @@ impl DropWorker {
 			) {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
+						// Collect stats for metrics
+						drops_with_stats.push(StorageDrop {
+							key: EncodedKey(request.key.clone()),
+							value_bytes: entry.value_bytes,
+						});
+
 						// Queue for deletion (None value = delete)
 						batches
 							.entry(request.table)
@@ -231,6 +253,16 @@ impl DropWorker {
 			if let Err(e) = storage.set(batches) {
 				error!("Drop worker failed to execute deletes: {}", e);
 			}
+		}
+
+		// Emit stats event for metrics tracking
+		if !drops_with_stats.is_empty() {
+			event_bus.emit(StorageStatsRecordedEvent {
+				writes: vec![],
+				deletes: vec![],
+				drops: drops_with_stats,
+				version: max_pending_version,
+			});
 		}
 	}
 }

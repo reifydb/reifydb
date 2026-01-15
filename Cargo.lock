@@ -1782,7 +1782,11 @@ version = "0.2.0"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
+ "reifydb-store-multi",
+ "reifydb-store-single",
+ "reifydb-testing",
  "reifydb-type",
+ "test_each_file",
  "tracing",
 ]
 

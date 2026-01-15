@@ -20,6 +20,8 @@ use crate::tier::{EntryKind, RangeCursor, TierStorage};
 pub struct DropEntry {
 	/// The versioned key to delete
 	pub versioned_key: CowVec<u8>,
+	/// The size of the value being dropped (for metrics tracking)
+	pub value_bytes: u64,
 }
 
 /// Find versioned keys to drop based on constraints.
@@ -80,7 +82,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	// Determine which entries to drop
 	let mut entries_to_drop = Vec::new();
 
-	for (idx, (versioned_key, entry_version, _value_bytes)) in versioned_entries.into_iter().enumerate() {
+	for (idx, (versioned_key, entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
 		// Use AND logic for combined constraints:
 		// - keep_last_versions protects the N most recent versions
 		// - up_to_version only drops versions < threshold IF not protected
@@ -104,6 +106,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 
 			entries_to_drop.push(DropEntry {
 				versioned_key,
+				value_bytes,
 			});
 		}
 	}

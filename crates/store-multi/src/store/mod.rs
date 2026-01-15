@@ -53,7 +53,7 @@ impl StandardMultiStore {
 		// Drop worker
 		let storage = hot.as_ref().expect("hot tier is required");
 		let drop_config = DropWorkerConfig::default();
-		let drop_worker = DropWorker::new(drop_config, storage.clone());
+		let drop_worker = DropWorker::new(drop_config, storage.clone(), config.event_bus.clone());
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			hot,

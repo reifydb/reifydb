@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that value size growth is tracked correctly on update.
+# Old small value goes to historical, new large value becomes current.
+
+# Insert small value: key "a" = 1 byte, versioned = 9 bytes (1 + 8), value "x" = 1 byte
+set a=x
+---
+ok
+
+stats_current
+---
+current_count: 1
+current_key_bytes: 11
+current_value_bytes: 1
+
+# Update with larger value
+# New value "largevalue" = 10 bytes
+set a=largevalue
+---
+ok
+
+# Current should have the new larger value
+stats_current
+---
+current_count: 1
+current_key_bytes: 11
+current_value_bytes: 10
+
+# Historical should have the old smaller value
+stats_historical
+---
+historical_count: 1
+historical_key_bytes: 11
+historical_value_bytes: 1
+
+# Total should reflect both
+stats_totals
+---
+total_count: 2
+current_bytes: 21
+historical_bytes: 12
+total_bytes: 33
