@@ -4,8 +4,7 @@
 use std::{collections::BTreeMap, rc::Rc};
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	value::{column::columns::Columns, encoded::layout::EncodedValuesLayout},
+	encoded::layout::EncodedValuesLayout, interface::catalog::flow::FlowNodeId, value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};

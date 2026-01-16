@@ -3,7 +3,7 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]

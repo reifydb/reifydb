@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	encoded::key::EncodedKey,
 	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
 	key::{EncodableKey, KeyKind},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::EncodedKey,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,8 +66,8 @@ impl ColumnSequenceKey {
 pub mod tests {
 	use super::{ColumnSequenceKey, EncodableKey};
 	use crate::{
+		encoded::key::EncodedKey,
 		interface::catalog::{id::ColumnId, primitive::PrimitiveId},
-		value::encoded::key::EncodedKey,
 	};
 
 	#[test]

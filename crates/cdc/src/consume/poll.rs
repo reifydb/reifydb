@@ -14,9 +14,9 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcChange, CdcConsumerId},
 	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
-	value::encoded::key::EncodedKey,
 };
 use reifydb_type::Result;
 use tracing::{debug, error};

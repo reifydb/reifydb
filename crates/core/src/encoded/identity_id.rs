@@ -6,7 +6,7 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
@@ -52,7 +52,7 @@ pub mod tests {
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 	use tokio::time::sleep;
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_identity_id() {

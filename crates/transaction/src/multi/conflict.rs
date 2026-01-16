@@ -7,7 +7,7 @@ use core::{
 };
 use std::collections::HashSet;
 
-use reifydb_core::value::encoded::key::{EncodedKey, EncodedKeyRange};
+use reifydb_core::encoded::key::{EncodedKey, EncodedKeyRange};
 use reifydb_type::util::hex;
 use tracing::instrument;
 

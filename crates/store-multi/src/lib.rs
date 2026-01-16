@@ -22,11 +22,11 @@ use config::{HotConfig, MultiStoreConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
 		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionStore,
 		MultiVersionValues,
 	},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_type::util::cowvec::CowVec;
 use store::StandardMultiStore;

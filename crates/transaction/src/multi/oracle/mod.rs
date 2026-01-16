@@ -9,7 +9,7 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use parking_lot::RwLock;
-use reifydb_core::{common::CommitVersion, util::bloom::BloomFilter, value::encoded::key::EncodedKey};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, util::bloom::BloomFilter};
 use reifydb_type::Result;
 use tracing::{Span, instrument};
 
@@ -650,7 +650,7 @@ pub mod tests {
 		// indexed by specific keys)
 		let mut conflicts2 = ConflictManager::new();
 		// Simulate a range read that doesn't return specific keys
-		use reifydb_core::value::encoded::key::EncodedKeyRange;
+		use reifydb_core::encoded::key::EncodedKeyRange;
 		let range = EncodedKeyRange::parse("a..z");
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));

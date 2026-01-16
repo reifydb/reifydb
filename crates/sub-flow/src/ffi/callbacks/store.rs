@@ -16,8 +16,8 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_core::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::MultiVersionBatch,
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_type::util::cowvec::CowVec;
 

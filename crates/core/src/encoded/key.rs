@@ -776,7 +776,7 @@ pub mod tests {
 	mod prefix {
 		use std::ops::Bound;
 
-		use crate::value::encoded::key::{
+		use crate::encoded::key::{
 			EncodedKeyRange,
 			tests::{excluded, included},
 		};
@@ -828,8 +828,8 @@ pub mod tests {
 		use std::ops::Bound;
 
 		use crate::{
+			encoded::key::{EncodedKey, EncodedKeyRange, tests::included},
 			util::encoding::keycode,
-			value::encoded::key::{EncodedKey, EncodedKeyRange, tests::included},
 		};
 
 		#[test]
@@ -878,7 +878,7 @@ pub mod tests {
 	mod all {
 		use std::ops::Bound;
 
-		use crate::value::encoded::key::EncodedKeyRange;
+		use crate::encoded::key::EncodedKeyRange;
 
 		#[test]
 		fn test_is_unbounded() {
@@ -891,7 +891,7 @@ pub mod tests {
 	mod parse {
 		use std::ops::Bound;
 
-		use crate::value::encoded::key::{
+		use crate::encoded::key::{
 			EncodedKey, EncodedKeyRange,
 			tests::{excluded, included},
 		};

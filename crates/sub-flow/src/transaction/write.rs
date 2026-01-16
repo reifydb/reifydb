@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 
 use super::FlowTransaction;
 
@@ -24,7 +24,7 @@ pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::CommitVersion,
-		value::encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
 	use reifydb_transaction::standard::command::StandardCommandTransaction;
 	use reifydb_type::util::cowvec::CowVec;

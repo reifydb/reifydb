@@ -5,14 +5,14 @@ use std::mem::take;
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	event::EventBus,
 	interface::{
 		WithEventBus,
 		store::{MultiVersionBatch, MultiVersionValues},
-	},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_type::{Result, error::diagnostic::transaction, return_error};

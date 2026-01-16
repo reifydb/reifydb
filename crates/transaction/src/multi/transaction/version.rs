@@ -9,8 +9,8 @@ use std::sync::{
 use parking_lot::Mutex;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::layout::EncodedValuesLayout,
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
-	value::encoded::layout::EncodedValuesLayout,
 };
 use reifydb_type::{Result, value::r#type::Type};
 

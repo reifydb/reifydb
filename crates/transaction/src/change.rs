@@ -380,7 +380,7 @@ impl TransactionalDefChanges {
 pub struct TableRowInsertion {
 	pub table_id: TableId,
 	pub row_number: reifydb_type::value::row_number::RowNumber,
-	pub encoded: reifydb_core::value::encoded::encoded::EncodedValues,
+	pub encoded: reifydb_core::encoded::encoded::EncodedValues,
 }
 
 /// Tracks row changes across different entity types for post-commit event emission

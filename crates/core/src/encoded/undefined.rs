@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	/// Set a field as undefined (not set)
@@ -14,7 +14,7 @@ impl EncodedValuesLayout {
 pub mod tests {
 	use reifydb_type::value::{blob::Blob, r#type::Type};
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_bool() {

@@ -129,8 +129,8 @@ impl CdcStorage for MemoryCdcStorage {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
+		encoded::{encoded::EncodedValues, key::EncodedKey},
 		interface::cdc::{CdcChange, CdcSequencedChange},
-		value::encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
 	use reifydb_type::util::cowvec::CowVec;
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::encoded::EncodedValues,
 	interface::catalog::{
 		dictionary::DictionaryDef,
 		id::{DictionaryId, NamespaceId},
@@ -10,7 +11,6 @@ use reifydb_core::{
 		dictionary::{DictionaryKey, DictionarySequenceKey},
 		namespace_dictionary::NamespaceDictionaryKey,
 	},
-	value::encoded::encoded::EncodedValues,
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{

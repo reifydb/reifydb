@@ -118,12 +118,12 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
+		encoded::{encoded::EncodedValues, key::EncodedKey},
 		interface::{
 			catalog::flow::FlowNodeId,
 			store::{MultiVersionBatch, MultiVersionValues},
 		},
 		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
-		value::encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
 	use reifydb_type::util::cowvec::CowVec;
 

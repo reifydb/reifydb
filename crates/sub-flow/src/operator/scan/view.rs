@@ -2,12 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::named::EncodedValuesNamedLayout,
 	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId, view::ViewDef},
 	key::row::RowKey,
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::named::EncodedValuesNamedLayout,
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::FlowChange;

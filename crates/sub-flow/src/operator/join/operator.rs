@@ -6,12 +6,10 @@ use std::{rc::Rc, sync::LazyLock};
 use indexmap::IndexMap;
 use reifydb_core::{
 	common::JoinType,
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::{
-		column::{Column, columns::Columns},
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
-	},
+	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},

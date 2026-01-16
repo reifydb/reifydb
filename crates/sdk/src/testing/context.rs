@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 
 use crate::operator::context::OperatorContext;

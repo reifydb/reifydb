@@ -55,8 +55,8 @@
 use std::hash::Hash;
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::IntoEncodedKey},
 	util::lru::LruCache,
-	value::encoded::{encoded::EncodedValues, key::IntoEncodedKey},
 };
 use reifydb_type::util::cowvec::CowVec;
 use serde::{Serialize, de::DeserializeOwned};
@@ -262,7 +262,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::encoded::key::IntoEncodedKey;
+	use reifydb_core::encoded::key::IntoEncodedKey;
 
 	use super::*;
 

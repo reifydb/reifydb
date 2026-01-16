@@ -3,12 +3,10 @@
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
 	interface::catalog::{key::PrimaryKeyDef, table::TableDef},
 	sort::SortDirection,
-	value::{
-		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-		index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
-	},
+	value::index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::value::r#type::Type;

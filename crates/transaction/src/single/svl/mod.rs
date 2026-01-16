@@ -7,9 +7,9 @@ use crossbeam_skiplist::SkipMap;
 use parking_lot::RwLock;
 use reifydb_core::{
 	delta::Delta,
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	event::EventBus,
 	interface::WithEventBus,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_store_single::SingleStore;
 

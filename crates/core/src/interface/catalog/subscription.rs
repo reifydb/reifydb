@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
+	encoded::named::EncodedValuesNamedLayout,
 	interface::catalog::{
 		id::{NamespaceId, SubscriptionColumnId, SubscriptionId},
 		key::PrimaryKeyDef,
 	},
-	value::encoded::named::EncodedValuesNamedLayout,
 };
 
 /// Implicit column names for subscriptions

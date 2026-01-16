@@ -3,7 +3,7 @@
 
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::value::encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout};
+use crate::encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout};
 
 #[derive(Debug, Clone)]
 pub struct Row {

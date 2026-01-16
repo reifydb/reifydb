@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
 	key::{EncodableKey, KeyKind},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]

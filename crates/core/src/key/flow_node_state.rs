@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,8 +146,8 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 pub mod tests {
 	use super::{EncodableKey, EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange};
 	use crate::{
+		encoded::key::{EncodedKey, EncodedKeyRange},
 		interface::catalog::flow::FlowNodeId,
-		value::encoded::key::{EncodedKey, EncodedKeyRange},
 	};
 
 	#[test]

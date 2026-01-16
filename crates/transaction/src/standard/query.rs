@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::{
 		catalog::{
 			dictionary::DictionaryDef,
@@ -16,7 +17,6 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_type::Result;
 use tracing::instrument;

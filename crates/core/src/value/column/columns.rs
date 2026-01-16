@@ -15,15 +15,13 @@ use reifydb_type::{
 };
 
 use crate::{
+	encoded::named::EncodedValuesNamedLayout,
 	interface::{
 		catalog::{table::TableDef, view::ViewDef},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
 	row::Row,
-	value::{
-		column::{Column, ColumnData, headers::ColumnHeaders},
-		encoded::named::EncodedValuesNamedLayout,
-	},
+	value::column::{Column, ColumnData, headers::ColumnHeaders},
 };
 
 #[derive(Debug, Clone)]

@@ -9,13 +9,13 @@ use std::{
 
 use reifydb_core::{
 	delta::Delta,
-	event::EventBus,
-	interface::store::SingleVersionValues,
-	runtime::compute::ComputePool,
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
+	event::EventBus,
+	interface::store::SingleVersionValues,
+	runtime::compute::ComputePool,
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;

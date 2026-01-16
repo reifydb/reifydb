@@ -3,7 +3,7 @@
 
 //! Helper functions for common test patterns
 
-use reifydb_core::value::encoded::{
+use reifydb_core::encoded::{
 	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
 	layout::EncodedValuesLayout,

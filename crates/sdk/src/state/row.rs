@@ -4,10 +4,10 @@
 //! Row number provider for stable row numbering in stateful operators
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
 
@@ -169,9 +169,10 @@ pub mod tests {
 
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
+		encoded::key::EncodedKey,
 		interface::catalog::flow::FlowNodeId,
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-		value::{column::columns::Columns, encoded::key::EncodedKey},
+		value::column::columns::Columns,
 	};
 	use reifydb_type::value::{Value, row_number::RowNumber};
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::encoded::layout::EncodedValuesLayout};
+use reifydb_core::{encoded::layout::EncodedValuesLayout, interface::catalog::flow::FlowNodeId};
 use reifydb_hash::Hash128;
 use reifydb_type::{
 	error::Error,
@@ -34,11 +34,11 @@ impl Store {
 		}
 	}
 
-	fn make_key(&self, hash: &Hash128) -> reifydb_core::value::encoded::key::EncodedKey {
+	fn make_key(&self, hash: &Hash128) -> reifydb_core::encoded::key::EncodedKey {
 		let mut key_bytes = self.prefix.clone();
 		// Hash128 is a tuple struct containing u128
 		key_bytes.extend_from_slice(&hash.0.to_le_bytes());
-		reifydb_core::value::encoded::key::EncodedKey::new(key_bytes)
+		reifydb_core::encoded::key::EncodedKey::new(key_bytes)
 	}
 
 	pub(crate) fn get(

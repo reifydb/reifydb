@@ -6,7 +6,7 @@
 //! This module provides the `FFIWindowStateful` trait for operators that use
 //! time-based or count-based windowing with state.
 
-use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};

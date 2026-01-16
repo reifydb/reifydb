@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
+	encoded::key::EncodedKey,
 	interface::catalog::flow::FlowId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::EncodedKey,
 };
 
 /// Key for storing a flow's last processed CDC version.

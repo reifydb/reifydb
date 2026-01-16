@@ -6,7 +6,7 @@
 //! These events are emitted when storage operations occur that need stats tracking.
 //! The metrics worker listens to these events and updates storage statistics.
 
-use crate::{common::CommitVersion, impl_event, value::encoded::key::EncodedKey};
+use crate::{common::CommitVersion, encoded::key::EncodedKey, impl_event};
 
 /// Emitted when storage operations are committed that need stats tracking.
 /// Used for both commit-time ops and async drop worker ops.

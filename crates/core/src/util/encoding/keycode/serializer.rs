@@ -22,8 +22,8 @@ use super::{
 	encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128, serialize,
 };
 use crate::{
+	encoded::key::EncodedKey,
 	interface::catalog::{id::IndexId, primitive::PrimitiveId},
-	value::encoded::key::EncodedKey,
 };
 
 /// A builder for constructing binary keys using keycode encoding

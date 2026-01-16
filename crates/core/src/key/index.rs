@@ -5,12 +5,12 @@ use std::collections::Bound;
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{
 		id::{IndexId, PrimaryKeyId},
 		primitive::PrimitiveId,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;

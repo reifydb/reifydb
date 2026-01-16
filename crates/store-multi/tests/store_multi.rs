@@ -14,15 +14,15 @@ use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	runtime::compute::ComputePool,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
-	},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_store_multi::{

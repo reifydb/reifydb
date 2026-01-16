@@ -7,12 +7,10 @@ use reifydb_type::util::cowvec::CowVec;
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{id::IndexId, primitive::PrimitiveId},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::{
-		encoded::key::{EncodedKey, EncodedKeyRange},
-		index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
-	},
+	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
 };
 
 const VERSION: u8 = 1;

@@ -4,9 +4,8 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	util::encoding::keycode::serializer::KeySerializer,
-	value::{column::columns::Columns, encoded::key::EncodedKey},
+	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
+	util::encoding::keycode::serializer::KeySerializer, value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};

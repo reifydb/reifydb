@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::r#type::Type;
 
 pub(crate) mod ringbuffer {

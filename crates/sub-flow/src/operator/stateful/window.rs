@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 		layout::EncodedValuesLayout,
 	},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 
 use super::utils;

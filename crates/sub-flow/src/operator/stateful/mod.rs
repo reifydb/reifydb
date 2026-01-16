@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::store::MultiVersionBatch,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 
 pub mod keyed;

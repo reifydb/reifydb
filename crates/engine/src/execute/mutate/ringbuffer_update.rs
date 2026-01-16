@@ -5,11 +5,9 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::{layout::EncodedValuesLayout, value::encode_value},
 	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
-	value::{
-		column::columns::Columns,
-		encoded::{layout::EncodedValuesLayout, value::encode_value},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};

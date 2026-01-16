@@ -3,9 +3,9 @@
 
 use std::collections::Bound;
 
-use crate::value::{
+use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	index::encoded::EncodedIndexKey,
+	value::index::encoded::EncodedIndexKey,
 };
 
 #[derive(Clone, Debug)]

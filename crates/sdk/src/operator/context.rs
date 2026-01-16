@@ -4,7 +4,7 @@
 //! Operator context providing access to state and resources
 
 use reifydb_abi::context::context::ContextFFI;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, value::encoded::key::EncodedKey};
+use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{

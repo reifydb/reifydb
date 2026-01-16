@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 	util::encoding::keycode::serializer::KeySerializer,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 };
 use reifydb_type::value::{Value, r#type::Type};
 

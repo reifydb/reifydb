@@ -8,8 +8,8 @@ pub(crate) mod layout;
 pub mod list;
 
 use reifydb_core::{
+	encoded::encoded::EncodedValues,
 	retention::{CleanupMode, RetentionPolicy},
-	value::encoded::encoded::EncodedValues,
 };
 
 use self::layout::retention_policy;

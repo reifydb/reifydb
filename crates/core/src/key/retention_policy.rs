@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		id::{DictionaryId, RingBufferId, TableId, ViewId},
@@ -12,7 +13,6 @@ use crate::{
 		vtable::VTableId,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;

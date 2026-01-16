@@ -4,11 +4,9 @@
 #[cfg(test)]
 pub mod test {
 	use reifydb_core::{
+		encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 		interface::catalog::flow::FlowNodeId,
-		value::{
-			column::columns::Columns,
-			encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
-		},
+		value::column::columns::Columns,
 	};
 	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
 	use reifydb_sdk::flow::FlowChange;

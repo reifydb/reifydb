@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::encoded::EncodedValues,
 	interface::catalog::dictionary::DictionaryDef,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
 	},
-	value::encoded::encoded::EncodedValues,
 };
 use reifydb_hash::xxh::xxh3_128;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};

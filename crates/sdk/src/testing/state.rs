@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::encoded::{
+use reifydb_core::encoded::{
 	encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
 };
 use reifydb_type::value::Value;
@@ -145,7 +145,7 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::encoded::{
+	use reifydb_core::encoded::{
 		encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
 	};
 	use reifydb_type::value::r#type::Type;

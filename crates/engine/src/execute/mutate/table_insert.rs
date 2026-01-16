@@ -8,15 +8,13 @@ use reifydb_catalog::{
 	store::sequence::{column::ColumnSequence, row::RowSequence},
 };
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, value::encode_value},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	key::{EncodableKey, index_entry::IndexEntryKey},
-	value::{
-		column::columns::Columns,
-		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, value::encode_value},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};

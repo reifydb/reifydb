@@ -4,9 +4,9 @@
 use std::ops::Bound;
 
 use reifydb_core::{
+	encoded::key::EncodedKeyRange,
 	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
 	key::{Key, primary_key::PrimaryKeyKey},
-	value::encoded::key::EncodedKeyRange,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 

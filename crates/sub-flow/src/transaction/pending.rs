@@ -9,7 +9,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ impl PendingWrites {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;

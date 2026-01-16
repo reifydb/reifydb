@@ -4,11 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	interface::catalog::{id::IndexId, table::TableDef},
-	value::{
-		column::headers::ColumnHeaders,
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
-	},
+	value::column::headers::ColumnHeaders,
 };
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::fragment::Fragment;

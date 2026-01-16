@@ -10,14 +10,14 @@ use drop::find_keys_to_drop;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	event::metric::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite},
 	interface::store::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
 		MultiVersionStore, MultiVersionValues,
-	},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};

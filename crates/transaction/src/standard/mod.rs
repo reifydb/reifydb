@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{MultiVersionBatch, MultiVersionValues},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_type::Result;
 

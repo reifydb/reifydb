@@ -15,12 +15,12 @@ use reifydb_cdc::consume::{
 	poll::{PollConsumer, PollConsumerConfig},
 };
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::{
 		catalog::{id::TableId, primitive::PrimitiveId},
 		cdc::{Cdc, CdcChange, CdcConsumerId},
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
 use reifydb_transaction::standard::command::StandardCommandTransaction;

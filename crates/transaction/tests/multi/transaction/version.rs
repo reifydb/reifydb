@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{common::CommitVersion, value::encoded::key::EncodedKeyRange};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};

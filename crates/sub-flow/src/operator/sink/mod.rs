@@ -7,6 +7,7 @@ pub mod view;
 use std::sync::LazyLock;
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout},
 	interface::{
 		catalog::{
 			column::ColumnDef,
@@ -15,10 +16,7 @@ use reifydb_core::{
 		},
 		evaluate::TargetColumn,
 	},
-	value::{
-		column::{Column, columns::Columns},
-		encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout},
-	},
+	value::column::{Column, columns::Columns},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},

@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::encoded::EncodedValues,
 	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 	key::namespace::NamespaceKey,
-	value::encoded::encoded::EncodedValues,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 

@@ -4,12 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	encoded::key::EncodedKey,
 	interface::resolved::ResolvedDictionary,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
-	value::{
-		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
-		encoded::key::EncodedKey,
-	},
+	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::{

@@ -8,11 +8,9 @@ use reifydb_type::{
 };
 
 use crate::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
 	interface::catalog::dictionary::DictionaryDef,
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 
 /// Metadata for a column in a lazy batch

@@ -3,7 +3,7 @@
 
 pub mod svl;
 
-use reifydb_core::{event::EventBus, interface::WithEventBus, value::encoded::key::EncodedKey};
+use reifydb_core::{encoded::key::EncodedKey, event::EventBus, interface::WithEventBus};
 use reifydb_store_single::SingleStore;
 
 use crate::single::svl::{TransactionSvl, read::SvlQueryTransaction, write::SvlCommandTransaction};

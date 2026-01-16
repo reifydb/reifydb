@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 
 #[repr(transparent)]

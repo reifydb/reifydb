@@ -6,7 +6,7 @@ use reifydb_type::util::cowvec::CowVec;
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},

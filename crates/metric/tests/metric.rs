@@ -12,14 +12,14 @@ use std::{
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	event::{EventBus, EventListener, store::StatsProcessed},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	runtime::compute::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
-	},
 };
 use reifydb_metric::{
 	cdc::{CdcStats, CdcStatsReader},

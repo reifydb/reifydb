@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
 use crate::{
+	encoded::key::EncodedKey,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::EncodedKey,
 };
 
 #[derive(Debug, Clone, PartialEq)]

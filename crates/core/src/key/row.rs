@@ -7,9 +7,9 @@ use reifydb_type::value::row_number::RowNumber;
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::primitive::PrimitiveId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;

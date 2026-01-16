@@ -5,7 +5,7 @@ use std::cmp;
 
 use crate::{
 	common::CommitVersion,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 
 #[derive(Debug, PartialEq, Eq)]

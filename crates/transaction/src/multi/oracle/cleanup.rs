@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use reifydb_core::{common::CommitVersion, value::encoded::key::EncodedKey};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey};
 use tracing::{debug, instrument};
 
 use super::CommittedWindow;

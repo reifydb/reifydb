@@ -5,11 +5,9 @@ use std::{rc::Rc, sync::LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
+	encoded::layout::EncodedValuesLayout,
 	interface::catalog::flow::FlowNodeId,
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::layout::EncodedValuesLayout,
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},

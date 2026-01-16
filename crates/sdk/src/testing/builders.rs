@@ -3,12 +3,10 @@
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
 	row::Row,
-	value::{
-		column::columns::Columns,
-		encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 
@@ -243,8 +241,8 @@ impl TestLayoutBuilder {
 /// Helper functions for common test data patterns
 pub mod helpers {
 	use reifydb_core::{
+		encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 		row::Row,
-		value::encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 

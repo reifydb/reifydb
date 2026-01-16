@@ -5,6 +5,7 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::key::EncodedKeyRange,
 	interface::{
 		catalog::{id::IndexId, layout::GetEncodedRowLayout},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -14,7 +15,7 @@ use reifydb_core::{
 		index_entry::IndexEntryKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::{column::columns::Columns, encoded::key::EncodedKeyRange},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};

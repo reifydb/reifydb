@@ -5,7 +5,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::{
 	identity::IdentityId,
 	r#type::Type,

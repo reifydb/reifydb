@@ -489,7 +489,7 @@ use reifydb_abi::{
 	},
 	data::buffer::BufferFFI,
 };
-use reifydb_core::value::encoded::key::EncodedKey;
+use reifydb_core::encoded::key::EncodedKey;
 
 use crate::testing::context::TestContext;
 

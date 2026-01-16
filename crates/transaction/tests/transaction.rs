@@ -13,15 +13,15 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	event::EventBus,
 	interface::store::MultiVersionValues,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
-	},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_store_multi::MultiStore;

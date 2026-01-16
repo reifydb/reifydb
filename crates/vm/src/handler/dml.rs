@@ -7,11 +7,9 @@ use std::collections::HashMap;
 
 use reifydb_catalog::{CatalogStore, store::sequence::row::RowSequence};
 use reifydb_core::{
+	encoded::{layout::EncodedValuesLayout, value::encode_value},
 	key::row::RowKey,
-	value::{
-		column::columns::Columns,
-		encoded::{layout::EncodedValuesLayout, value::encode_value},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_rqlv2::bytecode::program::DmlTargetType;
 use reifydb_type::value::{Value, row_number::RowNumber};

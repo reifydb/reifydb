@@ -3,7 +3,7 @@
 
 pub(crate) mod primary_key {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{interface::catalog::id::ColumnId, value::encoded::layout::EncodedValuesLayout};
+	use reifydb_core::{encoded::layout::EncodedValuesLayout, interface::catalog::id::ColumnId};
 	use reifydb_type::value::{blob::Blob, r#type::Type};
 
 	pub(crate) const ID: usize = 0;

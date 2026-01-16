@@ -7,8 +7,8 @@
 //! multiple state values indexed by keys, such as group-by aggregations.
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 	util::encoding::keycode::serializer::KeySerializer,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 };
 use reifydb_type::value::{Value, r#type::Type};
 

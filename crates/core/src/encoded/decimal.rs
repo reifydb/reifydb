@@ -7,7 +7,7 @@ use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
 use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 /// Decimal storage using dynamic section
 /// All decimals are stored in dynamic section with MSB=1 to store both mantissa
@@ -104,7 +104,7 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_compact_inline() {

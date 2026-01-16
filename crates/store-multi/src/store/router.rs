@@ -6,11 +6,11 @@
 //! Determines which table a key or range belongs to based on key type.
 
 use reifydb_core::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	key::{
 		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
 		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
 	},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 use crate::tier::EntryKind;

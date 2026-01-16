@@ -4,7 +4,7 @@
 //! Variable type edge case tests for the encoded encoding system
 
 use num_bigint::BigInt;
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::{int::Int, r#type::Type};
 
 #[test]

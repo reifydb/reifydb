@@ -4,7 +4,7 @@
 use reifydb_type::value::r#type::Type;
 
 use super::{ringbuffer::RingBufferDef, table::TableDef, view::ViewDef};
-use crate::value::encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout};
+use crate::encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout};
 
 pub trait GetEncodedRowLayout {
 	fn get_layout(&self) -> EncodedValuesLayout;

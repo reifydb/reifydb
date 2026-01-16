@@ -4,15 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	interface::resolved::ResolvedView,
 	key::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::{
-		column::{columns::Columns, headers::ColumnHeaders},
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
-	},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::fragment::Fragment;

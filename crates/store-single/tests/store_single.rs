@@ -13,6 +13,10 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 
 use reifydb_core::{
 	delta::Delta,
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 	event::EventBus,
 	interface::store::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
@@ -22,10 +26,6 @@ use reifydb_core::{
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
-	},
-	value::encoded::{
-		encoded::EncodedValues,
-		key::{EncodedKey, EncodedKeyRange},
 	},
 };
 use reifydb_store_single::{

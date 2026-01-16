@@ -5,15 +5,13 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::layout::EncodedValuesLayout,
 	interface::{
 		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
 		resolved::ResolvedRingBuffer,
 	},
 	key::row::RowKey,
-	value::{
-		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
-		encoded::layout::EncodedValuesLayout,
-	},
+	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 use reifydb_type::{

@@ -21,9 +21,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::{
-	column::{ColumnData, columns::Columns},
+use crate::{
 	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	value::column::{ColumnData, columns::Columns},
 };
 
 impl Columns {
@@ -816,9 +816,9 @@ pub mod tests {
 			value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type},
 		};
 
-		use crate::value::{
-			column::{Column, ColumnData, columns::Columns},
+		use crate::{
 			encoded::layout::EncodedValuesLayout,
+			value::column::{Column, ColumnData, columns::Columns},
 		};
 
 		#[test]

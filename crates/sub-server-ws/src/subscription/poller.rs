@@ -14,6 +14,7 @@
 use dashmap::DashMap;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{key::EncodedKey, named::EncodedValuesNamedLayout},
 	interface::catalog::{
 		id::SubscriptionId,
 		subscription::{SubscriptionColumnDef, SubscriptionDef},
@@ -24,10 +25,7 @@ use reifydb_core::{
 		subscription_column::SubscriptionColumnKey,
 		subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange},
 	},
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::{key::EncodedKey, named::EncodedValuesNamedLayout},
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_sub_server::{
 	response::{ResponseColumn, ResponseFrame},

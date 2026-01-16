@@ -2,11 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	row::Row,
-	value::{
-		column::columns::Columns,
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
@@ -341,7 +339,7 @@ impl Assertable for TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_core::encoded::layout::EncodedValuesLayout;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;

@@ -20,8 +20,8 @@ const MVCC_VERSION_SIZE: usize = 10;
 use std::ops::AddAssign;
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::store::SingleVersionStore,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
 

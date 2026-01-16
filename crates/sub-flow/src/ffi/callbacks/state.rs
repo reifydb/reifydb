@@ -16,11 +16,11 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
+	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_type::util::cowvec::CowVec;
 

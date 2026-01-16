@@ -6,12 +6,10 @@ use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 	interface::catalog::flow::FlowNodeId,
 	key::EncodableKey,
-	value::{
-		column::columns::Columns,
-		encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
@@ -282,11 +280,9 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		common::CommitVersion,
+		encoded::{key::IntoEncodedKey, layout::EncodedValuesLayout},
 		interface::catalog::flow::FlowNodeId,
-		value::{
-			column::columns::Columns,
-			encoded::{key::IntoEncodedKey, layout::EncodedValuesLayout},
-		},
+		value::column::columns::Columns,
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 

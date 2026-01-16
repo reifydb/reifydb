@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey, value::encoded::encoded::EncodedValues,
-};
+use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey};
 use reifydb_transaction::{
 	interceptor::ringbuffer::RingBufferInterceptor, standard::command::StandardCommandTransaction,
 };

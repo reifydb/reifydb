@@ -12,8 +12,8 @@
 use std::ops::AddAssign;
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::store::SingleVersionStore,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::util::cowvec::CowVec;
 

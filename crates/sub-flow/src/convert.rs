@@ -5,16 +5,14 @@
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 	interface::{
 		catalog::primitive::PrimitiveId,
 		cdc::{Cdc, CdcChange},
 	},
 	key::{EncodableKey, Key, dictionary::DictionaryEntryIndexKey},
 	row::Row,
-	value::{
-		column::columns::Columns,
-		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
-	},
+	value::column::columns::Columns,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};

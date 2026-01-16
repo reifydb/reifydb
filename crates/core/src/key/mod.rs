@@ -34,8 +34,8 @@ use transaction_version::TransactionVersionKey;
 use view::ViewKey;
 
 use crate::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	util::encoding::keycode,
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 pub mod cdc_consumer;

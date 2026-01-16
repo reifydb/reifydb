@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::named::EncodedValuesNamedLayout,
 	interface::catalog::{
 		id::SubscriptionId,
 		subscription::{SubscriptionColumnDef, SubscriptionDef},
@@ -10,10 +11,7 @@ use reifydb_core::{
 		Key, subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey,
 		subscription_row::SubscriptionRowKey,
 	},
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::named::EncodedValuesNamedLayout,
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_type::{fragment::Fragment, value::uuid::parse::parse_uuid7};
 

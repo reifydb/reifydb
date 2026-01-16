@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::store::{MultiVersionValues, SingleVersionValues},
-	value::encoded::key::EncodedKey,
 };
 
 #[derive(Debug, Clone)]

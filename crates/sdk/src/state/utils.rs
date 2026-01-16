@@ -6,7 +6,7 @@
 //! This module provides helper functions for working with state in FFI operators,
 //! mirroring the functionality available to internal operators.
 
-use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
 
 use crate::{error::Result, operator::context::OperatorContext};
 

@@ -9,8 +9,8 @@ use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::store::{MultiVersionBatch, MultiVersionValues},
-	value::encoded::key::EncodedKey,
 };
 
 use super::Pending;
@@ -178,8 +178,8 @@ pub mod tests {
 
 	use reifydb_core::{
 		common::CommitVersion,
+		encoded::{encoded::EncodedValues, key::EncodedKey},
 		interface::store::MultiVersionValues,
-		value::encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
 	use reifydb_type::util::cowvec::CowVec;
 

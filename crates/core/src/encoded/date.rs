@@ -5,7 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
@@ -44,7 +44,7 @@ impl EncodedValuesLayout {
 pub mod tests {
 	use reifydb_type::value::{date::Date, r#type::Type};
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_date() {

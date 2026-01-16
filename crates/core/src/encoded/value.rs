@@ -10,7 +10,7 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_values(&self, row: &mut EncodedValues, values: &[Value]) {
@@ -210,7 +210,7 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {

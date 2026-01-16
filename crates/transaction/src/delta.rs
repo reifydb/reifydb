@@ -7,7 +7,7 @@ use indexmap::{
 };
 use reifydb_core::{
 	delta::Delta,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::util::cowvec::CowVec;
 

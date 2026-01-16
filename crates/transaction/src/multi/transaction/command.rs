@@ -13,12 +13,12 @@ use std::ops::RangeBounds;
 
 use reifydb_core::{
 	common::CommitVersion,
-	event::transaction::PostCommitEvent,
-	interface::store::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet},
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
+	event::transaction::PostCommitEvent,
+	interface::store::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 };
 use reifydb_type::{
 	Result,

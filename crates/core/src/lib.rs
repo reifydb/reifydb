@@ -7,6 +7,7 @@ use crate::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod common;
 pub mod delta;
+pub mod encoded;
 pub mod event;
 pub mod interface;
 pub mod key;

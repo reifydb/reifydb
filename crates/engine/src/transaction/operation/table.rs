@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::table::TableDef, key::row::RowKey, value::encoded::encoded::EncodedValues};
+use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::table::TableDef, key::row::RowKey};
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
 	interceptor::table::TableInterceptor,

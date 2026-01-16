@@ -5,8 +5,8 @@ use std::{sync::Arc, thread::spawn, time::Instant};
 
 use encoding::keycode;
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	util::encoding,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_transaction::multi::transaction::TransactionMulti;
 

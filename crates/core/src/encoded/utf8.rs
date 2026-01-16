@@ -3,7 +3,7 @@
 
 use reifydb_type::value::r#type::Type;
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
@@ -59,7 +59,7 @@ impl EncodedValuesLayout {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_utf8() {

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
@@ -13,7 +14,6 @@ use reifydb_core::{
 	value::{
 		batch::lazy::{LazyBatch, LazyColumnMeta},
 		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	},
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};

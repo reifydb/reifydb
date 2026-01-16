@@ -5,6 +5,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	interface::{
 		catalog::{id::NamespaceId, table::TableDef},
 		store::MultiVersionValues,
@@ -13,12 +14,9 @@ use reifydb_core::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::{
-		batch::{
-			Batch,
-			lazy::{LazyBatch, LazyColumnMeta},
-		},
-		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	value::batch::{
+		Batch,
+		lazy::{LazyBatch, LazyColumnMeta},
 	},
 };
 use reifydb_transaction::standard::StandardTransaction;

@@ -7,7 +7,7 @@ use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
 use reifydb_type::value::{int::Int, r#type::Type};
 
-use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 /// Int storage modes using MSB of i128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -118,7 +118,7 @@ impl EncodedValuesLayout {
 pub mod tests {
 	use reifydb_type::value::{int::Int, r#type::Type};
 
-	use crate::value::encoded::layout::EncodedValuesLayout;
+	use crate::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_i64_inline() {

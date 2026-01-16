@@ -5,12 +5,12 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::{MultiVersionBatch, MultiVersionValues},
-	key::{Key, kind::KeyKind},
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
+	interface::store::{MultiVersionBatch, MultiVersionValues},
+	key::{Key, kind::KeyKind},
 };
 
 use super::{FlowTransaction, Pending};
@@ -352,7 +352,7 @@ where
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::value::encoded::{
+	use reifydb_core::encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	};

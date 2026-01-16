@@ -19,11 +19,11 @@ use std::{
 use crossbeam_channel::{Receiver, Sender, bounded};
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	event::{
 		EventBus,
 		metric::{StorageDrop, StorageStatsRecordedEvent},
 	},
-	value::encoded::key::EncodedKey,
 };
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{debug, error, trace};

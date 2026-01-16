@@ -27,17 +27,15 @@ static EMPTY_PARAMS: Params = Params::None;
 use std::sync::LazyLock;
 
 use reifydb_core::{
+	encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+		layout::EncodedValuesLayout,
+		named::EncodedValuesNamedLayout,
+	},
 	row::Row,
 	util::{clock, encoding::keycode::serializer::KeySerializer},
-	value::{
-		column::{Column, columns::Columns, data::ColumnData},
-		encoded::{
-			encoded::EncodedValues,
-			key::{EncodedKey, EncodedKeyRange},
-			layout::EncodedValuesLayout,
-			named::EncodedValuesNamedLayout,
-		},
-	},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
 	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},

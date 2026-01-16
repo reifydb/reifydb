@@ -163,7 +163,7 @@ pub mod tests {
 	mod new {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::layout::EncodedValuesLayout;
+		use crate::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_single_field_bool() {
@@ -253,7 +253,7 @@ pub mod tests {
 	mod allocate_row {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::layout::EncodedValuesLayout;
+		use crate::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_initial_state() {
@@ -294,7 +294,7 @@ pub mod tests {
 	mod all_defined {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::layout::EncodedValuesLayout;
+		use crate::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_one_field_none_valid() {

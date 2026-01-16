@@ -2,13 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
-	value::encoded::{
+	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 		layout::EncodedValuesLayout,
 	},
+	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use tracing::{Span, instrument};
 
@@ -177,12 +177,12 @@ pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::catalog::flow::FlowNodeId,
-		value::encoded::{
+		encoded::{
 			encoded::EncodedValues,
 			key::{EncodedKey, EncodedKeyRange},
 			layout::EncodedValuesLayout,
 		},
+		interface::catalog::flow::FlowNodeId,
 	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 

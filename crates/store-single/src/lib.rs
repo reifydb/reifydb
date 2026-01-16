@@ -17,11 +17,11 @@ pub mod tier;
 use config::{HotConfig, SingleStoreConfig};
 use reifydb_core::{
 	delta::Delta,
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
 		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 		SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore, SingleVersionValues,
 	},
-	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_type::util::cowvec::CowVec;
 use store::StandardSingleStore;

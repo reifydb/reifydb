@@ -13,9 +13,9 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
-	value::encoded::key::EncodedKey,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};

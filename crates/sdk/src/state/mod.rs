@@ -13,7 +13,7 @@ pub mod window;
 
 use std::ops::Bound;
 
-use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 
 use crate::{
 	error::Result,

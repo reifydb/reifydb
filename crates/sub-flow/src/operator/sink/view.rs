@@ -4,12 +4,13 @@
 use std::rc::Rc;
 
 use reifydb_core::{
+	encoded::named::EncodedValuesNamedLayout,
 	interface::{
 		catalog::{flow::FlowNodeId, primitive::PrimitiveId},
 		resolved::ResolvedView,
 	},
 	key::row::RowKey,
-	value::{column::columns::Columns, encoded::named::EncodedValuesNamedLayout},
+	value::column::columns::Columns,
 };
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};

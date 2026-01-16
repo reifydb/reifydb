@@ -6,7 +6,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::{blob::Blob, decimal::Decimal, int::Int, r#type::Type};
 
 #[test]

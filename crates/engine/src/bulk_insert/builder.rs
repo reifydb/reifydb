@@ -8,9 +8,9 @@ use reifydb_catalog::{
 	store::sequence::{column::ColumnSequence, row::RowSequence},
 };
 use reifydb_core::{
+	encoded::{layout::EncodedValuesLayout, value::encode_value},
 	interface::{auth::Identity, catalog::id::IndexId},
 	key::{EncodableKey, index_entry::IndexEntryKey},
-	value::encoded::{layout::EncodedValuesLayout, value::encode_value},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{

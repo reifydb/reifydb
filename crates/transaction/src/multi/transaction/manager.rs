@@ -14,7 +14,7 @@ use core::mem;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::{error::diagnostic::transaction, return_error, util::hex};
 use tracing::instrument;

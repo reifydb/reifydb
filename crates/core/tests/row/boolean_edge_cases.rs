@@ -3,7 +3,7 @@
 
 //! Boolean edge case tests for the encoded encoding system
 
-use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::layout::EncodedValuesLayout;
 use reifydb_type::value::r#type::Type;
 
 #[test]

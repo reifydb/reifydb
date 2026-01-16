@@ -14,8 +14,8 @@ use std::{cmp, cmp::Reverse};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	interface::store::MultiVersionValues,
-	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_type::util::cowvec::CowVec;
 

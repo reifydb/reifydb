@@ -3,11 +3,11 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
+	encoded::key::EncodedKey,
 	interface::catalog::id::{
 		ColumnId, ColumnPolicyId, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, TableId, ViewId,
 	},
 	key::system_sequence::SystemSequenceKey,
-	value::encoded::key::EncodedKey,
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 

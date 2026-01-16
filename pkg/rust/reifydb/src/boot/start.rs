@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
+	encoded::layout::EncodedValuesLayout,
 	event::{
 		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
@@ -11,7 +12,6 @@ use reifydb_core::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
 	},
-	value::encoded::layout::EncodedValuesLayout,
 };
 use reifydb_transaction::single::TransactionSingle;
 use reifydb_type::value::r#type::Type;

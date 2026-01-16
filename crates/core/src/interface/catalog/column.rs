@@ -7,11 +7,11 @@ use reifydb_type::value::constraint::TypeConstraint;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+	encoded::named::EncodedValuesNamedLayout,
 	interface::catalog::{
 		id::{ColumnId, DictionaryId},
 		policy::ColumnPolicy,
 	},
-	value::encoded::named::EncodedValuesNamedLayout,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

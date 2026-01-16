@@ -257,7 +257,7 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_type::util::cowvec::CowVec;
 

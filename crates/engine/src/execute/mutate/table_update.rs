@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	encoded::layout::EncodedValuesLayout,
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
-	value::{column::columns::Columns, encoded::layout::EncodedValuesLayout},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
