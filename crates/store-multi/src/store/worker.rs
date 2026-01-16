@@ -71,10 +71,11 @@ pub struct DropRequest {
 }
 
 /// Control messages for the drop worker.
-#[derive(Debug)]
 enum DropMessage {
 	/// A drop request to process.
 	Request(DropRequest),
+	/// Flush pending requests and acknowledge completion.
+	Flush(Sender<()>),
 	/// Shutdown the worker.
 	Shutdown,
 }
@@ -128,6 +129,18 @@ impl DropWorker {
 		let _ = self.sender.try_send(DropMessage::Request(request));
 	}
 
+	/// Force flush all pending drop requests.
+	///
+	/// This blocks until all pending requests have been processed.
+	/// Useful for tests to ensure stats are up-to-date before reading.
+	pub fn flush(&self) {
+		let (ack_sender, ack_receiver) = bounded(1);
+		if self.sender.send(DropMessage::Flush(ack_sender)).is_ok() {
+			// Wait for acknowledgment (ignore timeout/disconnect)
+			let _ = ack_receiver.recv();
+		}
+	}
+
 	/// Stop the worker gracefully.
 	pub fn stop(&mut self) {
 		if !self.running.swap(false, Ordering::AcqRel) {
@@ -172,6 +185,19 @@ impl DropWorker {
 								);
 								last_flush = std::time::Instant::now();
 							}
+						}
+						DropMessage::Flush(ack) => {
+							// Process any pending requests before acknowledging
+							if !pending_requests.is_empty() {
+								Self::process_batch(
+									&storage,
+									&mut pending_requests,
+									&event_bus,
+								);
+								last_flush = std::time::Instant::now();
+							}
+							// Acknowledge completion
+							let _ = ack.send(());
 						}
 						DropMessage::Shutdown => {
 							debug!("Drop worker received shutdown signal");

@@ -42,8 +42,8 @@ use reifydb_testing::{
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/metric/tests/scripts/integration" as metric_tracker_memory => test_memory }
-test_each_path! { in "crates/metric/tests/scripts/integration" as metric_tracker_sqlite => test_sqlite }
+test_each_path! { in "crates/metric/tests/scripts/integration" as metric_memory => test_memory }
+test_each_path! { in "crates/metric/tests/scripts/integration" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
@@ -340,6 +340,9 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
+
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
@@ -377,6 +380,9 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
+
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
@@ -398,6 +404,9 @@ impl TestRunner for Runner {
 			"stats_historical" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
+
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
 
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
@@ -421,6 +430,9 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
+
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
@@ -442,6 +454,9 @@ impl TestRunner for Runner {
 			"stats_totals" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
+
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
 
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
@@ -471,6 +486,9 @@ impl TestRunner for Runner {
 			"sync_stats" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
+
+				// Flush drop worker to ensure deferred drops are processed
+				self.multi_store.flush_drop_worker();
 
 				// Wait for stats to be processed up to current version
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {

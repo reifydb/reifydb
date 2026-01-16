@@ -64,6 +64,14 @@ impl StandardMultiStore {
 	pub fn hot(&self) -> Option<&HotStorage> {
 		self.hot.as_ref()
 	}
+
+	/// Force flush all pending drop requests in the background worker.
+	///
+	/// This blocks until all pending requests have been processed.
+	/// Useful for tests to ensure stats are up-to-date before reading.
+	pub fn flush_drop_worker(&self) {
+		self.drop_worker.lock().flush();
+	}
 }
 
 impl Deref for StandardMultiStore {
