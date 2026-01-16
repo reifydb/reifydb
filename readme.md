@@ -18,10 +18,6 @@ A database designed to manage live application state with transactional guarante
 [![GitHub Repo stars](https://img.shields.io/github/stars/reifydb/reifydb)](https://github.com/reifydb/reifydb/stargazers)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](https://github.com/reifydb/reifydb/blob/main/license.md)
 
-[![Workspace](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/workspace.yml?label=Workspace)](https://github.com/reifydb/reifydb/actions/workflows/workspace.yml)
-[![TestSuite](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/test-suite.yml?label=TestSuite)](https://github.com/reifydb/reifydb/actions/workflows/test-suite.yml)
-[![TypeScript](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/pkg-typescript.yml?label=TypeScript)](https://github.com/reifydb/reifydb/actions/workflows/pkg-typescript.yml)
-
 <p align="center">
   <strong>IN DEVELOPMENT</strong><br>
   <em>Do not use in production yet. APIs and guarantees may change.</em>
