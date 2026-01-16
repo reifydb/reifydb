@@ -12,17 +12,19 @@
 //! - `jumps`: Jump, JumpIf, JumpIfNot
 //! - `calls`: Call, Return, CallBuiltin
 //! - `frame`: FrameLen, FrameRow, GetField
-//! - `pipeline`: Source, Inline, Apply, Collect, PopPipeline, Merge, EvalMapWithoutInput, EvalExpandWithoutInput, FetchBatch, CheckComplete
+//! - `pipeline`: Source, Inline, Apply, Collect, PopPipeline, Merge, EvalMapWithoutInput, EvalExpandWithoutInput,
+//!   FetchBatch, CheckComplete
 //! - `ddl`: CreateNamespace, CreateTable, DropObject
 //! - `dml`: InsertRow, UpdateRow, DeleteRow
 //! - `subquery`: ExecSubqueryExists, ExecSubqueryIn, ExecSubqueryScalar
 
-use reifydb_rqlv2::bytecode::BytecodeReader;
-use reifydb_transaction::StandardTransaction;
+use reifydb_rqlv2::bytecode::instruction::BytecodeReader;
+use reifydb_transaction::standard::StandardTransaction;
 
-use crate::error::Result;
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::state::VmState;
+use crate::{
+	error::Result,
+	runtime::{dispatch::DispatchResult, state::VmState},
+};
 
 /// Context passed to opcode handler.
 pub struct HandlerContext<'vm, 'tx, 'a> {
@@ -41,7 +43,11 @@ impl<'vm, 'tx, 'a> HandlerContext<'vm, 'tx, 'a> {
 		reader: &'vm mut BytecodeReader<'a>,
 		tx: Option<&'vm mut StandardTransaction<'tx>>,
 	) -> Self {
-		Self { vm, reader, tx }
+		Self {
+			vm,
+			reader,
+			tx,
+		}
 	}
 
 	/// Read a u8 from the bytecode.

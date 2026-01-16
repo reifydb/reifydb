@@ -6,11 +6,15 @@ use reifydb_core::{
 		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
 	},
-	interface::{EncodableKey, SystemVersion, SystemVersionKey, WithEventBus},
-	value::encoded::EncodedValuesLayout,
+	interface::WithEventBus,
+	key::{
+		EncodableKey,
+		system_version::{SystemVersion, SystemVersionKey},
+	},
+	value::encoded::layout::EncodedValuesLayout,
 };
 use reifydb_transaction::single::TransactionSingle;
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 use tracing::error;
 
 pub(crate) struct StartEventListener {

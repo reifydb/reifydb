@@ -3,7 +3,7 @@
 
 use std::cmp::Ordering;
 
-use crate::value::{is::IsNumber, number::Promote};
+use crate::value::{is::IsNumber, number::promote::Promote};
 
 #[inline]
 pub fn partial_cmp<L, R>(l: &L, r: &R) -> Option<Ordering>

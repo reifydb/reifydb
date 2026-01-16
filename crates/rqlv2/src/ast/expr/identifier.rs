@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Identifier expression types.
-
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Simple identifier: column_name, table_name
 #[derive(Debug, Clone, Copy)]

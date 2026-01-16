@@ -3,8 +3,8 @@
 
 pub mod subscription {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub const ID: usize = 0;
 	pub const ACKNOWLEDGED_VERSION: usize = 1;
@@ -21,8 +21,8 @@ pub mod subscription {
 
 pub mod subscription_column {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub const ID: usize = 0;
 	pub const NAME: usize = 1;

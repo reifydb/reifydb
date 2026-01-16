@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
+use reifydb_core::value::encoded::{
+	encoded::EncodedValues,
+	key::{EncodedKey, EncodedKeyRange},
+};
 
 use super::utils;
 use crate::{Operator, transaction::FlowTransaction};
@@ -54,11 +57,12 @@ pub trait RawStatefulOperator: Operator {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::Bound::{Excluded, Included};
 
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, interface::FlowNodeId, util::CowVec};
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};

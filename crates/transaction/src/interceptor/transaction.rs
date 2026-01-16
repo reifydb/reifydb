@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::CommitVersion;
+use reifydb_core::common::CommitVersion;
 
 use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalDefChanges},
-	interceptor::InterceptorChain,
+	interceptor::chain::InterceptorChain,
 };
 
 // ============================================================================
@@ -29,11 +29,11 @@ impl Default for PreCommitContext {
 }
 
 pub trait PreCommitInterceptor: Send + Sync {
-	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()>;
+	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: PreCommitContext) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: PreCommitContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -44,14 +44,14 @@ impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
 /// Closure wrapper for pre-commit interceptors
 pub struct ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PreCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PreCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -62,7 +62,7 @@ where
 
 impl<F> Clone for ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: Fn(&mut PreCommitContext) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -73,9 +73,9 @@ where
 
 impl<F> PreCommitInterceptor for ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PreCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_core::Result<()> {
+	fn intercept(&self, ctx: &mut PreCommitContext) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -83,7 +83,7 @@ where
 /// Helper function to create a closure pre-commit interceptor
 pub fn pre_commit<F>(f: F) -> ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: Fn(&mut PreCommitContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosurePreCommitInterceptor::new(f)
 }
@@ -117,11 +117,11 @@ impl PostCommitContext {
 }
 
 pub trait PostCommitInterceptor: Send + Sync {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()>;
+	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: PostCommitContext) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: PostCommitContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -132,14 +132,14 @@ impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
 /// Closure wrapper for post-commit interceptors
 pub struct ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -150,7 +150,7 @@ where
 
 impl<F> Clone for ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: Fn(&mut PostCommitContext) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -161,9 +161,9 @@ where
 
 impl<F> PostCommitInterceptor for ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync,
+	F: Fn(&mut PostCommitContext) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_core::Result<()> {
+	fn intercept(&self, ctx: &mut PostCommitContext) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
@@ -171,7 +171,7 @@ where
 /// Helper function to create a closure post-commit interceptor
 pub fn post_commit<F>(f: F) -> ClosurePostCommitInterceptor<F>
 where
-	F: Fn(&mut PostCommitContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: Fn(&mut PostCommitContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosurePostCommitInterceptor::new(f)
 }

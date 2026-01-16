@@ -2,9 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{ColumnId, EncodableKey, KeyKind, PrimitiveId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
+	key::{EncodableKey, KeyKind},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,11 +80,11 @@ impl ColumnKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::EncodableKey;
-	use crate::interface::{
-		ColumnKey,
-		catalog::{ColumnId, PrimitiveId},
+	use crate::{
+		interface::catalog::{id::ColumnId, primitive::PrimitiveId},
+		key::ColumnKey,
 	};
 
 	#[test]

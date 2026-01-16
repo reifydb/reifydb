@@ -8,9 +8,13 @@
 use bumpalo::collections::Vec as BumpVec;
 
 use crate::{
-	ast::parse::{ParseError, Parser, Precedence},
-	ast::{Expr, Statement, expr::SubQueryExpr, stmt::DescribeStmt},
-	token::{Keyword, Operator, Punctuation},
+	ast::{
+		Expr, Statement,
+		expr::special::SubQueryExpr,
+		parse::{ParseError, Parser, Precedence},
+		stmt::DescribeStmt,
+	},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -66,12 +70,17 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::ast::expr::{BinaryOp, FromExpr, Literal};
-	use crate::ast::parse::parse;
-	use crate::{ast::{Expr, Statement}, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::{literal::Literal, operator::BinaryOp, query::FromExpr},
+			parse::parse,
+		},
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_describe_query() {
@@ -95,9 +104,14 @@ mod tests {
 									Expr::Call(c) => {
 										match c.function {
 											Expr::Identifier(id) => {
-												assert_eq!(id.name, "cast");
+												assert_eq!(
+													id.name,
+													"cast"
+												);
 											}
-											_ => panic!("Expected function identifier"),
+											_ => panic!(
+												"Expected function identifier"
+											),
 										}
 										assert_eq!(c.arguments.len(), 2);
 									}
@@ -143,9 +157,14 @@ mod tests {
 										assert_eq!(b.op, BinaryOp::Eq);
 										match b.left {
 											Expr::Identifier(id) => {
-												assert_eq!(id.name, "active");
+												assert_eq!(
+													id.name,
+													"active"
+												);
 											}
-											_ => panic!("Expected identifier on left"),
+											_ => panic!(
+												"Expected identifier on left"
+											),
 										}
 									}
 									_ => panic!("Expected Binary expression"),
@@ -170,20 +189,18 @@ mod tests {
 		let stmt = program.statements.first().copied().unwrap();
 
 		match stmt {
-			Statement::Describe(d) => {
-				match d.target {
-					Expr::SubQuery(sq) => {
-						assert_eq!(sq.pipeline.len(), 1);
-						match &sq.pipeline[0] {
-							Expr::From(FromExpr::Source(s)) => {
-								assert_eq!(s.name, "users");
-							}
-							_ => panic!("Expected FROM Source expression"),
+			Statement::Describe(d) => match d.target {
+				Expr::SubQuery(sq) => {
+					assert_eq!(sq.pipeline.len(), 1);
+					match &sq.pipeline[0] {
+						Expr::From(FromExpr::Source(s)) => {
+							assert_eq!(s.name, "users");
 						}
+						_ => panic!("Expected FROM Source expression"),
 					}
-					_ => panic!("Expected SubQuery target"),
 				}
-			}
+				_ => panic!("Expected SubQuery target"),
+			},
 			_ => panic!("Expected DESCRIBE statement"),
 		}
 	}
@@ -206,16 +223,24 @@ mod tests {
 							Expr::Binary(b) => {
 								assert_eq!(b.op, BinaryOp::Add);
 								match b.left {
-									Expr::Literal(Literal::Integer { value, .. }) => {
+									Expr::Literal(Literal::Integer {
+										value,
+										..
+									}) => {
 										assert_eq!(*value, "1");
 									}
 									_ => panic!("Expected integer literal on left"),
 								}
 								match b.right {
-									Expr::Literal(Literal::Integer { value, .. }) => {
+									Expr::Literal(Literal::Integer {
+										value,
+										..
+									}) => {
 										assert_eq!(*value, "2");
 									}
-									_ => panic!("Expected integer literal on right"),
+									_ => panic!(
+										"Expected integer literal on right"
+									),
 								}
 							}
 							_ => panic!("Expected Binary expression"),

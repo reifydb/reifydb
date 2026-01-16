@@ -7,8 +7,11 @@
 
 use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 
-use reifydb_core::{CommitVersion, EncodedKey, interface::MultiVersionValues};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::{MultiVersionBatch, MultiVersionValues},
+	value::encoded::key::EncodedKey,
+};
 
 use super::Pending;
 
@@ -170,13 +173,15 @@ pub fn collect_batch(
 }
 
 #[cfg(test)]
-mod tests {
-
+pub mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey, interface::MultiVersionValues, value::encoded::EncodedValues,
+		common::CommitVersion,
+		interface::store::MultiVersionValues,
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 

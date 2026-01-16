@@ -8,8 +8,8 @@
 //! policies - versions at or above the watermark cannot be cleaned up because
 //! consumers still need them.
 
-use reifydb_core::{CommitVersion, interface::CdcConsumerKeyRange};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
 /// across all registered CDC consumers.
@@ -36,7 +36,7 @@ use reifydb_transaction::IntoStandardTransaction;
 /// let watermark = compute_watermark(&mut txn)?;
 /// // Now retention can safely cleanup versions < watermark
 /// ```
-pub fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_core::Result<CommitVersion> {
+pub fn compute_watermark(txn: &mut impl IntoStandardTransaction) -> reifydb_type::Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;
 
 	for multi in txn.into_standard_transaction().range(CdcConsumerKeyRange::full_scan(), 1024)? {

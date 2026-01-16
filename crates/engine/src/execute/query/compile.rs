@@ -4,49 +4,55 @@
 use std::sync::Arc;
 
 use reifydb_catalog::vtable::{
-	VTableContext, VTables,
+	VTableContext,
 	system::{
-		CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges, FlowLags,
-		FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs, FlowOperators,
-		FlowStorageStats, Flows, IndexStorageStats, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns,
-		PrimaryKeys, PrimitiveRetentionPolicies, RingBufferStorageStats, RingBuffers, Sequences,
-		TableStorageStats, Tables, TablesVirtual, Types, Versions, ViewStorageStats, Views,
+		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
+		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, flow_edges::FlowEdges,
+		flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
+		flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
+		flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
+		flow_storage_stats::FlowStorageStats, flows::Flows, index_storage_stats::IndexStorageStats,
+		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
+		primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
+		primitive_retention_policies::PrimitiveRetentionPolicies,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, sequences::Sequences,
+		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
+		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
+	tables::VTables,
 };
-use reifydb_core::interface::{IndexId, NamespaceId};
+use reifydb_core::interface::catalog::id::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
-use crate::{
-	StandardTransaction,
-	execute::{
-		ExecutionContext, ExecutionPlan,
-		query::{
-			aggregate::AggregateNode,
-			assign::AssignNode,
-			conditional::ConditionalNode,
-			declare::DeclareNode,
-			dictionary_scan::DictionaryScanNode,
-			environment::EnvironmentNode,
-			extend::{ExtendNode, ExtendWithoutInputNode},
-			filter::FilterNode,
-			generator::GeneratorNode,
-			index_scan::IndexScanNode,
-			inline::InlineDataNode,
-			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
-			map::{MapNode, MapWithoutInputNode},
-			ringbuffer_scan::RingBufferScan,
-			row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
-			scalarize::ScalarizeNode,
-			sort::SortNode,
-			table_scan::TableScanNode,
-			take::TakeNode,
-			top_k::TopKNode,
-			variable::VariableNode,
-			view_scan::ViewScanNode,
-			vtable_scan::VirtualScanNode,
-		},
+use crate::execute::{
+	ExecutionContext, ExecutionPlan,
+	query::{
+		aggregate::AggregateNode,
+		assign::AssignNode,
+		conditional::ConditionalNode,
+		declare::DeclareNode,
+		dictionary_scan::DictionaryScanNode,
+		environment::EnvironmentNode,
+		extend::{ExtendNode, ExtendWithoutInputNode},
+		filter::FilterNode,
+		generator::GeneratorNode,
+		index_scan::IndexScanNode,
+		inline::InlineDataNode,
+		join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
+		map::{MapNode, MapWithoutInputNode},
+		ringbuffer_scan::RingBufferScan,
+		row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
+		scalarize::ScalarizeNode,
+		sort::SortNode,
+		table_scan::TableScanNode,
+		take::TakeNode,
+		top_k::TopKNode,
+		variable::VariableNode,
+		view_scan::ViewScanNode,
+		vtable_scan::VirtualScanNode,
 	},
 };
 
@@ -387,7 +393,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
+			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowPointLookup(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -397,7 +403,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
+			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowListLookup(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -408,7 +414,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = reifydb_core::interface::ResolvedPrimitive::from(source);
+			let resolved_source = reifydb_core::interface::resolved::ResolvedPrimitive::from(source);
 			ExecutionPlan::RowRangeScan(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

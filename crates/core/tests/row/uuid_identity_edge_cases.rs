@@ -5,8 +5,12 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use reifydb_core::value::encoded::EncodedValuesLayout;
-use reifydb_type::*;
+use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_type::value::{
+	identity::IdentityId,
+	r#type::Type,
+	uuid::{Uuid4, Uuid7},
+};
 use tokio::time::sleep;
 
 #[test]

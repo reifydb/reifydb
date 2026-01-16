@@ -7,11 +7,13 @@ mod common;
 
 use common::*;
 use reifydb_macro::FromFrame;
-use reifydb_type::{Date, DateTime, FromFrame, FromFrameError, Time, Uuid4, Uuid7};
-
-// ============================================================================
-// 1. Basic Struct Derivation
-// ============================================================================
+use reifydb_type::value::{
+	date::Date,
+	datetime::DateTime,
+	frame::from_frame::{FromFrame as _, FromFrameError},
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+};
 
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct BasicUser {

@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 use std::time::Duration;
 
-use reifydb_type::{Error, Params, diagnostic};
+use reifydb_type::{
+	error::{Error, diagnostic},
+	params::Params,
+};
 use reqwest::Client as ReqwestClient;
 
 use crate::{
@@ -44,10 +47,9 @@ impl HttpClient {
 	/// }
 	/// ```
 	pub async fn connect(url: &str) -> Result<Self, Error> {
-		let inner = ReqwestClient::builder()
-			.timeout(Duration::from_secs(30))
-			.build()
-			.map_err(|e| Error(diagnostic::internal(format!("Failed to create HTTP client: {}", e))))?;
+		let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().map_err(|e| {
+			Error(diagnostic::internal::internal(format!("Failed to create HTTP client: {}", e)))
+		})?;
 
 		// Normalize URL (remove trailing slash)
 		let base_url = url.trim_end_matches('/').to_string();
@@ -219,11 +221,11 @@ impl HttpClient {
 		let response = request
 			.send()
 			.await
-			.map_err(|e| Error(diagnostic::internal(format!("Request failed: {}", e))))?;
+			.map_err(|e| Error(diagnostic::internal::internal(format!("Request failed: {}", e))))?;
 
 		response.text()
 			.await
-			.map_err(|e| Error(diagnostic::internal(format!("Failed to read response: {}", e))))
+			.map_err(|e| Error(diagnostic::internal::internal(format!("Failed to read response: {}", e))))
 	}
 
 	/// Parse an error response body into an Error.
@@ -244,6 +246,6 @@ impl HttpClient {
 		}
 
 		// Fallback: return raw response as error
-		Error(diagnostic::internal(format!("Failed to parse response: {}", body)))
+		Error(diagnostic::internal::internal(format!("Failed to parse response: {}", body)))
 	}
 }

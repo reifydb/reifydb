@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{Literal::Text, Token, TokenKind, cursor::Cursor};
+use crate::ast::tokenize::{
+	cursor::Cursor,
+	token::{Literal::Text, Token, TokenKind},
+};
 
 /// Scan for a text literal ('...' or "...")
 pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
@@ -42,9 +45,9 @@ pub fn scan_text(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::ast::tokenize::{Literal::Number, tokenize};
+	use crate::ast::tokenize::{token::Literal::Number, tokenize};
 
 	#[test]
 	fn test_text_single_quotes() {

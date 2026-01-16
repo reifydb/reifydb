@@ -5,18 +5,20 @@
 
 use std::fmt::{Display, Formatter};
 
-mod compile;
-mod lex;
+pub mod compile;
+pub mod lex;
 pub mod parse;
-mod plan;
+pub mod plan;
 
-pub use parse::ParseErrors;
 use reifydb_type::{
-	Fragment,
-	diagnostic::{Diagnostic, IntoDiagnostic},
+	error::diagnostic::{Diagnostic, IntoDiagnostic},
+	fragment::Fragment,
 };
 
-use crate::{ast::parse::ParseError, bytecode::compile::CompileError, plan::compile::PlanError, token::LexError};
+use crate::{
+	ast::parse::error::ParseError, bytecode::compile::CompileError, error::parse::ParseErrors,
+	plan::compile::core::PlanError, token::error::LexError,
+};
 
 /// Combined error type for RQL compilation operations.
 ///
@@ -98,8 +100,7 @@ impl From<CompileError> for RqlError {
 	}
 }
 
-// Conversion to reifydb_type::Error (via Diagnostic)
-impl From<RqlError> for reifydb_type::Error {
+impl From<RqlError> for reifydb_type::error::Error {
 	fn from(err: RqlError) -> Self {
 		let diagnostic = match err {
 			RqlError::Lex(lex_err) => lex_err.into_diagnostic(),
@@ -109,7 +110,7 @@ impl From<RqlError> for reifydb_type::Error {
 			RqlError::EmptyProgram => empty_program_diagnostic(),
 			RqlError::CompilationPanicked(msg) => compilation_panicked_diagnostic(msg),
 		};
-		reifydb_type::Error(diagnostic)
+		reifydb_type::error::Error(diagnostic)
 	}
 }
 

@@ -13,7 +13,8 @@ pub mod wait;
 
 use std::{error::Error, ops::Bound};
 
-use reifydb_core::{CowVec, util::encoding::binary::decode_binary};
+use reifydb_core::util::encoding::binary::decode_binary;
+use reifydb_type::util::cowvec::CowVec;
 
 /// Parses an binary key range, using Rust range syntax.
 pub fn parse_key_range(s: &str) -> Result<(Bound<CowVec<u8>>, Bound<CowVec<u8>>), Box<dyn Error>> {

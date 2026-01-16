@@ -8,32 +8,34 @@
 //! allocations and deallocations during column operations. Each container
 //! type has its own pool that manages reusable instances.
 
-mod allocator;
-mod capacity;
+pub mod allocator;
+pub mod capacity;
 pub mod config;
-mod guard;
+pub mod guard;
 pub mod lazy;
 pub mod scoped;
-mod stats;
+pub mod stats;
 #[cfg(test)]
 pub mod testing;
 pub mod thread_local;
 
 use std::{collections::HashMap, ops::Deref, rc::Rc};
 
-pub use config::{PoolConfig, init_default_thread_pools, init_test_pools, init_thread_pools};
-pub use guard::PooledGuard;
-pub use lazy::{ensure_thread_pools, get_or_init_pools, thread_pools_lazy};
-use reifydb_type::{Date, DateTime, Duration, Time, Uuid4, Uuid7};
-pub use scoped::{ScopedPools, with_default_pools, with_scoped_pools, with_test_pools};
-pub use thread_local::{get_thread_pools, has_thread_pools, thread_pools};
-
-use crate::value::{
-	column::pool::{
-		allocator::{PoolAllocator, StdPoolAllocator},
-		stats::PoolStats,
+use reifydb_type::value::{
+	container::{
+		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row_number::RowNumberContainer,
+		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
 	},
-	container::*,
+	date::Date,
+	datetime::DateTime,
+	duration::Duration,
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+};
+
+use crate::value::column::pool::{
+	allocator::{PoolAllocator, StdPoolAllocator},
+	stats::PoolStats,
 };
 
 #[derive(Clone)]
@@ -257,8 +259,8 @@ impl Pools {
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
+pub mod tests {
+	use super::{allocator::PoolAllocator, *};
 
 	#[test]
 	fn test_container_pools() {

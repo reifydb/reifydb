@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 pub fn invalid_uuid4_format(fragment: Fragment) -> Diagnostic {
 	let label = Some(format!("'{}' is not a valid UUID v4", fragment.text()));

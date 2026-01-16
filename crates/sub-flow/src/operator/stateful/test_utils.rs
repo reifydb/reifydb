@@ -3,19 +3,20 @@
 
 #[cfg(test)]
 pub mod test {
-	pub use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
-		EncodedKey,
-		interface::FlowNodeId,
-		util::CowVec,
+		interface::catalog::flow::FlowNodeId,
 		value::{
-			column::Columns,
-			encoded::{EncodedValues, EncodedValuesLayout},
+			column::columns::Columns,
+			encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 		},
 	};
-	use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, test_utils::create_test_engine};
-	use reifydb_sdk::FlowChange;
-	use reifydb_type::{RowNumber, Type};
+	use reifydb_engine::{evaluate::column::StandardColumnEvaluator, test_utils::create_test_engine};
+	use reifydb_sdk::flow::FlowChange;
+	use reifydb_transaction::standard::command::StandardCommandTransaction;
+	use reifydb_type::{
+		util::cowvec::CowVec,
+		value::{row_number::RowNumber, r#type::Type},
+	};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
 
@@ -65,7 +66,7 @@ pub mod test {
 			_txn: &mut FlowTransaction,
 			_change: FlowChange,
 			_evaluator: &StandardColumnEvaluator,
-		) -> reifydb_core::Result<FlowChange> {
+		) -> reifydb_type::Result<FlowChange> {
 			todo!()
 		}
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{column::ColumnData, container::Utf8Container};
-use reifydb_type::value::constraint::bytes::MaxBytes;
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container};
 
 use crate::{ScalarFunction, ScalarFunctionContext};
 
@@ -120,7 +120,7 @@ impl FormatBytes {
 }
 
 impl ScalarFunction for FormatBytes {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -166,7 +166,7 @@ impl FormatBytesSi {
 }
 
 impl ScalarFunction for FormatBytesSi {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -199,8 +199,11 @@ impl ScalarFunction for FormatBytesSi {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::value::column::{Column, Columns};
+pub mod tests {
+	use std::str::FromStr;
+
+	use reifydb_core::value::column::{Column, columns::Columns};
+	use reifydb_type::{util::bitvec::BitVec, value::decimal::Decimal};
 
 	use super::*;
 
@@ -349,8 +352,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_format_bytes_with_null() {
-		use reifydb_core::BitVec;
-
 		let function = FormatBytes::new();
 
 		let data = vec![1024i64, 0, 2048];
@@ -496,10 +497,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_format_bytes_decimal() {
-		use std::str::FromStr;
-
-		use reifydb_type::Decimal;
-
 		let function = FormatBytes::new();
 
 		let data = vec![

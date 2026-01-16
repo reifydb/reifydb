@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{ColumnId, ColumnSequenceKey, PrimitiveId};
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Type, Value};
+use reifydb_core::{
+	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
+	key::column_sequence::ColumnSequenceKey,
+};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::{Value, r#type::Type};
 
 use crate::{
 	CatalogStore,

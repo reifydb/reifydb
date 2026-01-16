@@ -36,7 +36,7 @@
 // 		// 		// In a real implementation, we might handle other categorical types
 // 		// 		// For non-string types, fall back to no compression
 // 		// 		// In a real implementation, we might handle other categorical types
-// 		// 		return Err(reifydb_type::Error::Internal(
+// 		// 		return Err(reifydb_type::error::Error::Internal(
 // 		// 			"Dictionary compression only supports UTF8 columns".to_string(),
 // 		// 		));
 // 		// 		let uncompressed_size = serialized.len();
@@ -90,7 +90,7 @@
 // 		max_bytes: max_bytes.0,
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	// Calculate uncompressed size (rough estimate)
 // 	let uncompressed_size = container.iter()
@@ -108,7 +108,7 @@
 //
 // fn decompress_dictionary(data: &[u8]) -> Result<ColumnData> {
 // 	let encoded: DictionaryEncoded =
-// 		serde_json::from_slice(data).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		serde_json::from_slice(data).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	let mut values = Vec::with_capacity(encoded.indices.len());
 //
@@ -116,7 +116,7 @@
 // 		match index_opt {
 // 			Some(idx) => {
 // 				let value = encoded.dictionary.get(idx as usize).ok_or_else(|| {
-// 					reifydb_type::Error::Internal("Invalid dictionary index".to_string())
+// 					reifydb_type::error::Error::Internal("Invalid dictionary index".to_string())
 // 				})?;
 // 				values.push(Some(value.clone()));
 // 			}

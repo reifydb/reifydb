@@ -5,12 +5,23 @@
 //!
 //! Provides typed getters for extracting values from columns by name and row index.
 
-use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF64, RowNumber, Time, Uint, Uuid4, Uuid7,
+use reifydb_type::value::{
 	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	ordered_f64::OrderedF64,
+	row_number::RowNumber,
+	time::Time,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
 };
 
-use super::Columns;
+use crate::value::column::columns::Columns;
 
 impl Columns {
 	/// Get a boolean value from a column at the given row index

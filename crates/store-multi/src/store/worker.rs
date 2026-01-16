@@ -18,15 +18,19 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, bounded};
 use reifydb_core::{
-	CommitVersion, EncodedKey,
-	event::{EventBus, StorageDrop, StorageStatsRecordedEvent},
+	common::CommitVersion,
+	event::{
+		EventBus,
+		metric::{StorageDrop, StorageStatsRecordedEvent},
+	},
+	value::encoded::key::EncodedKey,
 };
-use reifydb_type::CowVec;
+use reifydb_type::util::cowvec::CowVec;
 use tracing::{debug, error, trace};
 
 use super::drop::find_keys_to_drop;
 use crate::{
-	hot::HotStorage,
+	hot::storage::HotStorage,
 	tier::{EntryKind, TierStorage},
 };
 
@@ -84,11 +88,7 @@ pub struct DropWorker {
 
 impl DropWorker {
 	/// Create and start a new drop worker.
-	pub fn new(
-		config: DropWorkerConfig,
-		storage: HotStorage,
-		event_bus: EventBus,
-	) -> Self {
+	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus) -> Self {
 		let (sender, receiver) = bounded(config.channel_capacity);
 		let running = Arc::new(AtomicBool::new(true));
 
@@ -165,7 +165,11 @@ impl DropWorker {
 
 							// Flush if batch is full
 							if pending_requests.len() >= config.batch_size {
-								Self::process_batch(&storage, &mut pending_requests, &event_bus);
+								Self::process_batch(
+									&storage,
+									&mut pending_requests,
+									&event_bus,
+								);
 								last_flush = std::time::Instant::now();
 							}
 						}
@@ -173,7 +177,11 @@ impl DropWorker {
 							debug!("Drop worker received shutdown signal");
 							// Process any remaining requests before shutdown
 							if !pending_requests.is_empty() {
-								Self::process_batch(&storage, &mut pending_requests, &event_bus);
+								Self::process_batch(
+									&storage,
+									&mut pending_requests,
+									&event_bus,
+								);
 							}
 							break;
 						}
@@ -198,11 +206,7 @@ impl DropWorker {
 		debug!("Drop worker stopped");
 	}
 
-	fn process_batch(
-		storage: &HotStorage,
-		requests: &mut Vec<DropRequest>,
-		event_bus: &EventBus,
-	) {
+	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
 		trace!("Drop worker processing {} requests", requests.len());
 
 		// Collect all entries to delete, grouped by table
@@ -236,8 +240,7 @@ impl DropWorker {
 						});
 
 						// Queue for deletion (None value = delete)
-						batches
-							.entry(request.table)
+						batches.entry(request.table)
 							.or_default()
 							.push((entry.versioned_key, None));
 					}

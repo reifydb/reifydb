@@ -3,8 +3,8 @@
 
 //! State management utilities for operators
 
-mod cache;
-mod ffi;
+pub mod cache;
+pub mod ffi;
 pub mod keyed;
 pub mod row;
 pub mod single;
@@ -13,17 +13,12 @@ pub mod window;
 
 use std::ops::Bound;
 
-// Re-export traits and types
-pub use cache::StateCache;
-pub use reifydb_core::IntoEncodedKey;
-pub use keyed::FFIKeyedStateful;
-use reifydb_core::value::encoded::{EncodedKey, EncodedValues};
-pub use row::RowNumberProvider;
-pub use single::FFISingleStateful;
-pub use utils::*;
-pub use window::FFIWindowStateful;
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
 
-use crate::{FFIOperator, OperatorContext, error::Result};
+use crate::{
+	error::Result,
+	operator::{FFIOperator, context::OperatorContext},
+};
 
 /// State manager providing state operations with EncodedKey and EncodedValues
 pub struct State<'a> {

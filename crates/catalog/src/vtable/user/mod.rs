@@ -13,8 +13,8 @@
 //!
 //! ```ignore
 //! use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumnDef};
-//! use reifydb_type::Type;
-//! use reifydb_core::value::column::Columns;
+//! use reifydb_type::value::r#type::Type;
+//! use reifydb_core::value::column::columns::Columns;
 //!
 //! struct MyApiTable {
 //!     api_client: ApiClient,
@@ -35,13 +35,11 @@
 //! }
 //! ```
 
-mod builder;
-mod registry;
+pub mod builder;
+pub mod registry;
 
-pub use builder::UserVTableBuilder;
-pub use registry::{UserVTableEntry, UserVTableRegistry};
-use reifydb_core::value::column::Columns;
-use reifydb_type::{Type, Value};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_type::value::{Value, r#type::Type};
 
 /// Column definition for user virtual tables.
 #[derive(Debug, Clone)]

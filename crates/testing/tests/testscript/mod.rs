@@ -8,23 +8,21 @@
 
 use std::{error::Error, io::Write as _};
 
-use reifydb_testing::testscript;
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
+use testscript::runner::{Runner, generate, run_path};
 
-// Run testscripts in tests/scripts that debug-print the commands.
 test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }
 
 fn test_testscript(path: &std::path::Path) {
-	testscript::run_path(&mut DebugRunner::new(), path).expect("runner failed")
+	run_path(&mut DebugRunner::new(), path).expect("runner failed")
 }
 
-// Run testscripts in tests/generate with output in a separate file. This is
-// particularly useful for parser tests where output hasn't yet been generated.
 test_each_path! { for ["in", "out"] in "crates/testing/tests/testscript/generate" as generate => test_generate }
 
 fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 	let input = std::fs::read_to_string(in_path).expect("failed to read file");
-	let output = testscript::generate(&mut DebugRunner::new(), &input).expect("runner failed");
+	let output = generate(&mut DebugRunner::new(), &input).expect("runner failed");
 
 	let dir = out_path.parent().expect("invalid path");
 	let filename = out_path.file_name().expect("invalid path");
@@ -40,7 +38,7 @@ test_each_path! { for ["in", "error"] in "crates/testing/tests/testscript/errors
 
 fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 	let input = std::fs::read_to_string(in_path).expect("failed to read file");
-	let run = std::panic::AssertUnwindSafe(|| testscript::generate(&mut DebugRunner::new(), &input));
+	let run = std::panic::AssertUnwindSafe(|| generate(&mut DebugRunner::new(), &input));
 	let message = match std::panic::catch_unwind(run) {
 		Ok(Ok(_)) => panic!("script succeeded"),
 		Ok(Err(e)) => e.to_string(),
@@ -91,8 +89,8 @@ impl DebugRunner {
 	}
 }
 
-impl testscript::Runner for DebugRunner {
-	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> {
+impl Runner for DebugRunner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		// Process commands.
 		let output = match command.name.as_str() {
 			"_echo" => {
@@ -148,11 +146,11 @@ impl testscript::Runner for DebugRunner {
 		Ok(self.end_block.clone())
 	}
 
-	fn start_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn Error>> {
+	fn start_command(&mut self, _: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(self.start_command.clone())
 	}
 
-	fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn Error>> {
+	fn end_command(&mut self, _: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(self.end_command.clone())
 	}
 }

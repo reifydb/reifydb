@@ -2,12 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::flow_already_exists,
-	interface::{FlowDef, FlowId, FlowKey, FlowStatus, NamespaceFlowKey, NamespaceId},
-	return_error,
+	interface::catalog::{
+		flow::{FlowDef, FlowId, FlowStatus},
+		id::NamespaceId,
+	},
+	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::catalog::flow_already_exists, fragment::Fragment, return_error};
 
 use crate::{
 	CatalogStore,
@@ -80,8 +82,14 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{FlowId, FlowStatus, NamespaceFlowKey, NamespaceId};
+pub mod tests {
+	use reifydb_core::{
+		interface::catalog::{
+			flow::{FlowId, FlowStatus},
+			id::NamespaceId,
+		},
+		key::namespace_flow::NamespaceFlowKey,
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

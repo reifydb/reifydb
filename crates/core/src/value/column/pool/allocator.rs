@@ -146,11 +146,10 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::value::{
-		column::pool::allocator::{PoolAllocator, StdPoolAllocator},
-		container::{BoolContainer, NumberContainer, Utf8Container},
-	};
+pub mod tests {
+	use reifydb_type::value::container::{bool::BoolContainer, number::NumberContainer, utf8::Utf8Container};
+
+	use crate::value::column::pool::allocator::{PoolAllocator, StdPoolAllocator};
 
 	#[test]
 	fn test_allocate_bool() {

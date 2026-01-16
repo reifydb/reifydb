@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate, table::TableToCreate};
+use reifydb_catalog::{
+	CatalogStore,
+	store::{primary_key::create::PrimaryKeyToCreate, table::create::TableToCreate},
+};
 use reifydb_core::{
-	interface::{CatalogTrackTableChangeOperations, PrimitiveId},
-	value::column::Columns,
+	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateTableNode;
-use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::query::column_not_found, return_error, value::Value};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_table<'a>(
@@ -76,11 +80,14 @@ impl Executor {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace};
+	use reifydb_core::interface::{
+		catalog::{id::NamespaceId, namespace::NamespaceDef},
+		resolved::ResolvedNamespace,
+	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
-	use reifydb_type::{Fragment, Value};
+	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 	use crate::{
 		execute::{Executor, catalog::create::table::CreateTableNode},

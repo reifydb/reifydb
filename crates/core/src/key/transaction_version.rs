@@ -3,8 +3,8 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::EncodedKey,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,7 +45,7 @@ impl EncodableKey for TransactionVersionKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, TransactionVersionKey};
 
 	#[test]

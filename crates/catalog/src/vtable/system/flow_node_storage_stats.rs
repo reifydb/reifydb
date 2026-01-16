@@ -3,12 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::VTableDef;
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_metric::{Id, MetricReader, Tier};
+use reifydb_core::{
+	interface::catalog::vtable::VTableDef,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
+use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -60,7 +62,7 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowNodeStorageStats {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
 				// Filter for flow nodes only
-				if let Id::FlowNode(flow_node_id) = obj_id {
+				if let MetricId::FlowNode(flow_node_id) = obj_id {
 					// Look up flow_id from catalog
 					let flow_id = match CatalogStore::find_flow_node(txn, flow_node_id)? {
 						Some(node_def) => node_def.flow.0,

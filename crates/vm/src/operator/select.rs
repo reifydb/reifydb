@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Batch,
-	value::column::{Column, Columns},
+use reifydb_core::value::{
+	batch::Batch,
+	column::{Column, columns::Columns},
 };
 
 use crate::{

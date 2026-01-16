@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstAggregate,
+	ast::ast::AstAggregate,
 	expression::ExpressionCompiler,
 	plan::logical::{AggregateNode, Compiler, LogicalPlan},
 };

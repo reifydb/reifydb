@@ -104,7 +104,7 @@ impl WaitGroup {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::{
 		sync::{
 			Arc,
@@ -113,7 +113,7 @@ mod tests {
 		time::Duration,
 	};
 
-	use crate::util::WaitGroup;
+	use crate::util::wait_group::WaitGroup;
 
 	#[test]
 	fn test_wait_group_reuse() {

@@ -7,11 +7,14 @@
 //! counterparts, including namespace resolution and identifier creation.
 
 use reifydb_core::interface::{
-	FlowId, NamespaceId, RingBufferId, TableId, ViewId,
+	catalog::{
+		flow::FlowId,
+		id::{NamespaceId, RingBufferId, TableId, ViewId},
+	},
 	resolved::{ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use super::Catalog;

@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_rql::expression::GreaterThanExpression;
-use reifydb_type::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
+use reifydb_type::error::diagnostic::operator::greater_than_cannot_be_applied_to_incompatible_types;
 
-use super::{GreaterThan, compare_columns};
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::{super::StandardColumnEvaluator, GreaterThan, compare_columns};
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn greater_than(

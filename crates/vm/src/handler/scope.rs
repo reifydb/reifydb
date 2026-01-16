@@ -3,10 +3,8 @@
 
 //! Scope management opcodes: EnterScope, ExitScope.
 
-use crate::error::Result;
-use crate::runtime::dispatch::DispatchResult;
-
 use super::HandlerContext;
+use crate::{error::Result, runtime::dispatch::DispatchResult};
 
 /// Execute the EnterScope opcode - creates a new variable scope.
 pub fn enter_scope(ctx: &mut HandlerContext) -> Result<DispatchResult> {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Decimal;
+use reifydb_type::value::decimal::Decimal;
 
 use crate::value::column::{ColumnData, push::Push};
 

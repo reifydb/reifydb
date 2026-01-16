@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
-	ast::AstAlter,
+	ast::ast::AstAlter,
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-mod flow;
-mod sequence;
-mod table;
-mod view;
-
-pub use flow::{AlterFlowAction, AlterFlowNode};
-pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, AlterTableOperation};
-pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
+pub mod flow;
+pub mod sequence;
+pub mod table;
+pub mod view;
 
 impl Compiler {
 	pub(crate) fn compile_alter<T: IntoStandardTransaction>(

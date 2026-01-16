@@ -3,11 +3,11 @@
 
 //! Test sorting on system virtual tables
 
-use std::thread;
-use std::time::Duration;
+use std::{thread, time::Duration};
 
-use reifydb_core::{Frame, interface::Identity};
+use reifydb_core::interface::auth::Identity;
 use reifydb_engine::test_utils::create_test_engine;
+use reifydb_type::value::frame::frame::Frame;
 
 /// Wait for the metrics worker to process pending events.
 /// The metrics worker processes events asynchronously, so we need

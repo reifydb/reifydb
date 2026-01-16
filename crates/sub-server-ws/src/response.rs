@@ -7,9 +7,8 @@
 //! protocol compatibility. Changes to these types should be coordinated
 //! with the client implementation.
 
-use reifydb_sub_server::ResponseFrame;
-use reifydb_type::diagnostic::Diagnostic;
-use reifydb_type::Fragment;
+use reifydb_sub_server::response::ResponseFrame;
+use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 
 /// WebSocket response envelope (matches client's `Response`)
@@ -85,14 +84,18 @@ impl Response {
 	pub fn query(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::Query(QueryResponse { frames }),
+			payload: ResponsePayload::Query(QueryResponse {
+				frames,
+			}),
 		}
 	}
 
 	pub fn command(id: impl Into<String>, frames: Vec<ResponseFrame>) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::Command(CommandResponse { frames }),
+			payload: ResponsePayload::Command(CommandResponse {
+				frames,
+			}),
 		}
 	}
 
@@ -137,7 +140,9 @@ impl Response {
 	pub fn error(id: impl Into<String>, diagnostic: Diagnostic) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::Err(ErrResponse { diagnostic }),
+			payload: ResponsePayload::Err(ErrResponse {
+				diagnostic,
+			}),
 		}
 	}
 

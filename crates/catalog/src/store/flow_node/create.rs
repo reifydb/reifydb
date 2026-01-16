@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::FlowNodeDef,
-	key::{FlowNodeByFlowKey, FlowNodeKey},
+	interface::catalog::flow::FlowNodeDef,
+	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::store::flow_node::layout::{flow_node, flow_node_by_flow};
 
@@ -32,10 +32,10 @@ impl crate::CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::FlowNodeDef;
+pub mod tests {
+	use reifydb_core::interface::catalog::flow::FlowNodeDef;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Blob;
+	use reifydb_type::value::blob::Blob;
 
 	use crate::{
 		CatalogStore,

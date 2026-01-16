@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::SortDirection;
+use reifydb_core::sort::SortDirection;
 
 use crate::ast::{
-	AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-	AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+	ast::{
+		AstAlter, AstAlterFlow, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
+		AstAlterView, AstAlterViewOperation, AstIndexColumn, AstStatement,
+	},
 	identifier::MaybeQualifiedFlowIdentifier,
 	parse::Parser,
-	tokenize::{Keyword, Operator, Separator, Token, TokenKind},
+	tokenize::{
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator,
+		token::{Token, TokenKind},
+	},
 };
 
 impl Parser {
@@ -40,21 +47,22 @@ impl Parser {
 
 	fn parse_alter_sequence(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table.column or table.column
-		let first_identifier_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let first_identifier_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 		if self.current()?.is_operator(Operator::Dot) {
 			self.consume_operator(Operator::Dot)?;
-			let second_identifier_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+			let second_identifier_token =
+				self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 			if self.current()?.is_operator(Operator::Dot) {
 				self.consume_operator(Operator::Dot)?;
-				let column_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+				let column_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 				// Expect SET VALUE <number>
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(
-					crate::ast::tokenize::Literal::Number,
+				let value_token = self.consume(crate::ast::tokenize::token::TokenKind::Literal(
+					crate::ast::tokenize::token::Literal::Number,
 				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier with
@@ -65,8 +73,9 @@ impl Parser {
 						.with_namespace(first_identifier_token.fragment.clone());
 
 				let column = column_token.fragment;
-				let value =
-					crate::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
+				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
+					value_token,
+				));
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -78,8 +87,8 @@ impl Parser {
 				// table.column
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(
-					crate::ast::tokenize::Literal::Number,
+				let value_token = self.consume(crate::ast::tokenize::token::TokenKind::Literal(
+					crate::ast::tokenize::token::Literal::Number,
 				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier
@@ -89,8 +98,9 @@ impl Parser {
 					MaybeQualifiedSequenceIdentifier::new(first_identifier_token.fragment.clone());
 
 				let column = second_identifier_token.fragment;
-				let value =
-					crate::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
+				let value = crate::ast::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(
+					value_token,
+				));
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -106,9 +116,9 @@ impl Parser {
 
 	fn parse_alter_table(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.table
-		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let table_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedTableIdentifier
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
@@ -180,9 +190,9 @@ impl Parser {
 
 	fn parse_alter_view(&mut self, token: Token) -> crate::Result<AstAlter> {
 		// Parse namespace.view
-		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let view_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let view_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedViewIdentifier for view
 		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
@@ -402,10 +412,12 @@ impl Parser {
 			self.consume_keyword(Keyword::Resume)?;
 			AstAlterFlowAction::Resume
 		} else {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
-				"RENAME, SET, PAUSE, or RESUME",
-				self.current()?.fragment.clone(),
-			)));
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"RENAME, SET, PAUSE, or RESUME",
+					self.current()?.fragment.clone(),
+				),
+			));
 		};
 
 		Ok(AstAlter::Flow(AstAlterFlow {
@@ -417,10 +429,14 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{
-		AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView,
-		AstAlterViewOperation, parse::Parser, tokenize::tokenize,
+		ast::{
+			AstAlter, AstAlterFlowAction, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
+			AstAlterView, AstAlterViewOperation,
+		},
+		parse::Parser,
+		tokenize::tokenize,
 	};
 
 	#[test]
@@ -445,7 +461,7 @@ mod tests {
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
-					crate::ast::AstLiteral::Number(num) => {
+					crate::ast::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "1000")
 					}
 					_ => panic!("Expected number literal"),
@@ -476,7 +492,7 @@ mod tests {
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
-					crate::ast::AstLiteral::Number(num) => {
+					crate::ast::ast::AstLiteral::Number(num) => {
 						assert_eq!(num.value(), "500")
 					}
 					_ => panic!("Expected number literal"),

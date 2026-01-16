@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, Type, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment, value::r#type::Type};
 
 pub fn unsupported_cast(fragment: Fragment, from_type: Type, to_type: Type) -> Diagnostic {
 	let label = Some(format!("cannot cast {} of type {} to {}", fragment.text(), from_type, to_type));

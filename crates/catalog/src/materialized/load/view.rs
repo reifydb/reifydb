@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, ViewDef, ViewId, ViewKey, ViewKind,
+use reifydb_core::{
+	interface::{
+		catalog::{
+			id::{NamespaceId, PrimaryKeyId, ViewId},
+			key::PrimaryKeyDef,
+			view::{ViewDef, ViewKind},
+		},
+		store::MultiVersionValues,
+	},
+	key::view::ViewKey,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
-	MaterializedCatalog,
+	materialized::MaterializedCatalog,
 	store::view::layout::{
 		view,
 		view::{ID, KIND, NAME, NAMESPACE, PRIMARY_KEY},

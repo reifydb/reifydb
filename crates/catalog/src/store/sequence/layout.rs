@@ -3,8 +3,8 @@
 
 pub(crate) mod sequence {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const VALUE: usize = 0;
 

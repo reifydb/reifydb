@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::ParameterExpression;
-use reifydb_type::{Fragment, Value, diagnostic::engine, error};
+use reifydb_type::{error, error::diagnostic::engine, fragment::Fragment, value::Value};
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn parameter<'a>(

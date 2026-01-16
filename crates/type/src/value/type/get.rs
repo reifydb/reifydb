@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{
-	Date, DateTime, Decimal, Duration, IdentityId, Time, Type, Uuid4, Uuid7,
-	value::{Int, Uint},
+use crate::value::{
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	time::Time,
+	r#type::Type,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
 };
 
 pub trait GetType {

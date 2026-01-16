@@ -5,8 +5,8 @@
 
 use core::ffi::c_void;
 
-use reifydb_abi::{ContextFFI, HostCallbacks};
-use reifydb_core::interface::FlowNodeId;
+use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ContextFFI};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 
 use crate::transaction::FlowTransaction;
 

@@ -3,10 +3,19 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_catalog::{Catalog, CatalogStore, namespace::NamespaceToCreate, table::TableToCreate};
+use reifydb_catalog::{
+	CatalogStore,
+	catalog::Catalog,
+	store::{namespace::create::NamespaceToCreate, table::create::TableToCreate},
+};
 use reifydb_engine::test_utils::create_test_command_transaction;
-use reifydb_rql::explain::{explain_ast, explain_logical_plan, explain_physical_plan, explain_tokenize};
-use reifydb_testing::{testscript, testscript::Command};
+use reifydb_rql::explain::{
+	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
+};
+use reifydb_testing::testscript::{
+	command::Command,
+	runner::{Runner, run_path},
+};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/rql/tests/scripts/tokenize" as tokenize => run_test }
@@ -21,12 +30,12 @@ test_each_path! { in "crates/rql/tests/scripts/logical_plan/flow" as logical_pla
 test_each_path! { in "crates/rql/tests/scripts/physical_plan/flow" as physical_plan_flow => run_test }
 
 fn run_test(path: &Path) {
-	testscript::run_path(&mut Runner {}, path).expect("test failed")
+	run_path(&mut TestRunner {}, path).expect("test failed")
 }
 
-pub struct Runner {}
+pub struct TestRunner {}
 
-impl testscript::Runner for Runner {
+impl Runner for TestRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {

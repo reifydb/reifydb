@@ -4,8 +4,12 @@
 //! Query plan nodes.
 
 use crate::{
-	plan::{CatalogColumn, Index, Plan, Primitive, Table, Variable, node::expr::PlanExpr},
-	token::Span,
+	plan::{
+		Plan,
+		node::expr::PlanExpr,
+		types::{CatalogColumn, Index, Primitive, Table, Variable},
+	},
+	token::span::Span,
 };
 
 /// Scan a primitive data source.

@@ -14,15 +14,15 @@
 //! - `ALTER TABLE namespace.table { CREATE PRIMARY KEY { cols } }`
 //! - `DROP FLOW [IF EXISTS] name`
 
-mod alter;
-mod common;
-mod dictionary_create;
-mod drop;
-mod flow_create;
-mod index_create;
-mod namespace_create;
-mod ringbuffer_create;
-mod series_create;
-mod subscription_create;
-mod table_create;
-mod view_create;
+pub mod alter;
+pub mod common;
+pub mod dictionary_create;
+pub mod drop;
+pub mod flow_create;
+pub mod index_create;
+pub mod namespace_create;
+pub mod ringbuffer_create;
+pub mod series_create;
+pub mod subscription_create;
+pub mod table_create;
+pub mod view_create;

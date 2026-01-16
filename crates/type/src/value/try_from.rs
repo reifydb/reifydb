@@ -3,9 +3,21 @@
 
 use std::fmt::{Display, Formatter};
 
-use crate::{
-	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF32, OrderedF64, Time, Type, Uint, Uuid4,
-	Uuid7, Value,
+use crate::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
+	time::Time,
+	r#type::Type,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
 };
 
 /// Error type for Value extraction failures
@@ -525,8 +537,9 @@ impl TryFromValueCoerce for f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
+	use crate::value::{ordered_f32::OrderedF32, ordered_f64::OrderedF64};
 
 	#[test]
 	fn test_try_from_value_primitives() {

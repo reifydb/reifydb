@@ -4,10 +4,11 @@
 use std::ops::Bound;
 
 use reifydb_core::{
-	EncodedKeyRange,
-	interface::{Key, PrimaryKeyDef, PrimaryKeyKey},
+	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
+	key::{Key, primary_key::PrimaryKeyKey},
+	value::encoded::key::EncodedKeyRange,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -28,8 +29,8 @@ impl CatalogStore {
 		// Note: Key encoding uses reverse order, so MAX encodes smaller
 		// than 0
 		let primary_key_range = {
-			let start_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(u64::MAX));
-			let end_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(0));
+			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
+			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
 
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
@@ -61,7 +62,7 @@ impl CatalogStore {
 					let mut columns = Vec::new();
 					for column_id in column_ids {
 						let column_def = Self::get_column(&mut txn, column_id)?;
-						columns.push(reifydb_core::interface::ColumnDef {
+						columns.push(ColumnDef {
 							id: column_def.id,
 							name: column_def.name,
 							constraint: column_def.constraint,
@@ -97,8 +98,8 @@ impl CatalogStore {
 		// Scan all primary key entries from storage using same approach
 		// as list_primary_keys
 		let primary_key_range = {
-			let start_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(u64::MAX));
-			let end_key = PrimaryKeyKey::encoded(reifydb_core::interface::PrimaryKeyId(0));
+			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
+			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
 
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};

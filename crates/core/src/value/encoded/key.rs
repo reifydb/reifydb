@@ -10,16 +10,27 @@ use std::{
 };
 
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7, Value,
+	util::cowvec::CowVec,
+	value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		row_number::RowNumber,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{IndexId, PrimitiveId},
-	util::{
-		CowVec,
-		encoding::{binary::decode_binary, keycode::KeySerializer},
-	},
+	interface::catalog::{id::IndexId, primitive::PrimitiveId},
+	util::encoding::{binary::decode_binary, keycode::serializer::KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -753,7 +764,7 @@ impl RangeBounds<EncodedKey> for EncodedKeyRange {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::collections::Bound;
 
 	use super::EncodedKey;
@@ -817,9 +828,8 @@ mod tests {
 		use std::ops::Bound;
 
 		use crate::{
-			EncodedKey,
 			util::encoding::keycode,
-			value::encoded::key::{EncodedKeyRange, tests::included},
+			value::encoded::key::{EncodedKey, EncodedKeyRange, tests::included},
 		};
 
 		#[test]

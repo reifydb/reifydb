@@ -6,29 +6,27 @@
 //! Tokenizes RQL input into a stream of tokens using a bump allocator
 //! for efficient memory management.
 
-mod cursor;
-mod error;
-mod explain;
-mod keyword;
-mod lexer;
-mod literal;
-mod operator;
-mod punctuation;
-mod span;
-mod token;
+pub mod cursor;
+pub mod error;
+pub mod explain;
+pub mod keyword;
+pub mod lexer;
+pub mod literal;
+pub mod operator;
+pub mod punctuation;
+pub mod span;
+pub mod token;
 
 use bumpalo::Bump;
-pub use error::LexError;
-pub use explain::explain_tokenize;
-pub use keyword::Keyword;
-pub use lexer::{Lexer, TokenizeResult};
-pub use literal::LiteralKind;
-pub use operator::Operator;
-pub use punctuation::Punctuation;
-pub use span::{Span, Spanned};
-pub use token::{Token, TokenKind};
 
-use crate::error::RqlError;
+use crate::{
+	error::RqlError,
+	token::{
+		lexer::{Lexer, TokenizeResult},
+		span::Span,
+		token::{Token, TokenKind},
+	},
+};
 
 /// Static EOF token
 pub const EOF_TOKEN: Token = Token {
@@ -57,8 +55,9 @@ pub fn tokenize<'bump>(source: &str, bump: &'bump Bump) -> Result<TokenizeResult
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
+	use crate::token::{keyword::Keyword, operator::Operator, punctuation::Punctuation};
 
 	#[test]
 	fn test_tokenize_simple() {

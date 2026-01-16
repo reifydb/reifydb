@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewDef, ViewId, ViewKey, ViewKind};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::{
+		id::{NamespaceId, ViewId},
+		view::{ViewDef, ViewKind},
+	},
+	key::{namespace_view::NamespaceViewKey, view::ViewKey},
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -68,8 +74,8 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{NamespaceId, ViewId};
+pub mod tests {
+	use reifydb_core::interface::catalog::id::{NamespaceId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

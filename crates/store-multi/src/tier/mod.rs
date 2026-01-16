@@ -8,8 +8,8 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::interface::{FlowNodeId, PrimitiveId};
-use reifydb_type::{CowVec, Result};
+use reifydb_core::interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId};
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 /// Identifies a logical table/namespace in storage.
 ///

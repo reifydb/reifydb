@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::DictionaryId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::DictionaryId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -331,7 +331,7 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -15,11 +15,14 @@ use crate::{
 		Expr, Statement,
 		parse::{ParseError, ParseErrorKind, Parser, Precedence},
 		stmt::ddl::{
-			AlterFlow, AlterFlowAction, AlterSequence, AlterStmt, AlterTable, AlterTableAction,
-			AlterView, AlterViewAction, ColumnDef,
+			AlterFlow, AlterFlowAction, AlterSequence, AlterStmt, AlterTable, AlterTableAction, AlterView,
+			AlterViewAction, ColumnDef,
 		},
 	},
-	token::{Keyword, LiteralKind, Operator, Punctuation, TokenKind},
+	token::{
+		keyword::Keyword, literal::LiteralKind, operator::Operator, punctuation::Punctuation, span::Span,
+		token::TokenKind,
+	},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -58,10 +61,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	}
 
 	/// Parse ALTER TABLE statement.
-	fn parse_alter_table(
-		&mut self,
-		start: crate::token::Span,
-	) -> Result<Statement<'bump>, ParseError> {
+	fn parse_alter_table(&mut self, start: Span) -> Result<Statement<'bump>, ParseError> {
 		// Parse namespace.table
 		let (namespace, table_name) = self.parse_required_qualified_identifier()?;
 
@@ -135,19 +135,11 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Alter(AlterStmt::Table(AlterTable::new(
-			Some(namespace),
-			table_name,
-			action,
-			span,
-		))))
+		Ok(Statement::Alter(AlterStmt::Table(AlterTable::new(Some(namespace), table_name, action, span))))
 	}
 
 	/// Parse ALTER SEQUENCE statement.
-	fn parse_alter_sequence(
-		&mut self,
-		start: crate::token::Span,
-	) -> Result<Statement<'bump>, ParseError> {
+	fn parse_alter_sequence(&mut self, start: Span) -> Result<Statement<'bump>, ParseError> {
 		// Parse [namespace.]table.column
 		let first_token = self.current();
 		if !matches!(first_token.kind, TokenKind::Identifier) {
@@ -202,9 +194,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = value_span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Alter(AlterStmt::Sequence(AlterSequence::new(
-			namespace, name, restart, span,
-		))))
+		Ok(Statement::Alter(AlterStmt::Sequence(AlterSequence::new(namespace, name, restart, span))))
 	}
 
 	/// Parse ALTER VIEW statement.
@@ -215,10 +205,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ALTER VIEW test.my_view { CREATE PRIMARY KEY { id } }
 	/// ALTER VIEW test.my_view { DROP PRIMARY KEY }
 	/// ```
-	fn parse_alter_view(
-		&mut self,
-		start: crate::token::Span,
-	) -> Result<Statement<'bump>, ParseError> {
+	fn parse_alter_view(&mut self, start: crate::token::span::Span) -> Result<Statement<'bump>, ParseError> {
 		// Parse namespace.view
 		let (namespace, view_name) = self.parse_required_qualified_identifier()?;
 
@@ -248,12 +235,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Alter(AlterStmt::View(AlterView::new(
-			Some(namespace),
-			view_name,
-			action,
-			span,
-		))))
+		Ok(Statement::Alter(AlterStmt::View(AlterView::new(Some(namespace), view_name, action, span))))
 	}
 
 	/// Parse primary key columns list: `{ col1, col2, ... }`
@@ -298,10 +280,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ALTER FLOW my_flow PAUSE
 	/// ALTER FLOW my_flow RESUME
 	/// ```
-	fn parse_alter_flow(
-		&mut self,
-		start: crate::token::Span,
-	) -> Result<Statement<'bump>, ParseError> {
+	fn parse_alter_flow(&mut self, start: crate::token::span::Span) -> Result<Statement<'bump>, ParseError> {
 		// Parse [namespace.]flow_name
 		let (namespace, flow_name) = self.parse_qualified_identifier()?;
 
@@ -339,12 +318,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Alter(AlterStmt::Flow(AlterFlow::new(
-			namespace,
-			flow_name,
-			action,
-			span,
-		))))
+		Ok(Statement::Alter(AlterStmt::Flow(AlterFlow::new(namespace, flow_name, action, span))))
 	}
 
 	/// Parse ALTER FLOW query body: `{ FROM ... | FILTER ... }`
@@ -382,7 +356,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};
@@ -485,16 +459,14 @@ mod tests {
 		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		match stmt {
-			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::View(v)) => {
-				match v.action {
-					crate::ast::stmt::ddl::AlterViewAction::CreatePrimaryKey(cols) => {
-						assert_eq!(cols.len(), 2);
-						assert_eq!(cols[0], "id");
-						assert_eq!(cols[1], "name");
-					}
-					_ => panic!("Expected CREATE PRIMARY KEY action"),
+			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::View(v)) => match v.action {
+				crate::ast::stmt::ddl::AlterViewAction::CreatePrimaryKey(cols) => {
+					assert_eq!(cols.len(), 2);
+					assert_eq!(cols[0], "id");
+					assert_eq!(cols[1], "name");
 				}
-			}
+				_ => panic!("Expected CREATE PRIMARY KEY action"),
+			},
 			_ => panic!("Expected ALTER VIEW statement"),
 		}
 	}
@@ -510,10 +482,7 @@ mod tests {
 			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::View(v)) => {
 				assert_eq!(v.namespace, Some("test"));
 				assert_eq!(v.name, "my_view");
-				assert!(matches!(
-					v.action,
-					crate::ast::stmt::ddl::AlterViewAction::DropPrimaryKey
-				));
+				assert!(matches!(v.action, crate::ast::stmt::ddl::AlterViewAction::DropPrimaryKey));
 			}
 			_ => panic!("Expected ALTER VIEW statement"),
 		}
@@ -554,10 +523,7 @@ mod tests {
 			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::Flow(f)) => {
 				assert_eq!(f.namespace, None);
 				assert_eq!(f.name, "my_flow");
-				assert!(matches!(
-					f.action,
-					crate::ast::stmt::ddl::AlterFlowAction::Pause
-				));
+				assert!(matches!(f.action, crate::ast::stmt::ddl::AlterFlowAction::Pause));
 			}
 			_ => panic!("Expected ALTER FLOW statement"),
 		}
@@ -574,10 +540,7 @@ mod tests {
 			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::Flow(f)) => {
 				assert_eq!(f.namespace, Some("test"));
 				assert_eq!(f.name, "my_flow");
-				assert!(matches!(
-					f.action,
-					crate::ast::stmt::ddl::AlterFlowAction::Resume
-				));
+				assert!(matches!(f.action, crate::ast::stmt::ddl::AlterFlowAction::Resume));
 			}
 			_ => panic!("Expected ALTER FLOW statement"),
 		}
@@ -615,10 +578,7 @@ mod tests {
 		match stmt {
 			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::Flow(f)) => {
 				assert_eq!(f.name, "my_flow");
-				assert!(matches!(
-					f.action,
-					crate::ast::stmt::ddl::AlterFlowAction::Pause
-				));
+				assert!(matches!(f.action, crate::ast::stmt::ddl::AlterFlowAction::Pause));
 			}
 			_ => panic!("Expected ALTER FLOW statement"),
 		}
@@ -699,10 +659,7 @@ mod tests {
 			Statement::Alter(crate::ast::stmt::ddl::AlterStmt::View(v)) => {
 				assert_eq!(v.namespace, Some("myns"));
 				assert_eq!(v.name, "myview");
-				assert!(matches!(
-					v.action,
-					crate::ast::stmt::ddl::AlterViewAction::DropPrimaryKey
-				));
+				assert!(matches!(v.action, crate::ast::stmt::ddl::AlterViewAction::DropPrimaryKey));
 			}
 			_ => panic!("Expected ALTER VIEW statement"),
 		}

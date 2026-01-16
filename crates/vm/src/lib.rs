@@ -28,32 +28,10 @@
 //! ```
 
 pub mod error;
+pub mod handler;
 pub mod operator;
 pub mod pipeline;
 pub mod rql;
-
-// VM runtime components
-mod runtime;
-
-// Handler modules (opcode handlers)
-mod handler;
-
+pub mod runtime;
 #[cfg(feature = "trace")]
 pub mod trace;
-
-// Re-exports for convenience
-pub use runtime::builtin::BuiltinRegistry;
-pub use runtime::stack::{CallFrame, CallStack};
-pub use runtime::context::{VmConfig, VmContext};
-pub use runtime::dispatch::DispatchResult;
-pub use error::{Result, VmError};
-pub use runtime::operand::{OperandValue, PipelineHandle, Record};
-pub use operator::{ScanInlineOp, ScanTableOp};
-pub use pipeline::{Pipeline, collect, empty, from_batches, from_columns, from_result};
-pub use reifydb_rqlv2::bytecode::{BytecodeReader, BytecodeWriter, CompiledProgram, Opcode, OperatorKind};
-pub use rql::execute_program;
-pub use runtime::scope::{Scope, ScopeChain};
-pub use runtime::script::BytecodeScriptCaller;
-pub use runtime::state::VmState;
-#[cfg(feature = "trace")]
-pub use trace::{TraceEntry, VmTracer};

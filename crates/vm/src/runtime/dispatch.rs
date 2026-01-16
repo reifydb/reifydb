@@ -3,11 +3,13 @@
 
 //! Bytecode dispatch and execution.
 
-use reifydb_rqlv2::bytecode::Opcode;
+use reifydb_rqlv2::bytecode::opcode::Opcode;
 
-use crate::error::Result;
-use crate::handler::{self, HandlerContext, OpcodeHandler};
-use crate::pipeline::Pipeline;
+use crate::{
+	error::Result,
+	handler::{self, HandlerContext, OpcodeHandler},
+	pipeline::Pipeline,
+};
 
 /// Result of dispatching a single instruction.
 pub enum DispatchResult {

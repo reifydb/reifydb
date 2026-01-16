@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-pub mod base58;
-pub mod base64;
-pub mod hex;
-pub mod utf8;
-
 use std::{
 	fmt::{Display, Formatter},
 	ops::Deref,
 };
 
 use serde::{Deserialize, Serialize};
+
+use crate::util;
+
+pub mod base58;
+pub mod base64;
+pub mod hex;
+pub mod utf8;
 
 /// A binary large object (BLOB) wrapper type
 #[repr(transparent)]
@@ -82,12 +84,12 @@ impl From<Blob> for Vec<u8> {
 
 impl Display for Blob {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "0x{}", hex::encode(self.as_bytes()))
+		write!(f, "0x{}", util::hex::encode(self.as_bytes()))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

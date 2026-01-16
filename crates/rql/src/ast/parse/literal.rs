@@ -2,8 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText, AstLiteralUndefined,
-	parse::Parser, tokenize::Literal,
+	ast::{
+		AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText,
+		AstLiteralUndefined,
+	},
+	parse::Parser,
+	tokenize::token::Literal,
 };
 
 impl Parser {
@@ -39,8 +43,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{Ast::Literal, AstLiteral, parse::parse, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{
+		ast::{Ast::Literal, AstLiteral},
+		parse::parse,
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_text() {

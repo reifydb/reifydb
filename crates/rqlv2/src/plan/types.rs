@@ -9,17 +9,15 @@
 //! - Output schema tracking for pipeline stages
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-// Re-export existing ID types from reifydb_core
-pub use reifydb_core::interface::{
-	ColumnId, ColumnPolicyId, DictionaryId, FlowId, IndexId, NamespaceId, PrimaryKeyId, RingBufferId, SequenceId,
-	TableId, ViewId,
+use reifydb_core::interface::catalog::id::{
+	ColumnId, DictionaryId, IndexId, NamespaceId, RingBufferId, SequenceId, TableId, ViewId,
 };
-// Re-export Type from reifydb_type
-pub use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
-use super::compile::{PlanError, PlanErrorKind, Result};
-use crate::token::Span;
-
+use crate::{
+	plan::compile::core::{PlanError, PlanErrorKind},
+	token::span::Span,
+};
 // ============================================================================
 // Catalog Entity Types
 // ============================================================================
@@ -295,7 +293,7 @@ impl<'bump> OutputSchema<'bump> {
 
 	/// Resolve an unqualified column reference (e.g., name).
 	/// Returns error if the column is ambiguous (exists in multiple sources).
-	pub fn resolve_unqualified(&self, column: &str, span: Span) -> Result<Column<'bump>> {
+	pub fn resolve_unqualified(&self, column: &str, span: Span) -> Result<Column<'bump>, PlanError> {
 		let matches: Vec<_> = self.all_columns.iter().filter(|c| c.name() == column).collect();
 		match matches.len() {
 			0 => Err(PlanError {

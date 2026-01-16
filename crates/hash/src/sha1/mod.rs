@@ -5,7 +5,7 @@ use core::mem::MaybeUninit;
 
 use crate::Hash160;
 
-mod binding;
+pub mod binding;
 
 #[inline(always)]
 pub fn sha1(data: &[u8]) -> Hash160 {
@@ -53,7 +53,7 @@ impl Default for Sha1 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	// Test Vector 1: "abc"

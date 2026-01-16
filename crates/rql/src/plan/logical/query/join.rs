@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::JoinType;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_core::common::JoinType;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::{
-		Ast, AstFrom, AstInfix, AstJoin, AstUsingClause, InfixOperator, JoinConnector,
+		ast::{Ast, AstFrom, AstInfix, AstJoin, AstUsingClause, InfixOperator, JoinConnector},
 		identifier::UnresolvedPrimitiveIdentifier,
 	},
-	expression::{AndExpression, EqExpression, Expression, JoinConditionCompiler, OrExpression},
+	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::PrimitiveScan,
 		PrimitiveScanNode, resolver,
@@ -132,7 +132,7 @@ impl Compiler {
 
 	fn compile_join_subquery<T: IntoStandardTransaction>(
 		&self,
-		with: &crate::ast::AstSubQuery,
+		with: &crate::ast::ast::AstSubQuery,
 		alias: &Fragment,
 		tx: &mut T,
 	) -> crate::Result<Vec<LogicalPlan>> {
@@ -203,7 +203,7 @@ impl Compiler {
 
 	fn compile_natural_join_subquery<T: IntoStandardTransaction>(
 		&self,
-		with: &crate::ast::AstSubQuery,
+		with: &crate::ast::ast::AstSubQuery,
 		alias: &Fragment,
 		tx: &mut T,
 	) -> crate::Result<Vec<LogicalPlan>> {

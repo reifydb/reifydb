@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{
-	column::ColumnData,
-	container::{Utf8Container, UuidContainer},
-};
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Fragment, LazyFragment, Type, Uuid4, Uuid7, diagnostic::cast, err, error, parse_uuid4, parse_uuid7,
+	err, error,
+	error::diagnostic::cast,
+	fragment::{Fragment, LazyFragment},
+	value::{
+		container::{utf8::Utf8Container, uuid::UuidContainer},
+		r#type::Type,
+		uuid::{
+			Uuid4, Uuid7,
+			parse::{parse_uuid4, parse_uuid7},
+		},
+	},
 };
 
 pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {

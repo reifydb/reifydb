@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::return_error;
-use reifydb_type::diagnostic::operation::select_multiple_expressions_without_braces;
+use reifydb_type::{error::diagnostic::operation::select_multiple_expressions_without_braces, return_error};
 
-use crate::ast::{AstMap, parse::Parser, tokenize::Keyword};
+use crate::ast::{ast::AstMap, parse::Parser, tokenize::keyword::Keyword};
 
 impl Parser {
 	/// Parse SELECT statement - this is an alias for MAP that delegates to
@@ -26,9 +25,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::ast::{Ast, AstInfix, InfixOperator, tokenize::tokenize};
+	use crate::ast::{
+		ast::{Ast, AstInfix, InfixOperator},
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_select_constant_number() {

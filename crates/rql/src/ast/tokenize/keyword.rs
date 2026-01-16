@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_type::diagnostic::ast;
+use reifydb_type::error::diagnostic::ast;
 
 use super::{
 	cursor::Cursor,
@@ -30,7 +30,7 @@ macro_rules! keyword {
         }
 
         impl TryFrom<&str> for Keyword {
-            type Error = reifydb_type::Error;
+            type Error = reifydb_type::error::Error;
 
             fn try_from(value: &str) -> crate::Result<Self> {
                 debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
@@ -269,7 +269,7 @@ pub fn scan_keyword(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::ast::tokenize::tokenize;
 

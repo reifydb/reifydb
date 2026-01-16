@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::{NamespaceId, TableId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::{NamespaceId, TableId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,9 +79,9 @@ impl NamespaceTableKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, NamespaceTableKey};
-	use crate::interface::catalog::{NamespaceId, TableId};
+	use crate::interface::catalog::id::{NamespaceId, TableId};
 
 	#[test]
 	fn test_encode_decode() {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData, Columns};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 
 use crate::{GeneratorContext, GeneratorFunction};
 
@@ -14,7 +14,7 @@ impl GenerateSeries {
 }
 
 impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> reifydb_type::Result<Columns> {
 		// Extract parameters: start and end
 		let params = &ctx.params;
 

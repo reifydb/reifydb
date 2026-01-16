@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{Key, NamespaceId, TableDef, TableKey};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::{id::NamespaceId, table::TableDef},
+	key::{Key, table::TableKey},
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::table::layout::table};
 

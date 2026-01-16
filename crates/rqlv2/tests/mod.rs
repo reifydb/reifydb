@@ -7,15 +7,18 @@ use bumpalo::Bump;
 use reifydb::{Database, embedded, vendor::tokio::runtime::Runtime};
 use reifydb_rqlv2::{
 	ast::{
-		explain_ast,
-		parse::{ParseError, ParseErrorKind, Parser},
+		explain::explain_ast,
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+		},
 	},
-	bytecode::{PlanCompiler, explain_bytecode},
-	plan::{compile::plan as compile_plan, explain::explain_plans},
-	token::{explain_tokenize, tokenize},
+	bytecode::{compile::PlanCompiler, explain::explain_bytecode},
+	plan::{compile::core::plan as compile_plan, explain::explain_plans},
+	token::{explain::explain_tokenize, span::Span, tokenize},
 };
-use reifydb_testing::{testscript, testscript::Command};
-use reifydb_type::Params;
+use reifydb_testing::{testscript, testscript::command::Command};
+use reifydb_type::params::Params;
 use test_each_file::test_each_path;
 
 pub struct Runner {
@@ -23,7 +26,7 @@ pub struct Runner {
 	runtime: Option<Arc<Runtime>>,
 }
 
-impl testscript::Runner for Runner {
+impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -54,7 +57,7 @@ impl testscript::Runner for Runner {
 				let tokens = tokenize(query, &bump).map_err(|e| {
 					Box::new(ParseError {
 						kind: ParseErrorKind::Custom(format!("Lex error: {}", e)),
-						span: reifydb_rqlv2::token::Span::default(),
+						span: Span::default(),
 					}) as Box<dyn Error>
 				})?;
 				let parser = Parser::new(&bump, tokens.tokens.into_bump_slice(), query);
@@ -84,7 +87,7 @@ impl testscript::Runner for Runner {
 				let tokens = tokenize(query, &bump).map_err(|e| {
 					Box::new(ParseError {
 						kind: ParseErrorKind::Custom(format!("Lex error: {}", e)),
-						span: reifydb_rqlv2::token::Span::default(),
+						span: Span::default(),
 					}) as Box<dyn Error>
 				})?;
 				let parser = Parser::new(&bump, tokens.tokens.into_bump_slice(), query);
@@ -149,7 +152,7 @@ test_each_path! { in "crates/rqlv2/tests/scripts/bytecode" as bytecode => run_pl
 test_each_path! { in "crates/rqlv2/tests/scripts/plan" as plan => run_plan_test }
 
 fn run_test(path: &Path) {
-	testscript::run_path(
+	testscript::runner::run_path(
 		&mut Runner {
 			instance: None,
 			runtime: None,
@@ -162,5 +165,5 @@ fn run_test(path: &Path) {
 fn run_plan_test(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	testscript::run_path(&mut Runner::new(Arc::clone(&runtime)), path).expect("test failed")
+	testscript::runner::run_path(&mut Runner::new(Arc::clone(&runtime)), path).expect("test failed")
 }

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::ioc::IocContainer;
-use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::StandardInterceptorBuilder;
+use reifydb_core::util::ioc::IocContainer;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
 
-use super::TracingBuilder;
+use crate::builder::TracingBuilder;
 
 /// Configuration function for the tracing subsystem
 pub type TracingConfigurator = Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send>;
@@ -50,7 +50,7 @@ impl SubsystemFactory for TracingSubsystemFactory {
 		builder
 	}
 
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(TracingBuilder::new())
 		} else {

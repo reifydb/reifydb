@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Fragment, RowNumber, Type, Value};
+use reifydb_type::{
+	fragment::Fragment,
+	util::bitvec::BitVec,
+	value::{Value, row_number::RowNumber, r#type::Type},
+};
 
 use crate::{
-	BitVec,
-	interface::DictionaryDef,
+	interface::catalog::dictionary::DictionaryDef,
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::{EncodedValues, EncodedValuesLayout},
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
 	},
 };
 
@@ -185,8 +188,8 @@ impl LazyBatch {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{RowNumber, Type};
+pub mod tests {
+	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
 

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{diagnostic::ast::unexpected_token_error, return_error};
+use reifydb_type::{error::diagnostic::ast::unexpected_token_error, return_error};
 
 use crate::ast::{
-	AstWindow, AstWindowConfig,
+	ast::{AstWindow, AstWindowConfig},
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{By, Window, With},
-		Operator::{CloseCurly, Colon, OpenCurly},
-		Separator::Comma,
+		keyword::Keyword::{By, Window, With},
+		operator::Operator::{CloseCurly, Colon, OpenCurly},
+		separator::Separator::Comma,
 	},
 };
 
@@ -126,7 +126,7 @@ impl Parser {
 	}
 
 	/// Parse BY { field1, field2 } clause
-	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::Ast>> {
+	fn parse_by_clause(&mut self) -> crate::Result<Vec<crate::ast::ast::Ast>> {
 		self.consume_operator(OpenCurly)?;
 
 		let mut group_by = Vec::new();
@@ -159,7 +159,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{parse::Parser, tokenize::tokenize};
 
 	#[test]

@@ -5,7 +5,7 @@ use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::Uuid7;
+use crate::value::uuid::Uuid7;
 
 /// An identity identifier - a unique UUID v7 for an identity
 #[repr(transparent)]
@@ -126,7 +126,7 @@ impl<'de> Deserialize<'de> for IdentityId {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

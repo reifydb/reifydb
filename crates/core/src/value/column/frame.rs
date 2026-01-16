@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::{
-	Frame, FrameColumn, FrameColumnData,
-	value::column::{Column, ColumnData, Columns},
-};
+use reifydb_type::value::frame::{column::FrameColumn, data::FrameColumnData, frame::Frame};
+
+use crate::value::column::{Column, ColumnData, columns::Columns};
 
 impl From<ColumnData> for FrameColumnData {
 	fn from(value: ColumnData) -> Self {

@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{DictionaryDef, DictionaryId, DictionaryKey, MultiVersionValues, NamespaceId};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Type;
-
-use crate::{
-	MaterializedCatalog,
-	store::dictionary::layout::dictionary::{ID, ID_TYPE, LAYOUT, NAME, NAMESPACE, VALUE_TYPE},
+use reifydb_core::{
+	interface::{
+		catalog::{
+			dictionary::DictionaryDef,
+			id::{DictionaryId, NamespaceId},
+		},
+		store::MultiVersionValues,
+	},
+	key::dictionary::DictionaryKey,
 };
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::value::r#type::Type;
+
+use super::MaterializedCatalog;
+use crate::store::dictionary::layout::dictionary::{ID, ID_TYPE, LAYOUT, NAME, NAMESPACE, VALUE_TYPE};
 
 pub(crate) fn load_dictionaries(
 	rx: &mut impl IntoStandardTransaction,

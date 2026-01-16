@@ -2,17 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
-	diagnostic::operation::{aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces},
+	error::diagnostic::operation::{aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces},
 	return_error,
 };
 
 use crate::ast::{
-	AstAggregate,
+	ast::AstAggregate,
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword,
-		Operator::{CloseCurly, OpenCurly},
-		Separator::Comma,
+		keyword::Keyword,
+		operator::Operator::{CloseCurly, OpenCurly},
+		separator::Separator::Comma,
 	},
 };
 
@@ -125,9 +125,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::ast::{Ast, InfixOperator, tokenize::tokenize};
+	use crate::ast::{
+		ast::{Ast, InfixOperator},
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_single_column() {

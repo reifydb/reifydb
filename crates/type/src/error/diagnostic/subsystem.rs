@@ -9,7 +9,7 @@
 //! - Network binding errors
 //! - Shutdown failures
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Subsystem initialization failed
 pub fn init_failed(subsystem: impl std::fmt::Display, reason: impl std::fmt::Display) -> Diagnostic {

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod arith;
+pub mod arith;
 pub mod column;
 pub mod convert;
 
-// Re-export TargetColumn from core
-pub use reifydb_core::interface::evaluate::TargetColumn;
 use reifydb_core::{
-	Row,
-	interface::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
-	value::column::{ColumnData, Columns},
+	interface::{
+		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
+		evaluate::TargetColumn,
+	},
+	row::Row,
+	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_type::{Params, Type};
+use reifydb_type::{params::Params, value::r#type::Type};
 
 use crate::stack::Stack;
 

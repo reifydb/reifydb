@@ -10,9 +10,12 @@ mod version;
 mod write;
 mod write_skew;
 
-use reifydb_core::{CowVec, value::encoded::EncodedValues};
-pub use reifydb_core::{EncodedKey, util::encoding::keycode};
-pub use reifydb_transaction::multi::TransactionMulti;
+use reifydb_core::{
+	util::encoding::keycode,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+};
+use reifydb_transaction::multi::transaction::TransactionMulti;
+use reifydb_type::util::cowvec::CowVec;
 
 pub fn test_multi() -> TransactionMulti {
 	TransactionMulti::testing()
@@ -32,7 +35,11 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-	($key:expr) => {{ reifydb_core::EncodedKey::new(reifydb_core::util::encoding::keycode::serialize(&$key)) }};
+	($key:expr) => {{
+		reifydb_core::value::encoded::key::EncodedKey::new(reifydb_core::util::encoding::keycode::serialize(
+			&$key,
+		))
+	}};
 }
 
 #[macro_export]

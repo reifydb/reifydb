@@ -37,12 +37,3 @@ pub mod harness;
 pub mod helpers;
 pub mod state;
 pub mod stateful;
-
-// Re-export main types for convenience
-pub use assertions::{FlowChangeAssertion, RowAssertion, StateAssertion};
-pub use builders::{TestFlowChangeBuilder, TestLayoutBuilder, TestRowBuilder};
-pub use context::TestContext;
-pub use harness::{OperatorTestHarness, TestHarnessBuilder, TestMetadataHarness};
-pub use helpers::{encode_key, get_values, get_values_named};
-pub use state::TestStateStore;
-pub use stateful::{KeyedStatefulTestHelper, SingleStatefulTestHelper, WindowStatefulTestHelper};

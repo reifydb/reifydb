@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Fragment;
+use reifydb_type::fragment::Fragment;
 use serde::{Deserialize, Serialize};
-
-// NOTE: ColumnIdentifier is kept temporarily for backward compatibility with the expression system.
-// It should be replaced with proper resolved types in the future.
 
 /// Column identifier with primitive qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

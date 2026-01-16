@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{Key, NamespaceId, RingBufferDef, RingBufferId, RingBufferKey};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::{
+		id::{NamespaceId, RingBufferId},
+		ringbuffer::RingBufferDef,
+	},
+	key::{Key, ringbuffer::RingBufferKey},
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
@@ -62,11 +68,12 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
-		CatalogStore, namespace::NamespaceToCreate, ringbuffer::create::RingBufferToCreate,
+		CatalogStore,
+		store::{namespace::create::NamespaceToCreate, ringbuffer::create::RingBufferToCreate},
 		test_utils::ensure_test_namespace,
 	};
 

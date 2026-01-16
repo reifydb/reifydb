@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 /// Value types that can be used in expression evaluation.
 #[derive(Debug, Clone)]
@@ -17,7 +17,7 @@ pub enum EvalValue {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

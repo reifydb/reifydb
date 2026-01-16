@@ -10,26 +10,36 @@ use reifydb_catalog::{
 	CatalogStore,
 	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
 };
-use reifydb_core::{
-	Result,
-	interface::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, SubscriptionDef, ViewDef},
+use reifydb_core::interface::catalog::{
+	flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
+	subscription::SubscriptionDef,
+	view::ViewDef,
 };
 use reifydb_rql::{
-    flow::{FlowDag, FlowBuilder, FlowEdge, FlowNode, FlowNodeType},
-    plan::physical::PhysicalPlan,
+	flow::{
+		flow::{FlowBuilder, FlowDag},
+		node::{FlowEdge, FlowNode, FlowNodeType},
+	},
+	plan::physical::PhysicalPlan,
 };
-use reifydb_type::Blob;
+use reifydb_type::{Result, value::blob::Blob};
 
-use crate::StandardCommandTransaction;
+pub mod operator;
+pub mod primitive;
 
-mod operator;
-mod primitive;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
-use operator::{
-	AggregateCompiler, ApplyCompiler, DistinctCompiler, ExtendCompiler, FilterCompiler, JoinCompiler, MapCompiler,
-	MergeCompiler, SortCompiler, TakeCompiler, WindowCompiler,
+use crate::flow::compiler::{
+	operator::{
+		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
+		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, merge::MergeCompiler, sort::SortCompiler,
+		take::TakeCompiler, window::WindowCompiler,
+	},
+	primitive::{
+		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
+		view_scan::ViewScanCompiler,
+	},
 };
-use primitive::{FlowScanCompiler, InlineDataCompiler, TableScanCompiler, ViewScanCompiler};
 
 /// Public API for compiling logical plans to Flows with an existing flow ID.
 pub fn compile_flow(
@@ -116,7 +126,7 @@ impl FlowCompiler {
 
 		// Serialize the node type to blob
 		let data = postcard::to_stdvec(&node_type).map_err(|e| {
-			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+			reifydb_type::error::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 
 		// Create the catalog entry

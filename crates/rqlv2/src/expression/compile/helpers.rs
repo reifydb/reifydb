@@ -3,8 +3,8 @@
 
 //! Helper utilities for expression compilation.
 
-use reifydb_core::value::column::{Column, ColumnData};
-use reifydb_type::{BitVec, Fragment, Value};
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::Value};
 
 use crate::expression::types::{EvalError, EvalResult};
 

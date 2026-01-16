@@ -3,8 +3,8 @@
 
 pub(crate) mod view {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
@@ -25,8 +25,8 @@ pub(crate) mod view {
 
 pub(crate) mod view_namespace {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;

@@ -8,7 +8,7 @@ use std::{
 
 use crossbeam_skiplist::SkipMap;
 
-use crate::CommitVersion;
+use crate::common::CommitVersion;
 
 /// A thread-safe container for multi values.
 ///
@@ -136,7 +136,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> Default for MultiVersionContainer
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[derive(Debug, Clone, PartialEq)]

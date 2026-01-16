@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use reifydb::{
-	WithSubsystem, server, sub_server_admin::AdminConfig, sub_server_http::HttpConfig,
-	sub_server_ws::WsConfig, sub_tracing::TracingBuilder,
+	WithSubsystem, server, sub_server_admin::config::AdminConfig, sub_server_http::factory::HttpConfig,
+	sub_server_ws::factory::WsConfig, sub_tracing::builder::TracingBuilder,
 };
 
 fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {

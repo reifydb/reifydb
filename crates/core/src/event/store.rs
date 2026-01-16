@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::{CommitVersion, impl_event};
+use crate::{common::CommitVersion, impl_event};
 
 /// Event emitted when stats have been processed up to a version.
 /// Emitted once per batch, not per individual version.

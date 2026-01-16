@@ -9,8 +9,8 @@
 
 use std::ops::Bound;
 
-use reifydb_core::CommitVersion;
-use reifydb_type::CowVec;
+use reifydb_core::common::CommitVersion;
+use reifydb_type::util::cowvec::CowVec;
 
 use super::version::{encode_versioned_key, extract_version, key_version_range};
 use crate::tier::{EntryKind, RangeCursor, TierStorage};
@@ -115,16 +115,16 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_core::runtime::ComputePool;
+	use reifydb_core::runtime::compute::ComputePool;
 
 	use super::{
 		super::version::{encode_versioned_key, extract_key},
 		*,
 	};
-	use crate::hot::HotStorage;
+	use crate::hot::storage::HotStorage;
 
 	fn test_compute_pool() -> ComputePool {
 		ComputePool::new(2, 8)

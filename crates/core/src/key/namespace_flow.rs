@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::{FlowId, NamespaceId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::{flow::FlowId, id::NamespaceId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,9 +79,9 @@ impl NamespaceFlowKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, NamespaceFlowKey};
-	use crate::interface::catalog::{FlowId, NamespaceId};
+	use crate::interface::catalog::{flow::FlowId, id::NamespaceId};
 
 	#[test]
 	fn test_encode_decode() {

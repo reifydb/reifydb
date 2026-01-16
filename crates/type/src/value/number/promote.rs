@@ -343,8 +343,7 @@ impl_promote_signed_unsigned!(i128, u32 => i128);  impl_promote_unsigned_signed!
 impl_promote_signed_unsigned!(i128, u64 => i128);  impl_promote_unsigned_signed!(u64, i128 => i128);
 impl_promote_signed_unsigned!(i128, u128 => i128); impl_promote_unsigned_signed!(u128, i128 => i128);
 
-use crate::Decimal;
-use crate::value::{int::Int, uint::Uint};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl Promote<Int> for Int {
     type Output = Int;

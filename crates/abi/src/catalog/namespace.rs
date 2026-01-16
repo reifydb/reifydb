@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::data::BufferFFI;
+use crate::data::buffer::BufferFFI;
 
 /// FFI-safe namespace definition
 #[repr(C)]

@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
+	key::primary_key::PrimaryKeyKey,
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
+use super::MaterializedCatalog;
 use crate::{
-	CatalogStore, MaterializedCatalog,
+	CatalogStore,
 	store::primary_key::layout::{
 		primary_key,
 		primary_key::{COLUMN_IDS, ID, deserialize_column_ids},

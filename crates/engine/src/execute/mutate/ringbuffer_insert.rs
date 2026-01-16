@@ -3,25 +3,31 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{CatalogStore, sequence::RowSequence};
+use reifydb_catalog::{CatalogStore, store::sequence::row::RowSequence};
 use reifydb_core::{
-	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
-	return_error,
+	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	value::{
-		column::Columns,
-		encoded::{EncodedValuesLayout, encode_value},
+		column::columns::Columns,
+		encoded::{layout::EncodedValuesLayout, value::encode_value},
 	},
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
-use reifydb_type::{Fragment, RowNumber, Type, Value, diagnostic::catalog::ringbuffer_not_found, internal_error};
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_type::{
+	error::diagnostic::catalog::ringbuffer_not_found,
+	fragment::Fragment,
+	internal_error,
+	params::Params,
+	return_error,
+	value::{Value, row_number::RowNumber, r#type::Type},
+};
 use tracing::instrument;
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
-	transaction::operation::DictionaryOperations,
+	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 };
 
 impl Executor {
@@ -154,8 +160,6 @@ impl Executor {
 				}
 
 				// TODO: Check for primary key and handle upsert logic if needed
-
-				use crate::transaction::operation::RingBufferOperations;
 
 				// If buffer is full, delete the oldest entry first
 				if metadata.is_full() {

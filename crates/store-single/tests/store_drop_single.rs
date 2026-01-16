@@ -3,21 +3,33 @@
 
 use std::{error::Error as StdError, fmt::Write, path::Path};
 
-use reifydb_core::event::EventBus;
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
 	delta::Delta,
-	interface::SingleVersionValues,
-	runtime::ComputePool,
-	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::encoded::EncodedValues,
+	event::EventBus,
+	interface::store::{
+		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+		SingleVersionRangeRev, SingleVersionValues,
+	},
+	runtime::compute::ComputePool,
+	util::encoding::{
+		binary::decode_binary,
+		format::{Formatter, raw::Raw},
+	},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_store_single::{HotConfig, SingleStoreConfig, StandardSingleStore, hot::HotTier};
-use reifydb_core::interface::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-	SingleVersionRangeRev,
+use reifydb_store_single::{
+	config::{HotConfig, SingleStoreConfig},
+	hot::tier::HotTier,
+	store::StandardSingleStore,
 };
-use reifydb_testing::{tempdir::temp_dir, testscript};
+use reifydb_testing::{
+	tempdir::temp_dir,
+	testscript,
+	testscript::{command::Command, runner::run_path},
+};
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
@@ -27,13 +39,13 @@ test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_sing
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
 	let storage = HotTier::memory(compute_pool);
-	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let storage = HotTier::sqlite_in_memory();
-		testscript::run_path(&mut Runner::new(storage), path)
+		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
@@ -46,7 +58,9 @@ pub struct Runner {
 impl Runner {
 	fn new(storage: HotTier) -> Self {
 		let store = StandardSingleStore::new(SingleStoreConfig {
-			hot: Some(HotConfig { storage }),
+			hot: Some(HotConfig {
+				storage,
+			}),
 			event_bus: EventBus::new(),
 		})
 		.unwrap();
@@ -56,8 +70,8 @@ impl Runner {
 	}
 }
 
-impl testscript::Runner for Runner {
-	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
+impl testscript::runner::Runner for Runner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
 			// get KEY
@@ -67,7 +81,7 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 				let value: Option<SingleVersionValues> = self.store.get(&key)?.into();
 				let value = value.map(|sv| sv.values.to_vec());
-				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
+				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY
 			"contains" => {
@@ -75,7 +89,7 @@ impl testscript::Runner for Runner {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key)?;
-				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
+				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
 			// scan [reverse=BOOL]
@@ -198,7 +212,7 @@ impl testscript::Runner for Runner {
 
 fn print<I: Iterator<Item = SingleVersionValues>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

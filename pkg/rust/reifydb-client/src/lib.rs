@@ -11,10 +11,24 @@ pub use http::HttpClient;
 pub use reifydb_client_derive::FromFrame;
 // Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
-use reifydb_type::diagnostic::Diagnostic;
+use reifydb_type::error::diagnostic::Diagnostic;
 pub use reifydb_type::{
-	Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrameError, FromValueError,
-	OrderedF32, OrderedF64, Params, TryFromValue, TryFromValueCoerce, Type, Value,
+	params::Params,
+	value::{
+		Value,
+		frame::{
+			column::FrameColumn,
+			data::FrameColumnData,
+			extract::FrameError,
+			frame::Frame,
+			from_frame::FromFrameError,
+			row::{FrameRow, FrameRows},
+		},
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},
+		r#type::Type,
+	},
 };
 use serde::{Deserialize, Serialize};
 // Re-export result types

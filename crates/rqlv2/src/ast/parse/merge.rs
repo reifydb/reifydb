@@ -9,8 +9,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{ParseError, Parser, Precedence};
 use crate::{
-	ast::{Expr, expr::{MergeExpr, SubQueryExpr}},
-	token::{Keyword, Operator, Punctuation},
+	ast::expr::{Expr, query::MergeExpr, special::SubQueryExpr},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -59,22 +59,26 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let span = start.merge(&end);
 
 		// Wrap in SubQuery
-		let subquery = self.alloc(Expr::SubQuery(SubQueryExpr::new(
-			stages.into_bump_slice(),
-			span,
-		)));
+		let subquery = self.alloc(Expr::SubQuery(SubQueryExpr::new(stages.into_bump_slice(), span)));
 
-		Ok(self.alloc(Expr::Merge(MergeExpr { subquery, span })))
+		Ok(self.alloc(Expr::Merge(MergeExpr {
+			subquery,
+			span,
+		})))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::ast::expr::FromExpr;
-	use crate::ast::Statement;
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::query::{FromExpr, MergeExpr},
+		},
+		token::tokenize,
+	};
 
 	fn get_first_expr<'a>(stmt: Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
@@ -87,7 +91,7 @@ mod tests {
 		}
 	}
 
-	fn extract_merge<'a>(stmt: Statement<'a>) -> &'a crate::ast::expr::MergeExpr<'a> {
+	fn extract_merge<'a>(stmt: Statement<'a>) -> &'a MergeExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Merge(m) => m,
@@ -137,20 +141,18 @@ mod tests {
 				}
 				// Verify second stage is MERGE with FROM source2
 				match &p.stages[1] {
-					Expr::Merge(m) => {
-						match m.subquery {
-							Expr::SubQuery(sq) => {
-								assert_eq!(sq.pipeline.len(), 1);
-								match &sq.pipeline[0] {
-									Expr::From(FromExpr::Source(s)) => {
-										assert_eq!(s.name, "source2");
-									}
-									_ => panic!("Expected FROM Source in subquery"),
+					Expr::Merge(m) => match m.subquery {
+						Expr::SubQuery(sq) => {
+							assert_eq!(sq.pipeline.len(), 1);
+							match &sq.pipeline[0] {
+								Expr::From(FromExpr::Source(s)) => {
+									assert_eq!(s.name, "source2");
 								}
+								_ => panic!("Expected FROM Source in subquery"),
 							}
-							_ => panic!("Expected SubQuery"),
 						}
-					}
+						_ => panic!("Expected SubQuery"),
+					},
 					_ => panic!("Expected MERGE expression"),
 				}
 			}
@@ -177,36 +179,28 @@ mod tests {
 				}
 				// Verify second stage is MERGE with FROM s2
 				match &p.stages[1] {
-					Expr::Merge(m) => {
-						match m.subquery {
-							Expr::SubQuery(sq) => {
-								match &sq.pipeline[0] {
-									Expr::From(FromExpr::Source(s)) => {
-										assert_eq!(s.name, "s2");
-									}
-									_ => panic!("Expected FROM Source"),
-								}
+					Expr::Merge(m) => match m.subquery {
+						Expr::SubQuery(sq) => match &sq.pipeline[0] {
+							Expr::From(FromExpr::Source(s)) => {
+								assert_eq!(s.name, "s2");
 							}
-							_ => panic!("Expected SubQuery"),
-						}
-					}
+							_ => panic!("Expected FROM Source"),
+						},
+						_ => panic!("Expected SubQuery"),
+					},
 					_ => panic!("Expected MERGE expression"),
 				}
 				// Verify third stage is MERGE with FROM s3
 				match &p.stages[2] {
-					Expr::Merge(m) => {
-						match m.subquery {
-							Expr::SubQuery(sq) => {
-								match &sq.pipeline[0] {
-									Expr::From(FromExpr::Source(s)) => {
-										assert_eq!(s.name, "s3");
-									}
-									_ => panic!("Expected FROM Source"),
-								}
+					Expr::Merge(m) => match m.subquery {
+						Expr::SubQuery(sq) => match &sq.pipeline[0] {
+							Expr::From(FromExpr::Source(s)) => {
+								assert_eq!(s.name, "s3");
 							}
-							_ => panic!("Expected SubQuery"),
-						}
-					}
+							_ => panic!("Expected FROM Source"),
+						},
+						_ => panic!("Expected SubQuery"),
+					},
 					_ => panic!("Expected MERGE expression"),
 				}
 			}
@@ -261,14 +255,12 @@ mod tests {
 					Expr::Filter(f) => {
 						// Verify predicate is a binary expression
 						match f.predicate {
-							Expr::Binary(b) => {
-								match b.left {
-									Expr::Identifier(id) => {
-										assert_eq!(id.name, "active");
-									}
-									_ => panic!("Expected identifier"),
+							Expr::Binary(b) => match b.left {
+								Expr::Identifier(id) => {
+									assert_eq!(id.name, "active");
 								}
-							}
+								_ => panic!("Expected identifier"),
+							},
 							_ => panic!("Expected Binary expression"),
 						}
 					}

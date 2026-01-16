@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod deferred;
-mod dictionary;
-mod flow;
-mod index;
-mod namespace;
-mod ringbuffer;
-mod series;
-mod subscription;
-mod table;
-mod transactional;
+pub mod deferred;
+pub mod dictionary;
+pub mod flow;
+pub mod index;
+pub mod namespace;
+pub mod ringbuffer;
+pub mod series;
+pub mod subscription;
+pub mod table;
+pub mod transactional;
 
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
-	ast::AstCreate,
+	ast::ast::AstCreate,
 	plan::logical::{Compiler, LogicalPlan},
 };
 

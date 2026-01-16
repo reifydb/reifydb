@@ -4,7 +4,7 @@
 //! Collection expression types.
 
 use super::Expr;
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// List expression: [a, b, c]
 #[derive(Debug, Clone, Copy)]

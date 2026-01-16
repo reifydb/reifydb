@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	context::{ContextFFI, StateIteratorFFI},
-	data::BufferFFI,
+	context::{context::ContextFFI, iterators::StateIteratorFFI},
+	data::buffer::BufferFFI,
 };
 
 /// State management callbacks

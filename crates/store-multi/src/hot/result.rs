@@ -2,8 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion, EncodedKey,
-	interface::{MultiVersionValues, SingleVersionValues},
+	common::CommitVersion,
+	interface::store::{MultiVersionValues, SingleVersionValues},
+	value::encoded::key::EncodedKey,
 };
 
 #[derive(Debug, Clone)]

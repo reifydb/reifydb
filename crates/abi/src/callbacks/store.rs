@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	context::{ContextFFI, StoreIteratorFFI},
-	data::BufferFFI,
+	context::{context::ContextFFI, iterators::StoreIteratorFFI},
+	data::buffer::BufferFFI,
 };
 
 /// Store access callbacks (read-only access to underlying store)

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
-use reifydb_type::{LazyFragment, Type, diagnostic::cast, err};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{err, error::diagnostic::cast, fragment::LazyFragment, value::r#type::Type};
 
 use super::cast_column_data;
 use crate::evaluate::ColumnEvaluationContext;

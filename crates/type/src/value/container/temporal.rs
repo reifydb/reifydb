@@ -5,7 +5,10 @@ use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, Date, DateTime, Duration, IsTemporal, Time, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TemporalContainer<T>
@@ -229,7 +232,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

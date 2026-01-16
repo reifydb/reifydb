@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::{
-	BitVec,
-	value::column::{Column, ColumnData},
-};
+use reifydb_type::util::bitvec::BitVec;
+
+use crate::value::column::{Column, ColumnData};
 
 impl Column {
-	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
+	pub fn filter(&mut self, mask: &BitVec) -> reifydb_type::Result<()> {
 		self.data_mut().filter(mask)
 	}
 }
 
 impl ColumnData {
-	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
+	pub fn filter(&mut self, mask: &BitVec) -> reifydb_type::Result<()> {
 		match self {
 			ColumnData::Bool(container) => container.filter(mask),
 			ColumnData::Float4(container) => container.filter(mask),
@@ -63,10 +62,10 @@ impl ColumnData {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Value;
+pub mod tests {
+	use reifydb_type::{util::bitvec::BitVec, value::Value};
 
-	use crate::{BitVec, value::column::ColumnData};
+	use crate::value::column::ColumnData;
 
 	#[test]
 	fn test_filter_bool() {
@@ -160,7 +159,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_identity_id() {
-		use reifydb_type::IdentityId;
+		use reifydb_type::value::identity::IdentityId;
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();

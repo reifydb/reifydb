@@ -5,13 +5,27 @@
 
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
-use reifydb_abi::*;
+use reifydb_abi::{
+	data::column::ColumnsFFI,
+	flow::{
+		change::{FlowChangeFFI, FlowOriginFFI},
+		diff::{FlowDiffFFI, FlowDiffType},
+	},
+};
 use reifydb_core::{
-	CommitVersion,
-	interface::{FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId},
+	common::CommitVersion,
+	interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		id::{RingBufferId, TableId, ViewId},
+		primitive::PrimitiveId,
+		vtable::VTableId,
+	},
 };
 
-use crate::{FlowChange, FlowChangeOrigin, FlowDiff, ffi::Arena};
+use crate::{
+	ffi::arena::Arena,
+	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
+};
 
 impl Arena {
 	/// Marshal a flow change to FFI representation

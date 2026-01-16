@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{Batch, value::column::Columns};
+use reifydb_core::value::{batch::Batch, column::columns::Columns};
 
 use crate::error::{Result, VmError};
 

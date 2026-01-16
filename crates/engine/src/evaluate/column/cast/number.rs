@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{column::ColumnData, container::NumberContainer};
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Decimal, Fragment, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,
-	diagnostic::cast,
-	error, parse_decimal, parse_float, return_error,
-	value::number::{parse_primitive_int, parse_primitive_uint},
+	error,
+	error::diagnostic::cast,
+	fragment::{Fragment, LazyFragment},
+	return_error,
+	value::{
+		container::number::NumberContainer,
+		decimal::{Decimal, parse::parse_decimal},
+		int::Int,
+		is::IsNumber,
+		number::{
+			parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+			safe::convert::SafeConvert,
+		},
+		r#type::{Type, get::GetType},
+		uint::Uint,
+	},
 };
 
 use crate::evaluate::convert::Convert;
@@ -1239,10 +1251,17 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	mod convert {
-		use reifydb_core::{BitVec, value::container::NumberContainer};
-		use reifydb_type::{Fragment, GetType, SafeConvert, Type};
+		use reifydb_type::{
+			fragment::Fragment,
+			util::bitvec::BitVec,
+			value::{
+				container::number::NumberContainer,
+				number::safe::convert::SafeConvert,
+				r#type::{Type, get::GetType},
+			},
+		};
 
 		use crate::evaluate::{column::cast::number::convert_vec, convert::Convert};
 
@@ -1342,7 +1361,7 @@ mod tests {
 			fn convert<From, To>(
 				&self,
 				val: From,
-				_fragment: impl Into<reifydb_type::Fragment>,
+				_fragment: impl Into<reifydb_type::fragment::Fragment>,
 			) -> crate::Result<Option<To>>
 			where
 				From: SafeConvert<To> + GetType,

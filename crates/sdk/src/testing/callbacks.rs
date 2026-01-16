@@ -17,18 +17,7 @@ use std::{
 	slice::from_raw_parts,
 };
 
-use reifydb_abi::{
-	BufferFFI, CatalogCallbacks, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
-	HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StateIteratorFFI, StoreCallbacks,
-	StoreIteratorFFI,
-};
-use reifydb_core::{CowVec, value::encoded::EncodedKey};
-
-use super::TestContext;
-
-// ============================================================================
-// Memory Callbacks (System Allocator)
-// ============================================================================
+use reifydb_type::util::cowvec::CowVec;
 
 /// Allocate memory using system allocator
 #[unsafe(no_mangle)]
@@ -487,11 +476,22 @@ extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 	unimplemented!()
 }
 
-// ============================================================================
-// Catalog Callbacks (stub implementations for testing)
-// ============================================================================
+use reifydb_abi::{
+	callbacks::{
+		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
+		state::StateCallbacks, store::StoreCallbacks,
+	},
+	catalog::{namespace::NamespaceFFI, table::TableFFI},
+	constants::{FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
+	context::{
+		context::ContextFFI,
+		iterators::{StateIteratorFFI, StoreIteratorFFI},
+	},
+	data::buffer::BufferFFI,
+};
+use reifydb_core::value::encoded::key::EncodedKey;
 
-use reifydb_abi::{NamespaceFFI, TableFFI};
+use crate::testing::context::TestContext;
 
 /// Find namespace by ID - stub implementation
 extern "C" fn test_catalog_find_namespace(

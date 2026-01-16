@@ -6,7 +6,7 @@
 //! These types represent the output of Phase 1 (compilation) before
 //! catalog IDs are assigned in Phase 2 (persistence).
 
-use reifydb_core::interface::ViewId;
+use reifydb_core::interface::catalog::id::ViewId;
 
 use super::node::FlowNodeType;
 

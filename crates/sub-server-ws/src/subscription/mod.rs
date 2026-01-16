@@ -6,10 +6,9 @@
 //! This module provides the infrastructure for clients to subscribe to
 //! real-time data changes via WebSocket connections.
 
-mod handler;
-mod poller;
-mod registry;
+pub mod handler;
+pub mod poller;
+pub mod registry;
 
-pub(crate) use handler::handle_subscribe;
-pub(crate) use poller::SubscriptionPoller;
-pub use registry::{PushMessage, SubscriptionRegistry};
+use poller::SubscriptionPoller;
+use registry::{PushMessage, SubscriptionRegistry};

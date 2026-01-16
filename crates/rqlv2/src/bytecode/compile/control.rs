@@ -7,8 +7,8 @@ use std::mem::swap;
 
 use crate::{
 	bytecode::{
-		BytecodeWriter,
 		compile::{CompileError, LoopContext, PlanCompiler, Result},
+		instruction::BytecodeWriter,
 		opcode::Opcode,
 		program::Constant,
 	},

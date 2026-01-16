@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 	Diagnostic {

@@ -4,16 +4,16 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	EncodedKey,
-	interface::{IndexId, TableDef},
-	value::{column::headers::ColumnHeaders, encoded::EncodedValuesLayout},
+	interface::catalog::{id::IndexId, table::TableDef},
+	value::{
+		column::headers::ColumnHeaders,
+		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	},
 };
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::fragment::Fragment;
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct IndexScanNode {
 	_table: TableDef, // FIXME needs to work with different sources

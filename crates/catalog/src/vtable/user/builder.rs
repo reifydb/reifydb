@@ -6,10 +6,17 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{ColumnDef, ColumnId, ColumnIndex, NamespaceId, Params, VTableDef, VTableId},
-	value::column::Columns,
+	interface::catalog::{
+		column::{ColumnDef, ColumnIndex},
+		id::{ColumnId, NamespaceId},
+		vtable::{VTableDef, VTableId},
+	},
+	value::column::columns::Columns,
 };
-use reifydb_type::{Type, TypeConstraint};
+use reifydb_type::{
+	params::Params,
+	value::{constraint::TypeConstraint, r#type::Type},
+};
 
 use super::UserVTableColumnDef;
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
@@ -20,7 +27,7 @@ use crate::vtable::tables::{UserVTableDataFunction, VTables};
 ///
 /// ```ignore
 /// use reifydb_catalog::vtable::UserVTableBuilder;
-/// use reifydb_type::Type;
+/// use reifydb_type::value::r#type::Type;
 /// use reifydb_core::value::Columns;
 ///
 /// let my_table = UserVTableBuilder::new("my_table")

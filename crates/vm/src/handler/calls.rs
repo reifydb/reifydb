@@ -3,21 +3,21 @@
 
 //! Function call opcodes: Call, Return, CallBuiltin.
 
-use crate::error::{Result, VmError};
-use crate::runtime::builtin::BuiltinRegistry;
-use crate::runtime::stack::CallFrame;
-use crate::runtime::dispatch::DispatchResult;
-
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{builtin::BuiltinRegistry, dispatch::DispatchResult, stack::CallFrame},
+};
 
 /// Call - call a user-defined function.
 pub fn call(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let func_index = ctx.read_u16()?;
 	let next_ip = ctx.reader.position();
 
-	let func_def = ctx.vm.program.script_functions.get(func_index as usize).ok_or(
-		VmError::InvalidFunctionIndex { index: func_index },
-	)?;
+	let func_def =
+		ctx.vm.program.script_functions.get(func_index as usize).ok_or(VmError::InvalidFunctionIndex {
+			index: func_index,
+		})?;
 
 	// Push call frame
 	let frame = CallFrame::new(
@@ -29,7 +29,9 @@ pub fn call(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	);
 
 	if !ctx.vm.call_stack.push(frame) {
-		return Err(VmError::StackOverflow { stack: "call".into() });
+		return Err(VmError::StackOverflow {
+			stack: "call".into(),
+		});
 	}
 
 	// Jump to function body

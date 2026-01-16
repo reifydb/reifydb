@@ -9,16 +9,17 @@
 
 use std::collections::HashMap;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::{
-	prelude::*,
-	state::StateCache,
-	testing::{TestFlowChangeBuilder, TestHarnessBuilder},
+	error::Result,
+	flow::FlowChange,
+	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+	state::cache::StateCache,
+	testing::{builders::TestFlowChangeBuilder, harness::TestHarnessBuilder},
 };
+use reifydb_type::value::{Value, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
-
-// =============================================================================
-// Test State Types
-// =============================================================================
 
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct CounterState {
@@ -64,7 +65,9 @@ fn test_cache_set_and_get() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "test_key".to_string();
-	let value = CounterState { count: 42 };
+	let value = CounterState {
+		count: 42,
+	};
 
 	// Set a value
 	let mut ctx = harness.create_operator_context();
@@ -85,7 +88,9 @@ fn test_cache_write_through_persists_to_ffi() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "persist_key".to_string();
-	let value = CounterState { count: 100 };
+	let value = CounterState {
+		count: 100,
+	};
 
 	// Set a value through cache
 	let mut ctx = harness.create_operator_context();
@@ -105,9 +110,7 @@ fn test_cache_get_or_default_creates_default() {
 
 	// get_or_default should create default when key doesn't exist
 	let mut ctx = harness.create_operator_context();
-	let result = cache
-		.get_or_default(&mut ctx, &key)
-		.expect("get_or_default failed");
+	let result = cache.get_or_default(&mut ctx, &key).expect("get_or_default failed");
 
 	assert_eq!(result.count, 0); // V::default()
 }
@@ -118,7 +121,9 @@ fn test_cache_get_or_default_returns_existing() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "existing_key".to_string();
-	let value = CounterState { count: 50 };
+	let value = CounterState {
+		count: 50,
+	};
 
 	// Set a value first
 	{
@@ -129,9 +134,7 @@ fn test_cache_get_or_default_returns_existing() {
 	// get_or_default should return existing value
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.get_or_default(&mut ctx, &key)
-			.expect("get_or_default failed");
+		let result = cache.get_or_default(&mut ctx, &key).expect("get_or_default failed");
 
 		assert_eq!(result.count, 50, "Should return existing value, not default");
 	}
@@ -180,7 +183,9 @@ fn test_cache_remove() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "remove_key".to_string();
-	let value = CounterState { count: 42 };
+	let value = CounterState {
+		count: 42,
+	};
 
 	// Set a value
 	{
@@ -215,7 +220,9 @@ fn test_cache_invalidate_only_clears_cache() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "invalidate_key".to_string();
-	let value = CounterState { count: 77 };
+	let value = CounterState {
+		count: 77,
+	};
 
 	// Set a value
 	{
@@ -254,7 +261,9 @@ fn test_cache_clear_cache() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
 			let key = format!("key_{}", i);
-			let value = CounterState { count: i };
+			let value = CounterState {
+				count: i,
+			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
 	}
@@ -287,7 +296,9 @@ fn test_cache_multiple_keys() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..5 {
 			let key = format!("sum_{}", i);
-			let value = SumState { total: i * 10 };
+			let value = SumState {
+				total: i * 10,
+			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
 	}
@@ -301,7 +312,12 @@ fn test_cache_multiple_keys() {
 		for i in 0..5 {
 			let key = format!("sum_{}", i);
 			let result = cache.get(&mut ctx, &key).expect("Get failed");
-			assert_eq!(result, Some(SumState { total: i * 10 }));
+			assert_eq!(
+				result,
+				Some(SumState {
+					total: i * 10
+				})
+			);
 		}
 	}
 }
@@ -317,7 +333,9 @@ fn test_cache_lru_eviction() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
 			let key = format!("key_{}", i);
-			let value = CounterState { count: i };
+			let value = CounterState {
+				count: i,
+			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
 	}
@@ -331,7 +349,9 @@ fn test_cache_lru_eviction() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let key = "key_3".to_string();
-		let value = CounterState { count: 3 };
+		let value = CounterState {
+			count: 3,
+		};
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
 	}
 
@@ -344,7 +364,13 @@ fn test_cache_lru_eviction() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache.get(&mut ctx, &"key_0".to_string()).expect("Get failed");
-		assert_eq!(result, Some(CounterState { count: 0 }), "key_0 should still exist in FFI");
+		assert_eq!(
+			result,
+			Some(CounterState {
+				count: 0
+			}),
+			"key_0 should still exist in FFI"
+		);
 	}
 }
 
@@ -359,7 +385,9 @@ fn test_cache_lru_access_updates_order() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
 			let key = format!("key_{}", i);
-			let value = CounterState { count: i };
+			let value = CounterState {
+				count: i,
+			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
 	}
@@ -374,7 +402,9 @@ fn test_cache_lru_access_updates_order() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let key = "key_3".to_string();
-		let value = CounterState { count: 3 };
+		let value = CounterState {
+			count: 3,
+		};
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
 	}
 
@@ -395,8 +425,12 @@ fn test_cache_tuple_keys() {
 
 	let key1 = ("base".to_string(), "quote".to_string());
 	let key2 = ("foo".to_string(), "bar".to_string());
-	let value1 = SumState { total: 100 };
-	let value2 = SumState { total: 200 };
+	let value1 = SumState {
+		total: 100,
+	};
+	let value2 = SumState {
+		total: 200,
+	};
 
 	// Set values with tuple keys
 	{
@@ -473,7 +507,9 @@ fn test_cache_len_and_is_empty() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
 			let key = format!("key_{}", i);
-			let value = CounterState { count: i };
+			let value = CounterState {
+				count: i,
+			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
 	}
@@ -488,7 +524,9 @@ fn test_cache_miss_then_hit() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "miss_hit_key".to_string();
-	let value = CounterState { count: 123 };
+	let value = CounterState {
+		count: 123,
+	};
 
 	// Set value (goes to FFI and cache)
 	{
@@ -535,12 +573,11 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input.diffs.len() as i64;
-		cache
-			.update(&mut ctx, &"event_counter".to_string(), |s| {
-				s.count += diff_count;
-				Ok(())
-			})
-			.expect("Update failed");
+		cache.update(&mut ctx, &"event_counter".to_string(), |s| {
+			s.count += diff_count;
+			Ok(())
+		})
+		.expect("Update failed");
 	}
 
 	// Process more input
@@ -549,18 +586,22 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input2.diffs.len() as i64;
-		cache
-			.update(&mut ctx, &"event_counter".to_string(), |s| {
-				s.count += diff_count;
-				Ok(())
-			})
-			.expect("Update failed");
+		cache.update(&mut ctx, &"event_counter".to_string(), |s| {
+			s.count += diff_count;
+			Ok(())
+		})
+		.expect("Update failed");
 	}
 
 	// Verify final count
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache.get(&mut ctx, &"event_counter".to_string()).expect("Get failed");
-		assert_eq!(result, Some(CounterState { count: 3 }));
+		assert_eq!(
+			result,
+			Some(CounterState {
+				count: 3
+			})
+		);
 	}
 }

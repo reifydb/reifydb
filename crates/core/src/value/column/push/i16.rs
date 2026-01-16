@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::SafeConvert;
+use reifydb_type::value::number::safe::convert::SafeConvert;
 
 use crate::value::column::{data::ColumnData, push::Push};
 

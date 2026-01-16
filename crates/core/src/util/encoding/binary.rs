@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::util::CowVec;
+use reifydb_type::util::cowvec::CowVec;
 
 /// Decodes a raw byte vector from a Unicode string. Code points in the
 /// range U+0080 to U+00FF are converted back to bytes 0x80 to 0xff.

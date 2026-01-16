@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_type::{
-	Fragment,
-	diagnostic::runtime::{variable_is_dataframe, variable_not_found},
+	error::diagnostic::runtime::{variable_is_dataframe, variable_not_found},
+	fragment::Fragment,
 	return_error,
 };
 

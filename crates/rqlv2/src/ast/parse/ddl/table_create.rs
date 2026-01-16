@@ -7,10 +7,13 @@
 //!
 //! Unlike SQL, RQL uses curly braces and colon notation for column definitions.
 
-use crate::ast::{
-	Statement,
-	parse::{ParseError, Parser},
-	stmt::ddl::{CreateStmt, CreateTable},
+use crate::{
+	ast::{
+		Statement,
+		parse::{ParseError, Parser},
+		stmt::ddl::{CreateStmt, CreateTable},
+	},
+	token::span::Span,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -26,7 +29,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```
 	pub(in crate::ast::parse) fn parse_create_table(
 		&mut self,
-		start: crate::token::Span,
+		start: Span,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Parse namespace.table (namespace is required for tables)
 		let (namespace, table_name) = self.parse_required_qualified_identifier()?;
@@ -50,7 +53,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

@@ -8,6 +8,6 @@
 //! - `UPDATE [namespace.]table` - Target optional, modifications come from pipeline
 //! - `DELETE [namespace.]table` - Target optional, filter comes from pipeline
 
-mod delete;
-mod insert;
-mod update;
+pub mod delete;
+pub mod insert;
+pub mod update;

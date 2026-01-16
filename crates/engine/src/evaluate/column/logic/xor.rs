@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	return_error,
-	value::column::{Column, ColumnData},
-};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::XorExpression;
-use reifydb_type::diagnostic::operator::{
-	xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
-	xor_can_not_applied_to_uuid,
+use reifydb_type::{
+	error::diagnostic::operator::{
+		xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
+		xor_can_not_applied_to_uuid,
+	},
+	return_error,
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn xor(&self, ctx: &ColumnEvaluationContext, expr: &XorExpression) -> crate::Result<Column> {

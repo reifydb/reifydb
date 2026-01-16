@@ -3,10 +3,13 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_core::{interface::Params, value::column::Columns};
-use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	stack::Stack,
+};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Result, Value};
+use reifydb_type::{Result, params::Params, value::Value};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
@@ -70,10 +73,10 @@ pub fn evaluate_operator_config(
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_engine::StandardColumnEvaluator;
+pub mod tests {
+	use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
-	use reifydb_type::{Fragment, Value};
+	use reifydb_type::{fragment::Fragment, value::Value};
 
 	use super::evaluate_operator_config;
 

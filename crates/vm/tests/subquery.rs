@@ -8,10 +8,10 @@
 //! - IN / NOT IN with inline lists
 //! - IN / NOT IN with subqueries (when fully implemented)
 
-use reifydb_core::interface::Identity;
-use reifydb_engine::{StandardEngine, test_utils::create_test_engine};
+use reifydb_core::interface::auth::Identity;
+use reifydb_engine::{engine::StandardEngine, test_utils::create_test_engine};
 use reifydb_rqlv2::compile_script;
-use reifydb_vm::{collect, execute_program};
+use reifydb_vm::{pipeline::collect, rql::execute_program};
 
 pub fn test_identity() -> Identity {
 	Identity::root()

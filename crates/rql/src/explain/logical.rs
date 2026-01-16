@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::Catalog;
-use reifydb_core::JoinType;
-use reifydb_transaction::StandardTransaction;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::common::JoinType;
+use reifydb_transaction::standard::StandardTransaction;
 
 use crate::{
 	ast::parse_str,
@@ -11,7 +11,11 @@ use crate::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
 		OrderNode, PrimitiveScanNode, TakeNode, VariableSourceNode,
-		alter::{AlterTableNode, AlterViewNode},
+		alter::{
+			flow::AlterFlowAction,
+			table::{AlterTableNode, AlterTableOperation},
+			view::{AlterViewNode, AlterViewOperation},
+		},
 	},
 };
 
@@ -521,7 +525,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					"├──"
 				};
 
-				use crate::plan::logical::alter::AlterTableOperation;
 				match op {
 					AlterTableOperation::CreatePrimaryKey {
 						name,
@@ -591,7 +594,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					"├──"
 				};
 
-				use crate::plan::logical::alter::AlterViewOperation;
 				match op {
 					AlterViewOperation::CreatePrimaryKey {
 						name,
@@ -837,7 +839,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				alter_flow.flow.name.text().to_string()
 			};
 
-			use crate::plan::logical::alter::AlterFlowAction;
 			let action_str = match &alter_flow.action {
 				AlterFlowAction::Rename {
 					new_name,

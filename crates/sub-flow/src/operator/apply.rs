@@ -3,10 +3,10 @@
 
 use std::rc::Rc;
 
-use reifydb_core::{interface::FlowNodeId, value::column::Columns};
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::FlowChange;
-use reifydb_type::RowNumber;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::FlowChange;
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
 	operator::{BoxedOperator, Operator, Operators},

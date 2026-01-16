@@ -9,11 +9,11 @@
 //!
 //! Reference: https://blog.cloudflare.com/building-fast-interpreters-in-rust/
 
-mod evaluation;
-mod helpers;
-mod literal;
-mod operator;
-mod reference;
+pub mod evaluation;
+pub mod helpers;
+pub mod literal;
+pub mod operator;
+pub mod reference;
 
 use helpers::column_to_mask;
 use literal::{
@@ -25,8 +25,8 @@ use operator::{
 	compile_in, compile_list, compile_record, compile_tuple, compile_unary,
 };
 use reference::{compile_column_ref, compile_field_access, compile_rownum, compile_variable_ref, compile_wildcard};
-use reifydb_core::value::column::{Column, Columns};
-use reifydb_type::Fragment;
+use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	expression::types::{CompiledExpr, CompiledFilter, EvalError},
@@ -174,14 +174,14 @@ pub fn compile_plan_filter<'bump>(expr: &PlanExpr<'bump>) -> CompiledFilter {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb::vendor::tokio;
-	use reifydb_core::value::column::{Column, ColumnData, Columns};
-	use reifydb_type::{Fragment, Value};
+	use reifydb_core::value::column::{Column, data::ColumnData};
+	use reifydb_type::value::Value;
 
 	use super::{evaluation::eval_binary, *};
 	use crate::{
-		expression::eval::{EvalContext, EvalValue},
+		expression::eval::{context::EvalContext, value::EvalValue},
 		plan::node::expr::BinaryPlanOp,
 	};
 

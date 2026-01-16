@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{NamespaceId, VTableDef};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTableDef};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::Catalog;
+use crate::catalog::Catalog;
 
 impl Catalog {
 	/// Find a user-defined virtual table by name.

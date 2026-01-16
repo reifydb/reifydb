@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	ColumnPolicyKind, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus, NamespaceDef,
-	RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
+use reifydb_core::interface::catalog::{
+	column::ColumnIndex,
+	flow::{FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus},
+	id::{RingBufferId, TableId},
+	namespace::NamespaceDef,
+	policy::ColumnPolicyKind,
+	ringbuffer::RingBufferDef,
+	table::TableDef,
+	view::ViewDef,
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Blob, TypeConstraint};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::{blob::Blob, constraint::TypeConstraint};
 
 use crate::{
 	CatalogStore,
 	store::{
-		column::{ColumnIndex, ColumnToCreate},
+		column::create::ColumnToCreate,
 		flow::create::FlowToCreate,
-		namespace::NamespaceToCreate,
+		namespace::create::NamespaceToCreate,
 		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
-		table::TableToCreate,
-		view::ViewToCreate,
+		table::create::{TableColumnToCreate, TableToCreate},
+		view::create::{ViewColumnToCreate, ViewToCreate},
 	},
 };
 
@@ -51,7 +57,7 @@ pub fn create_table(
 	txn: &mut StandardCommandTransaction,
 	namespace: &str,
 	table: &str,
-	columns: &[crate::store::table::TableColumnToCreate],
+	columns: &[TableColumnToCreate],
 ) -> TableDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
@@ -103,7 +109,7 @@ pub fn create_view(
 	txn: &mut StandardCommandTransaction,
 	namespace: &str,
 	view: &str,
-	columns: &[crate::store::view::ViewColumnToCreate],
+	columns: &[ViewColumnToCreate],
 ) -> ViewDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");

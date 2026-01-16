@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	util::CowVec,
-	value::column::{Column, ColumnData, Columns},
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_type::{
+	fragment::Fragment,
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
 };
-use reifydb_type::{Fragment, RowNumber, Value};
 
 /// Builder for creating combined columns when joining left and right sides.
 /// Encapsulates the logic for merging column names (with conflict resolution)

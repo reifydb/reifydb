@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub use create::NamespaceToCreate;
-use reifydb_core::interface::{MultiVersionValues, NamespaceDef, NamespaceId};
+use reifydb_core::interface::{
+	catalog::{id::NamespaceId, namespace::NamespaceDef},
+	store::MultiVersionValues,
+};
 
 use crate::store::namespace::layout::namespace;
 
-mod create;
-mod delete;
-mod find;
-mod get;
-mod layout;
-mod list;
+pub mod create;
+pub mod delete;
+pub mod find;
+pub mod get;
+pub mod layout;
+pub mod list;
 
 pub(crate) fn convert_namespace(multi: MultiVersionValues) -> NamespaceDef {
 	let row = multi.values;

@@ -6,10 +6,15 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
-use reifydb_function::{AggregateFunction, AggregateFunctionContext, Functions};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_function::{AggregateFunction, AggregateFunctionContext, registry::Functions};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Fragment, Type, Value, diagnostic};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{
+	error::diagnostic,
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
@@ -53,11 +58,7 @@ impl AggregateNode {
 
 impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
-	fn initialize<'a>(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		// Already has context from constructor
 		Ok(())
@@ -66,7 +67,7 @@ impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
 	fn next<'a>(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
+		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
@@ -191,7 +192,7 @@ fn parse_keys_and_aggregates<'a>(
 				})
 			}
 			// _ => return
-			// Err(reifydb_type::Error::Unsupported("Non-column
+			// Err(reifydb_type::error::Error::Unsupported("Non-column
 			// group by not supported".into())),
 			expr => panic!("Non-column group by not supported: {expr:#?}"),
 		}
@@ -236,14 +237,14 @@ fn parse_keys_and_aggregates<'a>(
 						});
 					}
 					// _ => return
-					// Err(reifydb_type::Error::Unsupported("
+					// Err(reifydb_type::error::Error::Unsupported("
 					// Aggregate args must be
 					// columns".into())),
 					_ => panic!("Aggregate args must be columns"),
 				}
 			}
 			// _ => return
-			// Err(reifydb_type::Error::Unsupported("Expected
+			// Err(reifydb_type::error::Error::Unsupported("Expected
 			// aggregate call expression".into())),
 			_ => panic!("Expected aggregate call expression, got: {actual_expr:#?}"),
 		}

@@ -11,8 +11,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{ColumnIdentifier, ColumnPrimitive};
-use reifydb_type::Fragment;
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
+use reifydb_type::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 
@@ -404,7 +404,7 @@ impl From<&Expression> for JsonExpression {
 // ============================================================================
 
 impl TryFrom<JsonExpression> for Expression {
-	type Error = reifydb_type::Error;
+	type Error = reifydb_type::error::Error;
 
 	fn try_from(json: JsonExpression) -> Result<Self, Self::Error> {
 		Ok(match json {
@@ -641,7 +641,7 @@ impl TryFrom<JsonExpression> for Expression {
 					"+" => PrefixOperator::Plus(Fragment::None),
 					"not" => PrefixOperator::Not(Fragment::None),
 					_ => {
-						return Err(reifydb_type::Error(reifydb_type::internal!(
+						return Err(reifydb_type::error::Error(reifydb_type::internal!(
 							"Unknown prefix operator: {}",
 							operator
 						)));
@@ -732,8 +732,8 @@ impl TryFrom<JsonExpression> for Expression {
 }
 
 // Helper to parse type strings back to Type enum
-fn parse_type(s: &str) -> reifydb_core::Result<reifydb_type::Type> {
-	use reifydb_type::Type;
+fn parse_type(s: &str) -> reifydb_type::Result<reifydb_type::value::r#type::Type> {
+	use reifydb_type::value::r#type::Type;
 
 	// Handle type debug representations
 	let ty = match s.to_lowercase().as_str() {
@@ -770,7 +770,7 @@ fn parse_type(s: &str) -> reifydb_core::Result<reifydb_type::Type> {
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
 		_ => {
-			return Err(reifydb_type::Error(reifydb_type::internal!("Unknown type: {}", s)));
+			return Err(reifydb_type::error::Error(reifydb_type::internal!("Unknown type: {}", s)));
 		}
 	};
 
@@ -797,15 +797,17 @@ pub fn to_json_pretty(expr: &Expression) -> String {
 }
 
 /// Deserialize an Expression from a JSON string.
-pub fn from_json(json: &str) -> reifydb_core::Result<Expression> {
+pub fn from_json(json: &str) -> reifydb_type::Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
-		reifydb_type::Error(reifydb_type::diagnostic::serde::serde_deserialize_error(e.to_string()))
+		reifydb_type::error::Error(reifydb_type::error::diagnostic::serde::serde_deserialize_error(
+			e.to_string(),
+		))
 	})?;
 	json_expr.try_into()
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	// Helper functions to create test expressions
@@ -1253,7 +1255,7 @@ mod tests {
 		let expr = Expression::Cast(CastExpression {
 			expression: Box::new(column_expr("value")),
 			to: TypeExpression {
-				ty: reifydb_type::Type::Int4,
+				ty: reifydb_type::value::r#type::Type::Int4,
 				fragment: internal_fragment("Int4"),
 			},
 			fragment: Fragment::None,
@@ -1511,7 +1513,7 @@ mod tests {
 	#[test]
 	fn test_type_expression() {
 		let expr = Expression::Type(TypeExpression {
-			ty: reifydb_type::Type::Utf8,
+			ty: reifydb_type::value::r#type::Type::Utf8,
 			fragment: internal_fragment("Utf8"),
 		});
 

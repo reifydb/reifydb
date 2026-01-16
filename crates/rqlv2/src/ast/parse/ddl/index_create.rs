@@ -15,7 +15,7 @@ use crate::{
 		parse::{ParseError, ParseErrorKind, Parser},
 		stmt::ddl::{CreateIndex, CreateStmt, IndexColumn},
 	},
-	token::{Keyword, Punctuation, TokenKind},
+	token::{keyword::Keyword, punctuation::Punctuation, span::Span, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -32,7 +32,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```
 	pub(in crate::ast::parse) fn parse_create_index(
 		&mut self,
-		start: crate::token::Span,
+		start: Span,
 		unique: bool,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Consume INDEX keyword
@@ -120,7 +120,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

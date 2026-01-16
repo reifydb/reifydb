@@ -4,8 +4,18 @@
 //! Test helper functions for building Frame and FrameColumn instances.
 
 use reifydb_type::{
-	BitVec, Date, DateTime, Frame, FrameColumn, FrameColumnData, Time, Uuid4, Uuid7,
-	value::container::{BoolContainer, NumberContainer, TemporalContainer, Utf8Container, UuidContainer},
+	util::bitvec::BitVec,
+	value::{
+		container::{
+			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
+			uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 
 /// Create a simple column with just a name.

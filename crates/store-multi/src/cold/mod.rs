@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_type::{CowVec, Result};
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 

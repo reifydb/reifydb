@@ -5,13 +5,16 @@
 
 use std::{mem::MaybeUninit, slice::from_raw_parts};
 
-use reifydb_abi::{FFI_NOT_FOUND, FFI_OK, NamespaceFFI};
+use reifydb_abi::{
+	catalog::namespace::NamespaceFFI,
+	constants::{FFI_NOT_FOUND, FFI_OK},
+};
 use reifydb_core::{
-	CommitVersion,
-	interface::{NamespaceDef, NamespaceId},
+	common::CommitVersion,
+	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 };
 
-use crate::{FFIError, OperatorContext};
+use crate::{error::FFIError, operator::context::OperatorContext};
 
 /// Find namespace by ID
 pub(super) fn raw_catalog_find_namespace(

@@ -3,9 +3,9 @@
 
 //! Builder for inserting into a specific table.
 
-use reifydb_type::Params;
+use reifydb_type::params::Params;
 
-use crate::bulk_insert::{BulkInsertBuilder, ValidationMode};
+use crate::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};
 
 /// Buffered table insert operation
 #[derive(Debug, Clone)]

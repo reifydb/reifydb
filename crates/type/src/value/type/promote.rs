@@ -3,7 +3,7 @@
 
 use std::cmp::min;
 
-use crate::Type;
+use crate::value::r#type::Type;
 
 impl Type {
 	/// Promote two Types to a common supertype, similar to Postgres
@@ -70,8 +70,8 @@ impl Type {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::{
+pub mod tests {
+	use crate::value::r#type::{
 		Type,
 		Type::{
 			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16,

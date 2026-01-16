@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{diagnostic::ast, return_error};
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstInfix, InfixOperator,
+	ast::{Ast, AstInfix, InfixOperator},
 	parse::{Parser, Precedence},
-	tokenize::{Operator, TokenKind},
+	tokenize::{operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -62,12 +62,16 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::Deref;
 
 	use crate::ast::{
-		Ast::{Infix, Literal},
-		AstInfix, AstLiteral, InfixOperator, parse, tokenize,
+		ast::{
+			Ast::{Infix, Literal},
+			AstInfix, AstLiteral, InfixOperator,
+		},
+		parse::parse,
+		tokenize::tokenize,
 	};
 
 	#[test]

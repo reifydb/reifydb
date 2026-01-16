@@ -11,7 +11,7 @@ use serde::{
 	de::{self, Visitor},
 };
 
-use crate::{Date, Time};
+use crate::value::{date::Date, time::Time};
 
 /// A date and time value with nanosecond precision.
 /// Always in SVTC timezone.
@@ -309,7 +309,7 @@ impl<'de> Deserialize<'de> for DateTime {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

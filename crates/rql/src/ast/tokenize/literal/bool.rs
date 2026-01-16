@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::{
-	Token, TokenKind,
-	tokenize::{Literal, cursor::Cursor, identifier::is_identifier_char},
+use crate::ast::tokenize::{
+	cursor::Cursor,
+	identifier::is_identifier_char,
+	token::{Literal, Token, TokenKind},
 };
 
 /// Scan for a boolean literal (true/false)
@@ -38,7 +39,7 @@ pub fn scan_boolean(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use Literal::{False, True};
 
 	use super::*;

@@ -1,16 +1,32 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
+
 use reifydb_type::{
-	BitVec, Blob, Date, DateTime, Error, Fragment, Frame, FrameColumn, FrameColumnData, IdentityId, RowNumber,
-	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
-	util::hex,
-	value::container::{
-		BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, TemporalContainer,
-		UndefinedContainer, Utf8Container, UuidContainer,
+	err,
+	error::Error,
+	fragment::Fragment,
+	util::{bitvec::BitVec, hex},
+	value::{
+		blob::Blob,
+		container::{
+			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+		identity::IdentityId,
+		row_number::RowNumber,
+		temporal::parse::datetime::parse_datetime,
+		time::Time,
+		r#type::Type,
+		uuid::{
+			Uuid7,
+			parse::{parse_uuid4, parse_uuid7},
+		},
 	},
 };
-
-use crate::Type;
 
 /// Result type for command operations
 #[derive(Debug)]

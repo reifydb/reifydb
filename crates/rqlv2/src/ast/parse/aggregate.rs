@@ -7,8 +7,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
-	ast::{Expr, expr::*},
-	token::{Keyword, Punctuation},
+	ast::{Expr, expr::query::AggregateExpr},
+	token::{keyword::Keyword, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -60,10 +60,16 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::BinaryOp, token::tokenize};
+	use crate::{
+		ast::{
+			Expr,
+			expr::{operator::BinaryOp, query::AggregateExpr},
+		},
+		token::tokenize,
+	};
 
 	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
@@ -76,9 +82,7 @@ mod tests {
 		}
 	}
 
-	fn extract_aggregate<'a>(
-		stmt: crate::ast::Statement<'a>,
-	) -> &'a crate::ast::expr::AggregateExpr<'a> {
+	fn extract_aggregate<'a>(stmt: crate::ast::Statement<'a>) -> &'a AggregateExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Aggregate(a) => a,
@@ -178,12 +182,10 @@ mod tests {
 					_ => panic!("Expected identifier alias"),
 				}
 				match binary.right {
-					Expr::Call(call) => {
-						match call.function {
-							Expr::Identifier(id) => assert_eq!(id.name, "min"),
-							_ => panic!("Expected function identifier"),
-						}
-					}
+					Expr::Call(call) => match call.function {
+						Expr::Identifier(id) => assert_eq!(id.name, "min"),
+						_ => panic!("Expected function identifier"),
+					},
 					_ => panic!("Expected function call"),
 				}
 			}
@@ -254,12 +256,10 @@ mod tests {
 		assert_eq!(agg.group_by.len(), 1);
 		// Verify min function
 		match &agg.aggregations[0] {
-			Expr::Call(call) => {
-				match call.function {
-					Expr::Identifier(id) => assert_eq!(id.name, "min"),
-					_ => panic!("Expected identifier for function name"),
-				}
-			}
+			Expr::Call(call) => match call.function {
+				Expr::Identifier(id) => assert_eq!(id.name, "min"),
+				_ => panic!("Expected identifier for function name"),
+			},
 			_ => panic!("Expected function call"),
 		}
 		// Verify group_by
@@ -281,12 +281,10 @@ mod tests {
 		assert_eq!(agg.aggregations.len(), 1);
 
 		match &agg.aggregations[0] {
-			Expr::Call(call) => {
-				match call.function {
-					Expr::Identifier(id) => assert_eq!(id.name, "min"),
-					_ => panic!("Expected identifier for function name"),
-				}
-			}
+			Expr::Call(call) => match call.function {
+				Expr::Identifier(id) => assert_eq!(id.name, "min"),
+				_ => panic!("Expected identifier for function name"),
+			},
 			_ => panic!("Expected function call"),
 		}
 	}

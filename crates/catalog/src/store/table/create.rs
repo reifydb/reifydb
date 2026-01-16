@@ -2,23 +2,28 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::table_already_exists,
-	interface::{
-		ColumnPolicyKind, DictionaryId, NamespaceId, NamespaceTableKey, PrimitiveId, TableDef, TableId,
-		TableKey,
+	interface::catalog::{
+		column::ColumnIndex,
+		id::{DictionaryId, NamespaceId, TableId},
+		policy::ColumnPolicyKind,
+		primitive::PrimitiveId,
+		table::TableDef,
 	},
+	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
-	return_error,
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Fragment, TypeConstraint};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::table_already_exists, fragment::Fragment, return_error,
+	value::constraint::TypeConstraint,
+};
 
 use crate::{
 	CatalogStore,
 	store::{
-		column::{ColumnIndex, ColumnToCreate},
+		column::create::ColumnToCreate,
 		retention_policy::create::create_primitive_retention_policy,
-		sequence::SystemSequence,
+		sequence::system::SystemSequence,
 		table::layout::{table, table_namespace},
 	},
 };
@@ -134,13 +139,16 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{NamespaceId, NamespaceTableKey, TableId};
+pub mod tests {
+	use reifydb_core::{
+		interface::catalog::id::{NamespaceId, TableId},
+		key::namespace_table::NamespaceTableKey,
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		store::table::{TableToCreate, layout::table_namespace},
+		store::table::{create::TableToCreate, layout::table_namespace},
 		test_utils::ensure_test_namespace,
 	};
 

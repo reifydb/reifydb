@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{diagnostic::ast, return_error};
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard,
+	ast::{Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard},
 	parse::Parser,
 	tokenize::{
-		Keyword,
-		Literal::{False, Number, Temporal, Text, True, Undefined},
-		Operator,
-		Separator::NewLine,
-		TokenKind,
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator::NewLine,
+		token::{
+			Literal::{False, Number, Temporal, Text, True, Undefined},
+			TokenKind,
+		},
 	},
 };
 

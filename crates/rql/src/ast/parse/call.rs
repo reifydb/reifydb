@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstCall, AstCallFunction,
+	ast::{AstCall, AstCallFunction},
 	parse::Parser,
-	tokenize::{Keyword, Operator},
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
@@ -26,7 +26,7 @@ impl Parser {
 	}
 
 	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction> {
-		let first_ident_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let first_ident_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
 
 		// Check if this is a simple function call: identifier(
@@ -61,7 +61,7 @@ impl Parser {
 			namespace_fragments.push(current_ident_token.fragment.clone());
 
 			self.advance()?; // consume ::
-			let next_ident_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+			let next_ident_token = self.consume(crate::ast::tokenize::token::TokenKind::Identifier)?;
 
 			// Check if this is the function name (followed by
 			// opening paren)
@@ -133,7 +133,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{parse::parse, tokenize::tokenize};
 
 	#[test]

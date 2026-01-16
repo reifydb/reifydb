@@ -3,10 +3,8 @@
 
 //! Control flow opcodes: Nop, Halt.
 
-use crate::error::Result;
-use crate::runtime::dispatch::DispatchResult;
-
 use super::HandlerContext;
+use crate::{error::Result, runtime::dispatch::DispatchResult};
 
 /// Execute the Nop opcode - does nothing, just advances IP.
 pub fn nop(ctx: &mut HandlerContext) -> Result<DispatchResult> {

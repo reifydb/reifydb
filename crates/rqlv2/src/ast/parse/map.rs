@@ -7,8 +7,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
-	ast::{Expr, expr::*},
-	token::Punctuation,
+	ast::{Expr, expr::query::MapExpr},
+	token::punctuation::Punctuation,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -37,23 +37,29 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::BinaryOp, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::{literal::Literal, operator::BinaryOp, query::MapExpr},
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: Statement<'_>) -> &Expr<'_> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_map<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::MapExpr<'a> {
+	fn extract_map(stmt: Statement<'_>) -> &MapExpr<'_> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Map(m) => m,
@@ -73,7 +79,10 @@ mod tests {
 		assert_eq!(map.projections.len(), 1);
 
 		match &map.projections[0] {
-			Expr::Literal(crate::ast::expr::Literal::Integer { value, .. }) => {
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => {
 				assert_eq!(*value, "1");
 			}
 			_ => panic!("Expected integer literal"),

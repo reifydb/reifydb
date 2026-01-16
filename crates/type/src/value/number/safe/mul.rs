@@ -27,10 +27,7 @@ macro_rules! impl_safe_mul {
 
 impl_safe_mul!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use crate::{
-	Decimal,
-	value::{int::Int, uint::Uint},
-};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeMul for Int {
 	fn checked_mul(&self, r: &Self) -> Option<Self> {
@@ -166,7 +163,7 @@ impl SafeMul for f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
 	macro_rules! signed_unsigned {
         ($($t:ty => $mod:ident),*) => {
@@ -234,7 +231,7 @@ mod tests {
 	);
 
 	mod f32 {
-		use crate::SafeMul;
+		use crate::value::number::safe::mul::SafeMul;
 
 		#[test]
 		fn checked_mul_happy() {
@@ -301,7 +298,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use crate::SafeMul;
+		use crate::value::number::safe::mul::SafeMul;
 
 		#[test]
 		fn checked_mul_happy() {

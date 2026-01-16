@@ -5,6 +5,8 @@ use std::fmt::{Display, Formatter};
 
 use ::serde::{Deserialize, Serialize};
 
+use crate::{fragment::Fragment, value::r#type::Type};
+
 pub mod ast;
 pub mod auth;
 pub mod blob;
@@ -19,10 +21,6 @@ pub mod flow;
 pub mod function;
 pub mod index;
 pub mod internal;
-pub use flow::flow_operator_error;
-pub use internal::{internal, internal_with_context, shutdown};
-
-use crate::{Fragment, Type};
 
 pub mod network;
 pub mod number;
@@ -36,7 +34,7 @@ pub mod serde;
 pub mod subsystem;
 pub mod temporal;
 pub mod transaction;
-mod util;
+pub mod util;
 pub mod uuid;
 
 /// Entry in the operator call chain for flow operator errors

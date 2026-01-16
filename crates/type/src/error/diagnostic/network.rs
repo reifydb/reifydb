@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Network connection error occurred
 pub fn connection_error(message: String) -> Diagnostic {

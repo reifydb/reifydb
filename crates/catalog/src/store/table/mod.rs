@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod create;
-mod delete;
-mod find;
-mod get;
-mod get_pk_id;
+pub mod create;
+pub mod delete;
+pub mod find;
+pub mod get;
+pub mod get_pk_id;
 pub(crate) mod layout;
-mod list;
-mod set_pk;
-
-pub use create::{TableColumnToCreate, TableToCreate};
+pub mod list;
+pub mod set_pk;

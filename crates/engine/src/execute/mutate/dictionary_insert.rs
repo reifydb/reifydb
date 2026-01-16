@@ -4,19 +4,21 @@
 use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	interface::Params,
-	return_error,
-	value::column::{Column, ColumnData, Columns},
-};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_rql::plan::physical::InsertDictionaryNode;
-use reifydb_type::{DictionaryEntryId, Fragment, Type, Value, diagnostic::catalog::dictionary_not_found};
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_type::{
+	error::diagnostic::catalog::dictionary_not_found,
+	fragment::Fragment,
+	params::Params,
+	return_error,
+	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
+};
 
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
-	transaction::operation::DictionaryOperations,
+	transaction::operation::dictionary::DictionaryOperations,
 };
 
 impl Executor {

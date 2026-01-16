@@ -6,9 +6,9 @@
 //! This module provides helper functions for working with state in FFI operators,
 //! mirroring the functionality available to internal operators.
 
-use reifydb_core::value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout};
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
 
-use crate::{OperatorContext, error::Result};
+use crate::{error::Result, operator::context::OperatorContext};
 
 /// Create an empty key for single-state operators
 ///
@@ -75,7 +75,7 @@ pub fn save_row(ctx: &mut OperatorContext, key: &EncodedKey, row: &EncodedValues
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Generic tokenizeer error with custom message
 pub fn tokenize_error(message: String) -> Diagnostic {

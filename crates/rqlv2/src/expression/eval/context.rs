@@ -5,8 +5,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{ColumnData, Columns};
-use reifydb_type::Value;
+use reifydb_core::value::column::{columns::Columns, data::ColumnData};
+use reifydb_type::value::Value;
 
 use super::{ScriptFunctionCaller, value::EvalValue};
 use crate::expression::types::EvalError;
@@ -103,7 +103,7 @@ impl EvalContext {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

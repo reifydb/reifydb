@@ -63,19 +63,19 @@ pub fn scan_string(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::token::{LexError, Lexer, LiteralKind, TokenKind};
+	use crate::token::{error::LexError, lexer::Lexer, literal::LiteralKind, token::TokenKind};
 
-	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), LexError> {
+	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::token::Token>, String), LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();
 		Ok((result.tokens.into_iter().collect(), source_copy))
 	}
 
-	fn tokenize(source: &str) -> Result<Vec<crate::token::Token>, LexError> {
+	fn tokenize(source: &str) -> Result<Vec<crate::token::token::Token>, LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		Ok(result.tokens.into_iter().collect())

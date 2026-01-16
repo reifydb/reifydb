@@ -10,17 +10,17 @@
 //! 3. Check MaterializedCatalog at transaction version
 //! 4. Fall back to storage as defensive measure
 
-mod dictionary;
-mod flow;
-mod namespace;
-mod resolve;
-mod ringbuffer;
-mod subscription;
-mod table;
-mod view;
-mod vtable;
+pub mod dictionary;
+pub mod flow;
+pub mod namespace;
+pub mod resolve;
+pub mod ringbuffer;
+pub mod subscription;
+pub mod table;
+pub mod view;
+pub mod vtable;
 
-use crate::MaterializedCatalog;
+use crate::materialized::MaterializedCatalog;
 
 /// Catalog wrapper that owns a `MaterializedCatalog` and provides three-tier lookup methods.
 ///

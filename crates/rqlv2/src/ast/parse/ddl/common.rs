@@ -12,10 +12,12 @@ use bumpalo::collections::Vec as BumpVec;
 
 use crate::{
 	ast::{
+		Expr,
+		expr::literal::Literal,
 		parse::{ParseError, ParseErrorKind, Parser, Precedence},
 		stmt::ddl::{ColumnDef, Policy, PolicyBlock, PolicyKind},
 	},
-	token::{Keyword, Operator, Punctuation, TokenKind},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -261,10 +263,14 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 				self.advance();
 				let end_span = self.expect_keyword(Keyword::Undefined)?;
 				// For "not undefined", the value is a placeholder undefined literal
-				let undefined_expr = self.bump.alloc(crate::ast::Expr::Literal(
-					crate::ast::expr::Literal::Undefined { span: end_span },
+				let undefined_expr = self.bump.alloc(Expr::Literal(Literal::Undefined {
+					span: end_span,
+				}));
+				return Ok(Policy::new(
+					PolicyKind::NotUndefined,
+					undefined_expr,
+					start_span.merge(&end_span),
 				));
-				return Ok(Policy::new(PolicyKind::NotUndefined, undefined_expr, start_span.merge(&end_span)));
 			}
 			_ => return Err(self.error(ParseErrorKind::ExpectedIdentifier)),
 		};
@@ -282,7 +288,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 				return Err(self.error(ParseErrorKind::Custom(format!(
 					"Invalid policy kind: {}. Expected 'saturation', 'default', or 'not'",
 					kind_text
-				))))
+				))));
 			}
 		};
 
@@ -295,7 +301,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};
@@ -314,10 +320,7 @@ mod tests {
 				assert_eq!(t.columns[0].data_type, "Int2");
 				let policies = t.columns[0].policies.as_ref().expect("Expected policies");
 				assert_eq!(policies.policies.len(), 1);
-				assert_eq!(
-					policies.policies[0].kind,
-					crate::ast::stmt::ddl::PolicyKind::Saturation
-				);
+				assert_eq!(policies.policies[0].kind, crate::ast::stmt::ddl::PolicyKind::Saturation);
 			}
 			_ => panic!("Expected CREATE TABLE statement"),
 		}
@@ -335,10 +338,7 @@ mod tests {
 				assert_eq!(t.columns.len(), 1);
 				let policies = t.columns[0].policies.as_ref().expect("Expected policies");
 				assert_eq!(policies.policies.len(), 1);
-				assert_eq!(
-					policies.policies[0].kind,
-					crate::ast::stmt::ddl::PolicyKind::Default
-				);
+				assert_eq!(policies.policies[0].kind, crate::ast::stmt::ddl::PolicyKind::Default);
 			}
 			_ => panic!("Expected CREATE TABLE statement"),
 		}
@@ -347,8 +347,7 @@ mod tests {
 	#[test]
 	fn test_create_table_with_multiple_policies() {
 		let bump = Bump::new();
-		let source =
-			"CREATE TABLE test.items { field: Int2 POLICY { saturation error, default 0 } }";
+		let source = "CREATE TABLE test.items { field: Int2 POLICY { saturation error, default 0 } }";
 		let result = tokenize(source, &bump).unwrap();
 		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
@@ -357,14 +356,8 @@ mod tests {
 				assert_eq!(t.columns.len(), 1);
 				let policies = t.columns[0].policies.as_ref().expect("Expected policies");
 				assert_eq!(policies.policies.len(), 2);
-				assert_eq!(
-					policies.policies[0].kind,
-					crate::ast::stmt::ddl::PolicyKind::Saturation
-				);
-				assert_eq!(
-					policies.policies[1].kind,
-					crate::ast::stmt::ddl::PolicyKind::Default
-				);
+				assert_eq!(policies.policies[0].kind, crate::ast::stmt::ddl::PolicyKind::Saturation);
+				assert_eq!(policies.policies[1].kind, crate::ast::stmt::ddl::PolicyKind::Default);
 			}
 			_ => panic!("Expected CREATE TABLE statement"),
 		}

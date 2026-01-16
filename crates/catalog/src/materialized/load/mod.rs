@@ -12,19 +12,19 @@ pub mod subscription;
 pub mod table;
 pub mod view;
 
-pub(crate) use dictionary::load_dictionaries;
-pub(crate) use flow::load_flows;
-pub(crate) use namespace::load_namespaces;
-pub(crate) use operator_retention_policy::load_operator_retention_policies;
-pub(crate) use primary_key::load_primary_keys;
-pub(crate) use primitive_retention_policy::load_source_retention_policies;
-use reifydb_transaction::IntoStandardTransaction;
-pub(crate) use ringbuffer::load_ringbuffers;
-pub(crate) use subscription::load_subscriptions;
-pub(crate) use table::load_tables;
-pub(crate) use view::load_views;
+use dictionary::load_dictionaries;
+use flow::load_flows;
+use namespace::load_namespaces;
+use operator_retention_policy::load_operator_retention_policies;
+use primary_key::load_primary_keys;
+use primitive_retention_policy::load_source_retention_policies;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use ringbuffer::load_ringbuffers;
+use subscription::load_subscriptions;
+use table::load_tables;
+use view::load_views;
 
-use crate::MaterializedCatalog;
+use super::MaterializedCatalog;
 
 /// Loads catalog data from storage and populates a MaterializedCatalog
 pub struct MaterializedCatalogLoader;

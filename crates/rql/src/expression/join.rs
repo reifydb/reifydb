@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::return_error;
-use reifydb_type::{Fragment, diagnostic::query::unsupported_source_qualification};
+use reifydb_type::{error::diagnostic::query::unsupported_source_qualification, fragment::Fragment, return_error};
 
 use crate::{
-	ast::{Ast, AstInfix, InfixOperator},
+	ast::ast::{Ast, AstInfix, InfixOperator},
 	expression::{
 		AccessPrimitiveExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
 		ExpressionCompiler, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
@@ -59,7 +58,7 @@ impl JoinConditionCompiler {
 			}
 			// Handle prefix operators (!, -, +) - need to recursively compile the inner expression
 			Ast::Prefix(prefix) => {
-				use crate::ast::AstPrefixOperator;
+				use crate::ast::ast::AstPrefixOperator;
 
 				let inner = self.compile(*prefix.node)?;
 				let (fragment, operator) = match prefix.operator {

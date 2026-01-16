@@ -7,13 +7,15 @@
 //! CDC storage is independent of MVCC versioned storage - it uses simple BE u64 keys
 //! (CommitVersion) and stores fully resolved values.
 
-mod memory;
-
-pub use memory::MemoryCdcStorage;
+pub mod memory;
 
 use std::collections::Bound;
 
-use reifydb_core::{CommitVersion, interface::{Cdc, CdcBatch}};
+use memory::MemoryCdcStorage;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::{Cdc, CdcBatch},
+};
 
 use crate::error::CdcError;
 
@@ -71,11 +73,7 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 	}
 
 	/// Convenience method with default batch size.
-	fn range(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-	) -> CdcStorageResult<CdcBatch> {
+	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> CdcStorageResult<CdcBatch> {
 		self.read_range(start, end, 1024)
 	}
 
@@ -213,9 +211,14 @@ impl CdcStorage for CdcStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::{
+		interface::cdc::{CdcChange, CdcSequencedChange},
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	};
+	use reifydb_type::util::cowvec::CowVec;
+
 	use super::*;
-	use reifydb_core::{EncodedKey, interface::{CdcChange, CdcSequencedChange}, value::encoded::EncodedValues};
 
 	fn create_test_cdc(version: u64, num_changes: usize) -> Cdc {
 		let changes: Vec<CdcSequencedChange> = (0..num_changes)
@@ -223,7 +226,7 @@ mod tests {
 				sequence: i as u16 + 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![i as u8]),
-					post: EncodedValues(reifydb_core::CowVec::new(vec![])),
+					post: EncodedValues(CowVec::new(vec![])),
 				},
 			})
 			.collect();
@@ -262,11 +265,7 @@ mod tests {
 
 		// Read range [3, 7]
 		let batch = storage
-			.read_range(
-				Bound::Included(CommitVersion(3)),
-				Bound::Included(CommitVersion(7)),
-				100,
-			)
+			.read_range(Bound::Included(CommitVersion(3)), Bound::Included(CommitVersion(7)), 100)
 			.unwrap();
 
 		assert_eq!(batch.items.len(), 5);
@@ -284,9 +283,7 @@ mod tests {
 		}
 
 		// Read with batch size 3
-		let batch = storage
-			.read_range(Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap();
+		let batch = storage.read_range(Bound::Unbounded, Bound::Unbounded, 3).unwrap();
 
 		assert_eq!(batch.items.len(), 3);
 		assert!(batch.has_more);

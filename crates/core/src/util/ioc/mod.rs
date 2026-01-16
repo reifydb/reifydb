@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod resolve_arc;
-mod resolve_rc;
+pub mod resolve_arc;
+pub mod resolve_rc;
 
 use std::{
 	any::{Any, TypeId, type_name},
@@ -10,10 +10,7 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use reifydb_type::{Result, diagnostic::internal, error};
-#[allow(unused_imports)]
-pub use resolve_arc::LazyResolveArc;
-pub use resolve_rc::LazyResolveRc;
+use reifydb_type::{error, error::diagnostic::internal::internal};
 
 struct BoxedValue {
 	value: Box<dyn Any + Send + Sync>,
@@ -53,7 +50,7 @@ impl IocContainer {
 		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
 	}
 
-	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
+	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> reifydb_type::Result<T> {
 		self.dependencies
 			.read()
 			.unwrap()

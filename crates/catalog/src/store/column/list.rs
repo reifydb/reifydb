@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{ColumnKey, PrimitiveId};
-use reifydb_transaction::IntoStandardTransaction;
-
-use crate::{
-	CatalogStore,
-	store::column::{ColumnDef, ColumnId, layout::source_column},
+use reifydb_core::{
+	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
+	key::column::ColumnKey,
 };
+use reifydb_transaction::standard::IntoStandardTransaction;
+
+use crate::{CatalogStore, store::column::layout::source_column};
 
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
@@ -93,16 +93,12 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::TableId;
+pub mod tests {
+	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-	use crate::{
-		CatalogStore,
-		store::column::{ColumnIndex, ColumnToCreate},
-		test_utils::ensure_test_table,
-	};
+	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_ok() {

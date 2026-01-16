@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId},
-	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use super::encode_retention_policy;
 
@@ -35,9 +35,9 @@ pub(crate) fn _create_operator_retention_policy(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		interface::{RingBufferId, TableId, ViewId},
+		interface::catalog::id::{RingBufferId, TableId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;

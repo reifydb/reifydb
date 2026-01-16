@@ -7,9 +7,9 @@
 //! and push channels to enable server-initiated message delivery.
 
 use dashmap::DashMap;
-pub use reifydb_core::interface::SubscriptionId;
-use reifydb_sub_server::ResponseFrame;
-use reifydb_type::Uuid7;
+use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb_sub_server::response::ResponseFrame;
+use reifydb_type::value::uuid::Uuid7;
 use tokio::sync::mpsc;
 
 /// Unique identifier for a WebSocket connection.
@@ -155,9 +155,9 @@ impl Default for SubscriptionRegistry {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_sub_server::ResponseColumn;
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_sub_server::response::ResponseColumn;
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 

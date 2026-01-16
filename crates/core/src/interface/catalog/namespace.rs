@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::interface::NamespaceId;
+use crate::interface::catalog::id::NamespaceId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamespaceDef {

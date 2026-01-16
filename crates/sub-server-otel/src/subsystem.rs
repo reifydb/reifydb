@@ -15,12 +15,11 @@ use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use reifydb_core::{
-	diagnostic::subsystem::init_failed,
-	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
+	runtime::SharedRuntime,
 };
-use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_core::SharedRuntime;
+use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_type::{error, error::diagnostic::subsystem::init_failed};
 
 use crate::config::OtelConfig;
 
@@ -158,7 +157,7 @@ impl Subsystem for OtelSubsystem {
 		"OpenTelemetry"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_type::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -167,7 +166,7 @@ impl Subsystem for OtelSubsystem {
 		// Build the tracer provider (needs runtime context for tonic/hyper)
 		#[cfg(not(feature = "otlp"))]
 		{
-			return Err(error!(reifydb_core::diagnostic::subsystem::feature_disabled("otlp")));
+			return Err(error!(reifydb_type::error::diagnostic::subsystem::feature_disabled("otlp")));
 		}
 
 		#[cfg(feature = "otlp")]
@@ -195,7 +194,7 @@ impl Subsystem for OtelSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	fn shutdown(&mut self) -> reifydb_type::Result<()> {
 		if !self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
 			return Ok(()); // Already shutdown
 		}

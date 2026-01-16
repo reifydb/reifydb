@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::headers::ColumnHeaders;
+use reifydb_transaction::standard::StandardTransaction;
 
 use crate::{
-	StandardTransaction,
 	environment::create_env_columns,
 	execute::{Batch, ExecutionContext, QueryNode},
 };

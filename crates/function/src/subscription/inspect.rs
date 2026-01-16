@@ -2,14 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{SubscriptionDef, SubscriptionId},
-	key::{Key, SubscriptionRowKey},
+	interface::catalog::{
+		id::SubscriptionId,
+		subscription::{SubscriptionColumnDef, SubscriptionDef},
+	},
+	key::{
+		Key, subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey,
+		subscription_row::SubscriptionRowKey,
+	},
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesNamedLayout,
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::named::EncodedValuesNamedLayout,
 	},
 };
-use reifydb_type::Fragment;
+use reifydb_type::{fragment::Fragment, value::uuid::parse::parse_uuid7};
 
 use crate::{GeneratorContext, GeneratorFunction};
 
@@ -22,7 +28,7 @@ impl InspectSubscription {
 }
 
 impl GeneratorFunction for InspectSubscription {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> crate::Result<Columns> {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> reifydb_type::Result<Columns> {
 		let txn = ctx.txn;
 
 		// Extract subscription_id parameter
@@ -42,18 +48,17 @@ impl GeneratorFunction for InspectSubscription {
 			} => {
 				// Parse UTF-8 string as UUID7
 				let uuid_str = container.get(0).expect("subscription_id parameter is empty");
-				reifydb_type::parse_uuid7(Fragment::internal(uuid_str)).expect("Invalid UUID7 format")
+				parse_uuid7(Fragment::internal(uuid_str)).expect("Invalid UUID7 format")
 			}
 			_ => panic!("subscription_id must be of type uuid7 or utf8"),
 		};
 
 		let subscription_id = SubscriptionId(subscription_id_uuid.0);
 
-		let sub_key = reifydb_core::key::SubscriptionKey::encoded(subscription_id);
+		let sub_key = SubscriptionKey::encoded(subscription_id);
 
 		let subscription_def = if let Some(entry) = txn.get(&sub_key)? {
 			// Scan subscription columns
-			use reifydb_core::key::SubscriptionColumnKey;
 			let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription_id), 256)?;
 			let mut columns = Vec::new();
 
@@ -66,9 +71,9 @@ impl GeneratorFunction for InspectSubscription {
 						.to_string();
 					let ty_u8 = subscription_column::LAYOUT
 						.get_u8(&col_entry.values, subscription_column::TYPE);
-					let ty = reifydb_type::Type::from_u8(ty_u8);
+					let ty = reifydb_type::value::r#type::Type::from_u8(ty_u8);
 
-					columns.push(reifydb_core::interface::SubscriptionColumnDef {
+					columns.push(SubscriptionColumnDef {
 						id: col_key.column,
 						name,
 						ty,
@@ -81,7 +86,7 @@ impl GeneratorFunction for InspectSubscription {
 
 			// Get acknowledged version
 			use reifydb_catalog::store::subscription::layout::subscription;
-			let acknowledged_version = reifydb_core::CommitVersion(
+			let acknowledged_version = reifydb_core::common::CommitVersion(
 				subscription::LAYOUT.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
 			);
 

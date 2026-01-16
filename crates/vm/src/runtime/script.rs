@@ -5,19 +5,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{ColumnData, Columns};
+use reifydb_core::value::column::{columns::Columns, data::ColumnData};
 use reifydb_rqlv2::{
-	bytecode::CompiledProgram,
-	expression::{EvalError, ScriptFunctionCaller},
+	bytecode::program::CompiledProgram,
+	expression::{eval::ScriptFunctionCaller, types::EvalError},
 };
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
-use super::{
-	context::VmContext,
-	dispatch::DispatchResult,
-	operand::OperandValue,
-	state::VmState,
-};
+use super::{context::VmContext, dispatch::DispatchResult, operand::OperandValue, state::VmState};
 
 /// Executes script functions by running their bytecode.
 ///

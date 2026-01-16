@@ -3,9 +3,9 @@
 
 use std::ptr;
 
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_f32(&self, row: &mut EncodedValues, index: usize, value: impl Into<f32>) {
@@ -34,10 +34,10 @@ impl EncodedValuesLayout {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_f32() {

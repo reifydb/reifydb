@@ -4,26 +4,29 @@
 //! Pipeline opcodes: Source, Inline, Apply, Collect, PopPipeline, Merge,
 //! EvalMapWithoutInput, EvalExpandWithoutInput, FetchBatch, CheckComplete.
 
-use reifydb_core::util::CowVec;
-use reifydb_core::value::column::{Column, Columns};
-use reifydb_rqlv2::bytecode::OperatorKind;
-use reifydb_type::{Fragment, RowNumber, Value};
-
-use crate::error::{Result, VmError};
-use crate::operator::ScanTableOp;
-use crate::pipeline;
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
+use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_rqlv2::bytecode::opcode::OperatorKind;
+use reifydb_type::{
+	fragment::Fragment,
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	operator::scan_table::ScanTableOp,
+	pipeline,
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// Source - start a table scan and push the first batch as a pipeline.
 pub fn source(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let source_index = ctx.read_u16()?;
 
-	let source_def = ctx.vm.program.sources.get(source_index as usize).ok_or(
-		VmError::InvalidSourceIndex { index: source_index },
-	)?;
+	let source_def = ctx.vm.program.sources.get(source_index as usize).ok_or(VmError::InvalidSourceIndex {
+		index: source_index,
+	})?;
 
 	if let (Some(catalog), Some(tx)) = (&ctx.vm.context.catalog, ctx.tx.as_mut()) {
 		// 1. Initialize scan state
@@ -47,7 +50,9 @@ pub fn source(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 		Ok(ctx.advance_and_continue())
 	} else {
-		Err(VmError::TableNotFound { name: source_def.name.clone() })
+		Err(VmError::TableNotFound {
+			name: source_def.name.clone(),
+		})
 	}
 }
 
@@ -94,8 +99,8 @@ pub fn eval_without_input(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 /// Apply - apply an operator to the top pipeline.
 pub fn apply(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let op_kind_byte = ctx.read_u8()?;
-	let op_kind = OperatorKind::try_from(op_kind_byte).map_err(|_| {
-		VmError::UnknownOperatorKind { kind: op_kind_byte }
+	let op_kind = OperatorKind::try_from(op_kind_byte).map_err(|_| VmError::UnknownOperatorKind {
+		kind: op_kind_byte,
 	})?;
 	ctx.vm.apply_operator(op_kind)?;
 	Ok(ctx.advance_and_continue())
@@ -117,7 +122,9 @@ pub fn pop_pipeline(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 /// Merge - not yet implemented.
 pub fn merge(_ctx: &mut HandlerContext) -> Result<DispatchResult> {
-	Err(VmError::UnsupportedOperation { operation: "Merge".to_string() })
+	Err(VmError::UnsupportedOperation {
+		operation: "Merge".to_string(),
+	})
 }
 
 /// FetchBatch - fetch the next batch from an active scan.
@@ -125,9 +132,10 @@ pub fn fetch_batch(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let source_index = ctx.read_u16()?;
 
 	if let Some(tx) = ctx.tx.as_mut() {
-		let scan_state = ctx.vm.active_scans.get_mut(&source_index).ok_or(
-			VmError::Internal("scan not initialized".to_string()),
-		)?;
+		let scan_state =
+			ctx.vm.active_scans
+				.get_mut(&source_index)
+				.ok_or(VmError::Internal("scan not initialized".to_string()))?;
 
 		let batch_size = ctx.vm.context.config.batch_size;
 		let batch_opt = ScanTableOp::next_batch(scan_state, *tx, batch_size)?;

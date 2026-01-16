@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	catalog::{NamespaceFFI, TableFFI},
-	context::ContextFFI,
+	catalog::{namespace::NamespaceFFI, table::TableFFI},
+	context::context::ContextFFI,
 };
 
 /// Catalog access callbacks (read-only access to catalog system)

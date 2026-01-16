@@ -2,7 +2,7 @@
 # Format Targets - Format all Rust code with rustfmt
 # =============================================================================
 
-.PHONY: format format-rust format-workspace
+.PHONY: format format-rust format-workspace format-check
 
 # Main format target - formats everything
 format: format-rust
@@ -11,6 +11,21 @@ format: format-rust
 # Format all Rust code
 format-rust: ensure-rustfmt format-workspace
 	@echo "✅ Rust formatting complete!"
+
+# Format and fail if files changed (for CI/make all)
+format-check: ensure-rustfmt
+	@echo "🎨 Formatting code..."
+	@cargo +nightly fmt --all
+	@if ! git diff --quiet; then \
+		echo ""; \
+		echo "❌ Error: Code formatting changed files. Please commit the formatting changes and try again."; \
+		echo ""; \
+		echo "   Changed files:"; \
+		git diff --name-only | sed 's/^/     /'; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "✅ Code formatting check passed."
 
 # Ensure rustfmt nightly is installed
 .PHONY: ensure-rustfmt

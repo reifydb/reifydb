@@ -3,14 +3,26 @@
 
 use std::cmp::min;
 
-use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::ColumnExpression;
-use reifydb_type::{
-	Date, DateTime, Decimal, Duration, ROW_NUMBER_COLUMN_NAME, Time, Type, Uint, Value,
-	value::{Blob, IdentityId, Uuid4, Uuid7},
+use reifydb_type::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	row_number::ROW_NUMBER_COLUMN_NAME,
+	time::Time,
+	r#type::Type,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
 };
 
-use crate::{StandardColumnEvaluator, evaluate::ColumnEvaluationContext};
+use super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn column(&self, ctx: &ColumnEvaluationContext, column: &ColumnExpression) -> crate::Result<Column> {
@@ -551,7 +563,7 @@ impl StandardColumnEvaluator {
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::Int::zero());
+							data.push(Int::zero());
 							bitvec.push(false);
 						}
 					}
@@ -634,13 +646,13 @@ impl StandardColumnEvaluator {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
 		interface::identifier::{ColumnIdentifier, ColumnPrimitive},
-		value::column::{Column, ColumnData, Columns},
+		value::column::{Column, columns::Columns, data::ColumnData},
 	};
 	use reifydb_rql::expression::ColumnExpression;
-	use reifydb_type::{Fragment, Params};
+	use reifydb_type::{fragment::Fragment, params::Params};
 
 	use crate::{
 		evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},

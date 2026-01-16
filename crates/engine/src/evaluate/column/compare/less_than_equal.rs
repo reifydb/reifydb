@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_rql::expression::LessThanEqExpression;
-use reifydb_type::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
+use reifydb_type::error::diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types;
 
-use super::{LessThanEqual, compare_columns};
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::{super::StandardColumnEvaluator, LessThanEqual, compare_columns};
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn less_than_equal(

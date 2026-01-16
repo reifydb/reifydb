@@ -3,15 +3,27 @@
 
 use num_bigint::Sign;
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF32, RowNumber, Time, Uint, Uuid4, Uuid7,
-	diagnostic::serde::serde_keycode_error,
+	error,
+	error::diagnostic::serde::serde_keycode_error,
+	value::{
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		row_number::RowNumber,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 
 use super::{catalog, deserialize};
-use crate::{
-	Result, error,
-	interface::{IndexId, PrimitiveId},
-};
+use crate::interface::catalog::{id::IndexId, primitive::PrimitiveId};
 
 pub struct KeyDeserializer<'a> {
 	buffer: &'a [u8],
@@ -38,7 +50,7 @@ impl<'a> KeyDeserializer<'a> {
 		self.position
 	}
 
-	fn read_exact(&mut self, count: usize) -> Result<&'a [u8]> {
+	fn read_exact(&mut self, count: usize) -> reifydb_type::Result<&'a [u8]> {
 		if self.remaining() < count {
 			return Err(error!(serde_keycode_error(format!(
 				"unexpected end of key at position {}: need {} bytes, have {}",
@@ -52,72 +64,72 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(&self.buffer[start..self.position])
 	}
 
-	pub fn read_bool(&mut self) -> Result<bool> {
+	pub fn read_bool(&mut self) -> reifydb_type::Result<bool> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<bool>(bytes)?)
 	}
 
-	pub fn read_f32(&mut self) -> Result<f32> {
+	pub fn read_f32(&mut self) -> reifydb_type::Result<f32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<f32>(bytes)?)
 	}
 
-	pub fn read_f64(&mut self) -> Result<f64> {
+	pub fn read_f64(&mut self) -> reifydb_type::Result<f64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<f64>(bytes)?)
 	}
 
-	pub fn read_i8(&mut self) -> Result<i8> {
+	pub fn read_i8(&mut self) -> reifydb_type::Result<i8> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<i8>(bytes)?)
 	}
 
-	pub fn read_i16(&mut self) -> Result<i16> {
+	pub fn read_i16(&mut self) -> reifydb_type::Result<i16> {
 		let bytes = self.read_exact(2)?;
 		Ok(deserialize::<i16>(bytes)?)
 	}
 
-	pub fn read_i32(&mut self) -> Result<i32> {
+	pub fn read_i32(&mut self) -> reifydb_type::Result<i32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<i32>(bytes)?)
 	}
 
-	pub fn read_i64(&mut self) -> Result<i64> {
+	pub fn read_i64(&mut self) -> reifydb_type::Result<i64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<i64>(bytes)?)
 	}
 
-	pub fn read_i128(&mut self) -> Result<i128> {
+	pub fn read_i128(&mut self) -> reifydb_type::Result<i128> {
 		let bytes = self.read_exact(16)?;
 		Ok(deserialize::<i128>(bytes)?)
 	}
 
-	pub fn read_u8(&mut self) -> Result<u8> {
+	pub fn read_u8(&mut self) -> reifydb_type::Result<u8> {
 		let bytes = self.read_exact(1)?;
 		Ok(deserialize::<u8>(bytes)?)
 	}
 
-	pub fn read_u16(&mut self) -> Result<u16> {
+	pub fn read_u16(&mut self) -> reifydb_type::Result<u16> {
 		let bytes = self.read_exact(2)?;
 		Ok(deserialize::<u16>(bytes)?)
 	}
 
-	pub fn read_u32(&mut self) -> Result<u32> {
+	pub fn read_u32(&mut self) -> reifydb_type::Result<u32> {
 		let bytes = self.read_exact(4)?;
 		Ok(deserialize::<u32>(bytes)?)
 	}
 
-	pub fn read_u64(&mut self) -> Result<u64> {
+	pub fn read_u64(&mut self) -> reifydb_type::Result<u64> {
 		let bytes = self.read_exact(8)?;
 		Ok(deserialize::<u64>(bytes)?)
 	}
 
-	pub fn read_u128(&mut self) -> Result<u128> {
+	pub fn read_u128(&mut self) -> reifydb_type::Result<u128> {
 		let bytes = self.read_exact(16)?;
 		Ok(deserialize::<u128>(bytes)?)
 	}
 
-	pub fn read_bytes(&mut self) -> Result<Vec<u8>> {
+	pub fn read_bytes(&mut self) -> reifydb_type::Result<Vec<u8>> {
 		let mut result = Vec::new();
 		loop {
 			if self.remaining() < 1 {
@@ -157,7 +169,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(result)
 	}
 
-	pub fn read_str(&mut self) -> Result<String> {
+	pub fn read_str(&mut self) -> reifydb_type::Result<String> {
 		let bytes = self.read_bytes()?;
 		String::from_utf8(bytes).map_err(|e| {
 			error!(serde_keycode_error(format!(
@@ -167,17 +179,17 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_primitive_id(&mut self) -> Result<PrimitiveId> {
+	pub fn read_primitive_id(&mut self) -> reifydb_type::Result<PrimitiveId> {
 		let bytes = self.read_exact(9)?;
 		catalog::deserialize_primitive_id(bytes)
 	}
 
-	pub fn read_index_id(&mut self) -> Result<IndexId> {
+	pub fn read_index_id(&mut self) -> reifydb_type::Result<IndexId> {
 		let bytes = self.read_exact(9)?;
 		catalog::deserialize_index_id(bytes)
 	}
 
-	pub fn read_date(&mut self) -> Result<Date> {
+	pub fn read_date(&mut self) -> reifydb_type::Result<Date> {
 		let days = self.read_i32()?;
 		Date::from_days_since_epoch(days).ok_or_else(|| {
 			error!(serde_keycode_error(format!(
@@ -187,12 +199,12 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_datetime(&mut self) -> Result<DateTime> {
+	pub fn read_datetime(&mut self) -> reifydb_type::Result<DateTime> {
 		let nanos = self.read_i64()?;
 		Ok(DateTime::from_nanos_since_epoch(nanos))
 	}
 
-	pub fn read_time(&mut self) -> Result<Time> {
+	pub fn read_time(&mut self) -> reifydb_type::Result<Time> {
 		let nanos = self.read_u64()?;
 		Time::from_nanos_since_midnight(nanos).ok_or_else(|| {
 			error!(serde_keycode_error(format!(
@@ -202,17 +214,17 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_duration(&mut self) -> Result<Duration> {
+	pub fn read_duration(&mut self) -> reifydb_type::Result<Duration> {
 		let nanos = self.read_i64()?;
 		Ok(Duration::from_nanoseconds(nanos))
 	}
 
-	pub fn read_row_number(&mut self) -> Result<RowNumber> {
+	pub fn read_row_number(&mut self) -> reifydb_type::Result<RowNumber> {
 		let value = self.read_u64()?;
 		Ok(RowNumber(value))
 	}
 
-	pub fn read_identity_id(&mut self) -> Result<IdentityId> {
+	pub fn read_identity_id(&mut self) -> reifydb_type::Result<IdentityId> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			error!(serde_keycode_error(format!("invalid IdentityId at position {}: {}", self.position, e)))
@@ -220,7 +232,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(IdentityId::from(Uuid7::from(uuid)))
 	}
 
-	pub fn read_uuid4(&mut self) -> Result<Uuid4> {
+	pub fn read_uuid4(&mut self) -> reifydb_type::Result<Uuid4> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			error!(serde_keycode_error(format!("invalid Uuid4 at position {}: {}", self.position, e)))
@@ -228,7 +240,7 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid4::from(uuid))
 	}
 
-	pub fn read_uuid7(&mut self) -> Result<Uuid7> {
+	pub fn read_uuid7(&mut self) -> reifydb_type::Result<Uuid7> {
 		let bytes = self.read_bytes()?;
 		let uuid = uuid::Uuid::from_slice(&bytes).map_err(|e| {
 			error!(serde_keycode_error(format!("invalid Uuid7 at position {}: {}", self.position, e)))
@@ -236,12 +248,12 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Uuid7::from(uuid))
 	}
 
-	pub fn read_blob(&mut self) -> Result<Blob> {
+	pub fn read_blob(&mut self) -> reifydb_type::Result<Blob> {
 		let bytes = self.read_bytes()?;
 		Ok(Blob::from(bytes))
 	}
 
-	pub fn read_int(&mut self) -> Result<Int> {
+	pub fn read_int(&mut self) -> reifydb_type::Result<Int> {
 		let sign = self.read_exact(1)?[0];
 		let len = self.read_u32()? as usize;
 		let bytes = self.read_exact(len)?;
@@ -254,21 +266,21 @@ impl<'a> KeyDeserializer<'a> {
 		Ok(Int(num_bigint::BigInt::from_bytes_be(sign, bytes)))
 	}
 
-	pub fn read_uint(&mut self) -> Result<Uint> {
+	pub fn read_uint(&mut self) -> reifydb_type::Result<Uint> {
 		let len = self.read_u32()? as usize;
 		let bytes = self.read_exact(len)?;
 		Ok(Uint(num_bigint::BigInt::from_bytes_be(Sign::Plus, bytes)))
 	}
 
-	pub fn read_decimal(&mut self) -> Result<Decimal> {
+	pub fn read_decimal(&mut self) -> reifydb_type::Result<Decimal> {
 		let s = self.read_str()?;
 		s.parse::<Decimal>().map_err(|e| {
 			error!(serde_keycode_error(format!("invalid Decimal at position {}: {}", self.position, e)))
 		})
 	}
 
-	pub fn read_value(&mut self) -> Result<reifydb_type::Value> {
-		use reifydb_type::Value;
+	pub fn read_value(&mut self) -> reifydb_type::Result<reifydb_type::value::Value> {
+		use reifydb_type::value::Value;
 
 		if self.remaining() < 1 {
 			return Err(error!(serde_keycode_error(format!(
@@ -295,7 +307,7 @@ impl<'a> KeyDeserializer<'a> {
 			0x02 => {
 				let f = self.read_f32()?;
 				Ok(Value::Float4(OrderedF32::try_from(f).map_err(|e| {
-					error!(reifydb_type::diagnostic::serde::serde_keycode_error(format!(
+					error!(serde_keycode_error(format!(
 						"invalid f32 at position {}: {}",
 						self.position, e
 					)))
@@ -303,7 +315,7 @@ impl<'a> KeyDeserializer<'a> {
 			}
 			0x03 => {
 				let f = self.read_f64()?;
-				Ok(Value::Float8(reifydb_type::OrderedF64::try_from(f).map_err(|e| {
+				Ok(Value::Float8(OrderedF64::try_from(f).map_err(|e| {
 					error!(serde_keycode_error(format!(
 						"invalid f64 at position {}: {}",
 						self.position, e
@@ -408,17 +420,23 @@ impl<'a> KeyDeserializer<'a> {
 		}
 	}
 
-	pub fn read_raw(&mut self, count: usize) -> Result<&'a [u8]> {
+	pub fn read_raw(&mut self, count: usize) -> reifydb_type::Result<&'a [u8]> {
 		self.read_exact(count)
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::f64::consts::E;
 
-	use super::*;
-	use crate::util::encoding::keycode::KeySerializer;
+	use reifydb_type::value::{
+		date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
+	};
+
+	use crate::{
+		interface::catalog::{id::IndexId, primitive::PrimitiveId},
+		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	};
 
 	#[test]
 	fn test_read_bool() {
@@ -498,7 +516,6 @@ mod tests {
 
 	#[test]
 	fn test_read_date() {
-		use reifydb_type::Date;
 		let mut ser = KeySerializer::new();
 		let date = Date::from_ymd(2024, 1, 1).unwrap();
 		ser.extend_date(&date);
@@ -511,7 +528,6 @@ mod tests {
 
 	#[test]
 	fn test_read_datetime() {
-		use reifydb_type::DateTime;
 		let mut ser = KeySerializer::new();
 		let datetime = DateTime::from_ymd_hms(2024, 1, 1, 12, 30, 45).unwrap();
 		ser.extend_datetime(&datetime);
@@ -524,7 +540,6 @@ mod tests {
 
 	#[test]
 	fn test_read_time() {
-		use reifydb_type::Time;
 		let mut ser = KeySerializer::new();
 		let time = Time::from_hms(12, 30, 45).unwrap();
 		ser.extend_time(&time);
@@ -537,7 +552,6 @@ mod tests {
 
 	#[test]
 	fn test_read_duration() {
-		use reifydb_type::Duration;
 		let mut ser = KeySerializer::new();
 		let duration = Duration::from_nanoseconds(1000000);
 		ser.extend_duration(&duration);
@@ -550,7 +564,6 @@ mod tests {
 
 	#[test]
 	fn test_read_row_number() {
-		use reifydb_type::RowNumber;
 		let mut ser = KeySerializer::new();
 		let row = RowNumber(42);
 		ser.extend_row_number(&row);
@@ -563,7 +576,6 @@ mod tests {
 
 	#[test]
 	fn test_read_primitive_id() {
-		use crate::interface::PrimitiveId;
 		let mut ser = KeySerializer::new();
 		let primitive = PrimitiveId::table(42);
 		ser.extend_primitive_id(primitive);
@@ -576,7 +588,6 @@ mod tests {
 
 	#[test]
 	fn test_read_index_id() {
-		use crate::interface::IndexId;
 		let mut ser = KeySerializer::new();
 		let index = IndexId::primary(999);
 		ser.extend_index_id(index);

@@ -15,11 +15,10 @@ impl_safe_convert_float_to_uint!(f32);
 impl_safe_convert_to_decimal_from_float!(f32);
 
 #[cfg(test)]
-mod tests {
-	use crate::SafeConvert;
-
+pub mod tests {
 	mod f64 {
 		use super::*;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert() {
@@ -44,7 +43,7 @@ mod tests {
 	}
 
 	mod i8 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -132,7 +131,7 @@ mod tests {
 	}
 
 	mod i16 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -185,7 +184,7 @@ mod tests {
 	}
 
 	mod i32 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -231,7 +230,7 @@ mod tests {
 	}
 
 	mod i64 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -277,7 +276,7 @@ mod tests {
 	}
 
 	mod i128 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -323,7 +322,7 @@ mod tests {
 	}
 
 	mod u8 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -404,7 +403,7 @@ mod tests {
 	}
 
 	mod u16 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -450,7 +449,7 @@ mod tests {
 	}
 
 	mod u32 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -496,7 +495,7 @@ mod tests {
 	}
 
 	mod u64 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -542,7 +541,7 @@ mod tests {
 	}
 
 	mod u128 {
-		use crate::SafeConvert;
+		use crate::value::number::safe::convert::SafeConvert;
 
 		#[test]
 		fn test_checked_convert_happy() {
@@ -574,8 +573,7 @@ mod tests {
 	}
 
 	mod decimal {
-		use super::*;
-		use crate::Decimal;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {

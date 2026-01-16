@@ -7,13 +7,13 @@
 //! multiple state values indexed by keys, such as group-by aggregations.
 
 use reifydb_core::{
-	util::encoding::keycode::KeySerializer,
-	value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout},
+	util::encoding::keycode::serializer::KeySerializer,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 };
-use reifydb_type::{Type, Value};
+use reifydb_type::value::{Value, r#type::Type};
 
 use super::{FFIRawStatefulOperator, utils};
-use crate::{OperatorContext, error::Result};
+use crate::{error::Result, operator::context::OperatorContext};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 ///

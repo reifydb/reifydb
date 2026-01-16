@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{diagnostic::engine, return_error};
-
-use crate::value::{
-	column::ColumnData,
-	container::{BlobContainer, BoolContainer, NumberContainer, TemporalContainer, Utf8Container, UuidContainer},
+use reifydb_type::{
+	error::diagnostic::engine::frame_error,
+	return_error,
+	value::container::{
+		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
+		utf8::Utf8Container, uuid::UuidContainer,
+	},
 };
 
+use crate::value::column::ColumnData;
+
 impl ColumnData {
-	pub fn extend(&mut self, other: ColumnData) -> crate::Result<()> {
+	pub fn extend(&mut self, other: ColumnData) -> reifydb_type::Result<()> {
 		match (&mut *self, other) {
 			// Same type extensions - delegate to container extend
 			// method
@@ -270,7 +274,7 @@ impl ColumnData {
 						};
 					}
 					ColumnData::IdentityId(_) => {
-						return_error!(engine::frame_error(
+						return_error!(frame_error(
 							"Cannot extend IdentityId column from Undefined".to_string()
 						));
 					}
@@ -336,7 +340,7 @@ impl ColumnData {
 
 			// Type mismatch
 			(_, _) => {
-				return_error!(engine::frame_error("column type mismatch".to_string()));
+				return_error!(frame_error("column type mismatch".to_string()));
 			}
 		}
 

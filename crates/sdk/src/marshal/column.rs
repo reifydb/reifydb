@@ -5,20 +5,33 @@
 
 use std::mem::size_of;
 
-use reifydb_abi::{BufferFFI, ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI};
-use reifydb_core::value::column::{Column, ColumnData, Columns};
+use reifydb_abi::data::{
+	buffer::BufferFFI,
+	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
+};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
-	BitVec, Date, DateTime, Decimal, Duration, Fragment, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7,
-	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+	fragment::Fragment,
+	util::bitvec::BitVec,
+	value::{
+		blob::Blob,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		row_number::RowNumber,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 use serde::Serialize;
 
 use super::util::column_data_to_type_code;
-use crate::ffi::Arena;
-
-// ============================================================================
-// High-level Columns marshalling
-// ============================================================================
+use crate::ffi::arena::Arena;
 
 impl Arena {
 	/// Marshal Columns to FFI representation
@@ -346,8 +359,6 @@ impl Arena {
 
 	/// Unmarshal bitvec from raw bytes
 	fn unmarshal_bitvec(&self, ffi: &BufferFFI, len: usize) -> BitVec {
-		use reifydb_type::BitVec;
-
 		if ffi.is_empty() || len == 0 {
 			return BitVec::repeat(len, true); // All defined if no bitvec
 		}
@@ -445,7 +456,6 @@ impl Arena {
 
 			// UUID types - 16 bytes each
 			ColumnData::IdentityId(container) => {
-				// IdentityId wraps Uuid7, which wraps StdUuid
 				let ids: &[IdentityId] = &**container;
 				let bytes: Vec<u8> =
 					ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
@@ -501,7 +511,7 @@ impl Arena {
 				..
 			} => {
 				// Blob is a newtype around Vec<u8>, get bytes from each
-				let blobs: &[reifydb_type::Blob] = &**container;
+				let blobs: &[Blob] = &**container;
 				self.marshal_blob_slices(blobs)
 			}
 
@@ -583,7 +593,7 @@ impl Arena {
 	}
 
 	/// Marshal Blob slices with offsets (Arrow-style)
-	pub(super) fn marshal_blob_slices(&mut self, blobs: &[reifydb_type::Blob]) -> (BufferFFI, BufferFFI) {
+	pub(super) fn marshal_blob_slices(&mut self, blobs: &[Blob]) -> (BufferFFI, BufferFFI) {
 		let mut offsets: Vec<u64> = Vec::with_capacity(blobs.len() + 1);
 		let mut data: Vec<u8> = Vec::new();
 

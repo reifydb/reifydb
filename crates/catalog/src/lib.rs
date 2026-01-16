@@ -3,21 +3,17 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use reifydb_core::Result;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
-mod catalog;
-mod materialized;
+pub mod catalog;
+pub mod materialized;
 pub mod store;
 pub mod system;
 pub mod test_utils;
 pub mod vtable;
 
-pub use catalog::Catalog;
-pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
-// Re-export moved modules for backward compatibility
-pub use store::column;
-pub use store::{column_policy, namespace, primary_key, primitive, ringbuffer, sequence, table, view};
+/// Result type alias for this crate
+pub type Result<T> = reifydb_type::Result<T>;
 
 pub struct CatalogStore;
 

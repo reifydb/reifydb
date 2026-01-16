@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{FlowId, FlowKey, NamespaceFlowKey};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::{
+	interface::catalog::flow::FlowId,
+	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
+};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::CatalogStore;
 

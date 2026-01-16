@@ -10,21 +10,35 @@ use std::{
 };
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
+	common::CommitVersion,
 	delta::Delta,
 	event::{EventBus, EventListener, store::StatsProcessed},
-	interface::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
-	runtime::ComputePool,
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
+	runtime::compute::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::encoded::EncodedValues,
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
 use reifydb_metric::{
-	CdcStatsListener, CdcStatsReader, MetricsWorker, MetricsWorkerConfig, MultiStorageStats, StorageStatsListener,
-	StorageStatsReader, Tier,
+	cdc::{CdcStats, CdcStatsReader},
+	multi::{MultiStorageStats, StorageStatsReader, Tier},
+	worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
-use reifydb_store_multi::{HotConfig, MultiStoreConfig, StandardMultiStore, hot::HotStorage};
-use reifydb_store_single::StandardSingleStore;
-use reifydb_testing::{tempdir::temp_dir, testscript};
+use reifydb_store_multi::{
+	config::{HotConfig, MultiStoreConfig},
+	hot::storage::HotStorage,
+	store::StandardMultiStore,
+};
+use reifydb_store_single::store::StandardSingleStore;
+use reifydb_testing::{
+	tempdir::temp_dir,
+	testscript::{
+		command::Command,
+		runner::{self, Runner as TestRunner},
+	},
+};
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
@@ -38,7 +52,7 @@ fn test_memory(path: &Path) {
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();
 	event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
-	testscript::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
+	runner::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
 		.expect("test failed")
 }
 
@@ -49,7 +63,7 @@ fn test_sqlite(path: &Path) {
 		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 		let stats_waiter = StatsWaiter::new();
 		event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
-		testscript::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
+		runner::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
 	})
 	.expect("test failed")
 }
@@ -169,8 +183,8 @@ impl Runner {
 	}
 }
 
-impl testscript::Runner for Runner {
-	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
+impl TestRunner for Runner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
 			// ==================== Data Operations ====================
@@ -187,7 +201,7 @@ impl testscript::Runner for Runner {
 					.get(&key, version)?
 					.map(|sv: MultiVersionValues| sv.values.to_vec());
 
-				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
+				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
 
 			// contains KEY [version=VERSION]
@@ -197,7 +211,7 @@ impl testscript::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.multi_store.contains(&key, version)?;
-				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
+				writeln!(output, "{} => {}", format::raw::Raw::key(&key), contains)?;
 			}
 
 			// scan [reverse=BOOL] [version=VERSION]
@@ -340,7 +354,7 @@ impl testscript::Runner for Runner {
 
 				// Aggregate all CDC stats
 				let cdc_entries = self.cdc_reader.scan_all()?;
-				let mut total_cdc = reifydb_metric::CdcStats::default();
+				let mut total_cdc = CdcStats::default();
 				for (_, stats) in cdc_entries {
 					total_cdc += stats;
 				}
@@ -414,7 +428,7 @@ impl testscript::Runner for Runner {
 
 				// Aggregate all CDC stats
 				let cdc_entries = self.cdc_reader.scan_all()?;
-				let mut total_cdc = reifydb_metric::CdcStats::default();
+				let mut total_cdc = CdcStats::default();
 				for (_, stats) in cdc_entries {
 					total_cdc += stats;
 				}
@@ -474,7 +488,7 @@ impl testscript::Runner for Runner {
 
 fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = format::raw::Raw::key_value(&item.key, item.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

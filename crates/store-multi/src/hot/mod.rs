@@ -5,7 +5,3 @@ pub mod memory;
 pub mod result;
 pub mod sqlite;
 pub mod storage;
-
-pub use storage::HotStorage;
-
-pub use crate::tier::{EntryKind, RangeBatch, RawEntry, TierBackend, TierStorage};

@@ -3,12 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{PrimitiveId, VTableDef};
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_metric::{Id, MetricReader, Tier};
+use reifydb_core::{
+	interface::catalog::{primitive::PrimitiveId, vtable::VTableDef},
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
+use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -60,7 +62,7 @@ impl<T: IntoStandardTransaction> VTable<T> for ViewStorageStats {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
 				// Filter for view sources only
-				if let Id::Source(PrimitiveId::View(view_id)) = obj_id {
+				if let MetricId::Source(PrimitiveId::View(view_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_view(txn, view_id)? {
 						Some(view_def) => view_def.namespace.0,

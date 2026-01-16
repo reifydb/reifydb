@@ -3,9 +3,9 @@
 
 use std::time::Duration;
 
-use reifydb_core::CommitVersion;
+use reifydb_core::common::CommitVersion;
 
-pub use crate::multi::transaction::{CommandTransaction, QueryTransaction, TransactionMulti};
+use crate::multi::transaction::{TransactionMulti, command::CommandTransaction, query::QueryTransaction};
 
 pub mod conflict;
 pub mod marker;
@@ -16,18 +16,9 @@ pub mod transaction;
 pub mod types;
 pub mod watermark;
 
-/// Backwards-compat type alias
-pub type TransactionMultiVersion = TransactionMulti;
-
-/// Backwards-compat type alias
-pub type StandardQueryTransaction = QueryTransaction;
-
-/// Backwards-compat type alias
-pub type StandardCommandTransaction = CommandTransaction;
-
 impl TransactionMulti {
 	/// Get the current version from the transaction manager
-	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+	pub fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
 		self.tm.version()
 	}
 

@@ -241,10 +241,10 @@ impl<K: Hash + Eq + Clone, V: Clone> ConcurrentLruCache<K, V> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
 	mod lru {
-		use crate::util::LruCache;
+		use crate::util::lru::LruCache;
 
 		#[test]
 		fn test_basic_operations() {
@@ -335,7 +335,7 @@ mod tests {
 	}
 
 	mod concurrent {
-		use crate::util::ConcurrentLruCache;
+		use crate::util::lru::ConcurrentLruCache;
 
 		#[test]
 		fn test_basic_operations() {

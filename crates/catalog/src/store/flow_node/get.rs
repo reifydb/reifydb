@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Error,
-	interface::{FlowNodeDef, FlowNodeId},
-};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::internal;
+use reifydb_core::interface::catalog::flow::{FlowNodeDef, FlowNodeId};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::Error, internal};
 
 use crate::CatalogStore;
 
@@ -25,8 +22,8 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::FlowNodeId;
+pub mod tests {
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

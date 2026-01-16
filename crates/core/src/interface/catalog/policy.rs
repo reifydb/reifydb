@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{ColumnId, ColumnPolicyId};
+use crate::interface::catalog::id::{ColumnId, ColumnPolicyId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnPolicy {

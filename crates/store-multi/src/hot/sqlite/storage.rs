@@ -10,7 +10,7 @@
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use parking_lot::Mutex;
-use reifydb_type::{CowVec, Result, diagnostic::internal::internal, error};
+use reifydb_type::{Result, error, error::diagnostic::internal::internal, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 
@@ -375,8 +375,8 @@ fn insert_entries_in_tx(
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::TableId as CoreTableId;
+pub mod tests {
+	use reifydb_core::interface::catalog::{id::TableId, primitive::PrimitiveId};
 
 	use super::*;
 
@@ -385,8 +385,11 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Put and get
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))])]))
-			.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))],
+		)]))
+		.unwrap();
 		let value = storage.get(EntryKind::Multi, b"key1").unwrap();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
@@ -401,12 +404,10 @@ mod tests {
 
 	#[test]
 	fn test_source_tables() {
-		use reifydb_core::interface::PrimitiveId;
-
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		let source1 = PrimitiveId::Table(CoreTableId(1));
-		let source2 = PrimitiveId::Table(CoreTableId(2));
+		let source1 = PrimitiveId::Table(TableId(1));
+		let source2 = PrimitiveId::Table(TableId(2));
 
 		storage.set(HashMap::from([(
 			EntryKind::Source(source1),
@@ -419,17 +420,35 @@ mod tests {
 		)]))
 		.unwrap();
 
-		assert_eq!(storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(), Some(b"table1".as_slice()));
-		assert_eq!(storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(), Some(b"table2".as_slice()));
+		assert_eq!(
+			storage.get(EntryKind::Source(source1), b"key").unwrap().as_deref(),
+			Some(b"table1".as_slice())
+		);
+		assert_eq!(
+			storage.get(EntryKind::Source(source2), b"key").unwrap().as_deref(),
+			Some(b"table2".as_slice())
+		);
 	}
 
 	#[test]
 	fn test_range_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+		)]))
+		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -448,9 +467,21 @@ mod tests {
 	fn test_range_rev_next() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))])])).unwrap();
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))])])).unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))],
+		)]))
+		.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))],
+		)]))
+		.unwrap();
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
@@ -471,7 +502,11 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
+			storage.set(HashMap::from([(
+				EntryKind::Multi,
+				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
+			)]))
+			.unwrap();
 		}
 
 		// Use a single cursor to stream through all entries
@@ -504,7 +539,11 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))])])).unwrap();
+			storage.set(HashMap::from([(
+				EntryKind::Multi,
+				vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))],
+			)]))
+			.unwrap();
 		}
 
 		// Use a single cursor to stream in reverse

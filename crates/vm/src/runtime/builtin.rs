@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::error::{Result, VmError};
 use super::operand::OperandValue;
+use crate::error::{Result, VmError};
 
 /// Builtin function signature: takes arguments, returns optional result.
 pub type BuiltinFn = fn(&[OperandValue]) -> Result<Option<OperandValue>>;
@@ -73,11 +73,11 @@ fn builtin_console_log(args: &[OperandValue]) -> Result<Option<OperandValue>> {
 pub fn print_value(value: &OperandValue) {
 	match value {
 		OperandValue::Scalar(v) => match v {
-			reifydb_type::Value::Undefined => println!("undefined"),
-			reifydb_type::Value::Boolean(b) => println!("{}", b),
-			reifydb_type::Value::Int8(n) => println!("{}", n),
-			reifydb_type::Value::Float8(f) => println!("{}", f),
-			reifydb_type::Value::Utf8(s) => println!("{}", s),
+			reifydb_type::value::Value::Undefined => println!("undefined"),
+			reifydb_type::value::Value::Boolean(b) => println!("{}", b),
+			reifydb_type::value::Value::Int8(n) => println!("{}", n),
+			reifydb_type::value::Value::Float8(f) => println!("{}", f),
+			reifydb_type::value::Value::Utf8(s) => println!("{}", s),
 			_ => println!("{:?}", v),
 		},
 		OperandValue::Record(r) => {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_u8(&self, row: &mut EncodedValues, index: usize, value: impl Into<u8>) {
@@ -33,10 +33,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_u8() {

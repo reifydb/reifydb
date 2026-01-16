@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
 
 /// Shared application state for admin handler.
 ///

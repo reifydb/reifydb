@@ -5,7 +5,10 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, error::diagnostic::number::decimal_precision_invalid, return_error};
+use crate::{
+	error::{Error, diagnostic::number::decimal_precision_invalid},
+	return_error,
+};
 
 /// Precision for a decimal type (minimum 1 total digit)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

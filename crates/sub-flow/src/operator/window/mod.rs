@@ -4,42 +4,58 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
-	interface::FlowNodeId,
-	util::{clock, encoding::keycode::KeySerializer},
-	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
-	},
+	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
+	interface::catalog::flow::FlowNodeId,
 };
-use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator};
-use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::expression::{Expression, column_name_from_expression};
-use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	operator::{
-		Operator, Operators,
-		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
-	},
+	operator::{Operator, Operators},
 	transaction::FlowTransaction,
 };
 
-mod rolling;
-mod sliding;
-mod tumbling;
+pub mod rolling;
+pub mod sliding;
+pub mod tumbling;
 
-pub use rolling::apply_rolling_window;
-pub use sliding::apply_sliding_window;
-pub use tumbling::apply_tumbling_window;
+use rolling::apply_rolling_window;
+use sliding::apply_sliding_window;
+use tumbling::apply_tumbling_window;
 
 static EMPTY_PARAMS: Params = Params::None;
 
 use std::sync::LazyLock;
 
-use reifydb_engine::stack::Stack;
-use reifydb_sdk::{FlowChange, FlowDiff};
+use reifydb_core::{
+	row::Row,
+	util::{clock, encoding::keycode::serializer::KeySerializer},
+	value::{
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::{
+			encoded::EncodedValues,
+			key::{EncodedKey, EncodedKeyRange},
+			layout::EncodedValuesLayout,
+			named::EncodedValuesNamedLayout,
+		},
+	},
+};
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	stack::Stack,
+};
+use reifydb_hash::{Hash128, xxh::xxh3_128};
+use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::{
+	error::Error,
+	fragment::Fragment,
+	internal,
+	params::Params,
+	util::cowvec::CowVec,
+	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
+};
+
+use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
@@ -234,11 +250,11 @@ impl WindowOperator {
 							let value = col.data().get_value(row_idx);
 							// Convert value to u64 timestamp
 							let ts = match value {
-								reifydb_type::Value::Int8(v) => v as u64,
-								reifydb_type::Value::Uint8(v) => v,
-								reifydb_type::Value::Int4(v) => v as u64,
-								reifydb_type::Value::Uint4(v) => v as u64,
-								reifydb_type::Value::DateTime(dt) => {
+								reifydb_type::value::Value::Int8(v) => v as u64,
+								reifydb_type::value::Value::Uint8(v) => v,
+								reifydb_type::value::Value::Int4(v) => v as u64,
+								reifydb_type::value::Value::Uint4(v) => v as u64,
+								reifydb_type::value::Value::DateTime(dt) => {
 									dt.timestamp_millis() as u64
 								}
 								_ => {

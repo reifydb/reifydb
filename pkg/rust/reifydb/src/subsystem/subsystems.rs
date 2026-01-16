@@ -10,8 +10,8 @@ use std::{
 	},
 };
 
-use reifydb_core::Result;
-use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_type::Result;
 use tracing::{debug, error};
 
 use crate::health::HealthMonitor;

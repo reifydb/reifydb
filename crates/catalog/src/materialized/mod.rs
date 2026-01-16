@@ -1,31 +1,39 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod dictionary;
-mod flow;
+pub mod dictionary;
+pub mod flow;
 pub mod load;
-mod namespace;
-mod operator_retention_policy;
-mod primary_key;
-mod primitive_retention_policy;
-mod ringbuffer;
-mod subscription;
-mod table;
-mod view;
+pub mod namespace;
+pub mod operator_retention_policy;
+pub mod primary_key;
+pub mod primitive_retention_policy;
+pub mod ringbuffer;
+pub mod subscription;
+pub mod table;
+pub mod view;
 
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	interface::{
-		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
-		PrimaryKeyId, PrimitiveId, RingBufferDef, RingBufferId, SubscriptionDef, SubscriptionId, TableDef,
-		TableId, VTableDef, VTableId, ViewDef, ViewId,
+	interface::catalog::{
+		dictionary::DictionaryDef,
+		flow::{FlowDef, FlowId, FlowNodeId},
+		id::{DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, SubscriptionId, TableId, ViewId},
+		key::PrimaryKeyDef,
+		namespace::NamespaceDef,
+		primitive::PrimitiveId,
+		ringbuffer::RingBufferDef,
+		subscription::SubscriptionDef,
+		table::TableDef,
+		view::ViewDef,
+		vtable::{VTableDef, VTableId},
 	},
 	retention::RetentionPolicy,
-	util::MultiVersionContainer,
+	util::multi::MultiVersionContainer,
 };
-use reifydb_type::diagnostic::catalog::virtual_table_already_exists;
+use reifydb_type::error::diagnostic::catalog::virtual_table_already_exists;
 
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
@@ -147,7 +155,7 @@ impl MaterializedCatalog {
 				.get(&def.namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", def.namespace.0));
-			return Err(reifydb_type::Error(virtual_table_already_exists(&ns_name, &def.name)));
+			return Err(reifydb_type::error::Error(virtual_table_already_exists(&ns_name, &def.name)));
 		}
 
 		self.vtable_user.insert(def.id, def.clone());
@@ -169,9 +177,9 @@ impl MaterializedCatalog {
 				.get(&namespace)
 				.map(|e| e.value().get_latest().map(|n| n.name.clone()).unwrap_or_default())
 				.unwrap_or_else(|| format!("{}", namespace.0));
-			Err(reifydb_type::Error(reifydb_type::diagnostic::catalog::virtual_table_not_found(
-				&ns_name, name,
-			)))
+			Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::catalog::virtual_table_not_found(&ns_name, name),
+			))
 		}
 	}
 

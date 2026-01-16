@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use super::{ColumnDefFFI, PrimaryKeyFFI};
-use crate::data::BufferFFI;
+use super::{column::ColumnDefFFI, primary_key::PrimaryKeyFFI};
+use crate::data::buffer::BufferFFI;
 
 /// FFI-safe table definition
 #[repr(C)]

@@ -7,8 +7,11 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{Parser, Precedence, error::ParseError};
 use crate::{
-	ast::{Expr, expr::*},
-	token::{Punctuation, TokenKind},
+	ast::{
+		Expr,
+		expr::query::{FromEnvironment, FromExpr, FromGenerator, FromInline, FromVariable, SourceRef},
+	},
+	token::{punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -115,38 +118,40 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::query::{FromExpr, FromGenerator, SourceRef},
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr<'a>(stmt: Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_from_generator<'a>(
-		stmt: crate::ast::Statement<'a>,
-	) -> &'a crate::ast::expr::FromGenerator<'a> {
+	fn extract_from_generator(stmt: Statement<'_>) -> &FromGenerator<'_> {
 		let expr = get_first_expr(stmt);
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Generator(g)) => g,
+			Expr::From(FromExpr::Generator(g)) => g,
 			_ => panic!("Expected FROM Generator expression, got {:?}", expr),
 		}
 	}
 
-	fn extract_from_source<'a>(
-		stmt: crate::ast::Statement<'a>,
-	) -> &'a crate::ast::expr::SourceRef<'a> {
+	fn extract_from_source<'a>(stmt: Statement<'a>) -> &'a SourceRef<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Source(s)) => s,
+			Expr::From(FromExpr::Source(s)) => s,
 			_ => panic!("Expected FROM Source expression, got {:?}", expr),
 		}
 	}
@@ -246,7 +251,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Inline(inline)) => {
+			Expr::From(FromExpr::Inline(inline)) => {
 				assert_eq!(inline.rows.len(), 0);
 			}
 			_ => panic!("Expected FROM Inline expression, got {:?}", expr),
@@ -263,7 +268,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Inline(inline)) => {
+			Expr::From(FromExpr::Inline(inline)) => {
 				assert_eq!(inline.rows.len(), 1);
 				// Verify first row is an inline object with one field
 				match &inline.rows[0] {
@@ -288,7 +293,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Inline(inline)) => {
+			Expr::From(FromExpr::Inline(inline)) => {
 				assert_eq!(inline.rows.len(), 2);
 				// Verify both rows
 				match &inline.rows[0] {
@@ -320,7 +325,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Inline(inline)) => {
+			Expr::From(FromExpr::Inline(inline)) => {
 				assert_eq!(inline.rows.len(), 1);
 			}
 			_ => panic!("Expected FROM Inline expression, got {:?}", expr),
@@ -337,7 +342,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Variable(v)) => {
+			Expr::From(FromExpr::Variable(v)) => {
 				assert_eq!(v.variable.name, "my_var");
 			}
 			_ => panic!("Expected FROM Variable expression, got {:?}", expr),
@@ -354,7 +359,7 @@ mod tests {
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::From(crate::ast::expr::FromExpr::Environment(_)) => {}
+			Expr::From(FromExpr::Environment(_)) => {}
 			_ => panic!("Expected FROM Environment expression, got {:?}", expr),
 		}
 	}

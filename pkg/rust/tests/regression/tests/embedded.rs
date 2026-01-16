@@ -3,8 +3,8 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::interface::Params, embedded as db_embedded};
-use reifydb_testing::{testscript, testscript::Command};
+use reifydb::{Database, Params, embedded as db_embedded};
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
@@ -20,7 +20,7 @@ impl Runner {
 	}
 }
 
-impl testscript::Runner for Runner {
+impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -66,5 +66,5 @@ test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as embedded => te
 fn test_embedded(path: &Path) {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
-	testscript::run_path(&mut Runner::new(), path).expect("test failed")
+	testscript::runner::run_path(&mut Runner::new(), path).expect("test failed")
 }

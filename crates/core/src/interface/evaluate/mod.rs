@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Type;
+use reifydb_type::{error::diagnostic::number::NumberOfRangeColumnDescriptor, value::r#type::Type};
 
-use crate::interface::{ColumnPolicyKind, ResolvedColumn};
+use crate::interface::{
+	catalog::policy::ColumnPolicyKind,
+	resolved::{ResolvedColumn, resolved_column_to_number_descriptor},
+};
 
 /// Represents target column information for evaluation
 #[derive(Debug, Clone)]
@@ -43,13 +46,7 @@ impl TargetColumn {
 	}
 
 	/// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_descriptor(
-		&self,
-	) -> Option<reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor<'_>> {
-		use reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor;
-
-		use crate::interface::resolved::resolved_column_to_number_descriptor;
-
+	pub fn to_number_descriptor(&self) -> Option<NumberOfRangeColumnDescriptor<'_>> {
 		match self {
 			Self::Resolved(col) => Some(resolved_column_to_number_descriptor(col)),
 			Self::Partial {

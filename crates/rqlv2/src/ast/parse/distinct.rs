@@ -7,8 +7,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
-	ast::{Expr, expr::*},
-	token::Punctuation,
+	ast::{Expr, expr::query::DistinctExpr},
+	token::punctuation::Punctuation,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -41,10 +41,13 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{Expr, expr::query::DistinctExpr},
+		token::tokenize,
+	};
 
 	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
@@ -57,9 +60,7 @@ mod tests {
 		}
 	}
 
-	fn extract_distinct<'a>(
-		stmt: crate::ast::Statement<'a>,
-	) -> &'a crate::ast::expr::DistinctExpr<'a> {
+	fn extract_distinct<'a>(stmt: crate::ast::Statement<'a>) -> &'a DistinctExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Distinct(d) => d,

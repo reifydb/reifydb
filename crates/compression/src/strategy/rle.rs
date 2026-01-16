@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 // use crate::{ColumnCompressor, CompressedColumn, CompressionType};
-// use reifydb_core::value::column::ColumnData;
+// use reifydb_core::value::column::data::ColumnData;
 // use reifydb_type::{Result, Value};
 // use serde::{Deserialize, Serialize};
 //
@@ -43,7 +43,7 @@
 //
 // 		let runs = encode_runs(data)?;
 // 		// Use serde json for now to avoid bincode 2.0 complexity
-// 		let data_bytes = serde_json::to_vec(&runs).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		let data_bytes = serde_json::to_vec(&runs).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		let uncompressed_size = estimate_uncompressed_size(data);
 //
@@ -60,7 +60,7 @@
 // 		assert_eq!(compressed.compression, CompressionType::RunLength);
 //
 // 		let runs: RleEncoded = serde_json::from_slice(&compressed.data)
-// 			.map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 			.map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		decode_runs(runs)
 // 	}
@@ -189,7 +189,7 @@
 // 			})
 // 		}
 // 		// Add more types as needed
-// 		_ => Err(reifydb_type::Error::Internal("Unsupported column type for RLE".to_string())),
+// 		_ => Err(reifydb_type::error::Error::Internal("Unsupported column type for RLE".to_string())),
 // 	}
 // }
 //

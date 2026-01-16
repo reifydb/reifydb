@@ -2,8 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
-	interface::{FlowEdgeId, FlowId, FlowNodeId, SubscriptionId, TableId, ViewId},
+	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	interface::catalog::{
+		flow::{FlowEdgeId, FlowId, FlowNodeId},
+		id::{SubscriptionId, TableId, ViewId},
+	},
+	sort::SortKey,
 };
 use serde::{Deserialize, Serialize};
 

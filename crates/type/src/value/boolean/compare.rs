@@ -52,7 +52,7 @@ pub fn logical_xor(l: bool, r: bool) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

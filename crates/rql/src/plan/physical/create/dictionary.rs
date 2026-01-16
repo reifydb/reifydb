@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::diagnostic::catalog::namespace_not_found;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, return_error};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::diagnostic::catalog::namespace_not_found, fragment::Fragment, return_error};
 
 use crate::{
 	convert_data_type,
@@ -32,16 +31,16 @@ impl Compiler {
 
 		// Convert AstDataType to Type
 		let value_type = match &create.value_type {
-			crate::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::AstDataType::Constrained {
+			crate::ast::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
+			crate::ast::ast::AstDataType::Constrained {
 				name,
 				..
 			} => convert_data_type(name)?,
 		};
 
 		let id_type = match &create.id_type {
-			crate::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
-			crate::ast::AstDataType::Constrained {
+			crate::ast::ast::AstDataType::Unconstrained(name) => convert_data_type(name)?,
+			crate::ast::ast::AstDataType::Constrained {
 				name,
 				..
 			} => convert_data_type(name)?,

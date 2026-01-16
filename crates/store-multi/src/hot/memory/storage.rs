@@ -5,10 +5,11 @@
 //!
 //! Uses DashMap for per-table sharding and RwLock<BTreeMap> for concurrent access.
 
-use rayon::prelude::*;
-use reifydb_core::runtime::ComputePool;
-use reifydb_type::{CowVec, Result};
 use std::{collections::HashMap, ops::Bound, sync::Arc};
+
+use rayon::prelude::*;
+use reifydb_core::runtime::compute::ComputePool;
+use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, instrument};
 
 use super::entry::{Entries, Entry, OrderedMap, entry_id_to_key};
@@ -248,9 +249,11 @@ impl TierStorage for MemoryPrimitiveStorage {
 impl TierBackend for MemoryPrimitiveStorage {}
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::TableId as CoreTableId;
-	use reifydb_core::runtime::ComputePool;
+pub mod tests {
+	use reifydb_core::{
+		interface::catalog::{id::TableId, primitive::PrimitiveId},
+		runtime::compute::ComputePool,
+	};
 
 	use super::*;
 
@@ -282,12 +285,10 @@ mod tests {
 
 	#[test]
 	fn test_source_tables() {
-		use reifydb_core::interface::PrimitiveId;
-
 		let storage = MemoryPrimitiveStorage::new(test_compute_pool());
 
-		let source1 = PrimitiveId::Table(CoreTableId(1));
-		let source2 = PrimitiveId::Table(CoreTableId(2));
+		let source1 = PrimitiveId::Table(TableId(1));
+		let source2 = PrimitiveId::Table(TableId(2));
 
 		storage.set(HashMap::from([(
 			EntryKind::Source(source1),

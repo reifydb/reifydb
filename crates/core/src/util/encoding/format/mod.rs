@@ -8,9 +8,7 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
-pub use raw::Raw;
-
-mod raw;
+pub mod raw;
 
 /// Formats encoded keys and values.
 pub trait Formatter {

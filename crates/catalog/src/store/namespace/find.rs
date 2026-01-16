@@ -2,10 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{NamespaceDef, NamespaceId, NamespaceKey},
-	value::encoded::EncodedValues,
+	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
+	key::namespace::NamespaceKey,
+	value::encoded::encoded::EncodedValues,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -54,7 +55,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};

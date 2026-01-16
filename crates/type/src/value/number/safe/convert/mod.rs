@@ -235,10 +235,7 @@ macro_rules! impl_safe_convert_float_to_unsigned {
 use num_bigint::{BigInt, ToBigInt};
 use num_traits::{Signed, ToPrimitive};
 
-use crate::{
-	Decimal,
-	value::{int::Int, uint::Uint},
-};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 macro_rules! impl_safe_convert_to_int {
     ($($from:ty),*) => {
@@ -578,18 +575,18 @@ macro_rules! impl_safe_convert_to_decimal_from_float {
 impl_safe_convert_self!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64);
 impl_safe_convert_self!(Int, Uint, Decimal);
 
-mod decimal;
-mod f32;
-mod f64;
-mod i128;
-mod i16;
-mod i32;
-mod i64;
-mod i8;
-mod int;
-mod u128;
-mod u16;
-mod u32;
-mod u64;
-mod u8;
-mod uint;
+pub mod decimal;
+pub mod f32;
+pub mod f64;
+pub mod i128;
+pub mod i16;
+pub mod i32;
+pub mod i64;
+pub mod i8;
+pub mod int;
+pub mod u128;
+pub mod u16;
+pub mod u32;
+pub mod u64;
+pub mod u8;
+pub mod uint;

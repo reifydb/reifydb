@@ -482,7 +482,7 @@ impl Colorize for ColoredString {
 // Trait is already public, no need to re-export
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

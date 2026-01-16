@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::key::{EncodableKey, OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::key::{
+	EncodableKey,
+	retention_policy::{OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange},
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{MaterializedCatalog, store::retention_policy::decode_retention_policy};
+use super::MaterializedCatalog;
+use crate::store::retention_policy::decode_retention_policy;
 
 pub(crate) fn load_operator_retention_policies(
 	rx: &mut impl IntoStandardTransaction,

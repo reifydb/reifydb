@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::ast::{Token, TokenKind};
+use crate::ast::tokenize::token::{Token, TokenKind};
 
 pub fn explain_tokenize(query: &str) -> crate::Result<String> {
 	// Use the new tokenizer directly

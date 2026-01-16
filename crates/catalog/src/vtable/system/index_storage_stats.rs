@@ -3,12 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::VTableDef;
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_metric::MetricReader;
+use reifydb_core::{
+	interface::catalog::vtable::VTableDef,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
+use reifydb_metric::metric::MetricReader;
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	system::SystemCatalog,

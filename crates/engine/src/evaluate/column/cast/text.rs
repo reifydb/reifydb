@@ -3,11 +3,20 @@
 
 use std::fmt::Display;
 
-use reifydb_core::value::{
-	column::ColumnData,
-	container::{BlobContainer, BoolContainer, NumberContainer, TemporalContainer, UuidContainer},
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{
+	err,
+	error::{Error, diagnostic::cast},
+	fragment::LazyFragment,
+	value::{
+		container::{
+			blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
+			uuid::UuidContainer,
+		},
+		is::{IsNumber, IsTemporal, IsUuid},
+		r#type::Type,
+	},
 };
-use reifydb_type::{Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type, diagnostic::cast, err};
 
 pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
@@ -124,12 +133,13 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::{
-		BitVec,
-		value::{column::ColumnData, container::BlobContainer},
+pub mod tests {
+	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_type::{
+		fragment::Fragment,
+		util::bitvec::BitVec,
+		value::{blob::Blob, container::blob::BlobContainer},
 	};
-	use reifydb_type::{Blob, Fragment};
 
 	use crate::evaluate::column::cast::text::from_blob;
 

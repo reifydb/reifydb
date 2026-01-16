@@ -4,8 +4,12 @@
 use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{
-	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, VTableDef, VTableId, ViewDef, ViewId,
+use crate::interface::catalog::{
+	flow::{FlowDef, FlowId},
+	id::{DictionaryId, RingBufferId, TableId, ViewId},
+	table::TableDef,
+	view::ViewDef,
+	vtable::{VTableDef, VTableId},
 };
 
 /// PrimitiveId represents identifiers for catalog primitives that use u64-based IDs.
@@ -234,7 +238,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_table_id(self) -> crate::Result<TableId> {
+	pub fn to_table_id(self) -> reifydb_type::Result<TableId> {
 		if let PrimitiveId::Table(table) = self {
 			Ok(table)
 		} else {
@@ -247,7 +251,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_view_id(self) -> crate::Result<ViewId> {
+	pub fn to_view_id(self) -> reifydb_type::Result<ViewId> {
 		if let PrimitiveId::View(view) = self {
 			Ok(view)
 		} else {
@@ -260,7 +264,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_flow_id(self) -> crate::Result<FlowId> {
+	pub fn to_flow_id(self) -> reifydb_type::Result<FlowId> {
 		if let PrimitiveId::Flow(flow) = self {
 			Ok(flow)
 		} else {
@@ -273,7 +277,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_vtable_id(self) -> crate::Result<VTableId> {
+	pub fn to_vtable_id(self) -> reifydb_type::Result<VTableId> {
 		if let PrimitiveId::TableVirtual(vtable) = self {
 			Ok(vtable)
 		} else {
@@ -286,7 +290,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_ringbuffer_id(self) -> crate::Result<RingBufferId> {
+	pub fn to_ringbuffer_id(self) -> reifydb_type::Result<RingBufferId> {
 		if let PrimitiveId::RingBuffer(ringbuffer) = self {
 			Ok(ringbuffer)
 		} else {
@@ -299,7 +303,7 @@ impl PrimitiveId {
 		}
 	}
 
-	pub fn to_dictionary_id(self) -> crate::Result<DictionaryId> {
+	pub fn to_dictionary_id(self) -> reifydb_type::Result<DictionaryId> {
 		if let PrimitiveId::Dictionary(dictionary) = self {
 			Ok(dictionary)
 		} else {

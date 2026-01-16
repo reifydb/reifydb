@@ -5,7 +5,10 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, RowNumber, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{Value, row_number::RowNumber},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RowNumberContainer {
@@ -191,7 +194,7 @@ impl Default for RowNumberContainer {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

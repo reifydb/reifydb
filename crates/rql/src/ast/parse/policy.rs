@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use Separator::Comma;
-use TokenKind::Identifier;
-use reifydb_core::{diagnostic::ast, return_error};
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	AstPolicy, AstPolicyBlock, AstPolicyKind, Token, TokenKind,
+	ast::{AstPolicy, AstPolicyBlock, AstPolicyKind},
 	parse::{Parser, Precedence},
-	tokenize::{Keyword::Policy, Literal, Operator, Separator},
+	tokenize::{
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator,
+		token::{Literal, Token, TokenKind},
+	},
 };
 
 impl Parser {
 	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock> {
-		let token = self.consume_keyword(Policy)?;
+		let token = self.consume_keyword(Keyword::Policy)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut policies = Vec::new();
@@ -27,7 +30,7 @@ impl Parser {
 				value,
 			});
 
-			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_none() {
 				break;
 			}
 		}
@@ -40,7 +43,7 @@ impl Parser {
 	}
 
 	fn parse_policy_kind(&mut self) -> crate::Result<(Token, AstPolicyKind)> {
-		let identifier = self.consume(Identifier)?;
+		let identifier = self.consume(TokenKind::Identifier)?;
 		let ty = match identifier.fragment.text() {
 			"saturation" => AstPolicyKind::Saturation,
 			"default" => AstPolicyKind::Default,
@@ -56,8 +59,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind, parse::Parser, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{
+		ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind},
+		parse::Parser,
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_saturation_error() {

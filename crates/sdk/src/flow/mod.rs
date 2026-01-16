@@ -3,15 +3,13 @@
 
 //! Flow change types and builders
 
-use reifydb_core::{
-	CommitVersion,
-	interface::{FlowNodeId, PrimitiveId},
-	value::column::Columns,
-};
-
 pub mod builder;
 
-pub use builder::FlowChangeBuilder;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+	value::column::columns::Columns,
+};
 
 /// Origin of a flow change
 #[derive(Debug, Clone)]

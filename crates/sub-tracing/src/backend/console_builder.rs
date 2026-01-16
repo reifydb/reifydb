@@ -25,12 +25,6 @@ impl ConsoleBuilder {
 	///
 	/// # Arguments
 	/// * `enabled` - true to enable colors, false for plain text
-	///
-	/// # Example
-	/// ```
-	/// # use reifydb_sub_tracing::ConsoleBuilder;
-	/// ConsoleBuilder::new().color(true);
-	/// ```
 	pub fn color(mut self, enabled: bool) -> Self {
 		self.use_color = enabled;
 		self
@@ -43,12 +37,6 @@ impl ConsoleBuilder {
 	///
 	/// # Arguments
 	/// * `enabled` - true to send errors to stderr, false to send all to stdout
-	///
-	/// # Example
-	/// ```
-	/// # use reifydb_sub_tracing::ConsoleBuilder;
-	/// ConsoleBuilder::new().stderr_for_errors(true);
-	/// ```
 	pub fn stderr_for_errors(mut self, enabled: bool) -> Self {
 		self.stderr_for_errors = enabled;
 		self

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	SubscriptionColumnDef, SubscriptionColumnId, SubscriptionColumnKey, SubscriptionDef, SubscriptionId,
-	SubscriptionKey,
+use reifydb_core::{
+	interface::catalog::{
+		id::{SubscriptionColumnId, SubscriptionId},
+		subscription::{SubscriptionColumnDef, SubscriptionDef},
+	},
+	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Type, Uuid7};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 use crate::{
 	CatalogStore,
@@ -105,14 +108,14 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::SubscriptionColumnId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::SubscriptionColumnId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::value::r#type::Type;
 
 	use crate::{
 		CatalogStore,
-		store::subscription::{SubscriptionColumnToCreate, SubscriptionToCreate},
+		store::subscription::create::{SubscriptionColumnToCreate, SubscriptionToCreate},
 	};
 
 	#[test]

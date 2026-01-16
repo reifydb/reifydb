@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	interface::{DictionaryDef, DictionaryId},
-	return_internal_error,
-};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::interface::catalog::{dictionary::DictionaryDef, id::DictionaryId};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::return_internal_error;
 
 use crate::CatalogStore;
 
@@ -25,10 +23,10 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::DictionaryId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::DictionaryId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::value::r#type::Type;
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
 

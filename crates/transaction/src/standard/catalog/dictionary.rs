@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackDictionaryChangeOperations, DictionaryDef, DictionaryId, NamespaceId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackDictionaryChangeOperations,
+	dictionary::DictionaryDef,
+	id::{DictionaryId, NamespaceId},
+};
 
 use crate::{
 	change::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
-	fn track_dictionary_def_created(&mut self, dictionary: DictionaryDef) -> reifydb_core::Result<()> {
+	fn track_dictionary_def_created(&mut self, dictionary: DictionaryDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(dictionary),
@@ -27,7 +31,7 @@ impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
 		&mut self,
 		pre: DictionaryDef,
 		post: DictionaryDef,
-	) -> reifydb_core::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +41,7 @@ impl CatalogTrackDictionaryChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_dictionary_def_deleted(&mut self, dictionary: DictionaryDef) -> reifydb_core::Result<()> {
+	fn track_dictionary_def_deleted(&mut self, dictionary: DictionaryDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(dictionary),
 			post: None,

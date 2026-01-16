@@ -53,8 +53,8 @@ impl ColumnData {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Value;
+pub mod tests {
+	use reifydb_type::value::{Value, identity::IdentityId};
 
 	use crate::value::column::ColumnData;
 
@@ -124,8 +124,6 @@ mod tests {
 
 	#[test]
 	fn test_reorder_identity_id() {
-		use reifydb_type::IdentityId;
-
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 		let id3 = IdentityId::generate();

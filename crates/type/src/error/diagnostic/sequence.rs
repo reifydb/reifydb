@@ -2,8 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	Fragment, Type,
 	error::diagnostic::{Diagnostic, util::value_max},
+	fragment::Fragment,
+	value::r#type::Type,
 };
 
 pub fn sequence_exhausted(value: Type) -> Diagnostic {

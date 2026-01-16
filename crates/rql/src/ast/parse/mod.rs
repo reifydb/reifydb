@@ -1,50 +1,57 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod aggregate;
-mod alter;
-mod apply;
-mod call;
-mod cast;
-mod conditional;
-mod create;
-mod create_index;
-mod delete;
-mod describe;
-mod distinct;
-mod drop;
-mod extend;
-mod filter;
-mod from;
-mod identifier;
-mod infix;
-mod inline;
-mod insert;
-mod join;
-mod r#let;
-mod list;
-mod literal;
-mod map;
-mod merge;
-mod policy;
-mod prefix;
-mod primary;
-mod select;
-mod sort;
+pub mod aggregate;
+pub mod alter;
+pub mod apply;
+pub mod call;
+pub mod cast;
+pub mod conditional;
+pub mod create;
+pub mod create_index;
+pub mod delete;
+pub mod describe;
+pub mod distinct;
+pub mod drop;
+pub mod extend;
+pub mod filter;
+pub mod from;
+pub mod identifier;
+pub mod infix;
+pub mod inline;
+pub mod insert;
+pub mod join;
+pub mod r#let;
+pub mod list;
+pub mod literal;
+pub mod map;
+pub mod merge;
+pub mod policy;
+pub mod prefix;
+pub mod primary;
+pub mod select;
+pub mod sort;
 pub mod sub_query;
-mod take;
-mod tuple;
-mod update;
-mod window;
+pub mod take;
+pub mod tuple;
+pub mod update;
+pub mod window;
 
 use std::cmp::PartialOrd;
 
-use reifydb_core::return_error;
-use reifydb_type::diagnostic::ast;
+use Operator::*;
+use Separator::NewLine;
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstInfix, AstStatement, InfixOperator,
-	tokenize::{Keyword, Literal, Operator, Separator, Separator::NewLine, Token, TokenKind},
+	ast::{Ast, AstInfix, AstStatement, InfixOperator},
+	parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
+	tokenize::{
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator,
+		token::{Literal, Token, TokenKind},
+	},
 };
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -61,11 +68,7 @@ pub(crate) enum Precedence {
 	Primary,
 }
 
-// Compile-time precedence lookup using const evaluation
 const fn get_precedence_for_operator(op: Operator) -> Precedence {
-	use Operator::*;
-	use Precedence::*;
-
 	match op {
 		As => Assignment,
 		Equal => Assignment,
@@ -77,7 +80,7 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 		Colon => Assignment,
 		Or | Xor => LogicOr,
 		And => LogicAnd,
-		_ => None,
+		_ => Precedence::None,
 	}
 }
 
@@ -144,7 +147,7 @@ impl Parser {
 					self.current()?.kind,
 					TokenKind::Separator(Separator::Semicolon) | TokenKind::Separator(NewLine)
 				) {
-					return Err(reifydb_type::Error(ast::unexpected_token_error(
+					return Err(reifydb_type::error::Error(ast::unexpected_token_error(
 						"semicolon or end of statement after DDL command",
 						self.current()?.fragment.clone(),
 					)));
@@ -253,7 +256,7 @@ impl Parser {
 
 	pub(crate) fn advance(&mut self) -> crate::Result<Token> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::Error(ast::unexpected_eof_error()));
+			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
 		}
 		let token = self.tokens[self.position].clone();
 		self.position += 1;
@@ -299,7 +302,7 @@ impl Parser {
 
 	pub(crate) fn current(&self) -> crate::Result<&Token> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::Error(ast::unexpected_eof_error()));
+			return Err(reifydb_type::error::Error(ast::unexpected_eof_error()));
 		}
 		Ok(&self.tokens[self.position])
 	}
@@ -390,13 +393,13 @@ impl Parser {
 		Ok(())
 	}
 
-	pub(crate) fn parse_between(&mut self, value: Ast) -> crate::Result<crate::ast::AstBetween> {
+	pub(crate) fn parse_between(&mut self, value: Ast) -> crate::Result<crate::ast::ast::AstBetween> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = Box::new(self.parse_node(Precedence::Comparison)?);
 		self.consume_operator(Operator::And)?;
 		let upper = Box::new(self.parse_node(Precedence::Comparison)?);
 
-		Ok(crate::ast::AstBetween {
+		Ok(crate::ast::ast::AstBetween {
 			token,
 			value: Box::new(value),
 			lower,
@@ -503,19 +506,22 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use diagnostic::ast;
-	use reifydb_core::Error;
-	use reifydb_type::{diagnostic, err};
+pub mod tests {
+	use reifydb_type::{
+		err,
+		error::{Error, diagnostic::ast},
+	};
 
 	use crate::ast::{
 		parse::{Parser, Precedence, Precedence::Term},
 		tokenize::{
-			Literal::{False, Number, True},
-			Operator::Plus,
-			Separator::Semicolon,
-			TokenKind,
-			TokenKind::{Identifier, Literal, Separator},
+			operator::Operator::Plus,
+			separator::Separator::Semicolon,
+			token::{
+				Literal::{False, Number, True},
+				TokenKind,
+				TokenKind::{Identifier, Literal, Separator},
+			},
 			tokenize,
 		},
 	};
@@ -622,12 +628,12 @@ mod tests {
 		// First statement should be the let assignment
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
-		assert!(matches!(first_stmt.nodes[0], crate::ast::Ast::Let(_)));
+		assert!(matches!(first_stmt.nodes[0], crate::ast::ast::Ast::Let(_)));
 
 		// Second statement should be the FROM
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
-		assert!(matches!(second_stmt.nodes[0], crate::ast::Ast::From(_)));
+		assert!(matches!(second_stmt.nodes[0], crate::ast::ast::Ast::From(_)));
 	}
 
 	#[test]
@@ -645,13 +651,13 @@ mod tests {
 		// First statement should be the let assignment
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
-		assert!(matches!(first_stmt.nodes[0], crate::ast::Ast::Let(_)));
+		assert!(matches!(first_stmt.nodes[0], crate::ast::ast::Ast::Let(_)));
 
 		// Second statement should be the FROM with variable
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
-		if let crate::ast::Ast::From(from_ast) = &second_stmt.nodes[0] {
-			assert!(matches!(from_ast, crate::ast::AstFrom::Variable { .. }));
+		if let crate::ast::ast::Ast::From(from_ast) = &second_stmt.nodes[0] {
+			assert!(matches!(from_ast, crate::ast::ast::AstFrom::Variable { .. }));
 		} else {
 			panic!("Expected FROM statement with variable");
 		}
@@ -744,7 +750,7 @@ mod tests {
 
 	#[test]
 	fn test_pipe_operator_simple() {
-		use crate::ast::Ast;
+		use crate::ast::ast::Ast;
 		let tokens = tokenize("from users | sort name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
@@ -761,7 +767,7 @@ mod tests {
 
 	#[test]
 	fn test_pipe_operator_multiple() {
-		use crate::ast::Ast;
+		use crate::ast::ast::Ast;
 		let tokens = tokenize("from users | filter age > 18 | sort name | take 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
@@ -778,7 +784,7 @@ mod tests {
 
 	#[test]
 	fn test_pipe_with_system_tables() {
-		use crate::ast::Ast;
+		use crate::ast::ast::Ast;
 		let tokens = tokenize("from system.tables | sort id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
@@ -793,7 +799,7 @@ mod tests {
 
 	#[test]
 	fn test_newline_still_works() {
-		use crate::ast::Ast;
+		use crate::ast::ast::Ast;
 		let tokens = tokenize("from users\nsort name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
@@ -808,7 +814,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_pipe_and_newline() {
-		use crate::ast::Ast;
+		use crate::ast::ast::Ast;
 		let tokens = tokenize("from users | filter age > 18\nsort name | take 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, Type, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment, value::r#type::Type};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {

@@ -3,12 +3,18 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{Error, Fragment, diagnostic::ast::unexpected_token_error};
+use reifydb_type::{
+	error::{Error, diagnostic::ast::unexpected_token_error},
+	fragment::Fragment,
+};
 
 use crate::ast::{
 	identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 	parse::Parser,
-	tokenize::{Literal, Operator, Token, TokenKind},
+	tokenize::{
+		operator::Operator,
+		token::{Literal, Token, TokenKind},
+	},
 };
 
 impl Parser {
@@ -200,10 +206,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{
-		Ast::{Create, Identifier},
-		AstCreate::Namespace,
+		ast::{
+			Ast::{Create, Identifier},
+			AstCreate::Namespace,
+		},
 		parse::parse,
 		tokenize::tokenize,
 	};

@@ -5,10 +5,10 @@ pub mod memory;
 
 use std::sync::Arc;
 
-pub use memory::MemoryColumnBackend;
+use memory::MemoryColumnBackend;
 use reifydb_core::{
-	CommitVersion,
-	value::column::{ColumnData, CompressedColumn},
+	common::CommitVersion,
+	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
 use reifydb_type::Result;
 

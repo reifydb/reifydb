@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic, value::DateTime};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment, value::datetime::DateTime};
 
 /// Creates a detailed internal error diagnostic with source location and
 /// context
@@ -103,7 +103,7 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 #[macro_export]
 macro_rules! internal {
     ($reason:expr) => {
-        $crate::diagnostic::internal_with_context(
+        $crate::error::diagnostic::internal::internal_with_context(
             $reason,
             file!(),
             line!(),
@@ -120,7 +120,7 @@ macro_rules! internal {
         )
     };
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::diagnostic::internal_with_context(
+        $crate::error::diagnostic::internal::internal_with_context(
             format!($fmt, $($arg)*),
             file!(),
             line!(),
@@ -143,10 +143,10 @@ macro_rules! internal {
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
-        $crate::Error($crate::internal!($reason))
+        $crate::error::Error($crate::internal!($reason))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::Error($crate::internal!($fmt, $($arg)*))
+        $crate::error::Error($crate::internal!($fmt, $($arg)*))
     };
 }
 
@@ -175,7 +175,7 @@ macro_rules! return_internal_error {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
 	use tokio::time::sleep;
@@ -229,7 +229,7 @@ mod tests {
 
 	#[test]
 	fn test_internal_err_literal_string() {
-		let result: Result<(), crate::Error> = internal_err!("test error");
+		let result: Result<(), crate::error::Error> = internal_err!("test error");
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -241,7 +241,7 @@ mod tests {
 	fn test_internal_err_with_format() {
 		let code = "ERR_123";
 		let line = 456;
-		let result: Result<(), crate::Error> = internal_err!("Error code: {} at line {}", code, line);
+		let result: Result<(), crate::error::Error> = internal_err!("Error code: {} at line {}", code, line);
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -277,7 +277,7 @@ mod tests {
 
 	#[test]
 	fn test_return_internal_error_in_function() {
-		fn test_function_literal() -> Result<(), crate::Error> {
+		fn test_function_literal() -> Result<(), crate::error::Error> {
 			return_internal_error!("function error");
 		}
 
@@ -290,7 +290,7 @@ mod tests {
 
 	#[test]
 	fn test_return_internal_error_with_format() {
-		fn test_function_format(val: u32) -> Result<(), crate::Error> {
+		fn test_function_format(val: u32) -> Result<(), crate::error::Error> {
 			return_internal_error!("Invalid value: {:#04x}", val);
 		}
 

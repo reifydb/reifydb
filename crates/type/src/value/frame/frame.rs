@@ -8,8 +8,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::FrameColumn;
-use crate::{RowNumber, Value, util::unicode::UnicodeWidthStr};
+use super::column::FrameColumn;
+use crate::{
+	util::unicode::UnicodeWidthStr,
+	value::{Value, row_number::RowNumber},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {

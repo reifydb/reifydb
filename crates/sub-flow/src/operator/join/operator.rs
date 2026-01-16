@@ -1,30 +1,44 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
-use std::sync::LazyLock;
+use std::{rc::Rc, sync::LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
-	EncodedKey, Error, JoinType,
-	interface::FlowNodeId,
-	util::{CowVec, encoding::keycode::KeySerializer},
+	common::JoinType,
+	interface::catalog::flow::FlowNodeId,
+	util::encoding::keycode::serializer::KeySerializer,
 	value::{
-		column::{Column, Columns},
-		encoded::EncodedValuesLayout,
+		column::{Column, columns::Columns},
+		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	},
 };
-use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, execute::Executor, stack::Stack};
-use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	execute::Executor,
+	stack::Stack,
+};
+use reifydb_hash::{Hash128, xxh::xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
-use reifydb_type::{Fragment, Params, RowNumber, Type, Value, internal};
+use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_type::{
+	error::Error,
+	fragment::Fragment,
+	internal,
+	params::Params,
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber, r#type::Type},
+};
 
-use super::{JoinSide, JoinState, JoinStrategy, column::JoinedColumnsBuilder};
+use super::{
+	column::JoinedColumnsBuilder,
+	state::{JoinSide, JoinState},
+	strategy::JoinStrategy,
+};
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
+		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
 };

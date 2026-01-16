@@ -8,7 +8,10 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use reifydb_core::interface::{NamespaceId, VTableDef, VTableId};
+use reifydb_core::interface::catalog::{
+	id::NamespaceId,
+	vtable::{VTableDef, VTableId},
+};
 
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
 

@@ -5,14 +5,20 @@
 
 use std::{mem::MaybeUninit, slice::from_raw_parts};
 
-use reifydb_abi::{FFI_NOT_FOUND, FFI_OK, TableFFI};
+use reifydb_abi::{
+	catalog::table::TableFFI,
+	constants::{FFI_NOT_FOUND, FFI_OK},
+};
 use reifydb_core::{
-	CommitVersion,
-	interface::{NamespaceId, TableDef, TableId},
+	common::CommitVersion,
+	interface::catalog::{
+		id::{NamespaceId, TableId},
+		table::TableDef,
+	},
 };
 
 use super::{unmarshal_column, unmarshal_primary_key};
-use crate::{FFIError, OperatorContext};
+use crate::{error::FFIError, operator::context::OperatorContext};
 
 /// Find table by ID
 pub(super) fn raw_catalog_find_table(

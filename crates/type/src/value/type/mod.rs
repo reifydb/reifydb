@@ -8,12 +8,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-mod get;
-mod promote;
+pub mod get;
+pub mod promote;
 
-pub use get::GetType;
-
-use crate::Value;
+use crate::value::Value;
 
 /// All possible RQL data types
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -9,14 +9,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::RwLock;
-use reifydb_catalog::Catalog;
-use reifydb_core::{
-	Result,
-	interface::{ColumnDef, DictionaryDef, FlowId, PrimitiveId},
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::interface::catalog::{
+	column::ColumnDef, dictionary::DictionaryDef, flow::FlowId, primitive::PrimitiveId,
 };
-use reifydb_rql::flow::{FlowDag, load_flow_dag};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Type;
+use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{Result, value::r#type::Type};
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -178,12 +177,13 @@ impl Default for FlowCatalog {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::Arc;
 
 	use reifydb_catalog::test_utils::{
 		create_view, ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table,
 	};
+	use reifydb_core::interface::catalog::primitive::PrimitiveId;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

@@ -3,19 +3,22 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	BitVec, LazyBatch, LazyColumnMeta,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+use reifydb_core::value::{
+	batch::lazy::{LazyBatch, LazyColumnMeta},
+	column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{DictionaryEntryId, Value};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{
+	util::bitvec::BitVec,
+	value::{Value, dictionary::DictionaryEntryId},
+};
 use tracing::instrument;
 
 use crate::{
-	StandardTransaction,
-	evaluate::column::{ColumnEvaluationContext, evaluate},
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-	transaction::operation::DictionaryOperations,
+	transaction::operation::dictionary::DictionaryOperations,
 };
 
 pub(crate) struct FilterNode {

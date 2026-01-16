@@ -67,14 +67,3 @@ pub mod protocol;
 pub mod response;
 pub mod subscription;
 pub mod subsystem;
-
-// Re-export common types from sub-server
-// Local exports
-pub use factory::{WsConfig, WsSubsystemFactory};
-pub use handler::handle_connection;
-pub use protocol::{
-	AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload, SubscribeRequest, UnsubscribeRequest,
-};
-pub use reifydb_sub_server::{ResponseColumn, ResponseFrame, convert_frames};
-pub use subscription::{SubscriptionRegistry};
-pub use subsystem::WsSubsystem;

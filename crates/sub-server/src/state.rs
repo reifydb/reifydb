@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use reifydb_core::ComputePool;
-use reifydb_engine::StandardEngine;
+use reifydb_core::runtime::compute::ComputePool;
+use reifydb_engine::engine::StandardEngine;
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
@@ -142,7 +142,7 @@ impl AppState {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

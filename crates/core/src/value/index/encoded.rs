@@ -3,9 +3,8 @@
 
 use std::ops::Deref;
 
+use reifydb_type::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
-
-use crate::util::CowVec;
 
 pub type EncodedIndexKeyIter = Box<dyn EncodedIndexKeyIterator>;
 

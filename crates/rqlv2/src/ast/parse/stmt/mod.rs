@@ -3,13 +3,13 @@
 
 //! Statement parsing modules.
 
-mod control;
-mod ddl;
-mod describe;
-mod dml;
-mod r#fn;
-mod for_;
-mod if_;
-mod let_;
-mod loop_;
-mod return_;
+pub mod control;
+pub mod ddl;
+pub mod describe;
+pub mod dml;
+pub mod r#fn;
+pub mod for_;
+pub mod if_;
+pub mod let_;
+pub mod loop_;
+pub mod return_;

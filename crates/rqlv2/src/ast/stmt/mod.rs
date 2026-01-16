@@ -1,23 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Statement types for the unified AST.
+//! Statement types for the unified AST.use super::{Expr, Pipeline};
+
+use crate::{
+	ast::{
+		Pipeline,
+		expr::{
+			Expr,
+			special::{ForExpr, IfExpr, LoopExpr},
+		},
+		stmt::{
+			binding::{AssignStmt, DefStmt, LetStmt},
+			control::{BreakStmt, ContinueStmt, ReturnStmt},
+			ddl::{AlterStmt, CreateStmt, DropStmt},
+			dml::{DeleteStmt, InsertStmt, UpdateStmt},
+		},
+	},
+	token::span::Span,
+};
 
 pub mod binding;
 pub mod control;
 pub mod ddl;
 pub mod dml;
-
-pub use binding::*;
-pub use control::*;
-pub use ddl::*;
-pub use dml::*;
-
-use super::{
-	Expr, Pipeline,
-	expr::{ForExpr, IfExpr, LoopExpr},
-};
-use crate::token::Span;
 
 /// Top-level statement.
 #[derive(Debug, Clone, Copy)]

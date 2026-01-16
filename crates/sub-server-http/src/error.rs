@@ -11,8 +11,8 @@ use axum::{
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
-use reifydb_sub_server::{AuthError, ExecuteError};
-use reifydb_type::diagnostic::Diagnostic;
+use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
+use reifydb_type::error::diagnostic::Diagnostic;
 use serde::Serialize;
 
 /// JSON error response body.
@@ -146,7 +146,7 @@ impl IntoResponse for AppError {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

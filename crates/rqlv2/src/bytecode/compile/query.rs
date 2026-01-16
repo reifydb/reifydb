@@ -11,13 +11,13 @@ use crate::{
 	},
 	expression::compile::{compile_plan_expr, compile_plan_filter},
 	plan::{
-		Primitive,
 		node::query::{
 			AggregateNode, ApplyNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode, IndexScanNode,
 			InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MergeNode, ProjectNode,
 			RowListLookupNode, RowPointLookupNode, RowRangeScanNode, ScalarizeNode, ScanNode, SortNode,
 			TakeNode, VariableSourceNode, WindowNode,
 		},
+		types::Primitive,
 	},
 };
 

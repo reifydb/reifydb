@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
+use reifydb_core::value::column::data::ColumnData;
 
 use crate::{ScalarFunction, ScalarFunctionContext};
 
@@ -14,7 +14,7 @@ impl TextLength {
 }
 
 impl ScalarFunction for TextLength {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 

@@ -6,7 +6,10 @@ use std::{borrow::Cow, str::FromStr};
 use bigdecimal::BigDecimal as BigDecimalInner;
 
 use crate::{
-	Error, Fragment, Type, error::diagnostic::number::invalid_number_format, return_error, value::decimal::Decimal,
+	error::{Error, diagnostic::number::invalid_number_format},
+	fragment::Fragment,
+	return_error,
+	value::{decimal::Decimal, r#type::Type},
 };
 
 pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
@@ -37,9 +40,8 @@ pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
 
 	#[test]
 	fn test_parse_decimal_integer() {

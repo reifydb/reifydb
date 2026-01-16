@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Date, Error, Fragment, error::diagnostic::temporal, return_error};
+use crate::{
+	error::{Error, diagnostic::temporal},
+	fragment::Fragment,
+	return_error,
+	value::Date,
+};
 
 pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 	let fragment = fragment;
@@ -74,9 +79,9 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::parse_date;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_basic() {

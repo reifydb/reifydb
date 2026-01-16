@@ -3,12 +3,15 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{Fragment, diagnostic::ast, return_error};
+use reifydb_type::{error::diagnostic::ast, fragment::Fragment, return_error};
 
 use crate::ast::{
-	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind,
+	ast::{Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator},
 	parse::{Parser, Precedence},
-	tokenize::{Literal::Number, Operator},
+	tokenize::{
+		operator::Operator,
+		token::{Literal::Number, Token, TokenKind},
+	},
 };
 
 impl Parser {
@@ -58,11 +61,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::Deref;
 
 	use crate::ast::{
-		Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, parse::parse,
+		ast::{Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, InfixOperator},
+		parse::parse,
 		tokenize::tokenize,
 	};
 
@@ -214,7 +218,7 @@ mod tests {
 		};
 
 		// Verify it's an equality comparison
-		assert!(matches!(inner.operator, crate::ast::InfixOperator::Equal(_)));
+		assert!(matches!(inner.operator, InfixOperator::Equal(_)));
 
 		// Left side should be identifier 'x'
 		let Ast::Identifier(left_id) = inner.left.deref() else {

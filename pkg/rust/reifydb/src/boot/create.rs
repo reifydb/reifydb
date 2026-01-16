@@ -3,9 +3,10 @@
 
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Identity, Params},
+	interface::auth::Identity,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::params::Params;
 use tracing::error;
 
 pub(crate) struct CreateEventListener {

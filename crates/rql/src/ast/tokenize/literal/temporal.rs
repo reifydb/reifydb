@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor};
+use crate::ast::tokenize::{
+	cursor::Cursor,
+	token::{Literal, Token, TokenKind},
+};
 
 /// Scan for temporal literal (dates/times starting with @)
 pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
@@ -44,7 +47,7 @@ pub fn scan_temporal(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use Literal::Temporal;
 
 	use super::*;

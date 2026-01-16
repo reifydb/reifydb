@@ -2,14 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	EncodedKey,
-	util::encoding::keycode::KeySerializer,
-	value::encoded::{EncodedValues, EncodedValuesLayout},
+	util::encoding::keycode::serializer::KeySerializer,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 };
-use reifydb_type::{Type, Value};
+use reifydb_type::value::{Value, r#type::Type};
 
 use super::utils;
-use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
+use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -80,14 +79,15 @@ pub trait KeyedStateful: RawStatefulOperator {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, interface::FlowNodeId};
-	use reifydb_type::{Type, Value};
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_type::value::{Value, r#type::Type};
 
 	use super::*;
 	#[cfg(test)]
 	use crate::operator::stateful::test_utils::test::*;
+	use crate::transaction::FlowTransaction;
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {

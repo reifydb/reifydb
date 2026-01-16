@@ -21,9 +21,9 @@ pub fn expand(parsed: ParsedStruct) -> TokenStream {
 
 	let mut tokens = Vec::new();
 
-	// impl ::crate_path::FromFrame for StructName
+	// impl ::crate_path::value::frame::from_frame::FromFrame for StructName
 	tokens.push(ident("impl"));
-	tokens.extend(path(&["", crate_path, "FromFrame"]));
+	tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrame"]));
 	tokens.push(ident("for"));
 	tokens.push(TokenTree::Ident(parsed.name.clone()));
 
@@ -41,12 +41,13 @@ pub fn expand(parsed: ParsedStruct) -> TokenStream {
 fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// fn from_frame(frame: &::crate_path::Frame) -> Result<Vec<Self>, ::crate_path::FromFrameError>
+	// fn from_frame(frame: &::crate_path::value::frame::frame::Frame) -> Result<Vec<Self>,
+	// ::crate_path::value::frame::from_frame::FromFrameError>
 	tokens.push(ident("fn"));
 	tokens.push(ident("from_frame"));
 	tokens.push(parens([ident("frame"), punct(':'), punct('&')]
 		.into_iter()
-		.chain(path(&["", crate_path, "Frame"]))));
+		.chain(path(&["", crate_path, "value", "frame", "frame", "Frame"]))));
 	tokens.extend(arrow());
 	tokens.push(ident("Result"));
 	tokens.push(punct('<'));
@@ -55,7 +56,7 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	tokens.push(ident("Self"));
 	tokens.push(punct('>'));
 	tokens.push(punct(','));
-	tokens.extend(path(&["", crate_path, "FromFrameError"]));
+	tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrameError"]));
 	tokens.push(punct('>'));
 
 	// Method body
@@ -176,11 +177,11 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 	tokens.push(punct(':'));
 
 	if field.attrs.optional {
-		// Option<&::crate_path::FrameColumn>
+		// Option<&::crate_path::value::frame::column::FrameColumn>
 		tokens.push(ident("Option"));
 		tokens.push(punct('<'));
 		tokens.push(punct('&'));
-		tokens.extend(path(&["", crate_path, "FrameColumn"]));
+		tokens.extend(path(&["", crate_path, "value", "frame", "column", "FrameColumn"]));
 		tokens.push(punct('>'));
 		tokens.push(punct('='));
 		tokens.push(ident("frame"));
@@ -203,9 +204,9 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 			literal_str(&column_name),
 		]));
 	} else {
-		// &::crate_path::FrameColumn
+		// &::crate_path::value::frame::column::FrameColumn
 		tokens.push(punct('&'));
-		tokens.extend(path(&["", crate_path, "FrameColumn"]));
+		tokens.extend(path(&["", crate_path, "value", "frame", "column", "FrameColumn"]));
 		tokens.push(punct('='));
 		tokens.push(ident("frame"));
 		tokens.push(punct('.'));
@@ -229,10 +230,18 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 		tokens.push(punct('.'));
 		tokens.push(ident("ok_or_else"));
 
-		// || ::crate_path::FromFrameError::MissingColumn { ... }
+		// || ::crate_path::value::frame::from_frame::FromFrameError::MissingColumn { ... }
 		let mut error_closure = Vec::new();
 		error_closure.extend([punct('|'), punct('|')]);
-		error_closure.extend(path(&["", crate_path, "FromFrameError", "MissingColumn"]));
+		error_closure.extend(path(&[
+			"",
+			crate_path,
+			"value",
+			"frame",
+			"from_frame",
+			"FromFrameError",
+			"MissingColumn",
+		]));
 		error_closure.push(braces([
 			ident("column"),
 			punct(':'),
@@ -326,7 +335,7 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		some_body.push(punct('<'));
 		some_body.push(underscore());
 		some_body.push(punct(','));
-		some_body.extend(path(&["", crate_path, "FromFrameError"]));
+		some_body.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrameError"]));
 		some_body.push(punct('>'));
 		some_body.push(punct('>'));
 		some_body.push(parens([]));
@@ -375,7 +384,7 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		tokens.push(punct('<'));
 		tokens.push(underscore());
 		tokens.push(punct(','));
-		tokens.extend(path(&["", crate_path, "FromFrameError"]));
+		tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrameError"]));
 		tokens.push(punct('>'));
 		tokens.push(punct('>'));
 		tokens.push(parens([]));
@@ -405,7 +414,13 @@ fn generate_optional_map_closure(
 		ident("if"),
 		ident("matches"),
 		punct('!'),
-		parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "Value", "Undefined"]))),
+		parens([ident("v"), punct(',')].into_iter().chain(path(&[
+			"",
+			crate_path,
+			"value",
+			"Value",
+			"Undefined",
+		]))),
 	];
 
 	// { Ok(None) }
@@ -418,7 +433,7 @@ fn generate_optional_map_closure(
 	else_body.push(punct('<'));
 	else_body.push(underscore());
 	else_body.push(ident("as"));
-	else_body.extend(path(&["", crate_path, trait_name]));
+	else_body.extend(path(&["", crate_path, "value", "try_from", trait_name]));
 	else_body.push(punct('>'));
 	else_body.extend(path_sep());
 	else_body.push(ident(method_name));
@@ -455,7 +470,7 @@ fn generate_required_map_closure(
 	body.push(punct('<'));
 	body.extend(field_ty.iter().cloned());
 	body.push(ident("as"));
-	body.extend(path(&["", crate_path, trait_name]));
+	body.extend(path(&["", crate_path, "value", "try_from", trait_name]));
 	body.push(punct('>'));
 	body.extend(path_sep());
 	body.push(ident(method_name));
@@ -476,7 +491,7 @@ fn generate_error_closure(column_name: &str, crate_path: &str) -> Vec<TokenTree>
 	tokens.push(punct('|'));
 	tokens.push(ident("e"));
 	tokens.push(punct('|'));
-	tokens.extend(path(&["", crate_path, "FromFrameError", "ValueError"]));
+	tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrameError", "ValueError"]));
 	tokens.push(braces([
 		ident("column"),
 		punct(':'),

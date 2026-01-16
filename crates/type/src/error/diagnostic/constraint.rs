@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Diagnostic;
-use crate::Fragment;
+use crate::fragment::Fragment;
 
 pub fn utf8_exceeds_max_bytes(fragment: Fragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {

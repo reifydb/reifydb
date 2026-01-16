@@ -7,10 +7,11 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
-	ast::stmt::{AlterStmt, CreateStmt, DropStmt},
+	ast::stmt::ddl::{AlterStmt, CreateStmt, DropStmt},
 	plan::{
-		Plan, View,
+		Plan,
 		node::{ddl::*, query::SortDirection},
+		types::View,
 	},
 };
 
@@ -206,13 +207,17 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 			}
 			DropObjectType::Dictionary => {
 				return Err(PlanError {
-					kind: PlanErrorKind::Unsupported("DROP DICTIONARY not yet implemented".to_string()),
+					kind: PlanErrorKind::Unsupported(
+						"DROP DICTIONARY not yet implemented".to_string(),
+					),
 					span: drop_stmt.span,
 				});
 			}
 			DropObjectType::RingBuffer => {
 				return Err(PlanError {
-					kind: PlanErrorKind::Unsupported("DROP RINGBUFFER not yet implemented".to_string()),
+					kind: PlanErrorKind::Unsupported(
+						"DROP RINGBUFFER not yet implemented".to_string(),
+					),
 					span: drop_stmt.span,
 				});
 			}
@@ -273,18 +278,14 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 					span: seq.span,
 				})
 			}
-			AstAlter::View(view) => {
-				Err(PlanError {
-					kind: PlanErrorKind::Unsupported("ALTER VIEW not yet implemented".to_string()),
-					span: view.span,
-				})
-			}
-			AstAlter::Flow(flow) => {
-				Err(PlanError {
-					kind: PlanErrorKind::Unsupported("ALTER FLOW not yet implemented".to_string()),
-					span: flow.span,
-				})
-			}
+			AstAlter::View(view) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("ALTER VIEW not yet implemented".to_string()),
+				span: view.span,
+			}),
+			AstAlter::Flow(flow) => Err(PlanError {
+				kind: PlanErrorKind::Unsupported("ALTER FLOW not yet implemented".to_string()),
+				span: flow.span,
+			}),
 		}
 	}
 }

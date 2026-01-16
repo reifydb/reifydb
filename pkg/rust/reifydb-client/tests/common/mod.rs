@@ -7,9 +7,9 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{Database, server, sub_server_http::HttpConfig, sub_server_ws::WsConfig};
+use reifydb::{Database, server, sub_server_http::factory::HttpConfig, sub_server_ws::factory::WsConfig};
 use reifydb_client::{Frame, Params, Value};
-use reifydb_testing::testscript::Command;
+use reifydb_testing::testscript::command::Command;
 use tokio::runtime::Runtime;
 
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {

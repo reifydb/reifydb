@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Fragment, Value};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{fragment::Fragment, value::Value};
 use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
-	StandardTransaction,
-	evaluate::column::{ColumnEvaluationContext, evaluate},
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
@@ -23,7 +23,7 @@ pub struct LeftJoinNode {
 }
 
 impl LeftJoinNode {
-	pub fn new(
+	pub(crate) fn new(
 		left: Box<ExecutionPlan>,
 		right: Box<ExecutionPlan>,
 		on: Vec<Expression>,

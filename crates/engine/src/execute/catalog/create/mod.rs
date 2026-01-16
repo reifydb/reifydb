@@ -2,27 +2,29 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
-use reifydb_core::interface::{
-	FlowStatus, SubscriptionDef, ViewDef, subscription_flow_name, subscription_flow_namespace,
+use reifydb_core::interface::catalog::{
+	flow::FlowStatus,
+	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
+	view::ViewDef,
 };
 use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::{
-	StandardCommandTransaction,
 	execute::Executor,
-	flow::{compile_flow, compile_subscription_flow},
+	flow::compiler::{compile_flow, compile_subscription_flow},
 };
 
 #[allow(dead_code)] // FIXME
-mod deferred;
-mod dictionary;
-mod flow;
-mod namespace;
-mod ringbuffer;
-mod subscription;
-mod table;
+pub mod deferred;
+pub mod dictionary;
+pub mod flow;
+pub mod namespace;
+pub mod ringbuffer;
+pub mod subscription;
+pub mod table;
 #[allow(dead_code)] // FIXME
-mod transactional;
+pub mod transactional;
 
 impl Executor {
 	/// Creates a flow for a deferred view.

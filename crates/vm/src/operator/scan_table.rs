@@ -3,14 +3,26 @@
 
 //! Table scan operator for VM-controlled batch-at-a-time scanning.
 
-use reifydb_catalog::Catalog;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	Batch, EncodedKey, LazyBatch, LazyColumnMeta,
-	interface::{EncodableKey, MultiVersionValues, NamespaceId, RowKey, RowKeyRange, TableDef},
-	value::encoded::EncodedValuesLayout,
+	interface::{
+		catalog::{id::NamespaceId, table::TableDef},
+		store::MultiVersionValues,
+	},
+	key::{
+		EncodableKey,
+		row::{RowKey, RowKeyRange},
+	},
+	value::{
+		batch::{
+			Batch,
+			lazy::{LazyBatch, LazyColumnMeta},
+		},
+		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	},
 };
-use reifydb_transaction::StandardTransaction;
-use reifydb_type::{Fragment, Type};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use crate::error::{Result, VmError};
 

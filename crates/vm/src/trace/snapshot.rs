@@ -3,16 +3,17 @@
 
 //! State snapshot conversion from live VM state.
 
-use reifydb_rqlv2::bytecode::OperatorKind;
+use reifydb_core::value::column::columns::Columns;
+use reifydb_rqlv2::bytecode::opcode::OperatorKind;
 
 use super::entry::{
 	CallFrameSnapshot, ColumnSnapshot, DispatchResultSnapshot, FrameSnapshot, OperandSnapshot, OperatorSnapshot,
 	RecordSnapshot, ScopeSnapshot, StateSnapshot,
 };
 use crate::runtime::{
-	stack::CallFrame,
 	dispatch::DispatchResult,
 	operand::{OperandValue, Record},
+	stack::CallFrame,
 	state::VmState,
 };
 
@@ -59,7 +60,7 @@ pub fn snapshot_operand(value: &OperandValue) -> OperandSnapshot {
 }
 
 /// Snapshot a frame (Columns).
-fn snapshot_frame(columns: &reifydb_core::value::column::Columns) -> FrameSnapshot {
+fn snapshot_frame(columns: &Columns) -> FrameSnapshot {
 	let row_count = columns.row_count();
 	let column_snapshots: Vec<ColumnSnapshot> = columns
 		.iter()
@@ -70,7 +71,7 @@ fn snapshot_frame(columns: &reifydb_core::value::column::Columns) -> FrameSnapsh
 		.collect();
 
 	// Capture all rows
-	let rows: Vec<Vec<reifydb_type::Value>> = (0..row_count).map(|i| columns.row(i)).collect();
+	let rows: Vec<Vec<reifydb_type::value::Value>> = (0..row_count).map(|i| columns.row(i)).collect();
 
 	FrameSnapshot {
 		row_count,
@@ -88,7 +89,8 @@ fn snapshot_column(col: &reifydb_core::value::column::Column) -> FrameSnapshot {
 	};
 
 	// Capture all values as single-element rows
-	let rows: Vec<Vec<reifydb_type::Value>> = (0..row_count).map(|i| vec![col.data().get_value(i)]).collect();
+	let rows: Vec<Vec<reifydb_type::value::Value>> =
+		(0..row_count).map(|i| vec![col.data().get_value(i)]).collect();
 
 	FrameSnapshot {
 		row_count,

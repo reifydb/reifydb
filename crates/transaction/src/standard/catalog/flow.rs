@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackFlowChangeOperations, FlowDef, FlowId, NamespaceId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackFlowChangeOperations,
+	flow::{FlowDef, FlowId},
+	id::NamespaceId,
+};
 
 use crate::{
 	change::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
-	fn track_flow_def_created(&mut self, flow: FlowDef) -> reifydb_core::Result<()> {
+	fn track_flow_def_created(&mut self, flow: FlowDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(flow),
@@ -23,7 +27,7 @@ impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_flow_def_updated(&mut self, pre: FlowDef, post: FlowDef) -> reifydb_core::Result<()> {
+	fn track_flow_def_updated(&mut self, pre: FlowDef, post: FlowDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -33,7 +37,7 @@ impl CatalogTrackFlowChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_flow_def_deleted(&mut self, flow: FlowDef) -> reifydb_core::Result<()> {
+	fn track_flow_def_deleted(&mut self, flow: FlowDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(flow),
 			post: None,

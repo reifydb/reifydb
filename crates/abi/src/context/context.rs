@@ -3,7 +3,7 @@
 
 use core::ffi::c_void;
 
-use crate::callbacks::HostCallbacks;
+use crate::callbacks::host::HostCallbacks;
 
 /// FFI context passed to operators containing transaction, operator ID, and callbacks
 /// This struct is shared between the host and operators to provide complete execution context

@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub use closer::Closer;
-pub use watermark::WaterMark;
-
-mod closer;
-mod process;
-mod watermark;
+pub mod closer;
+pub mod process;
+pub mod watermark;
 
 // Configuration constants for watermark processing
 pub const MAX_WAITERS: usize = 10000;

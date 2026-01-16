@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{NamespaceId, RingBufferDef, RingBufferId},
+	common::CommitVersion,
+	interface::catalog::{
+		id::{NamespaceId, RingBufferId},
+		ringbuffer::RingBufferDef,
+	},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionRingBufferDef};
@@ -65,9 +68,12 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex};
-	use reifydb_type::{Type, TypeConstraint};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		column::{ColumnDef, ColumnIndex},
+		id::ColumnId,
+	};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::*;
 

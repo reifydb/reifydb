@@ -53,7 +53,7 @@ impl ColumnData {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::value::column::ColumnData;
 
 	#[test]

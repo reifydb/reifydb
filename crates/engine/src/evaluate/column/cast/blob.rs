@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
-use reifydb_type::{Blob, Fragment, LazyFragment, Type, diagnostic::cast, err};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{
+	err,
+	error::diagnostic::cast,
+	fragment::{Fragment, LazyFragment},
+	value::{blob::Blob, r#type::Type},
+};
 
 pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
 	match data {
@@ -29,9 +34,8 @@ pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> crate::Re
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::BitVec;
-	use reifydb_type::Fragment;
+pub mod tests {
+	use reifydb_type::{fragment::Fragment, util::bitvec::BitVec};
 
 	use super::*;
 

@@ -9,9 +9,13 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::{ComputePool, Frame, interface::Identity};
-use reifydb_engine::StandardEngine;
-use reifydb_type::{Error, Params, diagnostic::Diagnostic};
+use reifydb_core::{interface::auth::Identity, runtime::compute::ComputePool};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::{
+	error::{Error, diagnostic::Diagnostic},
+	params::Params,
+	value::frame::frame::Frame,
+};
 use tokio::time;
 
 /// Error types for query/command execution.

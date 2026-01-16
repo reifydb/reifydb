@@ -9,22 +9,23 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use parking_lot::RwLock;
-use reifydb_core::{CommitVersion, EncodedKey, util::bloom::BloomFilter};
+use reifydb_core::{common::CommitVersion, util::bloom::BloomFilter, value::encoded::key::EncodedKey};
+use reifydb_type::Result;
 use tracing::{Span, instrument};
 
 use crate::multi::{
 	conflict::ConflictManager,
 	transaction::version::VersionProvider,
-	watermark::{Closer, WaterMark},
+	watermark::{closer::Closer, watermark::WaterMark},
 };
 
-mod cleanup;
+pub mod cleanup;
 
 /// Configuration for the efficient oracle
 const DEFAULT_WINDOW_SIZE: u64 = 1000;
+#[cfg(test)]
 const MAX_WINDOWS: usize = 50;
 const CLEANUP_THRESHOLD: usize = 40;
-pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
 
 /// Time window containing committed transactions
 pub(crate) struct CommittedWindow {
@@ -175,7 +176,7 @@ where
 		done_read: &mut bool,
 		version: CommitVersion,
 		conflicts: ConflictManager,
-	) -> crate::Result<CreateCommitResult> {
+	) -> reifydb_type::Result<CreateCommitResult> {
 		// First, perform conflict detection with read lock for better
 		// concurrency
 		let lock_start = Instant::now();
@@ -342,7 +343,7 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
-	pub(crate) fn version(&self) -> crate::Result<CommitVersion> {
+	pub(crate) fn version(&self) -> Result<CommitVersion> {
 		self.inner.read().clock.current()
 	}
 
@@ -407,7 +408,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -431,11 +432,11 @@ mod tests {
 	}
 
 	impl VersionProvider for MockVersionProvider {
-		fn next(&self) -> crate::Result<CommitVersion> {
+		fn next(&self) -> Result<CommitVersion> {
 			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
 		}
 
-		fn current(&self) -> crate::Result<CommitVersion> {
+		fn current(&self) -> Result<CommitVersion> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
 	}
@@ -649,7 +650,7 @@ mod tests {
 		// indexed by specific keys)
 		let mut conflicts2 = ConflictManager::new();
 		// Simulate a range read that doesn't return specific keys
-		use reifydb_core::EncodedKeyRange;
+		use reifydb_core::value::encoded::key::EncodedKeyRange;
 		let range = EncodedKeyRange::parse("a..z");
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));

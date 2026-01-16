@@ -3,9 +3,25 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, Time, Type, Uint, Uuid4, Uuid7, Value};
+use reifydb_type::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	time::Time,
+	r#type::Type,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
+};
 
-use super::{EncodedValues, EncodedValuesLayout, EncodedValuesLayoutInner};
+use super::{
+	encoded::EncodedValues,
+	layout::{EncodedValuesLayout, EncodedValuesLayoutInner},
+};
 
 /// An encoded named layout that includes field names
 #[derive(Debug, Clone)]

@@ -7,8 +7,14 @@
 //! - `return`
 //! - `return expr`
 
-use super::super::{Parser, error::ParseError, pratt::Precedence};
-use crate::{ast::Statement, token::Keyword};
+use crate::{
+	ast::{
+		Statement,
+		parse::{Parser, error::ParseError, pratt::Precedence},
+		stmt::control::ReturnStmt,
+	},
+	token::keyword::Keyword,
+};
 
 impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Parse return statement.
@@ -27,6 +33,6 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			None => start_span,
 		};
 
-		Ok(Statement::Return(crate::ast::stmt::ReturnStmt::new(value, span)))
+		Ok(Statement::Return(ReturnStmt::new(value, span)))
 	}
 }

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::headers::ColumnHeaders;
+use reifydb_transaction::standard::StandardTransaction;
 use reifydb_type::internal;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
@@ -23,11 +24,7 @@ impl<'a> ScalarizeNode {
 }
 
 impl QueryNode for ScalarizeNode {
-	fn initialize<'a>(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		self.frame_consumed = false;
@@ -36,7 +33,7 @@ impl QueryNode for ScalarizeNode {
 
 	fn next<'a>(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
+		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
@@ -77,7 +74,7 @@ impl QueryNode for ScalarizeNode {
 			}
 			(rows, cols) => {
 				// Error for non-1x1 frames
-				Err(reifydb_type::Error(internal!(
+				Err(reifydb_type::error::Error(internal!(
 					"Cannot scalarize frame with {} rows and {} columns - expected 1x1 frame",
 					rows,
 					cols

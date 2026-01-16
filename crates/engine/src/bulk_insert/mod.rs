@@ -23,14 +23,11 @@
 //!     .execute()?;
 //! ```
 
-mod builder;
-mod coerce;
-mod error;
-mod primitive;
-mod validation;
-
-pub use builder::{BulkInsertBuilder, Trusted, Validated, ValidationMode};
-pub use error::BulkInsertError;
+pub mod builder;
+pub mod coerce;
+pub mod error;
+pub mod primitive;
+pub mod validation;
 
 /// Result of a bulk insert operation
 #[derive(Debug, Clone, Default)]

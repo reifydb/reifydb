@@ -3,7 +3,7 @@
 
 //! Literal expression types.
 
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Literal values.
 #[derive(Debug, Clone, Copy)]

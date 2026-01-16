@@ -2,7 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::{date::parse_date, time::parse_time};
-use crate::{DateTime, Error, Fragment, error::diagnostic::temporal, return_error};
+use crate::{
+	error::{Error, diagnostic::temporal},
+	fragment::Fragment,
+	return_error,
+	value::DateTime,
+};
 
 pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 	let fragment = fragment;
@@ -33,9 +38,9 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::parse_datetime;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_basic() {

@@ -9,14 +9,17 @@
 
 use bumpalo::collections::Vec as BumpVec;
 
-use super::super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
-	pratt::Precedence,
-};
 use crate::{
-	ast::{Statement, stmt::LetValue},
-	token::{Keyword, Operator, TokenKind},
+	ast::{
+		Statement,
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+			pratt::Precedence,
+		},
+		stmt::binding::{LetStmt, LetValue},
+	},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -47,7 +50,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 
 		let span = start_span.merge(&value.span());
 
-		Ok(Statement::Let(crate::ast::stmt::LetStmt::new(name, value, span)))
+		Ok(Statement::Let(LetStmt::new(name, value, span)))
 	}
 
 	/// Parse the value part of a let statement.

@@ -3,7 +3,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_type::{Error, Params, diagnostic};
+use reifydb_type::{
+	error::{Error, diagnostic, diagnostic::internal::internal},
+	params::Params,
+};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -48,9 +51,9 @@ impl WsClient {
 			url.to_string()
 		};
 
-		let (ws_stream, _) = connect_async(&url)
-			.await
-			.map_err(|e| Error(diagnostic::internal(format!("Failed to connect to WebSocket: {}", e))))?;
+		let (ws_stream, _) = connect_async(&url).await.map_err(|e| {
+			Error(diagnostic::internal::internal(format!("Failed to connect to WebSocket: {}", e)))
+		})?;
 
 		let (write, read) = ws_stream.split();
 
@@ -181,7 +184,7 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(diagnostic::internal("Unexpected response type for auth"))),
+			_ => Err(Error(internal("Unexpected response type for auth"))),
 		}
 	}
 
@@ -277,7 +280,7 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(diagnostic::internal("Unexpected response type for subscribe"))),
+			_ => Err(Error(internal("Unexpected response type for subscribe"))),
 		}
 	}
 
@@ -298,7 +301,7 @@ impl WsClient {
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			_ => Err(Error(diagnostic::internal("Unexpected response type for unsubscribe"))),
+			_ => Err(Error(internal("Unexpected response type for unsubscribe"))),
 		}
 	}
 
@@ -321,12 +324,9 @@ impl WsClient {
 	async fn send_request(&self, request: Request) -> Result<Response, Error> {
 		let (tx, rx) = oneshot::channel();
 
-		self.request_tx
-			.send((request, tx))
-			.await
-			.map_err(|_| Error(diagnostic::internal("Connection closed")))?;
+		self.request_tx.send((request, tx)).await.map_err(|_| Error(internal("Connection closed")))?;
 
-		rx.await.map_err(|_| Error(diagnostic::internal("Response channel closed")))
+		rx.await.map_err(|_| Error(internal("Response channel closed")))
 	}
 
 	/// Close the WebSocket connection gracefully.

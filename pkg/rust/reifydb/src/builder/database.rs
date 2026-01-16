@@ -3,34 +3,54 @@
 
 use std::sync::Arc;
 
-use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 use reifydb_auth::AuthVersion;
-use reifydb_catalog::{Catalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
-use reifydb_cdc::{CdcEventListener, CdcStore, CdcVersion, CdcWorker};
-use reifydb_core::{
-	CoreVersion, SharedRuntime,
-	event::{CdcStatsRecordedEvent, EventBus, StorageStatsRecordedEvent, transaction::PostCommitEvent},
-	interface::version::{ComponentType, HasVersion, SystemVersion},
-	ioc::IocContainer,
+use reifydb_catalog::{
+	CatalogVersion,
+	catalog::Catalog,
+	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
+	system::SystemCatalog,
 };
-use reifydb_metric::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
-use reifydb_engine::{EngineVersion, StandardEngine, StandardQueryTransaction};
-use reifydb_function::{Functions, FunctionsBuilder, math, series};
+use reifydb_cdc::{
+	CdcVersion,
+	produce::{listener::CdcEventListener, worker::CdcWorker},
+	storage::CdcStore,
+};
+use reifydb_core::{
+	CoreVersion,
+	event::{
+		EventBus,
+		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		transaction::PostCommitEvent,
+	},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+	runtime::SharedRuntime,
+	util::ioc::IocContainer,
+};
+use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_function::{
+	math,
+	registry::{Functions, FunctionsBuilder},
+	series,
+};
+use reifydb_metric::worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
 use reifydb_rql::RqlVersion;
-use reifydb_rqlv2;
-use reifydb_rqlv2::Compiler;
+use reifydb_rqlv2::{self, compiler::Compiler};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
-use reifydb_sub_api::SubsystemFactory;
+use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::{FlowBuilder, subsystem::FlowSubsystemFactory};
+use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
+use reifydb_sub_tracing::builder::TracingBuilder;
+#[cfg(feature = "sub_tracing")]
+use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion, interceptor::StandardInterceptorBuilder,
-	multi::TransactionMultiVersion, single::TransactionSingle,
+	TransactionVersion, interceptor::builder::StandardInterceptorBuilder, multi::transaction::TransactionMulti,
+	single::TransactionSingle, standard::query::StandardQueryTransaction,
 };
 use tracing::debug;
+
+use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 pub struct DatabaseBuilder {
 	interceptors: StandardInterceptorBuilder,
@@ -47,11 +67,7 @@ pub struct DatabaseBuilder {
 
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
-	pub fn new(
-		multi: TransactionMultiVersion,
-		single: TransactionSingle,
-		eventbus: EventBus,
-	) -> Self {
+	pub fn new(multi: TransactionMulti, single: TransactionSingle, eventbus: EventBus) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
 			.register(eventbus)
@@ -146,7 +162,7 @@ impl DatabaseBuilder {
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
-		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
+		let multi = self.ioc.resolve::<TransactionMulti>()?;
 		let single = self.ioc.resolve::<TransactionSingle>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
@@ -187,13 +203,13 @@ impl DatabaseBuilder {
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			let default_builder = Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::Sum::new)
-				.register_aggregate("math::min", math::aggregate::Min::new)
-				.register_aggregate("math::max", math::aggregate::Max::new)
-				.register_aggregate("math::avg", math::aggregate::Avg::new)
-				.register_aggregate("math::count", math::aggregate::Count::new)
-				.register_scalar("math::abs", math::scalar::Abs::new)
-				.register_scalar("math::avg", math::scalar::Avg::new)
+				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
+				.register_aggregate("math::min", math::aggregate::min::Min::new)
+				.register_aggregate("math::max", math::aggregate::max::Max::new)
+				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
+				.register_aggregate("math::count", math::aggregate::count::Count::new)
+				.register_scalar("math::abs", math::scalar::abs::Abs::new)
+				.register_scalar("math::avg", math::scalar::avg::Avg::new)
 				.register_generator("generate_series", series::GenerateSeries::new);
 
 			Some(configurator(default_builder).build())
@@ -279,7 +295,7 @@ impl DatabaseBuilder {
 
 	/// Load the materialized catalog from storage
 	fn load_materialized_catalog(
-		multi: &TransactionMultiVersion,
+		multi: &TransactionMulti,
 		single: &TransactionSingle,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {

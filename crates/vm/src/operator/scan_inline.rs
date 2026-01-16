@@ -3,7 +3,9 @@
 
 //! Inline scan operator for creating pipelines from in-memory data.
 
-use reifydb_core::{Batch, value::column::Columns};
+use std::iter::once;
+
+use reifydb_core::value::{batch::Batch, column::columns::Columns};
 
 use crate::pipeline::Pipeline;
 
@@ -26,6 +28,6 @@ impl ScanInlineOp {
 	/// Create a pipeline that yields the in-memory data as a single batch.
 	pub fn create(&self) -> Pipeline {
 		let data = self.data.clone();
-		Box::new(std::iter::once(Ok(Batch::fully_materialized(data))))
+		Box::new(once(Ok(Batch::fully_materialized(data))))
 	}
 }

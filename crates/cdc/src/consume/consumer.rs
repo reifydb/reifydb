@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::Cdc;
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::interface::cdc::Cdc;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::Result;
 
 /// Trait for CDC transaction processing functions

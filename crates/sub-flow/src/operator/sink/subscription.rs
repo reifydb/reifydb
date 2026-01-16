@@ -4,16 +4,19 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	interface::{FlowNodeId, IMPLICIT_COLUMN_OP, ResolvedSubscription},
-	key::SubscriptionRowKey,
+	interface::{
+		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
+		resolved::ResolvedSubscription,
+	},
+	key::subscription_row::SubscriptionRowKey,
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesNamedLayout,
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::named::EncodedValuesNamedLayout,
 	},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Fragment, RowNumber};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
 
 use super::{coerce_subscription_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

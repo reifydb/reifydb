@@ -4,20 +4,20 @@
 //! Key parsing utilities for extracting Id from encoded keys.
 
 use reifydb_core::{
-	interface::{DictionaryId, FlowNodeId, PrimitiveId},
-	key::{Key, KeyKind},
-	util::encoding::keycode::KeyDeserializer,
+	interface::catalog::{flow::FlowNodeId, id::DictionaryId, primitive::PrimitiveId},
+	key::{Key, kind::KeyKind},
+	util::encoding::keycode::deserializer::KeyDeserializer,
 };
 
-use crate::Id;
+use crate::MetricId;
 
 /// Extract Id from an encoded key.
 ///
 /// Parses the key to determine its KeyKind and then extracts the appropriate ID.
 /// Returns Id::System for unrecognized keys.
-pub fn parse_id(key: &[u8]) -> Id {
+pub fn parse_id(key: &[u8]) -> MetricId {
 	let Some(kind) = Key::kind(key) else {
-		return Id::System;
+		return MetricId::System;
 	};
 	extract_object_id(key, kind)
 }
@@ -28,7 +28,7 @@ pub fn parse_id(key: &[u8]) -> Id {
 /// - Row, Index, IndexEntry, etc. contain PrimitiveId
 /// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
 /// - Other keys are classified as System
-fn extract_object_id(key: &[u8], kind: KeyKind) -> Id {
+fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 	match kind {
 		// Keys that contain PrimitiveId at bytes 2..11
 		KeyKind::Row
@@ -39,22 +39,22 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> Id {
 		| KeyKind::ColumnPolicy
 		| KeyKind::Index
 		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_source_id(key).map(Id::Source).unwrap_or(Id::System),
+		| KeyKind::PrimaryKey => extract_source_id(key).map(MetricId::Source).unwrap_or(MetricId::System),
 
 		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
-				.map(|id| Id::Source(PrimitiveId::Dictionary(DictionaryId(id))))
-				.unwrap_or(Id::System)
+				.map(|id| MetricId::Source(PrimitiveId::Dictionary(DictionaryId(id))))
+				.unwrap_or(MetricId::System)
 		}
 
 		// Keys that contain FlowNodeId at bytes 2..10
 		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
-			extract_flow_node_id(key).map(Id::FlowNode).unwrap_or(Id::System)
+			extract_flow_node_id(key).map(MetricId::FlowNode).unwrap_or(MetricId::System)
 		}
 
 		// All other key types are system metadata
-		_ => Id::System,
+		_ => MetricId::System,
 	}
 }
 
@@ -105,12 +105,12 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		interface::{DictionaryId, EncodableKey, FlowNodeId, PrimitiveId},
-		key::{DictionaryEntryKey, FlowNodeStateKey, RowKey},
+		interface::catalog::{flow::FlowNodeId, id::DictionaryId, primitive::PrimitiveId},
+		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
-	use reifydb_type::RowNumber;
+	use reifydb_type::value::row_number::RowNumber;
 
 	use super::*;
 
@@ -120,7 +120,7 @@ mod tests {
 		let encoded = RowKey::encoded(source, RowNumber(100));
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, Id::Source(source));
+		assert_eq!(id, MetricId::Source(source));
 	}
 
 	#[test]
@@ -130,7 +130,7 @@ mod tests {
 		let encoded = state_key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, Id::FlowNode(node));
+		assert_eq!(id, MetricId::FlowNode(node));
 	}
 
 	#[test]
@@ -138,7 +138,7 @@ mod tests {
 		// For system key kinds, should return Id::System
 		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0]; // Namespace kind
 		let id = parse_id(&fake_key);
-		assert_eq!(id, Id::System);
+		assert_eq!(id, MetricId::System);
 	}
 
 	#[test]
@@ -149,6 +149,6 @@ mod tests {
 		let encoded = key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, Id::Source(PrimitiveId::Dictionary(dictionary_id)));
+		assert_eq!(id, MetricId::Source(PrimitiveId::Dictionary(dictionary_id)));
 	}
 }

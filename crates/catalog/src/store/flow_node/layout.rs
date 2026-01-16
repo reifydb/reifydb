@@ -3,8 +3,8 @@
 
 pub(crate) mod flow_node {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const FLOW: usize = 1;
@@ -23,8 +23,8 @@ pub(crate) mod flow_node {
 
 pub(crate) mod flow_node_by_flow {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const FLOW: usize = 0;
 	pub(crate) const ID: usize = 1;

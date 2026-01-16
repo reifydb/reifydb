@@ -3,8 +3,11 @@
 
 use std::ops::Index;
 
-use reifydb_core::{IndexType, JoinType, SortDirection};
-use reifydb_type::Fragment;
+use reifydb_core::{
+	common::{IndexType, JoinType},
+	sort::SortDirection,
+};
+use reifydb_type::fragment::Fragment;
 
 use crate::ast::{
 	identifier::{
@@ -14,7 +17,7 @@ use crate::ast::{
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedPrimitiveIdentifier,
 	},
-	tokenize::{Literal, Token, TokenKind},
+	tokenize::token::{Literal, Token, TokenKind},
 };
 
 #[derive(Debug, Clone, PartialEq)]

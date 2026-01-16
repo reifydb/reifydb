@@ -13,11 +13,9 @@ mod query;
 
 pub use command::CommandSession;
 pub use query::QuerySession;
-use reifydb_core::{
-	Frame,
-	interface::{Identity, Params},
-};
-use reifydb_engine::StandardEngine;
+use reifydb_core::interface::auth::Identity;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::{params::Params, value::frame::frame::Frame};
 use tracing::instrument;
 
 pub trait Session {
@@ -36,7 +34,7 @@ impl CommandSession {
 	}
 
 	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.command_as(&self.identity, rql, params.into())
 	}
 }
@@ -51,7 +49,7 @@ impl QuerySession {
 	}
 
 	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.query_as(&self.identity, rql, params.into())
 	}
 }

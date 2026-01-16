@@ -5,7 +5,7 @@
 
 use std::str::Utf8Error;
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 /// Invalid hexadecimal string in BLOB constructor
 pub fn invalid_hex_string(fragment: Fragment) -> Diagnostic {

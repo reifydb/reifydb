@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId},
-	key::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use super::decode_retention_policy;
 use crate::CatalogStore;
@@ -36,9 +36,9 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		interface::TableId,
+		interface::catalog::id::TableId,
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;

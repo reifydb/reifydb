@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{Result, WindowSize, WindowSlide, WindowType, interface::FlowNodeId};
+use reifydb_core::{
+	common::{WindowSize, WindowSlide, WindowType},
+	interface::catalog::flow::FlowNodeId,
+};
 use reifydb_rql::{
 	expression::Expression,
 	flow::{
-		FlowNodeType::Window,
 		conversion::{to_owned_expressions, to_owned_physical_plan},
+		node::FlowNodeType::Window,
 	},
 	plan::physical::{PhysicalPlan, WindowNode},
 };
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct WindowCompiler {
 	pub input: Option<Box<PhysicalPlan>>,

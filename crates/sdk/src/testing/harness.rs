@@ -3,19 +3,24 @@
 
 use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
 
-use reifydb_abi::ContextFFI;
+use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
-	CommitVersion,
-	interface::FlowNodeId,
+	common::CommitVersion,
+	interface::catalog::flow::FlowNodeId,
+	key::EncodableKey,
 	value::{
-		column::Columns,
-		encoded::{EncodedKey, EncodedValues},
+		column::columns::Columns,
+		encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
 	},
 };
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::value::{Value, row_number::RowNumber};
 
-use super::{TestContext, TestStateStore, callbacks};
-use crate::{FFIOperator, FFIOperatorMetadata, FlowChange, OperatorContext, Result};
+use crate::{
+	error::Result,
+	flow::FlowChange,
+	operator::{FFIOperator, FFIOperatorMetadata, context::OperatorContext},
+	testing::{callbacks::create_test_callbacks, context::TestContext, state::TestStateStore},
+};
 
 /// Test harness for FFI operators
 ///
@@ -75,9 +80,8 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	/// Assert that a state key exists with the given value
 	pub fn assert_state<K>(&self, key: K, expected: Value)
 	where
-		K: reifydb_core::key::EncodableKey,
+		K: EncodableKey,
 	{
-		use reifydb_core::value::encoded::EncodedValuesLayout;
 		let encoded_key = key.encode();
 		let store = self.state();
 		let layout = EncodedValuesLayout::new(&[expected.get_type()]);
@@ -203,9 +207,9 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 	/// Set initial state
 	pub fn with_initial_state<K>(mut self, key: K, value: Vec<u8>) -> Self
 	where
-		K: reifydb_core::key::EncodableKey,
+		K: EncodableKey,
 	{
-		use reifydb_core::CowVec;
+		use reifydb_type::util::cowvec::CowVec;
 		self.initial_state.insert(key.encode(), EncodedValues(CowVec::new(value)));
 		self
 	}
@@ -225,7 +229,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			operator_id: self.node_id.0,
-			callbacks: callbacks::create_test_callbacks(),
+			callbacks: create_test_callbacks(),
 		});
 
 		// Create the operator
@@ -274,12 +278,24 @@ impl TestMetadataHarness {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::value::encoded::{EncodedValuesLayout, IntoEncodedKey};
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::catalog::flow::FlowNodeId,
+		value::{
+			column::columns::Columns,
+			encoded::{key::IntoEncodedKey, layout::EncodedValuesLayout},
+		},
+	};
+	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{super::helpers::encode_key, *};
-	use crate::testing::TestFlowChangeBuilder;
+	use crate::{
+		flow::{FlowChange, FlowDiff},
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		testing::builders::TestFlowChangeBuilder,
+	};
 
 	// Simple pass-through operator for basic tests
 	struct TestOperator {
@@ -292,9 +308,9 @@ mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
-		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
+		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for TestOperator {
@@ -323,9 +339,9 @@ mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
-		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
+		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for StatefulTestOperator {
@@ -338,14 +354,14 @@ mod tests {
 
 			for diff in &input.diffs {
 				let post_row = match diff {
-					crate::FlowDiff::Insert {
+					FlowDiff::Insert {
 						post,
 					} => Some(post),
-					crate::FlowDiff::Update {
+					FlowDiff::Update {
 						post,
 						..
 					} => Some(post),
-					crate::FlowDiff::Remove {
+					FlowDiff::Remove {
 						..
 					} => unreachable!(),
 				};

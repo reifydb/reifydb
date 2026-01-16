@@ -82,7 +82,7 @@ fn char_width(ch: char) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

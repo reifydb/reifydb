@@ -3,7 +3,7 @@
 
 use core::ptr::null;
 
-use super::BufferFFI;
+use super::buffer::BufferFFI;
 
 /// FFI-safe field metadata for layout
 #[repr(C)]
@@ -15,7 +15,7 @@ pub struct FieldFFI {
 	pub size: usize,
 	/// Alignment requirement
 	pub align: usize,
-	/// Type as u8 (use reifydb_type::Type::to_u8/from_u8)
+	/// Type as u8 (use reifydb_type::value::r#type::Type::to_u8/from_u8)
 	pub field_type: u8,
 }
 

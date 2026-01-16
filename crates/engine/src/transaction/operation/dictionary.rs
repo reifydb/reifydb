@@ -2,15 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{DictionaryDef, EncodableKey},
-	key::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
-	util::CowVec,
-	value::encoded::EncodedValues,
+	interface::catalog::dictionary::DictionaryDef,
+	key::{
+		EncodableKey,
+		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
+	},
+	value::encoded::encoded::EncodedValues,
 };
-use reifydb_hash::xxh3_128;
-use reifydb_type::{DictionaryEntryId, Value, internal_error};
-
-use crate::StandardCommandTransaction;
+use reifydb_hash::xxh::xxh3_128;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
+use reifydb_type::{
+	internal_error,
+	util::cowvec::CowVec,
+	value::{Value, dictionary::DictionaryEntryId},
+};
 
 pub(crate) trait DictionaryOperations {
 	/// Insert a value into the dictionary, returning its ID.
@@ -128,7 +133,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 
 /// Implementation for StandardTransaction (both Command and Query)
 /// This provides read-only access to dictionaries for query operations.
-impl DictionaryOperations for crate::StandardTransaction<'_> {
+impl DictionaryOperations for StandardTransaction<'_> {
 	fn insert_into_dictionary(
 		&mut self,
 		dictionary: &DictionaryDef,
@@ -136,8 +141,8 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 	) -> crate::Result<DictionaryEntryId> {
 		// Only command transactions can insert
 		match self {
-			crate::StandardTransaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
-			crate::StandardTransaction::Query(_) => {
+			StandardTransaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
+			StandardTransaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
 			}
 		}
@@ -183,9 +188,12 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{DictionaryDef, DictionaryId, NamespaceId};
-	use reifydb_type::{DictionaryEntryId, Type, Value};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		dictionary::DictionaryDef,
+		id::{DictionaryId, NamespaceId},
+	};
+	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, r#type::Type};
 
 	use super::DictionaryOperations;
 	use crate::test_utils::create_test_command_transaction;

@@ -3,8 +3,8 @@
 
 pub(crate) mod retention_policy {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	// Retention policy discriminators
 	pub(crate) const POLICY_KEEP_FOREVER: u8 = 0;

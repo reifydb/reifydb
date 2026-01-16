@@ -7,7 +7,7 @@
 //! (`IfExpr`, `LoopExpr`, `ForExpr`) in the expression module.
 
 use super::Expr;
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Break statement: break
 #[derive(Debug, Clone, Copy)]

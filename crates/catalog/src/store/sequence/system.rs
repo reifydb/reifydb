@@ -3,13 +3,13 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
-	EncodedKey,
-	interface::{
-		ColumnId, ColumnPolicyId, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, SystemSequenceKey,
-		TableId, ViewId,
+	interface::catalog::id::{
+		ColumnId, ColumnPolicyId, DictionaryId, NamespaceId, PrimaryKeyId, RingBufferId, TableId, ViewId,
 	},
+	key::system_sequence::SystemSequenceKey,
+	value::encoded::key::EncodedKey,
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::{
 	store::sequence::generator::u64::GeneratorU64,

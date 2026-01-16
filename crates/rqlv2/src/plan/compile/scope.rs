@@ -7,8 +7,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
-	plan::{OutputSchema, Variable},
-	token::Span,
+	plan::types::{OutputSchema, Variable},
+	token::span::Span,
 };
 
 /// Variable scope for tracking local variables.

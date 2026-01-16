@@ -5,12 +5,12 @@
 
 use std::time::Duration;
 
-use reifydb_core::{SharedRuntime, ioc::IocContainer};
-use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, StateConfig};
+use reifydb_core::{runtime::SharedRuntime, util::ioc::IocContainer};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_sub_server::state::{AppState, StateConfig};
 
-use crate::WsSubsystem;
+use crate::subsystem::WsSubsystem;
 
 /// Configuration for the WebSocket server subsystem.
 #[derive(Clone, Debug)]
@@ -40,7 +40,7 @@ impl Default for WsConfig {
 			max_frame_size: 16 << 20, // 16MB
 			runtime: None,
 			poll_interval: Duration::from_millis(250), // Poll every 250ms
-			poll_batch_size: 100, // Read up to 100 rows per poll
+			poll_batch_size: 100,                      // Read up to 100 rows per poll
 		}
 	}
 }
@@ -109,7 +109,7 @@ impl WsSubsystemFactory {
 }
 
 impl SubsystemFactory for WsSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 

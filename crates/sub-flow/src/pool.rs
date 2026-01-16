@@ -3,14 +3,19 @@
 
 //! Worker pool for parallel flow processing across N workers.
 
-use crate::{FlowEngine, instruction::WorkerBatch, transaction::PendingWrites, worker::FlowWorker};
-use reifydb_catalog::Catalog;
-use reifydb_core::{Error, Result};
-use reifydb_engine::StandardEngine;
-use reifydb_type::internal;
-use reifydb_type::util::hex::encode;
 use std::collections::HashMap;
-use tracing::{debug, instrument, Span};
+
+use reifydb_catalog::catalog::Catalog;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::{Result, error::Error, internal, util::hex::encode};
+use tracing::{Span, debug, instrument};
+
+use crate::{
+	FlowEngine,
+	instruction::WorkerBatch,
+	transaction::pending::{Pending, PendingWrites},
+	worker::FlowWorker,
+};
 
 /// Pool of N flow workers for parallel flow processing.
 pub(crate) struct FlowWorkerPool {
@@ -51,7 +56,7 @@ impl FlowWorkerPool {
 	/// Register a flow in the assigned worker's FlowEngine.
 	///
 	/// Uses hash partitioning to assign flow to specific worker: (flow_id % num_workers)
-	pub fn register_flow(&self, flow: reifydb_rql::flow::FlowDag) -> Result<()> {
+	pub fn register_flow(&self, flow: reifydb_rql::flow::flow::FlowDag) -> Result<()> {
 		let flow_id = flow.id;
 		let worker_id = (flow_id.0 as usize) % self.workers.len();
 
@@ -111,10 +116,10 @@ impl FlowWorkerPool {
 
 				// Safe to merge - disjoint keyspaces
 				match value {
-					crate::transaction::Pending::Set(v) => {
+					Pending::Set(v) => {
 						combined.insert(key.clone(), v.clone());
 					}
-					crate::transaction::Pending::Remove => {
+					Pending::Remove => {
 						combined.remove(key.clone());
 					}
 				}

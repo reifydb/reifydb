@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{ColumnData, CompressedColumn, CompressionType};
-use reifydb_type::{Result, diagnostic, error};
+use reifydb_core::value::column::{
+	compressed::{CompressedColumn, CompressionType},
+	data::ColumnData,
+};
+use reifydb_type::{
+	error,
+	error::{diagnostic, diagnostic::serde::serde_serialize_error},
+};
 
 use crate::ColumnCompressor;
 
 pub struct NoneCompressor {}
 
 impl ColumnCompressor for NoneCompressor {
-	fn compress(&self, data: &ColumnData) -> Result<CompressedColumn> {
-		let serialized = postcard::to_stdvec(data)
-			.map_err(|e| error!(diagnostic::serde::serde_serialize_error(e.to_string())))?;
+	fn compress(&self, data: &ColumnData) -> reifydb_type::Result<CompressedColumn> {
+		let serialized = postcard::to_stdvec(data).map_err(|e| error!(serde_serialize_error(e.to_string())))?;
 
 		let uncompressed_size = serialized.len();
 
@@ -24,7 +29,7 @@ impl ColumnCompressor for NoneCompressor {
 		})
 	}
 
-	fn decompress(&self, compressed: &CompressedColumn) -> Result<ColumnData> {
+	fn decompress(&self, compressed: &CompressedColumn) -> reifydb_type::Result<ColumnData> {
 		assert_eq!(compressed.compression, CompressionType::None);
 
 		let result: ColumnData = postcard::from_bytes(&compressed.data)
@@ -35,7 +40,9 @@ impl ColumnCompressor for NoneCompressor {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::value::column::{compressed::CompressionType, data::ColumnData};
+
 	use super::*;
 
 	#[test]

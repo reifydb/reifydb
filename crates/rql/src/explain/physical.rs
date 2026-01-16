@@ -3,9 +3,9 @@
 
 use std::fmt::Write;
 
-use reifydb_catalog::Catalog;
-use reifydb_core::JoinType;
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::common::JoinType;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	ast::parse_str,
@@ -380,7 +380,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, "AlterView");
 		}
 		PhysicalPlan::AlterFlow(alter_flow) => {
-			use crate::plan::physical::AlterFlowAction;
+			use crate::plan::physical::alter::flow::AlterFlowAction;
 
 			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
 				format!("{}.{}", ns.text(), alter_flow.flow.name.text())

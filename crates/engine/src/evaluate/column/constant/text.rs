@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Fragment, Int, Type, Uint, diagnostic::cast, parse_bool, parse_decimal, parse_float, parse_primitive_int,
-	parse_primitive_uint, return_error,
+	error::diagnostic::cast,
+	fragment::Fragment,
+	return_error,
+	value::{
+		boolean::parse::parse_bool,
+		decimal::parse::parse_decimal,
+		int::Int,
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		r#type::Type,
+		uint::Uint,
+	},
 };
 use temporal::TemporalParser;
 

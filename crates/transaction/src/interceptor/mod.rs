@@ -2,95 +2,48 @@
 // Copyright (c) 2025 ReifyDB
 
 // Submodule declarations
-mod builder;
-mod chain;
-mod factory;
-mod filter;
-mod filtered;
-mod interceptors;
-mod namespace_def;
-mod ringbuffer;
-mod ringbuffer_def;
-mod table;
-mod table_def;
-mod transaction;
-mod view_def;
+pub mod builder;
+pub mod chain;
+pub mod factory;
+pub mod filter;
+pub mod filtered;
+pub mod interceptors;
+pub mod namespace_def;
+pub mod ringbuffer;
+pub mod ringbuffer_def;
+pub mod table;
+pub mod table_def;
+pub mod transaction;
+pub mod view_def;
 
-// Re-export chain
-// Re-export builder
-pub use builder::StandardInterceptorBuilder;
-pub use chain::InterceptorChain;
-// Re-export factory
-pub use factory::{InterceptorFactory, StandardInterceptorFactory};
-// Re-export filter
-pub use filter::InterceptFilter;
-// Re-export filtered interceptors
-pub use filtered::*;
-// Re-export interceptors container
-pub use interceptors::{Interceptors, RegisterInterceptor};
-// Re-export namespace_def interceptors
-pub use namespace_def::{
-	ClosureNamespaceDefPostCreateInterceptor, ClosureNamespaceDefPostUpdateInterceptor,
-	ClosureNamespaceDefPreDeleteInterceptor, ClosureNamespaceDefPreUpdateInterceptor,
-	NamespaceDefPostCreateContext, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateContext,
-	NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteContext, NamespaceDefPreDeleteInterceptor,
-	NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor, namespace_def_post_create,
-	namespace_def_post_update, namespace_def_pre_delete, namespace_def_pre_update,
+// Re-import types for use in WithInterceptors trait
+use chain::InterceptorChain;
+use namespace_def::{
+	NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteInterceptor,
+	NamespaceDefPreUpdateInterceptor,
 };
-// Re-export ringbuffer interceptors
-pub use ringbuffer::{
-	ClosureRingBufferPostDeleteInterceptor, ClosureRingBufferPostInsertInterceptor,
-	ClosureRingBufferPostUpdateInterceptor, ClosureRingBufferPreDeleteInterceptor,
-	ClosureRingBufferPreInsertInterceptor, ClosureRingBufferPreUpdateInterceptor, RingBufferInterceptor,
-	RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
-	RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
-	RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
-	RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
-	ringbuffer_post_delete, ringbuffer_post_insert, ringbuffer_post_update, ringbuffer_pre_delete,
-	ringbuffer_pre_insert, ringbuffer_pre_update,
+use ringbuffer::{
+	RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor,
+	RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
 };
-// Re-export ringbuffer_def interceptors
-pub use ringbuffer_def::{
-	ClosureRingBufferDefPostCreateInterceptor, ClosureRingBufferDefPostUpdateInterceptor,
-	ClosureRingBufferDefPreDeleteInterceptor, ClosureRingBufferDefPreUpdateInterceptor,
-	RingBufferDefPostCreateContext, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateContext,
-	RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteContext, RingBufferDefPreDeleteInterceptor,
-	RingBufferDefPreUpdateContext, RingBufferDefPreUpdateInterceptor, ringbuffer_def_post_create,
-	ringbuffer_def_post_update, ringbuffer_def_pre_delete, ringbuffer_def_pre_update,
+use ringbuffer_def::{
+	RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteInterceptor,
+	RingBufferDefPreUpdateInterceptor,
 };
-// Re-export table interceptors
-pub use table::{
-	ClosureTablePostDeleteInterceptor, ClosureTablePostInsertInterceptor, ClosureTablePostUpdateInterceptor,
-	ClosureTablePreDeleteInterceptor, ClosureTablePreInsertInterceptor, ClosureTablePreUpdateInterceptor,
-	TableInterceptor, TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext,
-	TablePostInsertInterceptor, TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext,
-	TablePreDeleteInterceptor, TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext,
-	TablePreUpdateInterceptor, table_post_delete, table_post_insert, table_post_update, table_pre_delete,
-	table_pre_insert, table_pre_update,
+use table::{
+	TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+	TablePreInsertInterceptor, TablePreUpdateInterceptor,
 };
-// Re-export table_def interceptors
-pub use table_def::{
-	ClosureTableDefPostCreateInterceptor, ClosureTableDefPostUpdateInterceptor,
-	ClosureTableDefPreDeleteInterceptor, ClosureTableDefPreUpdateInterceptor, TableDefPostCreateContext,
-	TableDefPostCreateInterceptor, TableDefPostUpdateContext, TableDefPostUpdateInterceptor,
-	TableDefPreDeleteContext, TableDefPreDeleteInterceptor, TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
-	table_def_post_create, table_def_post_update, table_def_pre_delete, table_def_pre_update,
+use table_def::{
+	TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+	TableDefPreUpdateInterceptor,
 };
-// Re-export transaction interceptors
-pub use transaction::{
-	ClosurePostCommitInterceptor, ClosurePreCommitInterceptor, PostCommitContext, PostCommitInterceptor,
-	PreCommitContext, PreCommitInterceptor, post_commit, pre_commit,
-};
-// Re-export view_def interceptors
-pub use view_def::{
-	ClosureViewDefPostCreateInterceptor, ClosureViewDefPostUpdateInterceptor, ClosureViewDefPreDeleteInterceptor,
-	ClosureViewDefPreUpdateInterceptor, ViewDefPostCreateContext, ViewDefPostCreateInterceptor,
-	ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
-	ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor, view_def_post_create, view_def_post_update,
-	view_def_pre_delete, view_def_pre_update,
+use transaction::{PostCommitInterceptor, PreCommitInterceptor};
+use view_def::{
+	ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+	ViewDefPreUpdateInterceptor,
 };
 
-// Type alias for convenience
 pub type Chain<I> = InterceptorChain<I>;
 
 /// Trait for accessing interceptor chains from transaction types

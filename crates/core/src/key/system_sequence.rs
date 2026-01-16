@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::SequenceId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::SequenceId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,9 +71,9 @@ impl SystemSequenceKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, SystemSequenceKey};
-	use crate::interface::catalog::SequenceId;
+	use crate::interface::catalog::id::SequenceId;
 
 	#[test]
 	fn test_encode_decode() {

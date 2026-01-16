@@ -4,13 +4,16 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId, ResolvedView},
-	key::RowKey,
-	value::{column::Columns, encoded::EncodedValuesNamedLayout},
+	interface::{
+		catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+		resolved::ResolvedView,
+	},
+	key::row::RowKey,
+	value::{column::columns::Columns, encoded::named::EncodedValuesNamedLayout},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::RowNumber;
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::value::row_number::RowNumber;
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};

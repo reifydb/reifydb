@@ -3,12 +3,10 @@
 
 //! Evaluation context for compiled expressions.
 
-mod context;
-mod value;
+pub mod context;
+pub mod value;
 
-pub use context::EvalContext;
-use reifydb_core::value::column::{ColumnData, Columns};
-pub use value::EvalValue;
+use reifydb_core::value::column::{columns::Columns, data::ColumnData};
 
 use super::types::EvalError;
 

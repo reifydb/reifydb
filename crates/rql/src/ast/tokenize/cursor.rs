@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{Fragment, StatementColumn, StatementLine};
+use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'a> {

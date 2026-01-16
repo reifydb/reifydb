@@ -3,8 +3,7 @@
 
 //! Response types and frame conversion for HTTP and WebSocket servers.
 
-use reifydb_core::Frame;
-use reifydb_type::{Type, Value};
+use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
 use serde::{Deserialize, Serialize};
 
 /// A response frame containing query/command results.

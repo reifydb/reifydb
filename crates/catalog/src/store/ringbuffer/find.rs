@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	NamespaceId, NamespaceRingBufferKey, RingBufferDef, RingBufferId, RingBufferKey, RingBufferMetadata,
-	RingBufferMetadataKey,
+use reifydb_core::{
+	interface::catalog::{
+		id::{NamespaceId, RingBufferId},
+		ringbuffer::{RingBufferDef, RingBufferMetadata},
+	},
+	key::{
+		namespace_ringbuffer::NamespaceRingBufferKey,
+		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
+	},
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -96,16 +102,18 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::RingBufferId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::RingBufferId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
-		namespace::NamespaceToCreate,
-		primary_key::PrimaryKeyToCreate,
-		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
+		store::{
+			namespace::create::NamespaceToCreate,
+			primary_key::create::PrimaryKeyToCreate,
+			ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
+		},
 		test_utils::{ensure_test_namespace, ensure_test_ringbuffer},
 	};
 

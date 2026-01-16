@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	error,
-	value::column::{Column, ColumnData, Columns, GroupByView},
-};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
 use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext};
 use reifydb_rql::expression::{CallExpression, Expression};
-use reifydb_type::{Fragment, Value, diagnostic::function};
+use reifydb_type::{error, error::diagnostic::function, fragment::Fragment, value::Value};
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn call<'a>(&self, ctx: &ColumnEvaluationContext, call: &CallExpression) -> crate::Result<Column> {

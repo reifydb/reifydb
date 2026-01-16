@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_store_multi::sqlite::SqliteConfig;
+use reifydb_store_multi::hot::sqlite::config::SqliteConfig;
 
-use crate::EmbeddedBuilder;
-use crate::api::StorageFactory;
+use crate::{EmbeddedBuilder, api::StorageFactory};
 
 /// Create an embedded database with in-memory storage.
 pub fn memory() -> EmbeddedBuilder {

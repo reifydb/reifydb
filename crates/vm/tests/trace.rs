@@ -8,7 +8,7 @@
 // use std::sync::Arc;
 //
 // use reifydb_core::value::column::{Column, ColumnData, Columns};
-// use reifydb_type::Fragment;
+// use reifydb_type::fragment::Fragment;
 // use reifydb_vm::{InMemorySourceRegistry, VmContext, VmState, VmTracer, compile_script};
 //
 // /// Create test data

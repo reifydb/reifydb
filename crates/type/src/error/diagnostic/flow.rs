@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	Fragment,
 	error::diagnostic::{Diagnostic, OperatorChainEntry},
-	value::DateTime,
+	fragment::Fragment,
+	value::datetime::DateTime,
 };
 
 /// View flow processing error

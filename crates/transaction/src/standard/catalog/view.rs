@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackViewChangeOperations, NamespaceId, ViewDef, ViewId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackViewChangeOperations,
+	id::{NamespaceId, ViewId},
+	view::ViewDef,
+};
 
 use crate::{
 	change::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackViewChangeOperations for StandardCommandTransaction {
-	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_core::Result<()> {
+	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(view),
@@ -23,7 +27,7 @@ impl CatalogTrackViewChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_view_def_updated(&mut self, pre: ViewDef, post: ViewDef) -> reifydb_core::Result<()> {
+	fn track_view_def_updated(&mut self, pre: ViewDef, post: ViewDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -33,7 +37,7 @@ impl CatalogTrackViewChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_view_def_deleted(&mut self, view: ViewDef) -> reifydb_core::Result<()> {
+	fn track_view_def_deleted(&mut self, view: ViewDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(view),
 			post: None,

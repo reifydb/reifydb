@@ -4,8 +4,11 @@
 //! DML plan nodes (Insert, Update, Delete).
 
 use crate::{
-	plan::{CatalogColumn, Dictionary, Plan, RingBuffer, Table},
-	token::Span,
+	plan::{
+		Plan,
+		types::{CatalogColumn, Dictionary, RingBuffer, Table},
+	},
+	token::span::Span,
 };
 
 /// Insert into table.

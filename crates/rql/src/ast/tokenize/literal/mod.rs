@@ -3,17 +3,17 @@
 
 use super::{cursor::Cursor, token::Token};
 
-mod bool;
-mod number;
-mod temporal;
-mod text;
-mod undefined;
+pub mod bool;
+pub mod number;
+pub mod temporal;
+pub mod text;
+pub mod undefined;
 
-pub use bool::scan_boolean;
-pub use number::scan_number;
-pub use temporal::scan_temporal;
-pub use text::scan_text;
-pub use undefined::scan_undefined;
+use bool::scan_boolean;
+use number::scan_number;
+use temporal::scan_temporal;
+use text::scan_text;
+use undefined::scan_undefined;
 
 /// Scan for any literal token
 pub fn scan_literal(cursor: &mut Cursor) -> Option<Token> {

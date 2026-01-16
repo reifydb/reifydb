@@ -8,19 +8,19 @@ use std::sync::{
 
 use parking_lot::Mutex;
 use reifydb_core::{
-	CommitVersion,
-	interface::{EncodableKey, TransactionVersionKey},
-	value::encoded::EncodedValuesLayout,
+	common::CommitVersion,
+	key::{EncodableKey, transaction_version::TransactionVersionKey},
+	value::encoded::layout::EncodedValuesLayout,
 };
-use reifydb_type::Type;
+use reifydb_type::{Result, value::r#type::Type};
 
 use crate::single::TransactionSingle;
 
 const BLOCK_SIZE: u64 = 100_000;
 
 pub trait VersionProvider: Send + Sync + Clone {
-	fn next(&self) -> crate::Result<CommitVersion>;
-	fn current(&self) -> crate::Result<CommitVersion>;
+	fn next(&self) -> Result<CommitVersion>;
+	fn current(&self) -> Result<CommitVersion>;
 }
 
 /// Helper struct for initial block setup
@@ -51,7 +51,7 @@ pub struct StandardVersionProvider {
 }
 
 impl StandardVersionProvider {
-	pub fn new(single: TransactionSingle) -> crate::Result<Self> {
+	pub fn new(single: TransactionSingle) -> Result<Self> {
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -67,7 +67,7 @@ impl StandardVersionProvider {
 		})
 	}
 
-	fn load_current_version(single: &TransactionSingle) -> crate::Result<u64> {
+	fn load_current_version(single: &TransactionSingle) -> Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
@@ -78,7 +78,7 @@ impl StandardVersionProvider {
 		}
 	}
 
-	fn persist_version(single: &TransactionSingle, version: u64) -> crate::Result<()> {
+	fn persist_version(single: &TransactionSingle, version: u64) -> Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
@@ -91,7 +91,7 @@ impl StandardVersionProvider {
 }
 
 impl VersionProvider for StandardVersionProvider {
-	fn next(&self) -> crate::Result<CommitVersion> {
+	fn next(&self) -> Result<CommitVersion> {
 		// FAST PATH: Lock-free atomic increment
 		let version = self.next_version.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -126,13 +126,13 @@ impl VersionProvider for StandardVersionProvider {
 		Ok(CommitVersion(version))
 	}
 
-	fn current(&self) -> crate::Result<CommitVersion> {
+	fn current(&self) -> Result<CommitVersion> {
 		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst)))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::Arc;
 
 	use super::*;

@@ -9,7 +9,7 @@ use std::{
 use serde::{de, ser};
 
 pub mod diagnostic;
-mod r#macro;
+pub mod r#macro;
 
 use diagnostic::{Diagnostic, conversion, render::DefaultRenderer};
 

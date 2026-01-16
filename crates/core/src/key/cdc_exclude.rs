@@ -51,7 +51,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

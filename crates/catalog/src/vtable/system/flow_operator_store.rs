@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
-use reifydb_type::TypeConstraint;
+use reifydb_type::value::constraint::TypeConstraint;
 
 /// Information about a single column definition in an operator
 #[derive(Clone, Debug)]

@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use ViewKind::Deferred;
 use reifydb_core::{
-	diagnostic::catalog::view_already_exists,
-	interface::{
-		ColumnIndex, NamespaceId, NamespaceViewKey, TableId, ViewDef, ViewId, ViewKey, ViewKind,
-		ViewKind::Transactional,
+	interface::catalog::{
+		column::ColumnIndex,
+		id::{NamespaceId, TableId, ViewId},
+		view::{
+			ViewDef, ViewKind,
+			ViewKind::{Deferred, Transactional},
+		},
 	},
-	return_error,
+	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Fragment, TypeConstraint};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::view_already_exists, fragment::Fragment, return_error,
+	value::constraint::TypeConstraint,
+};
 
 use crate::{
 	CatalogStore,
 	store::{
-		column::ColumnToCreate,
-		sequence::SystemSequence,
+		column::create::ColumnToCreate,
+		sequence::system::SystemSequence,
 		view::layout::{view, view_namespace},
 	},
 };
@@ -148,13 +153,16 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, ViewId};
+pub mod tests {
+	use reifydb_core::{
+		interface::catalog::id::{NamespaceId, ViewId},
+		key::namespace_view::NamespaceViewKey,
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		store::view::{ViewToCreate, layout::view_namespace},
+		store::view::{create::ViewToCreate, layout::view_namespace},
 		test_utils::ensure_test_namespace,
 	};
 

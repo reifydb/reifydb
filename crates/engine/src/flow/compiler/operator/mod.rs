@@ -3,26 +3,14 @@
 
 //! Operator-specific compilation implementations
 
-mod aggregate;
-mod apply;
-mod distinct;
-mod extend;
-mod filter;
-mod join;
-mod map;
-mod merge;
-mod sort;
-mod take;
-mod window;
-
-pub(crate) use aggregate::AggregateCompiler;
-pub(crate) use apply::ApplyCompiler;
-pub(crate) use distinct::DistinctCompiler;
-pub(crate) use extend::ExtendCompiler;
-pub(crate) use filter::FilterCompiler;
-pub(crate) use join::JoinCompiler;
-pub(crate) use map::MapCompiler;
-pub(crate) use merge::MergeCompiler;
-pub(crate) use sort::SortCompiler;
-pub(crate) use take::TakeCompiler;
-pub(crate) use window::WindowCompiler;
+pub mod aggregate;
+pub mod apply;
+pub mod distinct;
+pub mod extend;
+pub mod filter;
+pub mod join;
+pub mod map;
+pub mod merge;
+pub mod sort;
+pub mod take;
+pub mod window;

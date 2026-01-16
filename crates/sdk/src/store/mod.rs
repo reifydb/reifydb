@@ -6,15 +6,15 @@
 //! Provides read-only access to the underlying store,
 //! allowing operators to query data beyond their own state.
 
-mod ffi;
+pub mod ffi;
 
 use std::ops::Bound;
 
 use ffi::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_range};
-use reifydb_core::value::encoded::{EncodedKey, EncodedValues};
-use tracing::{instrument, Span};
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+use tracing::{Span, instrument};
 
-use crate::{OperatorContext, error::Result};
+use crate::{error::Result, operator::context::OperatorContext};
 
 /// Store accessor providing read-only access to the underlying store
 pub struct Store<'a> {

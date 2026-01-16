@@ -3,13 +3,9 @@
 
 //! Literal value kinds and scanners.
 
-mod number;
-mod temporal;
-mod text;
-
-pub use number::scan_number;
-pub use temporal::scan_temporal;
-pub use text::scan_string;
+pub mod number;
+pub mod temporal;
+pub mod text;
 
 /// Literal value kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

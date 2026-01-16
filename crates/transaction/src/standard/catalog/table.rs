@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackTableChangeOperations, NamespaceId, TableDef, TableId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackTableChangeOperations,
+	id::{NamespaceId, TableId},
+	table::TableDef,
+};
 
 use crate::{
 	change::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
-	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_core::Result<()> {
+	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(table),
@@ -23,7 +27,7 @@ impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> reifydb_core::Result<()> {
+	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -33,7 +37,7 @@ impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_table_def_deleted(&mut self, table: TableDef) -> reifydb_core::Result<()> {
+	fn track_table_def_deleted(&mut self, table: TableDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(table),
 			post: None,

@@ -1,21 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, ops::Bound, ops::Deref, sync::Arc};
+use std::{
+	collections::BTreeMap,
+	ops::{Bound, Deref},
+	sync::Arc,
+};
+
+use reifydb_core::{
+	delta::Delta,
+	event::EventBus,
+	interface::store::SingleVersionValues,
+	runtime::compute::ComputePool,
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
+};
+use reifydb_type::util::{cowvec::CowVec, hex};
+use tracing::instrument;
 
 use crate::{
 	HotConfig, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
 	SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
 	config::SingleStoreConfig,
-	hot::HotTier,
+	hot::tier::HotTier,
 	tier::{RangeCursor, TierStorage},
 };
-use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, delta::Delta, event::EventBus, interface::SingleVersionValues,
-	runtime::ComputePool, value::encoded::EncodedValues,
-};
-use reifydb_type::util::hex;
-use tracing::instrument;
 
 #[derive(Clone)]
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
@@ -68,8 +79,6 @@ impl StandardSingleStore {
 	}
 }
 
-// ===== Trait implementations =====
-
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
@@ -111,12 +120,21 @@ impl SingleVersionCommit for StandardSingleStore {
 		let entries: Vec<_> = deltas
 			.iter()
 			.map(|delta| match delta {
-				Delta::Set { key, values } => {
-					(CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec())))
+				Delta::Set {
+					key,
+					values,
+				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec()))),
+				Delta::Unset {
+					key,
+					..
 				}
-				Delta::Unset { key, .. } | Delta::Remove { key } | Delta::Drop { key, .. } => {
-					(CowVec::new(key.as_ref().to_vec()), None)
+				| Delta::Remove {
+					key,
 				}
+				| Delta::Drop {
+					key,
+					..
+				} => (CowVec::new(key.as_ref().to_vec()), None),
 			})
 			.collect();
 

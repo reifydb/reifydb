@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::SortDirection;
-use reifydb_type::Fragment;
+use reifydb_core::sort::SortDirection;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::{
-		AstAlterTable, AstAlterTableOperation,
+		ast::{AstAlterTable, AstAlterTableOperation},
 		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedTableIdentifier},
 	},
 	plan::logical::{Compiler, LogicalPlan},

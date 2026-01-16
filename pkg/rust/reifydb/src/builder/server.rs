@@ -1,26 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{SharedRuntime, SharedRuntimeConfig};
-use reifydb_function::FunctionsBuilder;
-use reifydb_sub_api::SubsystemFactory;
+use reifydb_core::runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_function::registry::FunctionsBuilder;
+use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::FlowBuilder;
+use reifydb_sub_flow::builder::FlowBuilder;
 #[cfg(feature = "sub_server_admin")]
-use reifydb_sub_server_admin::{AdminConfig, AdminSubsystemFactory};
+use reifydb_sub_server_admin::{config::AdminConfig, factory::AdminSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
-use reifydb_sub_server_http::{HttpConfig, HttpSubsystemFactory};
+use reifydb_sub_server_http::factory::{HttpConfig, HttpSubsystemFactory};
 #[cfg(feature = "sub_server_otel")]
-use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
+use reifydb_sub_server_otel::{config::OtelConfig, factory::OtelSubsystemFactory, subsystem::OtelSubsystem};
 #[cfg(feature = "sub_server_ws")]
-use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
+use reifydb_sub_server_ws::factory::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::TracingBuilder;
-use reifydb_transaction::interceptor::{RegisterInterceptor, StandardInterceptorBuilder};
+use reifydb_sub_tracing::builder::TracingBuilder;
+use reifydb_transaction::interceptor::{builder::StandardInterceptorBuilder, interceptors::RegisterInterceptor};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
-use crate::Database;
-use crate::api::{StorageFactory, transaction};
+use crate::{
+	Database,
+	api::{StorageFactory, transaction},
+};
 
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
@@ -149,8 +151,10 @@ impl ServerBuilder {
 
 		// Create storage with the runtime's compute pool
 		let compute_pool = runtime.compute_pool();
-		let (multi_store, single_store, transaction_single, eventbus) = self.storage_factory.create(compute_pool);
-		let (multi, single, eventbus) = transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus));
+		let (multi_store, single_store, transaction_single, eventbus) =
+			self.storage_factory.create(compute_pool);
+		let (multi, single, eventbus) =
+			transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus));
 
 		let mut database_builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
@@ -163,7 +167,7 @@ impl ServerBuilder {
 
 		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 		if let Some((otel_config, tracing_configurator)) = self.otel_tracing_config {
-			use reifydb_sub_api::Subsystem;
+			use reifydb_sub_api::subsystem::Subsystem;
 
 			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
 			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");

@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{FlowDef, FlowNodeId},
-	value::column::Columns,
+	interface::catalog::flow::{FlowDef, FlowNodeId},
+	value::column::columns::Columns,
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::FlowChange;
-use reifydb_type::RowNumber;
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::FlowChange;
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{Operator, transaction::FlowTransaction};
 

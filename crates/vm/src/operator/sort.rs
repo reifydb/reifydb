@@ -3,10 +3,11 @@
 
 use std::cmp::Ordering;
 
-use reifydb_core::{
-	Batch,
-	value::column::{ColumnData, Columns},
+use reifydb_core::value::{
+	batch::Batch,
+	column::{columns::Columns, data::ColumnData},
 };
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
 	error::{Result, VmError},
@@ -109,7 +110,6 @@ fn merge_columns(existing: &Columns, new_batch: Columns) -> Result<Columns> {
 	}
 
 	// Merge row numbers
-	use reifydb_type::RowNumber;
 	let mut row_numbers: Vec<RowNumber> = existing.row_numbers.to_vec();
 	for rn in new_batch.row_numbers.iter() {
 		row_numbers.push(RowNumber(rn.0 + existing_count as u64));

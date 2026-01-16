@@ -5,20 +5,24 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{Params, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer, RowKey},
-	value::column::Columns,
+	interface::resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	key::row::RowKey,
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
-	Fragment, RowNumber, Value,
-	diagnostic::{catalog::ringbuffer_not_found, engine},
+	error::diagnostic::{catalog::ringbuffer_not_found, engine},
+	fragment::Fragment,
+	params::Params,
 	return_error,
+	value::{Value, row_number::RowNumber},
 };
 
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
+	transaction::operation::ringbuffer::RingBufferOperations,
 };
 
 impl Executor {
@@ -103,7 +107,6 @@ impl Executor {
 
 			// With monotonically increasing row numbers, we only delete the specified rows
 			// and update head to the minimum remaining row number
-			use crate::transaction::operation::RingBufferOperations;
 
 			// Delete the specified rows and track remaining items
 			let mut min_remaining_row: Option<u64> = None;
@@ -138,9 +141,6 @@ impl Executor {
 				// tail stays the same - next row number comes from RowSequence
 			}
 		} else {
-			// Delete all rows (clear the buffer)
-			use crate::transaction::operation::RingBufferOperations;
-
 			// Delete all entries in the row number range
 			for row_num_value in metadata.head..metadata.tail {
 				let row_number = RowNumber(row_num_value);

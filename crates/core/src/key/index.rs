@@ -3,14 +3,14 @@
 
 use std::collections::Bound;
 
-use super::{EncodableKey, KeyKind};
+use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{
-		EncodableKeyRange,
-		catalog::{IndexId, PrimaryKeyId, PrimitiveId},
+	interface::catalog::{
+		id::{IndexId, PrimaryKeyId},
+		primitive::PrimitiveId,
 	},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -147,9 +147,9 @@ impl IndexKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, IndexKey};
-	use crate::interface::catalog::{IndexId, PrimitiveId};
+	use crate::interface::catalog::{id::IndexId, primitive::PrimitiveId};
 
 	#[test]
 	fn test_encode_decode() {

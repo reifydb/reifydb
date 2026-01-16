@@ -2,15 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::store::ringbuffer::create::RingBufferColumnToCreate;
-use reifydb_core::{interface::ColumnPolicyKind, return_error};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::interface::catalog::policy::ColumnPolicyKind;
+use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{
-	Fragment,
-	diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
+	error::diagnostic::catalog::{dictionary_not_found, dictionary_type_mismatch},
+	fragment::Fragment,
+	return_error,
 };
 
 use crate::{
-	ast::AstCreateRingBuffer,
+	ast::ast::AstCreateRingBuffer,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan, convert_policy},
 };
@@ -39,8 +40,8 @@ impl Compiler {
 			};
 
 			let ty_fragment = match &col.ty {
-				crate::ast::AstDataType::Unconstrained(fragment) => fragment.clone(),
-				crate::ast::AstDataType::Constrained {
+				crate::ast::ast::AstDataType::Unconstrained(fragment) => fragment.clone(),
+				crate::ast::ast::AstDataType::Constrained {
 					name,
 					..
 				} => name.clone(),

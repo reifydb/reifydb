@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use super::{OperatorColumnDefsFFI, OperatorVTableFFI};
-use crate::data::BufferFFI;
+use super::{column::OperatorColumnDefsFFI, vtable::OperatorVTableFFI};
+use crate::data::buffer::BufferFFI;
 
 /// Descriptor for an FFI operator
 ///

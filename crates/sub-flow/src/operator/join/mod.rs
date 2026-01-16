@@ -2,13 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 // Internal modules
-mod column;
-mod operator;
-mod state;
-mod store;
-mod strategy;
+pub mod column;
+pub mod operator;
+pub mod state;
+pub mod store;
+pub mod strategy;
 
-pub use operator::JoinOperator;
-pub(crate) use state::{JoinSide, JoinSideEntry, JoinState};
-pub(crate) use store::Store;
-pub(crate) use strategy::JoinStrategy;
+// All types are accessed directly from their submodules:
+// - crate::operator::join::operator::JoinOperator
+// - crate::operator::join::state::{JoinSide, JoinSideEntry, JoinState}
+// - crate::operator::join::store::Store
+// - crate::operator::join::strategy::JoinStrategy

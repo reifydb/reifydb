@@ -3,15 +3,15 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::{
 	expression::Expression,
 	plan::physical::{self, PhysicalPlan},
 };
+use reifydb_transaction::standard::StandardTransaction;
 
 use crate::{
-	StandardTransaction,
-	evaluate::column::{ColumnEvaluationContext, evaluate},
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, QueryNode, query::compile::compile},
 };
 
@@ -67,7 +67,7 @@ impl<'a> ConditionalNode {
 
 		// Extract the boolean value from the result
 		if let Some(first_value) = result_column.data().iter().next() {
-			use reifydb_type::Value;
+			use reifydb_type::value::Value;
 			match first_value {
 				Value::Boolean(true) => Ok(true),
 				Value::Boolean(false) => Ok(false),

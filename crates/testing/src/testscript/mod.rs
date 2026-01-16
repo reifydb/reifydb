@@ -291,9 +291,6 @@
 //! [`Runner::end_command`]. These can be used e.g. for initial setup, invariant
 //! assertions, or to output the current state.
 
-mod command;
-mod parser;
-mod runner;
-
-pub use command::{Argument, ArgumentConsumer, Command};
-pub use runner::{Runner, generate, run, run_path, try_run};
+pub mod command;
+pub mod parser;
+pub mod runner;

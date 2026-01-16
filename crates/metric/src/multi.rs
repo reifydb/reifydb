@@ -20,18 +20,18 @@ const MVCC_VERSION_SIZE: usize = 10;
 use std::ops::AddAssign;
 
 use reifydb_core::{
-	CowVec, EncodedKey, Result,
-	interface::SingleVersionStore,
-	value::encoded::EncodedValues,
+	interface::store::SingleVersionStore,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::{
+	MetricId,
 	encoding::{
 		decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
 		storage_stats_key_prefix,
 	},
 	parser::parse_id,
-	Id,
 };
 
 /// Identifies which storage tier data resides in.
@@ -257,7 +257,9 @@ pub struct StorageStatsWriter<S> {
 impl<S: SingleVersionStore> StorageStatsWriter<S> {
 	/// Create a new writer.
 	pub fn new(storage: S) -> Self {
-		Self { storage }
+		Self {
+			storage,
+		}
 	}
 
 	/// Record a write operation (insert or update).
@@ -288,12 +290,7 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 	///
 	/// If `pre_value_bytes` is provided, the old entry is moved to historical.
 	/// Otherwise only a tombstone is recorded. The key is always the same.
-	pub fn record_delete(
-		&mut self,
-		tier: Tier,
-		key: &[u8],
-		pre_value_bytes: Option<u64>,
-	) -> Result<()> {
+	pub fn record_delete(&mut self, tier: Tier, key: &[u8], pre_value_bytes: Option<u64>) -> Result<()> {
 		let id = parse_id(key);
 		// Account for MVCC version suffix in stored key size
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
@@ -321,7 +318,7 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 	}
 
 	/// Apply a mutation to the stats for a given (tier, id) pair.
-	fn update<F>(&mut self, tier: Tier, id: Id, f: F) -> Result<()>
+	fn update<F>(&mut self, tier: Tier, id: MetricId, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut MultiStorageStats),
 	{
@@ -351,17 +348,19 @@ pub struct StorageStatsReader<S> {
 impl<S: SingleVersionStore> StorageStatsReader<S> {
 	/// Create a new reader.
 	pub fn new(storage: S) -> Self {
-		Self { storage }
+		Self {
+			storage,
+		}
 	}
 
 	/// Get stats for a specific (tier, id) pair.
-	pub fn get(&self, tier: Tier, id: Id) -> Result<Option<MultiStorageStats>> {
+	pub fn get(&self, tier: Tier, id: MetricId) -> Result<Option<MultiStorageStats>> {
 		let key = EncodedKey::new(encode_storage_stats_key(tier, id));
 		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.values.as_slice())))
 	}
 
 	/// Scan all storage stats entries.
-	pub fn scan_all(&self) -> Result<Vec<((Tier, Id), MultiStorageStats)>> {
+	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricId), MultiStorageStats)>> {
 		let prefix = EncodedKey::new(storage_stats_key_prefix());
 		let batch = self.storage.prefix(&prefix)?;
 
@@ -378,17 +377,23 @@ impl<S: SingleVersionStore> StorageStatsReader<S> {
 	}
 
 	/// Scan all storage stats for a specific tier.
-	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(Id, MultiStorageStats)>> {
+	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricId, MultiStorageStats)>> {
 		self.scan_all().map(|all| {
 			all.into_iter()
-				.filter_map(|((t, obj), stats)| if t == tier { Some((obj, stats)) } else { None })
+				.filter_map(|((t, obj), stats)| {
+					if t == tier {
+						Some((obj, stats))
+					} else {
+						None
+					}
+				})
 				.collect()
 		})
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -3,9 +3,11 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::event::EventBus;
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::Result;
+use reifydb_core::{
+	event::EventBus,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
+use reifydb_type::Result;
 
 pub mod cold;
 pub mod hot;
@@ -13,27 +15,24 @@ pub mod tier;
 pub mod warm;
 
 pub mod config;
-mod multi;
-mod store;
+pub mod multi;
+pub mod store;
 
-pub use config::{
-	ColdConfig, HotConfig, MergeConfig, RetentionConfig, MultiStoreConfig, WarmConfig,
-};
+use config::{HotConfig, MultiStoreConfig};
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
-	interface::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionStore, MultiVersionValues,
+	common::CommitVersion,
+	delta::Delta,
+	interface::store::{
+		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionStore,
+		MultiVersionValues,
 	},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
-pub use store::StandardMultiStore;
+use reifydb_type::util::cowvec::CowVec;
+use store::StandardMultiStore;
 
-pub mod memory {
-	pub use crate::hot::memory::MemoryPrimitiveStorage;
-}
-pub mod sqlite {
-	pub use crate::hot::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
-}
+pub mod memory {}
+pub mod sqlite {}
 
 pub struct MultiStoreVersion;
 
@@ -73,7 +72,7 @@ impl MultiStore {
 	/// Get access to the hot storage tier.
 	///
 	/// Returns `None` if the hot tier is not configured.
-	pub fn hot(&self) -> Option<&hot::HotStorage> {
+	pub fn hot(&self) -> Option<&hot::storage::HotStorage> {
 		match self {
 			MultiStore::Standard(store) => store.hot(),
 		}

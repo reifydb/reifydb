@@ -5,8 +5,8 @@
 //!
 //! This module provides shared runtime infrastructure:
 //!
-//! - [`SharedRuntime`]: A cloneable wrapper around a tokio runtime for async I/O
-//!   with an embedded [`ComputePool`] for CPU-bound work
+//! - [`SharedRuntime`]: A cloneable wrapper around a tokio runtime for async I/O with an embedded [`ComputePool`] for
+//!   CPU-bound work
 //! - [`SharedRuntimeConfig`]: Configuration for creating a SharedRuntime
 //! - [`ComputePool`]: A rayon-based pool for CPU-bound work with admission control
 //!
@@ -34,17 +34,16 @@
 //! let result = runtime.compute_pool().compute(|| expensive_calculation()).await;
 //! ```
 
-mod compute;
+pub mod compute;
 
-pub use compute::ComputePool;
-
-use std::future::Future;
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 use tokio::{
 	runtime::{Handle, Runtime},
 	task::JoinHandle,
 };
+
+use crate::runtime::compute::ComputePool;
 
 /// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone, Debug)]
@@ -125,7 +124,10 @@ impl SharedRuntime {
 
 		let compute_pool = ComputePool::new(config.compute_threads, config.compute_max_in_flight);
 
-		Self(Arc::new(Inner { runtime, compute_pool }))
+		Self(Arc::new(Inner {
+			runtime,
+			compute_pool,
+		}))
 	}
 
 	/// Get a handle to the async runtime.
@@ -176,14 +178,11 @@ impl SharedRuntime {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	fn test_config() -> SharedRuntimeConfig {
-		SharedRuntimeConfig::default()
-			.async_threads(2)
-			.compute_threads(2)
-			.compute_max_in_flight(4)
+		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(4)
 	}
 
 	#[test]

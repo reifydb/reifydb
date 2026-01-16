@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::FlowId;
-use reifydb_rql::flow::{FlowDag, FlowNode, FlowNodeType::SourceInlineData};
-use reifydb_sdk::{FlowChange, FlowChangeOrigin};
+use reifydb_core::interface::catalog::flow::FlowId;
+use reifydb_rql::flow::{
+	flow::FlowDag,
+	node::{FlowNode, FlowNodeType::SourceInlineData},
+};
+use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin};
 use tracing::{Span, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -35,9 +38,11 @@ impl FlowEngine {
 							continue;
 						}
 
-						let flow_and_node = self.flows.get(&registered_flow_id).and_then(|flow| {
-							flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
-						});
+						let flow_and_node =
+							self.flows.get(&registered_flow_id).and_then(|flow| {
+								flow.get_node(&node_id)
+									.map(|node| (flow.clone(), node.clone()))
+							});
 
 						if let Some((flow, node)) = flow_and_node {
 							self.process_change(
@@ -108,11 +113,11 @@ impl FlowEngine {
 		propagation_time_us = tracing::field::Empty
 	))]
 	fn process_change(
-        &self,
-        txn: &mut FlowTransaction,
-        flow: &FlowDag,
-        node: &FlowNode,
-        change: FlowChange,
+		&self,
+		txn: &mut FlowTransaction,
+		flow: &FlowDag,
+		node: &FlowNode,
+		change: FlowChange,
 	) -> reifydb_type::Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;

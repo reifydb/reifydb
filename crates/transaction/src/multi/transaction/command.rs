@@ -12,16 +12,22 @@
 use std::ops::RangeBounds;
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
-	value::encoded::EncodedValues,
+	common::CommitVersion,
+	event::transaction::PostCommitEvent,
+	interface::store::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_core::interface::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet};
-use reifydb_type::{Error, util::hex};
+use reifydb_type::{
+	Result,
+	util::{cowvec::CowVec, hex},
+};
 use tracing::instrument;
 
 use super::{TransactionManagerCommand, TransactionMulti, version::StandardVersionProvider};
-use crate::delta::optimize_deltas;
-use crate::multi::types::TransactionValue;
+use crate::{delta::optimize_deltas, multi::types::TransactionValue};
 
 pub struct CommandTransaction {
 	engine: TransactionMulti,
@@ -30,7 +36,7 @@ pub struct CommandTransaction {
 
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
-	pub fn new(engine: TransactionMulti) -> crate::Result<Self> {
+	pub fn new(engine: TransactionMulti) -> reifydb_type::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
@@ -41,7 +47,7 @@ impl CommandTransaction {
 
 impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
-	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
+	pub fn commit(&mut self) -> Result<CommitVersion> {
 		// For read-only transactions (no pending writes), skip conflict detection
 		if self.tm.pending_writes().is_empty() {
 			self.tm.discard();
@@ -92,18 +98,18 @@ impl CommandTransaction {
 		self.tm.read_as_of_version_exclusive(version);
 	}
 
-	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1));
 		Ok(())
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
-	pub fn rollback(&mut self) -> Result<(), Error> {
+	pub fn rollback(&mut self) -> Result<()> {
 		self.tm.rollback()
 	}
 
 	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
@@ -113,7 +119,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
@@ -128,31 +134,34 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.tm.set(key, values)
 	}
 
 	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.len()))]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		self.tm.unset(key, values)
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.tm.remove(key)
 	}
 
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		let items: Vec<_> = self
+			.range(EncodedKeyRange::prefix(prefix), 1024)
+			.collect::<std::result::Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
 	}
 
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch, reifydb_type::Error> {
-		let items: Vec<_> =
-			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
+	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		let items: Vec<_> = self
+			.range_rev(EncodedKeyRange::prefix(prefix), 1024)
+			.collect::<std::result::Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -169,7 +178,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -195,7 +204,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -213,7 +222,7 @@ impl CommandTransaction {
 	}
 }
 
-use reifydb_core::interface::MultiVersionValues;
+use reifydb_core::interface::store::MultiVersionValues;
 
 use crate::multi::types::Pending;
 
@@ -227,7 +236,7 @@ struct MergePendingIterator<I> {
 
 impl<I> MergePendingIterator<I>
 where
-	I: Iterator<Item = crate::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
 	fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
@@ -241,9 +250,9 @@ where
 
 impl<I> Iterator for MergePendingIterator<I>
 where
-	I: Iterator<Item = crate::Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionValues>>,
 {
-	type Item = crate::Result<MultiVersionValues>;
+	type Item = Result<MultiVersionValues>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		use std::cmp::Ordering;

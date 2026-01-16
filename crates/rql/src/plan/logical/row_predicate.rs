@@ -9,7 +9,7 @@
 //! - `rownum in [a, b, c]` → List lookup
 //! - `rownum between X and Y` → Range scan
 
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+use reifydb_type::value::row_number::ROW_NUMBER_COLUMN_NAME;
 
 use crate::expression::{
 	BetweenExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
@@ -144,11 +144,11 @@ fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-	use reifydb_type::Fragment;
+	use reifydb_type::fragment::Fragment;
 
 	use super::*;
 

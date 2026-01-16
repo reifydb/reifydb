@@ -18,15 +18,25 @@
 use std::sync::Arc;
 
 use reifydb_transaction::interceptor::{
-	FilteredRingBufferPostDeleteInterceptor, FilteredRingBufferPostInsertInterceptor,
-	FilteredRingBufferPostUpdateInterceptor, FilteredRingBufferPreDeleteInterceptor,
-	FilteredRingBufferPreInsertInterceptor, FilteredRingBufferPreUpdateInterceptor,
-	FilteredTablePostDeleteInterceptor, FilteredTablePostInsertInterceptor, FilteredTablePostUpdateInterceptor,
-	FilteredTablePreDeleteInterceptor, FilteredTablePreInsertInterceptor, FilteredTablePreUpdateInterceptor,
-	InterceptFilter, Interceptors, RingBufferPostDeleteContext, RingBufferPostInsertContext,
-	RingBufferPostUpdateContext, RingBufferPreDeleteContext, RingBufferPreInsertContext,
-	RingBufferPreUpdateContext, StandardInterceptorBuilder, TablePostDeleteContext, TablePostInsertContext,
-	TablePostUpdateContext, TablePreDeleteContext, TablePreInsertContext, TablePreUpdateContext,
+	builder::StandardInterceptorBuilder,
+	filter::InterceptFilter,
+	filtered::{
+		FilteredRingBufferPostDeleteInterceptor, FilteredRingBufferPostInsertInterceptor,
+		FilteredRingBufferPostUpdateInterceptor, FilteredRingBufferPreDeleteInterceptor,
+		FilteredRingBufferPreInsertInterceptor, FilteredRingBufferPreUpdateInterceptor,
+		FilteredTablePostDeleteInterceptor, FilteredTablePostInsertInterceptor,
+		FilteredTablePostUpdateInterceptor, FilteredTablePreDeleteInterceptor,
+		FilteredTablePreInsertInterceptor, FilteredTablePreUpdateInterceptor,
+	},
+	interceptors::Interceptors,
+	ringbuffer::{
+		RingBufferPostDeleteContext, RingBufferPostInsertContext, RingBufferPostUpdateContext,
+		RingBufferPreDeleteContext, RingBufferPreInsertContext, RingBufferPreUpdateContext,
+	},
+	table::{
+		TablePostDeleteContext, TablePostInsertContext, TablePostUpdateContext, TablePreDeleteContext,
+		TablePreInsertContext, TablePreUpdateContext,
+	},
 };
 
 /// Trait for builders that support interceptor registration.
@@ -67,7 +77,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-insert interceptor.
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreInsertContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -82,7 +92,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-insert interceptor.
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostInsertContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -97,7 +107,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-update interceptor.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreUpdateContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -112,7 +122,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-update interceptor.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostUpdateContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -127,7 +137,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-delete interceptor.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreDeleteContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -142,7 +152,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-delete interceptor.
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostDeleteContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -192,7 +202,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-insert interceptor.
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreInsertContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -207,7 +217,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-insert interceptor.
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostInsertContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -222,7 +232,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-update interceptor.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreUpdateContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -237,7 +247,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-update interceptor.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostUpdateContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -252,7 +262,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-delete interceptor.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreDeleteContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
@@ -267,7 +277,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-delete interceptor.
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostDeleteContext) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();

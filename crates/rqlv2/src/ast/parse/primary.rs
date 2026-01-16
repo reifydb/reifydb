@@ -11,8 +11,21 @@ use super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::{Expr, Statement, expr::*, stmt::ExprStmt},
-	token::{Keyword, LiteralKind, Operator, Punctuation, Span, TokenKind},
+	ast::{
+		Expr, Statement,
+		expr::{
+			collection::{InlineExpr, InlineField, ListExpr, TupleExpr},
+			identifier::{EnvironmentExpr, Identifier, RownumExpr, Variable, WildcardExpr},
+			literal::Literal,
+			operator::{UnaryExpr, UnaryOp},
+			special::{BetweenExpr, CallExpr, ElseIf, ExistsExpr, IfExpr, InExpr, SubQueryExpr},
+		},
+		stmt::ExprStmt,
+	},
+	token::{
+		keyword::Keyword, literal::LiteralKind, operator::Operator, punctuation::Punctuation, span::Span,
+		token::TokenKind,
+	},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {

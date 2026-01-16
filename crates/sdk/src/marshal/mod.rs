@@ -5,8 +5,8 @@
 //!
 //! Marshal/unmarshal methods are implemented directly on Arena.
 
-mod column;
-mod types;
-mod util;
+pub mod column;
+pub mod types;
+pub mod util;
 
 pub(crate) mod flow;

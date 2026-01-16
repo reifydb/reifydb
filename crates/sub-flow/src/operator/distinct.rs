@@ -1,33 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
-use std::sync::LazyLock;
+use std::{rc::Rc, sync::LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
-	Error,
-	interface::FlowNodeId,
-	util::CowVec,
+	interface::catalog::flow::FlowNodeId,
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesLayout,
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::layout::EncodedValuesLayout,
 	},
 };
-use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
-use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	stack::Stack,
+};
+use reifydb_hash::{Hash128, xxh::xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::{
+	error::Error,
+	fragment::Fragment,
+	internal,
+	params::Params,
+	util::cowvec::CowVec,
+	value::{Value, blob::Blob, row_number::RowNumber, r#type::Type},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{RawStatefulOperator, SingleStateful},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
 };
+
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 

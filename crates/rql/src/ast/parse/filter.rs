@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	Ast, AstFilter,
+	ast::{Ast, AstFilter},
 	parse::{Parser, Precedence},
-	tokenize::{Keyword, Operator},
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
@@ -38,8 +38,13 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{Ast, InfixOperator, TokenKind, parse::Parser, tokenize, tokenize::Keyword};
+pub mod tests {
+	use crate::ast::{
+		ast::{Ast, InfixOperator},
+		parse::Parser,
+		tokenize,
+		tokenize::{keyword::Keyword, token::TokenKind},
+	};
 
 	#[test]
 	fn test_simple_comparison() {

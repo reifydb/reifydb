@@ -4,19 +4,18 @@
 use std::{cmp::Ordering, collections::BinaryHeap};
 
 use reifydb_core::{
-	SortDirection,
-	SortDirection::{Asc, Desc},
-	SortKey, error,
-	util::CowVec,
-	value::column::{Columns, headers::ColumnHeaders},
+	sort::{
+		SortDirection,
+		SortDirection::{Asc, Desc},
+		SortKey,
+	},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Value, diagnostic::query};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{error, error::diagnostic::query, util::cowvec::CowVec, value::Value};
 use tracing::instrument;
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 /// A heap entry that stores a row index and its cached sort key values.
 /// The Ord implementation is designed so that BinaryHeap (a max-heap) will
@@ -145,7 +144,7 @@ impl QueryNode for TopKNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
 				})
 				.collect::<crate::Result<Vec<_>>>()?;
 
@@ -225,7 +224,7 @@ impl TopKNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
 				})
 				.collect::<crate::Result<Vec<_>>>()?;
 

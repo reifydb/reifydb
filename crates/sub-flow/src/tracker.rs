@@ -6,7 +6,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::RwLock;
-use reifydb_core::{CommitVersion, interface::PrimitiveId};
+use reifydb_core::{common::CommitVersion, interface::catalog::primitive::PrimitiveId};
 
 /// Tracks the latest CDC version for each primitive (table/view/flow).
 ///

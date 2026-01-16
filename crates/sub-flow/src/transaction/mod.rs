@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::Catalog;
-use reifydb_core::CommitVersion;
-use reifydb_engine::StandardCommandTransaction;
+use pending::{Pending, PendingWrites};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::common::CommitVersion;
+use reifydb_transaction::{multi::transaction::query::QueryTransaction, standard::command::StandardCommandTransaction};
 use tracing::instrument;
 
-mod pending;
-mod range;
-mod read;
-mod state;
-mod write;
-
-pub use pending::{Pending, PendingWrites};
-use reifydb_transaction::multi::StandardQueryTransaction;
+pub mod pending;
+pub mod range;
+pub mod read;
+pub mod state;
+pub mod write;
 
 /// A transaction wrapper for flow processing with dual-version read semantics.
 ///
@@ -128,14 +126,14 @@ pub struct FlowTransaction {
 	///
 	/// Provides snapshot reads at `version`. Used for reading storage primitives tables/views
 	/// to ensure consistent view of the data being processed by the flow.
-	pub(crate) primitive_query: StandardQueryTransaction,
+	pub(crate) primitive_query: QueryTransaction,
 
 	/// Read-only query transaction for accessing flow state at latest version.
 	///
 	/// Reads at the latest committed version. Used for reading flow state
 	/// (join tables, distinct values, counters) that must be visible across
 	/// all CDC versions to maintain continuity.
-	pub(crate) state_query: StandardQueryTransaction,
+	pub(crate) state_query: QueryTransaction,
 
 	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
 	pub(crate) catalog: Catalog,

@@ -3,10 +3,6 @@
 
 //! FFI-safe data marshalling types for row and column data
 
-mod buffer;
-mod column;
-mod layout;
-
-pub use buffer::*;
-pub use column::*;
-pub use layout::*;
+pub mod buffer;
+pub mod column;
+pub mod layout;

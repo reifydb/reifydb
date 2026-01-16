@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use indexmap::IndexMap;
-use reifydb_core::value::column::ColumnData;
-use reifydb_type::Value;
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::Value;
 
 use crate::{AggregateFunction, AggregateFunctionContext};
 
@@ -22,7 +22,7 @@ impl Avg {
 }
 
 impl AggregateFunction for Avg {
-	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> reifydb_type::Result<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -146,7 +146,7 @@ impl AggregateFunction for Avg {
 		}
 	}
 
-	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
+	fn finalize(&mut self) -> reifydb_type::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnData::float8_with_capacity(self.sums.len());
 

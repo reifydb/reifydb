@@ -4,7 +4,7 @@
 //! DDL statement types (CREATE, ALTER, DROP).
 
 use super::Expr;
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// CREATE statement.
 #[derive(Debug, Clone, Copy)]
@@ -144,7 +144,10 @@ pub struct PolicyBlock<'bump> {
 impl<'bump> PolicyBlock<'bump> {
 	/// Create a new policy block.
 	pub fn new(policies: &'bump [Policy<'bump>], span: Span) -> Self {
-		Self { policies, span }
+		Self {
+			policies,
+			span,
+		}
 	}
 }
 
@@ -159,7 +162,11 @@ pub struct Policy<'bump> {
 impl<'bump> Policy<'bump> {
 	/// Create a new policy.
 	pub fn new(kind: PolicyKind, value: &'bump Expr<'bump>, span: Span) -> Self {
-		Self { kind, value, span }
+		Self {
+			kind,
+			value,
+			span,
+		}
 	}
 }
 
@@ -297,7 +304,11 @@ pub struct IndexColumn<'bump> {
 impl<'bump> IndexColumn<'bump> {
 	/// Create a new index column.
 	pub fn new(name: &'bump str, descending: bool, span: Span) -> Self {
-		Self { name, descending, span }
+		Self {
+			name,
+			descending,
+			span,
+		}
 	}
 }
 
@@ -433,11 +444,7 @@ pub struct CreateSubscription<'bump> {
 
 impl<'bump> CreateSubscription<'bump> {
 	/// Create a new CREATE SUBSCRIPTION statement.
-	pub fn new(
-		columns: &'bump [ColumnDef<'bump>],
-		query: Option<&'bump [Expr<'bump>]>,
-		span: Span,
-	) -> Self {
+	pub fn new(columns: &'bump [ColumnDef<'bump>], query: Option<&'bump [Expr<'bump>]>, span: Span) -> Self {
 		Self {
 			columns,
 			query,

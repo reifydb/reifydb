@@ -4,7 +4,7 @@
 //! Special expression types (BETWEEN, IN, CAST, CALL, etc.).
 
 use super::Expr;
-use crate::{ast::Statement, token::Span};
+use crate::{ast::Statement, token::span::Span};
 
 /// BETWEEN expression: x BETWEEN low AND high
 #[derive(Debug, Clone, Copy)]

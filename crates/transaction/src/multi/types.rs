@@ -12,8 +12,12 @@
 use std::{cmp, cmp::Reverse};
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, delta::Delta, interface::MultiVersionValues, value::encoded::EncodedValues,
+	common::CommitVersion,
+	delta::Delta,
+	interface::store::MultiVersionValues,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
+use reifydb_type::util::cowvec::CowVec;
 
 pub enum TransactionValue {
 	PendingIter {
@@ -121,13 +125,21 @@ impl TransactionValue {
 					values,
 					version: item.version,
 				},
-				Delta::Unset { key, .. } | Delta::Remove { key } | Delta::Drop { key, .. } => {
-					MultiVersionValues {
-						key,
-						values: EncodedValues(CowVec::default()),
-						version: item.version,
-					}
+				Delta::Unset {
+					key,
+					..
 				}
+				| Delta::Remove {
+					key,
+				}
+				| Delta::Drop {
+					key,
+					..
+				} => MultiVersionValues {
+					key,
+					values: EncodedValues(CowVec::default()),
+					version: item.version,
+				},
 			},
 			Self::Committed(item) => MultiVersionValues {
 				key: item.key,

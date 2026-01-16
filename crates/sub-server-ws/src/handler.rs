@@ -10,23 +10,37 @@
 //! - Query and command execution
 //! - Subscription management for push notifications
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+	sync::Arc,
+	time::{Duration, Instant},
+};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::Identity;
+use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
 use reifydb_sub_server::{
-	AppState, ExecuteError, convert_frames, execute_command, execute_query, extract_identity_from_ws_auth,
+	auth::extract_identity_from_ws_auth,
+	execute::{ExecuteError, execute_command, execute_query},
+	response::convert_frames,
+	state::AppState,
 };
-use reifydb_type::{Params, Uuid7};
-use tokio::{net::TcpStream, select, sync::{mpsc, watch}, time::timeout};
+use reifydb_type::{params::Params, value::uuid::Uuid7};
+use tokio::{
+	net::TcpStream,
+	select,
+	sync::{mpsc, watch},
+	time::timeout,
+};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, warn};
 use uuid::Uuid as StdUuid;
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
+	subscription::{
+		handler::handle_subscribe,
+		poller::SubscriptionPoller,
+		registry::{PushMessage, SubscriptionRegistry},
+	},
 };
 
 /// Handle a single WebSocket connection.
@@ -57,11 +71,7 @@ pub async fn handle_connection(
 	let peer = stream.peer_addr().ok();
 	let connection_id = Uuid7::generate();
 
-	println!(
-		"[TIMING] Connection {} from {:?}: handler started at T+0ms",
-		connection_id,
-		peer
-	);
+	println!("[TIMING] Connection {} from {:?}: handler started at T+0ms", connection_id, peer);
 
 	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
 	if let Err(e) = stream.set_nodelay(true) {
@@ -289,7 +299,7 @@ async fn process_message(
 		}
 
 		RequestPayload::Subscribe(sub) => {
-			crate::subscription::handle_subscribe(
+			handle_subscribe(
 				&request.id,
 				sub,
 				identity.clone(),
@@ -304,7 +314,6 @@ async fn process_message(
 
 		RequestPayload::Unsubscribe(unsub) => {
 			use crate::response::Response;
-			use reifydb_core::interface::SubscriptionId as DbSubscriptionId;
 
 			// Parse the subscription ID
 			let subscription_id = match unsub.subscription_id.parse::<StdUuid>() {

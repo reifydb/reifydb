@@ -11,7 +11,10 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
-use crate::{Error, err, error::diagnostic::number::nan_not_allowed};
+use crate::{
+	err,
+	error::{Error, diagnostic::number::nan_not_allowed},
+};
 
 /// A wrapper around f64 that provides total ordering by rejecting NaN values.
 /// This type is sortable and can be used in collections that require Ord,
@@ -138,7 +141,7 @@ impl TryFrom<f64> for OrderedF64 {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
+pub mod tests {
 	use std::{collections::HashSet, convert::TryFrom};
 
 	use super::*;

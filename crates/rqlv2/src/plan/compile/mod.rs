@@ -3,16 +3,13 @@
 
 //! AST to Plan compilation.
 
-mod catalog;
-mod control;
-mod core;
-mod ddl;
-mod dml;
-mod expr;
-mod projection;
-mod query;
-mod scope;
-mod statement;
-
-// Public API - preserves existing external interface
-pub use core::{PlanError, PlanErrorKind, Result, plan};
+pub mod catalog;
+pub mod control;
+pub mod core;
+pub mod ddl;
+pub mod dml;
+pub mod expr;
+pub mod projection;
+pub mod query;
+pub mod scope;
+pub mod statement;

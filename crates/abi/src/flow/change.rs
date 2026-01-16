@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use super::FlowDiffFFI;
+use super::diff::FlowDiffFFI;
 
 /// FFI-safe representation of flow change origin
 ///

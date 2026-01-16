@@ -24,7 +24,7 @@ const MAX_ORPHANED: usize = 10000;
 // Threshold for cleaning up old orphaned entries
 const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 use crate::multi::watermark::{
-	Closer,
+	closer::Closer,
 	watermark::{WaiterHandle, WatermarkInner},
 };
 

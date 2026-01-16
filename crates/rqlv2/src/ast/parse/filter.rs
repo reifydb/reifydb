@@ -4,7 +4,7 @@
 //! FILTER expression parsing.
 
 use super::{Parser, error::ParseError, pratt::Precedence};
-use crate::ast::{Expr, expr::*};
+use crate::ast::{Expr, expr::query::FilterExpr};
 
 impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Parse FILTER expression.
@@ -19,12 +19,22 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::{BinaryOp, UnaryOp}, token::tokenize};
+	use crate::{
+		ast::{
+			Expr,
+			expr::{
+				literal::Literal,
+				operator::{BinaryOp, UnaryOp},
+				query::FilterExpr,
+			},
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: crate::ast::Statement<'_>) -> &Expr<'_> {
 		match stmt {
 			crate::ast::Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
@@ -35,9 +45,7 @@ mod tests {
 		}
 	}
 
-	fn extract_filter<'a>(
-		stmt: crate::ast::Statement<'a>,
-	) -> &'a crate::ast::expr::FilterExpr<'a> {
+	fn extract_filter<'a>(stmt: crate::ast::Statement<'a>) -> &'a FilterExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Filter(f) => f,
@@ -63,7 +71,9 @@ mod tests {
 					_ => panic!("Expected identifier on left"),
 				}
 				match binary.right {
-					Expr::Literal(crate::ast::expr::Literal::Integer { .. }) => {}
+					Expr::Literal(Literal::Integer {
+						..
+					}) => {}
 					_ => panic!("Expected number on right"),
 				}
 			}
@@ -103,11 +113,15 @@ mod tests {
 							Expr::Binary(inner) => {
 								assert_eq!(inner.op, BinaryOp::Add);
 								match inner.left {
-									Expr::Identifier(id) => assert_eq!(id.name, "price"),
+									Expr::Identifier(id) => {
+										assert_eq!(id.name, "price")
+									}
 									_ => panic!("Expected price identifier"),
 								}
 								match inner.right {
-									Expr::Identifier(id) => assert_eq!(id.name, "fee"),
+									Expr::Identifier(id) => {
+										assert_eq!(id.name, "fee")
+									}
 									_ => panic!("Expected fee identifier"),
 								}
 							}
@@ -194,12 +208,10 @@ mod tests {
 		let filter = extract_filter(stmt);
 
 		match filter.predicate {
-			Expr::Binary(binary) => {
-				match binary.left {
-					Expr::Identifier(id) => assert_eq!(id.name, "value"),
-					_ => panic!("Expected identifier"),
-				}
-			}
+			Expr::Binary(binary) => match binary.left {
+				Expr::Identifier(id) => assert_eq!(id.name, "value"),
+				_ => panic!("Expected identifier"),
+			},
 			_ => panic!("Expected binary expression"),
 		}
 	}
@@ -214,12 +226,10 @@ mod tests {
 		let filter = extract_filter(stmt);
 
 		match filter.predicate {
-			Expr::Binary(binary) => {
-				match binary.left {
-					Expr::Identifier(id) => assert_eq!(id.name, "price"),
-					_ => panic!("Expected identifier"),
-				}
-			}
+			Expr::Binary(binary) => match binary.left {
+				Expr::Identifier(id) => assert_eq!(id.name, "price"),
+				_ => panic!("Expected identifier"),
+			},
 			_ => panic!("Expected binary expression"),
 		}
 	}

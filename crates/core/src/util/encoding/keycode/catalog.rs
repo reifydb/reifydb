@@ -3,8 +3,11 @@
 
 use reifydb_type::return_internal_error;
 
-use crate::interface::{
-	DictionaryId, FlowId, IndexId, PrimaryKeyId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId,
+use crate::interface::catalog::{
+	flow::FlowId,
+	id::{DictionaryId, IndexId, PrimaryKeyId, RingBufferId, TableId, ViewId},
+	primitive::PrimitiveId,
+	vtable::VTableId,
 };
 
 /// Serialize a PrimitiveId for use in database keys
@@ -44,7 +47,7 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 /// Deserialize a PrimitiveId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x05 for Flow
-pub fn deserialize_primitive_id(bytes: &[u8]) -> crate::Result<PrimitiveId> {
+pub fn deserialize_primitive_id(bytes: &[u8]) -> reifydb_type::Result<PrimitiveId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid PrimitiveId encoding: expected 9 bytes, got {}", bytes.len());
 	}
@@ -78,7 +81,7 @@ pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
 
 /// Deserialize an IndexId from database key bytes
 /// Expects [type_byte, ...id_bytes]
-pub fn deserialize_index_id(bytes: &[u8]) -> crate::Result<IndexId> {
+pub fn deserialize_index_id(bytes: &[u8]) -> reifydb_type::Result<IndexId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid IndexId encoding: expected 9 bytes, got {}", bytes.len());
 	}
@@ -94,8 +97,9 @@ pub fn deserialize_index_id(bytes: &[u8]) -> crate::Result<IndexId> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
+	use crate::util::encoding::keycode::serialize;
 
 	#[test]
 	fn test_primitive_id_ordering() {
@@ -163,11 +167,11 @@ mod tests {
 		let row_key_10_100 = vec![0xFE, 0xFC]; // version, kind
 		let mut key1 = row_key_10_100.clone();
 		key1.extend(&bytes10);
-		key1.extend(&super::super::serialize(&100u64)); // encoded 100
+		key1.extend(&serialize(&100u64)); // encoded 100
 
 		let mut key2 = row_key_10_100.clone();
 		key2.extend(&bytes10);
-		key2.extend(&super::super::serialize(&200u64)); // encoded 200
+		key2.extend(&serialize(&200u64)); // encoded 200
 
 		let mut end_key = vec![0xFE, 0xFC];
 		end_key.extend(&bytes9);
@@ -181,8 +185,6 @@ mod tests {
 
 	#[test]
 	fn test_vtable_serialization() {
-		use crate::interface::VTableId;
-
 		// Test basic serialization/deserialization
 		let virtual_primitive = PrimitiveId::vtable(42);
 		let bytes = serialize_primitive_id(&virtual_primitive);

@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstStatement, AstSubQuery,
+	ast::{AstStatement, AstSubQuery},
 	parse::{Parser, Precedence},
-	tokenize::Operator::{self, CloseCurly, OpenCurly},
+	tokenize::operator::Operator::{self, CloseCurly, OpenCurly},
 };
 
 impl Parser {

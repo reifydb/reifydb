@@ -5,7 +5,3 @@ pub mod common;
 pub mod inner;
 pub mod left;
 pub mod natural;
-
-pub use inner::InnerJoinNode;
-pub use left::LeftJoinNode;
-pub use natural::NaturalJoinNode;

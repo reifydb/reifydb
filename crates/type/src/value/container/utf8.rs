@@ -5,7 +5,10 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::Value,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Utf8Container {
@@ -195,9 +198,9 @@ impl Default for Utf8Container {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::BitVec;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {

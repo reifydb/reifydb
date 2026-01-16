@@ -1,36 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod alter;
-mod create;
+pub mod alter;
+pub mod create;
 
-pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
+use alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode};
 use reifydb_catalog::{
-	Catalog,
+	catalog::Catalog,
 	store::{
-		ringbuffer::create::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
-		table::TableColumnToCreate, view::ViewColumnToCreate,
+		ringbuffer::create::RingBufferColumnToCreate, subscription::create::SubscriptionColumnToCreate,
+		table::create::TableColumnToCreate, view::create::ViewColumnToCreate,
 	},
 };
 use reifydb_core::{
-	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
+	common::{JoinType, WindowSize, WindowSlide, WindowType},
 	interface::{
-		ColumnDef, ColumnId, NamespaceDef, NamespaceId, TableDef, TableId,
-		catalog::ColumnIndex,
+		catalog::{
+			column::{ColumnDef, ColumnIndex},
+			id::{ColumnId, NamespaceId, TableId},
+			namespace::NamespaceDef,
+			table::TableDef,
+		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
 			ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
+	sort::SortKey,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{
-	Fragment, Type, TypeConstraint,
-	diagnostic::{
+	error::diagnostic::{
 		catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
 		function::internal_error,
 	},
+	fragment::Fragment,
 	return_error,
+	value::{constraint::TypeConstraint, r#type::Type},
 };
 use tracing::instrument;
 
@@ -250,7 +256,7 @@ impl Compiler {
 						};
 
 						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
-							use reifydb_type::Fragment;
+							use reifydb_type::fragment::Fragment;
 							Fragment::internal(namespace_def.name.clone())
 						});
 						let resolved_namespace =
@@ -307,7 +313,7 @@ impl Compiler {
 					};
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::Fragment;
+						use reifydb_type::fragment::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
@@ -348,7 +354,7 @@ impl Compiler {
 					};
 
 					let namespace_id = table.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::Fragment;
+						use reifydb_type::fragment::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
@@ -388,7 +394,7 @@ impl Compiler {
 					};
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::Fragment;
+						use reifydb_type::fragment::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
@@ -427,7 +433,7 @@ impl Compiler {
 					};
 
 					let namespace_id = dictionary_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::Fragment;
+						use reifydb_type::fragment::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
@@ -487,7 +493,7 @@ impl Compiler {
 						};
 
 						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
-							use reifydb_type::Fragment;
+							use reifydb_type::fragment::Fragment;
 							Fragment::internal(namespace_def.name.clone())
 						});
 						let resolved_namespace =
@@ -546,7 +552,7 @@ impl Compiler {
 					};
 
 					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
-						use reifydb_type::Fragment;
+						use reifydb_type::fragment::Fragment;
 						Fragment::internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
@@ -904,7 +910,7 @@ impl Compiler {
 					{
 						Box::new(then_plan)
 					} else {
-						return Err(reifydb_type::Error(internal_error(
+						return Err(reifydb_type::error::Error(internal_error(
 							"compile_physical".to_string(),
 							"Failed to compile conditional then branch".to_string(),
 						)));
@@ -919,7 +925,7 @@ impl Compiler {
 						{
 							Box::new(plan)
 						} else {
-							return Err(reifydb_type::Error(internal_error(
+							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".to_string(),
 								"Failed to compile conditional else if branch"
 									.to_string(),
@@ -936,7 +942,7 @@ impl Compiler {
 						if let Some(plan) = self.compile(rx, vec![*else_logical])? {
 							Some(Box::new(plan))
 						} else {
-							return Err(reifydb_type::Error(internal_error(
+							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".to_string(),
 								"Failed to compile conditional else branch".to_string(),
 							)));
@@ -959,7 +965,7 @@ impl Compiler {
 						if let Some(plan) = self.compile(rx, vec![*scalarize_node.input])? {
 							Box::new(plan)
 						} else {
-							return Err(reifydb_type::Error(internal_error(
+							return Err(reifydb_type::error::Error(internal_error(
 								"compile_physical".to_string(),
 								"Failed to compile scalarize input".to_string(),
 							)));

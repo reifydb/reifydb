@@ -24,15 +24,14 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::Catalog;
-use reifydb_rqlv2::CompiledProgram;
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_rqlv2::bytecode::program::CompiledProgram;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	error::VmError,
 	pipeline::Pipeline,
-	runtime::context::VmContext,
-	runtime::state::VmState,
+	runtime::{context::VmContext, state::VmState},
 };
 
 /// Execute a compiled bytecode program with catalog access.

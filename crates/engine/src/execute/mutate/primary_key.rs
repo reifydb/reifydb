@@ -3,15 +3,15 @@
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	SortDirection,
-	interface::{PrimaryKeyDef, TableDef},
+	interface::catalog::{key::PrimaryKeyDef, table::TableDef},
+	sort::SortDirection,
 	value::{
-		encoded::{EncodedValues, EncodedValuesLayout},
-		index::{EncodedIndexKey, EncodedIndexLayout},
+		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+		index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
 	},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Type;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::value::r#type::Type;
 
 /// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(

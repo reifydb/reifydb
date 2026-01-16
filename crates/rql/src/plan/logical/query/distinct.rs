@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstDistinct,
+	ast::ast::AstDistinct,
 	plan::logical::{Compiler, DistinctNode, LogicalPlan},
 };
 

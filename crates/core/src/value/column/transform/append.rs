@@ -2,21 +2,34 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, diagnostic::engine, return_error,
-};
-
-use crate::{
-	BitVec,
+	error::diagnostic::engine::frame_error,
+	return_error,
+	util::bitvec::BitVec,
 	value::{
-		column::{ColumnData, Columns},
-		encoded::{EncodedValues, EncodedValuesLayout},
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		row_number::RowNumber,
+		time::Time,
+		r#type::Type,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
 	},
 };
 
+use crate::value::{
+	column::{ColumnData, columns::Columns},
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+};
+
 impl Columns {
-	pub fn append_columns(&mut self, other: Columns) -> crate::Result<()> {
+	pub fn append_columns(&mut self, other: Columns) -> reifydb_type::Result<()> {
 		if self.len() != other.len() {
-			return_error!(engine::frame_error("mismatched column count".to_string()));
+			return_error!(frame_error("mismatched column count".to_string()));
 		}
 
 		// Append encoded numbers from the other columns
@@ -27,7 +40,7 @@ impl Columns {
 		let columns = self.columns.make_mut();
 		for (i, (l, r)) in columns.iter_mut().zip(other.columns.into_iter()).enumerate() {
 			if l.name() != r.name() {
-				return_error!(engine::frame_error(format!(
+				return_error!(frame_error(format!(
 					"column name mismatch at index {}: '{}' vs '{}'",
 					i,
 					l.name().text(),
@@ -45,10 +58,10 @@ impl Columns {
 		&mut self,
 		layout: &EncodedValuesLayout,
 		rows: impl IntoIterator<Item = EncodedValues>,
-		row_numbers: Vec<reifydb_type::RowNumber>,
-	) -> crate::Result<()> {
+		row_numbers: Vec<RowNumber>,
+	) -> reifydb_type::Result<()> {
 		if self.len() != layout.fields.len() {
-			return_error!(engine::frame_error(format!(
+			return_error!(frame_error(format!(
 				"mismatched column count: expected {}, got {}",
 				self.len(),
 				layout.fields.len()
@@ -59,7 +72,7 @@ impl Columns {
 
 		// Verify row_numbers length if provided
 		if !row_numbers.is_empty() && row_numbers.len() != rows.len() {
-			return_error!(engine::frame_error(format!(
+			return_error!(frame_error(format!(
 				"row_numbers length {} does not match rows length {}",
 				row_numbers.len(),
 				rows.len()
@@ -186,7 +199,7 @@ impl Columns {
 						BitVec::repeat(size, false),
 					),
 					Type::Any => ColumnData::any_with_bitvec(
-						vec![Box::new(reifydb_type::Value::Undefined); size],
+						vec![Box::new(Value::Undefined); size],
 						BitVec::repeat(size, false),
 					),
 				};
@@ -209,7 +222,11 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined(&mut self, layout: &EncodedValuesLayout, row: &EncodedValues) -> crate::Result<()> {
+	fn append_all_defined(
+		&mut self,
+		layout: &EncodedValuesLayout,
+		row: &EncodedValues,
+	) -> reifydb_type::Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
@@ -318,7 +335,7 @@ impl Columns {
 					container.push(layout.get_decimal(&row, index));
 				}
 				(_, v) => {
-					return_error!(engine::frame_error(format!(
+					return_error!(frame_error(format!(
 						"type mismatch for column '{}'({}): incompatible with value {}",
 						column.name().text(),
 						column.data().get_type(),
@@ -330,7 +347,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback(&mut self, layout: &EncodedValuesLayout, row: &EncodedValues) -> crate::Result<()> {
+	fn append_fallback(&mut self, layout: &EncodedValuesLayout, row: &EncodedValues) -> reifydb_type::Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
@@ -469,12 +486,12 @@ impl Columns {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	mod columns {
-		use reifydb_type::{Uuid4, Uuid7};
+		use reifydb_type::value::uuid::{Uuid4, Uuid7};
 		use uuid::{Timestamp, Uuid};
 
-		use crate::value::column::{Column, ColumnData, Columns};
+		use crate::value::column::{Column, ColumnData, columns::Columns};
 
 		#[test]
 		fn test_boolean() {
@@ -793,14 +810,15 @@ mod tests {
 	}
 
 	mod row {
-		use reifydb_type::{Fragment, OrderedF32, OrderedF64, Type, Value};
+		use reifydb_type::{
+			fragment::Fragment,
+			util::bitvec::BitVec,
+			value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type},
+		};
 
-		use crate::{
-			BitVec,
-			value::{
-				column::{Column, ColumnData, Columns},
-				encoded::EncodedValuesLayout,
-			},
+		use crate::value::{
+			column::{Column, ColumnData, columns::Columns},
+			encoded::layout::EncodedValuesLayout,
 		};
 
 		#[test]

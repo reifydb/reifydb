@@ -4,8 +4,8 @@
 //! Control flow plan nodes.
 
 use crate::{
-	plan::{Plan, Variable, node::expr::PlanExpr},
-	token::Span,
+	plan::{Plan, node::expr::PlanExpr, types::Variable},
+	token::span::Span,
 };
 
 /// Conditional (if/else).

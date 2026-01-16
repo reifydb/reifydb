@@ -9,11 +9,16 @@
 //! - `parse::ddl::alter` - ALTER parsing
 //! - `parse::ddl::drop` - DROP parsing
 
-use super::super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
+use crate::{
+	ast::{
+		Statement,
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+		},
+	},
+	token::{keyword::Keyword, operator::Operator},
 };
-use crate::{ast::Statement, token::{Keyword, Operator}};
 
 impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Parse CREATE statement.

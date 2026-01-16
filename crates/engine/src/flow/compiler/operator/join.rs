@@ -2,21 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	JoinType::{self, Inner, Left},
-	Result,
-	interface::FlowNodeId,
+	common::JoinType::{self, Inner, Left},
+	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_rql::{
 	expression::Expression,
 	flow::{
-		FlowNodeType,
 		conversion::{to_owned_expressions, to_owned_physical_plan},
+		node::FlowNodeType,
 	},
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
 };
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,

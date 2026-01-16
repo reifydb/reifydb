@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_type::{Fragment, Value};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_type::{fragment::Fragment, value::Value};
 
 pub fn create_env_columns() -> Columns {
 	let mut keys = Vec::new();

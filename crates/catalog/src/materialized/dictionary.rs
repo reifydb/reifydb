@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{DictionaryDef, DictionaryId, NamespaceId},
+	common::CommitVersion,
+	interface::catalog::{
+		dictionary::DictionaryDef,
+		id::{DictionaryId, NamespaceId},
+	},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionDictionaryDef};
@@ -65,8 +68,8 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 

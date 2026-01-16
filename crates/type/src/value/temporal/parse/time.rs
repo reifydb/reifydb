@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Error, Fragment, Time, error::diagnostic::temporal, return_error};
+use crate::{
+	error::{Error, diagnostic::temporal},
+	fragment::Fragment,
+	return_error,
+	value::Time,
+};
 
 pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
@@ -92,9 +97,9 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::parse_time;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_basic() {

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstCreateDictionary,
+	ast::ast::AstCreateDictionary,
 	plan::logical::{Compiler, CreateDictionaryNode, LogicalPlan},
 };
 

@@ -3,39 +3,57 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use reifydb_catalog::{
+	catalog::Catalog,
+	materialized::MaterializedCatalog,
+	vtable::{
+		system::flow_operator_store::{FlowOperatorEventListener, FlowOperatorStore},
+		tables::UserVTableDataFunction,
+		user::{UserVTable, UserVTableColumnDef, registry::UserVTableEntry},
+	},
+};
+use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
+use reifydb_core::{
+	common::CommitVersion,
+	event::{Event, EventBus},
+	interface::{
+		WithEventBus,
+		auth::Identity,
+		catalog::{
+			column::{ColumnDef, ColumnIndex},
+			id::ColumnId,
+			vtable::{VTableDef, VTableId},
+		},
+	},
+	util::ioc::IocContainer,
+	value::column::columns::Columns,
+};
+use reifydb_function::{math, registry::Functions, series, subscription};
+use reifydb_metric::metric::MetricReader;
+use reifydb_rqlv2::compiler::Compiler;
+use reifydb_transaction::{
+	interceptor::factory::InterceptorFactory,
+	multi::transaction::TransactionMulti,
+	single::TransactionSingle,
+	standard::{command::StandardCommandTransaction, query::StandardQueryTransaction},
+};
+use reifydb_type::{
+	error::{Error, diagnostic, diagnostic::catalog::namespace_not_found},
+	fragment::Fragment,
+	params::Params,
+	value::{constraint::TypeConstraint, frame::frame::Frame},
+};
+use reifydb_vm::{
+	pipeline::collect,
+	runtime::{context::VmContext, state::VmState},
+};
+use tracing::instrument;
+
 use crate::{
-	bulk_insert::BulkInsertBuilder,
+	bulk_insert::builder::BulkInsertBuilder,
 	execute::{Command, ExecuteCommand, ExecuteQuery, Executor, Query},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 };
-use reifydb_catalog::{
-	Catalog, MaterializedCatalog,
-	vtable::{
-		UserVTable, UserVTableColumnDef, UserVTableDataFunction, UserVTableEntry,
-		system::{FlowOperatorEventListener, FlowOperatorStore},
-	},
-};
-use reifydb_cdc::{CdcHost, CdcStore};
-use reifydb_core::{
-	CommitVersion, Frame,
-	event::{Event, EventBus},
-	interface::{ColumnDef, ColumnId, ColumnIndex, Identity, Params, VTableDef, VTableId, WithEventBus},
-	ioc::IocContainer,
-	value::column::Columns,
-};
-use reifydb_function::{Functions, math, series, subscription};
-use reifydb_metric::MetricReader;
-use reifydb_rqlv2::Compiler;
-use reifydb_transaction::{
-	StandardCommandTransaction, StandardQueryTransaction, interceptor::InterceptorFactory,
-	multi::TransactionMultiVersion, single::TransactionSingle,
-};
-use reifydb_type::{
-	Error, Fragment, TypeConstraint,
-	diagnostic::{self, catalog::namespace_not_found},
-};
-use reifydb_vm::{VmContext, VmState, collect};
-use tracing::instrument;
 
 pub struct StandardEngine(Arc<Inner>);
 
@@ -126,7 +144,7 @@ impl StandardEngine {
 	///
 	/// ```ignore
 	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumnDef};
-	/// use reifydb_type::Type;
+	/// use reifydb_type::value::r#type::Type;
 	/// use reifydb_core::value::Columns;
 	///
 	/// #[derive(Clone)]
@@ -364,11 +382,11 @@ impl ExecuteCommand for StandardEngine {
 }
 
 impl CdcHost for StandardEngine {
-	fn begin_command(&self) -> reifydb_core::Result<StandardCommandTransaction> {
+	fn begin_command(&self) -> reifydb_type::Result<StandardCommandTransaction> {
 		StandardEngine::begin_command(self)
 	}
 
-	fn current_version(&self) -> reifydb_core::Result<CommitVersion> {
+	fn current_version(&self) -> reifydb_type::Result<CommitVersion> {
 		StandardEngine::current_version(self)
 	}
 
@@ -403,7 +421,7 @@ impl Deref for StandardEngine {
 }
 
 pub struct Inner {
-	multi: TransactionMultiVersion,
+	multi: TransactionMulti,
 	single: TransactionSingle,
 	event_bus: EventBus,
 	executor: Executor,
@@ -415,7 +433,7 @@ pub struct Inner {
 
 impl StandardEngine {
 	pub fn new(
-		multi: TransactionMultiVersion,
+		multi: TransactionMulti,
 		single: TransactionSingle,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory>,
@@ -425,15 +443,18 @@ impl StandardEngine {
 	) -> Self {
 		let functions = custom_functions.unwrap_or_else(|| {
 			Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::Sum::new)
-				.register_aggregate("math::min", math::aggregate::Min::new)
-				.register_aggregate("math::max", math::aggregate::Max::new)
-				.register_aggregate("math::avg", math::aggregate::Avg::new)
-				.register_aggregate("math::count", math::aggregate::Count::new)
-				.register_scalar("math::abs", math::scalar::Abs::new)
-				.register_scalar("math::avg", math::scalar::Avg::new)
+				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
+				.register_aggregate("math::min", math::aggregate::min::Min::new)
+				.register_aggregate("math::max", math::aggregate::max::Max::new)
+				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
+				.register_aggregate("math::count", math::aggregate::count::Count::new)
+				.register_scalar("math::abs", math::scalar::abs::Abs::new)
+				.register_scalar("math::avg", math::scalar::avg::Avg::new)
 				.register_generator("generate_series", series::GenerateSeries::new)
-				.register_generator("inspect_subscription", subscription::InspectSubscription::new)
+				.register_generator(
+					"inspect_subscription",
+					subscription::inspect::InspectSubscription::new,
+				)
 				.build()
 		});
 
@@ -479,12 +500,12 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn multi(&self) -> &TransactionMultiVersion {
+	pub fn multi(&self) -> &TransactionMulti {
 		&self.multi
 	}
 
 	#[inline]
-	pub fn multi_owned(&self) -> TransactionMultiVersion {
+	pub fn multi_owned(&self) -> TransactionMulti {
 		self.multi.clone()
 	}
 
@@ -576,7 +597,7 @@ impl StandardEngine {
 	pub fn bulk_insert<'e>(
 		&'e self,
 		identity: &'e Identity,
-	) -> BulkInsertBuilder<'e, crate::bulk_insert::Validated> {
+	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
 
@@ -592,7 +613,7 @@ impl StandardEngine {
 	pub fn bulk_insert_trusted<'e>(
 		&'e self,
 		identity: &'e Identity,
-	) -> BulkInsertBuilder<'e, crate::bulk_insert::Trusted> {
+	) -> BulkInsertBuilder<'e, crate::bulk_insert::builder::Trusted> {
 		BulkInsertBuilder::new_trusted(self, identity)
 	}
 }

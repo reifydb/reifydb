@@ -186,7 +186,7 @@ impl<'de> Deserialize<'de> for Time {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

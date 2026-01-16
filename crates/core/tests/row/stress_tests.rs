@@ -5,8 +5,20 @@
 
 use std::str::FromStr;
 
-use reifydb_core::value::encoded::EncodedValuesLayout;
-use reifydb_type::*;
+use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_type::value::{
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	time::Time,
+	r#type::Type,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
+};
 
 #[test]
 fn test_mixed_type_stress() {

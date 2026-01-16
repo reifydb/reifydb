@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::{util::CowVec, value::column::Columns};
+use reifydb_type::util::cowvec::CowVec;
+
+use crate::value::column::columns::Columns;
 
 impl Columns {
-	pub fn take(&mut self, n: usize) -> crate::Result<()> {
+	pub fn take(&mut self, n: usize) -> reifydb_type::Result<()> {
 		// Take the first n encoded numbers
 		if !self.row_numbers.is_empty() {
 			let actual_n = n.min(self.row_numbers.len());
@@ -27,7 +29,7 @@ impl Columns {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::value::column::{Column, ColumnData};
 

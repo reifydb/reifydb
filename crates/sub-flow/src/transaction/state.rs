@@ -2,12 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::FlowNodeId,
-	key::{EncodableKey, FlowNodeStateKey},
-	value::encoded::{EncodedValues, EncodedValuesLayout},
+	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+		layout::EncodedValuesLayout,
+	},
 };
-use reifydb_core::interface::MultiVersionBatch;
 use tracing::{Span, instrument};
 
 use super::FlowTransaction;
@@ -171,13 +173,18 @@ impl FlowTransaction {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey, EncodedKeyRange, interface::FlowNodeId,
-		value::encoded::EncodedValues,
+		common::CommitVersion,
+		interface::catalog::flow::FlowNodeId,
+		value::encoded::{
+			encoded::EncodedValues,
+			key::{EncodedKey, EncodedKeyRange},
+			layout::EncodedValuesLayout,
+		},
 	};
-	use reifydb_type::Type;
+	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

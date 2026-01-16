@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::{FlowEdgeId, FlowId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::flow::{FlowEdgeId, FlowId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -135,9 +135,9 @@ impl FlowEdgeByFlowKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, FlowEdgeByFlowKey, FlowEdgeKey};
-	use crate::interface::catalog::{FlowEdgeId, FlowId};
+	use crate::interface::catalog::flow::{FlowEdgeId, FlowId};
 
 	#[test]
 	fn test_flow_edge_key_encode_decode() {

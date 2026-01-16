@@ -5,7 +5,7 @@ mod lifecycle;
 
 pub use lifecycle::*;
 use reifydb_core::{event::lifecycle::OnCreateEvent, interface::WithEventBus as _};
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
 
 pub trait WithEventBus {
 	fn engine(&self) -> &StandardEngine;

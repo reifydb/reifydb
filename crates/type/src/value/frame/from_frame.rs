@@ -3,8 +3,8 @@
 
 use std::fmt::{Display, Formatter};
 
-use super::Frame;
-use crate::FromValueError;
+use super::frame::Frame;
+use crate::value::try_from::FromValueError;
 
 /// Error type for Frame deserialization via `FromFrame` derive.
 #[derive(Debug, Clone)]

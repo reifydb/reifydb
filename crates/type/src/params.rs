@@ -9,11 +9,21 @@ use serde::{
 };
 
 use crate::{
-	Blob, Fragment, OrderedF32, OrderedF64, Type, Value, parse_bool, parse_date, parse_datetime, parse_decimal,
-	parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
+	fragment::Fragment,
 	value::{
-		IdentityId,
-		number::{parse_primitive_int, parse_primitive_uint},
+		Value,
+		blob::Blob,
+		boolean::parse::parse_bool,
+		decimal::parse::parse_decimal,
+		identity::IdentityId,
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		temporal::parse::{
+			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
+		},
+		r#type::Type,
+		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
 
@@ -245,39 +255,29 @@ impl<'de> Deserialize<'de> for Params {
 
 #[macro_export]
 macro_rules! params {
-    // Empty params
-    () => {
-        $crate::Params::None
-    };
-
-    // Empty named parameters
-    {} => {
-        $crate::Params::None
-    };
-
     // Named parameters with mixed keys: params!{ name: value, "key": value }
     { $($key:tt : $value:expr),+ $(,)? } => {
         {
             let mut map = ::std::collections::HashMap::new();
             $(
-                map.insert($crate::params_key!($key), $crate::IntoValue::into_value($value));
+                map.insert($crate::params_key!($key), $crate::value::into::IntoValue::into_value($value));
             )*
-            $crate::Params::Named(map)
+            $crate::params::Params::Named(map)
         }
     };
 
     // Empty positional parameters
     [] => {
-        $crate::Params::None
+        $crate::params::Params::None
     };
 
     // Positional parameters: params![value1, value2, ...]
     [ $($value:expr),+ $(,)? ] => {
         {
             let values = vec![
-                $($crate::IntoValue::into_value($value)),*
+                $($crate::value::into::IntoValue::into_value($value)),*
             ];
-            $crate::Params::Positional(values)
+            $crate::params::Params::Positional(values)
         }
     };
 }
@@ -294,9 +294,9 @@ macro_rules! params_key {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::IntoValue;
+	use crate::{params::Params, value::into::IntoValue};
 
 	#[test]
 	fn test_params_macro_positional() {

@@ -2,27 +2,39 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::Column;
-use reifydb_function::{Functions, blob, flow, math, text};
+use reifydb_function::{
+	blob::{b58::BlobB58, b64::BlobB64, b64url::BlobB64url, hex::BlobHex, utf8::BlobUtf8},
+	flow::to_json::FlowNodeToJson,
+	math::scalar::{abs::Abs, avg::Avg, max::Max, min::Min, power::Power, round::Round},
+	registry::Functions,
+	text::{
+		format_bytes::{FormatBytes, FormatBytesSi},
+		length::TextLength,
+		substring::TextSubstring,
+		trim::TextTrim,
+		upper::TextUpper,
+	},
+};
 use reifydb_rql::expression::Expression;
 
-pub(crate) use crate::evaluate::ColumnEvaluationContext;
+use crate::evaluate::ColumnEvaluationContext;
 
-mod access;
-mod alias;
-mod arith;
-mod call;
+pub mod access;
+pub mod alias;
+pub mod arith;
+pub mod call;
 pub mod cast;
-mod column;
-mod compare;
+pub mod column;
+pub mod compare;
 pub(crate) mod constant;
-mod extend_expr;
-mod if_expr;
-mod logic;
-mod map_expr;
-mod parameter;
-mod prefix;
-mod tuple;
-mod variable;
+pub mod extend_expr;
+pub mod if_expr;
+pub mod logic;
+pub mod map_expr;
+pub mod parameter;
+pub mod prefix;
+pub mod tuple;
+pub mod variable;
 
 #[derive(Clone)]
 pub struct StandardColumnEvaluator {
@@ -33,24 +45,24 @@ impl Default for StandardColumnEvaluator {
 	fn default() -> Self {
 		Self {
 			functions: Functions::builder()
-				.register_scalar("math::abs", math::scalar::Abs::new)
-				.register_scalar("math::avg", math::scalar::Avg::new)
-				.register_scalar("math::max", math::scalar::Max::new)
-				.register_scalar("math::min", math::scalar::Min::new)
-				.register_scalar("math::power", math::scalar::Power::new)
-				.register_scalar("math::round", math::scalar::Round::new)
-				.register_scalar("blob::hex", blob::BlobHex::new)
-				.register_scalar("blob::b58", blob::BlobB58::new)
-				.register_scalar("blob::b64", blob::BlobB64::new)
-				.register_scalar("blob::b64url", blob::BlobB64url::new)
-				.register_scalar("blob::utf8", blob::BlobUtf8::new)
-				.register_scalar("flow_node::to_json", flow::FlowNodeToJson::new)
-				.register_scalar("text::trim", text::TextTrim::new)
-				.register_scalar("text::upper", text::TextUpper::new)
-				.register_scalar("text::substring", text::TextSubstring::new)
-				.register_scalar("text::length", text::TextLength::new)
-				.register_scalar("text::format_bytes", text::FormatBytes::new)
-				.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
+				.register_scalar("math::abs", Abs::new)
+				.register_scalar("math::avg", Avg::new)
+				.register_scalar("math::max", Max::new)
+				.register_scalar("math::min", Min::new)
+				.register_scalar("math::power", Power::new)
+				.register_scalar("math::round", Round::new)
+				.register_scalar("blob::hex", BlobHex::new)
+				.register_scalar("blob::b58", BlobB58::new)
+				.register_scalar("blob::b64", BlobB64::new)
+				.register_scalar("blob::b64url", BlobB64url::new)
+				.register_scalar("blob::utf8", BlobUtf8::new)
+				.register_scalar("flow_node::to_json", FlowNodeToJson::new)
+				.register_scalar("text::trim", TextTrim::new)
+				.register_scalar("text::upper", TextUpper::new)
+				.register_scalar("text::substring", TextSubstring::new)
+				.register_scalar("text::length", TextLength::new)
+				.register_scalar("text::format_bytes", FormatBytes::new)
+				.register_scalar("text::format_bytes_si", FormatBytesSi::new)
 				.build(),
 		}
 	}
@@ -96,24 +108,24 @@ impl StandardColumnEvaluator {
 pub fn evaluate(ctx: &ColumnEvaluationContext, expr: &Expression) -> crate::Result<Column> {
 	let evaluator = StandardColumnEvaluator {
 		functions: Functions::builder()
-			.register_scalar("math::abs", math::scalar::Abs::new)
-			.register_scalar("math::avg", math::scalar::Avg::new)
-			.register_scalar("math::max", math::scalar::Max::new)
-			.register_scalar("math::min", math::scalar::Min::new)
-			.register_scalar("math::power", math::scalar::Power::new)
-			.register_scalar("math::round", math::scalar::Round::new)
-			.register_scalar("blob::hex", blob::BlobHex::new)
-			.register_scalar("blob::b58", blob::BlobB58::new)
-			.register_scalar("blob::b64", blob::BlobB64::new)
-			.register_scalar("blob::b64url", blob::BlobB64url::new)
-			.register_scalar("blob::utf8", blob::BlobUtf8::new)
-			.register_scalar("flow_node::to_json", flow::FlowNodeToJson::new)
-			.register_scalar("text::trim", text::TextTrim::new)
-			.register_scalar("text::upper", text::TextUpper::new)
-			.register_scalar("text::substring", text::TextSubstring::new)
-			.register_scalar("text::length", text::TextLength::new)
-			.register_scalar("text::format_bytes", text::FormatBytes::new)
-			.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
+			.register_scalar("math::abs", Abs::new)
+			.register_scalar("math::avg", Avg::new)
+			.register_scalar("math::max", Max::new)
+			.register_scalar("math::min", Min::new)
+			.register_scalar("math::power", Power::new)
+			.register_scalar("math::round", Round::new)
+			.register_scalar("blob::hex", BlobHex::new)
+			.register_scalar("blob::b58", BlobB58::new)
+			.register_scalar("blob::b64", BlobB64::new)
+			.register_scalar("blob::b64url", BlobB64url::new)
+			.register_scalar("blob::utf8", BlobUtf8::new)
+			.register_scalar("flow_node::to_json", FlowNodeToJson::new)
+			.register_scalar("text::trim", TextTrim::new)
+			.register_scalar("text::upper", TextUpper::new)
+			.register_scalar("text::substring", TextSubstring::new)
+			.register_scalar("text::length", TextLength::new)
+			.register_scalar("text::format_bytes", FormatBytes::new)
+			.register_scalar("text::format_bytes_si", FormatBytesSi::new)
 			.build(),
 	};
 

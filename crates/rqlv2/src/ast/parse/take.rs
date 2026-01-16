@@ -4,7 +4,7 @@
 //! TAKE expression parsing.
 
 use super::{Parser, error::ParseError, pratt::Precedence};
-use crate::ast::{Expr, expr::*};
+use crate::ast::{Expr, expr::query::TakeExpr};
 
 impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Parse TAKE expression.
@@ -19,10 +19,17 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{
+			Expr,
+			expr::{literal::Literal, query::TakeExpr},
+			parse::parse,
+		},
+		token::tokenize,
+	};
 
 	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
@@ -35,7 +42,7 @@ mod tests {
 		}
 	}
 
-	fn extract_take<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::TakeExpr<'a> {
+	fn extract_take<'a>(stmt: crate::ast::Statement<'a>) -> &'a TakeExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Take(t) => t,
@@ -48,12 +55,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "TAKE 10";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let take = extract_take(stmt);
 
 		match take.count {
-			Expr::Literal(crate::ast::expr::Literal::Integer { value, .. }) => {
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => {
 				assert_eq!(*value, "10");
 			}
 			_ => panic!("Expected integer literal"),
@@ -65,12 +75,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "TAKE 0";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let take = extract_take(stmt);
 
 		match take.count {
-			Expr::Literal(crate::ast::expr::Literal::Integer { value, .. }) => {
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => {
 				assert_eq!(*value, "0");
 			}
 			_ => panic!("Expected integer literal"),
@@ -82,12 +95,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "take 5";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let take = extract_take(stmt);
 
 		match take.count {
-			Expr::Literal(crate::ast::expr::Literal::Integer { value, .. }) => {
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => {
 				assert_eq!(*value, "5");
 			}
 			_ => panic!("Expected integer literal"),

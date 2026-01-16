@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::{AstCreateIndex, AstIndexColumn},
+	ast::ast::{AstCreateIndex, AstIndexColumn},
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan},
 };

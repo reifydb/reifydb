@@ -12,8 +12,11 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{ParseError, Parser, Precedence};
 use crate::{
-	ast::{Expr, expr::{WindowConfig, WindowExpr}},
-	token::{Keyword, Operator, Punctuation, TokenKind},
+	ast::{
+		Expr,
+		expr::query::{WindowConfig, WindowExpr},
+	},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -150,23 +153,29 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::query::{FromExpr, WindowExpr},
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: Statement<'_>) -> &Expr<'_> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_window<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::WindowExpr<'a> {
+	fn extract_window<'a>(stmt: Statement<'a>) -> &'a WindowExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Window(w) => w,
@@ -294,11 +303,11 @@ mod tests {
 		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert_eq!(p.stages.len(), 2);
 				// Verify first stage is FROM
 				match &p.stages[0] {
-					Expr::From(crate::ast::expr::FromExpr::Source(s)) => {
+					Expr::From(FromExpr::Source(s)) => {
 						assert_eq!(s.namespace, Some("test"));
 						assert_eq!(s.name, "events");
 					}

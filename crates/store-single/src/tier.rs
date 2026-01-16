@@ -8,7 +8,7 @@
 
 use std::ops::Bound;
 
-use reifydb_type::{CowVec, Result};
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 /// A raw storage entry.
 ///

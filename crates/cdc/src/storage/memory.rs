@@ -13,7 +13,10 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use reifydb_core::{CommitVersion, interface::{Cdc, CdcBatch}};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::{Cdc, CdcBatch},
+};
 
 use super::{CdcStorage, CdcStorageResult};
 
@@ -36,10 +39,7 @@ impl MemoryCdcStorage {
 
 	/// Create a new in-memory CDC storage with pre-populated entries.
 	pub fn with_entries(entries: impl IntoIterator<Item = Cdc>) -> Self {
-		let map: BTreeMap<CommitVersion, Cdc> = entries
-			.into_iter()
-			.map(|cdc| (cdc.version, cdc))
-			.collect();
+		let map: BTreeMap<CommitVersion, Cdc> = entries.into_iter().map(|cdc| (cdc.version, cdc)).collect();
 		Self {
 			inner: Arc::new(RwLock::new(map)),
 		}
@@ -114,12 +114,7 @@ impl CdcStorage for MemoryCdcStorage {
 	}
 
 	fn count(&self, version: CommitVersion) -> CdcStorageResult<usize> {
-		Ok(self
-			.inner
-			.read()
-			.get(&version)
-			.map(|cdc| cdc.changes.len())
-			.unwrap_or(0))
+		Ok(self.inner.read().get(&version).map(|cdc| cdc.changes.len()).unwrap_or(0))
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
@@ -132,9 +127,14 @@ impl CdcStorage for MemoryCdcStorage {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::{
+		interface::cdc::{CdcChange, CdcSequencedChange},
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	};
+	use reifydb_type::util::cowvec::CowVec;
+
 	use super::*;
-	use reifydb_core::{EncodedKey, interface::{CdcChange, CdcSequencedChange}, value::encoded::EncodedValues};
 
 	fn make_cdc(version: u64) -> Cdc {
 		Cdc::new(
@@ -144,7 +144,7 @@ mod tests {
 				sequence: 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![1, 2, 3]),
-					post: EncodedValues(reifydb_core::CowVec::new(vec![])),
+					post: EncodedValues(CowVec::new(vec![])),
 				},
 			}],
 		)
@@ -195,11 +195,7 @@ mod tests {
 
 		// Exclusive start
 		let batch = storage
-			.read_range(
-				Bound::Excluded(CommitVersion(2)),
-				Bound::Included(CommitVersion(4)),
-				100,
-			)
+			.read_range(Bound::Excluded(CommitVersion(2)), Bound::Included(CommitVersion(4)), 100)
 			.unwrap();
 		assert_eq!(batch.items.len(), 2); // 3, 4
 		assert_eq!(batch.items[0].version, CommitVersion(3));
@@ -207,11 +203,7 @@ mod tests {
 
 		// Exclusive end
 		let batch = storage
-			.read_range(
-				Bound::Included(CommitVersion(2)),
-				Bound::Excluded(CommitVersion(4)),
-				100,
-			)
+			.read_range(Bound::Included(CommitVersion(2)), Bound::Excluded(CommitVersion(4)), 100)
 			.unwrap();
 		assert_eq!(batch.items.len(), 2); // 2, 3
 		assert_eq!(batch.items[0].version, CommitVersion(2));
@@ -229,7 +221,7 @@ mod tests {
 				sequence: 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![1]),
-					post: EncodedValues(reifydb_core::CowVec::new(vec![])),
+					post: EncodedValues(CowVec::new(vec![])),
 				},
 			}],
 		);
@@ -242,14 +234,14 @@ mod tests {
 					sequence: 1,
 					change: CdcChange::Insert {
 						key: EncodedKey::new(vec![2]),
-						post: EncodedValues(reifydb_core::CowVec::new(vec![])),
+						post: EncodedValues(CowVec::new(vec![])),
 					},
 				},
 				CdcSequencedChange {
 					sequence: 2,
 					change: CdcChange::Insert {
 						key: EncodedKey::new(vec![3]),
-						post: EncodedValues(reifydb_core::CowVec::new(vec![])),
+						post: EncodedValues(CowVec::new(vec![])),
 					},
 				},
 			],

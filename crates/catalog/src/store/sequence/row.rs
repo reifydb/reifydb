@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{PrimitiveId, RingBufferId, RowSequenceKey, TableId};
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::RowNumber;
+use reifydb_core::{
+	interface::catalog::{
+		id::{RingBufferId, TableId},
+		primitive::PrimitiveId,
+	},
+	key::row_sequence::RowSequenceKey,
+};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
 

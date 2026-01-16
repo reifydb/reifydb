@@ -2,12 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstInline, AstInlineKeyedValue, TokenKind,
+	ast::{AstInline, AstInlineKeyedValue},
 	parse::{Parser, Precedence},
 	tokenize::{
-		Operator,
-		Operator::{CloseCurly, Colon},
-		Separator::Comma,
+		operator::{
+			Operator,
+			Operator::{CloseCurly, Colon},
+		},
+		separator::Separator::Comma,
+		token::TokenKind,
 	},
 };
 
@@ -45,10 +48,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{
-		Ast::{Identifier, Literal},
-		AstLiteral::{Number, Text},
+		ast::{
+			Ast::{Identifier, Literal},
+			AstLiteral::{Number, Text},
+		},
 		parse::parse,
 		tokenize::tokenize,
 	};

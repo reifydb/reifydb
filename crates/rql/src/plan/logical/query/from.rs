@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, diagnostic::Diagnostic, err};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{err, error::diagnostic::Diagnostic, fragment::Fragment};
 
 use crate::{
-	ast::{Ast, AstFrom},
+	ast::ast::{Ast, AstFrom},
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, PrimitiveScanNode,

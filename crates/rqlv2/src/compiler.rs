@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::util::ConcurrentLruCache;
-use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_core::util::lru::ConcurrentLruCache;
+use reifydb_hash::{Hash128, xxh::xxh3_128};
 
 use crate::{CompiledProgram, RqlError, compile_script};
 

@@ -9,17 +9,17 @@
 
 use bumpalo::collections::Vec as BumpVec;
 
-use super::super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
-	pratt::Precedence,
-};
 use crate::{
 	ast::{
 		Statement,
-		expr::{ForExpr, ForIterable},
+		expr::special::{ForExpr, ForIterable},
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+			pratt::Precedence,
+		},
 	},
-	token::{Keyword, Operator, Punctuation, TokenKind},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {

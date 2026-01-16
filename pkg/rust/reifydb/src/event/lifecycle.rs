@@ -4,11 +4,11 @@
 //! Lifecycle hook contexts and implementations
 
 use reifydb_core::{
-	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Identity, Params},
+	interface::auth::Identity,
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 /// Context provided to on_create eventbus
 pub struct OnCreateContext {
@@ -28,12 +28,16 @@ impl OnCreateContext {
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.command_as(identity, rql, params.into())
 	}
 
 	/// Execute a transactional command as root user.
-	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn command_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
@@ -47,12 +51,16 @@ impl OnCreateContext {
 		identity: &Identity,
 		rql: &str,
 		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
+	) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.query_as(identity, rql, params.into())
 	}
 
 	/// Execute a read-only query as root user.
-	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn query_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		let identity = Identity::root();
 		self.query_as(&identity, rql, params)
 	}

@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{FlowDef, FlowId, NamespaceId},
+	common::CommitVersion,
+	interface::catalog::{
+		flow::{FlowDef, FlowId},
+		id::NamespaceId,
+	},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionFlowDef};
@@ -65,8 +68,8 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::FlowStatus;
+pub mod tests {
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 

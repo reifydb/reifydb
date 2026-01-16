@@ -2,9 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstList, TokenKind,
+	ast::AstList,
 	parse::{Parser, Precedence},
-	tokenize::{Operator, Operator::CloseBracket, Separator},
+	tokenize::{
+		operator::{Operator, Operator::CloseBracket},
+		separator::Separator,
+		token::TokenKind,
+	},
 };
 
 impl Parser {
@@ -40,7 +44,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{parse::Parser, tokenize::tokenize};
 
 	#[test]

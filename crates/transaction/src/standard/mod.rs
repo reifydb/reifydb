@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::{MultiVersionBatch, MultiVersionValues},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_type::Result;
 
-use crate::TransactionId;
+use crate::{
+	TransactionId,
+	single::svl::read::SvlQueryTransaction,
+	standard::{command::StandardCommandTransaction, query::StandardQueryTransaction},
+};
 
-mod catalog;
-mod command;
-mod query;
-
-pub use command::StandardCommandTransaction;
-pub use query::StandardQueryTransaction;
+pub mod catalog;
+pub mod command;
+pub mod query;
 
 /// An enum that can hold either a command or query transaction for flexible
 /// execution
@@ -118,7 +122,6 @@ impl<'a> From<&'a mut StandardQueryTransaction> for StandardTransaction<'a> {
 /// Trait for types that can be converted into a StandardTransaction.
 /// This allows functions to accept either StandardCommandTransaction or
 /// StandardQueryTransaction directly without requiring manual wrapping.
-#[allow(async_fn_in_trait)]
 pub trait IntoStandardTransaction: Send {
 	fn into_standard_transaction(&mut self) -> StandardTransaction<'_>;
 
@@ -214,7 +217,7 @@ impl<'a> StandardTransaction<'a> {
 	}
 
 	/// Begin a single-version query transaction for specific keys
-	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<crate::single::SvlQueryTransaction<'_>>
+	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
 	{

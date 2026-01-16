@@ -2,37 +2,41 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod alter;
-mod create;
-mod mutate;
+pub mod create;
+pub mod mutate;
 pub mod query;
 pub mod resolver;
 pub mod row_predicate;
-mod variable;
+pub mod variable;
 
 use query::window::WindowNode;
 use reifydb_catalog::{
-	Catalog,
+	catalog::Catalog,
 	store::{
-		ringbuffer::create::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
-		table::TableColumnToCreate, view::ViewColumnToCreate,
+		ringbuffer::create::RingBufferColumnToCreate, subscription::create::SubscriptionColumnToCreate,
+		table::create::TableColumnToCreate, view::create::ViewColumnToCreate,
 	},
 };
 use reifydb_core::{
-	IndexType, JoinType, SortDirection, SortKey,
+	common::{IndexType, JoinType},
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy,
+		catalog::policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
-	return_error,
+	sort::{SortDirection, SortKey},
 };
-use reifydb_transaction::{IntoStandardTransaction, StandardCommandTransaction, StandardQueryTransaction};
-use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
+use reifydb_transaction::standard::{
+	IntoStandardTransaction, command::StandardCommandTransaction, query::StandardQueryTransaction,
+};
+use reifydb_type::{error::diagnostic::ast::unsupported_ast_node, fragment::Fragment, return_error};
 use tracing::instrument;
 
 use crate::{
 	ast::{
-		Ast, AstDataType, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
-		InfixOperator, Token, TokenKind,
+		ast::{
+			Ast, AstDataType, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind,
+			AstStatement, InfixOperator,
+		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
@@ -40,10 +44,14 @@ use crate::{
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
-		tokenize::{Keyword, Literal, Operator},
+		tokenize::{
+			keyword::Keyword,
+			operator::Operator,
+			token::{Literal, Token, TokenKind},
+		},
 	},
 	expression::{AliasExpression, Expression},
-	plan::logical::alter::{AlterFlowNode, AlterTableNode, AlterViewNode},
+	plan::logical::alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode},
 };
 
 pub(crate) struct Compiler {
@@ -387,7 +395,7 @@ impl Compiler {
 	}
 
 	// Helper to wrap scalar expressions in MAP { "value": expression }
-	fn wrap_scalar_in_map(scalar_node: Ast) -> crate::ast::AstMap {
+	fn wrap_scalar_in_map(scalar_node: Ast) -> crate::ast::ast::AstMap {
 		let scalar_fragment = scalar_node.token().fragment.clone();
 
 		// Create synthetic tokens for the MAP structure
@@ -427,7 +435,7 @@ impl Compiler {
 				// This is a variable assignment statement
 				// Extract the variable name from the left side
 				let variable = match *node.left {
-					crate::ast::Ast::Variable(var) => var,
+					crate::ast::ast::Ast::Variable(var) => var,
 					_ => {
 						return_error!(unsupported_ast_node(
 							node.token.fragment,

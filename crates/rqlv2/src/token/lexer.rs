@@ -9,12 +9,13 @@ use super::{
 	cursor::Cursor,
 	error::LexError,
 	keyword::lookup_keyword,
-	literal::{LiteralKind, scan_number, scan_string, scan_temporal},
+	literal::LiteralKind,
 	operator::{Operator, lookup_word_operator},
 	punctuation::Punctuation,
 	span::Span,
 	token::{Token, TokenKind},
 };
+use crate::token::literal::{number::scan_number, temporal::scan_temporal, text::scan_string};
 
 /// Result of tokenization.
 pub struct TokenizeResult<'bump> {
@@ -383,7 +384,7 @@ impl<'a, 'bump> Lexer<'a, 'bump> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::token::keyword::Keyword;
 

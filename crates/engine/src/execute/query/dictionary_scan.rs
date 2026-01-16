@@ -4,18 +4,22 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	EncodedKey,
-	interface::{EncodableKey, resolved::ResolvedDictionary},
-	key::DictionaryEntryIndexKey,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+	interface::resolved::ResolvedDictionary,
+	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
+	value::{
+		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+		encoded::key::EncodedKey,
+	},
 };
-use reifydb_type::{DictionaryEntryId, Fragment, Type, Value, internal_error};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{
+	fragment::Fragment,
+	internal_error,
+	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
+};
 use tracing::instrument;
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub struct DictionaryScanNode {
 	dictionary: ResolvedDictionary,

@@ -3,8 +3,8 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::value::encoded::EncodedValuesLayout;
-use reifydb_type::*;
+use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]
 fn test_date_boundaries() {

@@ -3,7 +3,7 @@
 
 use core::ffi::c_void;
 
-use crate::{context::ContextFFI, data::ColumnsFFI, flow::FlowChangeFFI};
+use crate::{context::context::ContextFFI, data::column::ColumnsFFI, flow::change::FlowChangeFFI};
 
 /// Virtual function table for FFI operators
 ///

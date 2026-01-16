@@ -4,7 +4,15 @@
 use std::fmt::{Debug, Display};
 
 use super::{int::Int, uint::Uint};
-use crate::{Date, DateTime, Decimal, Duration, Time, Uuid4, Uuid7, value::r#type::GetType};
+use crate::value::{
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	time::Time,
+	r#type::get::GetType,
+	uuid::{Uuid4, Uuid7},
+};
 
 pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default {}
 pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default {}

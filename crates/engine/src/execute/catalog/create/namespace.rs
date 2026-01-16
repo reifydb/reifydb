@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, namespace::NamespaceToCreate};
-use reifydb_core::{interface::CatalogTrackNamespaceChangeOperations, value::column::Columns};
+use reifydb_catalog::{CatalogStore, store::namespace::create::NamespaceToCreate};
+use reifydb_core::{
+	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
+};
 use reifydb_rql::plan::physical::CreateNamespaceNode;
-use reifydb_type::Value;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_namespace<'a>(
@@ -40,10 +43,9 @@ impl Executor {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::Params;
+pub mod tests {
 	use reifydb_rql::plan::physical::{CreateNamespaceNode, PhysicalPlan};
-	use reifydb_type::{Fragment, Value};
+	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 	use crate::{execute::Executor, stack::Stack, test_utils::create_test_command_transaction};
 

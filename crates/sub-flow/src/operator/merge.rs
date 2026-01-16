@@ -4,14 +4,16 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	EncodedKey, Error, interface::FlowNodeId, util::encoding::keycode::KeySerializer, value::column::Columns,
+	interface::catalog::flow::FlowNodeId,
+	util::encoding::keycode::serializer::KeySerializer,
+	value::{column::columns::Columns, encoded::key::EncodedKey},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
-use reifydb_type::{RowNumber, internal};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
+use reifydb_type::{error::Error, internal, value::row_number::RowNumber};
 
 use crate::{
-	operator::{Operator, Operators, stateful::RowNumberProvider},
+	operator::{Operator, Operators, stateful::row::RowNumberProvider},
 	transaction::FlowTransaction,
 };
 

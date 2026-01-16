@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{interface::CatalogTrackViewChangeOperations, value::column::Columns};
+use reifydb_catalog::{CatalogStore, store::view::create::ViewToCreate};
+use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
-use reifydb_type::Value;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_deferred_view<'a>(
@@ -46,12 +47,12 @@ impl Executor {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params};
+	use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
 	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
-	use reifydb_type::{Fragment, Value};
+	use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 	use crate::{
 		execute::Executor, stack::Stack, test_utils::create_test_command_transaction_with_internal_schema,

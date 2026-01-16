@@ -1,41 +1,40 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::FlowNodeId, value::column::Columns};
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_type::RowNumber;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::transaction::FlowTransaction;
 
-mod apply;
-mod distinct;
-mod extend;
-mod ffi;
-mod filter;
+pub mod apply;
+pub mod distinct;
+pub mod extend;
+pub mod ffi;
+pub mod filter;
 pub mod join;
-mod map;
-mod merge;
-mod scan;
-mod sink;
-mod sort;
+pub mod map;
+pub mod merge;
+pub mod scan;
+pub mod sink;
+pub mod sort;
 pub mod stateful;
-mod take;
-mod window;
+pub mod take;
+pub mod window;
 
-pub use apply::ApplyOperator;
-pub use distinct::DistinctOperator;
-pub use extend::ExtendOperator;
-pub use ffi::FFIOperator;
-pub use filter::FilterOperator;
-pub use join::JoinOperator;
-pub use map::MapOperator;
-pub use merge::MergeOperator;
-use reifydb_sdk::FlowChange;
-pub use scan::{PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator};
-pub use sink::{SinkSubscriptionOperator, SinkViewOperator};
-pub use sort::SortOperator;
-pub use take::TakeOperator;
-pub use window::WindowOperator;
+use apply::ApplyOperator;
+use distinct::DistinctOperator;
+use extend::ExtendOperator;
+use filter::FilterOperator;
+use join::operator::JoinOperator;
+use map::MapOperator;
+use merge::MergeOperator;
+use reifydb_sdk::flow::FlowChange;
+use scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator};
+use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
+use sort::SortOperator;
+use take::TakeOperator;
+use window::WindowOperator;
 
 pub trait Operator {
 	fn id(&self) -> FlowNodeId;

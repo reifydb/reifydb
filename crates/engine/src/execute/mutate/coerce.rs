@@ -2,16 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::ResolvedColumn,
-	value::column::{ColumnData, Columns},
+	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
+	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_type::{Fragment, Type, Value};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 
 use crate::{
-	evaluate::{
-		TargetColumn,
-		column::{ColumnEvaluationContext, cast::cast_column_data},
-	},
+	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
 	execute::ExecutionContext,
 };
 

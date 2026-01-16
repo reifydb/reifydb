@@ -5,7 +5,14 @@ use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, IsUuid, Uuid4, Uuid7, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{
+		Value,
+		is::IsUuid,
+		uuid::{Uuid4, Uuid7},
+	},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UuidContainer<T>
@@ -219,9 +226,9 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::BitVec;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_uuid4_container() {

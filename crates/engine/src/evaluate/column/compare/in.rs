@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::{EqExpression, Expression, InExpression};
-use reifydb_type::Fragment;
+use reifydb_type::fragment::Fragment;
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	/// Evaluate an IN expression: `value IN (list)` or `value NOT IN (list)`

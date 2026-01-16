@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::MaterializedCatalog;
-use reifydb_transaction::interceptor::{PostCommitContext, PostCommitInterceptor};
+use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
 
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,

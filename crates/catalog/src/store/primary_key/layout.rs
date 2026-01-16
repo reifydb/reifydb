@@ -3,8 +3,8 @@
 
 pub(crate) mod primary_key {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{interface::ColumnId, value::encoded::EncodedValuesLayout};
-	use reifydb_type::{Blob, Type};
+	use reifydb_core::{interface::catalog::id::ColumnId, value::encoded::layout::EncodedValuesLayout};
+	use reifydb_type::value::{blob::Blob, r#type::Type};
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const SOURCE: usize = 1;
@@ -55,8 +55,8 @@ pub(crate) mod primary_key {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::ColumnId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::ColumnId;
 
 	use super::primary_key::{deserialize_column_ids, serialize_column_ids};
 

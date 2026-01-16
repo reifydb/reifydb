@@ -3,11 +3,11 @@
 
 //! Stack push opcodes: PushConst, PushExpr, PushColRef, PushColList, PushSortSpec, PushExtSpec.
 
-use crate::error::{Result, VmError};
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
-
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// PushConst - push a constant value onto the operand stack.
 pub fn push_const(ctx: &mut HandlerContext) -> Result<DispatchResult> {
@@ -35,9 +35,10 @@ pub fn push_col_ref(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 /// PushColList - push a column list onto the operand stack.
 pub fn push_col_list(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let index = ctx.read_u16()?;
-	let columns = ctx.vm.program.column_lists.get(index as usize).cloned().ok_or(
-		VmError::InvalidColumnListIndex { index },
-	)?;
+	let columns =
+		ctx.vm.program.column_lists.get(index as usize).cloned().ok_or(VmError::InvalidColumnListIndex {
+			index,
+		})?;
 	ctx.vm.push_operand(OperandValue::ColList(columns))?;
 	Ok(ctx.advance_and_continue())
 }

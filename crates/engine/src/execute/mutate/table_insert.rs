@@ -5,36 +5,39 @@ use std::sync::Arc;
 
 use reifydb_catalog::{
 	CatalogStore,
-	sequence::{ColumnSequence, RowSequence},
+	store::sequence::{column::ColumnSequence, row::RowSequence},
 };
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive,
-		ResolvedTable,
+		catalog::id::IndexId,
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
-	return_error,
+	key::{EncodableKey, index_entry::IndexEntryKey},
 	value::{
-		column::Columns,
-		encoded::{EncodedValues, EncodedValuesLayout, encode_value},
+		column::columns::Columns,
+		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, value::encode_value},
 	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
-	Fragment, Type, Value,
-	diagnostic::{catalog::table_not_found, index::primary_key_violation},
+	error::diagnostic::{catalog::table_not_found, index::primary_key_violation},
+	fragment::Fragment,
 	internal_error,
+	params::Params,
+	return_error,
+	value::{Value, r#type::Type},
 };
 use tracing::instrument;
 
 use super::primary_key;
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,
-	transaction::operation::{DictionaryOperations, TableOperations},
+	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 };
 
 impl Executor {

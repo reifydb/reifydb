@@ -2,13 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	diagnostic::catalog::namespace_not_found, interface::FlowStatus, return_error, value::column::Columns,
+use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
+use reifydb_rql::plan::physical::alter::flow::{AlterFlowAction, AlterFlowNode};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::{flow_not_found, namespace_not_found},
+	fragment::Fragment,
+	return_error,
+	value::Value,
 };
-use reifydb_rql::plan::physical::{AlterFlowAction, AlterFlowNode};
-use reifydb_type::{Fragment, Value};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn execute_alter_flow<'a>(
@@ -33,11 +37,7 @@ impl Executor {
 
 		// Find the flow
 		let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace.id, flow_name)? else {
-			return_error!(reifydb_core::diagnostic::catalog::flow_not_found(
-				plan.flow.name.clone(),
-				&namespace.name,
-				flow_name,
-			));
+			return_error!(flow_not_found(plan.flow.name.clone(), &namespace.name, flow_name,));
 		};
 
 		// Execute the action

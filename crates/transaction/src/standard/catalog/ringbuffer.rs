@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackRingBufferChangeOperations, NamespaceId, RingBufferDef, RingBufferId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackRingBufferChangeOperations,
+	id::{NamespaceId, RingBufferId},
+	ringbuffer::RingBufferDef,
+};
 
 use crate::{
 	change::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
-	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> reifydb_core::Result<()> {
+	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(ringbuffer),
@@ -27,7 +31,7 @@ impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 		&mut self,
 		pre: RingBufferDef,
 		post: RingBufferDef,
-	) -> reifydb_core::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +41,7 @@ impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> reifydb_core::Result<()> {
+	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(ringbuffer),
 			post: None,

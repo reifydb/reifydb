@@ -5,12 +5,12 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::CdcCheckpoint;
+use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
-	CommitVersion,
-	interface::{FlowLagRow, FlowLagsProvider},
+	common::CommitVersion,
+	interface::flow::{FlowLagRow, FlowLagsProvider},
 };
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
 
 use crate::{catalog::FlowCatalog, tracker::PrimitiveVersionTracker};
 
@@ -60,8 +60,7 @@ impl FlowLagsProvider for FlowLags {
 
 		// Calculate lags only for registered flows
 		for flow_id in &registered {
-			let flow_version = CdcCheckpoint::fetch(&mut txn, flow_id)
-				.unwrap_or(CommitVersion(0)).0;
+			let flow_version = CdcCheckpoint::fetch(&mut txn, flow_id).unwrap_or(CommitVersion(0)).0;
 
 			for (primitive_id, version) in &primitive_versions {
 				let lag = version.0.saturating_sub(flow_version);

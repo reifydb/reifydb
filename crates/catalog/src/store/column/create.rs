@@ -2,12 +2,24 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, DictionaryId, PrimitiveId, TableId},
-	return_error,
+	interface::catalog::{
+		id::{DictionaryId, TableId},
+		policy::ColumnPolicyKind,
+		primitive::PrimitiveId,
+	},
+	key::{column::ColumnKey, columns::ColumnsKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
+	fragment::Fragment,
+	return_error,
+	value::{
+		blob::Blob,
+		constraint::{Constraint, TypeConstraint},
+		r#type::Type,
+	},
+};
 
 /// Encodes a constraint to a byte vector for storage
 fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
@@ -25,18 +37,17 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	}
 }
 
+use reifydb_core::interface::catalog::column::{ColumnDef, ColumnIndex};
+
 use crate::{
 	CatalogStore,
 	store::{
-		column::{
-			ColumnDef, ColumnIndex,
-			layout::{
-				column,
-				column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, SOURCE, VALUE},
-				source_column,
-			},
+		column::layout::{
+			column,
+			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, SOURCE, VALUE},
+			source_column,
 		},
-		sequence::SystemSequence,
+		sequence::system::SystemSequence,
 	},
 };
 
@@ -104,7 +115,7 @@ impl CatalogStore {
 
 		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
-		let blob = reifydb_type::Blob::from(constraint_bytes);
+		let blob = Blob::from(constraint_bytes);
 		column::LAYOUT.set_blob(&mut row, CONSTRAINT, &blob);
 
 		// Store dictionary_id (0 means no dictionary)
@@ -136,12 +147,15 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod test {
-	use reifydb_core::interface::{ColumnId, ColumnIndex, TableId};
+pub mod test {
+	use reifydb_core::interface::catalog::{
+		column::ColumnIndex,
+		id::{ColumnId, TableId},
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-	use crate::{CatalogStore, column::ColumnToCreate, test_utils::ensure_test_table};
+	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_create_column() {

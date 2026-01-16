@@ -1,22 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod subscription;
-mod view;
+pub mod subscription;
+pub mod view;
 
 use std::sync::LazyLock;
 
 use reifydb_core::{
-	interface::{ColumnDef, ColumnPolicyKind, ColumnSaturationPolicy, SubscriptionColumnDef},
+	interface::{
+		catalog::{
+			column::ColumnDef,
+			policy::{ColumnPolicyKind, ColumnSaturationPolicy},
+			subscription::SubscriptionColumnDef,
+		},
+		evaluate::TargetColumn,
+	},
 	value::{
-		column::{Column, Columns},
-		encoded::{EncodedValues, EncodedValuesNamedLayout},
+		column::{Column, columns::Columns},
+		encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout},
 	},
 };
-use reifydb_engine::{ColumnEvaluationContext, TargetColumn, cast_column_data, stack::Stack};
-use reifydb_type::{Fragment, Params, RowNumber};
-pub use subscription::SinkSubscriptionOperator;
-pub use view::SinkViewOperator;
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
+	stack::Stack,
+};
+use reifydb_type::{fragment::Fragment, params::Params, value::row_number::RowNumber};
+// All types are accessed directly from their submodules:
+// - crate::operator::sink::subscription::SinkSubscriptionOperator
+// - crate::operator::sink::view::SinkViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(Stack::new);
@@ -144,7 +155,7 @@ pub(crate) fn encode_row_at_index(
 
 	// Collect values in LAYOUT FIELD ORDER by matching column names
 	// This ensures values are in the same order as layout expects
-	let values: Vec<reifydb_type::Value> = layout
+	let values: Vec<reifydb_type::value::Value> = layout
 		.names()
 		.iter()
 		.map(|field_name| {

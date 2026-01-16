@@ -2,10 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, PrimitiveId, TableId, ViewId},
-	return_internal_error,
+	interface::catalog::{
+		column::ColumnDef,
+		id::{TableId, ViewId},
+		key::PrimaryKeyDef,
+		primitive::PrimitiveId,
+	},
+	key::primary_key::PrimaryKeyKey,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::return_internal_error;
 
 use crate::{
 	CatalogStore,

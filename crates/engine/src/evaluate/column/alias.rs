@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::AliasExpression;
-use reifydb_type::Fragment;
+use reifydb_type::fragment::Fragment;
 
 use crate::evaluate::{
 	TargetColumn,

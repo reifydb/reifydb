@@ -10,7 +10,7 @@ use tracing_subscriber::{
 	util::SubscriberInitExt,
 };
 
-use crate::{backend::ConsoleBuilder, subsystem::TracingSubsystem};
+use crate::{backend::console_builder::ConsoleBuilder, subsystem::TracingSubsystem};
 
 /// Builder for configuring the tracing subsystem with tracing_subscriber
 pub struct TracingBuilder {

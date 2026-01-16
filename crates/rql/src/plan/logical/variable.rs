@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use ast::{
-	Ast, AstLiteral, AstLiteralUndefined,
-	tokenize::{Literal, Token, TokenKind},
-};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
-	ast,
-	ast::{AstIf, AstLet, LetValue as AstLetValue},
+	ast::{
+		ast::{Ast, AstIf, AstLet, AstLiteral, AstLiteralUndefined, LetValue as AstLetValue},
+		tokenize::token::{Literal, Token, TokenKind},
+	},
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, ConditionalNode, DeclareNode, ElseIfBranch, LetValue, LogicalPlan},
 };

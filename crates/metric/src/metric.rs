@@ -8,12 +8,12 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{Result, interface::SingleVersionStore};
+use reifydb_core::interface::store::SingleVersionStore;
 
 use crate::{
+	MetricId,
 	cdc::{CdcStats, CdcStatsReader},
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
-	Id,
 };
 
 /// Combined storage and CDC statistics for a single object.
@@ -69,23 +69,25 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	/// Scan all objects for a specific tier, returning combined stats.
 	///
 	/// Returns storage stats for the tier merged with CDC stats (which are not tiered).
-	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(Id, CombinedStats)>> {
+	pub fn scan_tier(&self, tier: Tier) -> reifydb_type::Result<Vec<(MetricId, CombinedStats)>> {
 		// Get storage stats for this tier
 		let storage_stats = self.storage_reader.scan_tier(tier)?;
 
 		// Get all CDC stats (not tiered)
-		let cdc_stats: HashMap<Id, CdcStats> = self
-			.cdc_reader
-			.scan_all()?
-			.into_iter()
-			.collect();
+		let cdc_stats: HashMap<MetricId, CdcStats> = self.cdc_reader.scan_all()?.into_iter().collect();
 
 		// Combine into results
-		let results: Vec<(Id, CombinedStats)> = storage_stats
+		let results: Vec<(MetricId, CombinedStats)> = storage_stats
 			.into_iter()
 			.map(|(obj_id, storage)| {
 				let cdc = cdc_stats.get(&obj_id).cloned().unwrap_or_default();
-				(obj_id, CombinedStats { storage, cdc })
+				(
+					obj_id,
+					CombinedStats {
+						storage,
+						cdc,
+					},
+				)
 			})
 			.collect();
 
@@ -93,7 +95,7 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	}
 
 	/// Get combined stats for a specific object and tier.
-	pub fn get(&self, tier: Tier, id: Id) -> Result<Option<CombinedStats>> {
+	pub fn get(&self, tier: Tier, id: MetricId) -> reifydb_type::Result<Option<CombinedStats>> {
 		let storage = self.storage_reader.get(tier, id)?;
 		let cdc = self.cdc_reader.get(id)?;
 

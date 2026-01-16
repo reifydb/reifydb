@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceDef, NamespaceKey};
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Fragment, diagnostic::catalog::namespace_already_exists, return_error};
+use reifydb_core::{interface::catalog::namespace::NamespaceDef, key::namespace::NamespaceKey};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::catalog::namespace_already_exists, fragment::Fragment, return_error};
 
 use crate::{
 	CatalogStore,
 	store::{
 		namespace::layout::namespace::{ID, LAYOUT, NAME},
-		sequence::SystemSequence,
+		sequence::system::SystemSequence,
 	},
 };
 
@@ -44,8 +44,8 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::NamespaceId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};

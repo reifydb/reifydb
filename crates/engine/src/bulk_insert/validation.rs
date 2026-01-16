@@ -4,10 +4,10 @@
 //! Row validation and column mapping for bulk inserts with batch coercion.
 
 use reifydb_core::{
-	interface::{ColumnDef, RingBufferDef, TableDef},
-	value::column::ColumnData,
+	interface::catalog::{column::ColumnDef, ringbuffer::RingBufferDef, table::TableDef},
+	value::column::data::ColumnData,
 };
-use reifydb_type::{Fragment, Params, Value};
+use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use super::{coerce::coerce_columns, error::BulkInsertError};
 

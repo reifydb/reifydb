@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::store::view::ViewColumnToCreate;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_catalog::store::view::create::ViewColumnToCreate;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
-	ast::{AstCreateDeferredView, AstDataType},
+	ast::ast::{AstCreateDeferredView, AstDataType},
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
 };

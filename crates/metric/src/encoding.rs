@@ -11,13 +11,20 @@
 //! - `[VERSION][0x25][0x03][id:variable]` -> CdcStats for Id (no tier)
 
 use reifydb_core::{
-	interface::{DictionaryId, FlowId, FlowNodeId, PrimitiveId, RingBufferId, TableId, VTableId, ViewId},
-	key::KeyKind,
+	interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		id::{DictionaryId, RingBufferId, TableId, ViewId},
+		primitive::PrimitiveId,
+		vtable::VTableId,
+	},
+	key::kind::KeyKind,
 };
 
-use crate::cdc::CdcStats;
-use crate::multi::{MultiStorageStats, Tier};
-use crate::Id;
+use crate::{
+	MetricId,
+	cdc::CdcStats,
+	multi::{MultiStorageStats, Tier},
+};
 
 /// Current key encoding version
 const KEY_VERSION: u8 = 0x01;
@@ -44,7 +51,7 @@ pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> Vec<u8> {
 
 /// Encode a per-object MVCC stats key.
 /// Format: `[VERSION][0x25][0x02][tier:1][id:variable]`
-pub fn encode_storage_stats_key(tier: Tier, id: Id) -> Vec<u8> {
+pub fn encode_storage_stats_key(tier: Tier, id: MetricId) -> Vec<u8> {
 	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT, tier_to_byte(tier)];
 	encode_object_id(&mut key, id);
 	key
@@ -66,7 +73,7 @@ pub fn storage_stats_key_prefix() -> Vec<u8> {
 
 /// Encode a CDC stats key.
 /// Format: `[VERSION][0x25][0x03][id:variable]`
-pub fn encode_cdc_stats_key(id: Id) -> Vec<u8> {
+pub fn encode_cdc_stats_key(id: MetricId) -> Vec<u8> {
 	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC];
 	encode_object_id(&mut key, id);
 	key
@@ -97,7 +104,7 @@ pub fn decode_type_stats_key(key: &[u8]) -> Option<(Tier, KeyKind)> {
 
 /// Decode a per-object MVCC stats key back into (Tier, Id).
 /// Returns None if the key is malformed or not a storage stats key.
-pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, Id)> {
+pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricId)> {
 	if key.len() < 5 {
 		return None;
 	}
@@ -111,7 +118,7 @@ pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, Id)> {
 
 /// Decode a CDC stats key back into Id.
 /// Returns None if the key is malformed or not a CDC stats key.
-pub fn decode_cdc_stats_key(key: &[u8]) -> Option<Id> {
+pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricId> {
 	if key.len() < 4 {
 		return None;
 	}
@@ -204,23 +211,23 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 // Id Encoding
 // ============================================================================
 
-fn encode_object_id(buf: &mut Vec<u8>, id: Id) {
+fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 	match id {
-		Id::Source(source_id) => {
+		MetricId::Source(source_id) => {
 			buf.push(ID_SOURCE);
 			buf.extend_from_slice(&encode_source_id(source_id));
 		}
-		Id::FlowNode(flow_node_id) => {
+		MetricId::FlowNode(flow_node_id) => {
 			buf.push(ID_FLOW_NODE);
 			buf.extend_from_slice(&flow_node_id.0.to_le_bytes());
 		}
-		Id::System => {
+		MetricId::System => {
 			buf.push(ID_SYSTEM);
 		}
 	}
 }
 
-fn decode_object_id(bytes: &[u8]) -> Option<Id> {
+fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 	if bytes.is_empty() {
 		return None;
 	}
@@ -230,16 +237,16 @@ fn decode_object_id(bytes: &[u8]) -> Option<Id> {
 				return None;
 			}
 			let source_id = decode_source_id(&bytes[1..10])?;
-			Some(Id::Source(source_id))
+			Some(MetricId::Source(source_id))
 		}
 		ID_FLOW_NODE => {
 			if bytes.len() < 9 {
 				return None;
 			}
 			let id = u64::from_le_bytes(bytes[1..9].try_into().ok()?);
-			Some(Id::FlowNode(FlowNodeId(id)))
+			Some(MetricId::FlowNode(FlowNodeId(id)))
 		}
-		ID_SYSTEM => Some(Id::System),
+		ID_SYSTEM => Some(MetricId::System),
 		_ => None,
 	}
 }
@@ -271,8 +278,8 @@ fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::TableId;
+pub mod tests {
+	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId};
 
 	use super::*;
 
@@ -291,7 +298,7 @@ mod tests {
 	fn test_storage_stats_key_source_roundtrip() {
 		let tier = Tier::Hot;
 		let source_id = PrimitiveId::Table(TableId(12345));
-		let id = Id::Source(source_id);
+		let id = MetricId::Source(source_id);
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -302,7 +309,7 @@ mod tests {
 	#[test]
 	fn test_storage_stats_key_flow_node_roundtrip() {
 		let tier = Tier::Cold;
-		let id = Id::FlowNode(FlowNodeId(999));
+		let id = MetricId::FlowNode(FlowNodeId(999));
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -313,7 +320,7 @@ mod tests {
 	#[test]
 	fn test_storage_stats_key_system_roundtrip() {
 		let tier = Tier::Warm;
-		let id = Id::System;
+		let id = MetricId::System;
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -324,7 +331,7 @@ mod tests {
 	#[test]
 	fn test_cdc_stats_key_roundtrip() {
 		let source_id = PrimitiveId::Table(TableId(12345));
-		let id = Id::Source(source_id);
+		let id = MetricId::Source(source_id);
 
 		let key = encode_cdc_stats_key(id);
 		let decoded = decode_cdc_stats_key(&key).unwrap();
@@ -376,11 +383,11 @@ mod tests {
 		assert!(type_key.starts_with(&type_prefix));
 
 		// Storage stats key should start with storage prefix
-		let storage_key = encode_storage_stats_key(Tier::Hot, Id::System);
+		let storage_key = encode_storage_stats_key(Tier::Hot, MetricId::System);
 		assert!(storage_key.starts_with(&storage_prefix));
 
 		// CDC stats key should start with cdc prefix
-		let cdc_key = encode_cdc_stats_key(Id::System);
+		let cdc_key = encode_cdc_stats_key(MetricId::System);
 		assert!(cdc_key.starts_with(&cdc_prefix));
 
 		// All prefixes should be different

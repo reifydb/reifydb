@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for inserting into a specific ring buffer.
+use reifydb_type::params::Params;
 
-use reifydb_type::Params;
-
-use crate::bulk_insert::{BulkInsertBuilder, ValidationMode};
+use crate::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};
 
 /// Buffered ring buffer insert operation
 #[derive(Debug, Clone)]

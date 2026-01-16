@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::interceptor::Interceptors;
+use crate::interceptor::interceptors::Interceptors;
 
 /// Factory trait for creating interceptor instances for each MultiVersionCommandTransaction
 pub trait InterceptorFactory: Send + Sync {

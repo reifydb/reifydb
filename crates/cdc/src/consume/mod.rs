@@ -9,14 +9,8 @@
 //! - Poll-based consumer implementation
 //! - Watermark computation for retention coordination
 
-mod checkpoint;
-mod consumer;
-mod host;
-mod poll;
-mod watermark;
-
-pub use checkpoint::CdcCheckpoint;
-pub use consumer::{CdcConsume, CdcConsumer};
-pub use host::CdcHost;
-pub use poll::{PollConsumer, PollConsumerConfig};
-pub use watermark::compute_watermark;
+pub mod checkpoint;
+pub mod consumer;
+pub mod host;
+pub mod poll;
+pub mod watermark;

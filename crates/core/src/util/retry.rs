@@ -64,10 +64,10 @@ pub fn retry<R, E>(retries: usize, f: impl Fn() -> Result<R, E>) -> Result<R, Re
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::cell::Cell;
 
-	use crate::util::{RetryError, retry};
+	use crate::util::retry::{RetryError, retry};
 
 	#[test]
 	fn test_ok() {

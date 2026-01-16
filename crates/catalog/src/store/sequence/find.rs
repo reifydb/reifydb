@@ -2,10 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{NamespaceId, SequenceId, SystemSequenceKey},
-	return_internal_error,
+	interface::catalog::id::{NamespaceId, SequenceId},
+	key::system_sequence::SystemSequenceKey,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::return_internal_error;
 
 use crate::{
 	CatalogStore,

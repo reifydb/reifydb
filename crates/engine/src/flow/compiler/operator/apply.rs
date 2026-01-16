@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{Result, interface::FlowNodeId};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression,
 	flow::{
-		FlowNodeType::Apply,
 		conversion::{to_owned_expressions, to_owned_fragment, to_owned_physical_plan},
+		node::FlowNodeType::Apply,
 	},
 	plan::physical::{ApplyNode, PhysicalPlan},
 };
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{Result, fragment::Fragment};
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<PhysicalPlan>>,

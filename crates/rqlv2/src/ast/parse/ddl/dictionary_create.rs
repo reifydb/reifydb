@@ -12,7 +12,7 @@ use crate::{
 		parse::{ParseError, ParseErrorKind, Parser},
 		stmt::ddl::{CreateDictionary, CreateStmt},
 	},
-	token::{Keyword, Operator, TokenKind},
+	token::{keyword::Keyword, operator::Operator, span::Span, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -29,7 +29,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```
 	pub(in crate::ast::parse) fn parse_create_dictionary(
 		&mut self,
-		start: crate::token::Span,
+		start: Span,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = self.try_parse_if_not_exists();
@@ -70,7 +70,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

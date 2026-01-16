@@ -6,30 +6,34 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive,
-		ResolvedTable, RowKey,
+		catalog::id::IndexId,
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
-	value::{column::Columns, encoded::EncodedValuesLayout},
+	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
+	value::{column::columns::Columns, encoded::layout::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
-	Fragment, Type, Value,
-	diagnostic::{
+	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
-	internal_error, return_error,
+	fragment::Fragment,
+	internal_error,
+	params::Params,
+	return_error,
+	value::{Value, r#type::Type},
 };
 
 use super::primary_key;
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	stack::Stack,
-	transaction::operation::DictionaryOperations,
+	transaction::operation::dictionary::DictionaryOperations,
 };
 
 impl Executor {
@@ -215,14 +219,12 @@ impl Executor {
 								&pk_def, &old_row, &table, &layout,
 							)?;
 
-							wrapped_txn.command_mut().remove(
-								&IndexEntryKey::new(
-									table.id,
-									IndexId::primary(pk_def.id),
-									old_key,
-								)
-								.encode(),
-							)?;
+							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
+								table.id,
+								IndexId::primary(pk_def.id),
+								old_key,
+							)
+							.encode())?;
 						}
 
 						let new_key = primary_key::encode_primary_key(

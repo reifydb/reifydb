@@ -2,15 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::table_column_policy_already_exists,
-	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind},
-	return_error,
+	interface::catalog::{
+		id::ColumnId,
+		policy::{ColumnPolicy, ColumnPolicyKind},
+	},
+	key::column_policy::ColumnPolicyKey,
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::catalog::table_column_policy_already_exists, return_error};
 
 use crate::{
 	CatalogStore,
-	store::{column::ColumnId, column_policy::layout::column_policy, sequence::SystemSequence},
+	store::{column_policy::layout::column_policy, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
@@ -52,16 +55,20 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Error;
-	use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy, TableId};
+	use reifydb_core::interface::catalog::{
+		column::ColumnIndex,
+		id::{ColumnId, TableId},
+		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
-		store::column::{ColumnId, ColumnIndex, ColumnToCreate},
+		store::column::create::ColumnToCreate,
 		test_utils::{create_test_column, ensure_test_table},
 	};
 

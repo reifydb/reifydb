@@ -15,7 +15,7 @@ use crate::{
 		parse::{ParseError, Parser, Precedence},
 		stmt::ddl::{CreateFlow, CreateStmt},
 	},
-	token::{Operator, Punctuation},
+	token::{operator::Operator, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -32,7 +32,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```
 	pub(in crate::ast::parse) fn parse_create_flow(
 		&mut self,
-		start: crate::token::Span,
+		start: crate::token::span::Span,
 		or_replace: bool,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Check for IF NOT EXISTS
@@ -95,7 +95,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

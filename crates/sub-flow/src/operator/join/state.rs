@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::FlowNodeId;
-use reifydb_type::RowNumber;
+use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_type::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use super::Store;
+use crate::operator::join::store::Store;
 
 pub(crate) struct JoinState {
 	pub(crate) left: Store,

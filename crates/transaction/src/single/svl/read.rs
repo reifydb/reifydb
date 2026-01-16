@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use diagnostic::transaction::key_out_of_scope;
 use parking_lot::{RwLock, RwLockReadGuard};
-use reifydb_core::interface::SingleVersionValues;
-use reifydb_core::interface::{SingleVersionContains, SingleVersionGet};
-use reifydb_type::{diagnostic, error, util::hex};
+use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues};
+use reifydb_type::{error, error::diagnostic::transaction::key_out_of_scope, util::hex};
 
 use super::*;
 
@@ -51,7 +49,7 @@ pub struct SvlQueryTransaction<'a> {
 
 impl<'a> SvlQueryTransaction<'a> {
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> crate::Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> reifydb_type::Result<()> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
@@ -59,13 +57,13 @@ impl<'a> SvlQueryTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		SingleVersionContains::contains(&store, key)

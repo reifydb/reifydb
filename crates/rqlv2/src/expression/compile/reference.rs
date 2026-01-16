@@ -3,12 +3,12 @@
 
 //! Reference compilation (columns, variables, rownum, wildcard).
 
-use reifydb_core::value::column::{Column, ColumnData};
-use reifydb_type::Fragment;
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_type::fragment::Fragment;
 
 use super::helpers::broadcast_value;
 use crate::expression::{
-	eval::EvalValue,
+	eval::value::EvalValue,
 	types::{CompiledExpr, EvalError},
 };
 

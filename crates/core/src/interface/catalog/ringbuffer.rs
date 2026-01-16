@@ -3,7 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, NamespaceId, PrimaryKeyDef, RingBufferId};
+use crate::interface::catalog::{
+	column::ColumnDef,
+	id::{NamespaceId, RingBufferId},
+	key::PrimaryKeyDef,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RingBufferDef {

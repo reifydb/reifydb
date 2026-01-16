@@ -3,10 +3,8 @@
 
 //! Jump opcodes: Jump, JumpIf, JumpIfNot.
 
-use crate::error::Result;
-use crate::runtime::dispatch::DispatchResult;
-
 use super::HandlerContext;
+use crate::{error::Result, runtime::dispatch::DispatchResult};
 
 /// Jump - unconditional jump to offset.
 pub fn jump(ctx: &mut HandlerContext) -> Result<DispatchResult> {

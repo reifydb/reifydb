@@ -2,16 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion, Row,
-	interface::{FlowNodeId, PrimitiveId, TableId},
+	common::CommitVersion,
+	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
+	row::Row,
 	value::{
-		column::Columns,
-		encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+		column::columns::Columns,
+		encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 	},
 };
-use reifydb_type::{RowNumber, Type, Value};
+use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 
-use crate::{FlowChange, FlowChangeOrigin, FlowDiff};
+use crate::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
 
 /// Builder for creating test rows
 pub struct TestRowBuilder {
@@ -241,7 +242,14 @@ impl TestLayoutBuilder {
 
 /// Helper functions for common test data patterns
 pub mod helpers {
+	use reifydb_core::{
+		row::Row,
+		value::encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
+	};
+	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+
 	use super::*;
+	use crate::flow::FlowChange;
 
 	/// Create a simple counter layout (single int8 field)
 	pub fn counter_layout() -> EncodedValuesLayout {
@@ -291,8 +299,12 @@ pub mod helpers {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::{common::CommitVersion, interface::catalog::primitive::PrimitiveId};
+	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+
 	use super::{helpers::*, *};
+	use crate::flow::FlowChangeOrigin;
 
 	#[test]
 	fn test_row_builder() {

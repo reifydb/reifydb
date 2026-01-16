@@ -10,19 +10,8 @@
 //!
 //! Enable with the `trace` feature flag.
 
-mod diff;
-mod entry;
-mod format;
-mod snapshot;
-mod tracer;
-
-pub use entry::{
-	CallFrameSnapshot, ColumnSnapshot, DispatchResultSnapshot, FrameSnapshot, InstructionSnapshot, OperandSnapshot,
-	OperatorSnapshot, RecordSnapshot, ScopeSnapshot, StateChange, StateSnapshot, TraceEntry,
-};
-pub use format::format_trace;
-pub use snapshot::{
-	pipeline_description, snapshot_call_frame, snapshot_dispatch_result, snapshot_operand, snapshot_operator,
-	snapshot_state,
-};
-pub use tracer::VmTracer;
+pub mod diff;
+pub mod entry;
+pub mod format;
+pub mod snapshot;
+pub mod tracer;

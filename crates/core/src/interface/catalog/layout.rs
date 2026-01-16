@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
-use super::{RingBufferDef, TableDef, ViewDef};
-use crate::value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout};
+use super::{ringbuffer::RingBufferDef, table::TableDef, view::ViewDef};
+use crate::value::encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout};
 
 pub trait GetEncodedRowLayout {
 	fn get_layout(&self) -> EncodedValuesLayout;

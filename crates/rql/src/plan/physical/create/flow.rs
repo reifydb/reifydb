@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use PhysicalPlan::CreateFlow;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, diagnostic::catalog::namespace_not_found, return_error};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::diagnostic::catalog::namespace_not_found, fragment::Fragment, return_error};
 
 use crate::plan::{
 	logical,

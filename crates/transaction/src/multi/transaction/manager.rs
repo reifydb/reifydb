@@ -9,10 +9,14 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use core::mem;
+
 use reifydb_core::{
-	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, return_error, value::encoded::EncodedValues,
+	common::CommitVersion,
+	delta::Delta,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
-use reifydb_type::util::hex;
+use reifydb_type::{error::diagnostic::transaction, return_error, util::hex};
 use tracing::instrument;
 
 use crate::{
@@ -194,7 +198,7 @@ where
 		key_hex = %hex::encode(key.as_ref()),
 		value_len = values.as_ref().len()
 	))]
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -214,7 +218,7 @@ where
 		key_hex = %hex::encode(key.as_ref()),
 		value_len = values.len()
 	))]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -233,19 +237,21 @@ where
 		txn_id = %self.id,
 		key_len = key.len()
 	))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
 		self.modify(Pending {
-			delta: Delta::Remove { key: key.clone() },
+			delta: Delta::Remove {
+				key: key.clone(),
+			},
 			version: self.base_version(),
 		})
 	}
 
 	/// Rolls back the transaction.
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
-	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
+	pub fn rollback(&mut self) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -260,7 +266,7 @@ where
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, reifydb_type::Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -288,7 +294,7 @@ where
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
-	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>, reifydb_type::Error> {
+	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -304,7 +310,9 @@ where
 						key: key.clone(),
 						values: values.clone(),
 					},
-					None => Delta::Remove { key: key.clone() },
+					None => Delta::Remove {
+						key: key.clone(),
+					},
 				},
 				version: v.version,
 			}))
@@ -323,7 +331,7 @@ where
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
-	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -342,7 +350,7 @@ where
 		key_hex = %hex::encode(pending.key().as_ref()),
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, pending: Pending) -> Result<(), reifydb_type::Error> {
+	fn modify(&mut self, pending: Pending) -> Result<()> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -378,7 +386,9 @@ where
 							key: old_key,
 							values: values.clone(),
 						},
-						None => Delta::Remove { key: old_key },
+						None => Delta::Remove {
+							key: old_key,
+						},
 					},
 					version,
 				})
@@ -398,7 +408,7 @@ where
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	pub(crate) fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
+	pub(crate) fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>)> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}

@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::FlowEdgeDef,
-	key::{FlowEdgeByFlowKey, FlowEdgeKey},
+	interface::catalog::flow::FlowEdgeDef,
+	key::flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::store::flow_edge::layout::{flow_edge, flow_edge_by_flow};
 
@@ -32,7 +32,7 @@ impl crate::CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

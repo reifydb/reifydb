@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey,
-	interface::catalog::FlowId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::flow::FlowId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::EncodedKey,
 };
 
 /// Key for storing a flow's last processed CDC version.
@@ -60,9 +60,9 @@ impl FlowVersionKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, FlowVersionKey};
-	use crate::interface::catalog::FlowId;
+	use crate::interface::catalog::flow::FlowId;
 
 	#[test]
 	fn test_encode_decode() {

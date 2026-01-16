@@ -3,16 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_type::{Fragment, Value};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{fragment::Fragment, value::Value};
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 /// Load and merge all batches from a node into a single Columns
-pub fn load_and_merge_all<'a>(
+pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<ExecutionPlan>,
 	rx: &mut StandardTransaction<'a>,
 	ctx: &mut ExecutionContext,

@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::column::{
+	Column,
+	columns::Columns,
+	data::ColumnData,
+	view::group_by::{GroupByView, GroupKey},
+};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::Result;
+
 pub mod blob;
 pub mod flow;
 pub mod math;
-mod registry;
+pub mod registry;
 pub mod series;
 pub mod subscription;
 pub mod text;
-
-pub use registry::{Functions, FunctionsBuilder};
-use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, GroupKey};
-use reifydb_transaction::StandardTransaction;
-use reifydb_type::Result;
 
 pub struct GeneratorContext<'a> {
 	pub params: Columns,

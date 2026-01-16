@@ -9,6 +9,7 @@ description = "Testing utilities and helpers for ReifyDB"
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-type = {workspace = true}
 uuid = { workspace = true }
 tokio = {workspace = true}
 

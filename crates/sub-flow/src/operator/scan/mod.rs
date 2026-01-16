@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod flow;
-mod table;
-mod view;
+pub mod flow;
+pub mod table;
+pub mod view;
 
-pub use flow::PrimitiveFlowOperator;
-pub use table::PrimitiveTableOperator;
-pub use view::PrimitiveViewOperator;
+// All types are accessed directly from their submodules:
+// - crate::operator::scan::flow::PrimitiveFlowOperator
+// - crate::operator::scan::table::PrimitiveTableOperator
+// - crate::operator::scan::view::PrimitiveViewOperator

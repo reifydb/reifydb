@@ -5,9 +5,14 @@ use std::mem::take;
 
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockWriteGuard};
-use reifydb_core::interface::SingleVersionValues;
-use reifydb_core::interface::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
-use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
+use reifydb_core::interface::store::{
+	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
+};
+use reifydb_type::{
+	error,
+	error::diagnostic::transaction::key_out_of_scope,
+	util::{cowvec::CowVec, hex},
+};
 
 use super::*;
 
@@ -66,7 +71,7 @@ impl<'a> SvlCommandTransaction<'a> {
 	}
 
 	#[inline]
-	fn check_key_allowed(&self, key: &EncodedKey) -> crate::Result<()> {
+	fn check_key_allowed(&self, key: &EncodedKey) -> reifydb_type::Result<()> {
 		if self.keys.iter().any(|k| k == key) {
 			Ok(())
 		} else {
@@ -74,7 +79,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> reifydb_type::Result<Option<SingleVersionValues>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -86,7 +91,15 @@ impl<'a> SvlCommandTransaction<'a> {
 					key: key.clone(),
 					values: values.clone(),
 				})),
-				Delta::Unset { .. } | Delta::Remove { .. } | Delta::Drop { .. } => Ok(None),
+				Delta::Unset {
+					..
+				}
+				| Delta::Remove {
+					..
+				}
+				| Delta::Drop {
+					..
+				} => Ok(None),
 			};
 		}
 
@@ -96,13 +109,23 @@ impl<'a> SvlCommandTransaction<'a> {
 		SingleVersionGet::get(&store, key)
 	}
 
-	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> reifydb_type::Result<bool> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
-				Delta::Set { .. } => Ok(true),
-				Delta::Unset { .. } | Delta::Remove { .. } | Delta::Drop { .. } => Ok(false),
+				Delta::Set {
+					..
+				} => Ok(true),
+				Delta::Unset {
+					..
+				}
+				| Delta::Remove {
+					..
+				}
+				| Delta::Drop {
+					..
+				} => Ok(false),
 			};
 		}
 
@@ -111,7 +134,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
@@ -122,7 +145,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> reifydb_type::Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
@@ -135,14 +158,19 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
+	pub fn remove(&mut self, key: &EncodedKey) -> reifydb_type::Result<()> {
 		self.check_key_allowed(key)?;
 
-		self.pending.insert(key.clone(), Delta::Remove { key: key.clone() });
+		self.pending.insert(
+			key.clone(),
+			Delta::Remove {
+				key: key.clone(),
+			},
+		);
 		Ok(())
 	}
 
-	pub fn commit(&mut self) -> crate::Result<()> {
+	pub fn commit(&mut self) -> reifydb_type::Result<()> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
@@ -154,7 +182,7 @@ impl<'a> SvlCommandTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn rollback(&mut self) -> crate::Result<()> {
+	pub fn rollback(&mut self) -> reifydb_type::Result<()> {
 		self.pending.clear();
 		self.completed = true;
 		Ok(())

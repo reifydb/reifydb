@@ -4,13 +4,13 @@
 //! Column coercion for bulk inserts.
 
 use reifydb_core::{
-	interface::ColumnDef,
-	value::column::{ColumnData, Columns},
+	interface::catalog::column::ColumnDef,
+	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_type::{Fragment, Params};
+use reifydb_type::{fragment::Fragment, params::Params};
 
 use crate::{
-	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data},
+	evaluate::{ColumnEvaluationContext, column::cast::cast_column_data},
 	stack::Stack,
 };
 

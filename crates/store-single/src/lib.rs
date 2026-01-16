@@ -3,34 +3,28 @@
 
 // #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::event::EventBus;
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::Result;
-
-pub mod hot;
-pub mod tier;
+use reifydb_core::{
+	event::EventBus,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
+use reifydb_type::Result;
 
 pub mod config;
-mod store;
+pub mod hot;
+pub mod store;
+pub mod tier;
 
-pub use config::{HotConfig, SingleStoreConfig};
+use config::{HotConfig, SingleStoreConfig};
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
-	interface::{
-		SingleVersionBatch, SingleVersionCommit, SingleVersionContains,
-		SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-		SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-		SingleVersionValues,
+	delta::Delta,
+	interface::store::{
+		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+		SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore, SingleVersionValues,
 	},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
-pub use store::StandardSingleStore;
-
-pub mod memory {
-	pub use crate::hot::memory::MemoryPrimitiveStorage;
-}
-pub mod sqlite {
-	pub use crate::hot::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
-}
+use reifydb_type::util::cowvec::CowVec;
+use store::StandardSingleStore;
 
 pub struct SingleStoreVersion;
 
@@ -70,7 +64,7 @@ impl SingleStore {
 	/// Get access to the hot storage tier.
 	///
 	/// Returns `None` if the hot tier is not configured.
-	pub fn hot(&self) -> Option<&hot::HotTier> {
+	pub fn hot(&self) -> Option<&hot::tier::HotTier> {
 		match self {
 			SingleStore::Standard(store) => store.hot(),
 		}

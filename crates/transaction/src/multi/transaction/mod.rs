@@ -9,36 +9,38 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use core::mem;
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use reifydb_core::{CommitVersion, EncodedKey, event::EventBus};
-use reifydb_core::interface::{MultiVersionContains, MultiVersionGet};
+use reifydb_core::{
+	common::CommitVersion,
+	event::EventBus,
+	interface::store::{MultiVersionContains, MultiVersionGet},
+	value::encoded::key::EncodedKey,
+};
 use reifydb_store_multi::MultiStore;
-use reifydb_type::util::hex;
+use reifydb_type::{Result, util::hex};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
-pub use crate::multi::types::*;
 use crate::{
 	TransactionId,
-	multi::oracle::*,
-	single::{TransactionSingle, TransactionSvl},
+	multi::{oracle::*, types::*},
+	single::TransactionSingle,
 };
 
-mod command;
+pub mod command;
 pub mod manager;
-mod query;
+pub mod query;
 pub(crate) mod version;
 
-pub use command::CommandTransaction;
-pub use query::QueryTransaction;
-
-pub use crate::multi::oracle::MAX_COMMITTED_TXNS;
-use crate::multi::{
-	conflict::ConflictManager,
-	pending::PendingWrites,
-	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
+use crate::{
+	multi::{
+		CommandTransaction, QueryTransaction,
+		conflict::ConflictManager,
+		pending::PendingWrites,
+		transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
+	},
+	single::svl::TransactionSvl,
 };
 
 pub struct TransactionManager<L>
@@ -64,7 +66,7 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
-	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
+	pub fn write(&self) -> Result<TransactionManagerCommand<L>> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
@@ -86,7 +88,7 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
-	pub fn new(clock: L) -> crate::Result<Self> {
+	pub fn new(clock: L) -> Result<Self> {
 		let version = clock.next()?;
 		let oracle = Oracle::new(clock);
 		oracle.query.done(version);
@@ -97,7 +99,7 @@ where
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
-	pub fn version(&self) -> crate::Result<CommitVersion> {
+	pub fn version(&self) -> Result<CommitVersion> {
 		self.inner.version()
 	}
 }
@@ -107,7 +109,7 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
-	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
+	pub fn query(&self, version: Option<CommitVersion>) -> Result<TransactionManagerQuery<L>> {
 		let safe_version = self.inner.version()?;
 
 		Ok(if let Some(version) = version {
@@ -161,7 +163,7 @@ impl Clone for TransactionMulti {
 }
 
 impl Inner {
-	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+	fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(version_provider)?;
 
@@ -172,7 +174,7 @@ impl Inner {
 		})
 	}
 
-	fn version(&self) -> crate::Result<CommitVersion> {
+	fn version(&self) -> Result<CommitVersion> {
 		self.tm.version()
 	}
 }
@@ -193,19 +195,19 @@ impl TransactionMulti {
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
-	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> crate::Result<Self> {
+	pub fn new(store: MultiStore, single: TransactionSingle, event_bus: EventBus) -> Result<Self> {
 		Ok(Self(Arc::new(Inner::new(store, single, event_bus)?)))
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
-	pub fn version(&self) -> crate::Result<CommitVersion> {
+	pub fn version(&self) -> Result<CommitVersion> {
 		self.0.version()
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+	pub fn begin_query(&self) -> Result<QueryTransaction> {
 		QueryTransaction::new(self.clone(), None)
 	}
 
@@ -214,14 +216,14 @@ impl TransactionMulti {
 	/// This is used for parallel query execution where multiple tasks need to
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> crate::Result<QueryTransaction> {
+	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<QueryTransaction> {
 		QueryTransaction::new(self.clone(), Some(version))
 	}
 }
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
+	pub fn begin_command(&self) -> Result<CommandTransaction> {
 		CommandTransaction::new(self.clone())
 	}
 }
@@ -233,12 +235,12 @@ pub enum TransactionType {
 
 impl TransactionMulti {
 	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>> {
 		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
 	}
 
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		MultiVersionContains::contains(&self.store, key, version)
 	}
 

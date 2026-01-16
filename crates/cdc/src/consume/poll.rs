@@ -1,25 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, Result,
-	interface::{Cdc, CdcChange, CdcConsumerId, Key, KeyKind},
-	key::{CdcConsumerKey, EncodableKey},
-};
-use std::thread;
 use std::{
 	ops::Bound,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread,
 	thread::{JoinHandle, sleep},
 	time::Duration,
 };
-use tracing::{debug, error};
-use crate::CdcStore;
 
-use super::{CdcCheckpoint, CdcConsume, CdcConsumer, CdcHost};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::{Cdc, CdcChange, CdcConsumerId},
+	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
+	value::encoded::key::EncodedKey,
+};
+use reifydb_type::Result;
+use tracing::{debug, error};
+
+use super::{
+	checkpoint::CdcCheckpoint,
+	consumer::{CdcConsume, CdcConsumer},
+	host::CdcHost,
+};
+use crate::storage::CdcStore;
 
 /// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]

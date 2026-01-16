@@ -155,9 +155,8 @@ impl SafeConvert<Decimal> for Int {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::SafeConvert;
 
 	mod i8 {
 		use super::*;
@@ -290,7 +289,6 @@ mod tests {
 
 	mod uint {
 		use super::*;
-		use crate::Uint;
 
 		#[test]
 		fn test_checked_convert_positive() {
@@ -324,7 +322,6 @@ mod tests {
 
 	mod decimal {
 		use super::*;
-		use crate::Decimal;
 
 		#[test]
 		fn test_checked_convert() {

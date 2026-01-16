@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::{Column, ColumnData};
-use reifydb_type::Fragment;
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use super::{
 	compile_plan_expr,
@@ -98,7 +98,7 @@ pub(super) fn compile_in<'bump>(expr: &PlanExpr<'bump>, list: &[&PlanExpr<'bump>
 	})
 }
 
-pub(super) fn compile_cast<'bump>(expr: &PlanExpr<'bump>, _target_type: crate::plan::Type) -> CompiledExpr {
+pub(super) fn compile_cast<'bump>(expr: &PlanExpr<'bump>, _target_type: Type) -> CompiledExpr {
 	// TODO: Implement proper type casting
 	compile_plan_expr(expr)
 }

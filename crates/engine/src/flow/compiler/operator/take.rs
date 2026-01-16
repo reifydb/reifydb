@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{Result, interface::FlowNodeId};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
-	flow::{FlowNodeType::Take, conversion::to_owned_physical_plan},
+	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Take},
 	plan::physical::{PhysicalPlan, TakeNode},
 };
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct TakeCompiler {
 	pub input: Box<PhysicalPlan>,

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! VM configuration and execution context.
-
-use reifydb_catalog::Catalog;
+use reifydb_catalog::catalog::Catalog;
 
 /// VM configuration.
 #[derive(Debug, Clone)]

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Diagnostic;
-use crate::Fragment;
+use crate::fragment::Fragment;
 
 pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns: Vec<String>) -> Diagnostic {
 	let columns_str = if key_columns.is_empty() {

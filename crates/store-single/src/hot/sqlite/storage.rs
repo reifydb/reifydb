@@ -8,7 +8,7 @@
 use std::{ops::Bound, sync::Arc};
 
 use parking_lot::Mutex;
-use reifydb_type::{CowVec, Result, diagnostic::internal::internal, error};
+use reifydb_type::{Result, error, error::diagnostic::internal::internal, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params};
 use tracing::instrument;
 
@@ -139,9 +139,8 @@ impl TierStorage for SqlitePrimitiveStorage {
 					[],
 				)
 				.map_err(|e| error!(internal(format!("Failed to create table: {}", e))))?;
-				insert_entries_in_tx(&tx, TABLE_NAME, &entries).map_err(|e| {
-					error!(internal(format!("Failed to insert entries: {}", e)))
-				})?;
+				insert_entries_in_tx(&tx, TABLE_NAME, &entries)
+					.map_err(|e| error!(internal(format!("Failed to insert entries: {}", e))))?;
 			} else {
 				return Err(error!(internal(format!("Failed to insert entries: {}", e))));
 			}
@@ -356,7 +355,10 @@ fn insert_entries_in_tx(
 		match value {
 			Some(v) => {
 				tx.execute(
-					&format!("INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)", table_name),
+					&format!(
+						"INSERT OR REPLACE INTO \"{}\" (key, value) VALUES (?1, ?2)",
+						table_name
+					),
 					params![key.as_slice(), v.as_slice()],
 				)?;
 			}
@@ -372,7 +374,7 @@ fn insert_entries_in_tx(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]
@@ -380,8 +382,7 @@ mod tests {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
 		// Put and get
-		storage.set(vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))])
-			.unwrap();
+		storage.set(vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))]).unwrap();
 		let value = storage.get(b"key1").unwrap();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
@@ -403,9 +404,7 @@ mod tests {
 		storage.set(vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))]).unwrap();
 
 		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap();
+		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
@@ -424,9 +423,7 @@ mod tests {
 		storage.set(vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))]).unwrap();
 
 		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap();
+		let batch = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
@@ -449,9 +446,7 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 
 		// First batch of 3
-		let batch1 = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap();
+		let batch1 = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
@@ -459,9 +454,7 @@ mod tests {
 		assert_eq!(&*batch1.entries[2].key, &[2]);
 
 		// Second batch of 3 - cursor automatically continues
-		let batch2 = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap();
+		let batch2 = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
@@ -482,9 +475,7 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 
 		// First batch of 3 (reverse)
-		let batch1 = storage
-			.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap();
+		let batch1 = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
 		assert!(!cursor.exhausted);
@@ -492,9 +483,7 @@ mod tests {
 		assert_eq!(&*batch1.entries[2].key, &[7]);
 
 		// Second batch
-		let batch2 = storage
-			.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap();
+		let batch2 = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
 		assert!(!cursor.exhausted);
@@ -517,9 +506,7 @@ mod tests {
 
 		// Should return empty batch for non-existent table, not error
 		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap();
+		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
 		assert!(batch.entries.is_empty());
 		assert!(cursor.exhausted);
 	}

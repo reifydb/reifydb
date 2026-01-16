@@ -3,8 +3,8 @@
 
 use std::fmt::{Display, Formatter};
 
-use super::{Frame, FrameColumn};
-use crate::{FromValueError, TryFromValue, TryFromValueCoerce};
+use super::{column::FrameColumn, frame::Frame};
+use crate::value::try_from::{FromValueError, TryFromValue, TryFromValueCoerce};
 
 /// Error type for Frame extraction operations
 #[derive(Debug, Clone, PartialEq)]
@@ -170,13 +170,13 @@ impl Frame {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::{
-		BitVec,
+		util::bitvec::BitVec,
 		value::{
-			container::{NumberContainer, Utf8Container},
-			frame::FrameColumnData,
+			container::{number::NumberContainer, utf8::Utf8Container},
+			frame::data::FrameColumnData,
 		},
 	};
 

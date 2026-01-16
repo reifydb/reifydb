@@ -4,11 +4,13 @@
 use ::uuid::Uuid;
 
 use crate::{
-	Fragment, Uuid4, Uuid7, err,
+	err,
 	error::{
 		Error,
 		diagnostic::uuid::{invalid_uuid4_format, invalid_uuid7_format},
 	},
+	fragment::Fragment,
+	value::uuid::{Uuid4, Uuid7},
 };
 
 pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
@@ -36,10 +38,10 @@ pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
 	mod uuid4 {
-		use crate::{Fragment, parse_uuid4};
+		use crate::{fragment::Fragment, value::uuid::parse::parse_uuid4};
 
 		#[test]
 		fn test_valid_uuid4() {
@@ -102,7 +104,7 @@ mod tests {
 	}
 
 	mod uuid7 {
-		use crate::{Fragment, parse_uuid7};
+		use crate::{fragment::Fragment, value::uuid::parse::parse_uuid7};
 
 		#[test]
 		fn test_valid_uuid7() {

@@ -75,10 +75,7 @@ impl_safe_rem_unsigned!(u8, u16, u32, u64, u128);
 use bigdecimal::Zero;
 use num_bigint::BigInt;
 
-use crate::{
-	Decimal,
-	value::{int::Int, uint::Uint},
-};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeRemainder for Int {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
@@ -249,7 +246,7 @@ impl SafeRemainder for f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	macro_rules! signed_unsigned {
         ($($t:ty => $mod:ident),*) => {
             $(
@@ -316,7 +313,7 @@ mod tests {
 	);
 
 	mod signed_overflow {
-		use crate::SafeRemainder;
+		use crate::value::number::safe::remainder::SafeRemainder;
 
 		#[test]
 		fn checked_rem_min_negative_one() {
@@ -347,7 +344,7 @@ mod tests {
 	}
 
 	mod f32 {
-		use crate::SafeRemainder;
+		use crate::value::number::safe::remainder::SafeRemainder;
 
 		#[test]
 		fn checked_rem_happy() {
@@ -419,7 +416,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use crate::SafeRemainder;
+		use crate::value::number::safe::remainder::SafeRemainder;
 
 		#[test]
 		fn checked_rem_happy() {

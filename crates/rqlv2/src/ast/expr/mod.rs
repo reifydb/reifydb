@@ -10,14 +10,14 @@ pub mod operator;
 pub mod query;
 pub mod special;
 
-pub use collection::*;
-pub use identifier::*;
-pub use literal::*;
-pub use operator::*;
-pub use query::*;
-pub use special::*;
+use collection::*;
+use identifier::*;
+use literal::*;
+use operator::*;
+use query::*;
+use special::*;
 
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Unified expression type for both query predicates and scripting.
 #[derive(Debug, Clone, Copy)]

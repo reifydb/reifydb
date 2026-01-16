@@ -96,7 +96,7 @@ impl ComputePool {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::{
 		sync::atomic::{AtomicUsize, Ordering},
 		time::Duration,

@@ -3,13 +3,13 @@
 
 //! Subquery opcodes: ExecSubqueryExists, ExecSubqueryIn, ExecSubqueryScalar.
 
-use reifydb_type::Value;
-
-use crate::error::{Result, VmError};
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
+use reifydb_type::value::Value;
 
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// ExecSubqueryExists - execute a subquery and check if it returns any rows.
 pub fn exec_subquery_exists(ctx: &mut HandlerContext) -> Result<DispatchResult> {
@@ -17,11 +17,10 @@ pub fn exec_subquery_exists(ctx: &mut HandlerContext) -> Result<DispatchResult> 
 	let negated = ctx.read_u8()? != 0;
 
 	// Get the subquery definition
-	let subquery_def = ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(
-		VmError::InvalidSubqueryIndex {
+	let subquery_def =
+		ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(VmError::InvalidSubqueryIndex {
 			index: subquery_index,
-		},
-	)?;
+		})?;
 	let subquery_def = subquery_def.clone();
 
 	// Execute the subquery
@@ -58,11 +57,10 @@ pub fn exec_subquery_in(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	};
 
 	// Get the subquery definition
-	let subquery_def = ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(
-		VmError::InvalidSubqueryIndex {
+	let subquery_def =
+		ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(VmError::InvalidSubqueryIndex {
 			index: subquery_index,
-		},
-	)?;
+		})?;
 	let subquery_def = subquery_def.clone();
 
 	// Execute the subquery
@@ -91,11 +89,10 @@ pub fn exec_subquery_scalar(ctx: &mut HandlerContext) -> Result<DispatchResult> 
 	let subquery_index = ctx.read_u16()?;
 
 	// Get the subquery definition
-	let subquery_def = ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(
-		VmError::InvalidSubqueryIndex {
+	let subquery_def =
+		ctx.vm.program.subqueries.get(subquery_index as usize).ok_or(VmError::InvalidSubqueryIndex {
 			index: subquery_index,
-		},
-	)?;
+		})?;
 	let subquery_def = subquery_def.clone();
 
 	// Execute the subquery

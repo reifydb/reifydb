@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use super::{EncodableKey, EncodedKeyRange, KeyKind};
+use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey,
-	interface::PrimaryKeyId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::PrimaryKeyId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone)]

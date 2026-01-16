@@ -5,25 +5,28 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	value::{
-		column::Columns,
-		encoded::{EncodedValuesLayout, encode_value},
+		column::columns::Columns,
+		encoded::{layout::EncodedValuesLayout, value::encode_value},
 	},
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
-	Fragment, Type, Value,
-	diagnostic::{catalog::ringbuffer_not_found, engine},
-	internal_error, return_error,
+	error::diagnostic::{catalog::ringbuffer_not_found, engine},
+	fragment::Fragment,
+	internal_error,
+	params::Params,
+	return_error,
+	value::{Value, r#type::Type},
 };
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
-	transaction::operation::DictionaryOperations,
+	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
 };
 
 impl Executor {
@@ -203,7 +206,6 @@ impl Executor {
 					}
 
 					// Update the encoded using interceptors
-					use crate::transaction::operation::RingBufferOperations;
 					wrapped_txn.command_mut().update_ringbuffer(
 						ringbuffer.clone(),
 						row_number,

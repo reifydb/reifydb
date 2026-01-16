@@ -4,9 +4,12 @@
 //! Helper functions for common test patterns
 
 use reifydb_core::value::encoded::{
-	EncodedKey, EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout, IntoEncodedKey,
+	encoded::EncodedValues,
+	key::{EncodedKey, IntoEncodedKey},
+	layout::EncodedValuesLayout,
+	named::EncodedValuesNamedLayout,
 };
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 /// Get all values from an encoded row using a layout
 pub fn get_values(layout: &EncodedValuesLayout, row: &EncodedValues) -> Vec<Value> {

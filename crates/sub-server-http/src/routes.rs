@@ -9,7 +9,7 @@ use axum::{
 	Router,
 	routing::{get, post},
 };
-use reifydb_sub_server::AppState;
+use reifydb_sub_server::state::AppState;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 

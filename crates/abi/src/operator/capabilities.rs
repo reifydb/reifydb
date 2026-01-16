@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
 /// Capability: Operator can process inserts
@@ -22,17 +22,6 @@ pub const CAPABILITY_TICK: u32 = 1 << 5; // 0x20
 /// All standard capabilities (Insert + Update + Delete + Pull)
 pub const CAPABILITY_ALL_STANDARD: u32 = CAPABILITY_INSERT | CAPABILITY_UPDATE | CAPABILITY_DELETE | CAPABILITY_PULL;
 
-/// Helper to check if a capability is set
-///
-/// # Example
-/// ```
-/// use reifydb_abi::*;
-///
-/// let caps = CAPABILITY_INSERT | CAPABILITY_UPDATE;
-/// assert!(has_capability(caps, CAPABILITY_INSERT));
-/// assert!(has_capability(caps, CAPABILITY_UPDATE));
-/// assert!(!has_capability(caps, CAPABILITY_DELETE));
-/// ```
 #[inline]
 pub const fn has_capability(capabilities: u32, capability: u32) -> bool {
 	(capabilities & capability) != 0

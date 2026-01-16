@@ -1,85 +1,78 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub use cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange, ToConsumerKey};
-pub use cdc_exclude::should_exclude_from_cdc;
-pub use column::ColumnKey;
-pub use column_policy::ColumnPolicyKey;
-pub use column_sequence::ColumnSequenceKey;
-pub use columns::ColumnsKey;
-pub use dictionary::{
-	DictionaryEntryIndexKey, DictionaryEntryIndexKeyRange, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey,
+use cdc_consumer::CdcConsumerKey;
+use column::ColumnKey;
+use column_policy::ColumnPolicyKey;
+use column_sequence::ColumnSequenceKey;
+use columns::ColumnsKey;
+use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey};
+use flow::FlowKey;
+use flow_node_internal_state::FlowNodeInternalStateKey;
+use flow_node_state::FlowNodeStateKey;
+use index::IndexKey;
+use index_entry::IndexEntryKey;
+use kind::KeyKind;
+use namespace::NamespaceKey;
+use namespace_dictionary::NamespaceDictionaryKey;
+use namespace_flow::NamespaceFlowKey;
+use namespace_ringbuffer::NamespaceRingBufferKey;
+use namespace_table::NamespaceTableKey;
+use namespace_view::NamespaceViewKey;
+use primary_key::PrimaryKeyKey;
+use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
+use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
+use row::RowKey;
+use row_sequence::RowSequenceKey;
+use subscription::SubscriptionKey;
+use subscription_column::SubscriptionColumnKey;
+use subscription_row::SubscriptionRowKey;
+use system_sequence::SystemSequenceKey;
+use system_version::SystemVersionKey;
+use table::TableKey;
+use transaction_version::TransactionVersionKey;
+use view::ViewKey;
+
+use crate::{
+	util::encoding::keycode,
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
-pub use flow::FlowKey;
-pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
-pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
-pub use flow_node_internal_state::{FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
-pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
-pub use flow_version::FlowVersionKey;
-pub use index::{IndexKey, PrimitiveIndexKeyRange};
-pub use index_entry::IndexEntryKey;
-pub use kind::KeyKind;
-pub use namespace::NamespaceKey;
-pub use namespace_dictionary::NamespaceDictionaryKey;
-pub use namespace_flow::NamespaceFlowKey;
-pub use namespace_ringbuffer::NamespaceRingBufferKey;
-pub use namespace_table::NamespaceTableKey;
-pub use namespace_view::NamespaceViewKey;
-pub use primary_key::PrimaryKeyKey;
-pub use retention_policy::{
-	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, PrimitiveRetentionPolicyKey,
-	PrimitiveRetentionPolicyKeyRange,
-};
-pub use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
-pub use row::{RowKey, RowKeyRange};
-pub use row_sequence::RowSequenceKey;
-pub use subscription::SubscriptionKey;
-pub use subscription_column::SubscriptionColumnKey;
-pub use subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange};
-pub use system_sequence::SystemSequenceKey;
-pub use system_version::{SystemVersion, SystemVersionKey};
-pub use table::TableKey;
-pub use transaction_version::TransactionVersionKey;
-pub use view::ViewKey;
 
-use crate::{EncodedKey, EncodedKeyRange, util::encoding::keycode};
-
-mod cdc_consumer;
-mod cdc_exclude;
-mod column;
-mod column_policy;
-mod column_sequence;
-mod columns;
-mod dictionary;
-mod flow;
-mod flow_edge;
-mod flow_node;
-mod flow_node_internal_state;
-mod flow_node_state;
-mod flow_version;
-mod index;
-mod index_entry;
-mod kind;
-mod namespace;
-mod namespace_dictionary;
-mod namespace_flow;
-mod namespace_ringbuffer;
-mod namespace_table;
-mod namespace_view;
-mod primary_key;
-mod retention_policy;
-mod ringbuffer;
-mod row;
-mod row_sequence;
-mod subscription;
-mod subscription_column;
-mod subscription_row;
-mod system_sequence;
-mod system_version;
-mod table;
-mod transaction_version;
-mod view;
-
+pub mod cdc_consumer;
+pub mod cdc_exclude;
+pub mod column;
+pub mod column_policy;
+pub mod column_sequence;
+pub mod columns;
+pub mod dictionary;
+pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
+pub mod flow_node_internal_state;
+pub mod flow_node_state;
+pub mod flow_version;
+pub mod index;
+pub mod index_entry;
+pub mod kind;
+pub mod namespace;
+pub mod namespace_dictionary;
+pub mod namespace_flow;
+pub mod namespace_ringbuffer;
+pub mod namespace_table;
+pub mod namespace_view;
+pub mod primary_key;
+pub mod retention_policy;
+pub mod ringbuffer;
+pub mod row;
+pub mod row_sequence;
+pub mod subscription;
+pub mod subscription_column;
+pub mod subscription_row;
+pub mod system_sequence;
+pub mod system_version;
+pub mod table;
+pub mod transaction_version;
+pub mod view;
 #[derive(Debug)]
 pub enum Key {
 	CdcConsumer(CdcConsumerKey),
@@ -272,20 +265,20 @@ impl Key {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::RowNumber;
+pub mod tests {
+	use reifydb_type::value::row_number::RowNumber;
 
-	use super::{
-		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey, FlowNodeStateKey, Key, NamespaceKey,
-		NamespaceTableKey, SystemSequenceKey, TableKey,
-	};
 	use crate::{
-		interface::{
-			FlowNodeId, PrimitiveId,
-			catalog::{ColumnId, ColumnPolicyId, IndexId, NamespaceId, SequenceId, TableId},
+		interface::catalog::{
+			flow::FlowNodeId,
+			id::{ColumnId, ColumnPolicyId, IndexId, NamespaceId, SequenceId, TableId},
+			primitive::PrimitiveId,
 		},
 		key::{
-			index::IndexKey, row::RowKey, row_sequence::RowSequenceKey,
+			Key, column::ColumnKey, column_policy::ColumnPolicyKey, column_sequence::ColumnSequenceKey,
+			columns::ColumnsKey, flow_node_state::FlowNodeStateKey, index::IndexKey,
+			namespace::NamespaceKey, namespace_table::NamespaceTableKey, row::RowKey,
+			row_sequence::RowSequenceKey, system_sequence::SystemSequenceKey, table::TableKey,
 			transaction_version::TransactionVersionKey,
 		},
 	};

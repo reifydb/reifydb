@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{column::ColumnData, container::Utf8Container};
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Date, DateTime, Duration, Fragment, LazyFragment, Time, Type, diagnostic::cast, error, parse_date,
-	parse_datetime, parse_duration, parse_time,
+	err, error,
+	error::diagnostic::cast,
+	fragment::{Fragment, LazyFragment},
+	value::{
+		container::utf8::Utf8Container,
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		temporal::parse::{
+			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
+		},
+		time::Time,
+		r#type::Type,
+	},
 };
 
 pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> crate::Result<ColumnData> {
@@ -20,16 +32,12 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			Type::Duration => to_duration(container, lazy_fragment),
 			_ => {
 				let source_type = data.get_type();
-				reifydb_type::err!(cast::unsupported_cast(
-					lazy_fragment.fragment(),
-					source_type,
-					target
-				))
+				err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 			}
 		}
 	} else {
 		let source_type = data.get_type();
-		reifydb_type::err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+		err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 	}
 }
 

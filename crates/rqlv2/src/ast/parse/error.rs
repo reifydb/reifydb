@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use crate::token::{Keyword, Operator, Punctuation, Span};
+use crate::token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, span::Span};
 
 /// Parse error.
 #[derive(Debug, Clone)]

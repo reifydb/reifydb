@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Uuid4, Uuid7};
+use reifydb_type::value::uuid::{Uuid4, Uuid7};
 
 use crate::value::column::{data::ColumnData, push::Push};
 

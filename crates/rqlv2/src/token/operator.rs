@@ -89,7 +89,7 @@ pub fn lookup_word_operator(s: &str) -> Option<Operator> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

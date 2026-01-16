@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{IndexType, SortDirection};
+use reifydb_core::{common::IndexType, sort::SortDirection};
 
 use crate::ast::{
-	AstCreate, AstCreateIndex, AstIndexColumn,
+	ast::{AstCreate, AstCreateIndex, AstIndexColumn},
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{Asc, Desc, Filter, Index, Map, On, Unique},
-		Operator,
-		Separator::Comma,
-		Token, TokenKind,
+		keyword::Keyword::{Asc, Desc, Filter, Index, Map, On, Unique},
+		operator::Operator,
+		separator::Separator::Comma,
+		token::{Token, TokenKind},
 	},
 };
 
@@ -108,10 +108,14 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::{IndexType, SortDirection};
+pub mod tests {
+	use reifydb_core::{common::IndexType, sort::SortDirection};
 
-	use crate::ast::{AstCreate, AstCreateIndex, parse::Parser, tokenize};
+	use crate::ast::{
+		ast::{AstCreate, AstCreateIndex},
+		parse::Parser,
+		tokenize,
+	};
 
 	#[test]
 	fn test_create_index() {

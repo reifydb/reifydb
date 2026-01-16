@@ -3,9 +3,8 @@
 
 use std::ops::Deref;
 
+use reifydb_type::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
-
-use crate::util::CowVec;
 
 /// A boxed values iterator.
 pub type EncodedValuesIter = Box<dyn EncodedValuesIterator>;

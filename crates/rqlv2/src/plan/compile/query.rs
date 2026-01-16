@@ -4,27 +4,36 @@
 //! Query operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_type::Type;
+use reifydb_core::interface::catalog::id::ColumnId;
+use reifydb_type::value::r#type::Type;
 
-use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
-	ast::{
+	ast::expr::{
 		Expr,
-		expr::{
-			AggregateExpr, DistinctExpr, ExtendExpr, FilterExpr, FromExpr, JoinExpr, Literal, MapExpr,
-			MergeExpr, SortExpr, TakeExpr, WindowExpr,
+		literal::Literal,
+		query::{
+			AggregateExpr, DistinctExpr, ExtendExpr, FilterExpr, FromExpr, JoinExpr, MapExpr, MergeExpr,
+			SortExpr, TakeExpr, WindowExpr,
 		},
 	},
 	plan::{
-		CatalogColumn, ColumnId, OutputSchema, Plan,
-		node::{expr::PlanExpr, query::*},
+		Plan,
+		compile::core::{PlanError, PlanErrorKind, Planner, Result},
+		node::{
+			expr::PlanExpr,
+			query::{
+				AggregateNode, DistinctNode, EnvironmentNode, ExtendNode, FilterNode, GeneratorNode,
+				InlineDataNode, JoinCondition, JoinInnerNode, JoinLeftNode, JoinNaturalNode, JoinType,
+				MergeNode, NullsOrder, ProjectNode, ScanNode, SortDirection, SortKey, SortNode,
+				TakeNode, VariableSourceNode, WindowNode, WindowSize, WindowSlide, WindowType,
+			},
+		},
+		types::{CatalogColumn, OutputSchema},
 	},
 };
 
 impl<'bump, 'cat> Planner<'bump, 'cat> {
 	pub(super) fn compile_from(&mut self, from: &FromExpr<'bump>) -> Result<Plan<'bump>> {
-		use crate::ast::expr::FromExpr;
-
 		match from {
 			FromExpr::Source(source) => {
 				let primitive = self.resolve_primitive(source.namespace, source.name, source.span)?;
@@ -160,8 +169,8 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 		for col in sort.columns {
 			let expr = self.compile_expr(col.expr, None)?;
 			let direction = match col.direction {
-				Some(crate::ast::expr::SortDirection::Asc) | None => SortDirection::Asc,
-				Some(crate::ast::expr::SortDirection::Desc) => SortDirection::Desc,
+				Some(crate::ast::expr::query::SortDirection::Asc) | None => SortDirection::Asc,
+				Some(crate::ast::expr::query::SortDirection::Desc) => SortDirection::Desc,
 			};
 			keys.push(SortKey {
 				expr,
@@ -256,8 +265,8 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 		for col in sort.columns {
 			let expr = self.compile_expr(col.expr, schema)?;
 			let direction = match col.direction {
-				Some(crate::ast::expr::SortDirection::Asc) | None => SortDirection::Asc,
-				Some(crate::ast::expr::SortDirection::Desc) => SortDirection::Desc,
+				Some(crate::ast::expr::query::SortDirection::Asc) | None => SortDirection::Asc,
+				Some(crate::ast::expr::query::SortDirection::Desc) => SortDirection::Desc,
 			};
 			keys.push(SortKey {
 				expr,
@@ -436,7 +445,7 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 	}
 
 	pub(super) fn compile_join(&mut self, join: &JoinExpr<'bump>, left: &'bump Plan<'bump>) -> Result<Plan<'bump>> {
-		use crate::ast::expr::JoinExpr as AstJoin;
+		use crate::ast::expr::query::JoinExpr as AstJoin;
 
 		match join {
 			AstJoin::Inner(inner) => {
@@ -499,8 +508,11 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 	}
 
 	/// Compile a join source (subquery or primitive reference).
-	fn compile_join_source(&mut self, source: &crate::ast::expr::JoinSource<'bump>) -> Result<&'bump Plan<'bump>> {
-		use crate::ast::expr::JoinSource;
+	fn compile_join_source(
+		&mut self,
+		source: &crate::ast::expr::query::JoinSource<'bump>,
+	) -> Result<&'bump Plan<'bump>> {
+		use crate::ast::expr::query::JoinSource;
 
 		match source {
 			JoinSource::SubQuery(expr) => {
@@ -527,7 +539,7 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 	/// Compile join conditions from join pairs with alias context for qualified column resolution.
 	fn compile_join_conditions(
 		&self,
-		pairs: &[crate::ast::expr::JoinPair<'bump>],
+		pairs: &[crate::ast::expr::query::JoinPair<'bump>],
 		right_alias: Option<&str>,
 		right_columns: Option<&'bump [CatalogColumn<'bump>]>,
 	) -> Result<&'bump [JoinCondition<'bump>]> {

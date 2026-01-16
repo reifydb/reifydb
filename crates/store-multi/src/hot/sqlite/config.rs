@@ -366,7 +366,7 @@ impl TempStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_testing::tempdir::temp_dir;
 
 	use super::*;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{CommitVersion, interface::FlowNodeId, retention::RetentionPolicy};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, retention::RetentionPolicy};
 
 use crate::materialized::{MaterializedCatalog, MultiVersionRetentionPolicy};
 
@@ -45,7 +45,7 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::retention::{CleanupMode, RetentionPolicy};
 
 	use super::*;

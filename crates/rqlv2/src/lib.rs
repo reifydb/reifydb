@@ -21,13 +21,12 @@ pub mod token;
 
 use ast::parse::parse;
 use bumpalo::Bump;
-pub use bytecode::CompiledProgram;
 use bytecode::compile::PlanCompiler;
-pub use compiler::Compiler;
-pub use error::RqlError;
-use plan::compile::plan;
-use reifydb_catalog::MaterializedCatalog;
+use error::RqlError;
+use reifydb_catalog::materialized::MaterializedCatalog;
 use token::tokenize;
+
+use crate::{bytecode::program::CompiledProgram, plan::compile::core::plan};
 
 /// Compile an RQL script to bytecode.
 ///

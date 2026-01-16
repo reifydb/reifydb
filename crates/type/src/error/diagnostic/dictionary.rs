@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Diagnostic;
-use crate::{Fragment, Type};
+use crate::{fragment::Fragment, value::r#type::Type};
 
 /// DICT_001: Dictionary entry ID exceeds maximum capacity for the configured type
 pub fn dictionary_entry_id_capacity_exceeded(id_type: Type, value: u128, max_value: u128) -> Diagnostic {

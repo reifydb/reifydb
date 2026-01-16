@@ -4,7 +4,7 @@
 //! Binding statement types (let, def, assign).
 
 use super::{Expr, Statement};
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Let binding: let $name = expr
 #[derive(Debug, Clone, Copy)]

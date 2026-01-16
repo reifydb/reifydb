@@ -3,7 +3,7 @@
 
 //! Flow lag tracking interface for virtual table support.
 
-use crate::interface::{PrimitiveId, catalog::FlowId};
+use crate::interface::catalog::{flow::FlowId, primitive::PrimitiveId};
 
 /// A row in the system.flow_lags virtual table.
 #[derive(Debug, Clone)]

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{interface::CatalogTrackViewChangeOperations, return_error, value::column::Columns};
+use reifydb_catalog::{CatalogStore, store::view::create::ViewToCreate};
+use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
-use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::catalog::view_already_exists, return_error, value::Value};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_transactional_view(

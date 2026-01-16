@@ -14,12 +14,10 @@ pub mod expr;
 pub mod parse;
 pub mod stmt;
 
-pub use explain::explain_ast;
-// Re-export core types
-pub use expr::Expr;
-pub use stmt::Statement;
-
-use crate::token::Span;
+use crate::{
+	ast::{expr::Expr, stmt::Statement},
+	token::span::Span,
+};
 
 /// A complete program - the root of the AST.
 ///

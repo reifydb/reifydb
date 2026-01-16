@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::ViewDef;
+use reifydb_core::interface::catalog::view::ViewDef;
 
-use crate::interceptor::InterceptorChain;
+use crate::interceptor::chain::InterceptorChain;
 
 // VIEW DEF POST CREATE
 /// Context for view def post-create interceptors
@@ -20,11 +20,11 @@ impl<'a> ViewDefPostCreateContext<'a> {
 }
 
 pub trait ViewDefPostCreateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
-	pub fn execute<'a>(&self, mut ctx: ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: ViewDefPostCreateContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -34,14 +34,14 @@ impl InterceptorChain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
 
 pub struct ClosureViewDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -52,7 +52,7 @@ where
 
 impl<F> Clone for ClosureViewDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -63,16 +63,16 @@ where
 
 impl<F> ViewDefPostCreateInterceptor for ClosureViewDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_def_post_create<F>(f: F) -> ClosureViewDefPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewDefPostCreateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureViewDefPostCreateInterceptor::new(f)
 }
@@ -92,11 +92,11 @@ impl<'a> ViewDefPreUpdateContext<'a> {
 }
 
 pub trait ViewDefPreUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
-	pub fn execute<'a>(&self, mut ctx: ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: ViewDefPreUpdateContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -106,14 +106,14 @@ impl InterceptorChain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureViewDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -124,7 +124,7 @@ where
 
 impl<F> Clone for ClosureViewDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -135,16 +135,16 @@ where
 
 impl<F> ViewDefPreUpdateInterceptor for ClosureViewDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_def_pre_update<F>(f: F) -> ClosureViewDefPreUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewDefPreUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureViewDefPreUpdateInterceptor::new(f)
 }
@@ -166,11 +166,11 @@ impl<'a> ViewDefPostUpdateContext<'a> {
 }
 
 pub trait ViewDefPostUpdateInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
-	pub fn execute<'a>(&self, mut ctx: ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: ViewDefPostUpdateContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -180,14 +180,14 @@ impl InterceptorChain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
 
 pub struct ClosureViewDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -198,7 +198,7 @@ where
 
 impl<F> Clone for ClosureViewDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -209,16 +209,16 @@ where
 
 impl<F> ViewDefPostUpdateInterceptor for ClosureViewDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_def_post_update<F>(f: F) -> ClosureViewDefPostUpdateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewDefPostUpdateContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureViewDefPostUpdateInterceptor::new(f)
 }
@@ -238,11 +238,11 @@ impl<'a> ViewDefPreDeleteContext<'a> {
 }
 
 pub trait ViewDefPreDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()>;
+	fn intercept<'a>(&self, ctx: &mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()>;
 }
 
 impl InterceptorChain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
-	pub fn execute<'a>(&self, mut ctx: ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> {
+	pub fn execute(&self, mut ctx: ViewDefPreDeleteContext) -> reifydb_type::Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -252,14 +252,14 @@ impl InterceptorChain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
 
 pub struct ClosureViewDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosureViewDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -270,7 +270,7 @@ where
 
 impl<F> Clone for ClosureViewDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -281,16 +281,16 @@ where
 
 impl<F> ViewDefPreDeleteInterceptor for ClosureViewDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
 pub fn view_def_pre_delete<F>(f: F) -> ClosureViewDefPreDeleteInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_core::Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewDefPreDeleteContext<'a>) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureViewDefPreDeleteInterceptor::new(f)
 }

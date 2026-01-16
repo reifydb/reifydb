@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use PhysicalPlan::CreateTable;
-use reifydb_core::{diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, return_error};
+use reifydb_core::interface::resolved::ResolvedNamespace;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::diagnostic::catalog::namespace_not_found, fragment::Fragment, return_error};
 
 use crate::plan::{
 	logical,

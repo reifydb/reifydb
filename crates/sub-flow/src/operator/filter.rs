@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
-use std::sync::LazyLock;
+use std::{rc::Rc, sync::LazyLock};
 
-use reifydb_core::{interface::FlowNodeId, value::column::Columns};
-use reifydb_engine::{ColumnEvaluationContext, StandardColumnEvaluator, stack::Stack};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_engine::{
+	evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+	stack::Stack,
+};
 use reifydb_rql::expression::Expression;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Params, RowNumber, Value, internal_err};
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::{
+	internal_err,
+	params::Params,
+	value::{Value, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{Operator, Operators},

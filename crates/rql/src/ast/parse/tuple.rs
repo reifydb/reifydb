@@ -4,9 +4,13 @@
 use Separator::Comma;
 
 use crate::ast::{
-	AstTuple,
+	ast::AstTuple,
 	parse::{Parser, Precedence},
-	tokenize::{Operator, Operator::CloseParen, Separator, Token, TokenKind},
+	tokenize::{
+		operator::{Operator, Operator::CloseParen},
+		separator::Separator,
+		token::{Token, TokenKind},
+	},
 };
 
 impl Parser {
@@ -38,12 +42,14 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{
-		Ast::{Identifier, Infix, Literal},
-		AstInfix,
-		AstLiteral::Number,
-		InfixOperator,
+		ast::{
+			Ast::{Identifier, Infix, Literal},
+			AstInfix,
+			AstLiteral::Number,
+			InfixOperator,
+		},
 		parse::parse,
 		tokenize::tokenize,
 	};

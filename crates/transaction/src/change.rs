@@ -2,9 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use OperationType::Delete;
-use reifydb_core::interface::{
-	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, RingBufferDef, RingBufferId,
-	SubscriptionDef, SubscriptionId, TableDef, TableId, ViewDef, ViewId,
+use reifydb_core::interface::catalog::{
+	dictionary::DictionaryDef,
+	flow::{FlowDef, FlowId},
+	id::{DictionaryId, NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+	namespace::NamespaceDef,
+	ringbuffer::RingBufferDef,
+	subscription::SubscriptionDef,
+	table::TableDef,
+	view::ViewDef,
 };
 
 use crate::TransactionId;
@@ -373,8 +379,8 @@ impl TransactionalDefChanges {
 #[derive(Debug, Clone)]
 pub struct TableRowInsertion {
 	pub table_id: TableId,
-	pub row_number: reifydb_type::RowNumber,
-	pub encoded: reifydb_core::value::encoded::EncodedValues,
+	pub row_number: reifydb_type::value::row_number::RowNumber,
+	pub encoded: reifydb_core::value::encoded::encoded::EncodedValues,
 }
 
 /// Tracks row changes across different entity types for post-commit event emission

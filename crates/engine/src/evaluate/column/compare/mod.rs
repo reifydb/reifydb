@@ -3,28 +3,34 @@
 
 use std::cmp::Ordering;
 
-use reifydb_core::{
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_type::{
+	error::diagnostic::Diagnostic,
+	fragment::Fragment,
 	return_error,
 	value::{
-		column::{Column, ColumnData},
-		container::{BoolContainer, NumberContainer, TemporalContainer, Utf8Container},
+		container::{
+			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
+		},
+		decimal::Decimal,
+		int::Int,
+		is::{IsNumber, IsTemporal},
+		number::{compare::partial_cmp, promote::Promote},
+		r#type::{Type, Type::Boolean},
+		uint::Uint,
 	},
-};
-use reifydb_type::{
-	Decimal, Fragment, Int, IsNumber, IsTemporal, Promote, Type, Type::Boolean, Uint, diagnostic::Diagnostic,
-	value::number,
 };
 
 use crate::evaluate::column::ColumnEvaluationContext;
 
-mod between;
-mod equal;
-mod greater_than;
-mod greater_than_equal;
-mod r#in;
-mod less_than;
-mod less_than_equal;
-mod not_equal;
+pub mod between;
+pub mod equal;
+pub mod greater_than;
+pub mod greater_than_equal;
+pub mod r#in;
+pub mod less_than;
+pub mod less_than_equal;
+pub mod not_equal;
 
 // Trait for comparison operations - monomorphized for fast execution
 pub(crate) trait CompareOp {
@@ -112,7 +118,7 @@ where
 		let data: Vec<bool> =
 			l.data().iter()
 				.zip(r.data().iter())
-				.map(|(l_val, r_val)| Op::compare_ordering(number::partial_cmp(l_val, r_val)))
+				.map(|(l_val, r_val)| Op::compare_ordering(partial_cmp(l_val, r_val)))
 				.collect();
 
 		Column {
@@ -124,7 +130,7 @@ where
 		for i in 0..l.len() {
 			match (l.get(i), r.get(i)) {
 				(Some(l), Some(r)) => {
-					data.push(Op::compare_ordering(number::partial_cmp(l, r)));
+					data.push(Op::compare_ordering(partial_cmp(l, r)));
 				}
 				_ => data.push_undefined(),
 			}

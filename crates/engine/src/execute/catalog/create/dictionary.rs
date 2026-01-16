@@ -2,11 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{CatalogStore, store::dictionary::create::DictionaryToCreate};
-use reifydb_core::{interface::CatalogTrackDictionaryChangeOperations, value::column::Columns};
+use reifydb_core::{
+	interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::column::columns::Columns,
+};
 use reifydb_rql::plan::physical::CreateDictionaryNode;
-use reifydb_type::Value;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_dictionary(
@@ -45,11 +48,14 @@ impl Executor {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::Params;
 	use reifydb_rql::plan::physical::PhysicalPlan;
-	use reifydb_type::{Fragment, Type, Value};
+	use reifydb_type::{
+		fragment::Fragment,
+		params::Params,
+		value::{Value, r#type::Type},
+	};
 
 	use crate::{
 		execute::{Executor, catalog::create::dictionary::CreateDictionaryNode},

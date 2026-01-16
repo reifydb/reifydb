@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use reifydb_core::interface::{FlowEdgeId, FlowNodeId};
+use reifydb_core::interface::catalog::flow::{FlowEdgeId, FlowNodeId};
 
 use super::node::FlowEdge;
 
@@ -254,7 +254,7 @@ impl<NodeData> Default for DirectedGraph<NodeData> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

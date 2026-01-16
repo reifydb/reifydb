@@ -3,8 +3,8 @@
 
 //! Literal value compilation.
 
-use reifydb_core::value::column::{Column, ColumnData};
-use reifydb_type::Fragment;
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_type::fragment::Fragment;
 
 use crate::expression::types::CompiledExpr;
 

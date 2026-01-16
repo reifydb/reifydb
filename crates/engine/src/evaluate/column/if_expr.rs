@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::IfExpression;
-use reifydb_type::{Fragment, Type, Value};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 
 use super::StandardColumnEvaluator;
 use crate::evaluate::ColumnEvaluationContext;

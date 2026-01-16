@@ -2,15 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	Row,
+	row::Row,
 	value::{
-		column::Columns,
-		encoded::{EncodedKey, EncodedValuesLayout},
+		column::columns::Columns,
+		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	},
 };
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::value::{Value, row_number::RowNumber};
 
-use crate::{FlowChange, FlowDiff, testing::TestStateStore};
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	testing::state::TestStateStore,
+};
 
 /// Assertions for FlowChange outputs
 pub struct FlowChangeAssertion<'a> {
@@ -337,13 +340,15 @@ impl Assertable for TestStateStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 	use crate::testing::{
 		builders::{TestFlowChangeBuilder, TestRowBuilder},
 		helpers::encode_key,
+		state::TestStateStore,
 	};
 
 	#[test]

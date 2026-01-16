@@ -5,7 +5,7 @@
 //!
 //! These types define the JSON message format for WebSocket client-server communication.
 
-use reifydb_type::Params;
+use reifydb_type::params::Params;
 use serde::{Deserialize, Serialize};
 
 /// A WebSocket request message.

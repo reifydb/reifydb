@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_type::{Error, Uuid7, return_internal_error};
+use reifydb_type::{error::Error, return_internal_error, value::uuid::Uuid7};
 
 pub mod change;
 pub mod delta;
@@ -17,14 +17,6 @@ pub mod interceptor;
 pub mod multi;
 pub mod single;
 pub mod standard;
-
-pub use interceptor::WithInterceptors;
-pub use reifydb_store_multi::MultiStore;
-pub use reifydb_store_single::SingleStore;
-pub use reifydb_type::Result;
-pub use standard::{
-	IntoStandardTransaction, StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
-};
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness

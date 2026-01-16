@@ -4,11 +4,11 @@
 //! Diagnostic conversion for lexer errors.
 
 use reifydb_type::{
-	Fragment,
-	diagnostic::{Diagnostic, IntoDiagnostic},
+	error::diagnostic::{Diagnostic, IntoDiagnostic},
+	fragment::Fragment,
 };
 
-use crate::token::LexError;
+use crate::token::error::LexError;
 
 impl IntoDiagnostic for LexError {
 	fn into_diagnostic(self) -> Diagnostic {

@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::{
+		flow::{FlowDef, FlowStatus},
+		id::NamespaceId,
+	},
+	key::{Key, flow::FlowKey},
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::flow::layout::flow};
 
@@ -42,8 +48,8 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::FlowStatus;
+pub mod tests {
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

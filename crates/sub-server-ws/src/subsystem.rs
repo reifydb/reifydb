@@ -17,13 +17,15 @@ use std::{
 };
 
 use reifydb_core::{
-	diagnostic::subsystem::{address_unavailable, bind_failed},
-	error,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
+	runtime::SharedRuntime,
 };
-use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_core::SharedRuntime;
-use reifydb_sub_server::AppState;
+use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_sub_server::state::AppState;
+use reifydb_type::{
+	error,
+	error::diagnostic::subsystem::{address_unavailable, bind_failed},
+};
 use tokio::{
 	net::TcpListener,
 	select,
@@ -32,7 +34,10 @@ use tokio::{
 };
 use tracing::info;
 
-use crate::{handler::handle_connection, subscription::{SubscriptionPoller, SubscriptionRegistry}};
+use crate::{
+	handler::handle_connection,
+	subscription::{poller::SubscriptionPoller, registry::SubscriptionRegistry},
+};
 
 /// WebSocket server subsystem.
 ///
@@ -154,7 +159,7 @@ impl Subsystem for WsSubsystem {
 		"WebSocket"
 	}
 
-	fn start(&mut self) -> reifydb_core::Result<()> {
+	fn start(&mut self) -> reifydb_type::Result<()> {
 		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
@@ -268,7 +273,7 @@ impl Subsystem for WsSubsystem {
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> reifydb_core::Result<()> {
+	fn shutdown(&mut self) -> reifydb_type::Result<()> {
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
 		}

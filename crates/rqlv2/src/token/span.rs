@@ -98,7 +98,7 @@ impl<T> core::ops::Deref for Spanned<T> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

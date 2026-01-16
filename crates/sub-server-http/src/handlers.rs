@@ -15,10 +15,12 @@ use axum::{
 	response::IntoResponse,
 };
 use reifydb_sub_server::{
-	AppState, ResponseFrame, convert_frames, execute_command, execute_query, extract_identity_from_api_key,
-	extract_identity_from_auth_header,
+	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
+	execute::{execute_command, execute_query},
+	response::{ResponseFrame, convert_frames},
+	state::AppState,
 };
-use reifydb_type::Params;
+use reifydb_type::params::Params;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -170,29 +172,27 @@ pub async fn handle_command(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. X-Api-Key header
-fn extract_identity(headers: &HeaderMap) -> Result<reifydb_core::interface::Identity, AppError> {
+fn extract_identity(headers: &HeaderMap) -> Result<reifydb_core::interface::auth::Identity, AppError> {
 	// Try Authorization header first
 	if let Some(auth_header) = headers.get("authorization") {
-		let auth_str = auth_header
-			.to_str()
-			.map_err(|_| AppError::Auth(reifydb_sub_server::AuthError::InvalidHeader))?;
+		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
 		return extract_identity_from_auth_header(auth_str).map_err(AppError::Auth);
 	}
 
 	// Try X-Api-Key header
 	if let Some(api_key) = headers.get("x-api-key") {
-		let key = api_key.to_str().map_err(|_| AppError::Auth(reifydb_sub_server::AuthError::InvalidHeader))?;
+		let key = api_key.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
 		return extract_identity_from_api_key(key).map_err(AppError::Auth);
 	}
 
 	// No credentials provided
-	Err(AppError::Auth(reifydb_sub_server::AuthError::MissingCredentials))
+	Err(AppError::Auth(AuthError::MissingCredentials))
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

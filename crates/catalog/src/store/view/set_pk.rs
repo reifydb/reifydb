@@ -2,10 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{PrimaryKeyId, ViewId, ViewKey},
-	return_internal_error,
+	interface::catalog::id::{PrimaryKeyId, ViewId},
+	key::view::ViewKey,
 };
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::return_internal_error;
 
 use crate::{CatalogStore, store::view::layout::view};
 
@@ -35,14 +36,14 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{PrimaryKeyId, ViewId};
+pub mod tests {
+	use reifydb_core::interface::catalog::id::{PrimaryKeyId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
-		store::view::{ViewColumnToCreate, ViewToCreate},
+		store::view::create::{ViewColumnToCreate, ViewToCreate},
 		test_utils::ensure_test_namespace,
 	};
 

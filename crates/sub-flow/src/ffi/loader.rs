@@ -11,13 +11,19 @@ use std::{
 
 use libloading::{Library, Symbol};
 use reifydb_abi::{
-	BufferFFI, CURRENT_API, OPERATOR_MAGIC, OperatorColumnDefsFFI, OperatorCreateFnFFI, OperatorDescriptorFFI,
-	OperatorMagicFnFFI,
+	constants::{CURRENT_API, OPERATOR_MAGIC},
+	data::buffer::BufferFFI,
+	operator::{
+		column::OperatorColumnDefsFFI,
+		descriptor::OperatorDescriptorFFI,
+		types::{OperatorCreateFnFFI, OperatorMagicFnFFI},
+	},
 };
-use reifydb_core::interface::FlowNodeId;
-use reifydb_sdk::{FFIError, Result as FFIResult};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_sdk::error::{FFIError, Result as FFIResult};
+use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 
-use crate::operator::FFIOperator;
+use crate::operator::ffi::FFIOperator;
 
 /// Extract a UTF-8 string from a BufferFFI
 ///
@@ -313,7 +319,7 @@ pub struct LoadedOperatorInfo {
 #[derive(Debug, Clone)]
 pub struct ColumnDefInfo {
 	pub name: String,
-	pub field_type: reifydb_type::TypeConstraint,
+	pub field_type: TypeConstraint,
 	pub description: String,
 }
 
@@ -322,8 +328,6 @@ pub struct ColumnDefInfo {
 /// # Safety
 /// The column_defs must have valid columns pointer for column_count elements
 unsafe fn extract_column_defs(column_defs: &OperatorColumnDefsFFI) -> Vec<ColumnDefInfo> {
-	use reifydb_type::{FFITypeConstraint, TypeConstraint};
-
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();
 	}

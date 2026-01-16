@@ -4,31 +4,42 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-	Catalog, CatalogStore, MaterializedCatalog,
+	CatalogStore,
+	catalog::Catalog,
+	materialized::MaterializedCatalog,
 	store::{
-		namespace::NamespaceToCreate,
-		table::{TableColumnToCreate, TableToCreate},
+		namespace::create::NamespaceToCreate,
+		table::create::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_cdc::{CdcEventListener, CdcStore, CdcWorker};
-use reifydb_core::{
-	SharedRuntime, SharedRuntimeConfig,
-	event::{CdcStatsRecordedEvent, EventBus, StorageStatsRecordedEvent, transaction::PostCommitEvent},
-	ioc::IocContainer,
+use reifydb_cdc::{
+	produce::{listener::CdcEventListener, worker::CdcWorker},
+	storage::CdcStore,
 };
-use reifydb_metric::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
-use reifydb_rqlv2::Compiler;
+#[cfg(debug_assertions)]
+use reifydb_core::util::clock::mock_time_set;
+use reifydb_core::{
+	event::{
+		EventBus,
+		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		transaction::PostCommitEvent,
+	},
+	runtime::{SharedRuntime, SharedRuntimeConfig},
+	util::ioc::IocContainer,
+};
+use reifydb_metric::worker::{CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
+use reifydb_rqlv2::compiler::Compiler;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
-
-pub use reifydb_transaction::multi::TransactionMulti;
 use reifydb_transaction::{
-	interceptor::{Interceptors, StandardInterceptorFactory},
-	single::{TransactionSingle, TransactionSvl},
+	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
+	multi::transaction::TransactionMulti,
+	single::{TransactionSingle, svl::TransactionSvl},
+	standard::command::StandardCommandTransaction,
 };
-use reifydb_type::{Type, TypeConstraint};
+use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use crate::{StandardCommandTransaction, StandardEngine};
+use crate::engine::StandardEngine;
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let multi_store = MultiStore::testing_memory();
@@ -96,7 +107,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 /// Create a test StandardEngine with all required dependencies registered.
 pub fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
-	reifydb_core::util::mock_time_set(1000);
+	mock_time_set(1000);
 
 	let eventbus = EventBus::new();
 	let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());

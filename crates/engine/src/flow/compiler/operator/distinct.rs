@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Result,
-	interface::{ColumnPrimitive, FlowNodeId, ResolvedColumn, ResolvedPrimitive, identifier::ColumnIdentifier},
+use reifydb_core::interface::{
+	catalog::flow::FlowNodeId,
+	identifier::{ColumnIdentifier, ColumnPrimitive},
+	resolved::{ResolvedColumn, ResolvedPrimitive},
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
-	flow::{FlowNodeType::Distinct, conversion::to_owned_physical_plan},
+	flow::{conversion::to_owned_physical_plan, node::FlowNodeType::Distinct},
 	plan::physical::{DistinctNode, PhysicalPlan},
 };
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{Result, fragment::Fragment};
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct DistinctCompiler {
 	pub input: Box<PhysicalPlan>,

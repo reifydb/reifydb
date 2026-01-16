@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, RingBufferDef, RingBufferId, RingBufferKey,
-};
-use reifydb_transaction::IntoStandardTransaction;
-
-use crate::{
-	MaterializedCatalog,
-	store::ringbuffer::layout::{
-		ringbuffer,
-		ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+use reifydb_core::{
+	interface::{
+		catalog::{
+			id::{NamespaceId, PrimaryKeyId, RingBufferId},
+			key::PrimaryKeyDef,
+			ringbuffer::RingBufferDef,
+		},
+		store::MultiVersionValues,
 	},
+	key::ringbuffer::RingBufferKey,
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
+
+use super::MaterializedCatalog;
+use crate::store::ringbuffer::layout::{
+	ringbuffer,
+	ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
 
 pub(crate) fn load_ringbuffers(

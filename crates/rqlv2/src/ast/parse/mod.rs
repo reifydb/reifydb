@@ -5,35 +5,42 @@
 //!
 //! This module implements a Pratt parser that produces bump-allocated AST nodes.
 
-mod aggregate;
-mod apply;
-mod ddl;
-mod distinct;
-mod dml;
-mod error;
-mod extend;
-mod filter;
-mod from;
-mod join;
-mod map;
-mod merge;
-mod namespace;
-mod pratt;
-mod primary;
-mod sort;
-mod stmt;
-mod take;
-mod window;
+pub mod aggregate;
+pub mod apply;
+pub mod ddl;
+pub mod distinct;
+pub mod dml;
+pub mod error;
+pub mod extend;
+pub mod filter;
+pub mod from;
+pub mod join;
+pub mod map;
+pub mod merge;
+pub mod namespace;
+pub mod pratt;
+pub mod primary;
+pub mod sort;
+pub mod stmt;
+pub mod take;
+pub mod window;
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-pub use error::{ParseError, ParseErrorKind};
-pub use pratt::Precedence;
+use error::{ParseError, ParseErrorKind};
+use pratt::Precedence;
 
 use super::{Expr, Program, Statement};
 use crate::{
-	ast::expr::BinaryOp,
+	ast::{expr::operator::BinaryOp, stmt::binding::AssignStmt},
 	error::RqlError,
-	token::{EOF_TOKEN, Keyword, Operator, Punctuation, Span, Token, TokenKind},
+	token::{
+		EOF_TOKEN,
+		keyword::Keyword,
+		operator::Operator,
+		punctuation::Punctuation,
+		span::Span,
+		token::{Token, TokenKind},
+	},
 };
 
 /// Parse result.
@@ -55,7 +62,7 @@ pub struct ParseResult<'bump> {
 /// A `Program` AST node, or an `RqlError` if parsing fails.
 pub fn parse<'bump>(
 	bump: &'bump Bump,
-	tokens: &'bump [crate::token::Token],
+	tokens: &'bump [crate::token::token::Token],
 	source: &str,
 ) -> Result<Program<'bump>, RqlError> {
 	let parse_result = Parser::new(bump, tokens, source).parse();
@@ -393,7 +400,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 			if let Expr::Binary(bin) = first {
 				if bin.op == BinaryOp::Assign {
 					if let Expr::Variable(var) = bin.left {
-						return Ok(Statement::Assign(super::stmt::AssignStmt::new(
+						return Ok(Statement::Assign(AssignStmt::new(
 							var.name, bin.right, bin.span,
 						)));
 					}
@@ -415,12 +422,14 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{Expr, Statement},
-		ast::expr::{BinaryOp, FromExpr, Literal},
+		ast::{
+			Expr, Statement,
+			expr::{literal::Literal, operator::BinaryOp, query::FromExpr},
+		},
 		token::tokenize,
 	};
 
@@ -475,14 +484,12 @@ mod tests {
 				}
 				// Verify FILTER has predicate with "age"
 				match &p.stages[1] {
-					Expr::Filter(f) => {
-						match f.predicate {
-							Expr::Binary(b) => {
-								assert_eq!(b.op, BinaryOp::Gt);
-							}
-							_ => panic!("Expected Binary predicate"),
+					Expr::Filter(f) => match f.predicate {
+						Expr::Binary(b) => {
+							assert_eq!(b.op, BinaryOp::Gt);
 						}
-					}
+						_ => panic!("Expected Binary predicate"),
+					},
 					_ => panic!("Expected FILTER"),
 				}
 				// Verify SORT
@@ -494,14 +501,15 @@ mod tests {
 				}
 				// Verify TAKE
 				match &p.stages[3] {
-					Expr::Take(take) => {
-						match take.count {
-							Expr::Literal(Literal::Integer { value, .. }) => {
-								assert_eq!(*value, "10");
-							}
-							_ => panic!("Expected integer literal"),
+					Expr::Take(take) => match take.count {
+						Expr::Literal(Literal::Integer {
+							value,
+							..
+						}) => {
+							assert_eq!(*value, "10");
 						}
-					}
+						_ => panic!("Expected integer literal"),
+					},
 					_ => panic!("Expected TAKE"),
 				}
 			}
@@ -558,22 +566,18 @@ mod tests {
 
 		// Second statement is an expression/pipeline with FROM
 		match program.statements[1] {
-			Statement::Expression(e) => {
-				match e.expr {
-					Expr::From(FromExpr::Source(s)) => {
-						assert_eq!(s.name, "users");
-					}
-					_ => panic!("Expected FROM Source"),
+			Statement::Expression(e) => match e.expr {
+				Expr::From(FromExpr::Source(s)) => {
+					assert_eq!(s.name, "users");
 				}
-			}
-			Statement::Pipeline(p) => {
-				match &p.stages[0] {
-					Expr::From(FromExpr::Source(s)) => {
-						assert_eq!(s.name, "users");
-					}
-					_ => panic!("Expected FROM Source"),
+				_ => panic!("Expected FROM Source"),
+			},
+			Statement::Pipeline(p) => match &p.stages[0] {
+				Expr::From(FromExpr::Source(s)) => {
+					assert_eq!(s.name, "users");
 				}
-			}
+				_ => panic!("Expected FROM Source"),
+			},
 			_ => panic!("Expected Expression or Pipeline statement"),
 		}
 	}
@@ -599,14 +603,20 @@ mod tests {
 						}
 						// Verify lower bound
 						match b.lower {
-							Expr::Literal(Literal::Integer { value, .. }) => {
+							Expr::Literal(Literal::Integer {
+								value,
+								..
+							}) => {
 								assert_eq!(*value, "1");
 							}
 							_ => panic!("Expected integer literal"),
 						}
 						// Verify upper bound
 						match b.upper {
-							Expr::Literal(Literal::Integer { value, .. }) => {
+							Expr::Literal(Literal::Integer {
+								value,
+								..
+							}) => {
 								assert_eq!(*value, "10");
 							}
 							_ => panic!("Expected integer literal"),
@@ -689,7 +699,10 @@ mod tests {
 						// Due to precedence, this is (1 + (2 * 3))
 						assert_eq!(b.op, BinaryOp::Add);
 						match b.left {
-							Expr::Literal(Literal::Integer { value, .. }) => {
+							Expr::Literal(Literal::Integer {
+								value,
+								..
+							}) => {
 								assert_eq!(*value, "1");
 							}
 							_ => panic!("Expected integer literal"),
@@ -818,14 +831,12 @@ mod tests {
 
 		assert_eq!(program.statements.len(), 1);
 		match program.statements[0] {
-			Statement::Expression(e) => {
-				match e.expr {
-					Expr::Variable(v) => {
-						assert_eq!(v.name, "my_var");
-					}
-					_ => panic!("Expected Variable expression"),
+			Statement::Expression(e) => match e.expr {
+				Expr::Variable(v) => {
+					assert_eq!(v.name, "my_var");
 				}
-			}
+				_ => panic!("Expected Variable expression"),
+			},
 			_ => panic!("Expected Expression statement"),
 		}
 	}
@@ -850,26 +861,27 @@ mod tests {
 				}
 				// Verify FILTER
 				match &p.stages[1] {
-					Expr::Filter(f) => {
-						match f.predicate {
-							Expr::Binary(b) => {
-								assert_eq!(b.op, BinaryOp::Gt);
-								match b.left {
-									Expr::Identifier(id) => {
-										assert_eq!(id.name, "total");
-									}
-									_ => panic!("Expected identifier"),
+					Expr::Filter(f) => match f.predicate {
+						Expr::Binary(b) => {
+							assert_eq!(b.op, BinaryOp::Gt);
+							match b.left {
+								Expr::Identifier(id) => {
+									assert_eq!(id.name, "total");
 								}
-								match b.right {
-									Expr::Literal(Literal::Integer { value, .. }) => {
-										assert_eq!(*value, "100");
-									}
-									_ => panic!("Expected integer literal"),
-								}
+								_ => panic!("Expected identifier"),
 							}
-							_ => panic!("Expected Binary expression"),
+							match b.right {
+								Expr::Literal(Literal::Integer {
+									value,
+									..
+								}) => {
+									assert_eq!(*value, "100");
+								}
+								_ => panic!("Expected integer literal"),
+							}
 						}
-					}
+						_ => panic!("Expected Binary expression"),
+					},
 					_ => panic!("Expected FILTER"),
 				}
 				// Verify MAP

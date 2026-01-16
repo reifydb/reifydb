@@ -6,7 +6,11 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::precision::Precision;
-use crate::{Error, Fragment, error::diagnostic::number::decimal_scale_exceeds_precision, return_error};
+use crate::{
+	error::{Error, diagnostic::number::decimal_scale_exceeds_precision},
+	fragment::Fragment,
+	return_error,
+};
 
 /// Scale for a decimal type (decimal places)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

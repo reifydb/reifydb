@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, TableDef, TableId};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalTableChanges};
-use reifydb_type::{Fragment, diagnostic::catalog::table_not_found, error, internal};
+use reifydb_core::interface::catalog::{
+	id::{NamespaceId, TableId},
+	table::TableDef,
+};
+use reifydb_transaction::{
+	change::TransactionalTableChanges,
+	standard::{IntoStandardTransaction, StandardTransaction},
+};
+use reifydb_type::{error, error::diagnostic::catalog::table_not_found, fragment::Fragment, internal};
 use tracing::{instrument, warn};
 
-use crate::{Catalog, CatalogStore};
+use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]

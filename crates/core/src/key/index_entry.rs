@@ -3,15 +3,16 @@
 
 use std::collections::Bound;
 
+use reifydb_type::util::cowvec::CowVec;
+
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::{IndexId, PrimitiveId},
-	util::{
-		CowVec,
-		encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::{id::IndexId, primitive::PrimitiveId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::{
+		encoded::key::{EncodedKey, EncodedKeyRange},
+		index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
 	},
-	value::index::{EncodedIndexKey, EncodedIndexKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -280,11 +281,11 @@ impl IndexEntryKey {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::{SortDirection, value::index::EncodedIndexLayout};
+	use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
 
 	#[test]
 	fn test_encode_decode() {

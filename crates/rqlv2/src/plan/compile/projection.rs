@@ -5,8 +5,8 @@
 
 use super::core::{Planner, Result};
 use crate::{
-	ast::{Expr, expr::BinaryOp},
-	plan::{OutputSchema, node::query::Projection},
+	ast::expr::{Expr, operator::BinaryOp},
+	plan::{node::query::Projection, types::OutputSchema},
 };
 
 impl<'bump, 'cat> Planner<'bump, 'cat> {

@@ -2,16 +2,32 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::{
-	InterceptorChain, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
-	NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
-	PreCommitInterceptor, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
-	RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor, RingBufferPostDeleteInterceptor,
-	RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-	RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor, TableDefPostCreateInterceptor,
-	TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
-	TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-	TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
-	ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+	chain::InterceptorChain,
+	namespace_def::{
+		NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreUpdateInterceptor,
+	},
+	ringbuffer::{
+		RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor,
+		RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+	},
+	ringbuffer_def::{
+		RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
+		RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+	},
+	table::{
+		TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
+		TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+	},
+	table_def::{
+		TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+		TableDefPreUpdateInterceptor,
+	},
+	transaction::{PostCommitInterceptor, PreCommitInterceptor},
+	view_def::{
+		ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+		ViewDefPreUpdateInterceptor,
+	},
 };
 
 /// Type alias for interceptor chains

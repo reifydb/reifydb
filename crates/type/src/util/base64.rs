@@ -176,14 +176,16 @@ impl std::error::Error for DecodeError {}
 // Convenience module to match the original API
 pub mod engine {
 	pub mod general_purpose {
-		pub const STANDARD: super::super::Engine = super::super::Engine::STANDARD;
-		pub const STANDARD_NO_PAD: super::super::Engine = super::super::Engine::STANDARD_NO_PAD;
-		pub const URL_SAFE_NO_PAD: super::super::Engine = super::super::Engine::URL_SAFE_NO_PAD;
+		use crate::util::base64::Engine;
+
+		pub const STANDARD: Engine = Engine::STANDARD;
+		pub const STANDARD_NO_PAD: Engine = Engine::STANDARD_NO_PAD;
+		pub const URL_SAFE_NO_PAD: Engine = Engine::URL_SAFE_NO_PAD;
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

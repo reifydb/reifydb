@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{CommitVersion, JoinType, value::column::Columns};
+use reifydb_core::{
+	common::{CommitVersion, JoinType},
+	value::column::columns::Columns,
+};
 use reifydb_hash::Hash128;
-use reifydb_sdk::FlowDiff;
+use reifydb_sdk::flow::FlowDiff;
 
 use crate::{
-	operator::join::{JoinSide, JoinState, operator::JoinOperator},
+	operator::join::{
+		operator::JoinOperator,
+		state::{JoinSide, JoinState},
+	},
 	transaction::FlowTransaction,
 };
 
 pub(crate) mod hash;
-mod hash_inner;
-mod hash_left;
+pub mod hash_inner;
+pub mod hash_left;
 
 use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
 

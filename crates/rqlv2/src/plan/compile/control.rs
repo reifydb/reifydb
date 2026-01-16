@@ -8,16 +8,22 @@ use bumpalo::collections::Vec as BumpVec;
 use super::core::{Planner, Result};
 use crate::{
 	ast::{
-		Expr,
-		expr::{ForExpr, ForIterable, IfExpr, LoopExpr},
-		stmt::{AssignStmt, DefStmt, LetStmt, LetValue, ReturnStmt},
+		expr::{
+			Expr,
+			special::{ForExpr, ForIterable, IfExpr, LoopExpr},
+		},
+		stmt::{
+			binding::{AssignStmt, DefStmt, LetStmt, LetValue},
+			control::ReturnStmt,
+		},
 	},
 	plan::{
-		Plan, Variable,
+		Plan,
 		node::control::{
-			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode,
-			ElseIfBranch as PlanElseIfBranch, ForIterableValue, ForNode, LoopNode, ReturnNode,
+			AssignNode, ConditionalNode, DeclareNode, DeclareValue, DefineScriptFunctionNode, ElseIfBranch,
+			ForIterableValue, ForNode, LoopNode, ReturnNode,
 		},
+		types::Variable,
 	},
 };
 
@@ -87,7 +93,7 @@ impl<'bump, 'cat> Planner<'bump, 'cat> {
 			self.push_scope();
 			let body = self.compile_statement_body(else_if.body)?;
 			self.pop_scope();
-			else_ifs.push(PlanElseIfBranch {
+			else_ifs.push(ElseIfBranch {
 				condition: cond,
 				body,
 			});

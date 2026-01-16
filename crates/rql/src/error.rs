@@ -3,8 +3,13 @@
 
 use std::fmt;
 
-use reifydb_core::{Error, diagnostic::internal::internal, error};
-use reifydb_type::diagnostic::catalog::table_not_found;
+use reifydb_type::{
+	error,
+	error::{
+		Error,
+		diagnostic::{catalog::table_not_found, internal::internal},
+	},
+};
 
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
@@ -97,7 +102,7 @@ impl fmt::Display for SchemaNotFoundError {
 pub struct PrimitiveNotFoundError {
 	pub namespace: String,
 	pub name: String,
-	pub fragment: reifydb_type::Fragment,
+	pub fragment: reifydb_type::fragment::Fragment,
 }
 
 impl fmt::Display for PrimitiveNotFoundError {
@@ -116,7 +121,7 @@ impl PrimitiveNotFoundError {
 		namespace: String,
 		name: String,
 		_expected: &str,
-		fragment: reifydb_type::Fragment,
+		fragment: reifydb_type::fragment::Fragment,
 	) -> Self {
 		// Could extend this to include expected type in the error
 		Self {
@@ -171,12 +176,12 @@ impl fmt::Display for FunctionNotFoundError {
 }
 
 /// Check if a fragment represents an injected default namespace
-pub fn is_default_namespace(fragment: &reifydb_type::Fragment) -> bool {
-	matches!(fragment, reifydb_type::Fragment::Internal { .. })
+pub fn is_default_namespace(fragment: &reifydb_type::fragment::Fragment) -> bool {
+	matches!(fragment, reifydb_type::fragment::Fragment::Internal { .. })
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]
@@ -192,14 +197,14 @@ mod tests {
 		let err = PrimitiveNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::Fragment::None,
+			fragment: reifydb_type::fragment::Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
 		let err = PrimitiveNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
-			fragment: reifydb_type::Fragment::None,
+			fragment: reifydb_type::fragment::Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'myschema.users' does not exist");
 	}

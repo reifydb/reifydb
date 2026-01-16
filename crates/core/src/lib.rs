@@ -3,30 +3,19 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-mod common;
+use crate::interface::version::{ComponentType, HasVersion, SystemVersion};
+
+pub mod common;
 pub mod delta;
 pub mod event;
 pub mod interface;
 pub mod key;
 pub mod retention;
+pub mod row;
 pub mod runtime;
-mod row;
-mod sort;
+pub mod sort;
 pub mod util;
 pub mod value;
-
-pub use common::*;
-pub use runtime::{ComputePool, SharedRuntime, SharedRuntimeConfig};
-use interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::{Error, Result, diagnostic, err, error, return_error, return_internal_error};
-pub use row::Row;
-pub use sort::{SortDirection, SortKey};
-pub use util::{BitVec, CowVec, Either, RetryError, WaitGroup, ioc, retry};
-pub use value::{
-	batch::{Batch, LazyBatch, LazyColumnMeta},
-	encoded::{EncodedKey, EncodedKeyBuilder, EncodedKeyRange, IntoEncodedKey},
-	frame::*,
-};
 
 pub struct CoreVersion;
 

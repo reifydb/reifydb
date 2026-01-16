@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{WindowSize, WindowType};
-use reifydb_type::{Error, Fragment, diagnostic::operation, return_error};
+use reifydb_core::common::{WindowSize, WindowType};
+use reifydb_type::{
+	error::{Error, diagnostic::operation},
+	fragment::Fragment,
+	return_error,
+};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, expression::Expression};
@@ -59,10 +63,10 @@ fn validate_tumbling_config(config: &WindowConfig) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
-	use reifydb_core::{WindowSize, WindowTimeMode, WindowType};
+	use reifydb_core::common::{WindowSize, WindowTimeMode, WindowType};
 
 	use super::*;
 
@@ -115,7 +119,7 @@ mod tests {
 		let config = WindowConfig {
 			window_type: Some(WindowType::Time(WindowTimeMode::Processing)),
 			size: Some(WindowSize::Duration(Duration::from_secs(60))),
-			slide: Some(reifydb_core::WindowSlide::Duration(Duration::from_secs(30))),
+			slide: Some(reifydb_core::common::WindowSlide::Duration(Duration::from_secs(30))),
 			timestamp_column: None,
 			min_events: None,
 			max_window_count: None,

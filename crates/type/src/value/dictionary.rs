@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use diagnostic::dictionary::dictionary_entry_id_capacity_exceeded;
 use serde::{Deserialize, Serialize};
 
-use super::Type;
-use crate::{diagnostic, error, internal_error};
+use super::r#type::Type;
+use crate::{error, error::diagnostic::dictionary::dictionary_entry_id_capacity_exceeded, internal_error};
 
 /// A dictionary entry ID that can be one of several unsigned integer sizes.
 /// The variant used depends on the dictionary's `id_type` configuration.
@@ -131,7 +130,7 @@ impl std::fmt::Display for DictionaryEntryId {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

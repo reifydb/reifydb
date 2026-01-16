@@ -2,14 +2,23 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::dictionary_already_exists,
-	interface::{DictionaryDef, DictionaryId, NamespaceId},
-	return_error,
+	interface::catalog::{
+		dictionary::DictionaryDef,
+		id::{DictionaryId, NamespaceId},
+	},
+	key::{
+		dictionary::{DictionaryKey, DictionarySequenceKey},
+		namespace_dictionary::NamespaceDictionaryKey,
+	},
+	value::encoded::encoded::EncodedValues,
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Fragment, Type};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::dictionary_already_exists, fragment::Fragment, return_error, util::cowvec::CowVec,
+	value::r#type::Type,
+};
 
-use crate::{CatalogStore, store::sequence::SystemSequence};
+use crate::{CatalogStore, store::sequence::system::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct DictionaryToCreate {
@@ -60,8 +69,6 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
 	) -> crate::Result<()> {
-		use reifydb_core::key::DictionaryKey;
-
 		use crate::store::dictionary::layout::dictionary;
 
 		let mut row = dictionary::LAYOUT.allocate();
@@ -82,8 +89,6 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		name: &str,
 	) -> crate::Result<()> {
-		use reifydb_core::key::NamespaceDictionaryKey;
-
 		use crate::store::dictionary::layout::dictionary_namespace;
 
 		let mut row = dictionary_namespace::LAYOUT.allocate();
@@ -99,8 +104,6 @@ impl CatalogStore {
 		txn: &mut StandardCommandTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<()> {
-		use reifydb_core::{key::DictionarySequenceKey, util::CowVec, value::encoded::EncodedValues};
-
 		// Initialize sequence counter to 0
 		// This ensures StorageTracker begins tracking the dictionary immediately
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
@@ -113,10 +116,9 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::NamespaceDictionaryKey;
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Type;
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 	use crate::{store::dictionary::layout::dictionary_namespace, test_utils::ensure_test_namespace};

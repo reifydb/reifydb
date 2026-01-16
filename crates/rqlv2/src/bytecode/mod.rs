@@ -18,15 +18,3 @@ pub mod explain;
 pub mod instruction;
 pub mod opcode;
 pub mod program;
-
-pub use compile::{CompileError, PlanCompiler};
-pub use display::{DisplayConfig, ProgramFormatter};
-pub use explain::explain_bytecode;
-pub use instruction::{BytecodeReader, BytecodeWriter};
-pub use opcode::{ObjectType, Opcode, OperatorKind};
-pub use program::{
-	AlterSequenceDef, AlterTableAction, AlterTableDef, ColumnDef, CompiledProgram, CompiledProgramBuilder,
-	Constant, CreateDictionaryDef, CreateIndexDef, CreateNamespaceDef, CreateRingBufferDef, CreateSequenceDef,
-	CreateTableDef, CreateViewDef, DdlDef, DmlTarget, DmlTargetType, DropDef, NullsOrder, SortDirection, SortKey,
-	SortSpec, SourceDef, SourceMap, SourceMapEntry, SubqueryDef,
-};

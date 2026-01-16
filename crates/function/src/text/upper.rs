@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{column::ColumnData, container::Utf8Container};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::container::utf8::Utf8Container;
 
 use crate::{ScalarFunction, ScalarFunctionContext};
 
@@ -14,7 +15,7 @@ impl TextUpper {
 }
 
 impl ScalarFunction for TextUpper {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -55,12 +56,12 @@ impl ScalarFunction for TextUpper {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::value::{
-		column::{Column, Columns},
-		container::Utf8Container,
+pub mod tests {
+	use reifydb_core::value::column::{Column, columns::Columns};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container},
 	};
-	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
 

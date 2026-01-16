@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{IdentityId, OrderedF32, OrderedF64, Type, Uuid4, Uuid7, Value};
+use reifydb_type::value::{
+	Value,
+	identity::IdentityId,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
+	r#type::Type,
+	uuid::{Uuid4, Uuid7},
+};
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_values(&self, row: &mut EncodedValues, values: &[Value]) {
@@ -189,10 +196,21 @@ pub fn encode_value(layout: &EncodedValuesLayout, row: &mut EncodedValues, idx: 
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
-	use reifydb_type::{Blob, Date, DateTime, Duration, OrderedF32, OrderedF64, Time, Type, Uuid4, Uuid7, Value};
+pub mod tests {
+	use reifydb_type::value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		time::Time,
+		r#type::Type,
+		uuid::{Uuid4, Uuid7},
+	};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {

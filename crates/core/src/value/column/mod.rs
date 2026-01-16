@@ -1,24 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Fragment, Type};
+use reifydb_type::{
+	fragment::Fragment,
+	util::bitvec::BitVec,
+	value::{
+		r#type::Type,
+		uuid::{Uuid4, Uuid7},
+	},
+};
 
-mod columns;
-mod compressed;
-mod data;
+use crate::value::column::data::ColumnData;
+
+pub mod columns;
+pub mod compressed;
+pub mod data;
 pub mod frame;
 pub mod headers;
 #[allow(dead_code, unused_variables)]
 pub mod pool;
 pub mod push;
-mod row;
-mod transform;
-mod view;
-
-pub use columns::Columns;
-pub use compressed::{CompressedColumn, CompressionType};
-pub use data::ColumnData;
-pub use view::group_by::{GroupByView, GroupKey};
+pub mod row;
+pub mod transform;
+pub mod view;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Column {
@@ -79,7 +83,7 @@ impl Column {
 	pub fn int1_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i8>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -97,7 +101,7 @@ impl Column {
 	pub fn int2_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i16>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -115,7 +119,7 @@ impl Column {
 	pub fn int4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i32>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -133,7 +137,7 @@ impl Column {
 	pub fn int8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i64>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -151,7 +155,7 @@ impl Column {
 	pub fn int16_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = i128>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -169,7 +173,7 @@ impl Column {
 	pub fn uint1_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u8>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -187,7 +191,7 @@ impl Column {
 	pub fn uint2_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u16>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -205,7 +209,7 @@ impl Column {
 	pub fn uint4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u32>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -223,7 +227,7 @@ impl Column {
 	pub fn uint8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u64>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -241,7 +245,7 @@ impl Column {
 	pub fn uint16_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = u128>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -259,7 +263,7 @@ impl Column {
 	pub fn float4_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f32>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -277,7 +281,7 @@ impl Column {
 	pub fn float8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = f64>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -295,7 +299,7 @@ impl Column {
 	pub fn bool_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = bool>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -313,7 +317,7 @@ impl Column {
 	pub fn utf8_with_bitvec(
 		name: impl Into<Fragment>,
 		data: impl IntoIterator<Item = String>,
-		bitvec: impl Into<crate::BitVec>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -321,7 +325,7 @@ impl Column {
 		}
 	}
 
-	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = reifydb_type::Uuid4>) -> Self {
+	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid4>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid4(data),
@@ -330,8 +334,8 @@ impl Column {
 
 	pub fn uuid4_with_bitvec(
 		name: impl Into<Fragment>,
-		data: impl IntoIterator<Item = reifydb_type::Uuid4>,
-		bitvec: impl Into<crate::BitVec>,
+		data: impl IntoIterator<Item = Uuid4>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),
@@ -339,7 +343,7 @@ impl Column {
 		}
 	}
 
-	pub fn uuid7(name: impl Into<Fragment>, data: impl IntoIterator<Item = reifydb_type::Uuid7>) -> Self {
+	pub fn uuid7(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid7>) -> Self {
 		Column {
 			name: name.into(),
 			data: ColumnData::uuid7(data),
@@ -348,8 +352,8 @@ impl Column {
 
 	pub fn uuid7_with_bitvec(
 		name: impl Into<Fragment>,
-		data: impl IntoIterator<Item = reifydb_type::Uuid7>,
-		bitvec: impl Into<crate::BitVec>,
+		data: impl IntoIterator<Item = Uuid7>,
+		bitvec: impl Into<BitVec>,
 	) -> Self {
 		Column {
 			name: name.into(),

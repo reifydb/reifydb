@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{Result, util::ioc::IocContainer};
-use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_transaction::interceptor::StandardInterceptorBuilder;
+use reifydb_core::util::ioc::IocContainer;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_transaction::interceptor::builder::StandardInterceptorBuilder;
+use reifydb_type::Result;
 
 use crate::builder::FlowBuilder;
 
@@ -61,6 +62,6 @@ impl SubsystemFactory for FlowSubsystemFactory {
 			FlowBuilder::new().build_config()
 		};
 
-		Ok(Box::new(FlowSubsystem::new(config, engine,  ioc)))
+		Ok(Box::new(FlowSubsystem::new(config, engine, ioc)))
 	}
 }

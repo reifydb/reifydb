@@ -3,8 +3,12 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use super::{Frame, extract::FrameError};
-use crate::{RowNumber, TryFromValue, TryFromValueCoerce, Value};
+use super::{extract::FrameError, frame::Frame};
+use crate::value::{
+	Value,
+	row_number::RowNumber,
+	try_from::{TryFromValue, TryFromValueCoerce},
+};
 
 /// Index for O(1) column lookup by name.
 ///
@@ -191,13 +195,13 @@ impl Frame {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::{
-		BitVec, Value,
+		util::bitvec::BitVec,
 		value::{
-			container::{NumberContainer, Utf8Container},
-			frame::{FrameColumn, FrameColumnData},
+			container::{number::NumberContainer, utf8::Utf8Container},
+			frame::{column::FrameColumn, data::FrameColumnData},
 		},
 	};
 

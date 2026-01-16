@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod delete;
-mod insert;
-mod update;
+pub mod delete;
+pub mod insert;
+pub mod update;

@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Fragment, Type, diagnostic::temporal, parse_date, parse_datetime, parse_duration, parse_time, return_error,
+	error::diagnostic::temporal,
+	fragment::Fragment,
+	return_error,
+	value::{
+		temporal::parse::{
+			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
+		},
+		r#type::Type,
+	},
 };
 
 pub struct TemporalParser;
@@ -61,7 +69,7 @@ impl TemporalParser {
 		target: Type,
 		row_count: usize,
 	) -> crate::Result<ColumnData> {
-		use reifydb_type::diagnostic::cast;
+		use reifydb_type::error::diagnostic::cast;
 		match target {
 			Type::Date => {
 				let date = match parse_date(fragment.clone()) {

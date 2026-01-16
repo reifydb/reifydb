@@ -50,16 +50,10 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-mod assets;
-mod config;
-mod factory;
-mod handlers;
-mod routes;
-mod state;
-mod subsystem;
-
-pub use config::AdminConfig;
-pub use factory::AdminSubsystemFactory;
-pub use routes::router;
-pub use state::AdminState;
-pub use subsystem::AdminSubsystem;
+pub mod assets;
+pub mod config;
+pub mod factory;
+pub mod handlers;
+pub mod routes;
+pub mod state;
+pub mod subsystem;

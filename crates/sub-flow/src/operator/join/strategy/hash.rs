@@ -3,15 +3,19 @@
 
 use std::rc::Rc;
 
-use reifydb_core::value::column::Columns;
+use reifydb_core::value::column::columns::Columns;
 use reifydb_hash::Hash128;
-use reifydb_sdk::FlowDiff;
-use reifydb_type::RowNumber;
+use reifydb_sdk::flow::FlowDiff;
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
 	operator::{
 		Operators,
-		join::{JoinSide, JoinSideEntry, Store, operator::JoinOperator},
+		join::{
+			operator::JoinOperator,
+			state::{JoinSide, JoinSideEntry},
+			store::Store,
+		},
 	},
 	transaction::FlowTransaction,
 };

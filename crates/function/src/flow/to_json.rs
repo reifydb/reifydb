@@ -3,8 +3,12 @@
 
 use std::time::Duration;
 
-use reifydb_core::{JoinType, SortKey, WindowSize, WindowSlide, WindowType, value::column::ColumnData};
-use reifydb_rql::{expression::json::JsonExpression, flow::FlowNodeType};
+use reifydb_core::{
+	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	sort::SortKey,
+	value::column::data::ColumnData,
+};
+use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::internal;
 use serde::Serialize;
 
@@ -204,7 +208,7 @@ impl FlowNodeToJson {
 }
 
 impl ScalarFunction for FlowNodeToJson {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -229,7 +233,7 @@ impl ScalarFunction for FlowNodeToJson {
 						// Deserialize from postcard
 						let node_type: FlowNodeType =
 							postcard::from_bytes(bytes).map_err(|e| {
-								reifydb_core::Error(internal!(
+								reifydb_type::error::Error(internal!(
 									"Failed to deserialize FlowNodeType: {}",
 									e
 								))
@@ -241,7 +245,7 @@ impl ScalarFunction for FlowNodeToJson {
 						// Serialize to JSON (untagged - extract inner value only)
 						let json_value =
 							serde_json::to_value(&json_node_type).map_err(|e| {
-								reifydb_core::Error(internal!(
+								reifydb_type::error::Error(internal!(
 									"Failed to serialize FlowNodeType to JSON: {}",
 									e
 								))
@@ -263,7 +267,7 @@ impl ScalarFunction for FlowNodeToJson {
 						};
 
 						let json = serde_json::to_string(&inner_value).map_err(|e| {
-							reifydb_core::Error(internal!(
+							reifydb_type::error::Error(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
 								e
 							))
@@ -277,33 +281,37 @@ impl ScalarFunction for FlowNodeToJson {
 
 				Ok(ColumnData::utf8_with_bitvec(result_data, container.bitvec().clone()))
 			}
-			_ => Err(reifydb_core::Error(internal!("flow_node::to_json only supports Blob input"))),
+			_ => Err(reifydb_type::error::Error(internal!("flow_node::to_json only supports Blob input"))),
 		}
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::{
-		JoinType, SortDirection, SortKey, WindowSize, WindowType,
-		interface::{ColumnIdentifier, ColumnPrimitive, FlowId, TableId, ViewId},
-		value::{
-			column::{Column, Columns},
-			container::BlobContainer,
+		common::{JoinType, WindowSize, WindowType},
+		interface::{
+			catalog::{
+				flow::FlowId,
+				id::{TableId, ViewId},
+			},
+			identifier::{ColumnIdentifier, ColumnPrimitive},
 		},
+		sort::{SortDirection, SortKey},
+		value::column::{Column, columns::Columns, data::ColumnData},
 	};
 	use reifydb_rql::{
 		expression::{
 			AliasExpression, ColumnExpression, ConstantExpression, Expression, GreaterThanExpression,
 			IdentExpression,
 		},
-		flow::FlowNodeType,
+		flow::node::FlowNodeType,
 	};
 	use reifydb_type::{
-		Fragment,
-		value::{Blob, constraint::bytes::MaxBytes},
+		fragment::Fragment,
+		value::{blob::Blob, constraint::bytes::MaxBytes, container::blob::BlobContainer},
 	};
 
 	use super::*;

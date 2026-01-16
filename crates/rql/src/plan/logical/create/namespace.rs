@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstCreateNamespace,
+	ast::ast::AstCreateNamespace,
 	plan::logical::{Compiler, CreateNamespaceNode, LogicalPlan},
 };
 

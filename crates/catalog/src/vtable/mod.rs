@@ -4,11 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	SortKey,
-	interface::{Params, VTableDef, VTableId},
-	value::column::Columns,
+	interface::catalog::vtable::{VTableDef, VTableId},
+	sort::SortKey,
+	value::column::columns::Columns,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::params::Params;
 
 use crate::system::SystemCatalog;
 
@@ -19,14 +20,8 @@ pub struct Batch {
 }
 
 pub mod system;
-mod tables;
+pub mod tables;
 pub mod user;
-
-pub use tables::{UserVTableDataFunction, VTables};
-pub use user::{
-	UserVTable, UserVTableBuilder, UserVTableColumnDef, UserVTableEntry, UserVTableIterator,
-	UserVTablePushdownContext, UserVTableRegistry,
-};
 
 /// Context passed to virtual table queries
 ///

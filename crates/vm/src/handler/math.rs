@@ -3,13 +3,13 @@
 
 //! Integer arithmetic opcodes: IntAdd, IntSub, IntMul, IntDiv, IntLt, IntLe, IntGt, IntGe, IntEq, IntNe.
 
-use reifydb_type::Value;
-
-use crate::error::{Result, VmError};
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
+use reifydb_type::value::Value;
 
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// Helper to pop two integers from the stack.
 fn pop_two_ints(ctx: &mut HandlerContext) -> Result<(i64, i64)> {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{diagnostic::operation::extend_multiple_expressions_without_braces, return_error};
+use reifydb_type::{error::diagnostic::operation::extend_multiple_expressions_without_braces, return_error};
 
-use crate::ast::{AstExtend, parse::Parser, tokenize::Keyword};
+use crate::ast::{ast::AstExtend, parse::Parser, tokenize::keyword::Keyword};
 
 impl Parser {
 	pub(crate) fn parse_extend(&mut self) -> crate::Result<AstExtend> {
@@ -23,9 +23,9 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::ast::{InfixOperator, tokenize::tokenize};
+	use crate::ast::{ast::InfixOperator, tokenize::tokenize};
 
 	#[test]
 	fn test_extend_constant_number() {

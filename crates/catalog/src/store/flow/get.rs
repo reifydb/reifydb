@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Error,
-	diagnostic::catalog::flow_not_found,
-	interface::{FlowDef, FlowId, NamespaceId},
+use reifydb_core::interface::catalog::{
+	flow::{FlowDef, FlowId},
+	id::NamespaceId,
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, internal};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{
+	error::{Error, diagnostic::catalog::flow_not_found},
+	fragment::Fragment,
+	internal,
+};
 
 use crate::CatalogStore;
 
@@ -39,8 +42,8 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::FlowId;
+pub mod tests {
+	use reifydb_core::interface::catalog::flow::FlowId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

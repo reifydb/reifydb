@@ -3,9 +3,9 @@
 
 use std::ptr;
 
-use reifydb_type::{DateTime, Type};
+use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
@@ -46,10 +46,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{DateTime, Type};
+pub mod tests {
+	use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_datetime() {

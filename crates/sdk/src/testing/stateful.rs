@@ -3,11 +3,15 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{
-	CowVec,
-	value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout, IntoEncodedKey},
+use reifydb_core::value::encoded::{
+	encoded::EncodedValues,
+	key::{EncodedKey, IntoEncodedKey},
+	layout::EncodedValuesLayout,
 };
-use reifydb_type::{Type, Value};
+use reifydb_type::{
+	util::cowvec::CowVec,
+	value::{Value, r#type::Type},
+};
 
 /// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
@@ -280,11 +284,11 @@ impl WindowStatefulTestHelper {
 /// Common test scenarios for stateful operators
 pub mod scenarios {
 	use super::*;
-	use crate::testing::builders::TestFlowChangeBuilder;
+	use crate::{flow::FlowChange, testing::builders::TestFlowChangeBuilder};
 
 	/// Create a sequence of inserts for testing counters
-	pub fn counter_inserts(count: usize) -> Vec<crate::FlowChange> {
-		use reifydb_type::RowNumber;
+	pub fn counter_inserts(count: usize) -> Vec<FlowChange> {
+		use reifydb_type::value::row_number::RowNumber;
 		(0..count)
 			.map(|i| {
 				TestFlowChangeBuilder::new()
@@ -295,8 +299,8 @@ pub mod scenarios {
 	}
 
 	/// Create a sequence of keyed inserts for group-by testing
-	pub fn grouped_inserts(groups: &[(&str, i32)]) -> crate::FlowChange {
-		use reifydb_type::RowNumber;
+	pub fn grouped_inserts(groups: &[(&str, i32)]) -> FlowChange {
+		use reifydb_type::value::row_number::RowNumber;
 		let mut builder = TestFlowChangeBuilder::new();
 		for (i, (key, value)) in groups.iter().enumerate() {
 			builder = builder
@@ -306,8 +310,8 @@ pub mod scenarios {
 	}
 
 	/// Create a sequence of updates for testing state changes
-	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> crate::FlowChange {
-		use reifydb_type::RowNumber;
+	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> FlowChange {
+		use reifydb_type::value::row_number::RowNumber;
 		TestFlowChangeBuilder::new()
 			.update_row(
 				RowNumber(row_number as u64),
@@ -318,12 +322,8 @@ pub mod scenarios {
 	}
 
 	/// Create a windowed sequence of events
-	pub fn windowed_events(
-		window_size: i64,
-		events_per_window: usize,
-		windows: usize,
-	) -> Vec<(i64, crate::FlowChange)> {
-		use reifydb_type::RowNumber;
+	pub fn windowed_events(window_size: i64, events_per_window: usize, windows: usize) -> Vec<(i64, FlowChange)> {
+		use reifydb_type::value::row_number::RowNumber;
 		let mut result = Vec::new();
 
 		for window in 0..windows {
@@ -346,7 +346,7 @@ pub mod scenarios {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{scenarios::*, *};
 
 	#[test]

@@ -7,8 +7,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
-	ast::{Expr, expr::*},
-	token::Punctuation,
+	ast::{Expr, expr::query::ExtendExpr},
+	token::punctuation::Punctuation,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -37,23 +37,30 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::{literal::Literal, query::ExtendExpr},
+			parse::parse,
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: Statement<'_>) -> &Expr<'_> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_extend<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::ExtendExpr<'a> {
+	fn extract_extend<'a>(stmt: Statement<'a>) -> &'a ExtendExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Extend(e) => e,
@@ -66,14 +73,17 @@ mod tests {
 		let bump = Bump::new();
 		let source = "EXTEND { 1 }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let extend = extract_extend(stmt);
 
 		assert_eq!(extend.extensions.len(), 1);
 
 		match &extend.extensions[0] {
-			Expr::Literal(crate::ast::expr::Literal::Integer { value, .. }) => {
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => {
 				assert_eq!(*value, "1");
 			}
 			_ => panic!("Expected integer literal"),
@@ -85,7 +95,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "EXTEND { total: price * quantity }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let extend = extract_extend(stmt);
 
@@ -97,7 +107,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "EXTEND { total: price * quantity, tax: price * 0.1 }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let extend = extract_extend(stmt);
 
@@ -109,7 +119,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "extend { total: price * quantity }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let extend = extract_extend(stmt);
 

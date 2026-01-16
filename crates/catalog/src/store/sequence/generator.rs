@@ -2,11 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::{
-	EncodedKey, diagnostic::sequence::sequence_exhausted, return_error, value::encoded::EncodedValuesLayout,
-};
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::Type;
+use reifydb_core::value::encoded::{key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::diagnostic::sequence::sequence_exhausted, return_error, value::r#type::Type};
 
 macro_rules! impl_generator {
 	(
@@ -107,9 +105,11 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_core::{EncodedKey, diagnostic::sequence::sequence_exhausted};
+				use reifydb_core::value::encoded::key::EncodedKey;
 				use reifydb_engine::test_utils::create_test_command_transaction;
-				use reifydb_type::Type;
+				use reifydb_type::{
+					error::diagnostic::sequence::sequence_exhausted, value::r#type::Type,
+				};
 
 				use super::{LAYOUT, $generator};
 

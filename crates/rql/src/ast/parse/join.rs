@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::JoinType;
-use reifydb_type::{diagnostic::ast, return_error};
+use reifydb_core::common::JoinType;
+use reifydb_type::{error::diagnostic::ast, return_error};
 
 use crate::ast::{
-	AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector,
+	ast::{AstJoin, AstJoinExpressionPair, AstUsingClause, JoinConnector},
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{Inner, Join, Left, Natural, Using},
-		Operator::{And, As, CloseParen, OpenParen, Or},
-		Separator::Comma,
-		TokenKind,
+		keyword::Keyword::{Inner, Join, Left, Natural, Using},
+		operator::Operator::{And, As, CloseParen, OpenParen, Or},
+		separator::Separator::Comma,
+		token::TokenKind,
 	},
 };
 
@@ -158,10 +158,14 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::JoinType;
+pub mod tests {
+	use reifydb_core::common::JoinType;
 
-	use crate::ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator, parse::Parser, tokenize::tokenize};
+	use crate::ast::{
+		ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator},
+		parse::Parser,
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_left_join_with_using() {
@@ -278,7 +282,7 @@ mod tests {
 		// Check FROM clause
 		let from = statement.nodes[0].as_from();
 		match from {
-			crate::ast::AstFrom::Source {
+			crate::ast::ast::AstFrom::Source {
 				source,
 				..
 			} => {

@@ -1,29 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod factory;
-mod ffi;
+pub mod factory;
+pub mod ffi;
 
 use std::{any::Any, sync::Arc, time::Duration};
 
-use crate::builder::FlowBuilderConfig;
-use crate::{
-	FlowEngine, coordinator::FlowCoordinator, lag::FlowLags, pool::FlowWorkerPool, tracker::PrimitiveVersionTracker,
-};
-pub use factory::FlowSubsystemFactory;
 use ffi::load_ffi_operators;
-use reifydb_cdc::{CdcConsumer, CdcStore, PollConsumer, PollConsumerConfig};
+use reifydb_cdc::{
+	consume::{
+		consumer::CdcConsumer,
+		poll::{PollConsumer, PollConsumerConfig},
+	},
+	storage::CdcStore,
+};
 use reifydb_core::{
-	Result,
 	interface::{
-		CdcConsumerId, FlowLagsProvider, WithEventBus,
+		WithEventBus,
+		cdc::CdcConsumerId,
+		flow::FlowLagsProvider,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{StandardColumnEvaluator, StandardEngine};
-use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_engine::{engine::StandardEngine, evaluate::column::StandardColumnEvaluator};
+use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_type::Result;
 use tracing::info;
+
+use crate::{
+	FlowEngine, builder::FlowBuilderConfig, coordinator::FlowCoordinator, lag::FlowLags, pool::FlowWorkerPool,
+	tracker::PrimitiveVersionTracker,
+};
 
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
@@ -54,20 +62,15 @@ impl FlowSubsystem {
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
 
-		let cdc_store = ioc.resolve::<CdcStore>()
-			.expect("CdcStore must be registered");
+		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let num_workers = config.num_workers;
 		info!(num_workers, "initializing flow worker pool");
 
 		let worker_pool = FlowWorkerPool::new(num_workers, factory_builder, engine.clone(), engine.catalog());
 
-		let coordinator = FlowCoordinator::new(
-			engine.clone(),
-			primitive_tracker.clone(),
-			worker_pool,
-			cdc_store.clone(),
-		);
+		let coordinator =
+			FlowCoordinator::new(engine.clone(), primitive_tracker.clone(), worker_pool, cdc_store.clone());
 
 		// Register FlowLags with access to the flow catalog
 		let catalog = coordinator.catalog.clone();

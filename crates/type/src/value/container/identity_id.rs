@@ -5,7 +5,10 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, IdentityId, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{Value, identity::IdentityId},
+};
 
 /// Container for IdentityId values
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

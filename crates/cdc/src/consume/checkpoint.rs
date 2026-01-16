@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{CommitVersion, CowVec, interface::ToConsumerKey, value::encoded::EncodedValues};
-use reifydb_transaction::{IntoStandardTransaction, StandardCommandTransaction};
+use reifydb_core::{common::CommitVersion, key::cdc_consumer::ToConsumerKey, value::encoded::encoded::EncodedValues};
+use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_type::util::cowvec::CowVec;
 
 pub struct CdcCheckpoint {}
 
@@ -10,7 +11,7 @@ impl CdcCheckpoint {
 	pub fn fetch<K: ToConsumerKey>(
 		txn: &mut impl IntoStandardTransaction,
 		consumer: &K,
-	) -> reifydb_core::Result<CommitVersion> {
+	) -> reifydb_type::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
 
 		txn.get(&key)?
@@ -31,7 +32,7 @@ impl CdcCheckpoint {
 		txn: &mut StandardCommandTransaction,
 		consumer: &K,
 		version: CommitVersion,
-	) -> reifydb_core::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.0.to_be_bytes().to_vec();
 		txn.set(&key, EncodedValues(CowVec::new(version_bytes)))

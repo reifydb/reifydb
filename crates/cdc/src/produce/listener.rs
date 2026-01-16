@@ -9,7 +9,7 @@
 use crossbeam_channel::Sender;
 use reifydb_core::{
 	event::{EventListener, transaction::PostCommitEvent},
-	util::now_millis,
+	util::clock::now_millis,
 };
 
 use super::worker::CdcWorkItem;
@@ -30,7 +30,9 @@ impl CdcEventListener {
 	/// # Arguments
 	/// - `sender`: The channel sender to forward work items to the CdcWorker
 	pub fn new(sender: Sender<CdcWorkItem>) -> Self {
-		Self { sender }
+		Self {
+			sender,
+		}
 	}
 }
 
@@ -47,10 +49,16 @@ impl EventListener<PostCommitEvent> for CdcEventListener {
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
+pub mod tests {
 	use crossbeam_channel::unbounded;
-	use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
+	use reifydb_core::{
+		common::CommitVersion,
+		delta::Delta,
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	};
+	use reifydb_type::util::cowvec::CowVec;
+
+	use super::*;
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))

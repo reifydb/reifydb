@@ -8,15 +8,22 @@ use bumpalo::collections::Vec as BumpVec;
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
 	ast::{
-		Expr, Pipeline, Program, Statement,
-		expr::{BinaryExpr, BinaryOp, FromExpr, SubQueryExpr},
+		Pipeline, Program,
+		expr::{
+			Expr,
+			operator::{BinaryExpr, BinaryOp},
+			query::FromExpr,
+			special::SubQueryExpr,
+		},
+		stmt::Statement,
 	},
 	plan::{
-		OutputSchema, Plan,
+		Plan,
 		node::{
 			control::{BreakNode, CallScriptFunctionNode, ContinueNode, ExprNode, ReturnNode},
 			query::{ScanNode, VariableSourceNode},
 		},
+		types::OutputSchema,
 	},
 };
 

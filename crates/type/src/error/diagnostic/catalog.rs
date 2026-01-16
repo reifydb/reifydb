@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment, value::r#type::Type};
 
 pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnostic {
 	Diagnostic {
@@ -177,9 +177,9 @@ pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &st
 pub fn dictionary_type_mismatch(
 	fragment: Fragment,
 	column: &str,
-	column_type: crate::Type,
+	column_type: Type,
 	dictionary: &str,
-	dictionary_value_type: crate::Type,
+	dictionary_value_type: Type,
 ) -> Diagnostic {
 	Diagnostic {
 		code: "CA_008".to_string(),
@@ -246,7 +246,7 @@ pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &st
 	}
 }
 
-pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: crate::Type) -> Diagnostic {
+pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: Type) -> Diagnostic {
 	Diagnostic {
 		code: "CA_006".to_string(),
 		statement: None,

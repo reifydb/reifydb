@@ -89,7 +89,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::value::column::{
 		ColumnData,

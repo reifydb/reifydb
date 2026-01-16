@@ -5,26 +5,32 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId, Params,
-		ResolvedNamespace, ResolvedPrimitive, ResolvedTable, RowKey, RowKeyRange,
+		catalog::{id::IndexId, layout::GetEncodedRowLayout},
+		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
-	value::column::Columns,
+	key::{
+		EncodableKey, EncodableKeyRange,
+		index_entry::IndexEntryKey,
+		row::{RowKey, RowKeyRange},
+	},
+	value::{column::columns::Columns, encoded::key::EncodedKeyRange},
 };
 use reifydb_rql::plan::physical::DeleteTableNode;
+use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
-	Fragment, Value,
-	diagnostic::{
+	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
+	fragment::Fragment,
+	params::Params,
 	return_error,
+	value::Value,
 };
 
 use super::primary_key;
 use crate::{
-	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
 };
@@ -131,9 +137,12 @@ impl Executor {
 					let index_key =
 						primary_key::encode_primary_key(pk_def, &row_values, &table, &layout)?;
 
-					cmd.remove(
-						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode(),
-					)?;
+					cmd.remove(&IndexEntryKey::new(
+						table.id,
+						IndexId::primary(pk_def.id),
+						index_key,
+					)
+					.encode())?;
 				}
 
 				// Now remove the row
@@ -171,14 +180,12 @@ impl Executor {
 						&layout,
 					)?;
 
-					txn.remove(
-						&IndexEntryKey::new(
-							table.id,
-							IndexId::primary(pk_def.id),
-							index_key,
-						)
-						.encode(),
-					)?;
+					txn.remove(&IndexEntryKey::new(
+						table.id,
+						IndexId::primary(pk_def.id),
+						index_key,
+					)
+					.encode())?;
 				}
 
 				// Remove the row

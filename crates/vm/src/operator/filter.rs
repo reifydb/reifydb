@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_rqlv2::expression::{CompiledFilter, EvalContext};
+use reifydb_core::value::batch::Batch;
+use reifydb_rqlv2::expression::{eval::context::EvalContext, types::CompiledFilter};
 
 use crate::{error::Result, pipeline::Pipeline};
 
@@ -45,7 +46,7 @@ struct FilterIterator {
 }
 
 impl Iterator for FilterIterator {
-	type Item = Result<reifydb_core::Batch>;
+	type Item = Result<Batch>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// Keep trying batches until we find one with rows that pass

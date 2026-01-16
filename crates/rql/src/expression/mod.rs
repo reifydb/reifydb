@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod fragment;
-mod join;
+pub mod fragment;
+pub mod join;
 pub mod json;
-mod name;
-
-pub use join::JoinConditionCompiler;
-pub use name::*;
+pub mod name;
 
 use crate::{
 	ast,
-	ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse_str},
+	ast::{
+		ast::{Ast, AstInfix, AstLiteral, InfixOperator},
+		parse_str,
+	},
 	convert_data_type,
 };
 
@@ -37,8 +37,8 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::interface::{ColumnIdentifier, ColumnPrimitive};
-use reifydb_type::{Fragment, Type};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -868,7 +868,7 @@ impl ExpressionCompiler {
 			Ast::Identifier(identifier) => {
 				// Create an unqualified column identifier
 				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-				use reifydb_type::Fragment;
+				use reifydb_type::fragment::Fragment;
 
 				let column = ColumnIdentifier {
 					primitive: ColumnPrimitive::Primitive {
@@ -937,13 +937,13 @@ impl ExpressionCompiler {
 			}
 			Ast::Prefix(prefix) => {
 				let (fragment, operator) = match prefix.operator {
-					ast::AstPrefixOperator::Plus(token) => {
+					ast::ast::AstPrefixOperator::Plus(token) => {
 						(token.fragment.clone(), PrefixOperator::Plus(token.fragment))
 					}
-					ast::AstPrefixOperator::Negate(token) => {
+					ast::ast::AstPrefixOperator::Negate(token) => {
 						(token.fragment.clone(), PrefixOperator::Minus(token.fragment))
 					}
-					ast::AstPrefixOperator::Not(token) => {
+					ast::ast::AstPrefixOperator::Not(token) => {
 						(token.fragment.clone(), PrefixOperator::Not(token.fragment))
 					}
 				};
@@ -977,7 +977,7 @@ impl ExpressionCompiler {
 			Ast::Rownum(_rownum) => {
 				// Compile rownum to a column reference for rownum
 				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
-				use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
+				use reifydb_type::{fragment::Fragment, value::row_number::ROW_NUMBER_COLUMN_NAME};
 
 				let column = ColumnIdentifier {
 					primitive: ColumnPrimitive::Primitive {
@@ -1264,8 +1264,8 @@ impl ExpressionCompiler {
 			InfixOperator::Assign(token) => {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
-				use reifydb_core::diagnostic::ast as diag_ast;
-				reifydb_core::return_error!(diag_ast::unsupported_token_error(token.fragment))
+				use reifydb_type::error::diagnostic::ast as diag_ast;
+				reifydb_type::return_error!(diag_ast::unsupported_token_error(token.fragment))
 			}
 
 			InfixOperator::TypeAscription(token) => {
@@ -1290,7 +1290,9 @@ impl ExpressionCompiler {
 						}))
 					}
 					_ => {
-						use reifydb_type::{Fragment, diagnostic::Diagnostic, err};
+						use reifydb_type::{
+							err, error::diagnostic::Diagnostic, fragment::Fragment,
+						};
 						return err!(Diagnostic {
 							code: "EXPR_001".to_string(),
 							statement: None,

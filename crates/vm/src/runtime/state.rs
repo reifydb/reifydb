@@ -6,23 +6,27 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_rqlv2::{
-	bytecode::{CompiledProgram, Constant},
-	expression::{CompiledExpr, CompiledFilter},
+	bytecode::program::{CompiledProgram, Constant, SortDirection},
+	expression::types::{CompiledExpr, CompiledFilter},
 };
-use reifydb_type::Value;
+use reifydb_type::value::{Value, blob::Blob, ordered_f64::OrderedF64};
 
-#[cfg(feature = "trace")]
-use crate::trace::VmTracer;
 use super::{
-	stack::CallStack,
 	context::VmContext,
 	operand::{OperandValue, PipelineHandle},
 	scope::ScopeChain,
+	stack::CallStack,
 };
+#[cfg(feature = "trace")]
+use crate::trace::tracer::VmTracer;
 use crate::{
 	error::{Result, VmError},
-	operator::{ScanState, sort::SortSpec},
+	operator::{
+		scan_table::ScanState,
+		sort::{SortOrder, SortSpec},
+	},
 	pipeline::Pipeline,
+	trace::entry::TraceEntry,
 };
 
 /// Main VM execution state.
@@ -95,7 +99,7 @@ impl VmState {
 
 	/// Take the trace entries after execution.
 	#[cfg(feature = "trace")]
-	pub fn take_trace(&mut self) -> Option<Vec<crate::trace::TraceEntry>> {
+	pub fn take_trace(&mut self) -> Option<Vec<TraceEntry>> {
 		self.tracer.take().map(|t| t.take_entries())
 	}
 
@@ -159,8 +163,6 @@ impl VmState {
 
 	/// Convert an RQLv2 Constant to a VM Value.
 	fn constant_to_value(constant: &Constant) -> Value {
-		use reifydb_type::value::{Blob, OrderedF64};
-
 		match constant {
 			Constant::Undefined => Value::Undefined,
 			Constant::Bool(b) => Value::Boolean(*b),
@@ -264,10 +266,6 @@ impl VmState {
 
 	/// Resolve a sort specification.
 	pub fn resolve_sort_spec(&self, value: &OperandValue) -> Result<Vec<SortSpec>> {
-		use reifydb_rqlv2::bytecode::SortDirection;
-
-		use crate::operator::sort::SortOrder;
-
 		match value {
 			OperandValue::SortSpecRef(index) => {
 				let rql_spec = self.program.sort_specs.get(*index as usize).ok_or(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
 
 use super::FlowTransaction;
 
@@ -20,10 +20,14 @@ impl FlowTransaction {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, CowVec, EncodedKey, value::encoded::EncodedValues};
-	use reifydb_engine::StandardCommandTransaction;
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{
+		common::CommitVersion,
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
+	};
+	use reifydb_transaction::standard::command::StandardCommandTransaction;
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

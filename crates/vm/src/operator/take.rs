@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::batch::Batch;
+
 use crate::{error::Result, pipeline::Pipeline};
 
 /// Take operator - limits the number of rows returned.
@@ -30,7 +32,7 @@ struct TakeIterator {
 }
 
 impl Iterator for TakeIterator {
-	type Item = Result<reifydb_core::Batch>;
+	type Item = Result<Batch>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.remaining == 0 {

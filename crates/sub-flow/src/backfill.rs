@@ -3,19 +3,20 @@
 
 //! Backfill logic for flows that need to catch up to the current version.
 
-use std::cmp::min;
-use std::ops::Bound;
+use std::{cmp::min, ops::Bound};
 
-use reifydb_cdc::CdcCheckpoint;
-use reifydb_core::interface::CdcBatch;
-use reifydb_core::{CommitVersion, Result};
-use reifydb_engine::StandardCommandTransaction;
-use tracing::{debug, info, instrument, Span};
+use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
+use reifydb_core::{common::CommitVersion, interface::cdc::CdcBatch};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
+use tracing::{Span, debug, info, instrument};
 
-use crate::convert;
-use crate::coordinator::FlowCoordinator;
-use crate::instruction::{FlowInstruction, WorkerBatch};
-use crate::transaction::Pending;
+use crate::{
+	convert,
+	coordinator::FlowCoordinator,
+	instruction::{FlowInstruction, WorkerBatch},
+	transaction::pending::Pending,
+};
 
 impl FlowCoordinator {
 	/// Advance backfilling flows by one chunk each.
@@ -61,14 +62,17 @@ impl FlowCoordinator {
 			let to_version = CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, current_version.0));
 
 			// Fetch CDC for this chunk from storage
-			let batch = self.cdc_store.read_range(
-				Bound::Excluded(from_version),
-				Bound::Included(to_version),
-				BACKFILL_CHUNK_SIZE,
-			).unwrap_or_else(|e| {
-				tracing::warn!(error = %e, "Failed to read CDC range for backfill");
-				CdcBatch::empty()
-			});
+			let batch = self
+				.cdc_store
+				.read_range(
+					Bound::Excluded(from_version),
+					Bound::Included(to_version),
+					BACKFILL_CHUNK_SIZE,
+				)
+				.unwrap_or_else(|e| {
+					tracing::warn!(error = %e, "Failed to read CDC range for backfill");
+					CdcBatch::empty()
+				});
 
 			if batch.items.is_empty() {
 				// No CDC in this range, advance checkpoint

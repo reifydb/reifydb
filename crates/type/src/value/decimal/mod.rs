@@ -16,11 +16,9 @@ use serde::{
 };
 
 use super::{int::Int, uint::Uint};
-use crate::{Error, Fragment, Type, error};
+use crate::{error, error::Error, fragment::Fragment, value::r#type::Type};
 
-mod parse;
-
-pub use parse::parse_decimal;
+pub mod parse;
 
 use crate::error::diagnostic::number::invalid_number_format;
 
@@ -321,7 +319,7 @@ impl<'de> Deserialize<'de> for Decimal {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

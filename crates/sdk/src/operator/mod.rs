@@ -5,16 +5,16 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{interface::FlowNodeId, value::column::Columns};
-use reifydb_type::{RowNumber, Value};
-
-use crate::{FlowChange, Result};
+use reifydb_type::value::{Value, row_number::RowNumber};
 
 pub mod column;
 pub mod context;
 
-pub use column::OperatorColumnDef;
-pub use context::OperatorContext;
+use column::OperatorColumnDef;
+use context::OperatorContext;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+
+use crate::{error::Result, flow::FlowChange};
 
 /// Static metadata about an operator type
 /// This trait provides compile-time constant metadata

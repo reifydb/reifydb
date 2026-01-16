@@ -2,12 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	Error,
-	interface::{FlowNodeId, PrimitiveId},
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
 	retention::RetentionPolicy,
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::internal;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::Error, internal};
 
 use crate::CatalogStore;
 
@@ -42,9 +41,9 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		interface::{RingBufferId, ViewId},
+		interface::catalog::id::{RingBufferId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;

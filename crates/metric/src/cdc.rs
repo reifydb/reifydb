@@ -4,7 +4,7 @@
 //! CDC (Change Data Capture) statistics types, reader, and writer.
 //!
 //! This module contains everything related to CDC metrics:
-//! - `CdcStats` - statistics for CDC entries 
+//! - `CdcStats` - statistics for CDC entries
 //! - `CdcOperation` - operation type for CDC metrics processing
 //! - `CdcStatsWriter` - single writer for CDC statistics
 //! - `CdcStatsReader` - read-only access to CDC statistics
@@ -12,15 +12,17 @@
 use std::ops::AddAssign;
 
 use reifydb_core::{
-	CowVec, EncodedKey, Result,
-	interface::SingleVersionStore,
-	value::encoded::EncodedValues,
+	interface::store::SingleVersionStore,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
+use reifydb_type::util::cowvec::CowVec;
 
 use crate::{
-	encoding::{cdc_stats_key_prefix, decode_cdc_stats, decode_cdc_stats_key, encode_cdc_stats, encode_cdc_stats_key},
+	MetricId,
+	encoding::{
+		cdc_stats_key_prefix, decode_cdc_stats, decode_cdc_stats_key, encode_cdc_stats, encode_cdc_stats_key,
+	},
 	parser::parse_id,
-	Id,
 };
 
 /// CDC (Change Data Capture) statistics for a single object.
@@ -84,11 +86,13 @@ pub struct CdcStatsWriter<S> {
 impl<S: SingleVersionStore> CdcStatsWriter<S> {
 	/// Create a new writer.
 	pub fn new(storage: S) -> Self {
-		Self { storage }
+		Self {
+			storage,
+		}
 	}
 
 	/// Record CDC bytes for a change.
-	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
+	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> reifydb_type::Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
 
@@ -118,17 +122,19 @@ pub struct CdcStatsReader<S> {
 impl<S: SingleVersionStore> CdcStatsReader<S> {
 	/// Create a new reader.
 	pub fn new(storage: S) -> Self {
-		Self { storage }
+		Self {
+			storage,
+		}
 	}
 
 	/// Get stats for a specific object.
-	pub fn get(&self, id: Id) -> Result<Option<CdcStats>> {
+	pub fn get(&self, id: MetricId) -> reifydb_type::Result<Option<CdcStats>> {
 		let key = EncodedKey::new(encode_cdc_stats_key(id));
 		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.values.as_slice())))
 	}
 
 	/// Scan all CDC stats entries.
-	pub fn scan_all(&self) -> Result<Vec<(Id, CdcStats)>> {
+	pub fn scan_all(&self) -> reifydb_type::Result<Vec<(MetricId, CdcStats)>> {
 		let prefix = EncodedKey::new(cdc_stats_key_prefix());
 		let batch = self.storage.prefix(&prefix)?;
 
@@ -146,7 +152,7 @@ impl<S: SingleVersionStore> CdcStatsReader<S> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceId};
-use reifydb_transaction::IntoStandardTransaction;
-
-use crate::{
-	MaterializedCatalog,
-	store::flow::layout::{
-		flow,
-		flow::{ID, NAME, NAMESPACE, STATUS},
+use reifydb_core::{
+	interface::{
+		catalog::{
+			flow::{FlowDef, FlowId, FlowStatus},
+			id::NamespaceId,
+		},
+		store::MultiVersionValues,
 	},
+	key::flow::FlowKey,
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
+
+use super::MaterializedCatalog;
+use crate::store::flow::layout::{
+	flow,
+	flow::{ID, NAME, NAMESPACE, STATUS},
 };
 
 pub(crate) fn load_flows(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {

@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{WindowSize, WindowSlide, WindowType};
-use reifydb_type::{Error, Fragment, diagnostic::operation, return_error};
+use reifydb_core::common::{WindowSize, WindowSlide, WindowType};
+use reifydb_type::{
+	error::{Error, diagnostic::operation},
+	fragment::Fragment,
+	return_error,
+};
 
 use super::{WindowConfig, WindowNode};
 use crate::{Result, expression::Expression};
@@ -90,10 +94,10 @@ fn validate_sliding_config(config: &WindowConfig) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
-	use reifydb_core::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
+	use reifydb_core::common::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
 
 	use super::*;
 

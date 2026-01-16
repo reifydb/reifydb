@@ -4,18 +4,17 @@
 use std::cmp::Ordering::Equal;
 
 use reifydb_core::{
-	SortDirection::{Asc, Desc},
-	SortKey, error,
-	util::CowVec,
-	value::column::{Columns, headers::ColumnHeaders},
+	sort::{
+		SortDirection::{Asc, Desc},
+		SortKey,
+	},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_type::diagnostic::query;
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{error, error::diagnostic::query, util::cowvec::CowVec};
 use tracing::instrument;
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 pub(crate) struct SortNode {
 	input: Box<ExecutionPlan>,
@@ -76,7 +75,7 @@ impl QueryNode for SortNode {
 						.iter()
 						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, reifydb_type::Error>((col.data().clone(), key.direction.clone()))
+					Ok::<_, reifydb_type::error::Error>((col.data().clone(), key.direction.clone()))
 				})
 				.collect::<crate::Result<Vec<_>>>()?;
 

@@ -5,10 +5,11 @@
 //!
 //! Uses a single BTreeMap wrapped in Arc<RwLock> for concurrent access.
 
-use reifydb_core::runtime::ComputePool;
-use reifydb_type::{CowVec, Result};
 use std::{collections::BTreeMap, ops::Bound, sync::Arc};
+
 use parking_lot::RwLock;
+use reifydb_core::runtime::compute::ComputePool;
+use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};

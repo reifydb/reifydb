@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-//! Bytecode interpreter.
-
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{ColumnData, Columns};
+use reifydb_core::value::column::{columns::Columns, data::ColumnData};
 use reifydb_rqlv2::{
-	bytecode::{BytecodeReader, OperatorKind, SubqueryDef},
-	expression::{EvalContext, EvalValue},
+	bytecode::{
+		instruction::BytecodeReader,
+		opcode::OperatorKind,
+		program::{CompiledProgramBuilder, SubqueryDef},
+	},
+	expression::eval::{context::EvalContext, value::EvalValue},
 };
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 
 use super::{
 	dispatch::{self, DispatchResult},
@@ -21,7 +23,7 @@ use super::{
 use crate::{
 	error::{Result, VmError},
 	handler::HandlerContext,
-	operator::{FilterOp, ProjectOp, SelectOp, SortOp, TakeOp},
+	operator::{filter::FilterOp, project::ProjectOp, select::SelectOp, sort::SortOp, take::TakeOp},
 	pipeline::{self, Pipeline},
 };
 
@@ -135,9 +137,6 @@ impl VmState {
 		subquery_def: &SubqueryDef,
 		rx: Option<&mut StandardTransaction<'a>>,
 	) -> Result<Columns> {
-		// Create a CompiledProgram from the subquery definition using the builder
-		use reifydb_rqlv2::bytecode::CompiledProgramBuilder;
-
 		let mut builder = CompiledProgramBuilder::new();
 		builder.bytecode = subquery_def.bytecode.clone();
 		builder.constants = subquery_def.constants.clone();
@@ -198,13 +197,13 @@ fn operand_to_eval_value(value: &OperandValue) -> Option<EvalValue> {
 
 /// Broadcast a scalar value to a column with the given row count.
 #[allow(dead_code)]
-fn broadcast_scalar_to_column(value: &reifydb_type::Value, row_count: usize) -> ColumnData {
+fn broadcast_scalar_to_column(value: &reifydb_type::value::Value, row_count: usize) -> ColumnData {
 	match value {
-		reifydb_type::Value::Boolean(b) => ColumnData::bool(vec![*b; row_count]),
-		reifydb_type::Value::Int8(n) => ColumnData::int8(vec![*n; row_count]),
-		reifydb_type::Value::Float8(f) => ColumnData::float8(vec![f.value(); row_count]),
-		reifydb_type::Value::Utf8(s) => ColumnData::utf8(vec![s.clone(); row_count]),
-		reifydb_type::Value::Undefined => ColumnData::int8(vec![0; row_count]),
+		reifydb_type::value::Value::Boolean(b) => ColumnData::bool(vec![*b; row_count]),
+		reifydb_type::value::Value::Int8(n) => ColumnData::int8(vec![*n; row_count]),
+		reifydb_type::value::Value::Float8(f) => ColumnData::float8(vec![f.value(); row_count]),
+		reifydb_type::value::Value::Utf8(s) => ColumnData::utf8(vec![s.clone(); row_count]),
+		reifydb_type::value::Value::Undefined => ColumnData::int8(vec![0; row_count]),
 		_ => ColumnData::int8(vec![0; row_count]),
 	}
 }

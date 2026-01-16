@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::Value;
+use crate::value::Value;
 
 pub trait AsString {
 	fn as_string(&self) -> String;

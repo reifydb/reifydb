@@ -3,12 +3,13 @@
 
 //! Operator context providing access to state and resources
 
-use reifydb_abi::ContextFFI;
-use reifydb_core::{EncodedKey, interface::FlowNodeId};
-use reifydb_type::RowNumber;
+use reifydb_abi::context::context::ContextFFI;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::encoded::key::EncodedKey};
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
-	state::{RowNumberProvider, State},
+	catalog::Catalog,
+	state::{State, row::RowNumberProvider},
 	store::Store,
 };
 
@@ -45,8 +46,8 @@ impl OperatorContext {
 	}
 
 	/// Get read-only access to the catalog
-	pub fn catalog(&mut self) -> crate::Catalog<'_> {
-		crate::Catalog::new(self)
+	pub fn catalog(&mut self) -> Catalog<'_> {
+		Catalog::new(self)
 	}
 
 	/// Get or create a row number for a given key
@@ -57,7 +58,7 @@ impl OperatorContext {
 	/// Returns `(RowNumber, is_new)` where `is_new` indicates if this is
 	/// a newly created row number.
 	/// ```
-	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> crate::Result<(RowNumber, bool)> {
+	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> reifydb_type::Result<(RowNumber, bool)> {
 		let provider = RowNumberProvider::new(self.operator_id());
 		provider.get_or_create_row_number(self, key)
 	}

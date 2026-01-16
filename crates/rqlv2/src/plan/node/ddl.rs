@@ -3,12 +3,15 @@
 
 //! DDL plan nodes (Create, Alter, Drop).
 
+use reifydb_type::value::r#type::Type;
+
 use crate::{
 	plan::{
-		CatalogColumn, Dictionary, Index, Namespace, Plan, RingBuffer, Sequence, Table, Type, View,
+		Plan,
 		node::{expr::PlanExpr, query::SortDirection},
+		types::{CatalogColumn, Dictionary, Index, Namespace, RingBuffer, Sequence, Table, View},
 	},
-	token::Span,
+	token::span::Span,
 };
 
 /// Create DDL operation.

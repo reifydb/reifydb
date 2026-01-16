@@ -5,9 +5,9 @@ use std::ptr;
 
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
-use reifydb_type::{Type, Uint};
+use reifydb_type::value::{r#type::Type, uint::Uint};
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 /// Uint storage modes using MSB of u128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -119,11 +119,11 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use num_traits::Zero;
-	use reifydb_type::{Type, Uint};
+	use reifydb_type::value::{r#type::Type, uint::Uint};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_u64_inline() {

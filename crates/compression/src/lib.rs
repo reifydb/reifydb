@@ -5,13 +5,11 @@
 
 use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	value::column::{ColumnData, CompressedColumn},
+	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
 
-mod select;
-mod strategy;
-
-pub use select::select_compressor;
+pub mod select;
+pub mod strategy;
 
 pub type BoxedColumnCompressor = Box<dyn ColumnCompressor>;
 

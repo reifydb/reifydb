@@ -2,7 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Blob;
-use crate::{Error, Fragment, error::diagnostic::blob, util::base64::engine::general_purpose};
+use crate::{
+	error::{Error, diagnostic::blob},
+	fragment::Fragment,
+	util::base64::engine::general_purpose,
+};
 
 impl Blob {
 	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
@@ -40,9 +44,9 @@ impl Blob {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_from_b64() {

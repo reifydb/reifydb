@@ -1,23 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::diagnostic::ast;
+use ast::tokenize_error;
+use reifydb_type::error::diagnostic::ast;
 
-mod cursor;
-mod identifier;
-mod keyword;
-mod literal;
-mod operator;
-mod scanner;
-mod separator;
-mod token;
-mod variable;
+pub mod cursor;
+pub mod identifier;
+pub mod keyword;
+pub mod literal;
+pub mod operator;
+pub mod separator;
+pub mod token;
+pub mod variable;
 
 use cursor::Cursor;
-use reifydb_type::Error;
-use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_quoted_identifier, scan_separator};
-pub use token::{Keyword, Literal, Operator, Separator, Token, TokenKind};
+use reifydb_type::error::Error;
 use variable::scan_variable;
+
+use crate::ast::tokenize::{
+	identifier::{scan_identifier, scan_quoted_identifier},
+	keyword::scan_keyword,
+	literal::scan_literal,
+	operator::scan_operator,
+	separator::scan_separator,
+	token::Token,
+};
 
 /// Tokenize the input string into a vector of tokens
 pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
@@ -105,7 +112,7 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 				// Unable to token - report error with
 				// current character
 				let ch = cursor.peek().unwrap_or('?');
-				return Err(Error(ast::tokenize_error(format!(
+				return Err(Error(tokenize_error(format!(
 					"Unexpected character '{}' at line {}, column {}",
 					ch,
 					cursor.line(),
@@ -119,8 +126,14 @@ pub fn tokenize(input: &str) -> crate::Result<Vec<Token>> {
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
+pub mod tests {
+	use super::{
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator,
+		token::{Literal, TokenKind},
+		tokenize,
+	};
 
 	#[test]
 	fn test_tokenize_simple() {

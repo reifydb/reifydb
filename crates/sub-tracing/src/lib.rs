@@ -20,16 +20,7 @@
 //!     .build();
 //! ```
 
-mod backend;
-mod builder;
-mod factory;
-mod subsystem;
-
-pub use backend::ConsoleBuilder;
-pub use builder::TracingBuilder;
-pub use factory::TracingSubsystemFactory;
-pub use reifydb_type::Result;
-pub use subsystem::TracingSubsystem;
-pub use tracing::instrument;
-// Re-export tracing macros for convenience
-pub use tracing::{debug, error, info, trace, warn};
+pub mod backend;
+pub mod builder;
+pub mod factory;
+pub mod subsystem;

@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{interface::PrimitiveId, value::column::Columns};
-use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
+use reifydb_catalog::{CatalogStore, store::primary_key::create::PrimaryKeyToCreate};
+use reifydb_core::{interface::catalog::primitive::PrimitiveId, value::column::columns::Columns};
+use reifydb_rql::plan::{logical::alter::table::AlterTableOperation, physical::alter::table::AlterTableNode};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{
-	Fragment, Value,
-	diagnostic::{
+	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		query::column_not_found,
 	},
+	fragment::Fragment,
 	return_error,
+	value::Value,
 };
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn alter_table<'a>(

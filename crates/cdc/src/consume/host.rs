@@ -8,8 +8,9 @@
 
 use std::time::Duration;
 
-use reifydb_core::{CommitVersion, Result};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::common::CommitVersion;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
 
 /// Trait for engine operations needed by CDC consumers.
 ///

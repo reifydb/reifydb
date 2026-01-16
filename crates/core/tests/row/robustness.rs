@@ -6,8 +6,8 @@
 
 use std::str::FromStr;
 
-use reifydb_core::value::encoded::EncodedValuesLayout;
-use reifydb_type::*;
+use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_type::value::{blob::Blob, decimal::Decimal, int::Int, r#type::Type};
 
 #[test]
 fn test_massive_field_count() {

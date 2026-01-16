@@ -9,5 +9,3 @@
 //! and use to interact with the ReifyDB system.
 
 pub mod subsystem;
-
-pub use subsystem::{HealthStatus, Subsystem, SubsystemFactory};

@@ -15,7 +15,6 @@ use query::{
 	generator::GeneratorNode,
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
-	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ringbuffer_scan::RingBufferScan,
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
@@ -29,16 +28,19 @@ use query::{
 	vtable_scan::VirtualScanNode,
 };
 use reifydb_catalog::{
-	Catalog,
-	vtable::{UserVTableRegistry, system::FlowOperatorStore},
+	catalog::Catalog,
+	vtable::{system::flow_operator_store::FlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::{
-	Frame, LazyBatch,
-	interface::{Identity, Params, ResolvedPrimitive},
-	ioc::IocContainer,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+	interface::{auth::Identity, resolved::ResolvedPrimitive},
+	util::ioc::IocContainer,
+	value::{
+		batch::lazy::LazyBatch,
+		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	},
 };
-use reifydb_function::{Functions, math, series, subscription};
+use reifydb_function::{math, registry::Functions, series, subscription};
+use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 // Types moved from reifydb-core (formerly in interface/execute.rs)
 
@@ -75,22 +77,25 @@ pub trait ExecuteCommand {
 pub trait ExecuteQuery {
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }
-use reifydb_metric::MetricReader;
+use reifydb_metric::metric::MetricReader;
 use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
 };
 use reifydb_store_single::SingleStore;
+use reifydb_transaction::standard::{
+	StandardTransaction, command::StandardCommandTransaction, query::StandardQueryTransaction,
+};
 use tracing::instrument;
 
 use crate::{
-	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
+	execute::query::join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
 	stack::{Stack, Variable},
 };
 
-mod catalog;
+pub mod catalog;
 pub(crate) mod mutate;
-mod query;
+pub mod query;
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
 
@@ -360,17 +365,20 @@ impl Executor {
 	pub fn testing() -> Self {
 		let store = SingleStore::testing_memory();
 		Self::new(
-			Catalog::new(reifydb_catalog::MaterializedCatalog::new()),
+			Catalog::new(reifydb_catalog::materialized::MaterializedCatalog::new()),
 			Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::Sum::new)
-				.register_aggregate("math::min", math::aggregate::Min::new)
-				.register_aggregate("math::max", math::aggregate::Max::new)
-				.register_aggregate("math::avg", math::aggregate::Avg::new)
-				.register_aggregate("math::count", math::aggregate::Count::new)
-				.register_scalar("math::abs", math::scalar::Abs::new)
-				.register_scalar("math::avg", math::scalar::Avg::new)
+				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
+				.register_aggregate("math::min", math::aggregate::min::Min::new)
+				.register_aggregate("math::max", math::aggregate::max::Max::new)
+				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
+				.register_aggregate("math::count", math::aggregate::count::Count::new)
+				.register_scalar("math::abs", math::scalar::abs::Abs::new)
+				.register_scalar("math::avg", math::scalar::avg::Avg::new)
 				.register_generator("generate_series", series::GenerateSeries::new)
-				.register_generator("inspect_subscription", subscription::InspectSubscription::new)
+				.register_generator(
+					"inspect_subscription",
+					subscription::inspect::InspectSubscription::new,
+				)
 				.build(),
 			FlowOperatorStore::new(),
 			MetricReader::new(store),

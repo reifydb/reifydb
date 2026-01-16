@@ -34,18 +34,18 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::interface::{FlowNodeId, PrimitiveId};
+use reifydb_core::interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId};
 
 pub mod cdc;
-mod encoding;
-mod metric;
+pub mod encoding;
+pub mod metric;
 pub mod multi;
-mod parser;
-mod worker;
+pub mod parser;
+pub mod worker;
 
 /// Identifier for tracking per-object storage statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Id {
+pub enum MetricId {
 	/// Table, view, or flow source
 	Source(PrimitiveId),
 	/// Flow operator node
@@ -53,25 +53,3 @@ pub enum Id {
 	/// System metadata (sequences, versions, etc.)
 	System,
 }
-
-// Re-export from cdc
-pub use cdc::{CdcOperation, CdcStats, CdcStatsReader, CdcStatsWriter};
-
-// Re-export from multi
-pub use multi::{MultiStorageOperation, MultiStorageStats, StorageStatsReader, StorageStatsWriter, Tier, TieredStorageStats};
-
-// Re-export from metric
-pub use metric::{CombinedStats, MetricReader};
-
-// Re-export from worker
-pub use worker::{CdcStatsListener, MetricsEvent, MetricsWorker, MetricsWorkerConfig, StorageStatsListener};
-
-// Re-export encoding functions (for external use)
-pub use encoding::{
-	cdc_stats_key_prefix, decode_cdc_stats, decode_cdc_stats_key, decode_storage_stats, decode_storage_stats_key,
-	decode_type_stats_key, encode_cdc_stats, encode_cdc_stats_key, encode_storage_stats, encode_storage_stats_key,
-	encode_type_stats_key, storage_stats_key_prefix, type_stats_key_prefix, CDC_STATS_SIZE, STORAGE_STATS_SIZE,
-};
-
-// Re-export parser
-pub use parser::parse_id;

@@ -1,23 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod eval;
-mod process;
-mod register;
+pub mod eval;
+pub mod process;
+pub mod register;
 
-use reifydb_catalog::Catalog;
-use reifydb_core::{
-	CommitVersion, Error,
-	event::EventBus,
-	interface::{FlowId, FlowNodeId, PrimitiveId, TableId, ViewId},
-};
-use reifydb_engine::{StandardColumnEvaluator, execute::Executor};
-use reifydb_rql::flow::{FlowDag, FlowDependencyGraph, FlowGraphAnalyzer};
-use reifydb_type::{Value, internal};
 use std::{
 	collections::{HashMap, HashSet},
 	rc::Rc,
 };
+
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{
+	common::CommitVersion,
+	event::EventBus,
+	interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		id::{TableId, ViewId},
+		primitive::PrimitiveId,
+	},
+};
+use reifydb_engine::{evaluate::column::StandardColumnEvaluator, execute::Executor};
+use reifydb_rql::flow::{
+	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
+	flow::FlowDag,
+};
+use reifydb_type::{error::Error, internal, value::Value};
 use tracing::instrument;
 
 use crate::{
@@ -40,11 +48,7 @@ pub struct FlowEngine {
 }
 
 impl FlowEngine {
-	#[instrument(
-		name = "flow::engine::new",
-		level = "info",
-		skip(catalog, evaluator, executor, event_bus)
-	)]
+	#[instrument(name = "flow::engine::new", level = "info", skip(catalog, evaluator, executor, event_bus))]
 	pub fn new(
 		catalog: Catalog,
 		evaluator: StandardColumnEvaluator,

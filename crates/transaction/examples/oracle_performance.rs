@@ -4,15 +4,18 @@
 use std::{sync::Arc, thread::spawn, time::Instant};
 
 use encoding::keycode;
-use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
-use reifydb_transaction::multi::TransactionMulti;
+use reifydb_core::{
+	util::encoding,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+};
+use reifydb_transaction::multi::transaction::TransactionMulti;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
 }
 
 macro_rules! as_values {
-	($val:expr) => {{ EncodedValues(reifydb_core::CowVec::new(keycode::serialize(&$val))) }};
+	($val:expr) => {{ EncodedValues(reifydb_type::util::cowvec::CowVec::new(keycode::serialize(&$val))) }};
 }
 
 /// Benchmark showing the performance improvement of the new oracle

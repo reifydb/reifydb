@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstUpdate,
+	ast::AstUpdate,
 	parse::Parser,
-	tokenize::{Keyword, Operator},
+	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -13,11 +13,8 @@ impl Parser {
 
 		// Check if there's a target specified (optional)
 		let target = if !self.is_eof()
-			&& matches!(
-				self.current()?.kind,
-				crate::ast::tokenize::TokenKind::Identifier
-					| crate::ast::tokenize::TokenKind::Keyword(_)
-			) {
+			&& matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_))
+		{
 			use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 			let first = self.parse_identifier_with_hyphens()?;
 
@@ -46,8 +43,8 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstUpdate, parse::Parser, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{ast::AstUpdate, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_namespace_and_table() {

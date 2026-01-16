@@ -2,15 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use indexmap::IndexMap;
-use reifydb_type::{Value, diagnostic::engine, error};
+use reifydb_type::{error, error::diagnostic::engine::frame_error, value::Value};
 
-use crate::value::column::{ColumnData, Columns};
+use crate::value::column::{ColumnData, columns::Columns};
 
 pub type GroupKey = Vec<Value>;
 pub type GroupByView = IndexMap<GroupKey, Vec<usize>>;
 
 impl Columns {
-	pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
+	pub fn group_by_view(&self, keys: &[&str]) -> reifydb_type::Result<GroupByView> {
 		let row_count = self.first().map_or(0, |c| c.data().len());
 
 		let mut key_columns: Vec<&ColumnData> = Vec::with_capacity(keys.len());
@@ -19,7 +19,7 @@ impl Columns {
 			let column = self
 				.iter()
 				.find(|c| c.name() == key)
-				.ok_or_else(|| error!(engine::frame_error(format!("Column '{}' not found", key))))?;
+				.ok_or_else(|| error!(frame_error(format!("Column '{}' not found", key))))?;
 			key_columns.push(&column.data());
 		}
 

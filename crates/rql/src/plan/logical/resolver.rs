@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::Catalog;
-use reifydb_core::{
-	Result,
-	interface::{
-		VTableDef, ViewKind,
-		resolved::{
-			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
-			ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
-		},
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::interface::{
+	catalog::{view::ViewKind, vtable::VTableDef},
+	resolved::{
+		ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedPrimitive,
+		ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{Result, fragment::Fragment};
 
 use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 
@@ -58,7 +55,7 @@ pub fn resolve_unresolved_source<T: IntoStandardTransaction>(
 	// Check if it's a system table (namespace = "system")
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		use reifydb_core::interface::{NamespaceId, VTableId};
+		use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTableId};
 		let def = VTableDef {
 			id: VTableId(0),           // Placeholder ID - compile.rs handles actual lookup
 			namespace: NamespaceId(1), // System namespace ID

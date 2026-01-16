@@ -3,11 +3,12 @@
 
 //! Compilation of flow scan operations
 
-use reifydb_core::{Result, interface::FlowNodeId};
-use reifydb_rql::{flow::FlowNodeType::SourceFlow, plan::physical::FlowScanNode};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_rql::{flow::node::FlowNodeType::SourceFlow, plan::physical::FlowScanNode};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
 
-use super::super::{CompileOperator, FlowCompiler};
-use crate::StandardCommandTransaction;
+use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct FlowScanCompiler {
 	pub flow_scan: FlowScanNode,

@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::PrimitiveId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::primitive::PrimitiveId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,9 +71,9 @@ impl RowSequenceKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::PrimitiveId;
+	use crate::interface::catalog::primitive::PrimitiveId;
 
 	#[test]
 	fn test_encode_decode() {

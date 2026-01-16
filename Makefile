@@ -36,7 +36,7 @@ help:
 	@echo "  📋 Main Targets"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "help" "Show this help message"
-	@printf "  %-25s %s\n" "all" "Full CI/CD pipeline (check, clean, build, test, push)"
+	@printf "  %-25s %s\n" "all" "Full CI/CD pipeline (format, check, clean, build, test, push)"
 	@echo ""
 	@echo "  🧪 Testing"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -62,6 +62,7 @@ help:
 	@printf "  %-25s %s\n" "build" "Build release version"
 	@printf "  %-25s %s\n" "clean" "Clean all reifydb packages"
 	@printf "  %-25s %s\n" "format" "Format all code with rustfmt (nightly)"
+	@printf "  %-25s %s\n" "format-check" "Format code and fail if files changed"
 	@echo ""
 	@echo "  🐳 Docker"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -79,8 +80,9 @@ help:
 	@printf "  %-25s %s\n" "release-dry-run" "Preview release without executing"
 	@printf "  %-25s %s\n" "help-release" "Show detailed release help"
 	@echo ""
-	@echo "  📊 Other"
+	@echo "  📊 Code Quality"
 	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "check-code-quality" "Validate code quality standards"
 	@printf "  %-25s %s\n" "check" "Check for uncommitted changes"
 	@printf "  %-25s %s\n" "push" "Push changes to git (after check)"
 	@echo ""
@@ -96,7 +98,12 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: check clean build build-testcontainer test-full push-testcontainer push
+all: format-check check-code-quality check clean build build-testcontainer test-full push-testcontainer push
+
+.PHONY: check-code-quality
+check-code-quality:
+	@echo "🔍 Checking code quality standards..."
+	@./scripts/check-internal-reexports.sh
 
 .PHONY: check
 check:

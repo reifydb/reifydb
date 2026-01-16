@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::ColumnSaturationPolicy;
+use reifydb_core::interface::catalog::policy::ColumnSaturationPolicy;
 use reifydb_type::{
-	Fragment, GetType, SafeConvert,
-	diagnostic::number::{integer_precision_loss, number_out_of_range},
 	error,
+	error::diagnostic::number::{integer_precision_loss, number_out_of_range},
+	fragment::Fragment,
+	value::{number::safe::convert::SafeConvert, r#type::get::GetType},
 };
 
 use crate::evaluate::ColumnEvaluationContext;
 
 pub trait Convert {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
 }
 
 impl Convert for ColumnEvaluationContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -28,7 +29,7 @@ impl Convert for ColumnEvaluationContext<'_> {
 }
 
 impl Convert for &ColumnEvaluationContext<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_core::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> reifydb_type::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,

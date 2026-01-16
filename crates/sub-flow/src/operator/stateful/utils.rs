@@ -2,10 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::FlowNodeId,
-	key::{EncodableKey, FlowNodeInternalStateKey, FlowNodeStateKey},
-	value::encoded::{EncodedValues, EncodedValuesLayout},
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+		layout::EncodedValuesLayout,
+	},
 };
 
 use crate::transaction::FlowTransaction;
@@ -168,12 +171,12 @@ pub fn empty_key() -> EncodedKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, util::CowVec};
-	use reifydb_type::Type;
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::common::CommitVersion;
+	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};

@@ -3,18 +3,18 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::{
+use reifydb_abi::operator::capabilities::{
 	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
 	has_capability,
 };
 use reifydb_core::{
-	interface::VTableDef,
-	value::column::{Column, ColumnData, Columns},
+	interface::catalog::vtable::VTableDef,
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
-use super::FlowOperatorStore;
+use super::flow_operator_store::FlowOperatorStore;
 use crate::{
 	system::SystemCatalog,
 	vtable::{Batch, VTable, VTableContext},

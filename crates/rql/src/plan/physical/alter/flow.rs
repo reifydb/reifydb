@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	ast::identifier::MaybeQualifiedFlowIdentifier,
@@ -34,15 +34,15 @@ impl Compiler {
 	pub(crate) fn compile_alter_flow<T: IntoStandardTransaction>(
 		&self,
 		rx: &mut T,
-		alter: logical::alter::AlterFlowNode,
+		alter: logical::alter::flow::AlterFlowNode,
 	) -> crate::Result<PhysicalPlan> {
 		let action = match alter.action {
-			logical::alter::AlterFlowAction::Rename {
+			logical::alter::flow::AlterFlowAction::Rename {
 				new_name,
 			} => AlterFlowAction::Rename {
 				new_name,
 			},
-			logical::alter::AlterFlowAction::SetQuery {
+			logical::alter::flow::AlterFlowAction::SetQuery {
 				query,
 			} => {
 				// Compile logical plans to physical plans
@@ -51,8 +51,8 @@ impl Compiler {
 					query: physical_query,
 				}
 			}
-			logical::alter::AlterFlowAction::Pause => AlterFlowAction::Pause,
-			logical::alter::AlterFlowAction::Resume => AlterFlowAction::Resume,
+			logical::alter::flow::AlterFlowAction::Pause => AlterFlowAction::Pause,
+			logical::alter::flow::AlterFlowAction::Resume => AlterFlowAction::Resume,
 		};
 
 		let plan = AlterFlowNode {

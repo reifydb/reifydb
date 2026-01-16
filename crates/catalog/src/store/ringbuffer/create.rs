@@ -2,14 +2,24 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::ringbuffer_already_exists,
-	interface::{ColumnIndex, ColumnPolicyKind, DictionaryId, NamespaceId, RingBufferDef, RingBufferId, TableId},
-	return_error,
+	interface::catalog::{
+		column::ColumnIndex,
+		id::{DictionaryId, NamespaceId, RingBufferId, TableId},
+		policy::ColumnPolicyKind,
+		ringbuffer::RingBufferDef,
+	},
+	key::{
+		namespace_ringbuffer::NamespaceRingBufferKey,
+		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
+	},
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Fragment, TypeConstraint};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::ringbuffer_already_exists, fragment::Fragment, return_error,
+	value::constraint::TypeConstraint,
+};
 
-use crate::{CatalogStore, store::sequence::SystemSequence};
+use crate::{CatalogStore, store::sequence::system::SystemSequence};
 
 #[derive(Debug, Clone)]
 pub struct RingBufferColumnToCreate {
@@ -37,7 +47,6 @@ impl CatalogStore {
 	) -> crate::Result<RingBufferDef> {
 		let namespace_id = to_create.namespace;
 
-		// Check if ring buffer already exists
 		if let Some(ringbuffer) =
 			CatalogStore::find_ringbuffer_by_name(txn, namespace_id, &to_create.ringbuffer)?
 		{
@@ -49,22 +58,14 @@ impl CatalogStore {
 			));
 		}
 
-		// Allocate new ring buffer ID
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
 
-		// Store the ring buffer
 		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
-
-		// Link ring buffer to namespace
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, &to_create.ringbuffer)?;
 
-		// Save capacity before moving to_create
 		let capacity = to_create.capacity;
 
-		// Insert columns
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
-
-		// Initialize ring buffer metadata
 		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
 
 		Ok(Self::get_ringbuffer(txn, ringbuffer_id)?)
@@ -76,8 +77,6 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::RingBufferKey;
-
 		use crate::store::ringbuffer::layout::ringbuffer;
 
 		let mut row = ringbuffer::LAYOUT.allocate();
@@ -99,8 +98,6 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		name: &str,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::NamespaceRingBufferKey;
-
 		use crate::store::ringbuffer::layout::ringbuffer_namespace;
 
 		let mut row = ringbuffer_namespace::LAYOUT.allocate();
@@ -117,7 +114,7 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<()> {
-		use crate::store::column::ColumnToCreate;
+		use crate::store::column::create::ColumnToCreate;
 
 		for (idx, col) in to_create.columns.into_iter().enumerate() {
 			CatalogStore::create_column(
@@ -152,8 +149,6 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::RingBufferMetadataKey;
-
 		use crate::store::ringbuffer::layout::ringbuffer_metadata;
 
 		let mut row = ringbuffer_metadata::LAYOUT.allocate();
@@ -170,10 +165,10 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::NamespaceRingBufferKey;
+pub mod tests {
+	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::*;
 	use crate::{store::ringbuffer::layout::ringbuffer_namespace, test_utils::ensure_test_namespace};

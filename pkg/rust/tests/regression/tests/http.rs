@@ -3,9 +3,9 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::retry, server, sub_server_http::HttpConfig};
+use reifydb::{Database, core::util::retry::retry, server, sub_server_http::factory::HttpConfig};
 use reifydb_client::HttpClient;
-use reifydb_testing::{testscript, testscript::Command};
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
@@ -17,10 +17,7 @@ pub struct HttpRunner {
 
 impl HttpRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance = server::memory()
-			.with_http(HttpConfig::default().bind_addr("::1:0"))
-			.build()
-			.unwrap();
+		let instance = server::memory().with_http(HttpConfig::default().bind_addr("::1:0")).build().unwrap();
 
 		Self {
 			instance: Some(instance),
@@ -30,7 +27,7 @@ impl HttpRunner {
 	}
 }
 
-impl testscript::Runner for HttpRunner {
+impl testscript::runner::Runner for HttpRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 
@@ -100,7 +97,7 @@ fn test_http(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::run_path(&mut HttpRunner::new(Arc::clone(&runtime)), path)
+		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

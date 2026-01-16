@@ -4,7 +4,7 @@
 //! Query expression types (FROM, FILTER, MAP, JOIN, etc.).
 
 use super::{Expr, Variable};
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// FROM clause - data source.
 #[derive(Debug, Clone, Copy)]

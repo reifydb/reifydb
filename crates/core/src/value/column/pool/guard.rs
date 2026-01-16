@@ -13,10 +13,20 @@ use std::{
 	rc::{Rc, Weak},
 };
 
-use reifydb_type::{Date, DateTime, Duration, Time, Uuid4, Uuid7};
+use reifydb_type::value::{
+	container::{
+		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row_number::RowNumberContainer,
+		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+		*,
+	},
+	date::Date,
+	datetime::DateTime,
+	duration::Duration,
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+};
 
-use super::{PoolAllocator, Pools, PoolsInner};
-use crate::value::container::*;
+use super::{Pools, PoolsInner, allocator::PoolAllocator};
 
 /// Trait for containers that can be released back to a pool
 pub trait Releasable: Clone + Debug {
@@ -430,7 +440,7 @@ impl<T: Releasable> DerefMut for PooledGuard<T> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

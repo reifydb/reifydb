@@ -4,11 +4,11 @@
 //! Diagnostic conversion for parser errors.
 
 use reifydb_type::{
-	Fragment,
-	diagnostic::{Diagnostic, IntoDiagnostic},
+	error::diagnostic::{Diagnostic, IntoDiagnostic},
+	fragment::Fragment,
 };
 
-use crate::ast::parse::{ParseError, ParseErrorKind};
+use crate::ast::parse::error::{ParseError, ParseErrorKind};
 
 /// Wrapper for Vec<ParseError> to implement IntoDiagnostic.
 pub struct ParseErrors(pub Vec<ParseError>);

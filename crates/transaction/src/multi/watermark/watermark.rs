@@ -22,10 +22,10 @@ use std::{
 
 use crossbeam_channel::{Sender, unbounded};
 use parking_lot::{Condvar, Mutex};
-use reifydb_core::CommitVersion;
+use reifydb_core::common::CommitVersion;
 use tracing::instrument;
 
-use crate::multi::watermark::Closer;
+use crate::multi::watermark::closer::Closer;
 
 pub struct WatermarkInner {
 	pub(crate) done_until: AtomicU64,
@@ -186,7 +186,7 @@ impl WaterMark {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::{
 		sync::atomic::AtomicUsize,
 		thread::sleep,
@@ -194,6 +194,7 @@ mod tests {
 	};
 
 	use super::*;
+	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
 
 	#[test]
 	fn test_basic() {
@@ -336,7 +337,7 @@ mod tests {
 			assert!(done_until.0 >= 50, "Should have processed many versions");
 
 			// Try to wait for a very old version (should return immediately)
-			let very_old = done_until.0.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
+			let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
 			let start = Instant::now();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();

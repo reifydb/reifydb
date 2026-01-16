@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::RingBufferId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::RingBufferId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;

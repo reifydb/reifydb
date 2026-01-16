@@ -12,7 +12,6 @@ use num_bigint::BigInt as StdBigInt;
 use serde::{Deserialize, Serialize};
 
 pub mod parse;
-pub use parse::parse_int;
 
 /// A wrapper type for arbitrary-precision signed integers (Int)
 #[repr(transparent)]
@@ -152,7 +151,7 @@ impl Display for Int {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

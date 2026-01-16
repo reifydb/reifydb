@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::store::subscription::SubscriptionColumnToCreate;
+use reifydb_catalog::store::subscription::create::SubscriptionColumnToCreate;
 
 use crate::{
-	ast::{AstCreateSubscription, AstDataType},
+	ast::ast::{AstCreateSubscription, AstDataType},
 	convert_data_type,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},
 };

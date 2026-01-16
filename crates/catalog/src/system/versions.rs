@@ -3,8 +3,12 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, VTableDef};
-use reifydb_type::{Type, TypeConstraint};
+use reifydb_core::interface::catalog::{
+	column::{ColumnDef, ColumnIndex},
+	id::NamespaceId,
+	vtable::VTableDef,
+};
+use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::versions::*, vtable::VERSIONS};
 

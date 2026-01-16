@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, TableKey,
-};
-use reifydb_transaction::IntoStandardTransaction;
-
-use crate::{
-	MaterializedCatalog,
-	store::table::layout::{
-		table,
-		table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
+use reifydb_core::{
+	interface::{
+		catalog::{
+			id::{NamespaceId, PrimaryKeyId, TableId},
+			key::PrimaryKeyDef,
+			table::TableDef,
+		},
+		store::MultiVersionValues,
 	},
+	key::table::TableKey,
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
+
+use super::MaterializedCatalog;
+use crate::store::table::layout::{
+	table,
+	table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
 
 pub(crate) fn load_tables(rx: &mut impl IntoStandardTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {

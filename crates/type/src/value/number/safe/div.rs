@@ -61,10 +61,7 @@ impl_safe_div_unsigned!(u8, u16, u32, u64, u128);
 use bigdecimal::Zero;
 use num_bigint::BigInt;
 
-use crate::{
-	Decimal,
-	value::{int::Int, uint::Uint},
-};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeDiv for Int {
 	fn checked_div(&self, r: &Self) -> Option<Self> {
@@ -219,7 +216,7 @@ impl SafeDiv for f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::SafeDiv;
 
 	macro_rules! signed {

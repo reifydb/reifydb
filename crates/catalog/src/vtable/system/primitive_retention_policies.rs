@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{PrimitiveId, VTableDef},
+	interface::catalog::{primitive::PrimitiveId, vtable::VTableDef},
 	retention::{CleanupMode, RetentionPolicy},
-	value::column::{Column, ColumnData, Columns},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Fragment, Value};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
 	CatalogStore,

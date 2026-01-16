@@ -6,6 +6,10 @@
 //! Tests cover all API paths, validation modes, error conditions, and edge cases
 //! for the fluent bulk insert API that bypasses RQL parsing for maximum performance.
 
+use reifydb_core::interface::auth::Identity;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_type::value::frame::frame::Frame;
+
 #[path = "bulk_insert/basic.rs"]
 mod basic;
 #[path = "bulk_insert/coerce.rs"]
@@ -18,9 +22,6 @@ mod ringbuffer;
 mod transaction;
 #[path = "bulk_insert/trusted.rs"]
 mod trusted;
-
-use reifydb_core::{Frame, interface::Identity};
-use reifydb_engine::StandardEngine;
 
 pub fn create_namespace(engine: &StandardEngine, name: &str) {
 	let identity = test_identity();

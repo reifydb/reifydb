@@ -3,10 +3,10 @@
 
 use std::ptr;
 
-use reifydb_type::{Type, Uuid4};
+use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 use uuid::Uuid;
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_uuid4(&self, row: &mut EncodedValues, index: usize, value: Uuid4) {
@@ -44,10 +44,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{Type, Uuid4};
+pub mod tests {
+	use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_uuid4() {

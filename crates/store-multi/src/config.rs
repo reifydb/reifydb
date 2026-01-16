@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb_core::event::EventBus;
 
-use crate::hot::HotStorage;
+use crate::hot::storage::HotStorage;
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {

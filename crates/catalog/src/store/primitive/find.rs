@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{PrimitiveDef, PrimitiveId};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, vtable::VTableRegistry};
 
@@ -66,14 +66,18 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{PrimitiveDef, PrimitiveId, TableId, VTableId, ViewId};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		id::{TableId, ViewId},
+		primitive::{PrimitiveDef, PrimitiveId},
+		vtable::VTableId,
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
-		store::view::{ViewColumnToCreate, ViewToCreate},
+		store::view::create::{ViewColumnToCreate, ViewToCreate},
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 

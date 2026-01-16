@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
-	ast::AstCreateFlow,
+	ast::ast::AstCreateFlow,
 	plan::logical::{Compiler, CreateFlowNode, LogicalPlan},
 };
 

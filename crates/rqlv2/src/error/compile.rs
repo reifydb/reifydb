@@ -4,8 +4,8 @@
 //! Diagnostic conversion for bytecode compiler errors.
 
 use reifydb_type::{
-	Fragment,
-	diagnostic::{Diagnostic, IntoDiagnostic},
+	error::diagnostic::{Diagnostic, IntoDiagnostic},
+	fragment::Fragment,
 };
 
 use crate::bytecode::compile::CompileError;

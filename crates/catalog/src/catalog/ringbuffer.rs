@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, RingBufferDef, RingBufferId};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_core::interface::catalog::{
+	id::{NamespaceId, RingBufferId},
+	ringbuffer::RingBufferDef,
+};
+use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 use reifydb_type::{error, internal};
 use tracing::instrument;
 
-use crate::{Catalog, CatalogStore};
+use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self, txn))]

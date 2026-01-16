@@ -5,12 +5,12 @@
 
 use std::time::Duration;
 
-use reifydb_core::{SharedRuntime, ioc::IocContainer};
-use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::{AppState, StateConfig};
+use reifydb_core::{runtime::SharedRuntime, util::ioc::IocContainer};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_sub_server::state::{AppState, StateConfig};
 
-use crate::HttpSubsystem;
+use crate::subsystem::HttpSubsystem;
 
 /// Configuration for the HTTP server subsystem.
 #[derive(Clone, Debug)]
@@ -91,7 +91,7 @@ impl HttpSubsystemFactory {
 }
 
 impl SubsystemFactory for HttpSubsystemFactory {
-	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 

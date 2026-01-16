@@ -6,6 +6,4 @@
 //! This module contains the flow compiler that was moved from reifydb-rql to avoid
 //! lifetime issues with async recursion and generic MultiVersionCommandTransaction types.
 
-mod compiler;
-
-pub use compiler::{compile_flow, compile_subscription_flow};
+pub mod compiler;

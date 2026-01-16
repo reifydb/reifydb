@@ -9,7 +9,7 @@ pub mod list;
 
 use reifydb_core::{
 	retention::{CleanupMode, RetentionPolicy},
-	value::encoded::EncodedValues,
+	value::encoded::encoded::EncodedValues,
 };
 
 use self::layout::retention_policy;
@@ -86,7 +86,7 @@ fn decode_cleanup_mode(mode: u8) -> Option<CleanupMode> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -3,23 +3,24 @@
 
 //! Flow worker that handles flow processing logic.
 
-use crate::{
-	FlowEngine,
-	instruction::WorkerBatch,
-	transaction::{FlowTransaction, PendingWrites},
-};
-use WorkerRequest::Process;
-use crossbeam_channel::{Receiver, Sender, bounded};
-use reifydb_catalog::Catalog;
-use reifydb_core::{Error, Result};
-use reifydb_engine::StandardEngine;
-use reifydb_rql::flow::FlowDag;
-use reifydb_type::internal;
 use std::{
 	mem::take,
 	thread::{JoinHandle, spawn},
 };
+
+use WorkerRequest::Process;
+use crossbeam_channel::{Receiver, Sender, bounded};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_rql::flow::flow::FlowDag;
+use reifydb_type::{Result, error::Error, internal};
 use tracing::{Span, error, instrument};
+
+use crate::{
+	FlowEngine,
+	instruction::WorkerBatch,
+	transaction::{FlowTransaction, pending::PendingWrites},
+};
 
 /// Message types for worker communication.
 enum WorkerRequest {

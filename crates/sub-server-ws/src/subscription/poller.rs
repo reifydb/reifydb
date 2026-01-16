@@ -13,16 +13,27 @@
 
 use dashmap::DashMap;
 use reifydb_core::{
-	CommitVersion, EncodedKey,
-	interface::{SubscriptionColumnDef, SubscriptionDef, SubscriptionId},
-	key::{Key, SubscriptionColumnKey, SubscriptionKey, SubscriptionRowKey, SubscriptionRowKeyRange},
+	common::CommitVersion,
+	interface::catalog::{
+		id::SubscriptionId,
+		subscription::{SubscriptionColumnDef, SubscriptionDef},
+	},
+	key::{
+		Key,
+		subscription::SubscriptionKey,
+		subscription_column::SubscriptionColumnKey,
+		subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange},
+	},
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesNamedLayout,
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::{key::EncodedKey, named::EncodedValuesNamedLayout},
 	},
 };
-use reifydb_sub_server::{AppState, ResponseColumn, ResponseFrame};
-use reifydb_type::Fragment;
+use reifydb_sub_server::{
+	response::{ResponseColumn, ResponseFrame},
+	state::AppState,
+};
+use reifydb_type::fragment::Fragment;
 use tokio::sync::mpsc;
 
 use super::{PushMessage, SubscriptionRegistry};
@@ -101,7 +112,7 @@ impl SubscriptionPoller {
 		subscription_id: SubscriptionId,
 		state: &AppState,
 		registry: &SubscriptionRegistry,
-	) -> reifydb_core::Result<()> {
+	) -> reifydb_type::Result<()> {
 		// Get consumption state
 		let consumption_state = match self.states.get(&subscription_id) {
 			Some(state) => state.clone(),
@@ -140,7 +151,7 @@ impl SubscriptionPoller {
 
 		// Send to client via push channel
 		let msg = PushMessage::Change {
-			subscription_id: subscription_id,
+			subscription_id,
 			frame,
 		};
 
@@ -162,7 +173,10 @@ impl SubscriptionPoller {
 			}
 			Err(mpsc::error::TrySendError::Closed(_)) => {
 				// Channel closed - client disconnected
-				tracing::debug!("Push channel closed for subscription {}, unregistering", subscription_id);
+				tracing::debug!(
+					"Push channel closed for subscription {}, unregistering",
+					subscription_id
+				);
 				self.unregister(&subscription_id);
 			}
 		}
@@ -178,7 +192,7 @@ impl SubscriptionPoller {
 		state: &AppState,
 		db_subscription_id: SubscriptionId,
 		last_consumed_key: Option<&EncodedKey>,
-	) -> reifydb_core::Result<(Columns, Vec<EncodedKey>)> {
+	) -> reifydb_type::Result<(Columns, Vec<EncodedKey>)> {
 		// Begin a read transaction
 		let engine = state.engine_clone();
 		let mut cmd_txn = engine.begin_command()?;
@@ -187,7 +201,8 @@ impl SubscriptionPoller {
 		let sub_key = SubscriptionKey::encoded(db_subscription_id);
 		let sub_def = if let Some(entry) = cmd_txn.get(&sub_key)? {
 			// Scan subscription columns
-			let mut stream = cmd_txn.range(SubscriptionColumnKey::subscription_range(db_subscription_id), 256)?;
+			let mut stream =
+				cmd_txn.range(SubscriptionColumnKey::subscription_range(db_subscription_id), 256)?;
 			let mut columns = Vec::new();
 
 			while let Some(result) = stream.next() {
@@ -197,8 +212,9 @@ impl SubscriptionPoller {
 					let name = subscription_column::LAYOUT
 						.get_utf8(&col_entry.values, subscription_column::NAME)
 						.to_string();
-					let ty_u8 = subscription_column::LAYOUT.get_u8(&col_entry.values, subscription_column::TYPE);
-					let ty = reifydb_type::Type::from_u8(ty_u8);
+					let ty_u8 = subscription_column::LAYOUT
+						.get_u8(&col_entry.values, subscription_column::TYPE);
+					let ty = reifydb_type::value::r#type::Type::from_u8(ty_u8);
 
 					columns.push(SubscriptionColumnDef {
 						id: col_key.column,
@@ -213,8 +229,9 @@ impl SubscriptionPoller {
 
 			// Get acknowledged version
 			use reifydb_catalog::store::subscription::layout::subscription;
-			let acknowledged_version =
-				CommitVersion(subscription::LAYOUT.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION));
+			let acknowledged_version = CommitVersion(
+				subscription::LAYOUT.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
+			);
 
 			SubscriptionDef {
 				id: db_subscription_id,
@@ -279,7 +296,7 @@ impl SubscriptionPoller {
 	}
 
 	/// Convert Columns to ResponseFrame.
-	fn convert_to_frame(columns: Columns) -> reifydb_core::Result<ResponseFrame> {
+	fn convert_to_frame(columns: Columns) -> reifydb_type::Result<ResponseFrame> {
 		let row_count = columns.row_count();
 		let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
 
@@ -309,7 +326,7 @@ impl SubscriptionPoller {
 	}
 
 	/// Delete consumed rows from subscription storage.
-	async fn delete_rows(&self, state: &AppState, row_keys: &[EncodedKey]) -> reifydb_core::Result<()> {
+	async fn delete_rows(&self, state: &AppState, row_keys: &[EncodedKey]) -> reifydb_type::Result<()> {
 		if row_keys.is_empty() {
 			return Ok(());
 		}

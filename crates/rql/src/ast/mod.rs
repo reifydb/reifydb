@@ -3,16 +3,12 @@
 
 use tracing::instrument;
 
-pub use crate::ast::{
-	ast::*,
-	tokenize::{Token, TokenKind},
-};
-mod ast;
+use crate::ast::{ast::AstStatement, tokenize::tokenize};
+
+pub mod ast;
 pub mod identifier;
 pub(crate) mod parse;
-pub(crate) mod tokenize;
-pub use parse::parse;
-pub use tokenize::tokenize;
+pub mod tokenize;
 
 #[instrument(name = "rql::parse", level = "trace", skip(str))]
 pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement>> {

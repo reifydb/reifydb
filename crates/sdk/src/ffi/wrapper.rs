@@ -15,11 +15,18 @@ use std::{
 	process::abort,
 };
 
-use reifydb_abi::*;
-use reifydb_type::RowNumber;
+use reifydb_abi::{
+	context::context::ContextFFI, data::column::ColumnsFFI, flow::change::FlowChangeFFI,
+	operator::vtable::OperatorVTableFFI,
+};
+use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument, warn};
 
-use crate::{FFIOperator, OperatorContext, ffi::Arena};
+use crate::{
+	ffi::Arena,
+	flow::FlowChange,
+	operator::{FFIOperator, context::OperatorContext},
+};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
@@ -50,10 +57,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 /// Unmarshal FFI input to FlowChange
 #[inline]
 #[instrument(name = "unmarshal", level = "trace", skip_all)]
-fn unmarshal_input<O: FFIOperator>(
-	arena: &mut Arena,
-	input: *const FlowChangeFFI,
-) -> Result<crate::FlowChange, i32> {
+fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const FlowChangeFFI) -> Result<FlowChange, i32> {
 	unsafe {
 		match arena.unmarshal_flow_change(&*input) {
 			Ok(change) => Ok(change),
@@ -71,8 +75,8 @@ fn unmarshal_input<O: FFIOperator>(
 fn apply_operator<O: FFIOperator>(
 	operator: &mut O,
 	ctx: *mut ContextFFI,
-	input_change: crate::FlowChange,
-) -> Result<crate::FlowChange, i32> {
+	input_change: FlowChange,
+) -> Result<FlowChange, i32> {
 	let mut op_ctx = OperatorContext::new(ctx);
 	match operator.apply(&mut op_ctx, input_change) {
 		Ok(change) => Ok(change),
@@ -86,7 +90,7 @@ fn apply_operator<O: FFIOperator>(
 /// Marshal FlowChange to FFI output
 #[inline]
 #[instrument(name = "marshal", level = "trace", skip_all)]
-fn marshal_output(arena: &mut Arena, output_change: &crate::FlowChange, output: *mut FlowChangeFFI) {
+fn marshal_output(arena: &mut Arena, output_change: &FlowChange, output: *mut FlowChangeFFI) {
 	unsafe {
 		*output = arena.marshal_flow_change(output_change);
 	}

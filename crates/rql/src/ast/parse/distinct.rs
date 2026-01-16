@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{diagnostic::operation::distinct_multiple_columns_without_braces, return_error};
+use reifydb_type::{error::diagnostic::operation::distinct_multiple_columns_without_braces, return_error};
 
 use crate::ast::{
-	AstDistinct, TokenKind,
+	ast::AstDistinct,
 	identifier::MaybeQualifiedColumnIdentifier,
 	parse::Parser,
-	tokenize::{Keyword, Operator, Separator},
+	tokenize::{keyword::Keyword, operator::Operator, separator::Separator, token::TokenKind},
 };
 
 impl Parser {
@@ -92,7 +92,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::ast::tokenize::tokenize;
 
@@ -103,7 +103,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");
@@ -117,7 +117,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 1);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
@@ -132,7 +132,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
+		if let crate::ast::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 2);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 			assert_eq!(distinct.columns[1].name.text(), "age");

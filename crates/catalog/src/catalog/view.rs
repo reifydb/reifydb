@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, ViewDef, ViewId};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction, change::TransactionalViewChanges};
+use reifydb_core::interface::catalog::{
+	id::{NamespaceId, ViewId},
+	view::ViewDef,
+};
+use reifydb_transaction::{
+	change::TransactionalViewChanges,
+	standard::{IntoStandardTransaction, StandardTransaction},
+};
 use reifydb_type::{error, internal};
 use tracing::{instrument, warn};
 
-use crate::{Catalog, CatalogStore};
+use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]

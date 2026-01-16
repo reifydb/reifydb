@@ -107,7 +107,7 @@ pub fn init_development_pools() -> Pools {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::value::column::pool::thread_local::{clear_thread_pools, has_thread_pools};
 

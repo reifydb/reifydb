@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{RingBufferMetadata, RingBufferMetadataKey};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::{interface::catalog::ringbuffer::RingBufferMetadata, key::ringbuffer::RingBufferMetadataKey};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer_metadata};
 
@@ -25,7 +25,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use super::*;

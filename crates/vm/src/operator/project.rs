@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Batch,
-	value::column::{Column, Columns},
+use reifydb_core::value::{
+	batch::Batch,
+	column::{Column, columns::Columns},
 };
-use reifydb_rqlv2::expression::{CompiledExpr, EvalContext};
-use reifydb_type::Fragment;
+use reifydb_rqlv2::expression::{eval::context::EvalContext, types::CompiledExpr};
+use reifydb_type::fragment::Fragment;
 
 use crate::{error::Result, pipeline::Pipeline};
 
@@ -89,7 +89,6 @@ impl Iterator for ProjectIterator {
 		let mut new_columns: Vec<Column> = Vec::new();
 
 		if self.keep_input {
-			// Copy input columns
 			new_columns.extend(columns.iter().cloned());
 		}
 

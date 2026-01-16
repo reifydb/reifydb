@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{SubscriptionId, SubscriptionKey};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::{interface::catalog::id::SubscriptionId, key::subscription::SubscriptionKey};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::CatalogStore;
 
@@ -26,10 +26,10 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
+	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
 	#[test]
 	fn test_delete_subscription() {
@@ -59,7 +59,7 @@ mod tests {
 	fn test_delete_nonexistent_subscription() {
 		let mut txn = create_test_command_transaction();
 
-		use reifydb_core::interface::SubscriptionId;
+		use reifydb_core::interface::catalog::id::SubscriptionId;
 		// Deleting a non-existent subscription should not error
 		let non_existent = SubscriptionId::new();
 		let result = CatalogStore::delete_subscription(&mut txn, non_existent);

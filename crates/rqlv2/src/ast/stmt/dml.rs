@@ -4,7 +4,7 @@
 //! DML statement types (INSERT, UPDATE, DELETE).
 
 use super::Expr;
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// INSERT statement.
 #[derive(Debug, Clone, Copy)]

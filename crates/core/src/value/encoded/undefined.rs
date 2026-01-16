@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	/// Set a field as undefined (not set)
@@ -11,10 +11,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::{blob::Blob, r#type::Type};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_bool() {
@@ -133,7 +133,7 @@ mod tests {
 
 	#[test]
 	fn test_set_temporal_types() {
-		use reifydb_type::{Date, DateTime, Duration, Time};
+		use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = layout.allocate();
@@ -173,7 +173,10 @@ mod tests {
 
 	#[test]
 	fn test_set_uuid_types() {
-		use reifydb_type::{IdentityId, Uuid4, Uuid7};
+		use reifydb_type::value::{
+			identity::IdentityId,
+			uuid::{Uuid4, Uuid7},
+		};
 
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 		let mut row = layout.allocate();
@@ -209,7 +212,7 @@ mod tests {
 	fn test_set_decimal_int_uint() {
 		use std::str::FromStr;
 
-		use reifydb_type::{Decimal, Int, Uint};
+		use reifydb_type::value::{decimal::Decimal, int::Int, uint::Uint};
 
 		let layout = EncodedValuesLayout::new(&[Type::Decimal, Type::Int, Type::Uint]);
 		let mut row = layout.allocate();
@@ -244,8 +247,6 @@ mod tests {
 
 	#[test]
 	fn test_set_blob() {
-		use reifydb_type::Blob;
-
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
 		let mut row = layout.allocate();
 

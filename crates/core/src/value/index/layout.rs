@@ -3,9 +3,14 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_type::{Type, diagnostic::catalog};
+use reifydb_type::{
+	error,
+	error::diagnostic::catalog::{index_types_directions_mismatch, index_variable_length_not_supported},
+	util::cowvec::CowVec,
+	value::r#type::Type,
+};
 
-use crate::{CowVec, SortDirection, value::index::EncodedIndexKey};
+use crate::{sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
 #[derive(Debug, Clone)]
 pub struct EncodedIndexLayout(Arc<EncodedIndexLayoutInner>);
@@ -19,17 +24,14 @@ impl Deref for EncodedIndexLayout {
 }
 
 impl EncodedIndexLayout {
-	pub fn new(types: &[Type], directions: &[SortDirection]) -> crate::Result<Self> {
+	pub fn new(types: &[Type], directions: &[SortDirection]) -> reifydb_type::Result<Self> {
 		if types.len() != directions.len() {
-			return Err(crate::error!(catalog::index_types_directions_mismatch(
-				types.len(),
-				directions.len()
-			)));
+			return Err(error!(index_types_directions_mismatch(types.len(), directions.len())));
 		}
 
 		for typ in types {
 			if matches!(typ, Type::Utf8 | Type::Blob) {
-				return Err(crate::error!(catalog::index_variable_length_not_supported()));
+				return Err(error!(index_variable_length_not_supported()));
 			}
 		}
 
@@ -150,9 +152,9 @@ fn align_up(offset: usize, align: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::SortDirection;
+	use crate::sort::SortDirection;
 
 	#[test]
 	fn test_single_field_int() {

@@ -4,7 +4,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::Result;
 
 pub struct AuthVersion;
 

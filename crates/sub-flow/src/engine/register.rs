@@ -3,26 +3,41 @@
 
 use std::rc::Rc;
 
-use FlowNodeType::{Aggregate, SinkSubscription, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
-use reifydb_core::{
-	Error,
-	interface::{FlowId, FlowNodeId, PrimitiveId},
+use reifydb_core::interface::catalog::{
+	flow::{FlowId, FlowNodeId},
+	primitive::PrimitiveId,
 };
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
-	FlowDag, FlowNode, FlowNodeType,
-	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Merge, Sort, Take, Window},
+	flow::FlowDag,
+	node::{
+		FlowNode,
+		FlowNodeType::{
+			Aggregate, Apply, Distinct, Extend, Filter, Join, Map, Merge, SinkSubscription, SinkView, Sort,
+			SourceFlow, SourceInlineData, SourceTable, SourceView, Take, Window,
+		},
+	},
 };
-use reifydb_type::internal;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{error::Error, internal};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator,
-		MergeOperator, Operators, PrimitiveFlowOperator, PrimitiveTableOperator, PrimitiveViewOperator,
-		SinkSubscriptionOperator, SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
+		Operators,
+		apply::ApplyOperator,
+		distinct::DistinctOperator,
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		join::operator::JoinOperator,
+		map::MapOperator,
+		merge::MergeOperator,
+		scan::{flow::PrimitiveFlowOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator},
+		sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator},
+		sort::SortOperator,
+		take::TakeOperator,
+		window::WindowOperator,
 	},
 };
 

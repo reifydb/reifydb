@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod svl;
+pub mod svl;
 
-use reifydb_core::{EncodedKey, event::EventBus, interface::WithEventBus};
+use reifydb_core::{event::EventBus, interface::WithEventBus, value::encoded::key::EncodedKey};
 use reifydb_store_single::SingleStore;
-pub use svl::{SvlCommandTransaction, SvlQueryTransaction, TransactionSvl};
+
+use crate::single::svl::{TransactionSvl, read::SvlQueryTransaction, write::SvlCommandTransaction};
 
 #[repr(u8)]
 #[derive(Clone)]
@@ -23,20 +24,20 @@ impl TransactionSingle {
 	}
 
 	/// Helper for single-version queries.
-	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SvlQueryTransaction<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut SvlQueryTransaction<'_>) -> reifydb_type::Result<R>,
 	{
 		let mut tx = self.begin_query(keys)?;
 		f(&mut tx)
 	}
 
 	/// Helper for single-version commands.
-	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
+	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> reifydb_type::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut SvlCommandTransaction<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut SvlCommandTransaction<'_>) -> reifydb_type::Result<R>,
 	{
 		let mut tx = self.begin_command(keys)?;
 		let result = f(&mut tx)?;
@@ -45,7 +46,7 @@ impl TransactionSingle {
 	}
 
 	#[inline]
-	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_core::Result<SvlQueryTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -55,7 +56,7 @@ impl TransactionSingle {
 	}
 
 	#[inline]
-	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_core::Result<SvlCommandTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlCommandTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{

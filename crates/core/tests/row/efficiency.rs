@@ -3,8 +3,8 @@
 
 //! Performance and scalability tests for the encoded encoding system
 
-use reifydb_core::value::encoded::EncodedValuesLayout;
-use reifydb_type::*;
+use reifydb_core::value::encoded::layout::EncodedValuesLayout;
+use reifydb_type::value::{blob::Blob, date::Date, int::Int, r#type::Type, uuid::Uuid4};
 
 #[test]
 fn test_large_row() {

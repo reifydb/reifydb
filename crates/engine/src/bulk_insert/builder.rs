@@ -3,19 +3,38 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::{CatalogStore, sequence::RowSequence};
-use reifydb_core::{interface::Identity, value::encoded::encode_value};
-use reifydb_type::{Fragment, Value};
+use reifydb_catalog::{
+	CatalogStore,
+	store::sequence::{column::ColumnSequence, row::RowSequence},
+};
+use reifydb_core::{
+	interface::{auth::Identity, catalog::id::IndexId},
+	key::{EncodableKey, index_entry::IndexEntryKey},
+	value::encoded::{layout::EncodedValuesLayout, value::encode_value},
+};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, row_number::RowNumber, r#type::Type},
+};
 
 use super::{
 	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
 	error::BulkInsertError,
-	primitive::{PendingRingBufferInsert, PendingTableInsert, RingBufferInsertBuilder, TableInsertBuilder},
 	validation::{
 		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
 	},
 };
-use crate::{StandardCommandTransaction, StandardEngine, transaction::operation::RingBufferOperations};
+use crate::{
+	bulk_insert::primitive::{
+		ringbuffer::{PendingRingBufferInsert, RingBufferInsertBuilder},
+		table::{PendingTableInsert, TableInsertBuilder},
+	},
+	engine::StandardEngine,
+	transaction::operation::{
+		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
+	},
+};
 
 /// Marker trait for validation mode (sealed)
 pub trait ValidationMode: sealed::Sealed + 'static {}
@@ -28,7 +47,7 @@ impl ValidationMode for Validated {}
 pub struct Trusted;
 impl ValidationMode for Trusted {}
 
-mod sealed {
+pub mod sealed {
 	pub trait Sealed {}
 	impl Sealed for super::Validated {}
 	impl Sealed for super::Trusted {}
@@ -134,14 +153,7 @@ fn execute_table_insert<V: ValidationMode>(
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<TableInsertResult> {
-	use reifydb_catalog::sequence::ColumnSequence;
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::Type;
-
-	use crate::{
-		execute::mutate::primary_key,
-		transaction::operation::{DictionaryOperations, TableOperations},
-	};
+	use crate::execute::mutate::primary_key;
 
 	// 1. Look up namespace and table from catalog
 	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)?
@@ -231,8 +243,6 @@ fn execute_table_insert<V: ValidationMode>(
 
 		// Handle primary key index if table has one
 		if let Some(pk_def) = primary_key::get_primary_key(txn, &table)? {
-			use reifydb_core::interface::{EncodableKey, IndexEntryKey, IndexId};
-
 			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
 			let index_entry_key =
 				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
@@ -240,11 +250,13 @@ fn execute_table_insert<V: ValidationMode>(
 			// Check for primary key violation
 			if txn.contains_key(&index_entry_key.encode())? {
 				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-				reifydb_core::return_error!(reifydb_type::diagnostic::index::primary_key_violation(
-					Fragment::None,
-					table.name.clone(),
-					key_columns,
-				));
+				reifydb_type::return_error!(
+					reifydb_type::error::diagnostic::index::primary_key_violation(
+						Fragment::None,
+						table.name.clone(),
+						key_columns,
+					)
+				);
 			}
 
 			// Store the index entry
@@ -268,12 +280,6 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	pending: &PendingRingBufferInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<RingBufferInsertResult> {
-	use reifydb_core::value::encoded::EncodedValuesLayout;
-	use reifydb_type::{RowNumber, Type};
-
-	use crate::transaction::operation::DictionaryOperations;
-
-	// 1. Look up namespace and ring buffer from catalog
 	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
@@ -282,12 +288,10 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
 		})?;
 
-	// Get current metadata
 	let mut metadata = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)?.ok_or_else(|| {
 		BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
 	})?;
 
-	// 2. Build layout for encoding
 	let mut rb_types: Vec<Type> = Vec::with_capacity(ringbuffer.columns.len());
 	for c in &ringbuffer.columns {
 		let ty = if let Some(dict_id) = c.dictionary_id {

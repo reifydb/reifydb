@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{NamespaceDef, NamespaceId},
+	common::CommitVersion,
+	interface::catalog::{id::NamespaceId, namespace::NamespaceDef},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionNamespaceDef};
@@ -61,7 +61,7 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	fn create_test_namespace(id: NamespaceId, name: &str) -> NamespaceDef {

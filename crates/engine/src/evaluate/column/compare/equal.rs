@@ -3,10 +3,10 @@
 
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::EqExpression;
-use reifydb_type::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
+use reifydb_type::error::diagnostic::operator::equal_cannot_be_applied_to_incompatible_types;
 
-use super::{Equal, compare_columns};
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::{super::StandardColumnEvaluator, Equal, compare_columns};
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn equal(&self, ctx: &ColumnEvaluationContext, eq: &EqExpression) -> crate::Result<Column> {

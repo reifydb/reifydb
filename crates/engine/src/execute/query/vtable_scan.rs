@@ -3,15 +3,13 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::vtable::{VTableContext, VTables};
+use reifydb_catalog::vtable::{VTableContext, tables::VTables};
 use reifydb_core::value::column::headers::ColumnHeaders;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct VirtualScanNode {
 	virtual_table: VTables,

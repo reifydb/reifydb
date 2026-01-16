@@ -12,21 +12,27 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
+	common::CommitVersion,
 	event::EventBus,
-	interface::MultiVersionValues,
-	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::encoded::EncodedValues,
+	interface::store::MultiVersionValues,
+	util::encoding::{
+		binary::decode_binary,
+		format::{Formatter, raw::Raw},
+	},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
-use reifydb_testing::testscript;
+use reifydb_testing::testscript::{
+	command::Command,
+	runner::{Runner, run_path},
+};
 use reifydb_transaction::{
-	multi::{
-		TransactionMulti,
-		transaction::{CommandTransaction, QueryTransaction},
-	},
-	single::{TransactionSingle, TransactionSvl},
+	multi::transaction::{TransactionMulti, command::CommandTransaction, query::QueryTransaction},
+	single::{TransactionSingle, svl::TransactionSvl},
 };
 
 /// A handle to either a query or command transaction for test tracking
@@ -50,7 +56,7 @@ fn test_serializable(path: &Path) {
 	)
 	.unwrap();
 
-	testscript::run_path(&mut MvccRunner::new(engine), path).expect("testfailed")
+	run_path(&mut MvccRunner::new(engine), path).expect("testfailed")
 }
 
 pub struct MvccRunner {
@@ -78,7 +84,7 @@ impl MvccRunner {
 	}
 
 	/// Errors if a tx prefix is given.
-	fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>> {
+	fn no_tx(command: &Command) -> Result<(), Box<dyn StdError>> {
 		if let Some(name) = &command.prefix {
 			return Err(format!("can't run {} with tx {name}", command.name).into());
 		}
@@ -86,8 +92,8 @@ impl MvccRunner {
 	}
 }
 
-impl<'a> testscript::Runner for MvccRunner {
-	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
+impl<'a> Runner for MvccRunner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		let tags = command.tags.clone();
 
@@ -205,7 +211,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					}
 					.unwrap();
 
-					let fmtkv = format::Raw::key_maybe_value(&key, value.as_ref());
+					let fmtkv = Raw::key_maybe_value(&key, value.as_ref());
 					writeln!(output, "{fmtkv}")?;
 				}
 				args.reject_rest()?;
@@ -279,7 +285,7 @@ impl<'a> testscript::Runner for MvccRunner {
 				}
 
 				for (key, value) in kvs {
-					writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
+					writeln!(output, "{}", Raw::key_value(&key, &value))?;
 				}
 				self.transactions.insert(name.to_string(), t);
 			}
@@ -450,7 +456,7 @@ where
 	I: Iterator<Item = MultiVersionValues>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
+		let fmtkv = Raw::key_value(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

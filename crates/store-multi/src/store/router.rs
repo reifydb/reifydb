@@ -6,12 +6,14 @@
 //! Determines which table a key or range belongs to based on key type.
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, FlowNodeInternalStateKeyRange, FlowNodeStateKeyRange, Key, RowKeyRange},
-	key::KeyKind,
+	key::{
+		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
+		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
+	},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
-use crate::hot::EntryKind;
+use crate::tier::EntryKind;
 
 /// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
@@ -52,11 +54,15 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		CowVec,
-		interface::{EncodableKey, FlowNodeId, FlowNodeInternalStateKey, FlowNodeStateKey},
+		interface::catalog::flow::FlowNodeId,
+		key::{
+			EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey,
+			flow_node_state::FlowNodeStateKey,
+		},
 	};
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 

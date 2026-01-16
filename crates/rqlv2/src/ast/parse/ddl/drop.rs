@@ -11,7 +11,7 @@ use crate::{
 		parse::{ParseError, ParseErrorKind, Parser},
 		stmt::ddl::{DropObjectType, DropStmt},
 	},
-	token::Keyword,
+	token::keyword::Keyword,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -64,18 +64,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = self.current().span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Drop(DropStmt::new(
-			object_type,
-			namespace,
-			name,
-			if_exists,
-			span,
-		)))
+		Ok(Statement::Drop(DropStmt::new(object_type, namespace, name, if_exists, span)))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{

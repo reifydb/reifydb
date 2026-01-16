@@ -3,10 +3,18 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::{Result, diagnostic::ast::unrecognized_type, return_error};
-use reifydb_type::{Constraint, Fragment, Type, TypeConstraint};
+use reifydb_type::{
+	Result,
+	error::diagnostic::ast::unrecognized_type,
+	fragment::Fragment,
+	return_error,
+	value::{
+		constraint::{Constraint, TypeConstraint},
+		r#type::Type,
+	},
+};
 
-use crate::ast::{AstDataType, AstLiteral};
+use crate::ast::ast::{AstDataType, AstLiteral};
 
 pub mod ast;
 pub mod error;
@@ -98,7 +106,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstDataType) -> Result<Ty
 
 fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| {
-		reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+		reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
 			"Invalid number literal: {}",
 			s
 		)))

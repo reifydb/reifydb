@@ -210,7 +210,7 @@ impl<'a> ArgumentConsumer<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	/// Constructs an Argument from a string value or key => value.

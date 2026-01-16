@@ -3,7 +3,9 @@
 
 //! Builder for constructing FlowChange objects
 
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::column::Columns};
+use reifydb_core::{
+	common::CommitVersion, interface::catalog::flow::FlowNodeId, row::Row, value::column::columns::Columns,
+};
 
 use super::{FlowChange, FlowDiff};
 

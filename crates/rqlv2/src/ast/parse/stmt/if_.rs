@@ -10,13 +10,13 @@
 
 use bumpalo::collections::Vec as BumpVec;
 
-use super::super::{Parser, error::ParseError, pratt::Precedence};
 use crate::{
 	ast::{
 		Statement,
-		expr::{ElseIf, IfExpr},
+		expr::special::{ElseIf, IfExpr},
+		parse::{Parser, error::ParseError, pratt::Precedence},
 	},
-	token::{Keyword, Punctuation},
+	token::{keyword::Keyword, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {

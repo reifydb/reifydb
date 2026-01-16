@@ -11,8 +11,8 @@
 
 use std::ops::Bound;
 
-use reifydb_core::CommitVersion;
-use reifydb_type::{CowVec, Result};
+use reifydb_core::common::CommitVersion;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::{EntryKind, RangeCursor, TierStorage};
 
@@ -194,7 +194,7 @@ pub fn get_at_version<S: TierStorage>(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

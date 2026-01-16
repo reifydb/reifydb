@@ -4,7 +4,7 @@
 //! Operator expression types.
 
 use super::Expr;
-use crate::token::Span;
+use crate::token::span::Span;
 
 /// Binary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

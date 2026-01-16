@@ -2,14 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId, ViewDef},
-	key::RowKey,
-	util::CowVec,
-	value::column::{Column, ColumnData, Columns},
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId, view::ViewDef},
+	key::row::RowKey,
+	value::{
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::named::EncodedValuesNamedLayout,
+	},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::FlowChange;
-use reifydb_type::{Fragment, RowNumber};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::FlowChange;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{Operator, transaction::FlowTransaction};
 
@@ -47,7 +49,7 @@ impl Operator for PrimitiveViewOperator {
 		}
 
 		// Get schema from view def
-		let layout: reifydb_core::value::encoded::EncodedValuesNamedLayout = (&self.view).into();
+		let layout: EncodedValuesNamedLayout = (&self.view).into();
 		let names = layout.names();
 		let fields = layout.fields();
 

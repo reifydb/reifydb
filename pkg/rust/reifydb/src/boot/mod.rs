@@ -5,7 +5,7 @@ mod create;
 mod start;
 
 use reifydb_core::interface::WithEventBus;
-use reifydb_engine::StandardEngine;
+use reifydb_engine::engine::StandardEngine;
 
 use crate::boot::{create::CreateEventListener, start::StartEventListener};
 

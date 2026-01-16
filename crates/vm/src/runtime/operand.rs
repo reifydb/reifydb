@@ -3,8 +3,8 @@
 
 //! Operand stack value types.
 
-use reifydb_core::value::column::{Column, Columns};
-use reifydb_type::Value;
+use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_type::value::Value;
 
 /// A record is a single row with named fields.
 #[derive(Debug, Clone)]

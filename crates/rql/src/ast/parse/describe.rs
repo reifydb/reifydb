@@ -2,14 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstDescribe,
+	ast::AstDescribe,
 	parse::{Parser, Precedence},
-	tokenize::{Keyword::Describe, Operator},
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
 	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe> {
-		let token = self.consume_keyword(Describe)?;
+		let token = self.consume_keyword(Keyword::Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = Box::new(self.parse_node(Precedence::None)?);
 		self.consume_operator(Operator::CloseCurly)?;
@@ -21,8 +21,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstCast, AstDescribe, parse::parse, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{
+		ast::{AstCast, AstDescribe},
+		parse::parse,
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn describe_query() {

@@ -9,8 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::MultiVersionValues};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::{MultiVersionBatch, MultiVersionValues},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
+};
+use reifydb_type::Result;
 
 use super::{TransactionMulti, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::types::TransactionValue;
@@ -21,7 +25,7 @@ pub struct QueryTransaction {
 }
 
 impl QueryTransaction {
-	pub fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> crate::Result<Self> {
+	pub fn new(engine: TransactionMulti, version: Option<CommitVersion>) -> Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,
@@ -43,43 +47,48 @@ impl QueryTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
-	pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
+	pub fn get(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
 
-	pub fn contains_key(&self, key: &EncodedKey) -> crate::Result<bool> {
+	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
 		let version = self.tm.version();
 		Ok(self.engine.contains_key(key, version)?)
 	}
 
-	pub fn scan(&self) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn scan_rev(&self) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MultiVersionBatch> {
+	pub fn scan(&self) -> Result<MultiVersionBatch> {
 		let items: Vec<_> =
-			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>, _>>()?;
+			self.range(EncodedKeyRange::all(), 1024).collect::<std::result::Result<Vec<_>, _>>()?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	pub fn scan_rev(&self) -> Result<MultiVersionBatch> {
+		let items: Vec<_> =
+			self.range_rev(EncodedKeyRange::all(), 1024).collect::<std::result::Result<Vec<_>, _>>()?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		let items: Vec<_> = self
+			.range(EncodedKeyRange::prefix(prefix), 1024)
+			.collect::<std::result::Result<Vec<_>, _>>()?;
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
+		let items: Vec<_> = self
+			.range_rev(EncodedKeyRange::prefix(prefix), 1024)
+			.collect::<std::result::Result<Vec<_>, _>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -95,7 +104,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		Box::new(self.engine.store.range(range, version, batch_size))
 	}
@@ -109,7 +118,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = crate::Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
 		let version = self.tm.version();
 		Box::new(self.engine.store.range_rev(range, version, batch_size))
 	}

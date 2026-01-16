@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use reifydb_type::value::DateTime;
+use reifydb_type::value::datetime::DateTime;
 
 #[cfg(debug_assertions)]
 thread_local! {
@@ -283,7 +283,7 @@ pub fn mock_time_with_control<T>(initial_millis: u64, f: impl FnOnce(&MockTimeCo
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
 	use tokio::time::sleep;

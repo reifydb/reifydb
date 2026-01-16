@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{CommitVersion, EncodedKeyRange};
+use reifydb_core::{common::CommitVersion, value::encoded::key::EncodedKeyRange};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
@@ -184,7 +184,7 @@ fn test_range_edge() {
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
+	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
 			assert_eq!(expected[i], from_values!(u64, &r.values));
@@ -193,7 +193,7 @@ fn test_range_edge() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |items: Vec<reifydb_core::interface::MultiVersionValues>, expected: &[u64]| {
+	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionValues>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
 			assert_eq!(expected[i], from_values!(u64, &r.values));

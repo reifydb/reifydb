@@ -3,8 +3,10 @@
 
 use std::collections::Bound;
 
-use super::EncodedIndexKey;
-use crate::value::encoded::{EncodedKey, EncodedKeyRange};
+use crate::value::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
+	index::encoded::EncodedIndexKey,
+};
 
 #[derive(Clone, Debug)]
 pub struct EncodedIndexKeyRange {
@@ -136,11 +138,11 @@ impl From<EncodedIndexKeyRange> for EncodedKeyRange {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::{SortDirection, value::index::EncodedIndexLayout};
+	use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
 
 	#[test]
 	fn test_start_end() {

@@ -5,16 +5,18 @@
 
 use std::{ops::Bound, ptr::null_mut, slice::from_raw_parts};
 
-use reifydb_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI};
-use reifydb_core::{
-	CowVec,
-	value::encoded::{EncodedKey, EncodedValues},
+use reifydb_abi::{
+	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK},
+	context::iterators::StoreIteratorFFI,
+	data::buffer::BufferFFI,
 };
-use tracing::{instrument, Span};
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_type::util::cowvec::CowVec;
+use tracing::{Span, instrument};
 
 use crate::{
-	OperatorContext,
 	error::{FFIError, Result},
+	operator::context::OperatorContext,
 };
 
 pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {

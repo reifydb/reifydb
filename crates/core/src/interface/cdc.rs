@@ -3,7 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
+use crate::{
+	common::CommitVersion,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -48,18 +51,37 @@ impl CdcChange {
 	/// Get the key for this change.
 	pub fn key(&self) -> &EncodedKey {
 		match self {
-			CdcChange::Insert { key, .. } => key,
-			CdcChange::Update { key, .. } => key,
-			CdcChange::Delete { key, .. } => key,
+			CdcChange::Insert {
+				key,
+				..
+			} => key,
+			CdcChange::Update {
+				key,
+				..
+			} => key,
+			CdcChange::Delete {
+				key,
+				..
+			} => key,
 		}
 	}
 
 	/// Calculate the approximate value bytes for this change (pre + post values).
 	pub fn value_bytes(&self) -> usize {
 		match self {
-			CdcChange::Insert { post, .. } => post.len(),
-			CdcChange::Update { pre, post, .. } => pre.len() + post.len(),
-			CdcChange::Delete { pre, .. } => pre.as_ref().map(|p| p.len()).unwrap_or(0),
+			CdcChange::Insert {
+				post,
+				..
+			} => post.len(),
+			CdcChange::Update {
+				pre,
+				post,
+				..
+			} => pre.len() + post.len(),
+			CdcChange::Delete {
+				pre,
+				..
+			} => pre.as_ref().map(|p| p.len()).unwrap_or(0),
 		}
 	}
 }

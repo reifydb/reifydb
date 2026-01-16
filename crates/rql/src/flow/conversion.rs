@@ -4,7 +4,7 @@
 //! Conversion utilities for transforming borrowed data to owned data at the
 //! flow compilation boundary
 
-use reifydb_type::Fragment;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	expression::{

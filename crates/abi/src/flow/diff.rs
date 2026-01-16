@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::data::ColumnsFFI;
+use crate::data::column::ColumnsFFI;
 
 /// Type of flow diff operation
 #[repr(C)]

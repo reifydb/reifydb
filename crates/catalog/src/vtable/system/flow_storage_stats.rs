@@ -3,12 +3,18 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::interface::{FlowId, VTableDef};
-use reifydb_core::value::column::{Column, ColumnData, Columns};
-use reifydb_metric::{CombinedStats, Id, MetricReader, Tier};
+use reifydb_core::{
+	interface::catalog::{flow::FlowId, vtable::VTableDef},
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
+use reifydb_metric::{
+	MetricId,
+	metric::{CombinedStats, MetricReader},
+	multi::Tier,
+};
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -58,7 +64,7 @@ impl<T: IntoStandardTransaction> VTable<T> for FlowStorageStats {
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
-				if let Id::FlowNode(flow_node_id) = obj_id {
+				if let MetricId::FlowNode(flow_node_id) = obj_id {
 					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)? {
 						let key = (node_def.flow, tier);
 						let entry = aggregated.entry(key).or_default();

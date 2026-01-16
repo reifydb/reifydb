@@ -4,8 +4,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{ColumnDef, NamespaceId, PrimaryKeyDef, ViewId},
-	value::encoded::EncodedValuesNamedLayout,
+	interface::catalog::{
+		column::ColumnDef,
+		id::{NamespaceId, ViewId},
+		key::PrimaryKeyDef,
+	},
+	value::encoded::named::EncodedValuesNamedLayout,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

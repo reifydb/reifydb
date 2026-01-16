@@ -51,10 +51,10 @@ where
 #[macro_export]
 macro_rules! cow_vec {
     () => {
-        $crate::CowVec::new(Vec::new())
+        $crate::util::cowvec::CowVec::new(Vec::new())
     };
     ($($elem:expr),+ $(,)?) => {
-        $crate::CowVec::new(vec![$($elem),+])
+        $crate::util::cowvec::CowVec::new(vec![$($elem),+])
     };
 }
 
@@ -246,7 +246,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::CowVec;
 
 	#[test]

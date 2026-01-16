@@ -8,29 +8,27 @@ use std::{
 
 use drop::find_keys_to_drop;
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
-	value::encoded::EncodedValues,
-};
-use reifydb_type::util::hex;
-use tracing::instrument;
-
-use reifydb_core::{
-	event::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite},
-	interface::{
-		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionStore,
+	common::CommitVersion,
+	delta::Delta,
+	event::metric::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite},
+	interface::store::{
+		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
+		MultiVersionStore, MultiVersionValues,
+	},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
 	},
 };
+use reifydb_type::util::{cowvec::CowVec, hex};
+use tracing::instrument;
 
 use super::{
 	StandardMultiStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
 	version::{VersionedGetResult, encode_versioned_key, get_at_version},
 };
-use crate::{
-	hot::EntryKind::Multi,
-	tier::{EntryKind, RangeCursor, TierStorage},
-};
+use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
 
 /// Fixed chunk size for internal tier scans.
 /// This is the number of versioned entries fetched per tier per iteration.
@@ -152,13 +150,21 @@ impl MultiVersionCommit for StandardMultiStore {
 						value_bytes: values.len() as u64,
 					});
 				}
-				Delta::Unset { values, .. } => {
+				Delta::Unset {
+					values,
+					..
+				} => {
 					deletes.push(StorageDelete {
 						key: key.clone(),
 						value_bytes: values.len() as u64,
 					});
 				}
-				Delta::Remove { .. } | Delta::Drop { .. } => {}
+				Delta::Remove {
+					..
+				}
+				| Delta::Drop {
+					..
+				} => {}
 			}
 		}
 
@@ -178,7 +184,13 @@ impl MultiVersionCommit for StandardMultiStore {
 						.or_default()
 						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
-				Delta::Unset { key, .. } | Delta::Remove { key } => {
+				Delta::Unset {
+					key,
+					..
+				}
+				| Delta::Remove {
+					key,
+				} => {
 					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
 					batches.entry(table).or_default().push((versioned_key, None));
 				}
@@ -667,13 +679,14 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		let prev_version = CommitVersion(before_version.0 - 1);
 
 		match get_at_version(storage, table, key.as_ref(), prev_version) {
-			Ok(VersionedGetResult::Value { value, version }) => {
-				Ok(Some(MultiVersionValues {
-					key: key.clone(),
-					values: EncodedValues(CowVec::new(value.to_vec())),
-					version,
-				}))
-			}
+			Ok(VersionedGetResult::Value {
+				value,
+				version,
+			}) => Ok(Some(MultiVersionValues {
+				key: key.clone(),
+				values: EncodedValues(CowVec::new(value.to_vec())),
+				version,
+			})),
 			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
 			Err(e) => Err(e),
 		}

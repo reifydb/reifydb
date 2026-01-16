@@ -12,18 +12,28 @@
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
+	common::CommitVersion,
 	delta::Delta,
-	interface::MultiVersionValues,
-	runtime::ComputePool,
-	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::encoded::EncodedValues,
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
+	runtime::compute::ComputePool,
+	util::encoding::{
+		binary::decode_binary,
+		format::{Formatter, raw::Raw},
+	},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_store_multi::{HotConfig, MultiStoreConfig, StandardMultiStore, hot::HotStorage};
-use reifydb_core::interface::{MultiVersionCommit, MultiVersionContains, MultiVersionGet};
-use reifydb_testing::{tempdir::temp_dir, testscript};
+use reifydb_store_multi::{
+	config::{HotConfig, MultiStoreConfig},
+	hot::storage::HotStorage,
+	store::StandardMultiStore,
+};
+use reifydb_testing::{tempdir::temp_dir, testscript, testscript::command::Command};
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
+use testscript::runner::run_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_memory => test_memory }
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_sqlite => test_sqlite }
@@ -31,13 +41,13 @@ test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_sql
 fn test_memory(path: &Path) {
 	let compute_pool = ComputePool::new(2, 8);
 	let storage = HotStorage::memory(compute_pool);
-	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let storage = HotStorage::sqlite_in_memory();
-		testscript::run_path(&mut Runner::new(storage), path)
+		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
@@ -69,8 +79,8 @@ impl Runner {
 	}
 }
 
-impl testscript::Runner for Runner {
-	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
+impl testscript::runner::Runner for Runner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
 			// get KEY [version=VERSION]
@@ -83,7 +93,7 @@ impl testscript::Runner for Runner {
 				let value =
 					self.store.get(&key, version)?.map(|sv: MultiVersionValues| sv.values.to_vec());
 
-				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
+				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
 			"contains" => {
@@ -92,7 +102,7 @@ impl testscript::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key, version)?;
-				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
+				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
 			// scan [reverse=BOOL] [version=VERSION]
@@ -248,7 +258,7 @@ impl testscript::Runner for Runner {
 
 fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

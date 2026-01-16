@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{CommitVersion, value::column::CompressedColumn};
+use reifydb_core::{common::CommitVersion, value::column::compressed::CompressedColumn};
 
 use crate::ColumnStatistics;
 

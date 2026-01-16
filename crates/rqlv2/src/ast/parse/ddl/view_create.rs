@@ -16,7 +16,7 @@ use crate::{
 		parse::{ParseError, Parser, Precedence},
 		stmt::ddl::{CreateStmt, CreateView},
 	},
-	token::{Keyword, Operator, Punctuation},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, span::Span},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -29,10 +29,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```rql
 	/// CREATE VIEW test.active_users AS { FROM test.users | FILTER active = true }
 	/// ```
-	pub(in crate::ast::parse) fn parse_create_view(
-		&mut self,
-		start: crate::token::Span,
-	) -> Result<Statement<'bump>, ParseError> {
+	pub(in crate::ast::parse) fn parse_create_view(&mut self, start: Span) -> Result<Statement<'bump>, ParseError> {
 		// Check for IF NOT EXISTS
 		let if_not_exists = self.try_parse_if_not_exists();
 
@@ -62,7 +59,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Syntax: `CREATE DEFERRED VIEW namespace.view { columns } [AS { query }]`
 	pub(in crate::ast::parse) fn parse_create_deferred_view(
 		&mut self,
-		start: crate::token::Span,
+		start: crate::token::span::Span,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Consume VIEW keyword
 		self.expect_keyword(Keyword::View)?;
@@ -84,13 +81,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = self.current().span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Create(CreateStmt::View(CreateView::new(
-			Some(namespace),
-			view_name,
-			query,
-			false,
-			span,
-		))))
+		Ok(Statement::Create(CreateStmt::View(CreateView::new(Some(namespace), view_name, query, false, span))))
 	}
 
 	/// Parse CREATE TRANSACTIONAL VIEW statement.
@@ -98,7 +89,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// Syntax: `CREATE TRANSACTIONAL VIEW namespace.view { columns } [AS { query }]`
 	pub(in crate::ast::parse) fn parse_create_transactional_view(
 		&mut self,
-		start: crate::token::Span,
+		start: Span,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Consume VIEW keyword
 		self.expect_keyword(Keyword::View)?;
@@ -120,13 +111,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = self.current().span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Create(CreateStmt::View(CreateView::new(
-			Some(namespace),
-			view_name,
-			query,
-			false,
-			span,
-		))))
+		Ok(Statement::Create(CreateStmt::View(CreateView::new(Some(namespace), view_name, query, false, span))))
 	}
 
 	/// Parse view query: `{ FROM ... | FILTER ... }`
@@ -164,7 +149,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
-use reifydb_type::{Fragment, value::Blob};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{fragment::Fragment, value::blob::Blob};
 
 use crate::{ScalarFunction, ScalarFunctionContext};
 
@@ -15,7 +15,7 @@ impl BlobB58 {
 }
 
 impl ScalarFunction for BlobB58 {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> reifydb_type::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 		let column = columns.get(0).unwrap();
@@ -45,12 +45,12 @@ impl ScalarFunction for BlobB58 {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::value::{
-		column::{Column, Columns},
-		container::Utf8Container,
+pub mod tests {
+	use reifydb_core::value::column::{Column, columns::Columns};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container},
 	};
-	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
 	use crate::ScalarFunctionContext;

@@ -3,7 +3,7 @@
 
 use reifydb_core::event::EventBus;
 
-use crate::hot::HotTier;
+use crate::hot::tier::HotTier;
 
 #[derive(Clone)]
 pub struct SingleStoreConfig {

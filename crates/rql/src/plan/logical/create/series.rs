@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstCreateSeries,
+	ast::ast::AstCreateSeries,
 	plan::logical::{Compiler, LogicalPlan},
 };
 

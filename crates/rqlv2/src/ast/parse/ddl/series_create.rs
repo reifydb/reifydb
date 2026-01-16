@@ -12,7 +12,7 @@ use crate::{
 		parse::{ParseError, Parser},
 		stmt::ddl::{CreateSeries, CreateStmt},
 	},
-	token::Span,
+	token::span::Span,
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -39,17 +39,12 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = self.current().span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Create(CreateStmt::Series(CreateSeries::new(
-			Some(namespace),
-			name,
-			columns,
-			span,
-		))))
+		Ok(Statement::Create(CreateStmt::Series(CreateSeries::new(Some(namespace), name, columns, span))))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

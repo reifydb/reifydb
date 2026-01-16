@@ -14,7 +14,7 @@ use crate::{
 		parse::{ParseError, Parser},
 		stmt::dml::DeleteStmt,
 	},
-	token::{Keyword, Operator, TokenKind},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -37,8 +37,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		if !matches!(self.current().kind, TokenKind::Identifier) {
 			// No target specified - will be inferred from pipeline
 			return Ok(Statement::Delete(DeleteStmt::new(
-				None,
-				"",   // empty table means infer from pipeline
+				None, "",   // empty table means infer from pipeline
 				None, // filter comes from pipeline FILTER
 				start,
 			)));
@@ -66,16 +65,14 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let span = start.merge(&end_span);
 
 		Ok(Statement::Delete(DeleteStmt::new(
-			namespace,
-			table,
-			None, // filter comes from pipeline FILTER
+			namespace, table, None, // filter comes from pipeline FILTER
 			span,
 		)))
 	}
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

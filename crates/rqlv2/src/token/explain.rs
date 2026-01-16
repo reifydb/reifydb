@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use bumpalo::Bump;
 
-use super::{LiteralKind, TokenKind, tokenize};
-use crate::error::RqlError;
+use super::{TokenKind, tokenize};
+use crate::{error::RqlError, token::literal::LiteralKind};
 
 /// Explain tokenization by showing all tokens grouped by line.
 ///

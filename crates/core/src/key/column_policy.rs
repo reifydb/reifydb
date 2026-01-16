@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::{ColumnId, ColumnPolicyId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::{ColumnId, ColumnPolicyId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,9 +79,9 @@ impl ColumnPolicyKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{ColumnPolicyKey, EncodableKey};
-	use crate::interface::catalog::{ColumnId, ColumnPolicyId};
+	use crate::interface::catalog::id::{ColumnId, ColumnPolicyId};
 
 	#[test]
 	fn test_encode_decode() {

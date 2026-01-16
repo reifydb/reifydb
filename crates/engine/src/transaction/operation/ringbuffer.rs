@@ -2,13 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{RingBufferDef, RowKey},
-	value::encoded::EncodedValues,
+	interface::catalog::ringbuffer::RingBufferDef, key::row::RowKey, value::encoded::encoded::EncodedValues,
 };
-use reifydb_transaction::interceptor::RingBufferInterceptor;
-use reifydb_type::RowNumber;
-
-use crate::StandardCommandTransaction;
+use reifydb_transaction::{
+	interceptor::ringbuffer::RingBufferInterceptor, standard::command::StandardCommandTransaction,
+};
+use reifydb_type::value::row_number::RowNumber;
 
 pub(crate) trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;

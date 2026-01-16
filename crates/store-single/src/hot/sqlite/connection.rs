@@ -3,7 +3,7 @@
 
 //! SQLite connection utilities.
 
-use reifydb_type::{Result, diagnostic::internal::internal, error};
+use reifydb_type::{Result, error, error::diagnostic::internal::internal};
 use rusqlite::Connection;
 
 use super::DbPath;

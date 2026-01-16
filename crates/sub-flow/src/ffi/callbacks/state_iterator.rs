@@ -8,8 +8,10 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
-use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	interface::store::MultiVersionBatch,
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+};
 
 /// Handle to a state iterator
 pub type StateIteratorHandle = u64;
@@ -113,12 +115,17 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey,
-		interface::{FlowNodeId, MultiVersionValues},
-		value::encoded::EncodedValues,
+		common::CommitVersion,
+		interface::{
+			catalog::flow::FlowNodeId,
+			store::{MultiVersionBatch, MultiVersionValues},
+		},
+		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+		value::encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 

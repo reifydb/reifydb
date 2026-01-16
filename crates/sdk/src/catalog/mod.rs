@@ -6,25 +6,28 @@
 //! Provides read-only access to catalog metadata (namespaces, tables) with
 //! version-based queries for time-travel support.
 
-mod namespace;
-mod table;
+pub mod namespace;
+pub mod table;
 
 use std::slice::from_raw_parts;
 
-use reifydb_abi::{ColumnDefFFI, PrimaryKeyFFI};
+use reifydb_abi::catalog::{column::ColumnDefFFI, primary_key::PrimaryKeyFFI};
 use reifydb_core::{
-	CommitVersion,
-	interface::{
-		ColumnDef, ColumnId, ColumnIndex, NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef,
-		TableId,
+	common::CommitVersion,
+	interface::catalog::{
+		column::{ColumnDef, ColumnIndex},
+		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
+		key::PrimaryKeyDef,
+		namespace::NamespaceDef,
+		table::TableDef,
 	},
 };
-use reifydb_type::{
-	Constraint, Type, TypeConstraint,
-	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+use reifydb_type::value::{
+	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
+	r#type::Type,
 };
 
-use crate::{FFIError, OperatorContext};
+use crate::{error::FFIError, operator::context::OperatorContext};
 
 /// Read-only catalog access wrapper
 ///

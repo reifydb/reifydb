@@ -3,8 +3,8 @@
 
 //! Utility functions for marshalling
 
-use reifydb_abi::ColumnTypeCode;
-use reifydb_core::value::column::ColumnData;
+use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_core::value::column::data::ColumnData;
 
 /// Convert ColumnData variant to type code
 pub(super) fn column_data_to_type_code(data: &ColumnData) -> ColumnTypeCode {

@@ -6,10 +6,14 @@ use std::borrow::Cow;
 use num_bigint::BigInt;
 
 use crate::{
-	Error, Fragment, Type, err,
-	error::diagnostic::number::{invalid_number_format, number_out_of_range},
+	err,
+	error::{
+		Error,
+		diagnostic::number::{invalid_number_format, number_out_of_range},
+	},
+	fragment::Fragment,
 	return_error,
-	value::uint::Uint,
+	value::{r#type::Type, uint::Uint},
 };
 
 pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
@@ -97,9 +101,8 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
 
 	#[test]
 	fn test_parse_uint_valid_zero() {

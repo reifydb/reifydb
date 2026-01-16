@@ -175,7 +175,7 @@ impl fmt::Display for LexError {
 impl std::error::Error for LexError {}
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

@@ -78,7 +78,7 @@
 // 		total_count: container.len(),
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	Ok(CompressedColumn {
 // 		data,
@@ -91,7 +91,7 @@
 //
 // fn decompress_bool(data: &[u8], _row_count: usize) -> Result<ColumnData> {
 // 	let encoded: BitPackedBool =
-// 		serde_json::from_slice(data).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		serde_json::from_slice(data).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	let mut result = Vec::with_capacity(encoded.total_count);
 // 	let mut undefined_idx = 0;

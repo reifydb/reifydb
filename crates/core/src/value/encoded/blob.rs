@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Blob, Type};
+use reifydb_type::value::{blob::Blob, r#type::Type};
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
@@ -56,10 +56,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{Blob, Type};
+pub mod tests {
+	use reifydb_type::value::{blob::Blob, r#type::Type};
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_blob() {

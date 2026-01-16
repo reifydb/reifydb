@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 use crate::value::column::data::ColumnData;
 
@@ -436,8 +436,18 @@ impl ColumnData {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
-	use reifydb_type::{Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, Time, Uuid4, Uuid7, Value};
+pub mod tests {
+	use reifydb_type::value::{
+		Value,
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+	};
 	use uuid::Uuid;
 
 	use crate::value::column::ColumnData;

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackSubscriptionChangeOperations, SubscriptionDef, SubscriptionId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::SubscriptionDef,
+};
 
 use crate::{
 	change::{
@@ -13,7 +15,7 @@ use crate::{
 };
 
 impl CatalogTrackSubscriptionChangeOperations for StandardCommandTransaction {
-	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> reifydb_core::Result<()> {
+	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(subscription),
@@ -27,7 +29,7 @@ impl CatalogTrackSubscriptionChangeOperations for StandardCommandTransaction {
 		&mut self,
 		pre: SubscriptionDef,
 		post: SubscriptionDef,
-	) -> reifydb_core::Result<()> {
+	) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -37,7 +39,7 @@ impl CatalogTrackSubscriptionChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> reifydb_core::Result<()> {
+	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(subscription),
 			post: None,

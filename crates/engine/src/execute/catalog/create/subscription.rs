@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::subscription::SubscriptionToCreate};
-use reifydb_core::{interface::CatalogTrackSubscriptionChangeOperations, value::column::Columns};
+use reifydb_catalog::{CatalogStore, store::subscription::create::SubscriptionToCreate};
+use reifydb_core::{
+	interface::catalog::change::CatalogTrackSubscriptionChangeOperations, value::column::columns::Columns,
+};
 use reifydb_rql::plan::physical::CreateSubscriptionNode;
-use reifydb_type::{Uuid7, Value};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::{Value, uuid::Uuid7};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn create_subscription<'a>(

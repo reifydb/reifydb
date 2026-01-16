@@ -64,7 +64,7 @@ impl Default for Arena {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

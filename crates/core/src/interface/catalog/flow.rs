@@ -7,10 +7,10 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::Blob;
+use reifydb_type::value::blob::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::interface::NamespaceId;
+use crate::interface::catalog::id::NamespaceId;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]

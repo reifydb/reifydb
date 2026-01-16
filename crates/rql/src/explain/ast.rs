@@ -2,9 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin,
+	ast::{Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin},
 	parse::parse,
-	tokenize::{Token, TokenKind, tokenize},
+	tokenize::{
+		token::{Token, TokenKind},
+		tokenize,
+	},
 };
 
 pub fn explain_ast(query: &str) -> crate::Result<String> {
@@ -162,7 +165,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					if let Some(index) = index_name {
 						use crate::ast::{
 							identifier::UnqualifiedIdentifier,
-							tokenize::{Token, TokenKind},
+							tokenize::token::{Token, TokenKind},
 						};
 						let index_token = Token {
 							kind: TokenKind::Identifier,
@@ -198,7 +201,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					// Create an Identifier AST for the environment
 					let env_token = Token {
 						kind: TokenKind::Variable,
-						fragment: reifydb_type::Fragment::internal("env"),
+						fragment: reifydb_type::fragment::Fragment::internal("env"),
 					};
 					use crate::ast::identifier::UnqualifiedIdentifier;
 					children.push(Ast::Identifier(UnqualifiedIdentifier::new(env_token)));

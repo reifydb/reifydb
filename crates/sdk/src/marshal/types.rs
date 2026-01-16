@@ -3,24 +3,42 @@
 
 //! Type-specific unmarshalling functions
 
-use reifydb_abi::{BufferFFI, ColumnDataFFI};
-use reifydb_core::value::container::BoolContainer;
-use reifydb_type::{Date, DateTime, Duration, IdentityId, IsNumber, Time, Uuid4, Uuid7, Value};
-use serde::de::DeserializeOwned;
+use std::{slice::from_raw_parts, str::from_utf8};
 
-use crate::ffi::Arena;
+use postcard::from_bytes;
+use reifydb_abi::data::{buffer::BufferFFI, column::ColumnDataFFI};
+use reifydb_type::{
+	util::bitvec::BitVec,
+	value::{
+		Value,
+		blob::Blob,
+		container::{
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		is::IsNumber,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+	},
+};
+use serde::de::DeserializeOwned;
+use uuid::Uuid;
+
+use crate::ffi::arena::Arena;
 
 impl Arena {
-	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI, bitvec: reifydb_type::BitVec) -> BoolContainer {
-		use reifydb_core::value::container::BoolContainer;
-
+	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> BoolContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return BoolContainer::new(vec![false; row_count], bitvec);
 		}
 
 		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let mut values = Vec::with_capacity(row_count);
 			for i in 0..row_count {
 				let byte_idx = i / 8;
@@ -40,10 +58,8 @@ impl Arena {
 	pub(super) fn unmarshal_numeric_data<T: Copy + Default + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::NumberContainer<T> {
-		use reifydb_core::value::container::NumberContainer;
-
+		bitvec: BitVec,
+	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return NumberContainer::new(vec![T::default(); row_count], bitvec);
@@ -52,33 +68,27 @@ impl Arena {
 		unsafe {
 			let ptr = ffi.data.ptr as *const T;
 			let len = ffi.data.len / size_of::<T>();
-			let slice = std::slice::from_raw_parts(ptr, len);
+			let slice = from_raw_parts(ptr, len);
 			NumberContainer::new(slice.to_vec(), bitvec)
 		}
 	}
 
 	/// Unmarshal UTF8 data with offsets
-	pub(super) fn unmarshal_utf8_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::Utf8Container {
-		use reifydb_core::value::container::Utf8Container;
-
+	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> Utf8Container {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return Utf8Container::new(vec![String::new(); row_count], bitvec);
 		}
 
 		unsafe {
-			let data = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
 
 			let mut strings = Vec::with_capacity(row_count);
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let s = std::str::from_utf8(&data[start..end]).unwrap_or("").to_string();
+				let s = from_utf8(&data[start..end]).unwrap_or("").to_string();
 				strings.push(s);
 			}
 
@@ -87,13 +97,7 @@ impl Arena {
 	}
 
 	/// Unmarshal date data
-	pub(super) fn unmarshal_date_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::TemporalContainer<Date> {
-		use reifydb_core::value::container::TemporalContainer;
-
+	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> TemporalContainer<Date> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Date::default(); row_count], bitvec);
@@ -102,7 +106,7 @@ impl Arena {
 		unsafe {
 			let ptr = ffi.data.ptr as *const i32;
 			let len = ffi.data.len / size_of::<i32>();
-			let slice = std::slice::from_raw_parts(ptr, len);
+			let slice = from_raw_parts(ptr, len);
 			let dates: Vec<Date> = slice
 				.iter()
 				.map(|&days| Date::from_days_since_epoch(days).unwrap_or_default())
@@ -115,10 +119,8 @@ impl Arena {
 	pub(super) fn unmarshal_datetime_data(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::TemporalContainer<DateTime> {
-		use reifydb_core::value::container::TemporalContainer;
-
+		bitvec: BitVec,
+	) -> TemporalContainer<DateTime> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![DateTime::default(); row_count], bitvec);
@@ -127,7 +129,7 @@ impl Arena {
 		unsafe {
 			let ptr = ffi.data.ptr as *const i64;
 			let len = ffi.data.len / size_of::<i64>();
-			let slice = std::slice::from_raw_parts(ptr, len);
+			let slice = from_raw_parts(ptr, len);
 			let datetimes: Vec<DateTime> =
 				slice.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
 			TemporalContainer::new(datetimes, bitvec)
@@ -135,13 +137,7 @@ impl Arena {
 	}
 
 	/// Unmarshal time data
-	pub(super) fn unmarshal_time_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::TemporalContainer<Time> {
-		use reifydb_core::value::container::TemporalContainer;
-
+	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> TemporalContainer<Time> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Time::default(); row_count], bitvec);
@@ -150,7 +146,7 @@ impl Arena {
 		unsafe {
 			let ptr = ffi.data.ptr as *const u64;
 			let len = ffi.data.len / size_of::<u64>();
-			let slice = std::slice::from_raw_parts(ptr, len);
+			let slice = from_raw_parts(ptr, len);
 			let times: Vec<Time> = slice
 				.iter()
 				.map(|&ns| Time::from_nanos_since_midnight(ns).unwrap_or_default())
@@ -163,24 +159,22 @@ impl Arena {
 	pub(super) fn unmarshal_duration_data(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::TemporalContainer<Duration> {
-		use reifydb_core::value::container::TemporalContainer;
-
+		bitvec: BitVec,
+	) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return TemporalContainer::new(vec![Duration::default(); row_count], bitvec);
 		}
 
 		unsafe {
-			let data = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
 
 			let mut durations = Vec::with_capacity(row_count);
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let duration: Duration = postcard::from_bytes(&data[start..end]).unwrap_or_default();
+				let duration: Duration = from_bytes(&data[start..end]).unwrap_or_default();
 				durations.push(duration);
 			}
 
@@ -189,28 +183,21 @@ impl Arena {
 	}
 
 	/// Unmarshal identity ID data
-	pub(super) fn unmarshal_identity_id_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::IdentityIdContainer {
-		use reifydb_core::value::container::IdentityIdContainer;
-		use uuid::Uuid as StdUuid;
-
+	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> IdentityIdContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return IdentityIdContainer::new(vec![IdentityId::default(); row_count], bitvec);
 		}
 
 		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let ids: Vec<IdentityId> = bytes
 				.chunks(16)
 				.map(|chunk| {
 					let mut arr = [0u8; 16];
 					arr.copy_from_slice(chunk);
 					// IdentityId wraps Uuid7 which wraps StdUuid
-					IdentityId(Uuid7(StdUuid::from_bytes(arr)))
+					IdentityId(Uuid7(Uuid::from_bytes(arr)))
 				})
 				.collect();
 			IdentityIdContainer::new(ids, bitvec)
@@ -218,27 +205,20 @@ impl Arena {
 	}
 
 	/// Unmarshal UUID4 data
-	pub(super) fn unmarshal_uuid4_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::UuidContainer<Uuid4> {
-		use reifydb_core::value::container::UuidContainer;
-		use uuid::Uuid as StdUuid;
-
+	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> UuidContainer<Uuid4> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return UuidContainer::new(vec![Uuid4::default(); row_count], bitvec);
 		}
 
 		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let uuids: Vec<Uuid4> = bytes
 				.chunks(16)
 				.map(|chunk| {
 					let mut arr = [0u8; 16];
 					arr.copy_from_slice(chunk);
-					Uuid4(StdUuid::from_bytes(arr))
+					Uuid4(Uuid::from_bytes(arr))
 				})
 				.collect();
 			UuidContainer::new(uuids, bitvec)
@@ -246,27 +226,20 @@ impl Arena {
 	}
 
 	/// Unmarshal UUID7 data
-	pub(super) fn unmarshal_uuid7_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::UuidContainer<Uuid7> {
-		use reifydb_core::value::container::UuidContainer;
-		use uuid::Uuid as StdUuid;
-
+	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> UuidContainer<Uuid7> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return UuidContainer::new(vec![Uuid7::default(); row_count], bitvec);
 		}
 
 		unsafe {
-			let bytes = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let uuids: Vec<Uuid7> = bytes
 				.chunks(16)
 				.map(|chunk| {
 					let mut arr = [0u8; 16];
 					arr.copy_from_slice(chunk);
-					Uuid7(StdUuid::from_bytes(arr))
+					Uuid7(Uuid::from_bytes(arr))
 				})
 				.collect();
 			UuidContainer::new(uuids, bitvec)
@@ -274,21 +247,14 @@ impl Arena {
 	}
 
 	/// Unmarshal blob data with offsets
-	pub(super) fn unmarshal_blob_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::BlobContainer {
-		use reifydb_core::value::container::BlobContainer;
-		use reifydb_type::Blob;
-
+	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> BlobContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return BlobContainer::new(vec![Blob::empty(); row_count], bitvec);
 		}
 
 		unsafe {
-			let data = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
 
 			let mut blobs = Vec::with_capacity(row_count);
@@ -306,24 +272,22 @@ impl Arena {
 	pub(super) fn unmarshal_serialized_data<T: Default + Clone + DeserializeOwned + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::NumberContainer<T> {
-		use reifydb_core::value::container::NumberContainer;
-
+		bitvec: BitVec,
+	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return NumberContainer::new(vec![T::default(); row_count], bitvec);
 		}
 
 		unsafe {
-			let data = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
 
 			let mut values = Vec::with_capacity(row_count);
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let value: T = postcard::from_bytes(&data[start..end]).unwrap_or_default();
+				let value: T = from_bytes(&data[start..end]).unwrap_or_default();
 				values.push(value);
 			}
 
@@ -332,20 +296,14 @@ impl Arena {
 	}
 
 	/// Unmarshal Any data with offsets
-	pub(super) fn unmarshal_any_data(
-		&self,
-		ffi: &ColumnDataFFI,
-		bitvec: reifydb_type::BitVec,
-	) -> reifydb_core::value::container::AnyContainer {
-		use reifydb_core::value::container::AnyContainer;
-
+	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI, bitvec: BitVec) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return AnyContainer::new(vec![Box::new(Value::Undefined); row_count], bitvec);
 		}
 
 		unsafe {
-			let data = std::slice::from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
 
 			let mut values = Vec::with_capacity(row_count);
@@ -368,7 +326,7 @@ impl Arena {
 		unsafe {
 			let ptr = ffi.ptr as *const u64;
 			let len = ffi.len / size_of::<u64>();
-			std::slice::from_raw_parts(ptr, len).to_vec()
+			from_raw_parts(ptr, len).to_vec()
 		}
 	}
 }

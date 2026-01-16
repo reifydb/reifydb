@@ -15,10 +15,6 @@ pub mod metric;
 pub mod store;
 pub mod transaction;
 
-pub use metric::{
-	CdcEntryStats, CdcStatsRecordedEvent, StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite,
-};
-
 pub trait Event: Any + Send + Sync + Clone + 'static {
 	fn as_any(&self) -> &dyn Any;
 	fn into_any(self) -> Box<dyn Any + Send>;
@@ -148,7 +144,7 @@ macro_rules! impl_event {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::{Arc, Mutex};
 
 	use crate::event::{Event, EventBus, EventListener};

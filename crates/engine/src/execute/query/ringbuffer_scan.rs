@@ -5,20 +5,26 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{DictionaryDef, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer},
+	interface::{
+		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
+		resolved::ResolvedRingBuffer,
+	},
+	key::row::RowKey,
 	value::{
-		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
-		encoded::EncodedValuesLayout,
+		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+		encoded::layout::EncodedValuesLayout,
 	},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{DictionaryEntryId, Fragment, RowNumber, Type};
+use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{dictionary::DictionaryEntryId, row_number::RowNumber, r#type::Type},
+};
 use tracing::instrument;
 
 use crate::{
-	StandardTransaction,
 	execute::{Batch, ExecutionContext, QueryNode},
-	transaction::operation::DictionaryOperations,
+	transaction::operation::dictionary::DictionaryOperations,
 };
 
 pub struct RingBufferScan {
@@ -90,10 +96,10 @@ impl QueryNode for RingBufferScan {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
-				crate::StandardTransaction::Command(cmd_txn) => {
+				StandardTransaction::Command(cmd_txn) => {
 					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id)?
 				}
-				crate::StandardTransaction::Query(query_txn) => {
+				StandardTransaction::Query(query_txn) => {
 					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id)?
 				}
 			};
@@ -184,7 +190,7 @@ impl QueryNode for RingBufferScan {
 			self.decode_dictionary_columns(&mut columns, txn)?;
 
 			// Restore row numbers
-			columns.row_numbers = reifydb_core::util::CowVec::new(row_numbers);
+			columns.row_numbers = reifydb_type::util::cowvec::CowVec::new(row_numbers);
 
 			Ok(Some(Batch {
 				columns,
@@ -221,10 +227,10 @@ impl<'a> RingBufferScan {
 						{
 							new_data.push_value(decoded_value);
 						} else {
-							new_data.push_value(reifydb_type::Value::Undefined);
+							new_data.push_value(reifydb_type::value::Value::Undefined);
 						}
 					} else {
-						new_data.push_value(reifydb_type::Value::Undefined);
+						new_data.push_value(reifydb_type::value::Value::Undefined);
 					}
 				}
 

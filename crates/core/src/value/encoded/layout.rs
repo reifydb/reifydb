@@ -3,9 +3,9 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_type::Type;
+use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
-use crate::{CowVec, value::encoded::EncodedValues};
+use super::encoded::EncodedValues;
 
 #[derive(Debug, Clone)]
 pub struct EncodedValuesLayout(Arc<EncodedValuesLayoutInner>);
@@ -159,11 +159,11 @@ fn align_up(offset: usize, align: usize) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	mod new {
-		use reifydb_type::Type;
+		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::EncodedValuesLayout;
+		use crate::value::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_single_field_bool() {
@@ -251,9 +251,9 @@ mod tests {
 	}
 
 	mod allocate_row {
-		use reifydb_type::Type;
+		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::EncodedValuesLayout;
+		use crate::value::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_initial_state() {
@@ -292,9 +292,9 @@ mod tests {
 	}
 
 	mod all_defined {
-		use reifydb_type::Type;
+		use reifydb_type::value::r#type::Type;
 
-		use crate::value::encoded::EncodedValuesLayout;
+		use crate::value::encoded::layout::EncodedValuesLayout;
 
 		#[test]
 		fn test_one_field_none_valid() {

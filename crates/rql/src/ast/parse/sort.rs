@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::return_error;
-use reifydb_type::diagnostic::ast::multiple_expressions_without_braces;
+use reifydb_type::{error::diagnostic::ast::multiple_expressions_without_braces, return_error};
 
 use crate::ast::{
-	AstSort,
+	ast::AstSort,
 	parse::Parser,
 	tokenize::{
-		Keyword,
-		Operator::{CloseCurly, OpenCurly},
-		Separator::Comma,
+		keyword::Keyword,
+		operator::Operator::{CloseCurly, OpenCurly},
+		separator::Separator::Comma,
 	},
 };
 
@@ -77,7 +76,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::ast::tokenize::tokenize;
 

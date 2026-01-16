@@ -6,7 +6,7 @@ use reifydb_client::{HttpClient, WsClient};
 use crate::config::Protocol;
 
 /// Error type for client operations
-pub type Error = reifydb_client::r#type::Error;
+pub type Error = reifydb_client::r#type::error::Error;
 
 /// Unified client abstraction over HTTP and WebSocket protocols
 pub enum Client {

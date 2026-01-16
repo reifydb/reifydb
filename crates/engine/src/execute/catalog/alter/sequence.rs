@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::sequence::ColumnSequence;
+use reifydb_catalog::store::sequence::column::ColumnSequence;
 use reifydb_core::{
-	interface::{Params, resolved::ResolvedPrimitive},
-	value::column::Columns,
+	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::{Value, diagnostic::sequence::can_not_alter_not_auto_increment, return_error};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::sequence::can_not_alter_not_auto_increment, params::Params, return_error, value::Value,
+};
 
 use crate::{
-	evaluate::{ColumnEvaluationContext, TargetColumn, column::evaluate},
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::Executor,
 	stack::Stack,
 };

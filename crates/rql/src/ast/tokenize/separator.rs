@@ -50,7 +50,7 @@ pub fn scan_separator(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::ast::tokenize::tokenize;
 

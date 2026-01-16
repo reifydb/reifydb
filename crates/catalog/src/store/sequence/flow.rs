@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{FlowEdgeId, FlowId, FlowNodeId};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::interface::catalog::flow::{FlowEdgeId, FlowId, FlowNodeId};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::store::sequence::{
 	generator::u64::GeneratorU64,

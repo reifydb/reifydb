@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Duration, Error, Fragment, error::diagnostic::temporal, return_error};
+use crate::{
+	error::{Error, diagnostic::temporal},
+	fragment::Fragment,
+	return_error,
+	value::Duration,
+};
 
 pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let fragment = fragment;
@@ -155,9 +160,9 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::parse_duration;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_days() {

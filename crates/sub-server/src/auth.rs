@@ -12,7 +12,7 @@
 //! proper implementation of token validation before production use. The `validate_*`
 //! functions are stubs that should be connected to actual authentication services.
 
-use reifydb_core::interface::Identity;
+use reifydb_core::interface::auth::Identity;
 
 /// Authentication error types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,7 +211,9 @@ fn validate_api_key(api_key: &str) -> AuthResult<Identity> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::interface::auth::Identity;
+
 	use super::*;
 
 	#[test]

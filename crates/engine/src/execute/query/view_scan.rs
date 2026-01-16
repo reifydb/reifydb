@@ -4,14 +4,18 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	EncodedKey,
-	interface::{EncodableKey, RowKey, RowKeyRange, resolved::ResolvedView},
+	interface::resolved::ResolvedView,
+	key::{
+		EncodableKey,
+		row::{RowKey, RowKeyRange},
+	},
 	value::{
-		column::{Columns, headers::ColumnHeaders},
-		encoded::EncodedValuesLayout,
+		column::{columns::Columns, headers::ColumnHeaders},
+		encoded::{key::EncodedKey, layout::EncodedValuesLayout},
 	},
 };
-use reifydb_type::Fragment;
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
@@ -47,11 +51,7 @@ impl ViewScanNode {
 
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "query::scan::view::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(
-		&mut self,
-		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
@@ -59,7 +59,7 @@ impl QueryNode for ViewScanNode {
 	#[instrument(name = "query::scan::view::next", level = "trace", skip_all)]
 	fn next<'a>(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
+		rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");

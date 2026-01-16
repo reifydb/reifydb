@@ -14,7 +14,7 @@ use crate::{
 		parse::{ParseError, Parser},
 		stmt::dml::UpdateStmt,
 	},
-	token::{Keyword, Operator, TokenKind},
+	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -77,7 +77,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

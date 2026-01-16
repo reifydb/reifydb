@@ -85,12 +85,14 @@ pub fn scan_number(cursor: &mut Cursor, start: usize, start_line: u32, start_col
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::token::{Lexer, LiteralKind, TokenKind};
+	use crate::token::{lexer::Lexer, literal::LiteralKind, token::TokenKind};
 
-	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), crate::token::LexError> {
+	fn tokenize_with_text(
+		source: &str,
+	) -> Result<(Vec<crate::token::token::Token>, String), crate::token::error::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	CommitVersion,
-	value::column::{ColumnData, Columns, CompressedColumn},
+	common::CommitVersion,
+	value::column::{columns::Columns, compressed::CompressedColumn, data::ColumnData},
 };
 use reifydb_type::Result;
 

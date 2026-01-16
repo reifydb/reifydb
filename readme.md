@@ -249,7 +249,22 @@ cargo build --release
 ```
 ---
 
+## Development
+
+For developer documentation, build instructions, testing strategies, and contributing guidelines, see:
+
+→ **[developer.md](developer.md)** - Complete developer guide
+
+Quick links:
+- [Getting Started](developer.md#1-getting-started)
+- [Testing Strategy](developer.md#3-testing-strategy)
+- [Code Quality Standards](developer.md#4-code-quality-standards)
+- [Contributing Guidelines](developer.md#8-contributing-guidelines)
+
+---
+
 ## Contributing
+
 ReifyDB is in early development. Feedback and contributions are welcome.
 - Check out the [issues](https://github.com/reifydb/reifydb/issues)
 - [Open](https://github.com/orgs/reifydb/discussions) a discussion on GitHub Discussions

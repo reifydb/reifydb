@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, Value};
+use crate::{util::bitvec::BitVec, value::Value};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UndefinedContainer {
@@ -100,9 +100,9 @@ impl Default for UndefinedContainer {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::BitVec;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new() {

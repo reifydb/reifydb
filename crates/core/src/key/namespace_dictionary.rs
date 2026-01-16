@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{DictionaryId, NamespaceId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::{DictionaryId, NamespaceId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -82,7 +82,7 @@ impl EncodableKey for NamespaceDictionaryKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

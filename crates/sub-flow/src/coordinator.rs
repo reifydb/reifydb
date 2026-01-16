@@ -3,9 +3,26 @@
 
 //! Flow coordinator that handles CDC consumption and orchestration.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
+
+use reifydb_cdc::{
+	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
+	storage::CdcStore,
+};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::{flow::FlowId, primitive::PrimitiveId},
+		cdc::{Cdc, CdcChange},
+	},
+	key::{Key, kind::KeyKind},
+};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_rql::flow::analyzer::FlowGraphAnalyzer;
+use reifydb_sdk::flow::{FlowChange, FlowChangeOrigin::External};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::Result;
+use tracing::{Span, debug, instrument};
 
 use crate::{
 	catalog::FlowCatalog,
@@ -14,20 +31,8 @@ use crate::{
 	pool::FlowWorkerPool,
 	state::FlowStates,
 	tracker::PrimitiveVersionTracker,
-	transaction::Pending,
+	transaction::pending::Pending,
 };
-use reifydb_cdc::{CdcCheckpoint, CdcConsume, CdcStore};
-use reifydb_core::interface::{CdcChange, FlowId, PrimitiveId};
-use reifydb_core::{
-	CommitVersion, Result,
-	interface::Cdc,
-	key::{Key, KeyKind},
-};
-use reifydb_engine::{StandardCommandTransaction, StandardEngine};
-use reifydb_rql::flow::FlowGraphAnalyzer;
-use reifydb_sdk::FlowChange;
-use reifydb_sdk::FlowChangeOrigin::External;
-use tracing::{debug, instrument, Span};
 
 /// Flow coordinator that implements CDC consumption logic.
 pub(crate) struct FlowCoordinator {
@@ -222,7 +227,8 @@ impl FlowCoordinator {
 		}
 
 		// Filter changes to only those from this flow's sources
-		let result: Vec<FlowChange> = changes.iter()
+		let result: Vec<FlowChange> = changes
+			.iter()
 			.filter(|change| {
 				if let External(source) = change.origin {
 					flow_sources.contains(&source)
@@ -282,5 +288,4 @@ impl FlowCoordinator {
 		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		worker_batches
 	}
-
 }

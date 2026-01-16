@@ -4,24 +4,35 @@
 //! CDC event conversion utilities for flows.
 
 use reifydb_core::{
-	CommitVersion, CowVec, Result, Row,
-	interface::{Cdc, CdcChange, PrimitiveId},
-	key::Key,
+	common::CommitVersion,
+	interface::{
+		catalog::primitive::PrimitiveId,
+		cdc::{Cdc, CdcChange},
+	},
+	key::{EncodableKey, Key, dictionary::DictionaryEntryIndexKey},
+	row::Row,
 	value::{
-		column::Columns,
-		encoded::{EncodedValues, EncodedValuesNamedLayout},
+		column::columns::Columns,
+		encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
 	},
 };
-use reifydb_engine::StandardEngine;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::RowNumber;
-use tracing::{instrument, warn, Span};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_transaction::standard::query::StandardQueryTransaction;
+use reifydb_type::{
+	Result,
+	error::Error,
+	internal,
+	util::cowvec::CowVec,
+	value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber},
+};
+use tracing::{Span, instrument, warn};
 
 use crate::catalog::FlowCatalog;
 
 /// Convert CDC change format to FlowChange format.
 pub(crate) fn convert_cdc_to_flow_change(
-	txn: &mut reifydb_engine::StandardQueryTransaction,
+	txn: &mut StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
 	row_number: RowNumber,
@@ -75,17 +86,12 @@ pub(crate) fn convert_cdc_to_flow_change(
 
 /// Create a Row from encoded bytes, handling dictionary decoding.
 pub(crate) fn create_row(
-	txn: &mut reifydb_engine::StandardQueryTransaction,
+	txn: &mut StandardQueryTransaction,
 	catalog_cache: &FlowCatalog,
 	source_id: PrimitiveId,
 	row_number: RowNumber,
 	row_bytes: Vec<u8>,
 ) -> Result<Row> {
-	use reifydb_core::{
-		Error, interface::EncodableKey, key::DictionaryEntryIndexKey, value::encoded::EncodedValuesLayout,
-	};
-	use reifydb_type::{DictionaryEntryId, Value, internal};
-
 	// Get cached source metadata (loads from catalog on cache miss)
 	let metadata = catalog_cache.get_or_load(txn, source_id)?;
 

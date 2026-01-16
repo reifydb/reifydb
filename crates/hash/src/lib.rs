@@ -3,14 +3,12 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-mod sha1;
-mod xxh;
+pub mod sha1;
+pub mod xxh;
 
 use core::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
-pub use sha1::{Sha1, sha1};
-pub use xxh::{xxh3_64, xxh3_128, xxh32, xxh64};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

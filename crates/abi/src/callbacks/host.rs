@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use super::{CatalogCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StoreCallbacks};
+use super::{
+	catalog::CatalogCallbacks, log::LogCallbacks, memory::MemoryCallbacks, state::StateCallbacks,
+	store::StoreCallbacks,
+};
 
 /// Host-provided callbacks for FFI operators
 ///

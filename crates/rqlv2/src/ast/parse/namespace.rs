@@ -13,7 +13,7 @@ use super::{
 	Parser,
 	error::{ParseError, ParseErrorKind},
 };
-use crate::token::{Operator, Span, TokenKind};
+use crate::token::{operator::Operator, span::Span, token::TokenKind};
 
 /// Result of parsing a qualified name (namespace + table/object name).
 pub struct QualifiedName<'bump> {

@@ -12,7 +12,10 @@ use crate::{
 		parse::{ParseError, ParseErrorKind, Parser},
 		stmt::ddl::{CreateRingBuffer, CreateStmt},
 	},
-	token::{Keyword, LiteralKind, Operator, Punctuation, TokenKind},
+	token::{
+		keyword::Keyword, literal::LiteralKind, operator::Operator, punctuation::Punctuation, span::Span,
+		token::TokenKind,
+	},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -27,7 +30,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 	/// ```
 	pub(in crate::ast::parse) fn parse_create_ringbuffer(
 		&mut self,
-		start: crate::token::Span,
+		start: Span,
 	) -> Result<Statement<'bump>, ParseError> {
 		// Parse namespace.name
 		let (namespace, name) = self.parse_required_qualified_identifier()?;
@@ -80,11 +83,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 					self.error(ParseErrorKind::Custom("invalid integer".to_string()))
 				})?
 			}
-			_ => {
-				return Err(self.error(ParseErrorKind::Custom(
-					"expected integer literal".to_string(),
-				)))
-			}
+			_ => return Err(self.error(ParseErrorKind::Custom("expected integer literal".to_string()))),
 		};
 		self.advance();
 
@@ -96,7 +95,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

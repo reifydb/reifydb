@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod column;
-mod find;
+pub mod column;
+pub mod find;
 pub mod flow;
-mod generator;
-mod get;
-mod layout;
-mod list;
-mod row;
-mod system;
+pub mod generator;
+pub mod get;
+pub mod layout;
+pub mod list;
+pub mod row;
+pub mod system;
 
-pub use column::ColumnSequence;
-use reifydb_core::interface::{NamespaceId, SequenceId};
-pub use row::RowSequence;
-pub(crate) use system::SystemSequence;
+use reifydb_core::interface::catalog::id::{NamespaceId, SequenceId};
 
 pub struct Sequence {
 	pub id: SequenceId,

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{IsNumber, IsTemporal, IsUuid};
-
-use crate::value::container::{
-	BlobContainer, BoolContainer, NumberContainer, RowNumberContainer, TemporalContainer, UndefinedContainer,
-	Utf8Container, UuidContainer,
+use reifydb_type::value::{
+	container::{
+		blob::BlobContainer, bool::BoolContainer, number::NumberContainer, row_number::RowNumberContainer,
+		temporal::TemporalContainer, undefined::UndefinedContainer, utf8::Utf8Container, uuid::UuidContainer,
+	},
+	is::{IsNumber, IsTemporal, IsUuid},
 };
 
 /// Trait for containers that can be created with a specific capacity

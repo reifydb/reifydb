@@ -3,7 +3,7 @@
 
 use core::ptr::null;
 
-use crate::data::BufferFFI;
+use crate::data::buffer::BufferFFI;
 
 /// FFI-safe operator column definition
 ///
@@ -14,7 +14,7 @@ use crate::data::BufferFFI;
 pub struct OperatorColumnDefFFI {
 	/// Column name (UTF-8 encoded)
 	pub name: BufferFFI,
-	/// Base type code (use reifydb_type::Type::to_u8/from_u8)
+	/// Base type code (use reifydb_type::value::r#type::Type::to_u8/from_u8)
 	pub base_type: u8,
 	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale
 	pub constraint_type: u8,

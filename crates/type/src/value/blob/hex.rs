@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Blob;
-pub(crate) use crate::util::hex::{decode, encode};
-use crate::{Error, Fragment, error::diagnostic::blob};
+use crate::{
+	error::{Error, diagnostic::blob},
+	fragment::Fragment,
+	util::hex::{decode, encode},
+};
 
 impl Blob {
 	pub fn from_hex(fragment: Fragment) -> Result<Self, Error> {
@@ -27,9 +30,9 @@ impl Blob {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_from_hex() {

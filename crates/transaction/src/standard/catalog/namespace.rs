@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{CatalogTrackNamespaceChangeOperations, NamespaceDef, NamespaceId};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::NamespaceDef,
+};
 
 use crate::{
 	change::{
@@ -13,7 +15,7 @@ use crate::{
 };
 
 impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
-	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {
+	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(namespace),
@@ -23,7 +25,7 @@ impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_namespace_def_updated(&mut self, pre: NamespaceDef, post: NamespaceDef) -> reifydb_core::Result<()> {
+	fn track_namespace_def_updated(&mut self, pre: NamespaceDef, post: NamespaceDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -33,7 +35,7 @@ impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
 		Ok(())
 	}
 
-	fn track_namespace_def_deleted(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {
+	fn track_namespace_def_deleted(&mut self, namespace: NamespaceDef) -> reifydb_type::Result<()> {
 		let change = Change {
 			pre: Some(namespace),
 			post: None,

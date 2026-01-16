@@ -3,8 +3,9 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb::{Database, core::interface::Params, embedded as db_embedded};
-use reifydb_testing::{testscript, testscript::Command};
+use db_embedded::memory;
+use reifydb::{Database, Params, embedded as db_embedded};
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 
 pub struct Runner {
@@ -14,12 +15,12 @@ pub struct Runner {
 impl Runner {
 	pub fn new() -> Self {
 		Self {
-			instance: db_embedded::memory().build().unwrap(),
+			instance: memory().build().unwrap(),
 		}
 	}
 }
 
-impl testscript::Runner for Runner {
+impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -63,5 +64,5 @@ impl testscript::Runner for Runner {
 test_each_path! { in "pkg/rust/tests/limit/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-	testscript::run_path(&mut Runner::new(), path).expect("test failed")
+	testscript::runner::run_path(&mut Runner::new(), path).expect("test failed")
 }

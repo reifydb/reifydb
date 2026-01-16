@@ -5,7 +5,10 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec, Value};
+use crate::{
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::Value,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AnyContainer {

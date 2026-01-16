@@ -6,10 +6,13 @@
 //! Syntax:
 //! - `loop { body }`
 
-use super::super::{Parser, error::ParseError};
 use crate::{
-	ast::{Statement, expr::LoopExpr},
-	token::{Keyword, Punctuation},
+	ast::{
+		Statement,
+		expr::special::LoopExpr,
+		parse::{Parser, error::ParseError},
+	},
+	token::{keyword::Keyword, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {

@@ -8,10 +8,3 @@ pub mod ddl;
 pub mod expr;
 pub mod mutate;
 pub mod query;
-
-// Re-export all node types
-pub use control::*;
-pub use ddl::*;
-pub use expr::*;
-pub use mutate::*;
-pub use query::*;

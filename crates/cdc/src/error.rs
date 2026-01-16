@@ -5,8 +5,7 @@
 
 use std::fmt::Display;
 
-use reifydb_core::CommitVersion;
-use reifydb_type::{Fragment, diagnostic::Diagnostic};
+use reifydb_core::common::CommitVersion;
 
 /// Error type for CDC operations.
 #[derive(Debug, Clone)]
@@ -31,9 +30,9 @@ impl Display for CdcError {
 
 impl std::error::Error for CdcError {}
 
-impl From<CdcError> for reifydb_core::Error {
+impl From<CdcError> for reifydb_type::error::Error {
 	fn from(err: CdcError) -> Self {
-		reifydb_core::error!(match err {
+		reifydb_type::error!(match err {
 			CdcError::Internal(msg) => diagnostic::storage_error(msg),
 			CdcError::NotFound(version) => diagnostic::not_found(version.0),
 			CdcError::Codec(msg) => diagnostic::codec_error(msg),
@@ -46,7 +45,7 @@ pub type CdcResult<T> = Result<T, CdcError>;
 
 /// CDC-specific diagnostics.
 pub mod diagnostic {
-	use super::*;
+	use reifydb_type::{error::diagnostic::Diagnostic, fragment::Fragment};
 
 	/// CDC storage operation failed
 	pub fn storage_error(msg: impl Into<String>) -> Diagnostic {
@@ -73,7 +72,8 @@ pub mod diagnostic {
 			column: None,
 			fragment: Fragment::None,
 			label: None,
-			help: Some("The requested CDC version may have been garbage collected or never existed".to_string()),
+			help: Some("The requested CDC version may have been garbage collected or never existed"
+				.to_string()),
 			notes: vec![],
 			cause: None,
 			operator_chain: None,

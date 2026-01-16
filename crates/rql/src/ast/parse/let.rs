@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::diagnostic::ast::unexpected_token_error;
+use reifydb_type::error::diagnostic::ast::unexpected_token_error;
 
 use crate::ast::{
-	AstLet, LetValue,
+	ast::{AstLet, LetValue},
 	parse::{Parser, Precedence},
-	tokenize::{Keyword, Operator, TokenKind},
+	tokenize::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
 impl Parser {
@@ -15,7 +15,7 @@ impl Parser {
 
 		// Expect 'let' keyword
 		if !self.current()?.is_keyword(Keyword::Let) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected 'let'",
 				self.current()?.fragment.clone(),
 			)));
@@ -25,7 +25,7 @@ impl Parser {
 		// Parse the variable name (must start with $)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected variable name starting with '$'",
 				variable_token.fragment.clone(),
 			)));

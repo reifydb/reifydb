@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstDelete,
+	ast::AstDelete,
 	parse::Parser,
-	tokenize::{Keyword, Operator},
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
@@ -15,8 +15,8 @@ impl Parser {
 		let target = if !self.is_eof()
 			&& matches!(
 				self.current()?.kind,
-				crate::ast::tokenize::TokenKind::Identifier
-					| crate::ast::tokenize::TokenKind::Keyword(_)
+				crate::ast::tokenize::token::TokenKind::Identifier
+					| crate::ast::tokenize::token::TokenKind::Keyword(_)
 			) {
 			use crate::ast::identifier::UnresolvedPrimitiveIdentifier;
 			let first = self.parse_identifier_with_hyphens()?;
@@ -46,8 +46,8 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstDelete, parse::Parser, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{ast::AstDelete, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_schema_and_table() {

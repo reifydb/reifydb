@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_core::interface::{FlowId, FlowNodeId};
+use reifydb_core::interface::catalog::flow::{FlowId, FlowNodeId};
 use reifydb_type::Result;
 
 use super::{

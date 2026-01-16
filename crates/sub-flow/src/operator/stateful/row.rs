@@ -3,13 +3,15 @@
 use std::iter::once;
 
 use reifydb_core::{
-	EncodedKey,
-	interface::FlowNodeId,
-	key::{EncodableKey, FlowNodeInternalStateKey},
-	util::{CowVec, encoding::keycode::KeySerializer},
-	value::encoded::{EncodedKeyRange, EncodedValues},
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	util::encoding::keycode::serializer::KeySerializer,
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_type::RowNumber;
+use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::utils::{internal_state_get, internal_state_set},
@@ -202,9 +204,9 @@ impl RowNumberProvider {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
-	use reifydb_core::CommitVersion;
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::common::CommitVersion;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;

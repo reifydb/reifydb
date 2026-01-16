@@ -8,20 +8,31 @@
 //! - Uses an unbounded channel for non-blocking event delivery
 //! - Processes commits sequentially and writes to CdcStore
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	thread::{self, JoinHandle},
+	time::Duration,
+};
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use reifydb_core::{
-	CommitVersion,
+	common::CommitVersion,
 	delta::Delta,
-	event::{CdcEntryStats, CdcStatsRecordedEvent, EventBus},
-	interface::{Cdc, CdcChange, CdcSequencedChange, MultiVersionGetPrevious},
-	key::{Key, should_exclude_from_cdc},
+	event::{
+		EventBus,
+		metric::{CdcEntryStats, CdcStatsRecordedEvent},
+	},
+	interface::{
+		cdc::{Cdc, CdcChange, CdcSequencedChange},
+		store::MultiVersionGetPrevious,
+	},
+	key::{Key, cdc_exclude::should_exclude_from_cdc},
 };
 use tracing::{error, info, trace};
+
 use crate::storage::CdcStorage;
 
 /// Timeout for recv in worker loop - allows checking shutdown flag
@@ -119,8 +130,7 @@ fn worker_loop<S, T>(
 	receiver: Receiver<CdcWorkItem>,
 	running: Arc<AtomicBool>,
 	event_bus: EventBus,
-)
-where
+) where
 	S: CdcStorage,
 	T: MultiVersionGetPrevious,
 {
@@ -163,12 +173,12 @@ where
 		seq += 1;
 
 		let change = match delta {
-			Delta::Set { key, values } => {
+			Delta::Set {
+				key,
+				values,
+			} => {
 				// Check if previous version exists to determine Insert vs Update
-				let pre = transaction_store
-					.get_previous_version(&key, item.version)
-					.ok()
-					.flatten();
+				let pre = transaction_store.get_previous_version(&key, item.version).ok().flatten();
 
 				if let Some(prev_values) = pre {
 					// Has previous version - this is an update
@@ -179,20 +189,41 @@ where
 					}
 				} else {
 					// No previous version - this is an insert
-					CdcChange::Insert { key, post: values }
+					CdcChange::Insert {
+						key,
+						post: values,
+					}
 				}
 			}
-			Delta::Unset { key, values } => {
-				let pre = if values.is_empty() { None } else { Some(values) };
-				CdcChange::Delete { key, pre }
+			Delta::Unset {
+				key,
+				values,
+			} => {
+				let pre = if values.is_empty() {
+					None
+				} else {
+					Some(values)
+				};
+				CdcChange::Delete {
+					key,
+					pre,
+				}
 			}
-			Delta::Remove { .. } | Delta::Drop { .. } => {
+			Delta::Remove {
+				..
+			}
+			| Delta::Drop {
+				..
+			} => {
 				// Remove (untracked) and Drop operations never generate CDC
 				continue;
 			}
 		};
 
-		changes.push(CdcSequencedChange { sequence: seq, change });
+		changes.push(CdcSequencedChange {
+			sequence: seq,
+			change,
+		});
 	}
 
 	if !changes.is_empty() {
@@ -223,13 +254,15 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-	use super::*;
-	use crate::storage::MemoryCdcStorage;
-	use reifydb_core::{CowVec, EncodedKey, value::encoded::EncodedValues};
+pub mod tests {
+	use std::{thread::sleep, time::Duration};
+
+	use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey};
 	use reifydb_store_multi::MultiStore;
-	use std::thread::sleep;
-	use std::time::Duration;
+	use reifydb_type::util::cowvec::CowVec;
+
+	use super::*;
+	use crate::storage::memory::MemoryCdcStorage;
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
@@ -268,7 +301,10 @@ mod tests {
 		assert_eq!(cdc.changes.len(), 1);
 
 		match &cdc.changes[0].change {
-			CdcChange::Insert { key, post } => {
+			CdcChange::Insert {
+				key,
+				post,
+			} => {
 				assert_eq!(key.as_ref(), b"test_key");
 				assert_eq!(post.0.as_slice(), b"test_value");
 			}

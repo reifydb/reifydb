@@ -13,8 +13,8 @@ pub(crate) struct SHA1_CTX {
 }
 
 unsafe extern "C" {
-    pub fn SHA1Init(context: *mut SHA1_CTX);
-    pub fn SHA1Update(context: *mut SHA1_CTX, data: *const u8, len: u32);
-    pub fn SHA1Final(digest: *mut u8, context: *mut SHA1_CTX);
-    pub fn SHA1(hash_out: *mut u8, str: *const u8, len: u32);
+    pub(crate) fn SHA1Init(context: *mut SHA1_CTX);
+    pub(crate) fn SHA1Update(context: *mut SHA1_CTX, data: *const u8, len: u32);
+    pub(crate) fn SHA1Final(digest: *mut u8, context: *mut SHA1_CTX);
+    pub(crate) fn SHA1(hash_out: *mut u8, str: *const u8, len: u32);
 }

@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{
-	column::{Column, ColumnData, push::Push},
-	container::{UndefinedContainer, number::NumberContainer},
-};
+use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
 use reifydb_rql::expression::SubExpression;
 use reifydb_type::{
-	GetType, IsNumber, LazyFragment, Promote, SafeSub, Type,
-	diagnostic::operator::sub_cannot_be_applied_to_incompatible_types, return_error,
+	error::diagnostic::operator::sub_cannot_be_applied_to_incompatible_types,
+	fragment::LazyFragment,
+	return_error,
+	value::{
+		container::{number::NumberContainer, undefined::UndefinedContainer},
+		is::IsNumber,
+		number::{promote::Promote, safe::sub::SafeSub},
+		r#type::{Type, get::GetType},
+	},
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn sub(&self, ctx: &ColumnEvaluationContext, sub: &SubExpression) -> crate::Result<Column> {

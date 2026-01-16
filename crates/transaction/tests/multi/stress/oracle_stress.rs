@@ -3,8 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_transaction::multi::transaction::MAX_COMMITTED_TXNS;
-
 use super::test_multi;
 use crate::{as_key, as_values};
 
@@ -14,8 +12,8 @@ use crate::{as_key, as_values};
 fn test_oracle_committed_txns_cleanup() {
 	let engine = test_multi();
 
-	// Number of transactions to create (exceeds MAX_COMMITTED_TXNS)
-	const NUM_TXNS: usize = 2 * MAX_COMMITTED_TXNS;
+	// Number of transactions to create (exceeds internal cleanup threshold)
+	const NUM_TXNS: usize = 20_000;
 
 	// Create many transactions with conflicts to ensure they're tracked
 	for i in 0..NUM_TXNS {

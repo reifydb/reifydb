@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::{WindowSize, WindowSlide, WindowType, value::column::Columns};
-use reifydb_engine::StandardColumnEvaluator;
+use reifydb_core::{
+	common::{WindowSize, WindowSlide, WindowType},
+	value::column::columns::Columns,
+};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_hash::Hash128;
-use reifydb_sdk::{FlowChange, FlowDiff};
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
 
 use super::{WindowEvent, WindowOperator};
 use crate::transaction::FlowTransaction;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 use crate::value::column::ColumnData;
 

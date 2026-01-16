@@ -5,20 +5,23 @@
 
 use std::collections::HashMap;
 
-use reifydb_catalog::sequence::RowSequence;
-use reifydb_catalog::CatalogStore;
-use reifydb_core::interface::RowKey;
-use reifydb_core::value::column::Columns;
-use reifydb_core::value::encoded::{encode_value, EncodedValuesLayout};
-use reifydb_rqlv2::bytecode::DmlTargetType;
-use reifydb_type::{RowNumber, Value};
-
-use crate::error::{Result, VmError};
-use crate::pipeline;
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
+use reifydb_catalog::{CatalogStore, store::sequence::row::RowSequence};
+use reifydb_core::{
+	key::row::RowKey,
+	value::{
+		column::columns::Columns,
+		encoded::{layout::EncodedValuesLayout, value::encode_value},
+	},
+};
+use reifydb_rqlv2::bytecode::program::DmlTargetType;
+use reifydb_type::value::{Value, row_number::RowNumber};
 
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	pipeline,
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// InsertRow - insert rows into a table.
 pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
@@ -46,13 +49,17 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			};
 
 			let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
-				.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+				.map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?
 				.ok_or_else(|| VmError::CatalogError {
 					message: format!("Namespace '{}' not found", namespace_name),
 				})?;
 
 			let table = CatalogStore::find_table_by_name(cmd_tx, namespace.id, table_name)
-				.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+				.map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?
 				.ok_or_else(|| VmError::CatalogError {
 					message: format!("Table '{}' not found", table_name),
 				})?;
@@ -62,9 +69,8 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			let input_columns = pipeline::collect(input_pipeline)?;
 
 			// Build storage layout types
-			let table_types: Vec<reifydb_type::Type> = table.columns.iter()
-				.map(|c| c.constraint.get_type())
-				.collect();
+			let table_types: Vec<reifydb_type::value::r#type::Type> =
+				table.columns.iter().map(|c| c.constraint.get_type()).collect();
 			let layout = EncodedValuesLayout::new(&table_types);
 
 			// Insert each row
@@ -87,14 +93,17 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 			// Allocate row numbers in batch
 			let row_numbers = RowSequence::next_row_number_batch(cmd_tx, table.id, row_count as u64)
-				.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+				.map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?;
 
 			// Insert each row
 			for row_idx in 0..row_count {
 				let mut row = layout.allocate();
 
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
-					let value = if let Some(&input_idx) = column_map.get(table_column.name.as_str()) {
+					let value = if let Some(&input_idx) = column_map.get(table_column.name.as_str())
+					{
 						input_columns[input_idx].data().get_value(row_idx)
 					} else {
 						Value::Undefined
@@ -105,8 +114,9 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 				// Insert the row using the RowKey
 				let row_key = RowKey::encoded(table.id, row_numbers[row_idx]);
-				cmd_tx.set(&row_key, row)
-					.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+				cmd_tx.set(&row_key, row).map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?;
 			}
 
 			let result = Columns::single_row([
@@ -162,13 +172,17 @@ pub fn delete_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			};
 
 			let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
-				.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+				.map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?
 				.ok_or_else(|| VmError::CatalogError {
 					message: format!("Namespace '{}' not found", namespace_name),
 				})?;
 
 			let table = CatalogStore::find_table_by_name(cmd_tx, namespace.id, table_name)
-				.map_err(|e| VmError::CatalogError { message: e.to_string() })?
+				.map_err(|e| VmError::CatalogError {
+					message: e.to_string(),
+				})?
 				.ok_or_else(|| VmError::CatalogError {
 					message: format!("Table '{}' not found", table_name),
 				})?;
@@ -178,7 +192,8 @@ pub fn delete_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			let input_columns = pipeline::collect(input_pipeline)?;
 
 			// Find the row_number column
-			let row_number_col = input_columns.iter()
+			let row_number_col = input_columns
+				.iter()
 				.find(|c| c.name().text() == "_row_number" || c.name().text() == "row_number");
 
 			let deleted_count = if let Some(row_num_col) = row_number_col {
@@ -186,8 +201,9 @@ pub fn delete_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 				for i in 0..row_count {
 					if let Value::Uint8(row_num) = row_num_col.data().get_value(i) {
 						let row_key = RowKey::encoded(table.id, RowNumber::from(row_num));
-						cmd_tx.remove(&row_key)
-							.map_err(|e| VmError::CatalogError { message: e.to_string() })?;
+						cmd_tx.remove(&row_key).map_err(|e| VmError::CatalogError {
+							message: e.to_string(),
+						})?;
 					}
 				}
 				row_count

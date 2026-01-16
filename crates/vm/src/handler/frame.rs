@@ -3,13 +3,16 @@
 
 //! Frame/Record opcodes: FrameLen, FrameRow, GetField.
 
-use reifydb_type::Value;
-
-use crate::error::{Result, VmError};
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::{OperandValue, Record};
+use reifydb_type::value::Value;
 
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{
+		dispatch::DispatchResult,
+		operand::{OperandValue, Record},
+	},
+};
 
 /// FrameLen - get the number of rows in a frame.
 pub fn frame_len(ctx: &mut HandlerContext) -> Result<DispatchResult> {

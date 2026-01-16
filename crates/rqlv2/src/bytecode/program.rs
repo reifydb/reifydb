@@ -7,8 +7,8 @@ use std::{ops::Deref, sync::Arc};
 
 use super::opcode::ObjectType;
 use crate::{
-	expression::{CompiledExpr, CompiledFilter},
-	token::Span,
+	expression::types::{CompiledExpr, CompiledFilter},
+	token::span::Span,
 };
 
 /// Source map for mapping bytecode offsets to source spans.

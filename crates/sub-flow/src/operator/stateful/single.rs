@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::{
-	EncodedKey,
-	value::encoded::{EncodedValues, EncodedValuesLayout},
-};
+use reifydb_core::value::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
 
 use super::utils;
-use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
+use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with a single state value (like counters, running sums, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -57,12 +54,12 @@ pub trait SingleStateful: RawStatefulOperator {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, interface::FlowNodeId};
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::*;
+	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {

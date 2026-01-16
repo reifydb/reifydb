@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, PrimaryKeyId};
+use crate::interface::catalog::{column::ColumnDef, id::PrimaryKeyId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrimaryKeyDef {

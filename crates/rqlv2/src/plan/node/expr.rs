@@ -3,9 +3,14 @@
 
 //! Plan expressions - resolved and ready for execution.
 
+use reifydb_type::value::r#type::Type;
+
 use crate::{
-	plan::{Column, Function, Plan, Type, Variable},
-	token::Span,
+	plan::{
+		Plan,
+		types::{Column, Function, Variable},
+	},
+	token::span::Span,
 };
 
 /// Plan expression - resolved and ready for execution.

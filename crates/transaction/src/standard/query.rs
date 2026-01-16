@@ -2,13 +2,22 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
+	common::CommitVersion,
 	interface::{
-		DictionaryDef, DictionaryId, FlowDef, FlowId, MultiVersionValues, NamespaceDef, NamespaceId,
-		RingBufferDef, RingBufferId, SubscriptionDef, SubscriptionId, TableDef, TableId, ViewDef, ViewId,
+		catalog::{
+			dictionary::DictionaryDef,
+			flow::{FlowDef, FlowId},
+			id::{DictionaryId, NamespaceId, RingBufferId, SubscriptionId, TableId, ViewId},
+			namespace::NamespaceDef,
+			ringbuffer::RingBufferDef,
+			subscription::SubscriptionDef,
+			table::TableDef,
+			view::ViewDef,
+		},
+		store::{MultiVersionBatch, MultiVersionValues},
 	},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::interface::MultiVersionBatch;
 use reifydb_type::Result;
 use tracing::instrument;
 
@@ -19,8 +28,8 @@ use crate::{
 		TransactionalNamespaceChanges, TransactionalRingBufferChanges, TransactionalSubscriptionChanges,
 		TransactionalTableChanges, TransactionalViewChanges,
 	},
-	multi::QueryTransaction,
-	single::{SvlQueryTransaction, TransactionSingle},
+	multi::transaction::query::QueryTransaction,
+	single::{TransactionSingle, svl::read::SvlQueryTransaction},
 };
 
 /// An active query transaction that holds a multi query transaction

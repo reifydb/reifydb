@@ -4,36 +4,62 @@
 use std::mem::take;
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
-	diagnostic::transaction,
+	common::CommitVersion,
 	event::EventBus,
-	interface::{MultiVersionValues, WithEventBus},
-	return_error,
-	value::encoded::EncodedValues,
+	interface::{
+		WithEventBus,
+		store::{MultiVersionBatch, MultiVersionValues},
+	},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_core::interface::MultiVersionBatch;
-use reifydb_type::Result;
+use reifydb_type::{Result, error::diagnostic::transaction, return_error};
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
 	interceptor::{
-		Chain, Interceptors, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
-		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitContext,
-		PostCommitInterceptor, PreCommitContext, PreCommitInterceptor, RingBufferDefPostCreateInterceptor,
-		RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteInterceptor,
-		RingBufferDefPreUpdateInterceptor, RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-		RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor,
-		RingBufferPreUpdateInterceptor, TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
-		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-		TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
 		WithInterceptors,
+		chain::InterceptorChain as Chain,
+		interceptors::Interceptors,
+		namespace_def::{
+			NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
+			NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor,
+		},
+		ringbuffer::{
+			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
+			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
+			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+		},
+		ringbuffer_def::{
+			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
+			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		table::{
+			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
+			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+		},
+		table_def::{
+			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+			TableDefPreUpdateInterceptor,
+		},
+		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
+		view_def::{
+			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+			ViewDefPreUpdateInterceptor,
+		},
 	},
-	multi::{TransactionMultiVersion, pending::PendingWrites},
-	single::{SvlCommandTransaction, SvlQueryTransaction, TransactionSingle},
+	multi::{
+		pending::PendingWrites,
+		transaction::{TransactionMulti, command::CommandTransaction},
+	},
+	single::{
+		TransactionSingle,
+		svl::{read::SvlQueryTransaction, write::SvlCommandTransaction},
+	},
 	standard::query::StandardQueryTransaction,
 };
 
@@ -42,11 +68,11 @@ use crate::{
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction {
-	pub multi: TransactionMultiVersion,
+	pub multi: TransactionMulti,
 	pub single: TransactionSingle,
 	state: TransactionState,
 
-	pub cmd: Option<crate::multi::CommandTransaction>,
+	pub cmd: Option<CommandTransaction>,
 	pub event_bus: EventBus,
 	pub changes: TransactionalDefChanges,
 
@@ -66,7 +92,7 @@ impl StandardCommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
 	#[instrument(name = "transaction::standard::command::new", level = "debug", skip_all)]
 	pub fn new(
-		multi: TransactionMultiVersion,
+		multi: TransactionMulti,
 		single: TransactionSingle,
 		event_bus: EventBus,
 		interceptors: Interceptors,
@@ -195,8 +221,7 @@ impl StandardCommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		f(&mut query_txn)
 	}
@@ -212,8 +237,7 @@ impl StandardCommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.read_as_of_version_exclusive(version)?;
 
@@ -231,8 +255,7 @@ impl StandardCommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn =
-			StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn = StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone());
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::Catalog;
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_transaction::standard::IntoStandardTransaction;
 use tracing::instrument;
 
 use crate::{
-	ast::AstStatement,
+	ast::ast::AstStatement,
 	expression::Expression,
 	plan::{
 		logical::compile_logical,

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	CommitVersion,
-	interface::{NamespaceId, PrimaryKeyDef, SubscriptionColumnId, SubscriptionId},
-	value::encoded::EncodedValuesNamedLayout,
+	common::CommitVersion,
+	interface::catalog::{
+		id::{NamespaceId, SubscriptionColumnId, SubscriptionId},
+		key::PrimaryKeyDef,
+	},
+	value::encoded::named::EncodedValuesNamedLayout,
 };
 
 /// Implicit column names for subscriptions

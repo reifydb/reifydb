@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, Time, Type, Uint, Uuid4, Uuid7};
-
-use crate::{
-	BitVec,
+use reifydb_type::{
+	util::bitvec::BitVec,
 	value::{
-		column::ColumnData,
+		blob::Blob,
 		container::{
-			AnyContainer, BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-			TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
 		},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		time::Time,
+		r#type::Type,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
 	},
 };
+
+use crate::value::column::ColumnData;
 
 impl ColumnData {
 	pub fn bool(data: impl IntoIterator<Item = bool>) -> Self {
@@ -1002,12 +1013,12 @@ impl ColumnData {
 		}
 	}
 
-	pub fn any(data: impl IntoIterator<Item = Box<reifydb_type::Value>>) -> Self {
+	pub fn any(data: impl IntoIterator<Item = Box<reifydb_type::value::Value>>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Any(AnyContainer::from_vec(data))
 	}
 
-	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<reifydb_type::Value>>>) -> Self {
+	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<reifydb_type::value::Value>>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -1018,7 +1029,7 @@ impl ColumnData {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Box::new(reifydb_type::Value::Undefined));
+					values.push(Box::new(reifydb_type::value::Value::Undefined));
 					bitvec.push(false);
 				}
 			}
@@ -1032,7 +1043,7 @@ impl ColumnData {
 	}
 
 	pub fn any_with_bitvec(
-		data: impl IntoIterator<Item = Box<reifydb_type::Value>>,
+		data: impl IntoIterator<Item = Box<reifydb_type::value::Value>>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
@@ -1083,7 +1094,7 @@ impl ColumnData {
 				..
 			} => Self::decimal_with_bitvec(vec![Decimal::from(0); len], BitVec::repeat(len, false)),
 			Type::Any => Self::any_with_bitvec(
-				vec![Box::new(reifydb_type::Value::Undefined); len],
+				vec![Box::new(reifydb_type::value::Value::Undefined); len],
 				BitVec::repeat(len, false),
 			),
 			Type::Undefined => Self::undefined(len),

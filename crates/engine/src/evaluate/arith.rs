@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::ColumnSaturationPolicy;
+use reifydb_core::interface::catalog::policy::ColumnSaturationPolicy;
 use reifydb_type::{
-	Error, GetType, IsNumber, LazyFragment, Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub,
-	diagnostic::number::number_out_of_range, return_error,
+	error::{Error, diagnostic::number::number_out_of_range},
+	fragment::LazyFragment,
+	return_error,
+	value::{
+		is::IsNumber,
+		number::{
+			promote::Promote,
+			safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
+		},
+		r#type::get::GetType,
+	},
 };
 
 use crate::evaluate::ColumnEvaluationContext;
@@ -15,7 +24,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -65,7 +74,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -115,7 +124,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -165,7 +174,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -215,7 +224,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment + Copy,
-	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_type::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -260,8 +269,8 @@ impl ColumnEvaluationContext<'_> {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Fragment;
+pub mod tests {
+	use reifydb_type::fragment::Fragment;
 
 	use crate::evaluate::ColumnEvaluationContext;
 

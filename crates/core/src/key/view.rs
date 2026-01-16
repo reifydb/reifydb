@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::catalog::ViewId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::ViewId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,9 +71,9 @@ impl ViewKey {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, ViewKey};
-	use crate::interface::catalog::ViewId;
+	use crate::interface::catalog::id::ViewId;
 
 	#[test]
 	fn test_encode_decode() {

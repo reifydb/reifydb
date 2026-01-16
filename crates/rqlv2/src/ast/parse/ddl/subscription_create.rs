@@ -14,9 +14,9 @@ use crate::{
 	ast::{
 		Expr, Statement,
 		parse::{ParseError, Parser, Precedence},
-		stmt::ddl::{CreateSubscription, CreateStmt},
+		stmt::ddl::{CreateStmt, CreateSubscription},
 	},
-	token::{Operator, Punctuation, Span},
+	token::{operator::Operator, punctuation::Punctuation, span::Span},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -50,9 +50,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let end_span = self.current().span;
 		let span = start.merge(&end_span);
 
-		Ok(Statement::Create(CreateStmt::Subscription(
-			CreateSubscription::new(columns, query, span),
-		)))
+		Ok(Statement::Create(CreateStmt::Subscription(CreateSubscription::new(columns, query, span))))
 	}
 
 	/// Parse subscription query: `{ FROM ... | FILTER ... }`
@@ -90,7 +88,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{ast::Statement, token::tokenize};

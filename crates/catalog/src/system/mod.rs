@@ -3,39 +3,39 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{VTableDef, version::SystemVersion};
+use reifydb_core::interface::{catalog::vtable::VTableDef, version::SystemVersion};
 
-mod cdc_consumers;
-mod column_policies;
-mod columns;
-mod dictionaries;
-mod flow_edges;
-mod flow_lags;
-mod flow_node_types;
-mod flow_nodes;
-mod flow_operator_inputs;
-mod flow_operator_outputs;
-mod flow_operators;
-mod flows;
-mod namespaces;
-mod operator_retention_policies;
-mod primary_key_columns;
-mod primary_keys;
-mod primitive_retention_policies;
-mod ringbuffers;
-mod sequence;
-mod storage_stats_dictionary;
-mod storage_stats_flow;
-mod storage_stats_flow_node;
-mod storage_stats_index;
-mod storage_stats_ringbuffer;
-mod storage_stats_table;
-mod storage_stats_view;
-mod tables;
-mod tables_virtual;
-mod types;
-mod versions;
-mod views;
+pub mod cdc_consumers;
+pub mod column_policies;
+pub mod columns;
+pub mod dictionaries;
+pub mod flow_edges;
+pub mod flow_lags;
+pub mod flow_node_types;
+pub mod flow_nodes;
+pub mod flow_operator_inputs;
+pub mod flow_operator_outputs;
+pub mod flow_operators;
+pub mod flows;
+pub mod namespaces;
+pub mod operator_retention_policies;
+pub mod primary_key_columns;
+pub mod primary_keys;
+pub mod primitive_retention_policies;
+pub mod ringbuffers;
+pub mod sequence;
+pub mod storage_stats_dictionary;
+pub mod storage_stats_flow;
+pub mod storage_stats_flow_node;
+pub mod storage_stats_index;
+pub mod storage_stats_ringbuffer;
+pub mod storage_stats_table;
+pub mod storage_stats_view;
+pub mod tables;
+pub mod tables_virtual;
+pub mod types;
+pub mod versions;
+pub mod views;
 
 use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
@@ -73,7 +73,7 @@ use crate::system::ringbuffers::ringbuffers;
 pub mod ids {
 	pub mod columns {
 		pub mod cdc_consumers {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const CONSUMER_ID: ColumnId = ColumnId(1);
 			pub const CHECKPOINT: ColumnId = ColumnId(2);
@@ -82,7 +82,7 @@ pub mod ids {
 		}
 
 		pub mod sequences {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -93,7 +93,7 @@ pub mod ids {
 		}
 
 		pub mod namespaces {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAME: ColumnId = ColumnId(2);
@@ -102,7 +102,7 @@ pub mod ids {
 		}
 
 		pub mod tables {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -113,7 +113,7 @@ pub mod ids {
 		}
 
 		pub mod views {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -125,7 +125,7 @@ pub mod ids {
 		}
 
 		pub mod flows {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -136,7 +136,7 @@ pub mod ids {
 		}
 
 		pub mod flow_nodes {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const FLOW_ID: ColumnId = ColumnId(2);
@@ -147,7 +147,7 @@ pub mod ids {
 		}
 
 		pub mod flow_edges {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const FLOW_ID: ColumnId = ColumnId(2);
@@ -158,7 +158,7 @@ pub mod ids {
 		}
 
 		pub mod columns {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const SOURCE_ID: ColumnId = ColumnId(2);
@@ -174,7 +174,7 @@ pub mod ids {
 		}
 
 		pub mod dictionaries {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -186,7 +186,7 @@ pub mod ids {
 		}
 
 		pub mod primary_keys {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const SOURCE_ID: ColumnId = ColumnId(2);
@@ -195,7 +195,7 @@ pub mod ids {
 		}
 
 		pub mod ringbuffers {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -207,7 +207,7 @@ pub mod ids {
 		}
 
 		pub mod primary_key_columns {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(1);
 			pub const COLUMN_ID: ColumnId = ColumnId(2);
@@ -217,7 +217,7 @@ pub mod ids {
 		}
 
 		pub mod column_policies {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const COLUMN_ID: ColumnId = ColumnId(2);
@@ -228,7 +228,7 @@ pub mod ids {
 		}
 
 		pub mod versions {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const NAME: ColumnId = ColumnId(1);
 			pub const VERSION: ColumnId = ColumnId(2);
@@ -239,7 +239,7 @@ pub mod ids {
 		}
 
 		pub mod primitive_retention_policies {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
 			pub const PRIMITIVE_TYPE: ColumnId = ColumnId(2);
@@ -251,7 +251,7 @@ pub mod ids {
 		}
 
 		pub mod operator_retention_policies {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR_ID: ColumnId = ColumnId(1);
 			pub const POLICY_TYPE: ColumnId = ColumnId(2);
@@ -262,7 +262,7 @@ pub mod ids {
 		}
 
 		pub mod flow_operators {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
@@ -288,7 +288,7 @@ pub mod ids {
 		}
 
 		pub mod flow_operator_inputs {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const POSITION: ColumnId = ColumnId(2);
@@ -300,7 +300,7 @@ pub mod ids {
 		}
 
 		pub mod flow_operator_outputs {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const POSITION: ColumnId = ColumnId(2);
@@ -312,7 +312,7 @@ pub mod ids {
 		}
 
 		pub mod virtual_tables {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
@@ -323,7 +323,7 @@ pub mod ids {
 		}
 
 		pub mod flow_lags {
-			use reifydb_core::interface::ColumnId;
+			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
 			pub const PRIMITIVE_ID: ColumnId = ColumnId(2);
@@ -334,7 +334,7 @@ pub mod ids {
 	}
 
 	pub mod sequences {
-		use reifydb_core::interface::SequenceId;
+		use reifydb_core::interface::catalog::id::SequenceId;
 
 		pub const NAMESPACE: SequenceId = SequenceId(1);
 		pub const SOURCE: SequenceId = SequenceId(2);
@@ -350,7 +350,7 @@ pub mod ids {
 	}
 
 	pub mod vtable {
-		use reifydb_core::interface::VTableId;
+		use reifydb_core::interface::catalog::vtable::VTableId;
 
 		pub const SEQUENCES: VTableId = VTableId(1);
 		pub const NAMESPACES: VTableId = VTableId(2);

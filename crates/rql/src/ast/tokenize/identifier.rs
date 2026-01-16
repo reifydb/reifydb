@@ -63,8 +63,8 @@ pub fn is_identifier_char(ch: char) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::tokenize::{TokenKind, tokenize};
+pub mod tests {
+	use crate::ast::tokenize::{token::TokenKind, tokenize};
 
 	#[test]
 	fn test_identifier() {

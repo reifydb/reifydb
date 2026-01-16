@@ -8,16 +8,28 @@
 //! - Fully resolved with catalog IDs and metadata
 //! - Annotated with spans for error diagnostics
 
+use crate::{
+	plan::node::{
+		control::{
+			AssignNode, BreakNode, CallScriptFunctionNode, ConditionalNode, ContinueNode, DeclareNode,
+			DefineScriptFunctionNode, ExprNode, ForNode, LoopNode, ReturnNode,
+		},
+		ddl::{AlterNode, CreateNode, DropNode},
+		mutate::{DeleteNode, InsertNode, UpdateNode},
+		query::{
+			AggregateNode, ApplyNode, DistinctNode, EnvironmentNode, ExtendNode, FilterNode, GeneratorNode,
+			IndexScanNode, InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, MergeNode,
+			ProjectNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, ScalarizeNode, ScanNode,
+			SortNode, TakeNode, VariableSourceNode, WindowNode,
+		},
+	},
+	token::span::Span,
+};
+
 pub mod compile;
 pub mod explain;
 pub mod node;
 pub mod types;
-
-// Re-export key types
-pub use node::*;
-pub use types::*;
-
-use crate::token::Span;
 
 /// The unified execution plan for rqlv2.
 ///

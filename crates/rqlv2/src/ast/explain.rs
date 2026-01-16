@@ -10,11 +10,18 @@ use bumpalo::Bump;
 use super::{Expr, Pipeline, Program, Statement};
 use crate::{
 	ast::{
-		expr::*,
-		parse::{ParseError, ParseErrorKind, Parser},
-		stmt::*,
+		expr::{
+			literal::Literal,
+			query::{FromExpr, JoinExpr, JoinSource, SortDirection, UsingClause},
+			special::ForIterable,
+		},
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+		},
+		stmt::{binding::LetValue, dml::InsertSource},
 	},
-	token::{Span, tokenize},
+	token::{span::Span, tokenize},
 };
 
 /// Explain parsing by showing the AST structure.
@@ -211,10 +218,10 @@ impl<'a> AstFormatter<'a> {
 				self.with_child(is_last, |f| {
 					f.write_branch(false, "iterable:");
 					f.with_child(false, |f| match &fr.iterable {
-						crate::ast::expr::ForIterable::Expr(expr) => {
+						ForIterable::Expr(expr) => {
 							f.format_expr(true, expr);
 						}
-						crate::ast::expr::ForIterable::Pipeline(stages) => {
+						ForIterable::Pipeline(stages) => {
 							let len = stages.len();
 							for (i, stage) in stages.iter().enumerate() {
 								f.format_expr_indexed(i == len - 1, i, stage);
@@ -762,10 +769,10 @@ impl<'a> AstFormatter<'a> {
 			Expr::ForExpr(fr) => {
 				self.write_branch(false, "iterable:");
 				self.with_child(false, |f| match &fr.iterable {
-					crate::ast::expr::ForIterable::Expr(expr) => {
+					ForIterable::Expr(expr) => {
 						f.format_expr(true, expr);
 					}
-					crate::ast::expr::ForIterable::Pipeline(stages) => {
+					ForIterable::Pipeline(stages) => {
 						let len = stages.len();
 						for (i, stage) in stages.iter().enumerate() {
 							f.format_expr_indexed(i == len - 1, i, stage);

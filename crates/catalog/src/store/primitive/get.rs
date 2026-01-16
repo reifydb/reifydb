@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Error,
-	interface::{PrimitiveDef, PrimitiveId},
-};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::internal;
+use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::Error, internal};
 
 use crate::CatalogStore;
 
@@ -39,14 +36,17 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{PrimitiveDef, PrimitiveId, TableId, ViewId};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		id::{TableId, ViewId},
+		primitive::{PrimitiveDef, PrimitiveId},
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
-		store::view::{ViewColumnToCreate, ViewToCreate},
+		store::view::create::{ViewColumnToCreate, ViewToCreate},
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
 

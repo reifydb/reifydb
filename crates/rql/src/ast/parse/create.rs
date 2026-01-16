@@ -3,24 +3,29 @@
 
 use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace, Subscription};
 use Operator::{Colon, Dot};
-use reifydb_core::SortDirection;
+use reifydb_core::sort::SortDirection;
 
 use crate::ast::{
-	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-	AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable, AstCreateTransactionalView,
-	AstDataType, AstIndexColumn, AstPrimaryKeyDef,
+	ast::{
+		AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
+		AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
+		AstCreateTransactionalView, AstDataType, AstIndexColumn, AstPrimaryKeyDef,
+	},
 	identifier::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 	},
 	parse::Parser,
 	tokenize::{
-		Keyword,
-		Keyword::{Deferred, Ringbuffer, Series, Table, Transactional, View},
-		Literal, Operator,
-		Operator::{Not, Or},
-		Separator,
-		Separator::Comma,
-		Token, TokenKind,
+		keyword::{
+			Keyword,
+			Keyword::{Deferred, Ringbuffer, Series, Table, Transactional, View},
+		},
+		operator::{
+			Operator,
+			Operator::{Not, Or},
+		},
+		separator::{Separator, Separator::Comma},
+		token::{Literal, Token, TokenKind},
 	},
 };
 
@@ -49,10 +54,12 @@ impl Parser {
 
 		// CREATE OR REPLACE is only valid for FLOW currently
 		if or_replace {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
-				"FLOW after CREATE OR REPLACE",
-				self.current()?.fragment.clone(),
-			)));
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"FLOW after CREATE OR REPLACE",
+					self.current()?.fragment.clone(),
+				),
+			));
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
@@ -179,7 +186,7 @@ impl Parser {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::AstStatement {
+			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 			})
@@ -236,7 +243,7 @@ impl Parser {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::AstStatement {
+			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 			})
@@ -306,7 +313,7 @@ impl Parser {
 			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
-			Some(crate::ast::AstStatement {
+			Some(crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 			})
@@ -372,12 +379,12 @@ impl Parser {
 		let options = self.parse_with_block()?;
 
 		let capacity = options.capacity.ok_or_else(|| {
-			reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+			reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
 				"'capacity' is required for RINGBUFFER",
 				self.current()
 					.ok()
 					.and_then(|t| Some(t.fragment.clone()))
-					.unwrap_or_else(|| reifydb_type::Fragment::internal("end of input")),
+					.unwrap_or_else(|| reifydb_type::fragment::Fragment::internal("end of input")),
 			))
 		})?;
 
@@ -449,10 +456,12 @@ impl Parser {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		if columns.is_empty() {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
-				"at least one column in primary key",
-				self.current()?.fragment.clone(),
-			)));
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"at least one column in primary key",
+					self.current()?.fragment.clone(),
+				),
+			));
 		}
 
 		Ok(AstPrimaryKeyDef {
@@ -484,8 +493,8 @@ impl Parser {
 					let capacity_token = self.consume(TokenKind::Literal(Literal::Number))?;
 					capacity =
 						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
-							reifydb_type::Error(
-								reifydb_type::diagnostic::ast::unexpected_token_error(
+							reifydb_type::error::Error(
+								reifydb_type::error::diagnostic::ast::unexpected_token_error(
 									"valid capacity number",
 									capacity_token.fragment.clone(),
 								),
@@ -496,8 +505,8 @@ impl Parser {
 					primary_key = Some(self.parse_primary_key_definition()?);
 				}
 				_other => {
-					return Err(reifydb_type::Error(
-						reifydb_type::diagnostic::ast::unexpected_token_error(
+					return Err(reifydb_type::error::Error(
+						reifydb_type::error::diagnostic::ast::unexpected_token_error(
 							"'capacity' or 'primary_key'",
 							key.fragment.clone(),
 						),
@@ -751,7 +760,7 @@ impl Parser {
 
 			self.consume_operator(Operator::CloseCurly)?;
 
-			crate::ast::AstStatement {
+			crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 			}
@@ -786,7 +795,7 @@ impl Parser {
 				}
 			}
 
-			crate::ast::AstStatement {
+			crate::ast::ast::AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 			}
@@ -804,11 +813,15 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use crate::ast::{
-		Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace, AstCreateRingBuffer,
-		AstCreateSeries, AstCreateSubscription, AstCreateTable, AstCreateTransactionalView, AstDataType,
-		AstPolicyKind, parse::Parser, tokenize,
+		ast::{
+			Ast, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateTable,
+			AstCreateTransactionalView, AstDataType, AstPolicyKind,
+		},
+		parse::Parser,
+		tokenize::tokenize,
 	};
 
 	#[test]
@@ -1430,7 +1443,7 @@ mod tests {
 		let result = result.pop().unwrap();
 		let create = result.first_unchecked().as_create();
 
-		use crate::ast::AstCreateRingBuffer;
+		use crate::ast::ast::AstCreateRingBuffer;
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {

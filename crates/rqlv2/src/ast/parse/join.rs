@@ -23,8 +23,17 @@ use super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::{Expr, expr::*},
-	token::{Keyword, Operator, Punctuation, TokenKind},
+	ast::{
+		Expr,
+		expr::{
+			query::{
+				JoinConnector, JoinExpr, JoinInner, JoinLeft, JoinNatural, JoinPair, JoinPrimitive,
+				JoinSource, SourceRef, UsingClause,
+			},
+			special::SubQueryExpr,
+		},
+	},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -223,23 +232,32 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::{BinaryOp, JoinConnector, JoinExpr}, token::tokenize};
+	use crate::{
+		ast::{
+			Expr, Statement,
+			expr::{
+				operator::BinaryOp,
+				query::{JoinConnector, JoinExpr, JoinSource},
+			},
+		},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: Statement<'_>) -> &Expr<'_> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_join<'a>(stmt: crate::ast::Statement<'a>) -> &'a JoinExpr<'a> {
+	fn extract_join<'a>(stmt: Statement<'a>) -> &'a JoinExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Join(j) => j,
@@ -557,7 +575,7 @@ mod tests {
 				assert_eq!(left.alias, "o");
 				// Check that it's a primitive source
 				match &left.source {
-					crate::ast::expr::JoinSource::Primitive(prim) => {
+					JoinSource::Primitive(prim) => {
 						assert_eq!(prim.source.namespace, Some("namespace"));
 						assert_eq!(prim.source.name, "orders");
 					}

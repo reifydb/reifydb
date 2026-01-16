@@ -5,7 +5,10 @@
 
 use std::{fs::read_dir, path::PathBuf};
 
-use reifydb_core::event::{EventBus, flow::{FlowOperatorLoadedEvent, OperatorColumnDef}};
+use reifydb_core::event::{
+	EventBus,
+	flow::{FlowOperatorLoadedEvent, OperatorColumnDef},
+};
 use tracing::{debug, instrument};
 
 use crate::ffi::loader::{ColumnDefInfo, ffi_operator_loader};
@@ -15,7 +18,7 @@ use crate::ffi::loader::{ColumnDefInfo, ffi_operator_loader};
 /// This should be called ONCE during subsystem initialization, before any FlowEngine instances are created.
 /// All operators in the directory will be loaded and registered, triggering FlowOperatorLoadedEvent for each.
 #[instrument(name = "flow::subsystem::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
-pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
+pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_type::Result<()> {
 	let loader = ffi_operator_loader();
 
 	// Scan directory for shared libraries

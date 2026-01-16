@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Error, diagnostic::ast::unexpected_token_error};
+use reifydb_type::error::{Error, diagnostic::ast::unexpected_token_error};
 
 use crate::ast::{
-	Ast, AstList, TokenKind,
-	ast::{AstFrom, AstGenerator},
+	ast::{Ast, AstFrom, AstGenerator, AstList},
 	parse::Parser,
 	tokenize::{
-		Keyword, Operator,
-		Operator::{CloseBracket, OpenBracket, OpenCurly},
-		Separator,
+		keyword::Keyword,
+		operator::{
+			Operator,
+			Operator::{CloseBracket, OpenBracket, OpenCurly},
+		},
+		separator::Separator,
+		token::TokenKind,
 	},
 };
 
@@ -31,7 +34,7 @@ impl Parser {
 				list: self.parse_static()?,
 			})
 		} else {
-			use crate::ast::{AstVariable, identifier::UnresolvedPrimitiveIdentifier};
+			use crate::ast::{ast::AstVariable, identifier::UnresolvedPrimitiveIdentifier};
 
 			// Check if this is a variable or identifier
 			let current = self.current()?;
@@ -190,8 +193,12 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstFrom, InfixOperator::TypeAscription, parse::Parser, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{
+		ast::{AstFrom, InfixOperator::TypeAscription},
+		parse::Parser,
+		tokenize::tokenize,
+	};
 
 	#[test]
 	fn test_from_schema_and_table() {
@@ -469,7 +476,7 @@ mod tests {
 				assert_eq!(generator.nodes.len(), 2);
 
 				let first_param = generator.nodes[0].as_infix();
-				assert!(matches!(first_param.operator, crate::ast::InfixOperator::As(_)));
+				assert!(matches!(first_param.operator, crate::ast::ast::InfixOperator::As(_)));
 				assert_eq!(first_param.left.as_literal_number().value(), "1");
 				assert_eq!(first_param.right.as_identifier().text(), "start");
 
@@ -498,15 +505,15 @@ mod tests {
 				assert_eq!(generator.nodes.len(), 2);
 
 				let first_param = generator.nodes[0].as_infix();
-				assert!(matches!(first_param.operator, crate::ast::InfixOperator::As(_)));
+				assert!(matches!(first_param.operator, crate::ast::ast::InfixOperator::As(_)));
 				assert_eq!(first_param.left.as_literal_text().value(), "/api/v1");
 				assert_eq!(first_param.right.as_identifier().text(), "endpoint");
 
 				let second_param = generator.nodes[1].as_infix();
-				assert!(matches!(second_param.operator, crate::ast::InfixOperator::As(_)));
+				assert!(matches!(second_param.operator, crate::ast::ast::InfixOperator::As(_)));
 
 				let timeout_expr = second_param.left.as_infix();
-				assert!(matches!(timeout_expr.operator, crate::ast::InfixOperator::Multiply(_)));
+				assert!(matches!(timeout_expr.operator, crate::ast::ast::InfixOperator::Multiply(_)));
 				assert_eq!(timeout_expr.left.as_literal_number().value(), "30");
 				assert_eq!(timeout_expr.right.as_literal_number().value(), "1000");
 

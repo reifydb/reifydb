@@ -6,14 +6,19 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
-use reifydb_core::interface::{Identity, SubscriptionId as DbSubscriptionId};
-use reifydb_sub_server::{AppState, execute_command};
-use reifydb_type::{Params, Uuid7, Value};
+use reifydb_core::interface::{auth::Identity, catalog::id::SubscriptionId as DbSubscriptionId};
+use reifydb_sub_server::{execute::execute_command, state::AppState};
+use reifydb_type::{
+	params::Params,
+	value::{Value, uuid::Uuid7},
+};
 use tokio::sync::mpsc;
 
-use crate::handler::error_to_response;
-use crate::protocol::SubscribeRequest;
-use crate::subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry};
+use crate::{
+	handler::error_to_response,
+	protocol::SubscribeRequest,
+	subscription::{PushMessage, SubscriptionPoller, SubscriptionRegistry},
+};
 
 type ConnectionId = Uuid7;
 
@@ -58,37 +63,24 @@ pub(crate) async fn handle_subscribe(
 
 	// TODO: For now, hard code the CREATE SUBSCRIPTION for demo.events
 	// In the future, we'll need to infer schema from the query result
-	let create_sub_statement = format!(
-		"CREATE SUBSCRIPTION {{ id: Int4, message: Utf8, timestamp: Uint8 }} AS {{ {} }}",
-		user_query
-	);
+	let create_sub_statement =
+		format!("CREATE SUBSCRIPTION {{ id: Int4, message: Utf8, timestamp: Uint8 }} AS {{ {} }}", user_query);
 
 	tracing::debug!("Generated subscription statement: {}", create_sub_statement);
 
 	// Execute CREATE SUBSCRIPTION command
-	match execute_command(
-		state.pool(),
-		state.engine_clone(),
-		vec![create_sub_statement],
-		id,
-		params,
-		timeout,
-	)
-	.await
+	match execute_command(state.pool(), state.engine_clone(), vec![create_sub_statement], id, params, timeout).await
 	{
 		Ok(cmd_frames) => {
 			// Extract subscription ID
 			let db_subscription_id = if let Some(cmd_frame) = cmd_frames.first() {
 				// Look for "subscription_id" column (should be first)
-				if let Some(sub_id_col) =
-					cmd_frame.columns.iter().find(|c| c.name == "subscription_id")
+				if let Some(sub_id_col) = cmd_frame.columns.iter().find(|c| c.name == "subscription_id")
 				{
 					if sub_id_col.data.len() > 0 {
 						let value = sub_id_col.data.get_value(0);
 						match value {
-							Value::Uuid7(uuid) => {
-								Some(DbSubscriptionId(uuid.0))
-							}
+							Value::Uuid7(uuid) => Some(DbSubscriptionId(uuid.0)),
 							_ => {
 								tracing::error!(
 									"subscription_id column has wrong type: {:?}",
@@ -129,7 +121,8 @@ pub(crate) async fn handle_subscribe(
 					request_id,
 					"SUBSCRIPTION_FAILED",
 					"Failed to extract subscription ID",
-				).to_json())
+				)
+				.to_json())
 			}
 		}
 		Err(e) => Some(error_to_response(request_id, e)),

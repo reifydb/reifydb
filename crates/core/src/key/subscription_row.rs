@@ -3,13 +3,13 @@
 
 use std::collections::Bound;
 
-use reifydb_type::RowNumber;
+use reifydb_type::value::row_number::RowNumber;
 
-use super::{EncodableKey, KeyKind};
+use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, SubscriptionId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::id::SubscriptionId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -183,12 +183,12 @@ impl SubscriptionRowKey {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::RowNumber;
+pub mod tests {
+	use reifydb_type::value::row_number::RowNumber;
 	use uuid::Uuid;
 
 	use super::{EncodableKey, SubscriptionRowKey};
-	use crate::interface::SubscriptionId;
+	use crate::interface::catalog::id::SubscriptionId;
 
 	#[test]
 	fn test_encode_decode() {

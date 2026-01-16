@@ -4,17 +4,19 @@
 //! DML operations compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_type::Type;
+use reifydb_core::interface::catalog::id::ColumnId;
+use reifydb_type::value::r#type::Type;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
-	ast::stmt::{DeleteStmt, InsertStmt, UpdateStmt},
+	ast::stmt::dml::{DeleteStmt, InsertStmt, UpdateStmt},
 	plan::{
-		CatalogColumn, ColumnId, Plan, Primitive,
+		Plan,
 		node::{
 			mutate::*,
 			query::{ExtendNode, FilterNode, InlineDataNode, Projection, ScanNode},
 		},
+		types::{CatalogColumn, Primitive},
 	},
 };
 

@@ -6,8 +6,8 @@
 //! These types enable the coordinator to send only relevant changes to each worker,
 //! rather than broadcasting all changes to all workers.
 
-use reifydb_core::{CommitVersion, interface::FlowId};
-use reifydb_sdk::FlowChange;
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_sdk::flow::FlowChange;
 
 /// Instructions for processing a single flow within a batch.
 ///
@@ -26,11 +26,7 @@ pub struct FlowInstruction {
 
 impl FlowInstruction {
 	/// Create a new flow instruction.
-	pub fn new(
-		flow_id: FlowId,
-		to_version: CommitVersion,
-		changes: Vec<FlowChange>,
-	) -> Self {
+	pub fn new(flow_id: FlowId, to_version: CommitVersion, changes: Vec<FlowChange>) -> Self {
 		Self {
 			flow_id,
 			to_version,

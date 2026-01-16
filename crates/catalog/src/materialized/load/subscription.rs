@@ -2,17 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
+	common::CommitVersion,
 	interface::{
-		MultiVersionValues, PrimaryKeyDef, PrimaryKeyId, SubscriptionDef, SubscriptionId, SubscriptionKey,
+		catalog::{
+			id::{PrimaryKeyId, SubscriptionId},
+			key::PrimaryKeyDef,
+			subscription::SubscriptionDef,
+		},
+		store::MultiVersionValues,
 	},
+	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{
-	MaterializedCatalog,
-	store::subscription::layout::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY},
-};
+use super::MaterializedCatalog;
+use crate::store::subscription::layout::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY};
 
 pub(crate) fn load_subscriptions(
 	rx: &mut impl IntoStandardTransaction,

@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use reifydb_type::CowVec;
+use reifydb_type::util::cowvec::CowVec;
 
 use crate::tier::EntryKind;
 

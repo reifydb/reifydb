@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Blob, Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, Time, Uuid4, Uuid7, Value};
+use crate::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	duration::Duration,
+	identity::IdentityId,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
+	time::Time,
+	uuid::{Uuid4, Uuid7},
+};
 
 pub trait IntoValue {
 	fn into_value(self) -> Value;
@@ -198,10 +209,10 @@ impl<const N: usize> IntoValue for &[u8; N] {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
+pub mod tests {
 	use std::f64::consts::PI;
 
-	use crate::{Blob, IntoValue, OrderedF32, OrderedF64, Value};
+	use crate::value::{Value, blob::Blob, into::IntoValue, ordered_f32::OrderedF32, ordered_f64::OrderedF64};
 
 	#[test]
 	fn test_into_value_primitives() {

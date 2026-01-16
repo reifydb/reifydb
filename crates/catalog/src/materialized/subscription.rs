@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{SubscriptionDef, SubscriptionId},
+	common::CommitVersion,
+	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionSubscriptionDef};
@@ -37,12 +37,12 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_core::{
-		CommitVersion,
-		interface::{SubscriptionColumnDef, SubscriptionColumnId},
+		common::CommitVersion,
+		interface::catalog::{id::SubscriptionColumnId, subscription::SubscriptionColumnDef},
 	};
-	use reifydb_type::Type;
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 

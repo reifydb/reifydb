@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{PrimaryKeyDef, PrimaryKeyId},
+	common::CommitVersion,
+	interface::catalog::{id::PrimaryKeyId, key::PrimaryKeyDef},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionPrimaryKeyDef};
@@ -42,12 +42,15 @@ impl MaterializedCatalog {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex, PrimaryKeyId};
-	use reifydb_type::{Type, TypeConstraint};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		column::{ColumnDef, ColumnIndex},
+		id::{ColumnId, PrimaryKeyId},
+	};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::*;
-	use crate::MaterializedCatalog;
+	use crate::materialized::MaterializedCatalog;
 
 	fn create_test_primary_key(id: PrimaryKeyId) -> PrimaryKeyDef {
 		PrimaryKeyDef {

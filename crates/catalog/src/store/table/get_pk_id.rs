@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{PrimaryKeyId, TableId, TableKey};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{
+	interface::catalog::id::{PrimaryKeyId, TableId},
+	key::table::TableKey,
+};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::table::layout::table};
 
@@ -30,14 +33,13 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{PrimitiveId, TableId};
+pub mod tests {
+	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, primitive::PrimitiveId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		column::{ColumnIndex, ColumnToCreate},
-		primary_key::PrimaryKeyToCreate,
+		store::{column::create::ColumnToCreate, primary_key::create::PrimaryKeyToCreate},
 		test_utils::ensure_test_table,
 	};
 
@@ -56,7 +58,9 @@ mod tests {
 				table: table.id,
 				table_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: reifydb_type::TypeConstraint::unconstrained(reifydb_type::Type::Uint8),
+				constraint: reifydb_type::value::constraint::TypeConstraint::unconstrained(
+					reifydb_type::value::r#type::Type::Uint8,
+				),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

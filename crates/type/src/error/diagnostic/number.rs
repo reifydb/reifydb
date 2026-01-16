@@ -2,9 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	Fragment, Type,
 	error::diagnostic::{Diagnostic, util::value_range},
-	value::constraint::{precision::Precision, scale::Scale},
+	fragment::Fragment,
+	value::{
+		constraint::{precision::Precision, scale::Scale},
+		r#type::Type,
+	},
 };
 
 pub fn invalid_number_format(fragment: Fragment, target: Type) -> Diagnostic {

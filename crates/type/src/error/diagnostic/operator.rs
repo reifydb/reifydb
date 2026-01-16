@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::{Fragment, Type, error::diagnostic::Diagnostic};
+use crate::{error::diagnostic::Diagnostic, fragment::Fragment, value::r#type::Type};
 
 pub fn not_can_not_applied_to_number(fragment: Fragment) -> Diagnostic {
 	Diagnostic {

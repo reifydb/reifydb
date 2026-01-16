@@ -4,15 +4,14 @@
 //! Row number provider for stable row numbering in stateful operators
 
 use reifydb_core::{
-	EncodedKey,
-	interface::FlowNodeId,
-	key::{EncodableKey, FlowNodeInternalStateKey},
-	util::{CowVec, encoding::keycode::KeySerializer},
-	value::encoded::EncodedValues,
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	util::encoding::keycode::serializer::KeySerializer,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
-use reifydb_type::RowNumber;
+use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
 
-use crate::{OperatorContext, error::Result};
+use crate::{error::Result, operator::context::OperatorContext};
 
 /// Provides stable row numbers for keys with automatic Insert/Update detection
 ///
@@ -92,12 +91,12 @@ impl RowNumberProvider {
 		&self,
 		ctx: &mut OperatorContext,
 		key: &EncodedKey,
-	) -> Result<(RowNumber, bool)> {
+	) -> reifydb_type::Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Load the current counter value
-	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
+	fn load_counter(&self, ctx: &mut OperatorContext) -> reifydb_type::Result<u64> {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
 		match ctx.state().get(&internal_key.encode())? {
@@ -165,22 +164,23 @@ impl RowNumberProvider {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
-		EncodedKey,
-		interface::FlowNodeId,
-		key::{EncodableKey, FlowNodeInternalStateKey},
-		value::column::Columns,
+		interface::catalog::flow::FlowNodeId,
+		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+		value::{column::columns::Columns, encoded::key::EncodedKey},
 	};
-	use reifydb_type::{RowNumber, Value};
+	use reifydb_type::value::{Value, row_number::RowNumber};
 
 	use crate::{
-		FFIOperator, FFIOperatorMetadata, FlowChange, OperatorContext,
 		error::Result,
-		state::{FFIRawStatefulOperator, RowNumberProvider},
-		testing::{TestHarnessBuilder, helpers::encode_key},
+		flow::FlowChange,
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		state::{FFIRawStatefulOperator, row::RowNumberProvider},
+		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
 
 	/// Test operator for RowNumberProvider tests
@@ -191,9 +191,9 @@ mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Test operator for row number provider";
-		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
-		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
+		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for RowNumberTestOperator {

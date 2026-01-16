@@ -54,13 +54,17 @@
 
 use std::hash::Hash;
 
-use reifydb_core::util::{CowVec, LruCache};
-use reifydb_core::value::encoded::EncodedValues;
-use reifydb_core::IntoEncodedKey;
+use reifydb_core::{
+	util::lru::LruCache,
+	value::encoded::{encoded::EncodedValues, key::IntoEncodedKey},
+};
+use reifydb_type::util::cowvec::CowVec;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::OperatorContext;
-use crate::error::{FFIError, Result};
+use crate::{
+	error::{FFIError, Result},
+	operator::context::OperatorContext,
+};
 
 /// Generic LRU cache for operator state - caches deserialized domain types.
 ///
@@ -78,7 +82,6 @@ where
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Serialize + DeserializeOwned,
 {
-
 	/// Create a new state cache with default capacity (1000 entries).
 	pub fn new(capacity: usize) -> Self {
 		Self {
@@ -258,7 +261,9 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+	use reifydb_core::value::encoded::key::IntoEncodedKey;
+
 	use super::*;
 
 	#[test]
@@ -268,7 +273,6 @@ mod tests {
 		assert!(cache.is_empty());
 		assert_eq!(cache.len(), 0);
 	}
-
 
 	#[test]
 	#[should_panic(expected = "capacity must be greater than 0")]

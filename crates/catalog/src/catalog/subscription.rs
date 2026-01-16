@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{SubscriptionDef, SubscriptionId, resolved::ResolvedSubscription};
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
-use reifydb_type::{Fragment, error, internal};
+use reifydb_core::interface::{
+	catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	resolved::ResolvedSubscription,
+};
+use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_type::{error, fragment::Fragment, internal};
 use tracing::{instrument, warn};
 
-use crate::{Catalog, CatalogStore};
+use crate::{CatalogStore, catalog::Catalog};
 
 impl Catalog {
 	/// Find a subscription by ID

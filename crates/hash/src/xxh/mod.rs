@@ -3,7 +3,7 @@
 
 use crate::{Hash32, Hash64, Hash128};
 
-mod binding;
+pub mod binding;
 
 #[inline(always)]
 pub fn xxh32(data: &[u8], seed: u32) -> Hash32 {
@@ -27,9 +27,9 @@ pub fn xxh3_128(data: &[u8]) -> Hash128 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	mod xxh32 {
-		use crate::{xxh::Hash32, xxh32};
+		use crate::{Hash32, xxh::xxh32};
 
 		#[test]
 		fn test_empty_input() {
@@ -58,7 +58,7 @@ mod tests {
 	}
 
 	mod xxh64 {
-		use crate::{xxh::Hash64, xxh64};
+		use crate::{Hash64, xxh::xxh64};
 
 		#[test]
 		fn test_empty_input() {
@@ -87,7 +87,7 @@ mod tests {
 	}
 
 	mod xxh3_64 {
-		use crate::{xxh::Hash64, xxh3_64};
+		use crate::xxh::{Hash64, xxh3_64};
 
 		#[test]
 		fn test_empty_input() {
@@ -117,7 +117,7 @@ mod tests {
 	}
 
 	mod xxh3_128 {
-		use crate::{xxh::Hash128, xxh3_128};
+		use crate::{Hash128, xxh::xxh3_128};
 
 		#[test]
 		fn test_empty_input() {

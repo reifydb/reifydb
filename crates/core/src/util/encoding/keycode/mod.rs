@@ -11,16 +11,13 @@
 
 use serde::{Deserialize, Serialize};
 
-mod catalog;
-mod deserialize;
-mod deserializer;
-mod serialize;
-mod serializer;
+pub mod catalog;
+pub mod deserialize;
+pub mod deserializer;
+pub mod serialize;
+pub mod serializer;
 
-pub use catalog::{deserialize_index_id, deserialize_primitive_id, serialize_index_id, serialize_primitive_id};
-pub use deserializer::KeyDeserializer;
-use reifydb_type::diagnostic::serde::serde_keycode_error;
-pub use serializer::KeySerializer;
+use reifydb_type::{error, error::diagnostic::serde::serde_keycode_error};
 
 use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
 
@@ -182,11 +179,11 @@ pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 }
 
 /// Deserializes a key from a binary Keycode representation (Descending order)
-pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> {
+pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> reifydb_type::Result<T> {
 	let mut deserializer = Deserializer::from_bytes(input);
 	let t = T::deserialize(&mut deserializer)?;
 	if !deserializer.input.is_empty() {
-		return Err(crate::error!(serde_keycode_error(format!(
+		return Err(error!(serde_keycode_error(format!(
 			"unexpected trailing bytes {:x?} at end of key {input:x?}",
 			deserializer.input,
 		))));
@@ -195,17 +192,17 @@ pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> 
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::borrow::Cow;
-
-	use reifydb_type::{OrderedF32, OrderedF64, Value};
 
 	const PI_F32: f32 = std::f32::consts::PI;
 	const PI_F64: f64 = std::f64::consts::PI;
 
+	use reifydb_type::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64};
 	use serde_bytes::ByteBuf;
 
 	use super::*;
+	use crate::util::encoding::keycode::serializer::KeySerializer;
 
 	#[derive(Debug, Deserialize, Serialize, PartialEq)]
 	enum Key<'a> {

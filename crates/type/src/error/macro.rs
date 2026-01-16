@@ -9,19 +9,15 @@
 ///
 /// Expands to: `Error(diagnostic_function(args))` or
 /// `Error(diagnostic_function(args).with_fragment(fragment))`
-///
-/// Examples:
-/// - `error!(sequence_exhausted(Type::Uint8))`
-/// - `error!(sequence_exhausted(Type::Uint8), fragment)`
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
-		$crate::Error($diagnostic)
+		$crate::error::Error($diagnostic)
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		$crate::Error(diag)
+		$crate::error::Error(diag)
 	}};
 }
 
@@ -40,12 +36,12 @@ macro_rules! error {
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
-		return Err($crate::Error($diagnostic))
+		return Err($crate::error::Error($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		return Err($crate::Error(diag));
+		return Err($crate::error::Error(diag));
 	}};
 }
 
@@ -64,20 +60,24 @@ macro_rules! return_error {
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
-		Err($crate::Error($diagnostic))
+		Err($crate::error::Error($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		Err($crate::Error(diag))
+		Err($crate::error::Error(diag))
 	}};
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::sync::Arc;
 
-	use crate::{Fragment, StatementColumn, StatementLine, Type, error::diagnostic::sequence::sequence_exhausted};
+	use crate::{
+		error::diagnostic::sequence::sequence_exhausted,
+		fragment::{Fragment, StatementColumn, StatementLine},
+		value::r#type::Type,
+	};
 
 	#[test]
 	fn test_error_macro() {
@@ -85,7 +85,7 @@ mod tests {
 		let err = error!(sequence_exhausted(Type::Uint8));
 
 		// Verify it creates the correct Error type
-		assert!(matches!(err, crate::Error(_)));
+		assert!(matches!(err, crate::error::Error(_)));
 
 		// Test that the diagnostic is properly wrapped
 		let diagnostic = err.diagnostic();
@@ -94,7 +94,7 @@ mod tests {
 
 	#[test]
 	fn test_return_error_macro() {
-		fn test_fn() -> Result<(), crate::Error> {
+		fn test_fn() -> Result<(), crate::error::Error> {
 			return_error!(sequence_exhausted(Type::Uint8));
 		}
 
@@ -110,7 +110,7 @@ mod tests {
 	#[test]
 	fn test_err_macro() {
 		// Test that err! macro creates correct Result type with Err
-		let result: Result<(), crate::Error> = err!(sequence_exhausted(Type::Uint8));
+		let result: Result<(), crate::error::Error> = err!(sequence_exhausted(Type::Uint8));
 
 		assert!(result.is_err());
 
@@ -134,7 +134,7 @@ mod tests {
 		let err = error!(sequence_exhausted(Type::Uint8), fragment.clone());
 
 		// Verify it creates the correct Error type
-		assert!(matches!(err, crate::Error(_)));
+		assert!(matches!(err, crate::error::Error(_)));
 
 		// Test that the diagnostic has the origin set (via fragment)
 		let diagnostic = err.diagnostic();
@@ -153,7 +153,7 @@ mod tests {
 
 	#[test]
 	fn test_return_error_macro_with_fragment() {
-		fn test_fn() -> Result<(), crate::Error> {
+		fn test_fn() -> Result<(), crate::error::Error> {
 			let fragment = Fragment::Statement {
 				line: StatementLine(100),
 				column: StatementColumn(25),
@@ -191,7 +191,7 @@ mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), crate::Error> = err!(sequence_exhausted(Type::Uint8), fragment);
+		let result: Result<(), crate::error::Error> = err!(sequence_exhausted(Type::Uint8), fragment);
 
 		assert!(result.is_err());
 

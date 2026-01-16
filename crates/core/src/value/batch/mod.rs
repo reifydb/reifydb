@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod lazy;
+pub mod lazy;
 
-pub use lazy::{LazyBatch, LazyColumnMeta};
-use reifydb_type::Value;
+use lazy::LazyBatch;
+use reifydb_type::{util::bitvec::BitVec, value::Value};
 
-use crate::{BitVec, value::column::Columns};
+use crate::value::column::columns::Columns;
 
 /// A batch of rows that can be lazy (encoded) or materialized (decoded).
 ///
@@ -85,7 +85,7 @@ impl Batch {
 	///
 	/// For lazy batches: updates validity bitmap without materialization
 	/// For materialized batches: filters columns
-	pub fn apply_filter(&mut self, filter: &BitVec) -> crate::Result<()> {
+	pub fn apply_filter(&mut self, filter: &BitVec) -> reifydb_type::Result<()> {
 		match self {
 			Batch::Lazy(lazy) => {
 				lazy.apply_filter(filter);

@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{NamespaceId, NamespaceKey};
-use reifydb_transaction::StandardCommandTransaction;
+use reifydb_core::{interface::catalog::id::NamespaceId, key::namespace::NamespaceKey};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_namespace(
-		txn: &mut StandardCommandTransaction,
-		namespace: NamespaceId,
-	) -> crate::Result<()> {
+	pub fn delete_namespace(txn: &mut StandardCommandTransaction, namespace: NamespaceId) -> crate::Result<()> {
 		// Delete the namespace metadata
 		txn.remove(&NamespaceKey::encoded(namespace))?;
 
@@ -22,11 +19,11 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::Fragment;
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::fragment::Fragment;
 
-	use crate::{CatalogStore, namespace::NamespaceToCreate};
+	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
 
 	#[test]
 	fn test_delete_namespace() {
@@ -57,7 +54,7 @@ mod tests {
 	fn test_delete_nonexistent_namespace() {
 		let mut txn = create_test_command_transaction();
 
-		use reifydb_core::interface::NamespaceId;
+		use reifydb_core::interface::catalog::id::NamespaceId;
 		// Deleting a non-existent namespace should not error
 		let non_existent = NamespaceId(999999);
 		let result = CatalogStore::delete_namespace(&mut txn, non_existent);

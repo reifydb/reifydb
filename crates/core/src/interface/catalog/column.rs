@@ -3,12 +3,15 @@
 
 use std::ops::Deref;
 
-use reifydb_type::TypeConstraint;
+use reifydb_type::value::constraint::TypeConstraint;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{ColumnId, ColumnPolicy, DictionaryId},
-	value::encoded::EncodedValuesNamedLayout,
+	interface::catalog::{
+		id::{ColumnId, DictionaryId},
+		policy::ColumnPolicy,
+	},
+	value::encoded::named::EncodedValuesNamedLayout,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -17,12 +17,13 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use reifydb_core::{
-	CommitVersion,
+	common::CommitVersion,
 	event::{
-		CdcStatsRecordedEvent, EventBus, EventListener, StorageStatsRecordedEvent,
+		EventBus, EventListener,
+		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		store::StatsProcessed,
 	},
-	interface::{MultiVersionGetPrevious, SingleVersionStore},
+	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
 };
 use tracing::{debug, error, trace};
 
@@ -81,12 +82,7 @@ impl MetricsWorker {
 	/// - `storage`: Single-version storage for metrics persistence
 	/// - `resolver`: Multi-version store for looking up previous versions
 	/// - `event_bus`: Event bus for emitting stats processed events
-	pub fn new<S, R>(
-		config: MetricsWorkerConfig,
-		storage: S,
-		resolver: R,
-		event_bus: EventBus,
-	) -> Self
+	pub fn new<S, R>(config: MetricsWorkerConfig, storage: S, resolver: R, event_bus: EventBus) -> Self
 	where
 		S: SingleVersionStore,
 		R: MultiVersionGetPrevious + Clone + Send + Sync + 'static,
@@ -140,8 +136,7 @@ impl MetricsWorker {
 		resolver: R,
 		running: Arc<AtomicBool>,
 		event_bus: EventBus,
-	)
-	where
+	) where
 		S: SingleVersionStore,
 		R: MultiVersionGetPrevious,
 	{
@@ -155,47 +150,100 @@ impl MetricsWorker {
 			match receiver.recv_timeout(Duration::from_millis(100)) {
 				Ok(event) => {
 					match event {
-						MetricsEvent::Multi { ops, version } => {
-							trace!("Processing {} multi-storage ops for version {:?}", ops.len(), version);
+						MetricsEvent::Multi {
+							ops,
+							version,
+						} => {
+							trace!(
+								"Processing {} multi-storage ops for version {:?}",
+								ops.len(),
+								version
+							);
 
-							// Collect dropped keys first - if a key is dropped in this batch,
-							// any write to that key is a fresh insert (not an update to the old entry)
+							// Collect dropped keys first - if a key is dropped in this
+							// batch, any write to that key is a fresh insert (not an
+							// update to the old entry)
 							let dropped_keys: std::collections::HashSet<_> = ops
 								.iter()
 								.filter_map(|op| match op {
-									MultiStorageOperation::Drop { key, .. } => Some(key.clone()),
+									MultiStorageOperation::Drop {
+										key,
+										..
+									} => Some(key.clone()),
 									_ => None,
 								})
 								.collect();
 
 							for op in ops {
 								match op {
-									MultiStorageOperation::Write { tier, key, value_bytes } => {
-										// If the key was dropped in this same batch (e.g., ringbuffer eviction),
+									MultiStorageOperation::Write {
+										tier,
+										key,
+										value_bytes,
+									} => {
+										// If the key was dropped in this same
+										// batch (e.g., ringbuffer eviction),
 										// this is a fresh insert, not an update
-										let pre_value_bytes = if dropped_keys.contains(&key) {
+										let pre_value_bytes = if dropped_keys
+											.contains(&key)
+										{
 											None
 										} else {
-											resolver
-												.get_previous_version(&key, version)
-												.ok()
-												.flatten()
-												.map(|v| v.values.len() as u64)
+											resolver.get_previous_version(
+												&key, version,
+											)
+											.ok()
+											.flatten()
+											.map(|v| v.values.len() as u64)
 										};
 
-										if let Err(e) = storage_writer.record_write(tier, key.as_ref(), value_bytes, pre_value_bytes) {
-											error!("Failed to record write: {}", e);
+										if let Err(e) = storage_writer
+											.record_write(
+												tier,
+												key.as_ref(),
+												value_bytes,
+												pre_value_bytes,
+											) {
+											error!(
+												"Failed to record write: {}",
+												e
+											);
 										}
 									}
-									MultiStorageOperation::Delete { tier, key, value_bytes } => {
-										// value_bytes comes from the event - no lookup needed
-										if let Err(e) = storage_writer.record_delete(tier, key.as_ref(), Some(value_bytes)) {
-											error!("Failed to record delete: {}", e);
+									MultiStorageOperation::Delete {
+										tier,
+										key,
+										value_bytes,
+									} => {
+										// value_bytes comes from the event - no
+										// lookup needed
+										if let Err(e) = storage_writer
+											.record_delete(
+												tier,
+												key.as_ref(),
+												Some(value_bytes),
+											) {
+											error!(
+												"Failed to record delete: {}",
+												e
+											);
 										}
 									}
-									MultiStorageOperation::Drop { tier, key, value_bytes } => {
-										if let Err(e) = storage_writer.record_drop(tier, key.as_ref(), value_bytes) {
-											error!("Failed to record drop: {}", e);
+									MultiStorageOperation::Drop {
+										tier,
+										key,
+										value_bytes,
+									} => {
+										if let Err(e) = storage_writer
+											.record_drop(
+												tier,
+												key.as_ref(),
+												value_bytes,
+											) {
+											error!(
+												"Failed to record drop: {}",
+												e
+											);
 										}
 									}
 								}
@@ -204,10 +252,19 @@ impl MetricsWorker {
 								max_version = version;
 							}
 						}
-						MetricsEvent::Cdc { ops, version } => {
-							trace!("Processing {} CDC ops for version {:?}", ops.len(), version);
+						MetricsEvent::Cdc {
+							ops,
+							version,
+						} => {
+							trace!(
+								"Processing {} CDC ops for version {:?}",
+								ops.len(),
+								version
+							);
 							for op in ops {
-								if let Err(e) = cdc_writer.record_cdc(op.key.as_ref(), op.value_bytes) {
+								if let Err(e) = cdc_writer
+									.record_cdc(op.key.as_ref(), op.value_bytes)
+								{
 									error!("Failed to record cdc: {}", e);
 								}
 							}
@@ -238,7 +295,9 @@ impl MetricsWorker {
 
 	fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {
 		if max_version.0 > 0 {
-			event_bus.emit(StatsProcessed { up_to: *max_version });
+			event_bus.emit(StatsProcessed {
+				up_to: *max_version,
+			});
 			*max_version = CommitVersion(0);
 		}
 	}
@@ -261,7 +320,9 @@ pub struct StorageStatsListener {
 impl StorageStatsListener {
 	/// Create a new storage stats listener.
 	pub fn new(sender: Sender<MetricsEvent>) -> Self {
-		Self { sender }
+		Self {
+			sender,
+		}
 	}
 }
 
@@ -309,7 +370,9 @@ pub struct CdcStatsListener {
 
 impl CdcStatsListener {
 	pub fn new(sender: Sender<MetricsEvent>) -> Self {
-		Self { sender }
+		Self {
+			sender,
+		}
 	}
 }
 

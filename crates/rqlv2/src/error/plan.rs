@@ -4,11 +4,11 @@
 //! Diagnostic conversion for planner errors.
 
 use reifydb_type::{
-	Fragment,
-	diagnostic::{Diagnostic, IntoDiagnostic},
+	error::diagnostic::{Diagnostic, IntoDiagnostic},
+	fragment::Fragment,
 };
 
-use crate::plan::compile::{PlanError, PlanErrorKind};
+use crate::plan::compile::core::{PlanError, PlanErrorKind};
 
 impl IntoDiagnostic for PlanError {
 	fn into_diagnostic(self) -> Diagnostic {

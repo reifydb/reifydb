@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::Columns;
-use reifydb_type::{Value, diagnostic, error};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_type::{error, error::diagnostic, value::Value};
 
 /// A variable can be either a scalar value or a dataframe
 #[derive(Debug, Clone)]
@@ -126,8 +126,8 @@ impl Stack {
 		// Check if variable exists and is mutable
 		if let Some(existing) = current_scope.variables.get(&name) {
 			if !existing.mutable {
-				return Err(reifydb_type::Error(
-					reifydb_type::diagnostic::runtime::variable_is_immutable(&name),
+				return Err(reifydb_type::error::Error(
+					reifydb_type::error::diagnostic::runtime::variable_is_immutable(&name),
 				));
 			}
 			// Update existing variable, keeping its mutability
@@ -139,7 +139,9 @@ impl Stack {
 				},
 			);
 		} else {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::runtime::variable_not_found(&name)));
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::runtime::variable_not_found(&name),
+			));
 		}
 
 		Ok(())
@@ -246,9 +248,9 @@ impl Default for Stack {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::value::column::{Column, ColumnData};
-	use reifydb_type::Value;
+pub mod tests {
+	use reifydb_core::value::column::{Column, data::ColumnData};
+	use reifydb_type::value::Value;
 
 	use super::*;
 

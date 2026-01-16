@@ -4,24 +4,18 @@
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use parking_lot::Mutex;
+use reifydb_core::{event::EventBus, runtime::compute::ComputePool};
 use tracing::instrument;
-use reifydb_core::event::EventBus;
-use reifydb_core::runtime::ComputePool;
-use crate::{
-	HotConfig,
-	cold::ColdStorage,
-	config::MultiStoreConfig,
-	hot::HotStorage,
-	warm::WarmStorage,
-};
 
-mod drop;
-pub mod worker;
-mod multi;
+use crate::{HotConfig, cold::ColdStorage, config::MultiStoreConfig, hot::storage::HotStorage, warm::WarmStorage};
+
+pub mod drop;
+pub mod multi;
 pub mod router;
 pub mod version;
+pub mod worker;
 
-pub use worker::{DropWorker, DropWorkerConfig};
+use worker::{DropWorker, DropWorkerConfig};
 
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
@@ -88,7 +82,7 @@ impl StandardMultiStore {
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
-				storage: HotStorage::memory(ComputePool::new(1,1)),
+				storage: HotStorage::memory(ComputePool::new(1, 1)),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

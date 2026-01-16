@@ -4,11 +4,11 @@
 //! Variable opcodes: LoadVar, StoreVar, UpdateVar, LoadPipeline, StorePipeline,
 //! LoadInternalVar, StoreInternalVar.
 
-use crate::error::{Result, VmError};
-use crate::runtime::dispatch::DispatchResult;
-use crate::runtime::operand::OperandValue;
-
 use super::HandlerContext;
+use crate::{
+	error::{Result, VmError},
+	runtime::{dispatch::DispatchResult, operand::OperandValue},
+};
 
 /// LoadVar - load a variable by ID onto the operand stack.
 pub fn load_var(ctx: &mut HandlerContext) -> Result<DispatchResult> {

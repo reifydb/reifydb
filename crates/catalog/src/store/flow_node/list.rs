@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{EncodableKey, FlowId, FlowNodeDef, FlowNodeId},
-	key::FlowNodeKey,
+	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
+	key::{EncodableKey, flow_node::FlowNodeKey},
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -22,7 +22,8 @@ impl CatalogStore {
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
-			let mut stream = txn.range(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+			let mut stream =
+				txn.range(reifydb_core::key::flow_node::FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
@@ -72,7 +73,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

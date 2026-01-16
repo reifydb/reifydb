@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use reifydb_core::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
-use reifydb_type::{diagnostic::ast::unexpected_token_error, return_error};
+use reifydb_core::common::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
+use reifydb_type::{error::diagnostic::ast::unexpected_token_error, return_error};
 
 use crate::{
 	Result,
-	ast::{
+	ast::ast::{
 		Ast::Literal,
 		AstLiteral::{Number, Text},
 		AstWindow,
@@ -17,11 +17,8 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-mod sliding;
-mod tumbling;
-
-pub use sliding::*;
-pub use tumbling::*;
+pub mod sliding;
+pub mod tumbling;
 
 #[derive(Debug, Clone)]
 pub struct WindowNode {
@@ -88,7 +85,7 @@ impl Compiler {
 		Ok(LogicalPlan::Window(window_node))
 	}
 
-	fn parse_config_item(config_item: &crate::ast::AstWindowConfig, config: &mut WindowConfig) -> Result<()> {
+	fn parse_config_item(config_item: &crate::ast::ast::AstWindowConfig, config: &mut WindowConfig) -> Result<()> {
 		match config_item.key.text() {
 			"interval" => {
 				config.window_type = Some(WindowType::Time(WindowTimeMode::Processing));
@@ -210,7 +207,7 @@ impl Compiler {
 		if duration_str.ends_with("ms") {
 			let number_part = &duration_str[..duration_str.len() - 2];
 			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::Error(reifydb_core::diagnostic::internal::internal(
+				reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
 					"Invalid duration number",
 				))
 			})?;
@@ -221,7 +218,7 @@ impl Compiler {
 		if let Some(suffix) = duration_str.chars().last() {
 			let number_part = &duration_str[..duration_str.len() - 1];
 			let number: u64 = number_part.parse().map_err(|_| {
-				reifydb_type::Error(reifydb_core::diagnostic::internal::internal(
+				reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
 					"Invalid duration number",
 				))
 			})?;
@@ -232,21 +229,23 @@ impl Compiler {
 				'h' => Duration::from_secs(number * 3600),
 				'd' => Duration::from_secs(number * 86400),
 				_ => {
-					return Err(reifydb_type::Error(reifydb_core::diagnostic::internal::internal(
-						"Invalid duration suffix",
-					)));
+					return Err(reifydb_type::error::Error(
+						reifydb_type::error::diagnostic::internal::internal(
+							"Invalid duration suffix",
+						),
+					));
 				}
 			};
 
 			Ok(duration)
 		} else {
-			Err(reifydb_type::Error(reifydb_core::diagnostic::internal::internal(
+			Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::internal::internal(
 				"Invalid duration format",
 			)))
 		}
 	}
 
-	pub fn extract_literal_string(ast: &crate::ast::Ast) -> Option<String> {
+	pub fn extract_literal_string(ast: &crate::ast::ast::Ast) -> Option<String> {
 		if let Literal(literal) = ast {
 			if let Text(text) = literal {
 				Some(text.0.fragment.text().to_string())
@@ -258,7 +257,7 @@ impl Compiler {
 		}
 	}
 
-	pub fn extract_literal_number(ast: &crate::ast::Ast) -> Option<i64> {
+	pub fn extract_literal_number(ast: &crate::ast::ast::Ast) -> Option<i64> {
 		if let Literal(literal) = ast {
 			if let Number(number) = literal {
 				number.0.fragment.text().parse().ok()
@@ -270,9 +269,9 @@ impl Compiler {
 		}
 	}
 
-	pub fn extract_literal_boolean(ast: &crate::ast::Ast) -> Option<bool> {
+	pub fn extract_literal_boolean(ast: &crate::ast::ast::Ast) -> Option<bool> {
 		if let Literal(literal) = ast {
-			if let crate::ast::AstLiteral::Boolean(boolean) = literal {
+			if let crate::ast::ast::AstLiteral::Boolean(boolean) = literal {
 				match boolean.0.fragment.text() {
 					"true" => Some(true),
 					"false" => Some(false),

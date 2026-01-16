@@ -1,25 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	interface::store::MultiVersionBatch,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
+};
 
-mod keyed;
-mod raw;
-mod row;
-mod single;
+pub mod keyed;
+pub mod raw;
+pub mod row;
+pub mod single;
 #[cfg(test)]
 pub mod test_utils;
-mod utils;
-mod window;
+pub mod utils;
+pub mod window;
 
-pub use keyed::KeyedStateful;
-pub use raw::RawStatefulOperator;
-use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
-pub use row::RowNumberProvider;
-pub use single::SingleStateful;
-pub use utils::*;
-pub use window::WindowStateful;
+use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
+
+// All types are accessed directly from their submodules:
+// - crate::operator::stateful::keyed::KeyedStateful
+// - crate::operator::stateful::raw::RawStatefulOperator
+// - crate::operator::stateful::row::RowNumberProvider
+// - crate::operator::stateful::single::SingleStateful
+// - crate::operator::stateful::utils::*
+// - crate::operator::stateful::window::WindowStateful
 
 /// Iterator wrapper for state entries
 ///

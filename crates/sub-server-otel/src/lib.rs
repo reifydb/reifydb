@@ -80,7 +80,3 @@
 pub mod config;
 pub mod factory;
 pub mod subsystem;
-
-pub use config::{ExporterType, OtelConfig};
-pub use factory::OtelSubsystemFactory;
-pub use subsystem::OtelSubsystem;

@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
-	key::{EncodableKey, FlowNodeStateKey},
-	value::encoded::{EncodedValues, EncodedValuesLayout},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+		layout::EncodedValuesLayout,
+	},
 };
 
 use super::utils;
-use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
+use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -68,14 +71,17 @@ pub trait WindowStateful: RawStatefulOperator {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, interface::FlowNodeId, util::encoding::keycode::KeySerializer};
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{
+		common::CommitVersion, interface::catalog::flow::FlowNodeId,
+		util::encoding::keycode::serializer::KeySerializer,
+	};
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::*;
+	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)

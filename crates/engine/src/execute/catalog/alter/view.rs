@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{interface::PrimitiveId, return_error, value::column::Columns};
-use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewNode};
-use reifydb_type::Value;
+use reifydb_catalog::{CatalogStore, store::primary_key::create::PrimaryKeyToCreate};
+use reifydb_core::{interface::catalog::primitive::PrimitiveId, value::column::columns::Columns};
+use reifydb_rql::plan::{logical::alter::view::AlterViewOperation, physical::alter::view::AlterViewNode};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::{
+		catalog::{namespace_not_found, view_not_found},
+		query::column_not_found,
+	},
+	return_error,
+	value::Value,
+};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::execute::Executor;
 
 impl Executor {
 	pub(crate) fn execute_alter_view<'a>(
@@ -21,22 +29,15 @@ impl Executor {
 		// Find the namespace
 		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan.node.view.namespace.clone().unwrap_or_else(|| {
-				use reifydb_type::Fragment;
+				use reifydb_type::fragment::Fragment;
 				Fragment::internal("default".to_string())
 			});
-			return_error!(reifydb_core::diagnostic::catalog::namespace_not_found(
-				ns_fragment,
-				namespace_name,
-			));
+			return_error!(namespace_not_found(ns_fragment, namespace_name,));
 		};
 
 		// Find the view
 		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name)? else {
-			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.name.clone(),
-				&namespace.name,
-				view_name,
-			));
+			return_error!(view_not_found(plan.node.view.name.clone(), &namespace.name, view_name,));
 		};
 
 		let mut results = Vec::new();
@@ -61,11 +62,7 @@ impl Executor {
 						let Some(column) =
 							view_columns.iter().find(|col| col.name == column_name)
 						else {
-							return_error!(
-								reifydb_core::diagnostic::query::column_not_found(
-									ast_column.column.name.clone()
-								)
-							);
+							return_error!(column_not_found(ast_column.column.name.clone()));
 						};
 
 						column_ids.push(column.id);

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	ast::AstTake,
+	ast::ast::AstTake,
 	plan::logical::{Compiler, LogicalPlan, TakeNode},
 };
 

@@ -8,10 +8,10 @@
 
 use std::ops::Bound;
 
-use reifydb_core::runtime::ComputePool;
-use reifydb_type::{CowVec, Result};
+use reifydb_core::runtime::compute::ComputePool;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
-use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
+use super::{memory::storage::MemoryPrimitiveStorage, sqlite::storage::SqlitePrimitiveStorage};
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.
@@ -39,7 +39,7 @@ impl HotTier {
 	}
 
 	/// Create a new SQLite backend with the given configuration
-	pub fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
+	pub fn sqlite(config: super::sqlite::config::SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
 }
@@ -117,8 +117,8 @@ impl TierStorage for HotTier {
 impl TierBackend for HotTier {}
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::runtime::ComputePool;
+pub mod tests {
+	use reifydb_core::runtime::compute::ComputePool;
 
 	use super::*;
 
@@ -130,8 +130,7 @@ mod tests {
 	fn test_memory_backend() {
 		let storage = HotTier::memory(test_compute_pool());
 
-		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])
-			.unwrap();
+		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
@@ -139,8 +138,7 @@ mod tests {
 	fn test_sqlite_backend() {
 		let storage = HotTier::sqlite_in_memory();
 
-		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])
-			.unwrap();
+		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
@@ -156,9 +154,7 @@ mod tests {
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap();
+		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
@@ -177,9 +173,7 @@ mod tests {
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap();
+		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);

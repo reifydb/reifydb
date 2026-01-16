@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Batch, QueryTransaction, VTableDef},
-	value::column::{Column, ColumnData, Columns},
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{Fragment, Value};
+use reifydb_type::{fragment::Fragment, value::Value};
 
 use super::{VTable, VTableContext};
 use crate::vtable::user::{

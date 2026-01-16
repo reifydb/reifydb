@@ -3,9 +3,9 @@
 
 use std::ptr;
 
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
-use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
+use crate::value::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
 
 impl EncodedValuesLayout {
 	pub fn set_u16(&self, row: &mut EncodedValues, index: usize, value: impl Into<u16>) {
@@ -33,10 +33,10 @@ impl EncodedValuesLayout {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_type::value::r#type::Type;
 
-	use crate::value::encoded::EncodedValuesLayout;
+	use crate::value::encoded::layout::EncodedValuesLayout;
 
 	#[test]
 	fn test_set_get_u16() {

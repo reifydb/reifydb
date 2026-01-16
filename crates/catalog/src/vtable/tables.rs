@@ -8,20 +8,25 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::{Params, VTableDef},
-	value::column::Columns,
-};
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_core::{interface::catalog::vtable::VTableDef, value::column::columns::Columns};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::params::Params;
 
 use super::{
 	Batch, VTable, VTableContext,
 	system::{
-		CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges, FlowLags,
-		FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs, FlowOperators,
-		FlowStorageStats, Flows, IndexStorageStats, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns,
-		PrimaryKeys, PrimitiveRetentionPolicies, RingBufferStorageStats, RingBuffers, Sequences,
-		TableStorageStats, Tables, TablesVirtual, Types, Versions, ViewStorageStats, Views,
+		cdc_consumers::CdcConsumers, column_policies::ColumnPolicies, columns::ColumnsTable,
+		dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats, flow_edges::FlowEdges,
+		flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats, flow_node_types::FlowNodeTypes,
+		flow_nodes::FlowNodes, flow_operator_inputs::FlowOperatorInputs,
+		flow_operator_outputs::FlowOperatorOutputs, flow_operators::FlowOperators,
+		flow_storage_stats::FlowStorageStats, flows::Flows, index_storage_stats::IndexStorageStats,
+		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
+		primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
+		primitive_retention_policies::PrimitiveRetentionPolicies,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, sequences::Sequences,
+		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
+		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
 };
 

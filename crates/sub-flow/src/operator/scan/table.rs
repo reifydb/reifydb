@@ -2,17 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::{FlowNodeId, PrimitiveId, TableDef},
-	key::RowKey,
-	util::CowVec,
+	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
+	key::row::RowKey,
 	value::{
-		column::{Column, ColumnData, Columns},
-		encoded::EncodedValuesNamedLayout,
+		column::{Column, columns::Columns, data::ColumnData},
+		encoded::named::EncodedValuesNamedLayout,
 	},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::FlowChange;
-use reifydb_type::{Fragment, RowNumber};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::FlowChange;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{Operator, transaction::FlowTransaction};
 

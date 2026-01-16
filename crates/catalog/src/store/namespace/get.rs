@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Error,
-	interface::{NamespaceDef, NamespaceId},
-};
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::internal;
+use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{error::Error, internal};
 
 use crate::CatalogStore;
 
@@ -25,7 +22,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};

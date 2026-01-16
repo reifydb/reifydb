@@ -20,7 +20,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use parking_lot::{Condvar, Mutex};
-use reifydb_core::WaitGroup;
+use reifydb_core::util::wait_group::WaitGroup;
 
 /// Closer holds the two things we need to close a task and wait for it to
 /// finish: a channel to tell the task to shut down, and a WaitGroup with
@@ -138,10 +138,10 @@ impl Closer {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
-	use crate::multi::watermark::Closer;
+	use crate::multi::watermark::closer::Closer;
 
 	#[test]
 	fn test_multiple_singles() {

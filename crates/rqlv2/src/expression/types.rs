@@ -12,10 +12,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, Columns};
-use reifydb_type::BitVec;
+use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_type::util::bitvec::BitVec;
 
-use super::eval::EvalContext;
+use crate::expression::eval::context::EvalContext;
 
 /// Error type for expression evaluation.
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ impl std::fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 /// Result type for expression evaluation.
-pub type EvalResult<T> = std::result::Result<T, EvalError>;
+pub type EvalResult<T> = Result<T, EvalError>;
 
 pub type ExprResult = EvalResult<Column>;
 
@@ -162,10 +162,9 @@ impl std::fmt::Debug for CompiledFilter {
 }
 
 #[cfg(test)]
-mod tests {
-
-	use reifydb_core::value::column::ColumnData;
-	use reifydb_type::Fragment;
+pub mod tests {
+	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_type::fragment::Fragment;
 
 	use super::*;
 

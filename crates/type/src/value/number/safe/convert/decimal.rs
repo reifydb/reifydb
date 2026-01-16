@@ -137,11 +137,10 @@ impl SafeConvert<Uint> for Decimal {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::{Decimal, SafeConvert};
-
+pub mod tests {
 	mod i8 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -174,6 +173,7 @@ mod tests {
 
 	mod i32 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -192,6 +192,7 @@ mod tests {
 
 	mod u8 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -224,6 +225,7 @@ mod tests {
 
 	mod u32 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -242,6 +244,7 @@ mod tests {
 
 	mod f32 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -260,6 +263,7 @@ mod tests {
 
 	mod f64 {
 		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -277,8 +281,7 @@ mod tests {
 	}
 
 	mod int {
-		use super::*;
-		use crate::Int;
+		use crate::value::{decimal::Decimal, int::Int, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {
@@ -304,8 +307,7 @@ mod tests {
 	}
 
 	mod uint {
-		use super::*;
-		use crate::Uint;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert, uint::Uint};
 
 		#[test]
 		fn test_checked_convert_positive() {
@@ -338,7 +340,7 @@ mod tests {
 	}
 
 	mod self_conversion {
-		use super::*;
+		use crate::value::{decimal::Decimal, number::safe::convert::SafeConvert};
 
 		#[test]
 		fn test_checked_convert() {

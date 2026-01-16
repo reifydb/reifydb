@@ -156,19 +156,21 @@ pub fn lookup_keyword(s: &str) -> Option<Keyword> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::token::{Lexer, TokenKind};
+	use crate::token::{lexer::Lexer, token::TokenKind};
 
-	fn tokenize(source: &str) -> Result<Vec<crate::token::Token>, crate::token::LexError> {
+	fn tokenize(source: &str) -> Result<Vec<crate::token::token::Token>, crate::token::error::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		Ok(result.tokens.into_iter().collect())
 	}
 
-	fn tokenize_with_text(source: &str) -> Result<(Vec<crate::token::Token>, String), crate::token::LexError> {
+	fn tokenize_with_text(
+		source: &str,
+	) -> Result<(Vec<crate::token::token::Token>, String), crate::token::error::LexError> {
 		let bump = Bump::new();
 		let result = Lexer::new(source, &bump).tokenize()?;
 		let source_copy = result.source.to_string();

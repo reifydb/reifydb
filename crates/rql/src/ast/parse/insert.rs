@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::ast::{
-	AstInsert,
+	ast::AstInsert,
 	parse::Parser,
-	tokenize::{Keyword, Operator},
+	tokenize::{keyword::Keyword, operator::Operator},
 };
 
 impl Parser {
@@ -32,8 +32,8 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
-	use crate::ast::{AstInsert, parse::Parser, tokenize::tokenize};
+pub mod tests {
+	use crate::ast::{ast::AstInsert, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_schema_and_table() {

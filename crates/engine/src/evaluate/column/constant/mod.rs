@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod number;
-mod temporal;
-mod text;
-mod uuid;
+pub mod number;
+pub mod temporal;
+pub mod text;
+pub mod uuid;
 
 use number::NumberParser;
-use reifydb_core::{
+use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_rql::expression::ConstantExpression;
+use reifydb_type::{
+	error::diagnostic::cast,
 	return_error,
 	value::{
-		column::{Column, ColumnData},
+		boolean::parse::parse_bool,
 		container::undefined::UndefinedContainer,
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		r#type::Type,
 	},
 };
-use reifydb_rql::expression::ConstantExpression;
-use reifydb_type::{Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint};
 use temporal::TemporalParser;
 use text::TextParser;
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn constant<'a>(

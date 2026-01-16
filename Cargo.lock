@@ -2031,6 +2031,7 @@ name = "reifydb-testing"
 version = "0.2.0"
 dependencies = [
  "reifydb-core",
+ "reifydb-type",
  "test_each_file",
  "tokio",
  "uuid",
@@ -2073,8 +2074,6 @@ dependencies = [
 name = "reifydb-vm"
 version = "0.2.0"
 dependencies = [
- "bumpalo",
- "futures-util",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -2083,8 +2082,6 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
- "thiserror",
- "tokio",
 ]
 
 [[package]]

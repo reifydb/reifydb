@@ -3,9 +3,10 @@
 
 use std::fmt::{self, Write};
 
-use reifydb_type::util::unicode::UnicodeWidthStr;
-
-use crate::value::frame::{Frame, FrameColumn};
+use reifydb_type::{
+	util::unicode::UnicodeWidthStr,
+	value::frame::{column::FrameColumn, frame::Frame},
+};
 
 /// Frame renderer with various rendering options
 pub struct FrameRenderer;

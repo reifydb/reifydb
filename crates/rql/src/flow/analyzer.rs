@@ -5,10 +5,13 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{FlowId, FlowNodeId, TableId, ViewId};
+use reifydb_core::interface::catalog::{
+	flow::{FlowId, FlowNodeId},
+	id::{TableId, ViewId},
+};
 use serde::{Deserialize, Serialize};
 
-use super::{FlowDag, FlowNodeType};
+use crate::flow::{flow::FlowDag, node::FlowNodeType};
 
 /// Represents a reference to a data source
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -318,12 +321,18 @@ impl Default for FlowGraphAnalyzer {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use FlowNodeType::{Filter, SinkView, SourceTable, SourceView};
-	use reifydb_core::interface::{FlowId, FlowNodeId, TableId, ViewId};
+	use reifydb_core::interface::catalog::{
+		flow::{FlowId, FlowNodeId},
+		id::{TableId, ViewId},
+	};
 
 	use super::*;
-	use crate::flow::{FlowDag, FlowNode, FlowNodeType};
+	use crate::flow::{
+		flow::FlowDag,
+		node::{FlowNode, FlowNodeType},
+	};
 
 	fn create_test_flow_with_nodes(id: u64, node_types: Vec<FlowNodeType>) -> FlowDag {
 		let mut builder = FlowDag::builder(FlowId(id));
@@ -403,7 +412,7 @@ mod tests {
 					view: ViewId(600),
 				},
 				FlowNodeType::Join {
-					join_type: reifydb_core::JoinType::Inner,
+					join_type: reifydb_core::common::JoinType::Inner,
 					left: vec![],
 					right: vec![],
 					alias: None,

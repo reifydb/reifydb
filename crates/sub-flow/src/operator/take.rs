@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use std::rc::Rc;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use reifydb_core::{
-	Error,
-	interface::FlowNodeId,
-	value::{column::Columns, encoded::EncodedValuesLayout},
+	interface::catalog::flow::FlowNodeId,
+	value::{column::columns::Columns, encoded::layout::EncodedValuesLayout},
 };
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FlowChange, FlowDiff};
-use reifydb_type::{Blob, RowNumber, Type, internal};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::flow::{FlowChange, FlowDiff};
+use reifydb_type::{
+	error::Error,
+	internal,
+	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{RawStatefulOperator, SingleStateful},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
 };

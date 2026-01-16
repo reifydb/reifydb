@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::{CdcConsumerId, FlowId},
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::{catalog::flow::FlowId, cdc::CdcConsumerId},
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 /// Trait for types that can be converted to a consumer key
@@ -109,11 +109,11 @@ impl CdcConsumerKeyRange {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::ops::RangeBounds;
 
 	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey, ToConsumerKey};
-	use crate::interface::{CdcConsumerId, FlowId};
+	use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
 
 	#[test]
 	fn test_encode_decode_cdc_consumer() {

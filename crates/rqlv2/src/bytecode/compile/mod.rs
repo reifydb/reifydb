@@ -3,11 +3,11 @@
 
 //! Plan compiler - transforms Plan into bytecode.
 
-mod control;
-mod ddl;
-mod dml;
-mod expr;
-mod query;
+pub mod control;
+pub mod ddl;
+pub mod dml;
+pub mod expr;
+pub mod query;
 
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ use crate::{
 	},
 	error::RqlError,
 	plan::Plan,
-	token::Span,
+	token::span::Span,
 };
 
 /// Error type for compilation.

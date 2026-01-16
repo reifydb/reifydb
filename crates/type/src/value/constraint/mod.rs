@@ -4,8 +4,13 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Error, Fragment, Type, Value,
-	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+	error::Error,
+	fragment::Fragment,
+	value::{
+		Value,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		r#type::Type,
+	},
 };
 
 pub mod bytes;
@@ -273,7 +278,7 @@ impl TypeConstraint {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

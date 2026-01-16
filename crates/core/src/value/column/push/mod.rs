@@ -3,26 +3,26 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::{Blob, Date, DateTime, Duration, Time};
+use reifydb_type::value::{blob::Blob, date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::value::column::ColumnData;
 
-mod decimal;
-mod i128;
-mod i16;
-mod i32;
-mod i64;
-mod i8;
-mod int;
-mod u128;
-mod u16;
-mod u32;
-mod u64;
-mod u8;
-mod uint;
-mod undefined;
-mod uuid;
-mod value;
+pub mod decimal;
+pub mod i128;
+pub mod i16;
+pub mod i32;
+pub mod i64;
+pub mod i8;
+pub mod int;
+pub mod u128;
+pub mod u16;
+pub mod u32;
+pub mod u64;
+pub mod u8;
+pub mod uint;
+pub mod undefined;
+pub mod uuid;
+pub mod value;
 
 pub trait Push<T> {
 	fn push(&mut self, value: T);

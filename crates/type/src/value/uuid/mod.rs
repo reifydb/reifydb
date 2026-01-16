@@ -13,8 +13,6 @@ use uuid::Uuid;
 
 pub mod parse;
 
-pub use parse::{parse_uuid4, parse_uuid7};
-
 /// A UUID version 4 (random) wrapper type
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,7 +129,7 @@ impl Display for Uuid7 {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
+pub mod tests {
 	use std::time::Duration;
 
 	use tokio::time::sleep;

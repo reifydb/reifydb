@@ -66,7 +66,7 @@ impl std::fmt::Display for DecodeError {
 impl std::error::Error for DecodeError {}
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

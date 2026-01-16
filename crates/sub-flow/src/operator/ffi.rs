@@ -3,17 +3,23 @@
 
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
-use reifydb_abi::{ColumnsFFI, ContextFFI, OperatorDescriptorFFI, OperatorVTableFFI};
-use reifydb_core::{interface::FlowNodeId, value::column::Columns};
-use reifydb_engine::StandardColumnEvaluator;
-use reifydb_sdk::{FFIError, FlowChange, ffi::Arena};
-use reifydb_type::RowNumber;
-use std::cell::RefCell;
 use std::{
+	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
+
+use reifydb_abi::{
+	context::context::ContextFFI,
+	data::column::ColumnsFFI,
+	flow::change::FlowChangeFFI,
+	operator::{descriptor::OperatorDescriptorFFI, vtable::OperatorVTableFFI},
+};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
+use reifydb_engine::evaluate::column::StandardColumnEvaluator;
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena, flow::FlowChange};
+use reifydb_type::value::row_number::RowNumber;
 use tracing::{Span, error, instrument};
 
 use crate::{
@@ -68,7 +74,7 @@ impl Drop for FFIOperator {
 /// Marshal a flow change to FFI format
 #[inline]
 #[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
-fn marshal_input(arena: &mut Arena, change: &FlowChange) -> reifydb_abi::FlowChangeFFI {
+fn marshal_input(arena: &mut Arena, change: &FlowChange) -> FlowChangeFFI {
 	arena.marshal_flow_change(change)
 }
 
@@ -79,13 +85,11 @@ fn call_vtable(
 	vtable: &OperatorVTableFFI,
 	instance: *mut c_void,
 	ffi_ctx_ptr: *mut ContextFFI,
-	ffi_input: &reifydb_abi::FlowChangeFFI,
-	ffi_output: &mut reifydb_abi::FlowChangeFFI,
+	ffi_input: &FlowChangeFFI,
+	ffi_output: &mut FlowChangeFFI,
 	operator_id: FlowNodeId,
 ) -> i32 {
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		(vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)
-	}));
+	let result = catch_unwind(AssertUnwindSafe(|| (vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)));
 
 	match result {
 		Ok(code) => code,
@@ -106,7 +110,7 @@ fn call_vtable(
 /// Unmarshal FFI output to FlowChange
 #[inline]
 #[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
-fn unmarshal_output(arena: &mut Arena, ffi_output: &reifydb_abi::FlowChangeFFI) -> Result<FlowChange, String> {
+fn unmarshal_output(arena: &mut Arena, ffi_output: &FlowChangeFFI) -> Result<FlowChange, String> {
 	arena.unmarshal_flow_change(ffi_output)
 }
 
@@ -132,7 +136,7 @@ impl Operator for FFIOperator {
 		let ffi_input = marshal_input(&mut arena, &change);
 
 		// Create output holder
-		let mut ffi_output = reifydb_abi::FlowChangeFFI::empty();
+		let mut ffi_output = FlowChangeFFI::empty();
 
 		// Create FFI context
 		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());

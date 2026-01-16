@@ -6,17 +6,18 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use parking_lot::RwLock;
 use reifydb_core::{
-	CowVec, EncodedKey, delta::Delta, event::EventBus, interface::WithEventBus, value::encoded::EncodedValues,
+	delta::Delta,
+	event::EventBus,
+	interface::WithEventBus,
+	value::encoded::{encoded::EncodedValues, key::EncodedKey},
 };
 use reifydb_store_single::SingleStore;
 
-mod read;
-mod write;
+pub mod read;
+pub mod write;
 
-use read::KeyReadLock;
-pub use read::SvlQueryTransaction;
-use write::KeyWriteLock;
-pub use write::SvlCommandTransaction;
+use read::{KeyReadLock, SvlQueryTransaction};
+use write::{KeyWriteLock, SvlCommandTransaction};
 
 #[derive(Clone)]
 pub struct TransactionSvl {
@@ -54,7 +55,7 @@ impl TransactionSvl {
 		}
 	}
 
-	pub fn begin_query<'a, I>(&self, keys: I) -> crate::Result<SvlQueryTransaction<'_>>
+	pub fn begin_query<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlQueryTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -81,7 +82,7 @@ impl TransactionSvl {
 		})
 	}
 
-	pub fn begin_command<'a, I>(&self, keys: I) -> crate::Result<SvlCommandTransaction<'_>>
+	pub fn begin_command<'a, I>(&self, keys: I) -> reifydb_type::Result<SvlCommandTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
@@ -112,11 +113,13 @@ impl WithEventBus for TransactionSvl {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::{
 		sync::{Arc, Barrier},
 		time::Duration,
 	};
+
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 

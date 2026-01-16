@@ -6,8 +6,9 @@
 //! Tracks the status and checkpoint of each flow, enabling the coordinator
 //! to route changes appropriately and manage backfilling.
 
-use reifydb_core::{CommitVersion, interface::FlowId};
 use std::collections::HashMap;
+
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 
 /// Status of a flow in the coordinator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

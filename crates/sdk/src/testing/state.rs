@@ -3,8 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::encoded::{EncodedKey, EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout};
-use reifydb_type::Value;
+use reifydb_core::value::encoded::{
+	encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
+};
+use reifydb_type::value::Value;
 
 /// Mock state store for testing operators
 #[derive(Debug, Clone, Default)]
@@ -142,15 +144,18 @@ impl TestStateStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::Type;
+pub mod tests {
+	use reifydb_core::value::encoded::{
+		encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
+	};
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 	use crate::testing::helpers::encode_key;
 
 	#[test]
 	fn test_state_store_basic_operations() {
-		use reifydb_core::CowVec;
+		use reifydb_type::util::cowvec::CowVec;
 		let mut store = TestStateStore::new();
 		let key = encode_key("test_key");
 		let value = EncodedValues(CowVec::new(vec![1, 2, 3, 4]));
@@ -201,7 +206,7 @@ mod tests {
 
 	#[test]
 	fn test_state_store_snapshot_and_restore() {
-		use reifydb_core::CowVec;
+		use reifydb_type::util::cowvec::CowVec;
 		let mut store = TestStateStore::new();
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");

@@ -2,10 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	CommitVersion,
-	interface::{SubscriptionDef, SubscriptionId, SubscriptionKey},
+	common::CommitVersion,
+	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 
 use crate::{CatalogStore, store::subscription::layout::subscription};
 
@@ -46,11 +47,11 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::SubscriptionId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{CatalogStore, store::subscription::SubscriptionToCreate};
+	use crate::{CatalogStore, store::subscription::create::SubscriptionToCreate};
 
 	#[test]
 	fn test_find_subscription_by_id() {

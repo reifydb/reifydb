@@ -48,10 +48,15 @@ pub fn scan_temporal(cursor: &mut Cursor, start: usize, start_line: u32, start_c
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::token::{LexError, Lexer, LiteralKind, Token, TokenKind};
+	use crate::token::{
+		error::LexError,
+		lexer::Lexer,
+		literal::LiteralKind,
+		token::{Token, TokenKind},
+	};
 
 	fn tokenize(source: &str) -> Result<Vec<Token>, LexError> {
 		let bump = Bump::new();
@@ -119,7 +124,7 @@ mod tests {
 
 	#[test]
 	fn test_invalid_temporal() {
-		use crate::token::LexError;
+		use crate::token::error::LexError;
 
 		// Just @ without content should fail
 		let result = tokenize("@");

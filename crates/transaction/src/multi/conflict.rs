@@ -7,7 +7,7 @@ use core::{
 };
 use std::collections::HashSet;
 
-use reifydb_core::{EncodedKey, EncodedKeyRange};
+use reifydb_core::value::encoded::key::{EncodedKey, EncodedKeyRange};
 use reifydb_type::util::hex;
 use tracing::instrument;
 
@@ -369,7 +369,7 @@ impl ConflictManager {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	fn create_key(s: &str) -> EncodedKey {

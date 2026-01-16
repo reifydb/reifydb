@@ -5,30 +5,24 @@
 
 pub mod backend;
 pub mod config;
-mod memory;
+pub mod memory;
 pub mod partition;
 pub mod statistics;
-mod store;
+pub mod store;
 
-// New public exports
-pub use backend::{Backend, ColumnBackend, MemoryColumnBackend};
-pub use config::{BackendConfig, ColumnStoreConfig, CompressionConfig, RetentionConfig};
-// Backward compatibility - alias the old MemoryColumnStore to the new backend
-pub use memory::MemoryColumnStore;
-pub use partition::{Partition, PartitionKey};
-use reifydb_core::CommitVersion;
-pub use store::StandardColumnStore;
+use partition::{Partition, PartitionKey};
+use reifydb_core::common::CommitVersion;
 
-// Convenience re-exports for backend modules
-pub mod memory_backend {
-	pub use crate::backend::memory::MemoryColumnBackend;
-}
+pub mod memory_backend {}
 
 use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	value::column::{ColumnData, CompressedColumn, CompressionType},
+	value::column::{
+		compressed::{CompressedColumn, CompressionType},
+		data::ColumnData,
+	},
 };
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 pub struct StoreColumnVersion;
 

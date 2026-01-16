@@ -3,10 +3,13 @@
 
 use flow_edge_by_flow::LAYOUT;
 use reifydb_core::{
-	interface::{EncodableKey, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
-	key::{FlowEdgeByFlowKey, FlowEdgeKey},
+	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
+	key::{
+		EncodableKey,
+		flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
+	},
 };
-use reifydb_transaction::IntoStandardTransaction;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
@@ -74,7 +77,7 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{

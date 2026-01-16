@@ -27,10 +27,7 @@ macro_rules! impl_safe_add {
 
 impl_safe_add!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
-use crate::{
-	Decimal,
-	value::{int::Int, uint::Uint},
-};
+use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeAdd for Int {
 	fn checked_add(&self, r: &Self) -> Option<Self> {
@@ -134,7 +131,7 @@ impl SafeAdd for f64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
 	macro_rules! define_tests {
         ($($t:ty => $mod:ident),*) => {

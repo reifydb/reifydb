@@ -4,15 +4,15 @@
 //! Core planner types and entry point.
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_catalog::MaterializedCatalog;
+use reifydb_catalog::materialized::MaterializedCatalog;
 use tracing::instrument;
 
 use super::scope::Scope;
 use crate::{
 	ast::Program,
 	error::RqlError,
-	plan::{OutputSchema, Plan},
-	token::Span,
+	plan::{Plan, types::OutputSchema},
+	token::span::Span,
 };
 
 /// Planner context - holds bump allocator and catalog.

@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use reifydb_type::Value;
+use reifydb_type::value::Value;
 
 /// A single trace entry capturing VM state after executing an instruction.
 #[derive(Debug, Clone)]

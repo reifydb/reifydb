@@ -6,14 +6,20 @@
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use reifydb_abi::{
-	BufferFFI, CURRENT_API, OPERATOR_MAGIC, OperatorColumnDefFFI, OperatorColumnDefsFFI, OperatorDescriptorFFI,
+	constants::CURRENT_API,
+	data::buffer::BufferFFI,
+	operator::{
+		column::{OperatorColumnDefFFI, OperatorColumnDefsFFI},
+		descriptor::OperatorDescriptorFFI,
+		types::OPERATOR_MAGIC,
+	},
 };
-use reifydb_core::interface::FlowNodeId;
-use reifydb_type::Value;
+use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_type::value::Value;
 
 use crate::{
-	FFIOperatorWithMetadata, OperatorColumnDef,
 	ffi::wrapper::{OperatorWrapper, create_vtable},
+	operator::{FFIOperatorWithMetadata, column::OperatorColumnDef},
 };
 
 /// Convert a static string to a BufferFFI

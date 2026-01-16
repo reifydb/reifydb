@@ -2,8 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	Error, err,
-	error::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_number_boolean},
+	err,
+	error::{
+		Error,
+		diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_number_boolean},
+	},
 	fragment::Fragment,
 	return_error,
 };
@@ -44,9 +47,8 @@ pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
 
 	#[test]
 	fn test_valid_true() {

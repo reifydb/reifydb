@@ -4,7 +4,8 @@
 use reifydb_core::value::column::Column;
 use reifydb_rql::expression::TupleExpression;
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn tuple<'a>(

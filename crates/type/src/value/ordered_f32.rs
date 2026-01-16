@@ -11,7 +11,10 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
-use crate::{Error, err, error::diagnostic::number::nan_not_allowed};
+use crate::{
+	err,
+	error::{Error, diagnostic::number::nan_not_allowed},
+};
 
 /// A wrapper around f32 that provides total ordering by rejecting NaN values.
 /// This type is sortable and can be used in collections that require Ord,
@@ -136,7 +139,7 @@ impl TryFrom<f32> for OrderedF32 {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use std::{collections::HashSet, convert::TryFrom};
 
 	use super::*;

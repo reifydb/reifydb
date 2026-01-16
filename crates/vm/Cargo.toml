@@ -18,13 +18,9 @@ reifydb-catalog = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-transaction = { workspace = true }
 
-bumpalo = { workspace = true }
-futures-util = { workspace = true }
-tokio = { workspace = true }
-thiserror = "2.0"
 
 [dev-dependencies]
-reifydb-engine = { workspace = true}
+reifydb-engine = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { path = "../transaction" }

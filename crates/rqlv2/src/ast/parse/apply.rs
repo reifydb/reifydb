@@ -11,8 +11,8 @@ use bumpalo::collections::Vec as BumpVec;
 
 use super::{ParseError, ParseErrorKind, Parser, Precedence};
 use crate::{
-	ast::{Expr, expr::ApplyExpr},
-	token::{Keyword, Punctuation, TokenKind},
+	ast::{Expr, expr::special::ApplyExpr},
+	token::{keyword::Keyword, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -82,12 +82,15 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, token::tokenize};
+	use crate::{
+		ast::{Expr, expr::special::ApplyExpr, parse::parse},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: crate::ast::Statement<'_>) -> &Expr<'_> {
 		match stmt {
 			crate::ast::Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
@@ -98,7 +101,7 @@ mod tests {
 		}
 	}
 
-	fn extract_apply<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::ApplyExpr<'a> {
+	fn extract_apply(stmt: crate::ast::Statement<'_>) -> &ApplyExpr<'_> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Apply(a) => a,
@@ -111,7 +114,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "APPLY counter {}";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let a = extract_apply(stmt);
 		assert_eq!(a.operator, "counter");
@@ -123,7 +126,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "APPLY transform { value }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let a = extract_apply(stmt);
 		assert_eq!(a.operator, "transform");
@@ -135,7 +138,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "APPLY process { a, b, c }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let a = extract_apply(stmt);
 		assert_eq!(a.operator, "process");
@@ -147,7 +150,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "apply counter {}";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let a = extract_apply(stmt);
 		assert_eq!(a.operator, "counter");
@@ -158,7 +161,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "FROM test.orders | APPLY summarize {}";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		match stmt {
 			crate::ast::Statement::Pipeline(p) => {

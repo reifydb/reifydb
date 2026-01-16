@@ -6,9 +6,9 @@ mod common;
 use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
-use reifydb::{Database, core::retry};
+use reifydb::{Database, core::util::retry::retry};
 use reifydb_client::WsClient;
-use reifydb_testing::{testscript, testscript::Command};
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
 
@@ -30,7 +30,7 @@ impl WsRunner {
 	}
 }
 
-impl testscript::Runner for WsRunner {
+impl testscript::runner::Runner for WsRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let client = self.client.as_ref().ok_or("No client available")?;
 
@@ -114,7 +114,7 @@ fn test_ws(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
 	})
 	.expect("test failed")
 }

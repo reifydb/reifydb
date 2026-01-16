@@ -2,12 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
-	interface::{ColumnId, PrimaryKeyId, PrimaryKeyKey, PrimitiveId},
+	interface::catalog::{
+		id::{ColumnId, PrimaryKeyId},
+		primitive::PrimitiveId,
+	},
+	key::primary_key::PrimaryKeyKey,
+};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::{
+	error::diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
+	fragment::Fragment,
 	return_error, return_internal_error,
 };
-use reifydb_transaction::StandardCommandTransaction;
-use reifydb_type::Fragment;
 
 use crate::{
 	CatalogStore,
@@ -16,7 +22,7 @@ use crate::{
 			primary_key,
 			primary_key::{LAYOUT, serialize_column_ids},
 		},
-		sequence::SystemSequence,
+		sequence::system::SystemSequence,
 	},
 };
 
@@ -94,18 +100,24 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::{ColumnId, PrimaryKeyId, PrimitiveId, TableId, ViewId};
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		column::ColumnIndex,
+		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
+		primitive::PrimitiveId,
+	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::PrimaryKeyToCreate;
 	use crate::{
 		CatalogStore,
-		column::{ColumnIndex, ColumnToCreate},
-		table::TableToCreate,
+		store::{
+			column::create::ColumnToCreate,
+			table::create::TableToCreate,
+			view::create::{ViewColumnToCreate, ViewToCreate},
+		},
 		test_utils::{ensure_test_namespace, ensure_test_table},
-		view::{ViewColumnToCreate, ViewToCreate},
 	};
 
 	#[test]

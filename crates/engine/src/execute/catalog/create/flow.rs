@@ -3,13 +3,14 @@
 
 use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
 use reifydb_core::{
-	interface::{CatalogTrackFlowChangeOperations, FlowStatus},
-	value::column::Columns,
+	interface::catalog::{change::CatalogTrackFlowChangeOperations, flow::FlowStatus},
+	value::column::columns::Columns,
 };
 use reifydb_rql::plan::physical::CreateFlowNode;
-use reifydb_type::Value;
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor, flow::compile_flow};
+use crate::{execute::Executor, flow::compiler::compile_flow};
 
 impl Executor {
 	pub(crate) fn create_flow<'a>(

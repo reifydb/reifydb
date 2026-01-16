@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, NamespaceId};
+use crate::interface::catalog::{column::ColumnDef, id::NamespaceId};
 
 /// Unique identifier for a virtual table type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

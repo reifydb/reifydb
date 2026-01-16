@@ -10,13 +10,16 @@
 
 use bumpalo::collections::Vec as BumpVec;
 
-use super::super::{
-	Parser,
-	error::{ParseError, ParseErrorKind},
-};
 use crate::{
-	ast::{Statement, stmt::Parameter},
-	token::{Keyword, Operator, Punctuation, TokenKind},
+	ast::{
+		Statement,
+		parse::{
+			Parser,
+			error::{ParseError, ParseErrorKind},
+		},
+		stmt::binding::{DefStmt, Parameter},
+	},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation, token::TokenKind},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -42,7 +45,7 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 		let body = self.parse_block()?;
 		let end_span = self.expect_punct(Punctuation::CloseCurly)?;
 
-		Ok(Statement::Def(crate::ast::stmt::DefStmt::new(name, params, body, start_span.merge(&end_span))))
+		Ok(Statement::Def(DefStmt::new(name, params, body, start_span.merge(&end_span))))
 	}
 
 	/// Parse function parameters.

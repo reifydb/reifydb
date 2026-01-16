@@ -5,7 +5,11 @@ use crate::ast::{
 	ast::{AstDrop, AstDropFlow},
 	identifier::MaybeQualifiedFlowIdentifier,
 	parse::Parser,
-	tokenize::{Keyword, Operator, Token, TokenKind},
+	tokenize::{
+		keyword::Keyword,
+		operator::Operator,
+		token::{Token, TokenKind},
+	},
 };
 
 impl Parser {
@@ -18,7 +22,7 @@ impl Parser {
 		}
 
 		// Future: Add other DROP variants here (TABLE, VIEW, etc.)
-		Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+		Err(reifydb_type::error::Error(reifydb_type::error::diagnostic::ast::unexpected_token_error(
 			"FLOW, TABLE, VIEW, or other droppable object",
 			self.current()?.fragment.clone(),
 		)))
@@ -66,7 +70,7 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 	use crate::ast::{parse::Parser, tokenize::tokenize};
 

@@ -9,15 +9,20 @@
 use std::{ops::Bound, slice::from_raw_parts};
 
 use reifydb_abi::{
-	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
-	FFI_NOT_FOUND, FFI_OK, StateIteratorFFI,
+	constants::{
+		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
+	},
+	context::{context::ContextFFI, iterators::StateIteratorFFI},
+	data::buffer::BufferFFI,
 };
 use reifydb_core::{
-	EncodedKeyRange,
-	interface::FlowNodeId,
-	util::CowVec,
-	value::encoded::{EncodedKey, EncodedValues},
+	interface::catalog::flow::FlowNodeId,
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
+use reifydb_type::util::cowvec::CowVec;
 
 use super::{
 	memory::{host_alloc, host_free},

@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use ast::{
-	AstLiteral, AstLiteralUndefined,
-	tokenize::{Literal::Undefined, Token, TokenKind},
-};
-use reifydb_type::{Fragment, diagnostic::ast::unexpected_token_error};
+use reifydb_type::{error::diagnostic::ast::unexpected_token_error, fragment::Fragment};
 
-use crate::{
-	ast,
-	ast::{
-		Ast, AstElseIf, AstIf,
-		parse::{Parser, Precedence},
-		tokenize::{Keyword, Operator},
+use crate::ast::{
+	ast::{Ast, AstElseIf, AstIf, AstLiteral, AstLiteralUndefined},
+	parse::{Parser, Precedence},
+	tokenize::{
+		keyword::Keyword,
+		operator::Operator,
+		token::{Literal, Token, TokenKind},
 	},
 };
 
@@ -22,7 +19,7 @@ impl Parser {
 
 		// Consume 'if' keyword
 		if !self.current()?.is_keyword(Keyword::If) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected 'if'",
 				self.current()?.fragment.clone(),
 			)));
@@ -34,7 +31,7 @@ impl Parser {
 
 		// Expect opening brace '{'
 		if !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected '{' after if condition",
 				self.current()?.fragment.clone(),
 			)));
@@ -47,7 +44,7 @@ impl Parser {
 		let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
 			// Empty block - return undefined literal
 			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-				kind: TokenKind::Literal(Undefined),
+				kind: TokenKind::Literal(Literal::Undefined),
 				fragment: Fragment::internal("undefined"),
 			})))
 		} else {
@@ -56,7 +53,7 @@ impl Parser {
 
 		// Expect closing brace '}'
 		if !self.current()?.is_operator(Operator::CloseCurly) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected '}' after then block",
 				self.current()?.fragment.clone(),
 			)));
@@ -111,7 +108,7 @@ impl Parser {
 
 			// Expect opening brace '{'
 			if !self.current()?.is_operator(Operator::OpenCurly) {
-				return Err(reifydb_type::Error(unexpected_token_error(
+				return Err(reifydb_type::error::Error(unexpected_token_error(
 					"expected '{' after else if condition",
 					self.current()?.fragment.clone(),
 				)));
@@ -122,7 +119,7 @@ impl Parser {
 
 			let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
 				Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-					kind: TokenKind::Literal(Undefined),
+					kind: TokenKind::Literal(Literal::Undefined),
 					fragment: Fragment::internal("undefined"),
 				})))
 			} else {
@@ -131,7 +128,7 @@ impl Parser {
 
 			// Expect closing brace '}'
 			if !self.current()?.is_operator(Operator::CloseCurly) {
-				return Err(reifydb_type::Error(unexpected_token_error(
+				return Err(reifydb_type::error::Error(unexpected_token_error(
 					"expected '}' after else if then block",
 					self.current()?.fragment.clone(),
 				)));
@@ -161,7 +158,7 @@ impl Parser {
 
 		// Expect opening brace '{'
 		if !self.current()?.is_operator(Operator::OpenCurly) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected '{' after else",
 				self.current()?.fragment.clone(),
 			)));
@@ -172,7 +169,7 @@ impl Parser {
 
 		let else_expr = if self.current()?.is_operator(Operator::CloseCurly) {
 			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
-				kind: TokenKind::Literal(Undefined),
+				kind: TokenKind::Literal(Literal::Undefined),
 				fragment: Fragment::internal("undefined"),
 			})))
 		} else {
@@ -181,7 +178,7 @@ impl Parser {
 
 		// Expect closing brace '}'
 		if !self.current()?.is_operator(Operator::CloseCurly) {
-			return Err(reifydb_type::Error(unexpected_token_error(
+			return Err(reifydb_type::error::Error(unexpected_token_error(
 				"expected '}' after else block",
 				self.current()?.fragment.clone(),
 			)));

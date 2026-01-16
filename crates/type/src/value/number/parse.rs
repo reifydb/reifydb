@@ -4,10 +4,17 @@
 use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
 
 use crate::{
-	Error, Fragment, Type, err,
-	error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range},
+	err,
+	error::{
+		Error,
+		diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range},
+	},
+	fragment::Fragment,
 	return_error,
-	value::is::{IsFloat, IsInt, IsUint},
+	value::{
+		is::{IsFloat, IsInt, IsUint},
+		r#type::Type,
+	},
 };
 
 pub fn parse_primitive_int<'a, T>(fragment: Fragment) -> Result<T, Error>
@@ -431,10 +438,10 @@ fn parse_u128<'a>(fragment: Fragment) -> Result<u128, Error> {
 
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
-mod tests {
+pub mod tests {
 
 	mod i8 {
-		use crate::{Fragment, parse_primitive_int};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_int};
 
 		#[test]
 		fn test_valid_zero() {
@@ -578,7 +585,7 @@ mod tests {
 	}
 
 	mod i16 {
-		use crate::{Fragment, parse_primitive_int};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_int};
 
 		#[test]
 		fn test_valid_zero() {
@@ -697,7 +704,7 @@ mod tests {
 	}
 
 	mod i32 {
-		use crate::{Fragment, parse_primitive_int};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_int};
 
 		#[test]
 		fn test_valid_zero() {
@@ -846,7 +853,7 @@ mod tests {
 	}
 
 	mod i64 {
-		use crate::{Fragment, parse_primitive_int};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_int};
 
 		#[test]
 		fn test_valid_zero() {
@@ -955,7 +962,7 @@ mod tests {
 	}
 
 	mod i128 {
-		use crate::{Fragment, parse_primitive_int};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_int};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1095,7 +1102,7 @@ mod tests {
 	}
 
 	mod u8 {
-		use crate::{Fragment, parse_primitive_uint};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_uint};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1199,7 +1206,7 @@ mod tests {
 	}
 
 	mod u16 {
-		use crate::{Fragment, parse_primitive_uint};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_uint};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1283,7 +1290,7 @@ mod tests {
 	}
 
 	mod u32 {
-		use crate::{Fragment, parse_primitive_uint};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_uint};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1397,7 +1404,7 @@ mod tests {
 	}
 
 	mod u64 {
-		use crate::{Fragment, parse_primitive_uint};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_uint};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1482,7 +1489,7 @@ mod tests {
 	}
 
 	mod u128 {
-		use crate::{Fragment, parse_primitive_uint};
+		use crate::{fragment::Fragment, value::number::parse::parse_primitive_uint};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1579,7 +1586,7 @@ mod tests {
 	}
 
 	mod f32 {
-		use crate::{Fragment, parse_float};
+		use crate::{fragment::Fragment, value::number::parse::parse_float};
 
 		#[test]
 		fn test_valid_zero() {
@@ -1683,7 +1690,7 @@ mod tests {
 	}
 
 	mod f64 {
-		use crate::{Fragment, parse_float};
+		use crate::{fragment::Fragment, value::number::parse::parse_float};
 
 		#[test]
 		fn test_valid_zero() {

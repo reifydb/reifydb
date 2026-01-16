@@ -9,11 +9,17 @@
 use std::{ops::Bound, slice::from_raw_parts};
 
 use reifydb_abi::{
-	BufferFFI, ContextFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR,
-	FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI,
+	constants::{
+		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
+	},
+	context::{context::ContextFFI, iterators::StoreIteratorFFI},
+	data::buffer::BufferFFI,
 };
-use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
-use reifydb_core::interface::MultiVersionBatch;
+use reifydb_core::{
+	interface::store::MultiVersionBatch,
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
+};
+use reifydb_type::util::cowvec::CowVec;
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -228,7 +234,7 @@ pub(super) extern "C" fn host_store_range(
 
 		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, reifydb_core::Error> {
+		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, reifydb_type::error::Error> {
 			let mut iter = flow_txn.range(range, 1024);
 			let mut items = Vec::new();
 			while let Some(res) = iter.next() {

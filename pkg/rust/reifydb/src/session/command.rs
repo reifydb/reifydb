@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::Identity;
+use reifydb_core::interface::auth::Identity;
 use reifydb_engine::{
-	StandardEngine,
-	bulk_insert::{BulkInsertBuilder, Trusted, Validated},
+	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
+	engine::StandardEngine,
 };
 
 pub struct CommandSession {

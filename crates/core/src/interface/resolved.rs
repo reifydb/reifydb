@@ -3,12 +3,24 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
+use reifydb_type::{
+	error::diagnostic::number::NumberOfRangeColumnDescriptor,
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, r#type::Type},
+};
 use serde::{Deserialize, Serialize};
 
-use super::{
-	ColumnDef, ColumnPolicyKind, DictionaryDef, FlowDef, NamespaceDef, RingBufferDef, SubscriptionColumnDef,
-	SubscriptionDef, TableDef, VTableDef, ViewDef,
+use super::catalog::{
+	column::ColumnDef,
+	dictionary::DictionaryDef,
+	flow::FlowDef,
+	namespace::NamespaceDef,
+	policy::ColumnPolicyKind,
+	ringbuffer::RingBufferDef,
+	subscription::{SubscriptionColumnDef, SubscriptionDef},
+	table::TableDef,
+	view::ViewDef,
+	vtable::VTableDef,
 };
 
 /// Resolved namespace with both identifier and definition
@@ -924,11 +936,17 @@ pub struct FunctionDef {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{Type, fragment::Fragment};
+pub mod tests {
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, r#type::Type},
+	};
 
 	use super::*;
-	use crate::interface::{ColumnId, NamespaceId, TableId, catalog::ColumnIndex};
+	use crate::interface::catalog::{
+		column::ColumnIndex,
+		id::{ColumnId, NamespaceId, TableId},
+	};
 
 	fn test_namespace_def() -> NamespaceDef {
 		NamespaceDef {

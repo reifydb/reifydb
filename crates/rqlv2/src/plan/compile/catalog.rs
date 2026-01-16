@@ -4,12 +4,12 @@
 //! Catalog resolution methods.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_core::interface::ColumnDef;
+use reifydb_core::interface::catalog::column::ColumnDef;
 
 use super::core::{DEFAULT_NAMESPACE, PlanError, PlanErrorKind, Planner, Result};
 use crate::{
-	plan::{CatalogColumn, Dictionary, Namespace, Primitive, RingBuffer, Table, View},
-	token::Span,
+	plan::types::{CatalogColumn, Dictionary, Namespace, Primitive, RingBuffer, Table, View},
+	token::span::Span,
 };
 
 impl<'bump, 'cat> Planner<'bump, 'cat> {

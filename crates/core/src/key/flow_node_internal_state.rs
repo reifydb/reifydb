@@ -3,9 +3,9 @@
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange,
-	interface::FlowNodeId,
-	util::encoding::keycode::{KeyDeserializer, KeySerializer},
+	interface::catalog::flow::FlowNodeId,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	value::encoded::key::{EncodedKey, EncodedKeyRange},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,14 +143,17 @@ impl EncodableKeyRange for FlowNodeInternalStateKeyRange {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::{EncodableKey, EncodableKeyRange, FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
-	use crate::{EncodedKey, EncodedKeyRange};
+	use crate::{
+		interface::catalog::flow::FlowNodeId,
+		value::encoded::key::{EncodedKey, EncodedKeyRange},
+	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = FlowNodeInternalStateKey {
-			node: crate::interface::FlowNodeId(0xDEADBEEF),
+			node: FlowNodeId(0xDEADBEEF),
 			key: vec![1, 2, 3, 4],
 		};
 		let encoded = key.encode();
@@ -167,7 +170,7 @@ mod tests {
 	#[test]
 	fn test_encode_decode_empty_key() {
 		let key = FlowNodeInternalStateKey {
-			node: crate::interface::FlowNodeId(0xDEADBEEF),
+			node: FlowNodeId(0xDEADBEEF),
 			key: vec![],
 		};
 		let encoded = key.encode();
@@ -179,14 +182,14 @@ mod tests {
 
 	#[test]
 	fn test_new() {
-		let key = FlowNodeInternalStateKey::new(crate::interface::FlowNodeId(42), vec![5, 6, 7]);
+		let key = FlowNodeInternalStateKey::new(FlowNodeId(42), vec![5, 6, 7]);
 		assert_eq!(key.node.0, 42);
 		assert_eq!(key.key, vec![5, 6, 7]);
 	}
 
 	#[test]
 	fn test_new_empty() {
-		let key = FlowNodeInternalStateKey::new_empty(crate::interface::FlowNodeId(42));
+		let key = FlowNodeInternalStateKey::new_empty(FlowNodeId(42));
 		assert_eq!(key.node.0, 42);
 		assert_eq!(key.key, Vec::<u8>::new());
 	}
@@ -194,7 +197,7 @@ mod tests {
 	#[test]
 	fn test_roundtrip() {
 		let original = FlowNodeInternalStateKey {
-			node: crate::interface::FlowNodeId(999_999_999),
+			node: FlowNodeId(999_999_999),
 			key: vec![10, 20, 30, 40, 50],
 		};
 		let encoded = original.encode();
@@ -234,7 +237,7 @@ mod tests {
 
 	#[test]
 	fn test_flow_node_internal_state_key_range() {
-		let node = crate::interface::FlowNodeId(42);
+		let node = FlowNodeId(42);
 		let range = FlowNodeInternalStateKeyRange::new(node);
 
 		// Test start key
@@ -252,7 +255,7 @@ mod tests {
 
 	#[test]
 	fn test_flow_node_internal_state_key_range_decode() {
-		let node = crate::interface::FlowNodeId(100);
+		let node = FlowNodeId(100);
 		let range = FlowNodeInternalStateKeyRange::new(node);
 
 		// Create an EncodedKeyRange

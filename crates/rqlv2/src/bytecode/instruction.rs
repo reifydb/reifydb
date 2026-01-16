@@ -178,7 +178,7 @@ impl Default for BytecodeWriter {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

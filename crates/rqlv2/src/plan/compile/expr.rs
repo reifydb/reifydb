@@ -4,19 +4,24 @@
 //! Expression compilation.
 
 use bumpalo::collections::Vec as BumpVec;
-use reifydb_type::Type;
+use reifydb_type::value::r#type::Type;
 
 use super::core::{PlanError, PlanErrorKind, Planner, Result};
 use crate::{
 	ast::{
-		Expr, Statement,
-		expr::{BinaryExpr, BinaryOp, Literal, UnaryOp},
+		expr::{
+			Expr,
+			literal::Literal,
+			operator::{BinaryExpr, BinaryOp, UnaryOp},
+		},
+		stmt::Statement,
 	},
 	plan::{
-		CatalogColumn, Column, ComputedColumn, Function, OutputSchema, Plan,
+		Plan,
 		node::expr::{BinaryPlanOp, PlanExpr, UnaryPlanOp},
+		types::{CatalogColumn, Column, ComputedColumn, Function, OutputSchema},
 	},
-	token::Span,
+	token::span::Span,
 };
 
 impl<'bump, 'cat> Planner<'bump, 'cat> {

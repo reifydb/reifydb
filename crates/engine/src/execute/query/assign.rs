@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::plan::{physical, physical::AssignValue};
+use reifydb_transaction::standard::StandardTransaction;
 
 use crate::{
-	StandardTransaction,
-	evaluate::column::{ColumnEvaluationContext, evaluate},
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, QueryNode, query::compile::compile},
 	stack::Variable,
 };

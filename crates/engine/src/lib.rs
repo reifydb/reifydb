@@ -7,9 +7,9 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_type::Result;
 
 pub mod bulk_insert;
-mod engine;
+pub mod engine;
 pub mod environment;
-mod evaluate;
+pub mod evaluate;
 pub mod execute;
 pub mod flow;
 pub(crate) mod interceptor;
@@ -17,20 +17,6 @@ pub mod stack;
 #[allow(unused)]
 pub mod test_utils;
 pub mod transaction;
-
-pub mod vtable {
-	pub use reifydb_catalog::vtable::{
-		UserVTable, UserVTableBuilder, UserVTableColumnDef, UserVTableRegistry, VTableContext, VTables, system,
-	};
-}
-
-pub use engine::StandardEngine;
-pub use evaluate::{
-	ColumnEvaluationContext, RowEvaluationContext, TargetColumn,
-	column::{StandardColumnEvaluator, cast::cast_column_data},
-};
-pub use reifydb_transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
-pub use reifydb_vm::{VmConfig, VmContext, VmState};
 
 pub struct EngineVersion;
 

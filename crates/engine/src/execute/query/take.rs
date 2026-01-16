@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::headers::ColumnHeaders;
+use reifydb_transaction::standard::StandardTransaction;
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
@@ -24,11 +25,7 @@ impl TakeNode {
 
 impl QueryNode for TakeNode {
 	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
@@ -37,7 +34,7 @@ impl QueryNode for TakeNode {
 	#[instrument(name = "query::take::next", level = "trace", skip_all)]
 	fn next<'a>(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a>,
+		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");

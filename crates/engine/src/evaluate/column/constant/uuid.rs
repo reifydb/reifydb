@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
-use reifydb_type::{Fragment, Type, diagnostic::cast, parse_uuid4, parse_uuid7, return_error};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::{
+	error::diagnostic::cast,
+	fragment::Fragment,
+	return_error,
+	value::{
+		r#type::Type,
+		uuid::parse::{parse_uuid4, parse_uuid7},
+	},
+};
 
 pub(crate) struct UuidParser;
 

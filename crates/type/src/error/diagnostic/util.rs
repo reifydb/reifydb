@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025 ReifyDB
 
-use crate::Type;
+use crate::value::r#type::Type;
 
 pub fn value_max<'a>(value: Type) -> &'a str {
 	match value {
@@ -74,10 +74,10 @@ pub fn value_range<'a>(value: Type) -> &'a str {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
 	mod value_max {
-		use crate::{Type, error::diagnostic::util::value_max};
+		use crate::{error::diagnostic::util::value_max, value::r#type::Type};
 
 		#[test]
 		fn test_signed_ints() {
@@ -105,7 +105,7 @@ mod tests {
 	}
 
 	mod value_range {
-		use crate::{Type, error::diagnostic::util::value_range};
+		use crate::{error::diagnostic::util::value_range, value::r#type::Type};
 
 		#[test]
 		fn test_signed_ints() {

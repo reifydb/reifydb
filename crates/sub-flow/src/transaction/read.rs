@@ -4,12 +4,14 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{Key, MultiVersionValues},
-	key::KeyKind,
-	value::encoded::EncodedValues,
+	common::CommitVersion,
+	interface::store::{MultiVersionBatch, MultiVersionValues},
+	key::{Key, kind::KeyKind},
+	value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	},
 };
-use reifydb_core::interface::MultiVersionBatch;
 
 use super::{FlowTransaction, Pending};
 
@@ -348,10 +350,14 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_catalog::Catalog;
-	use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
+pub mod tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::value::encoded::{
+		encoded::EncodedValues,
+		key::{EncodedKey, EncodedKeyRange},
+	};
 	use reifydb_engine::test_utils::create_test_engine;
+	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

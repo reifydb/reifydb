@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::Blob;
-use crate::{Error, Fragment, error::diagnostic::blob};
+use crate::{
+	error::{Error, diagnostic::blob},
+	fragment::Fragment,
+};
 
 impl Blob {
 	pub fn from_utf8(fragment: Fragment) -> Self {
@@ -28,9 +31,9 @@ impl Blob {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::Fragment;
+	use crate::fragment::Fragment;
 
 	#[test]
 	fn test_from_utf8() {

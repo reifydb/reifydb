@@ -11,8 +11,17 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	BitVec, CowVec, Decimal, Int, IsNumber, OrderedF32, OrderedF64, Uint, Value,
-	Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{
+		Value,
+		Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
+		decimal::Decimal,
+		int::Int,
+		is::IsNumber,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		uint::Uint,
+	},
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -277,9 +286,9 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
-	use crate::BitVec;
+	use crate::util::bitvec::BitVec;
 
 	#[test]
 	fn test_new_i32() {

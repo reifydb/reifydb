@@ -47,7 +47,7 @@
 // 			ColumnData::Uint8(container) => compress_u64(container)?,
 // 			// For other types, use simple serialization
 // 			_ => {
-// 				return Err(reifydb_type::Error::Internal(
+// 				return Err(reifydb_type::error::Error::Internal(
 // 					"Delta compression only supports integer types".to_string(),
 // 				));
 // 			}
@@ -59,12 +59,12 @@
 // 	fn decompress(&self, compressed: &CompressedColumn) -> Result<ColumnData> {
 // 		if compressed.compression != CompressionType::Delta {
 // 			// Handle non-delta compressed data
-// 			return Err(reifydb_type::Error::Internal("Cannot decompress non-delta data".to_string()));
+// 			return Err(reifydb_type::error::Error::Internal("Cannot decompress non-delta data".to_string()));
 // 		}
 //
 // 		// Deserialize the delta encoded data
 // 		let encoded: DeltaEncoded = serde_json::from_slice(&compressed.data)
-// 			.map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 			.map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		match encoded {
 // 			DeltaEncoded::Int4 {
@@ -113,7 +113,7 @@
 // 			deltas: vec![],
 // 			undefined: undefined_positions,
 // 		};
-// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		return Ok(CompressedColumn {
 // 			data,
@@ -137,7 +137,7 @@
 // 		undefined: undefined_positions,
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	Ok(CompressedColumn {
 // 		data,
@@ -165,7 +165,7 @@
 // 			deltas: vec![],
 // 			undefined: undefined_positions,
 // 		};
-// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		return Ok(CompressedColumn {
 // 			data,
@@ -189,7 +189,7 @@
 // 		undefined: undefined_positions,
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	Ok(CompressedColumn {
 // 		data,
@@ -217,7 +217,7 @@
 // 			deltas: vec![],
 // 			undefined: undefined_positions,
 // 		};
-// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		return Ok(CompressedColumn {
 // 			data,
@@ -241,7 +241,7 @@
 // 		undefined: undefined_positions,
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	Ok(CompressedColumn {
 // 		data,
@@ -269,7 +269,7 @@
 // 			deltas: vec![],
 // 			undefined: undefined_positions,
 // 		};
-// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 		let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 		return Ok(CompressedColumn {
 // 			data,
@@ -293,7 +293,7 @@
 // 		undefined: undefined_positions,
 // 	};
 //
-// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::Error::Internal(e.to_string()))?;
+// 	let data = serde_json::to_vec(&encoded).map_err(|e| reifydb_type::error::Error::Internal(e.to_string()))?;
 //
 // 	Ok(CompressedColumn {
 // 		data,

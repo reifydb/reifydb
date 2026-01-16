@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::ColumnData;
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	Fragment, Type,
-	diagnostic::{cast, number},
-	parse_bool, parse_float, parse_primitive_int, parse_primitive_uint, return_error,
+	error::diagnostic::{cast, number},
+	fragment::Fragment,
+	return_error,
+	value::{
+		boolean::parse::parse_bool,
+		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		r#type::Type,
+	},
 };
 
 pub(crate) struct NumberParser;
@@ -294,21 +299,22 @@ impl NumberParser {
 	}
 
 	fn parse_int<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
-		match reifydb_type::parse_primitive_int(fragment.clone()) {
+		match parse_primitive_int(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(fragment, Type::Int, err.diagnostic())),
 		}
 	}
 
 	fn parse_uint<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
-		match reifydb_type::parse_primitive_uint(fragment.clone()) {
+		match parse_primitive_uint(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(fragment, Type::Uint, err.diagnostic())),
 		}
 	}
 
 	fn parse_decimal<'a>(fragment: Fragment, row_count: usize) -> crate::Result<ColumnData> {
-		match reifydb_type::parse_decimal(fragment.clone()) {
+		use reifydb_type::value::decimal::parse::parse_decimal;
+		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
 			Err(err) => return_error!(cast::invalid_number(fragment, Type::Decimal, err.diagnostic())),
 		}

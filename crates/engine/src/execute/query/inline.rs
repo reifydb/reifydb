@@ -7,16 +7,20 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::ResolvedPrimitive,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
+	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::AliasExpression;
-use reifydb_type::{Fragment, Type, Value};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{
+	fragment::Fragment,
+	value::{Value, r#type::Type},
+};
 
 use crate::{
 	evaluate::{
-		TargetColumn,
-		column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
+		ColumnEvaluationContext,
+		column::{cast::cast_column_data, evaluate},
 	},
 	execute::{Batch, ExecutionContext, QueryNode},
 };
@@ -51,18 +55,14 @@ impl InlineDataNode {
 }
 
 impl QueryNode for InlineDataNode {
-	fn initialize<'a>(
-		&mut self,
-		_rx: &mut crate::StandardTransaction<'a>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
 	fn next<'a>(
 		&mut self,
-		_rx: &mut crate::StandardTransaction<'a>,
+		_rx: &mut StandardTransaction<'a>,
 		_ctx: &mut ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");

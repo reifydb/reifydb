@@ -9,8 +9,8 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_transaction::multi::CommandTransaction;
+use reifydb_core::value::encoded::key::{EncodedKey, EncodedKeyRange};
+use reifydb_transaction::multi::transaction::command::CommandTransaction;
 
 use super::test_multi;
 use crate::{

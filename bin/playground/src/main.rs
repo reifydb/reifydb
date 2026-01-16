@@ -3,11 +3,14 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb::{WithSubsystem, server, sub_server_ws::WsConfig};
-use reifydb_client::WsClient;
 use std::time::Duration;
-use tokio::runtime::Runtime;
-use tokio::time::{sleep, timeout};
+
+use reifydb::{WithSubsystem, server, sub_server_ws::factory::WsConfig};
+use reifydb_client::WsClient;
+use tokio::{
+	runtime::Runtime,
+	time::{sleep, timeout},
+};
 
 fn main() {
 	println!("=== WebSocket Subscription Demo ===\n");

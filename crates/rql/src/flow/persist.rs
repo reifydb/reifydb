@@ -10,14 +10,18 @@
 
 use std::collections::HashMap;
 
-use reifydb_catalog::{CatalogStore, store::sequence::flow::{next_flow_edge_id, next_flow_node_id}};
-use reifydb_core::interface::FlowId;
-use reifydb_core::interface::{MultiVersionCommandTransaction, FlowEdgeDef, FlowNodeDef};
-use reifydb_type::Blob;
+use reifydb_catalog::{
+	CatalogStore,
+	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
+};
+use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId};
+use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_type::value::blob::Blob;
 
-use super::{
-	Flow, FlowEdge, FlowNode,
-	plan::{CompiledFlowPlan, LocalNodeId},
+use super::plan::{CompiledFlowPlan, LocalNodeId};
+use crate::flow::{
+	flow::FlowDag,
+	node::{FlowEdge, FlowNode},
 };
 
 /// Persists a compiled flow plan to the catalog and returns the Flow.
@@ -38,16 +42,15 @@ use super::{
 /// The FlowDef must already be created via `CatalogStore::create_flow()` before
 /// calling this function. This function only persists nodes and edges.
 pub fn persist_flow(
-	txn: &mut impl MultiVersionCommandTransaction,
+	txn: &mut StandardCommandTransaction,
 	plan: CompiledFlowPlan,
 	flow_id: FlowId,
-) -> crate::Result<Flow> {
-
+) -> crate::Result<FlowDag> {
 	// Map local IDs to real catalog IDs
-	let mut node_map: HashMap<LocalNodeId, reifydb_core::interface::FlowNodeId> = HashMap::new();
+	let mut node_map: HashMap<LocalNodeId, FlowNodeId> = HashMap::new();
 
-	// Create a FlowBuilder for the in-memory Flow
-	let mut builder = Flow::builder(flow_id);
+	// Create a FlowBuilder for the in-memory FlowDag
+	let mut builder = FlowDag::builder(flow_id);
 
 	// Phase 2a: Persist all nodes and build ID mapping
 	for compiled_node in &plan.nodes {
@@ -56,7 +59,7 @@ pub fn persist_flow(
 
 		// Serialize the node type
 		let data = postcard::to_stdvec(&compiled_node.node_type).map_err(|e| {
-			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+			reifydb_type::error::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
 		})?;
 
 		// Create and persist the catalog entry
@@ -75,12 +78,8 @@ pub fn persist_flow(
 	// Phase 2b: Persist all edges (now we can resolve local IDs to real IDs)
 	for compiled_edge in &plan.edges {
 		let real_edge_id = next_flow_edge_id(txn)?;
-		let real_source = *node_map
-			.get(&compiled_edge.source)
-			.expect("Source node must exist in node map");
-		let real_target = *node_map
-			.get(&compiled_edge.target)
-			.expect("Target node must exist in node map");
+		let real_source = *node_map.get(&compiled_edge.source).expect("Source node must exist in node map");
+		let real_target = *node_map.get(&compiled_edge.target).expect("Target node must exist in node map");
 
 		// Create and persist the catalog entry
 		let edge_def = FlowEdgeDef {

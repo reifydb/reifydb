@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	Error,
-	interface::{ColumnsKey, DictionaryId},
+use reifydb_core::{interface::catalog::id::DictionaryId, key::columns::ColumnsKey};
+use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_type::{
+	error::Error,
+	internal,
+	value::{
+		constraint::{Constraint, TypeConstraint},
+		r#type::Type,
+	},
 };
-use reifydb_transaction::IntoStandardTransaction;
-use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
 use crate::store::column::layout::column::LAYOUT;
 
@@ -33,12 +37,14 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 	}
 }
 
+use reifydb_core::interface::catalog::{
+	column::{ColumnDef, ColumnIndex},
+	id::ColumnId,
+};
+
 use crate::{
 	CatalogStore,
-	store::column::{
-		ColumnDef, ColumnId, ColumnIndex,
-		layout::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
-	},
+	store::column::layout::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
 };
 
 impl CatalogStore {
@@ -89,10 +95,10 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::interface::ColumnId;
+pub mod tests {
+	use reifydb_core::interface::catalog::id::ColumnId;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 

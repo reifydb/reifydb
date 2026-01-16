@@ -11,8 +11,11 @@ use super::{
 	pratt::Precedence,
 };
 use crate::{
-	ast::{Expr, expr::*},
-	token::{Keyword, Operator, Punctuation},
+	ast::{
+		Expr,
+		expr::query::{SortColumn, SortDirection, SortExpr},
+	},
+	token::{keyword::Keyword, operator::Operator, punctuation::Punctuation},
 };
 
 impl<'bump, 'src> Parser<'bump, 'src> {
@@ -56,23 +59,26 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::SortDirection, token::tokenize};
+	use crate::{
+		ast::{Expr, Statement, expr::query::SortExpr, parse::sort::SortDirection},
+		token::tokenize,
+	};
 
-	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
+	fn get_first_expr(stmt: Statement<'_>) -> &Expr<'_> {
 		match stmt {
-			crate::ast::Statement::Pipeline(p) => {
+			Statement::Pipeline(p) => {
 				assert!(!p.stages.is_empty());
 				&p.stages[0]
 			}
-			crate::ast::Statement::Expression(e) => e.expr,
+			Statement::Expression(e) => e.expr,
 			_ => panic!("Expected Pipeline or Expression statement"),
 		}
 	}
 
-	fn extract_sort<'a>(stmt: crate::ast::Statement<'a>) -> &'a crate::ast::expr::SortExpr<'a> {
+	fn extract_sort<'a>(stmt: Statement<'a>) -> &'a SortExpr<'a> {
 		let expr = get_first_expr(stmt);
 		match expr {
 			Expr::Sort(s) => s,

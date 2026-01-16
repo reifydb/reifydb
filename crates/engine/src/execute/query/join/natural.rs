@@ -4,17 +4,15 @@
 use std::collections::HashSet;
 
 use reifydb_core::{
-	JoinType,
-	value::column::{Columns, headers::ColumnHeaders},
+	common::JoinType,
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Fragment, Value};
+use reifydb_transaction::standard::StandardTransaction;
+use reifydb_type::{fragment::Fragment, value::Value};
 use tracing::instrument;
 
 use super::common::{JoinContext, load_and_merge_all, resolve_column_names};
-use crate::{
-	StandardTransaction,
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
-};
+use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
 pub struct NaturalJoinNode {
 	left: Box<ExecutionPlan>,
@@ -26,7 +24,7 @@ pub struct NaturalJoinNode {
 }
 
 impl NaturalJoinNode {
-	pub fn new(
+	pub(crate) fn new(
 		left: Box<ExecutionPlan>,
 		right: Box<ExecutionPlan>,
 		join_type: JoinType,

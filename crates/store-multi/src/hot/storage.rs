@@ -8,10 +8,10 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::runtime::ComputePool;
-use reifydb_type::{CowVec, Result};
+use reifydb_core::runtime::compute::ComputePool;
+use reifydb_type::{Result, util::cowvec::CowVec};
 
-use super::{memory::MemoryPrimitiveStorage, sqlite::SqlitePrimitiveStorage};
+use super::{memory::storage::MemoryPrimitiveStorage, sqlite::storage::SqlitePrimitiveStorage};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Hot storage tier.
@@ -39,7 +39,7 @@ impl HotStorage {
 	}
 
 	/// Create a new SQLite backend with the given configuration
-	pub fn sqlite(config: super::sqlite::SqliteConfig) -> Self {
+	pub fn sqlite(config: super::sqlite::config::SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
 	}
 }
@@ -119,8 +119,8 @@ impl TierStorage for HotStorage {
 impl TierBackend for HotStorage {}
 
 #[cfg(test)]
-mod tests {
-	use reifydb_core::runtime::ComputePool;
+pub mod tests {
+	use reifydb_core::runtime::compute::ComputePool;
 
 	use super::*;
 
@@ -132,8 +132,11 @@ mod tests {
 	fn test_memory_backend() {
 		let storage = HotStorage::memory(test_compute_pool());
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])]))
-			.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))],
+		)]))
+		.unwrap();
 		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
@@ -141,8 +144,11 @@ mod tests {
 	fn test_sqlite_backend() {
 		let storage = HotStorage::sqlite_in_memory();
 
-		storage.set(HashMap::from([(EntryKind::Multi, vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))])]))
-			.unwrap();
+		storage.set(HashMap::from([(
+			EntryKind::Multi,
+			vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))],
+		)]))
+		.unwrap();
 		assert_eq!(storage.get(EntryKind::Multi, b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 

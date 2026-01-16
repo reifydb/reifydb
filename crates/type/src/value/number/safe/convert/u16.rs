@@ -17,7 +17,7 @@ impl_safe_convert_unsigned_to_uint!(u16);
 impl_safe_convert_to_decimal_from_int!(u16);
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::SafeConvert;
 
 	mod i8 {
@@ -339,7 +339,7 @@ mod tests {
 
 	mod decimal {
 		use super::*;
-		use crate::Decimal;
+		use crate::value::decimal::Decimal;
 
 		#[test]
 		fn test_checked_convert() {
@@ -367,7 +367,7 @@ mod tests {
 
 	mod int {
 		use super::*;
-		use crate::Int;
+		use crate::value::int::Int;
 
 		#[test]
 		fn test_checked_convert() {
@@ -394,7 +394,7 @@ mod tests {
 
 	mod uint {
 		use super::*;
-		use crate::Uint;
+		use crate::value::uint::Uint;
 
 		#[test]
 		fn test_checked_convert() {

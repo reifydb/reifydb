@@ -8,8 +8,16 @@ use super::{
 	error::{ParseError, ParseErrorKind},
 };
 use crate::{
-	ast::{Expr, expr::*},
-	token::{Keyword, Operator, Punctuation, Token, TokenKind},
+	ast::{
+		Expr,
+		expr::operator::{BinaryExpr, BinaryOp, UnaryOp},
+	},
+	token::{
+		keyword::Keyword,
+		operator::Operator,
+		punctuation::Punctuation,
+		token::{Token, TokenKind},
+	},
 };
 
 /// Operator precedence levels (higher = binds tighter).
@@ -194,10 +202,20 @@ impl<'bump, 'src> Parser<'bump, 'src> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::Expr, ast::expr::{BinaryOp, UnaryOp, Literal}, token::tokenize};
+	use crate::{
+		ast::{
+			Expr,
+			expr::{
+				literal::Literal,
+				operator::{BinaryOp, UnaryOp},
+			},
+			parse::parse,
+		},
+		token::tokenize,
+	};
 
 	fn get_first_expr<'a>(stmt: crate::ast::Statement<'a>) -> &'a Expr<'a> {
 		match stmt {
@@ -215,7 +233,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 as one";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -223,7 +241,10 @@ mod tests {
 			Expr::Binary(binary) => {
 				assert_eq!(binary.op, BinaryOp::As);
 				match binary.left {
-					Expr::Literal(Literal::Integer { value, .. }) => assert_eq!(*value, "1"),
+					Expr::Literal(Literal::Integer {
+						value,
+						..
+					}) => assert_eq!(*value, "1"),
 					_ => panic!("Expected integer literal on left"),
 				}
 				match binary.right {
@@ -240,7 +261,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 + 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -248,11 +269,17 @@ mod tests {
 			Expr::Binary(binary) => {
 				assert_eq!(binary.op, BinaryOp::Add);
 				match binary.left {
-					Expr::Literal(Literal::Integer { value, .. }) => assert_eq!(*value, "1"),
+					Expr::Literal(Literal::Integer {
+						value,
+						..
+					}) => assert_eq!(*value, "1"),
 					_ => panic!("Expected integer literal"),
 				}
 				match binary.right {
-					Expr::Literal(Literal::Integer { value, .. }) => assert_eq!(*value, "2"),
+					Expr::Literal(Literal::Integer {
+						value,
+						..
+					}) => assert_eq!(*value, "2"),
 					_ => panic!("Expected integer literal"),
 				}
 			}
@@ -265,7 +292,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 - 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -282,7 +309,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 * 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -299,7 +326,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 / 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -316,7 +343,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 % 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -333,7 +360,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 > 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -350,7 +377,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 >= 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -367,7 +394,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 < 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -384,7 +411,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 <= 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -401,7 +428,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 == 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -418,7 +445,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 != 2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -435,7 +462,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "true and false";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -452,7 +479,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "true or false";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -469,7 +496,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "true xor false";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -488,7 +515,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "-2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -496,7 +523,10 @@ mod tests {
 			Expr::Unary(unary) => {
 				assert_eq!(unary.op, UnaryOp::Neg);
 				match unary.operand {
-					Expr::Literal(Literal::Integer { value, .. }) => assert_eq!(*value, "2"),
+					Expr::Literal(Literal::Integer {
+						value,
+						..
+					}) => assert_eq!(*value, "2"),
 					_ => panic!("Expected integer literal"),
 				}
 			}
@@ -509,7 +539,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "+2";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -526,7 +556,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "not false";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -534,7 +564,10 @@ mod tests {
 			Expr::Unary(unary) => {
 				assert_eq!(unary.op, UnaryOp::Not);
 				match unary.operand {
-					Expr::Literal(Literal::Bool { value, .. }) => assert!(!value),
+					Expr::Literal(Literal::Bool {
+						value,
+						..
+					}) => assert!(!value),
 					_ => panic!("Expected boolean literal"),
 				}
 			}
@@ -547,7 +580,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "!true";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -566,12 +599,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "42";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::Integer { value, .. }) => assert_eq!(*value, "42"),
+			Expr::Literal(Literal::Integer {
+				value,
+				..
+			}) => assert_eq!(*value, "42"),
 			_ => panic!("Expected integer literal"),
 		}
 	}
@@ -581,12 +617,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "3.14";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::Float { value, .. }) => assert_eq!(*value, "3.14"),
+			Expr::Literal(Literal::Float {
+				value,
+				..
+			}) => assert_eq!(*value, "3.14"),
 			_ => panic!("Expected float literal"),
 		}
 	}
@@ -596,12 +635,14 @@ mod tests {
 		let bump = Bump::new();
 		let source = "'hello'";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::String { .. }) => {}
+			Expr::Literal(Literal::String {
+				..
+			}) => {}
 			_ => panic!("Expected string literal, got {:?}", expr),
 		}
 	}
@@ -611,12 +652,14 @@ mod tests {
 		let bump = Bump::new();
 		let source = "\"world\"";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::String { .. }) => {}
+			Expr::Literal(Literal::String {
+				..
+			}) => {}
 			_ => panic!("Expected string literal, got {:?}", expr),
 		}
 	}
@@ -626,12 +669,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "true";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::Bool { value, .. }) => assert!(*value),
+			Expr::Literal(Literal::Bool {
+				value,
+				..
+			}) => assert!(*value),
 			_ => panic!("Expected boolean literal"),
 		}
 	}
@@ -641,12 +687,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "false";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Literal(Literal::Bool { value, .. }) => assert!(!*value),
+			Expr::Literal(Literal::Bool {
+				value,
+				..
+			}) => assert!(!*value),
 			_ => panic!("Expected boolean literal"),
 		}
 	}
@@ -656,7 +705,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "undefined";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -670,7 +719,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "(1, 2, 3)";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -687,7 +736,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "()";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -704,7 +753,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "[1, 2, 3]";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -721,7 +770,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "[]";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -740,7 +789,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "now()";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -761,7 +810,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "abs(-5)";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -782,7 +831,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "concat('hello', ' ', 'world')";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -805,7 +854,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "{ name: 'Alice', age: 30 }";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -824,7 +873,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "{}";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -843,7 +892,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "1 + 2 * 3";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -867,7 +916,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "a or b and c";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -893,17 +942,15 @@ mod tests {
 		let bump = Bump::new();
 		let source = "x between 1 and 10";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
 		match expr {
-			Expr::Between(between) => {
-				match between.value {
-					Expr::Identifier(id) => assert_eq!(id.name, "x"),
-					_ => panic!("Expected identifier"),
-				}
-			}
+			Expr::Between(between) => match between.value {
+				Expr::Identifier(id) => assert_eq!(id.name, "x"),
+				_ => panic!("Expected identifier"),
+			},
 			_ => panic!("Expected between expression"),
 		}
 	}
@@ -915,7 +962,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "x in [1, 2, 3]";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 
@@ -932,7 +979,7 @@ mod tests {
 		let bump = Bump::new();
 		let source = "x not in [1, 2, 3]";
 		let result = tokenize(source, &bump).unwrap();
-		let program = crate::ast::parse::parse(&bump, &result.tokens, source).unwrap();
+		let program = parse(&bump, &result.tokens, source).unwrap();
 		let stmt = program.statements.first().copied().unwrap();
 		let expr = get_first_expr(stmt);
 

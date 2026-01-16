@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{SharedRuntime, SharedRuntimeConfig};
-use reifydb_function::FunctionsBuilder;
-use reifydb_sub_api::SubsystemFactory;
+use reifydb_core::runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_function::registry::FunctionsBuilder;
+use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::FlowBuilder;
+use reifydb_sub_flow::builder::FlowBuilder;
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::TracingBuilder;
-use reifydb_transaction::interceptor::{RegisterInterceptor, StandardInterceptorBuilder};
+use reifydb_sub_tracing::builder::TracingBuilder;
+use reifydb_transaction::interceptor::{builder::StandardInterceptorBuilder, interceptors::RegisterInterceptor};
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
-use crate::Database;
-use crate::api::{StorageFactory, transaction};
+use crate::{
+	Database,
+	api::{StorageFactory, transaction},
+};
 
 pub struct EmbeddedBuilder {
 	storage_factory: StorageFactory,
@@ -73,8 +75,10 @@ impl EmbeddedBuilder {
 
 		// Create storage with the runtime's compute pool
 		let compute_pool = runtime.compute_pool();
-		let (multi_store, single_store, transaction_single, eventbus) = self.storage_factory.create(compute_pool);
-		let (multi, single, eventbus) = transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus));
+		let (multi_store, single_store, transaction_single, eventbus) =
+			self.storage_factory.create(compute_pool);
+		let (multi, single, eventbus) =
+			transaction((multi_store.clone(), single_store.clone(), transaction_single, eventbus));
 
 		let mut builder = DatabaseBuilder::new(multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)

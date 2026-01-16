@@ -11,7 +11,7 @@
 
 use std::{env::temp_dir, error::Error, io::Write as _};
 
-use crate::testscript::{Command, parser::parse};
+use crate::testscript::{command::Command, parser::parse};
 
 /// Runs testscript commands, returning their output.
 pub trait Runner {
@@ -332,7 +332,7 @@ fn ensure_eol(mut s: String, eol: &str) -> String {
 
 // NB: most tests are done as testscripts under tests/.
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	/// A runner which simply counts the number of times its hooks are

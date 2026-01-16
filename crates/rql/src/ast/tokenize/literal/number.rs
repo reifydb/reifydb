@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
+use crate::ast::tokenize::{
+	cursor::Cursor,
+	identifier::is_identifier_char,
+	token::{Literal, Token, TokenKind},
+};
 
 /// Scan for a number literal
 pub fn scan_number(cursor: &mut Cursor) -> Option<Token> {
@@ -132,11 +136,11 @@ pub fn scan_number(cursor: &mut Cursor) -> Option<Token> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use Literal::Number;
 
 	use super::*;
-	use crate::ast::tokenize::{Operator, tokenize};
+	use crate::ast::tokenize::{operator::Operator, tokenize};
 
 	#[test]
 	fn test_decimal_integer() {

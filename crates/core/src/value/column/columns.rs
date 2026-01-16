@@ -8,19 +8,21 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_type::{Fragment, RowNumber, Type, Value};
+use reifydb_type::{
+	fragment::Fragment,
+	util::cowvec::CowVec,
+	value::{Value, container::undefined::UndefinedContainer, row_number::RowNumber, r#type::Type},
+};
 
 use crate::{
-	Row,
 	interface::{
-		TableDef, ViewDef,
+		catalog::{table::TableDef, view::ViewDef},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
-	util::CowVec,
+	row::Row,
 	value::{
 		column::{Column, ColumnData, headers::ColumnHeaders},
-		container::UndefinedContainer,
-		encoded::EncodedValuesNamedLayout,
+		encoded::named::EncodedValuesNamedLayout,
 	},
 };
 
@@ -189,7 +191,7 @@ impl Columns {
 }
 
 impl Column {
-	pub fn extend(&mut self, other: Column) -> crate::Result<()> {
+	pub fn extend(&mut self, other: Column) -> reifydb_type::Result<()> {
 		self.data_mut().extend(other.data().clone())
 	}
 }
@@ -441,8 +443,8 @@ impl Columns {
 }
 
 #[cfg(test)]
-mod tests {
-	use reifydb_type::{Date, DateTime, Duration, Time};
+pub mod tests {
+	use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 	use super::*;
 

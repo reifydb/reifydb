@@ -13,7 +13,6 @@ use num_traits::Signed;
 use serde::{Deserialize, Serialize};
 
 pub mod parse;
-pub use parse::parse_uint;
 
 /// A wrapper type for arbitrary-precision unsigned integers (Uint)
 #[repr(transparent)]
@@ -163,7 +162,7 @@ impl Display for Uint {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use super::*;
 
 	#[test]

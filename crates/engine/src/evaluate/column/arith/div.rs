@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::{
-	column::{Column, ColumnData, push::Push},
-	container::{UndefinedContainer, number::NumberContainer},
-};
+use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
 use reifydb_rql::expression::DivExpression;
 use reifydb_type::{
-	GetType, IsNumber, LazyFragment, Promote, SafeDiv, Type,
-	diagnostic::operator::div_cannot_be_applied_to_incompatible_types, return_error,
+	error::diagnostic::operator::div_cannot_be_applied_to_incompatible_types,
+	fragment::LazyFragment,
+	return_error,
+	value::{
+		container::{number::NumberContainer, undefined::UndefinedContainer},
+		is::IsNumber,
+		number::{promote::Promote, safe::div::SafeDiv},
+		r#type::{Type, get::GetType},
+	},
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use super::super::StandardColumnEvaluator;
+use crate::evaluate::ColumnEvaluationContext;
 
 impl StandardColumnEvaluator {
 	pub(crate) fn div(&self, ctx: &ColumnEvaluationContext, div: &DivExpression) -> crate::Result<Column> {

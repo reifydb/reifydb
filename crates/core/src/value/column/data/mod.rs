@@ -1,28 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-mod extend;
-mod factory;
-mod filter;
-mod from;
-mod get;
-mod reorder;
-mod slice;
-mod take;
+pub mod extend;
+pub mod factory;
+pub mod filter;
+pub mod from;
+pub mod get;
+pub mod reorder;
+pub mod slice;
+pub mod take;
 
 use reifydb_type::{
-	Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, Value,
-	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
-};
-use serde::{Deserialize, Serialize};
-
-use crate::{
-	BitVec,
-	value::container::{
-		AnyContainer, BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, TemporalContainer,
-		UndefinedContainer, Utf8Container, UuidContainer,
+	util::bitvec::BitVec,
+	value::{
+		Value,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		container::{
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, undefined::UndefinedContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		time::Time,
+		r#type::Type,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
 	},
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColumnData {

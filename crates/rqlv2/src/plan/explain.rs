@@ -6,7 +6,7 @@
 use std::fmt::Write;
 
 use crate::plan::{
-	CatalogColumn, Plan, Primitive,
+	Plan,
 	node::{
 		control::{DeclareValue, ForIterableValue},
 		ddl::{AlterNode, AlterTableAction, CreateNode, DropNode, DropTarget},
@@ -14,6 +14,7 @@ use crate::plan::{
 		mutate::{DeleteTarget, InsertTarget, UpdateTarget},
 		query::{JoinType, Projection, SortDirection, WindowSize, WindowSlide, WindowType},
 	},
+	types::{CatalogColumn, Primitive},
 };
 
 /// Explain a plan in human-readable SQL-like format.
@@ -1037,7 +1038,7 @@ impl<'a> PlanExplainer<'a> {
 }
 
 // Simple hex encoding for bytes
-mod hex {
+pub mod hex {
 	pub fn encode(bytes: &[u8]) -> String {
 		bytes.iter().map(|b| format!("{:02x}", b)).collect()
 	}

@@ -7,8 +7,8 @@ use std::{
 };
 
 use reifydb_core::{
-	CommitVersion,
-	value::column::{ColumnData, CompressedColumn},
+	common::CommitVersion,
+	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
 use reifydb_type::Result;
 
@@ -146,7 +146,7 @@ impl ColumnStore for StandardColumnStore {
 		if let Some(backend) = self.select_write_tier(version) {
 			backend.insert(version, columns)
 		} else {
-			reifydb_type::err!(reifydb_type::diagnostic::internal_with_context(
+			reifydb_type::err!(reifydb_type::error::diagnostic::internal::internal_with_context(
 				"No available backend for column storage",
 				file!(),
 				line!(),

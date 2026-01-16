@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use operator::{not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid};
-use reifydb_core::{
-	err,
-	value::column::{Column, ColumnData},
-};
+use reifydb_core::value::column::{Column, data::ColumnData};
 use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_type::{
-	Decimal, Int, Uint, diagnostic,
-	diagnostic::{engine::frame_error, operator},
+	err,
+	error::diagnostic::{
+		engine::frame_error,
+		operator,
+		operator::{
+			not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid,
+		},
+	},
+	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator, evaluate};
@@ -37,9 +40,7 @@ impl StandardColumnEvaluator {
 					let new_data = ColumnData::bool_with_bitvec(result, container.bitvec());
 					Ok(column.with_new_data(new_data))
 				}
-				_ => err!(diagnostic::engine::frame_error(
-					"Cannot apply arithmetic prefix operator to bool".to_string()
-				)),
+				_ => err!(frame_error("Cannot apply arithmetic prefix operator to bool".to_string())),
 			},
 
 			ColumnData::Float4(container) => {

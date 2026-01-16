@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind};
-use reifydb_transaction::IntoStandardTransaction;
-
-use crate::{
-	CatalogStore,
-	store::{column::ColumnId, column_policy::layout::column_policy},
+use reifydb_core::{
+	interface::catalog::{
+		id::{ColumnId, ColumnPolicyId},
+		policy::{ColumnPolicy, ColumnPolicyKind},
+	},
+	key::column_policy::ColumnPolicyKey,
 };
+use reifydb_transaction::standard::IntoStandardTransaction;
+
+use crate::{CatalogStore, store::column_policy::layout::column_policy};
 
 impl CatalogStore {
 	pub fn list_column_policies(
@@ -57,18 +60,18 @@ impl CatalogStore {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Undefined;
-	use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy, TableId};
-	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
-
-	use crate::{
-		CatalogStore,
-		store::column::{ColumnId, ColumnIndex, ColumnToCreate},
-		test_utils::ensure_test_table,
+	use reifydb_core::interface::catalog::{
+		column::ColumnIndex,
+		id::{ColumnId, TableId},
+		policy::{ColumnPolicyKind, ColumnSaturationPolicy},
 	};
+	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+
+	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_ok() {
