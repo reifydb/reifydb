@@ -72,7 +72,7 @@ pub mod tests {
 	#[test]
 	fn test_simple_state_get_set() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
@@ -90,7 +90,7 @@ pub mod tests {
 	#[test]
 	fn test_simple_state_remove() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
@@ -106,7 +106,7 @@ pub mod tests {
 	#[test]
 	fn test_simple_state_scan() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Add multiple entries
@@ -125,7 +125,7 @@ pub mod tests {
 	#[test]
 	fn test_simple_state_range() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(2));
 
 		// Add ordered entries
@@ -148,7 +148,7 @@ pub mod tests {
 	#[test]
 	fn test_simple_state_clear() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(3));
 
 		// Add multiple entries
@@ -173,7 +173,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_isolation() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator1 = TestOperator::simple(FlowNodeId(10));
 		let operator2 = TestOperator::simple(FlowNodeId(20));
 		let shared_key = test_key("shared");
@@ -196,7 +196,7 @@ pub mod tests {
 	#[test]
 	fn test_empty_range() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(4));
 
 		// Add some entries
@@ -216,7 +216,7 @@ pub mod tests {
 	#[test]
 	fn test_overwrite_existing_key() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
 
@@ -237,7 +237,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_non_existent_key() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
 
@@ -251,7 +251,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_after_partial_removal() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(7));
 
 		// Add 5 entries

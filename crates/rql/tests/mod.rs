@@ -121,7 +121,7 @@ impl Runner for TestRunner {
 					)
 					.unwrap();
 
-					let catalog = Catalog::default();
+					let catalog = Catalog::testing();
 					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
@@ -169,7 +169,7 @@ impl Runner for TestRunner {
 					)
 					.unwrap();
 
-					let catalog = Catalog::default();
+					let catalog = Catalog::testing();
 					explain_physical_plan(&catalog, &mut dummy_tx, query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();

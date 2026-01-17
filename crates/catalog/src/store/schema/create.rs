@@ -7,7 +7,7 @@ use reifydb_core::{
 	key::{SchemaFieldKey, SchemaKey},
 	schema::Schema,
 };
-use reifydb_transaction::standard::command::StandardCommandTransaction;
+use reifydb_transaction::single::svl::write::SvlCommandTransaction;
 
 use super::schema::{schema_field, schema_header};
 
@@ -16,7 +16,7 @@ use super::schema::{schema_field, schema_header};
 /// This writes:
 /// - The schema header (field count, row size) under SchemaKey
 /// - Each field under SchemaFieldKey
-pub fn create_schema(cmd: &mut StandardCommandTransaction, schema: &Schema) -> crate::Result<()> {
+pub fn create_schema(cmd: &mut SvlCommandTransaction, schema: &Schema) -> crate::Result<()> {
 	let fingerprint = schema.fingerprint();
 
 	// Write schema header

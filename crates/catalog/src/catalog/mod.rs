@@ -21,31 +21,23 @@ pub mod view;
 pub mod vtable;
 
 use crate::materialized::MaterializedCatalog;
+use crate::schema::SchemaRegistry;
 
-/// Catalog wrapper that owns a `MaterializedCatalog` and provides three-tier lookup methods.
-///
-/// The catalog is cheap to clone (Arc-based internally).
 #[derive(Debug, Clone)]
 pub struct Catalog {
 	pub materialized: MaterializedCatalog,
+	pub schema: SchemaRegistry,
 }
 
 impl Catalog {
-	pub fn new(materialized: MaterializedCatalog) -> Self {
+	pub fn new(materialized: MaterializedCatalog, schema: SchemaRegistry) -> Self {
 		Self {
 			materialized,
+			schema,
 		}
 	}
-}
 
-impl Default for Catalog {
-	fn default() -> Self {
-		Self::new(MaterializedCatalog::default())
-	}
-}
-
-impl From<MaterializedCatalog> for Catalog {
-	fn from(materialized: MaterializedCatalog) -> Self {
-		Self::new(materialized)
+	pub fn testing() -> Self {
+		Self::new(MaterializedCatalog::default(), SchemaRegistry::testing())
 	}
 }

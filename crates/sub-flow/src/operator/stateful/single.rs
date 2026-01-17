@@ -89,7 +89,7 @@ pub mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Initially should create new state
@@ -108,7 +108,7 @@ pub mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Update state with a function
@@ -129,7 +129,7 @@ pub mod tests {
 	#[test]
 	fn test_clear_state() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
@@ -150,7 +150,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_operators_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 
@@ -180,7 +180,7 @@ pub mod tests {
 	#[test]
 	fn test_counter_simulation() {
 		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::testing());
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a counter incrementing

@@ -8,7 +8,10 @@ use reifydb_core::{
 	key::{EncodableKey, SchemaFieldKey, SchemaKey},
 	schema::{Schema, SchemaField},
 };
-use reifydb_transaction::standard::IntoStandardTransaction;
+use reifydb_transaction::{
+	single::svl::write::SvlCommandTransaction,
+	standard::IntoStandardTransaction,
+};
 use reifydb_type::{
 	error::{Error, diagnostic::internal::internal},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -20,14 +23,12 @@ use super::schema::{schema_field, schema_header};
 ///
 /// Returns None if the schema doesn't exist in storage.
 pub fn find_schema_by_fingerprint(
-	txn: &mut impl IntoStandardTransaction,
+	txn: &mut SvlCommandTransaction,
 	fingerprint: SchemaFingerprint,
 ) -> crate::Result<Option<Schema>> {
-	let mut std_txn = txn.into_standard_transaction();
-
 	// Read schema header
 	let header_key = SchemaKey::encoded(fingerprint);
-	let header_entry = match std_txn.get(&header_key)? {
+	let header_entry = match txn.get(&header_key)? {
 		Some(entry) => entry,
 		None => return Ok(None),
 	};
@@ -37,7 +38,7 @@ pub fn find_schema_by_fingerprint(
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
 		let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
-		let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
+		let field_entry = txn.get(&field_key)?.ok_or_else(|| {
 			Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 		})?;
 

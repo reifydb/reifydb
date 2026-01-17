@@ -15,7 +15,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{Result, value::r#type::Type};
+use reifydb_type::{value::r#type::Type, Result};
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -170,9 +170,10 @@ impl Clone for FlowCatalog {
 	}
 }
 
-impl Default for FlowCatalog {
-	fn default() -> Self {
-		Self::new(Catalog::default())
+impl FlowCatalog {
+	#[cfg(test)]
+	pub fn testing() -> Self {
+		FlowCatalog::new(Catalog::testing())
 	}
 }
 
@@ -190,13 +191,13 @@ pub mod tests {
 
 	#[test]
 	fn test_new_creates_empty_cache() {
-		let flow_catalog = FlowCatalog::default();
+		let flow_catalog = FlowCatalog::testing();
 		assert!(flow_catalog.sources.read().is_empty());
 	}
 
 	#[test]
-	fn test_default() {
-		let flow_catalog = FlowCatalog::default();
+	fn test_testing() {
+		let flow_catalog = FlowCatalog::testing();
 		assert!(flow_catalog.sources.read().is_empty());
 	}
 
@@ -205,7 +206,7 @@ pub mod tests {
 		let mut txn = create_test_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		let flow_catalog = FlowCatalog::default();
+		let flow_catalog = FlowCatalog::testing();
 		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::Table(table.id)).unwrap();
 
 		// The test table has no columns, so metadata should reflect that
@@ -220,7 +221,7 @@ pub mod tests {
 		let mut txn = create_test_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		let flow_catalog = FlowCatalog::default();
+		let flow_catalog = FlowCatalog::testing();
 		let source = PrimitiveId::Table(table.id);
 
 		let first = flow_catalog.get_or_load(&mut txn, source).unwrap();
@@ -236,7 +237,7 @@ pub mod tests {
 		ensure_test_namespace(&mut txn);
 		let view = create_view(&mut txn, "test_namespace", "test_view", &[]);
 
-		let flow_catalog = FlowCatalog::default();
+		let flow_catalog = FlowCatalog::testing();
 		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::View(view.id)).unwrap();
 
 		assert!(metadata.storage_types.is_empty());
@@ -249,7 +250,7 @@ pub mod tests {
 		let mut txn = create_test_transaction();
 		let rb = ensure_test_ringbuffer(&mut txn);
 
-		let flow_catalog = FlowCatalog::default();
+		let flow_catalog = FlowCatalog::testing();
 		let metadata = flow_catalog.get_or_load(&mut txn, PrimitiveId::RingBuffer(rb.id)).unwrap();
 
 		assert!(metadata.storage_types.is_empty());

@@ -71,7 +71,7 @@ impl DatabaseBuilder {
 	pub fn new(multi: TransactionMulti, single: TransactionSingle, eventbus: EventBus) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
-			.register(SchemaRegistry::new())
+			.register(SchemaRegistry::new(single.clone()))
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -226,7 +226,7 @@ impl DatabaseBuilder {
 			single.clone(),
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
-			Catalog::new(catalog),
+			Catalog::new(catalog, schema_registry),
 			functions,
 			self.ioc.clone(),
 		);

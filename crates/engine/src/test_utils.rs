@@ -3,14 +3,15 @@
 
 use std::sync::Arc;
 
+use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_catalog::{
-	CatalogStore,
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	store::{
 		namespace::create::NamespaceToCreate,
 		table::create::{TableColumnToCreate, TableToCreate},
 	},
+	CatalogStore,
 };
 use reifydb_cdc::{
 	produce::{listener::CdcEventListener, worker::CdcWorker},
@@ -20,9 +21,9 @@ use reifydb_cdc::{
 use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
 	event::{
-		EventBus,
 		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
+		EventBus,
 	},
 	runtime::{SharedRuntime, SharedRuntimeConfig},
 	util::ioc::IocContainer,
@@ -34,7 +35,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
 	multi::transaction::TransactionMulti,
-	single::{TransactionSingle, svl::TransactionSvl},
+	single::{svl::TransactionSvl, TransactionSingle},
 	standard::command::StandardCommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -120,6 +121,9 @@ pub fn create_test_engine() -> StandardEngine {
 	let materialized_catalog = MaterializedCatalog::new();
 	ioc = ioc.register(materialized_catalog.clone());
 
+	let schema_registry = SchemaRegistry::new(single.clone());
+	ioc = ioc.register(schema_registry.clone());
+
 	let runtime = SharedRuntime::from_config(
 		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(32),
 	);
@@ -158,7 +162,7 @@ pub fn create_test_engine() -> StandardEngine {
 		single,
 		eventbus,
 		Box::new(StandardInterceptorFactory::default()),
-		Catalog::new(materialized_catalog),
+		Catalog::new(materialized_catalog, schema_registry),
 		None,
 		ioc,
 	)

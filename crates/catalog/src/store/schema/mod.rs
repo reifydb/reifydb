@@ -9,7 +9,7 @@
 
 mod create;
 mod get;
-mod schema;
+pub(crate) mod schema;
 
 pub use create::create_schema;
 pub use get::{find_schema_by_fingerprint, load_all_schemas};

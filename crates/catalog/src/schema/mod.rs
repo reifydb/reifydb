@@ -14,10 +14,12 @@ use std::sync::{Arc, Mutex};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	encoded::SchemaFingerprint,
+	encoded::{key::EncodedKey, SchemaFingerprint},
+	key::{SchemaFieldKey, SchemaKey},
 	schema::{Schema, SchemaField},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_transaction::single::TransactionSingle;
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::store::schema as schema_store;
 
@@ -26,30 +28,47 @@ use crate::store::schema as schema_store;
 /// Schemas are stored by their fingerprint (a hash of their field definitions).
 /// The same field configuration always produces the same fingerprint, enabling
 /// deduplication of identical schemas.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SchemaRegistry(Arc<SchemaRegistryInner>);
 
-#[derive(Debug)]
 struct SchemaRegistryInner {
+	single: TransactionSingle,
 	/// Cache of schemas by fingerprint
 	cache: SkipMap<SchemaFingerprint, Arc<Schema>>,
 	/// Write lock for serializing creates
 	write_lock: Mutex<()>,
 }
 
-impl Default for SchemaRegistry {
-	fn default() -> Self {
-		Self::new()
+/// Compute all storage keys for a schema.
+///
+/// Single-version transactions require upfront key declaration for lock ordering.
+/// This computes the header key and all field keys for a given schema.
+fn compute_schema_keys(fingerprint: SchemaFingerprint, field_count: usize) -> Vec<EncodedKey> {
+	let mut keys = Vec::with_capacity(1 + field_count);
+
+	// Schema header key
+	keys.push(SchemaKey::encoded(fingerprint));
+
+	// Schema field keys
+	for idx in 0..field_count {
+		keys.push(SchemaFieldKey::encoded(fingerprint, idx as u16));
 	}
+
+	keys
 }
 
 impl SchemaRegistry {
 	/// Create a new empty schema registry.
-	pub fn new() -> Self {
+	pub fn new(single: TransactionSingle) -> Self {
 		Self(Arc::new(SchemaRegistryInner {
+			single,
 			cache: SkipMap::new(),
 			write_lock: Mutex::new(()),
 		}))
+	}
+
+	pub fn testing() -> Self {
+		Self::new(TransactionSingle::testing())
 	}
 
 	/// Get an existing schema by fingerprint, or create and persist a new one.
@@ -58,11 +77,7 @@ impl SchemaRegistry {
 	/// - Cache reads are lock-free (via SkipMap)
 	/// - Creates are serialized via write_lock
 	/// - Double-check pattern prevents duplicate creates
-	pub fn get_or_create(
-		&self,
-		fields: Vec<SchemaField>,
-		cmd: &mut StandardCommandTransaction,
-	) -> crate::Result<Arc<Schema>> {
+	pub fn get_or_create(&self, fields: Vec<SchemaField>) -> crate::Result<Arc<Schema>> {
 		let schema = Schema::new(fields);
 		let fingerprint = schema.fingerprint();
 
@@ -79,18 +94,28 @@ impl SchemaRegistry {
 			return Ok(entry.value().clone());
 		}
 
+		// Compute keys for transaction (header + all fields)
+		let keys = compute_schema_keys(fingerprint, schema.field_count());
+
+		// Begin single-version command transaction
+		let mut cmd = self.0.single.begin_command(&keys)?;
+
 		// Check storage (handles cache-cleared-but-exists-in-storage case)
-		if let Some(stored_schema) = schema_store::find_schema_by_fingerprint(cmd, fingerprint)? {
+		if let Some(stored_schema) = schema_store::find_schema_by_fingerprint(&mut cmd, fingerprint)? {
 			let arc_schema = Arc::new(stored_schema);
 			self.0.cache.insert(fingerprint, arc_schema.clone());
+			// No commit needed for read-only path, just drop transaction
 			return Ok(arc_schema);
 		}
 
 		// Create new schema and persist
 		let arc_schema = Arc::new(schema);
-		schema_store::create_schema(cmd, &arc_schema)?;
+		schema_store::create_schema(&mut cmd, &arc_schema)?;
 
-		// Cache it
+		// Commit the transaction
+		cmd.commit()?;
+
+		// Cache only after successful commit
 		self.0.cache.insert(fingerprint, arc_schema.clone());
 
 		Ok(arc_schema)
@@ -104,24 +129,78 @@ impl SchemaRegistry {
 	}
 
 	/// Look up a schema by fingerprint, checking storage if not cached.
+	///
+	/// This method accepts an external transaction for reading schemas.
+	/// For creating new schemas, use `get_or_create()` instead.
 	pub fn get_or_load(
 		&self,
 		fingerprint: SchemaFingerprint,
 		txn: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Option<Arc<Schema>>> {
+		use crate::store::schema::schema::{schema_field, schema_header};
+		use reifydb_core::key::{SchemaFieldKey, SchemaKey};
+		use reifydb_type::{
+			error::{diagnostic::internal::internal, Error},
+			value::constraint::{FFITypeConstraint, TypeConstraint},
+		};
+
 		// Check cache first
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
 			return Ok(Some(entry.value().clone()));
 		}
 
-		// Check storage
-		if let Some(schema) = schema_store::find_schema_by_fingerprint(txn, fingerprint)? {
-			let arc_schema = Arc::new(schema);
-			self.0.cache.insert(fingerprint, arc_schema.clone());
-			return Ok(Some(arc_schema));
+		// Check storage (inlined from find_schema_by_fingerprint for StandardTransaction)
+		let mut std_txn = txn.into_standard_transaction();
+
+		// Read schema header
+		let header_key = SchemaKey::encoded(fingerprint);
+		let header_entry = match std_txn.get(&header_key)? {
+			Some(entry) => entry,
+			None => return Ok(None),
+		};
+
+		let field_count =
+			schema_header::SCHEMA.get_u16(&header_entry.values, schema_header::FIELD_COUNT) as usize;
+
+		let mut fields = Vec::with_capacity(field_count);
+		for i in 0..field_count {
+			let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
+			let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
+				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
+			})?;
+
+			let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
+			let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::BASE_TYPE);
+			let constraint_type =
+				schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
+			let constraint_param1 =
+				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P1);
+			let constraint_param2 =
+				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P2);
+			let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+				base_type,
+				constraint_type,
+				constraint_param1,
+				constraint_param2,
+			});
+			let offset = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::OFFSET);
+			let size = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::SIZE);
+			let align = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::ALIGN);
+
+			fields.push(SchemaField {
+				name,
+				constraint,
+				offset,
+				size,
+				align,
+			});
 		}
 
-		Ok(None)
+		let schema = Schema::from_parts(fingerprint, fields);
+		let arc_schema = Arc::new(schema);
+		self.0.cache.insert(fingerprint, arc_schema.clone());
+
+		Ok(Some(arc_schema))
 	}
 
 	/// Insert a schema into the cache (used by loader during startup).
@@ -143,6 +222,12 @@ impl SchemaRegistry {
 	}
 }
 
+impl std::fmt::Debug for SchemaRegistry {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SchemaRegistry").field("cache_size", &self.0.cache.len()).finish_non_exhaustive()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_type::value::r#type::Type;
@@ -151,7 +236,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_registry_caching() {
-		let registry = SchemaRegistry::new();
+		let registry = SchemaRegistry::new(TransactionSingle::testing());
 
 		let fields = vec![
 			SchemaField::unconstrained("id", Type::Int8),
@@ -173,7 +258,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_registry_get() {
-		let registry = SchemaRegistry::new();
+		let registry = SchemaRegistry::new(TransactionSingle::testing());
 
 		let fields = vec![SchemaField::unconstrained("x", Type::Float8)];
 		let schema = Arc::new(Schema::new(fields));
