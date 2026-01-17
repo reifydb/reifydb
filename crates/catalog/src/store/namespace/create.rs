@@ -20,7 +20,7 @@ pub struct NamespaceToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_namespace(
+	pub(crate) fn create_namespace(
 		txn: &mut StandardCommandTransaction,
 		to_create: NamespaceToCreate,
 	) -> crate::Result<NamespaceDef> {

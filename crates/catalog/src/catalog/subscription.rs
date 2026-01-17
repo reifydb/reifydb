@@ -2,14 +2,53 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::{
-	catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	catalog::{
+		change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::SubscriptionDef,
+	},
 	resolved::ResolvedSubscription,
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
-use reifydb_type::{error, fragment::Fragment, internal};
+use reifydb_transaction::standard::{
+	IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction,
+};
+use reifydb_type::{error, fragment::Fragment, internal, value::r#type::Type};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog};
+use crate::{
+	CatalogStore,
+	catalog::Catalog,
+	store::subscription::create::{
+		SubscriptionColumnToCreate as StoreSubscriptionColumnToCreate,
+		SubscriptionToCreate as StoreSubscriptionToCreate,
+	},
+};
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionColumnToCreate {
+	pub name: String,
+	pub ty: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionToCreate {
+	pub columns: Vec<SubscriptionColumnToCreate>,
+}
+
+impl From<SubscriptionColumnToCreate> for StoreSubscriptionColumnToCreate {
+	fn from(col: SubscriptionColumnToCreate) -> Self {
+		StoreSubscriptionColumnToCreate {
+			name: col.name,
+			ty: col.ty,
+		}
+	}
+}
+
+impl From<SubscriptionToCreate> for StoreSubscriptionToCreate {
+	fn from(to_create: SubscriptionToCreate) -> Self {
+		StoreSubscriptionToCreate {
+			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
+		}
+	}
+}
 
 impl Catalog {
 	/// Find a subscription by ID
@@ -84,5 +123,35 @@ impl Catalog {
 		let subscription_ident = Fragment::internal(format!("subscription_{}", subscription_id.0));
 
 		Ok(ResolvedSubscription::new(subscription_ident, subscription_def))
+	}
+
+	#[instrument(name = "catalog::subscription::create", level = "debug", skip(self, txn, to_create))]
+	pub fn create_subscription(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		to_create: SubscriptionToCreate,
+	) -> crate::Result<SubscriptionDef> {
+		let subscription = CatalogStore::create_subscription(txn, to_create.into())?;
+		txn.track_subscription_def_created(subscription.clone())?;
+		Ok(subscription)
+	}
+
+	#[instrument(name = "catalog::subscription::delete", level = "debug", skip(self, txn))]
+	pub fn delete_subscription(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		subscription: SubscriptionDef,
+	) -> crate::Result<()> {
+		CatalogStore::delete_subscription(txn, subscription.id)?;
+		txn.track_subscription_def_deleted(subscription)?;
+		Ok(())
+	}
+
+	#[instrument(name = "catalog::subscription::list_all", level = "debug", skip(self, txn))]
+	pub fn list_subscriptions_all<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+	) -> crate::Result<Vec<SubscriptionDef>> {
+		CatalogStore::list_subscriptions_all(txn)
 	}
 }

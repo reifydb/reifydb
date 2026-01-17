@@ -6,10 +6,7 @@
 //! This module uses StandardCommandTransaction directly instead of being generic
 //! over MultiVersionCommandTransaction to avoid lifetime issues with async recursion.
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
-};
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::{
 	flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
 	subscription::SubscriptionDef,
@@ -43,27 +40,31 @@ use crate::flow::compiler::{
 
 /// Public API for compiling logical plans to Flows with an existing flow ID.
 pub fn compile_flow(
+	catalog: &Catalog,
 	txn: &mut StandardCommandTransaction,
 	plan: PhysicalPlan,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new(flow_id);
+	let compiler = FlowCompiler::new(catalog.clone(), flow_id);
 	compiler.compile(txn, plan, sink)
 }
 
 pub fn compile_subscription_flow(
+	catalog: &Catalog,
 	txn: &mut StandardCommandTransaction,
 	plan: PhysicalPlan,
 	subscription: &SubscriptionDef,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new(flow_id);
+	let compiler = FlowCompiler::new(catalog.clone(), flow_id);
 	compiler.compile_with_subscription(txn, plan, subscription)
 }
 
 /// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler {
+	/// The catalog for persisting flow nodes and edges
+	catalog: Catalog,
 	/// The flow builder being used for construction
 	builder: FlowBuilder,
 	/// The sink view schema (for terminal nodes)
@@ -72,8 +73,9 @@ pub(crate) struct FlowCompiler {
 
 impl FlowCompiler {
 	/// Creates a new FlowCompiler instance with an existing flow ID
-	pub fn new(flow_id: FlowId) -> Self {
+	pub fn new(catalog: Catalog, flow_id: FlowId) -> Self {
 		Self {
+			catalog,
 			builder: FlowDag::builder(flow_id),
 			sink: None,
 		}
@@ -81,12 +83,12 @@ impl FlowCompiler {
 
 	/// Gets the next available operator ID
 	fn next_node_id(&mut self, txn: &mut StandardCommandTransaction) -> Result<FlowNodeId> {
-		next_flow_node_id(txn).map_err(Into::into)
+		self.catalog.next_flow_node_id(txn).map_err(Into::into)
 	}
 
 	/// Gets the next available edge ID
 	fn next_edge_id(&mut self, txn: &mut StandardCommandTransaction) -> Result<FlowEdgeId> {
-		next_flow_edge_id(txn).map_err(Into::into)
+		self.catalog.next_flow_edge_id(txn).map_err(Into::into)
 	}
 
 	/// Adds an edge between two nodes
@@ -108,7 +110,7 @@ impl FlowCompiler {
 		};
 
 		// Persist to catalog
-		CatalogStore::create_flow_edge(txn, &edge_def)?;
+		self.catalog.create_flow_edge(txn, &edge_def)?;
 
 		// Add to in-memory builder
 		self.builder.add_edge(FlowEdge::new(edge_id, *from, *to))?;
@@ -138,7 +140,7 @@ impl FlowCompiler {
 		};
 
 		// Persist to catalog
-		CatalogStore::create_flow_node(txn, &node_def)?;
+		self.catalog.create_flow_node(txn, &node_def)?;
 
 		// Add to in-memory builder
 		self.builder.add_node(FlowNode::new(node_id, node_type));

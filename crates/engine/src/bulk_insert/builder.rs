@@ -3,12 +3,9 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::sequence::{column::ColumnSequence, row::RowSequence},
-};
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{layout::EncodedValuesLayout, value::encode_value},
+	encoded::schema::Schema,
 	interface::{auth::Identity, catalog::id::IndexId},
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
@@ -125,18 +122,24 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// transaction is rolled back (no partial inserts).
 	pub fn execute(self) -> crate::Result<BulkInsertResult> {
 		let mut txn = self.engine.begin_command()?;
+		let catalog = self.engine.catalog();
 		let mut result = BulkInsertResult::default();
 
 		// Process all pending table inserts
 		for pending in self.pending_tables {
-			let table_result = execute_table_insert::<V>(&mut txn, &pending, std::any::TypeId::of::<V>())?;
+			let table_result =
+				execute_table_insert::<V>(&catalog, &mut txn, &pending, std::any::TypeId::of::<V>())?;
 			result.tables.push(table_result);
 		}
 
 		// Process all pending ring buffer inserts
 		for pending in self.pending_ringbuffers {
-			let rb_result =
-				execute_ringbuffer_insert::<V>(&mut txn, &pending, std::any::TypeId::of::<V>())?;
+			let rb_result = execute_ringbuffer_insert::<V>(
+				&catalog,
+				&mut txn,
+				&pending,
+				std::any::TypeId::of::<V>(),
+			)?;
 			result.ringbuffers.push(rb_result);
 		}
 
@@ -149,6 +152,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 /// Execute a table insert within a transaction
 fn execute_table_insert<V: ValidationMode>(
+	catalog: &Catalog,
 	txn: &mut StandardCommandTransaction,
 	pending: &PendingTableInsert,
 	type_id: std::any::TypeId,
@@ -156,26 +160,16 @@ fn execute_table_insert<V: ValidationMode>(
 	use crate::execute::mutate::primary_key;
 
 	// 1. Look up namespace and table from catalog
-	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)?
+	let namespace = catalog
+		.find_namespace_by_name(txn, &pending.namespace)?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
-	let table = CatalogStore::find_table_by_name(txn, namespace.id, &pending.table)?
+	let table = catalog
+		.find_table_by_name(txn, namespace.id, &pending.table)?
 		.ok_or_else(|| BulkInsertError::table_not_found(Fragment::None, &pending.namespace, &pending.table))?;
 
-	// 2. Build layout for encoding - use dictionary ID type for dictionary-encoded columns
-	let mut table_types: Vec<Type> = Vec::with_capacity(table.columns.len());
-	for c in &table.columns {
-		let ty = if let Some(dict_id) = c.dictionary_id {
-			match CatalogStore::find_dictionary(txn, dict_id) {
-				Ok(Some(d)) => d.id_type,
-				_ => c.constraint.get_type(),
-			}
-		} else {
-			c.constraint.get_type()
-		};
-		table_types.push(ty);
-	}
-	let layout = EncodedValuesLayout::testing(&table_types);
+	// 2. Get or create schema with proper field names and constraints
+	let schema = crate::execute::mutate::schema::get_or_create_table_schema(catalog, &table, txn)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -191,14 +185,14 @@ fn execute_table_insert<V: ValidationMode>(
 		// Handle auto-increment columns
 		for (idx, col) in table.columns.iter().enumerate() {
 			if col.auto_increment && matches!(values[idx], Value::Undefined) {
-				values[idx] = ColumnSequence::next_value(txn, table.id, col.id)?;
+				values[idx] = catalog.column_sequence_next_value(txn, table.id, col.id)?;
 			}
 		}
 
 		// Handle dictionary encoding
 		for (idx, col) in table.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = CatalogStore::find_dictionary(txn, dict_id)?.ok_or_else(|| {
+				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
 					reifydb_type::internal_error!(
 						"Dictionary {:?} not found for column {}",
 						dict_id,
@@ -218,9 +212,9 @@ fn execute_table_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 		for (idx, value) in values.iter().enumerate() {
-			encode_value(&layout, &mut row, idx, value);
+			schema.set_value(&mut row, idx, value);
 		}
 		encoded_rows.push(row);
 	}
@@ -235,15 +229,15 @@ fn execute_table_insert<V: ValidationMode>(
 		});
 	}
 
-	let row_numbers = RowSequence::next_row_number_batch(txn, table.id, total_rows as u64)?;
+	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 
 	// 5. Insert all rows with their row numbers
 	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
 		txn.insert_table(table.clone(), row.clone(), row_number)?;
 
 		// Handle primary key index if table has one
-		if let Some(pk_def) = primary_key::get_primary_key(txn, &table)? {
-			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
+		if let Some(pk_def) = primary_key::get_primary_key(catalog, txn, &table)? {
+			let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
 			let index_entry_key =
 				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
 
@@ -260,9 +254,9 @@ fn execute_table_insert<V: ValidationMode>(
 			}
 
 			// Store the index entry
-			let row_number_layout = EncodedValuesLayout::testing(&[Type::Uint8]);
-			let mut row_number_encoded = row_number_layout.allocate();
-			row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+			let row_number_schema = Schema::testing(&[Type::Uint8]);
+			let mut row_number_encoded = row_number_schema.allocate();
+			row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
 	}
@@ -276,35 +270,25 @@ fn execute_table_insert<V: ValidationMode>(
 
 /// Execute a ring buffer insert within a transaction
 fn execute_ringbuffer_insert<V: ValidationMode>(
+	catalog: &Catalog,
 	txn: &mut StandardCommandTransaction,
 	pending: &PendingRingBufferInsert,
 	type_id: std::any::TypeId,
 ) -> crate::Result<RingBufferInsertResult> {
-	let namespace = CatalogStore::find_namespace_by_name(txn, &pending.namespace)?
+	let namespace = catalog
+		.find_namespace_by_name(txn, &pending.namespace)?
 		.ok_or_else(|| BulkInsertError::namespace_not_found(Fragment::None, &pending.namespace))?;
 
-	let ringbuffer =
-		CatalogStore::find_ringbuffer_by_name(txn, namespace.id, &pending.ringbuffer)?.ok_or_else(|| {
-			BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
-		})?;
-
-	let mut metadata = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)?.ok_or_else(|| {
+	let ringbuffer = catalog.find_ringbuffer_by_name(txn, namespace.id, &pending.ringbuffer)?.ok_or_else(|| {
 		BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
 	})?;
 
-	let mut rb_types: Vec<Type> = Vec::with_capacity(ringbuffer.columns.len());
-	for c in &ringbuffer.columns {
-		let ty = if let Some(dict_id) = c.dictionary_id {
-			match CatalogStore::find_dictionary(txn, dict_id) {
-				Ok(Some(d)) => d.id_type,
-				_ => c.constraint.get_type(),
-			}
-		} else {
-			c.constraint.get_type()
-		};
-		rb_types.push(ty);
-	}
-	let layout = EncodedValuesLayout::testing(&rb_types);
+	let mut metadata = catalog.find_ringbuffer_metadata(txn, ringbuffer.id)?.ok_or_else(|| {
+		BulkInsertError::ringbuffer_not_found(Fragment::None, &pending.namespace, &pending.ringbuffer)
+	})?;
+
+	// Get or create schema with proper field names and constraints
+	let schema = crate::execute::mutate::schema::get_or_create_ringbuffer_schema(catalog, &ringbuffer, txn)?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -321,7 +305,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		// Handle dictionary encoding
 		for (idx, col) in ringbuffer.columns.iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = CatalogStore::find_dictionary(txn, dict_id)?.ok_or_else(|| {
+				let dictionary = catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
 					reifydb_type::internal_error!(
 						"Dictionary {:?} not found for column {}",
 						dict_id,
@@ -341,9 +325,9 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 		for (idx, value) in values.iter().enumerate() {
-			encode_value(&layout, &mut row, idx, value);
+			schema.set_value(&mut row, idx, value);
 		}
 
 		// Handle ring buffer overflow - delete oldest entry if full
@@ -355,7 +339,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		}
 
 		// Allocate row number
-		let row_number = RowSequence::next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
+		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 		// Store the row
 		txn.insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
@@ -371,7 +355,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	}
 
 	// Save updated metadata
-	CatalogStore::update_ringbuffer_metadata(txn, metadata)?;
+	catalog.update_ringbuffer_metadata(txn, metadata)?;
 
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),

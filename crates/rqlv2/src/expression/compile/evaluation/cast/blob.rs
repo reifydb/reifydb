@@ -4,13 +4,19 @@
 //! Cast to Blob type
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::{fragment::Fragment, value::{blob::Blob, r#type::Type}};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{blob::Blob, r#type::Type},
+};
 
 use crate::expression::types::{EvalError, EvalResult};
 
 pub(super) fn to_blob(data: &ColumnData) -> EvalResult<ColumnData> {
 	match data {
-		ColumnData::Utf8 { container, .. } => {
+		ColumnData::Utf8 {
+			container,
+			..
+		} => {
 			let mut out = ColumnData::with_capacity(Type::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {

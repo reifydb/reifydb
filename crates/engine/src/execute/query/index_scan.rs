@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	interface::catalog::{id::IndexId, table::TableDef},
 	value::column::headers::ColumnHeaders,
 };
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
@@ -18,15 +18,15 @@ pub(crate) struct IndexScanNode {
 	_index_id: IndexId,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	_row_layout: EncodedValuesLayout,
+	_storage_types: Vec<Type>,
+	_schema: Option<Schema>,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
 }
 
 impl IndexScanNode {
 	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedValuesLayout::testing(&data);
+		let storage_types = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
 		let headers = ColumnHeaders {
 			columns: table.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
@@ -37,7 +37,8 @@ impl IndexScanNode {
 			_index_id: index_id,
 			context: Some(context),
 			headers,
-			_row_layout: row_layout,
+			_storage_types: storage_types,
+			_schema: None,
 			_last_key: None,
 			_exhausted: false,
 		})

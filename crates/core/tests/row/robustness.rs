@@ -6,7 +6,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::schema::Schema;
 use reifydb_type::value::{blob::Blob, decimal::Decimal, int::Int, r#type::Type};
 
 #[test]
@@ -14,16 +14,16 @@ fn test_massive_field_count() {
 	// Test with an extreme number of fields
 	let field_count = 10000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let layout = EncodedValuesLayout::testing(&types);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&types);
+	let mut row = schema.allocate();
 
 	// Set and verify a sampling of fields
 	for i in (0..field_count).step_by(100) {
-		layout.set_i32(&mut row, i, i as i32);
+		schema.set_i32(&mut row, i, i as i32);
 	}
 
 	for i in (0..field_count).step_by(100) {
-		assert_eq!(layout.get_i32(&row, i), i as i32);
+		assert_eq!(schema.get_i32(&row, i), i as i32);
 	}
 }
 
@@ -40,34 +40,34 @@ fn test_mixed_static_dynamic_stress() {
 		})
 		.collect();
 
-	let layout = EncodedValuesLayout::testing(&types);
+	let schema = Schema::testing(&types);
 
 	// Create a encoded and set all dynamic fields once, then repeatedly update
 	// static fields
-	let mut row = layout.allocate();
+	let mut row = schema.allocate();
 
 	// First, set all dynamic fields once
 	for i in (1..100).step_by(2) {
 		// odd indices are Utf8 (dynamic)
 		let text = format!("field_{}", i);
-		layout.set_utf8(&mut row, i, &text);
+		schema.set_utf8(&mut row, i, &text);
 	}
 
 	// Now repeatedly update static fields (even indices are Int8)
 	for iteration in 0..100 {
 		for i in (0..100).step_by(2) {
 			// even indices are Int8 (static)
-			layout.set_i64(&mut row, i, iteration as i64 * 100 + i as i64);
+			schema.set_i64(&mut row, i, iteration as i64 * 100 + i as i64);
 		}
 
 		// Verify static field updates and dynamic field persistence
 		if iteration % 10 == 0 {
 			for i in (0..100).step_by(7) {
 				if i % 2 == 0 {
-					assert_eq!(layout.get_i64(&row, i), iteration as i64 * 100 + i as i64);
+					assert_eq!(schema.get_i64(&row, i), iteration as i64 * 100 + i as i64);
 				} else {
 					let expected = format!("field_{}", i);
-					assert_eq!(layout.get_utf8(&row, i), expected);
+					assert_eq!(schema.get_utf8(&row, i), expected);
 				}
 			}
 		}
@@ -76,17 +76,17 @@ fn test_mixed_static_dynamic_stress() {
 	// Test creating multiple rows with different dynamic content
 	let mut test_rows = Vec::new();
 	for row_idx in 0..10 {
-		let mut test_row = layout.allocate();
+		let mut test_row = schema.allocate();
 
 		// Set static fields
 		for i in (0..100).step_by(2) {
-			layout.set_i64(&mut test_row, i, row_idx as i64);
+			schema.set_i64(&mut test_row, i, row_idx as i64);
 		}
 
 		// Set dynamic fields with encoded-specific content
 		for i in (1..100).step_by(2) {
 			let text = format!("row_{}_field_{}", row_idx, i);
-			layout.set_utf8(&mut test_row, i, &text);
+			schema.set_utf8(&mut test_row, i, &text);
 		}
 
 		test_rows.push(test_row);
@@ -97,10 +97,10 @@ fn test_mixed_static_dynamic_stress() {
 		for i in (0..100).step_by(10) {
 			// Sample every 10th field
 			if i % 2 == 0 {
-				assert_eq!(layout.get_i64(test_row, i), row_idx as i64);
+				assert_eq!(schema.get_i64(test_row, i), row_idx as i64);
 			} else {
 				let expected = format!("row_{}_field_{}", row_idx, i);
-				assert_eq!(layout.get_utf8(test_row, i), expected);
+				assert_eq!(schema.get_utf8(test_row, i), expected);
 			}
 		}
 	}
@@ -109,13 +109,13 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
+	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
 
-	let mut original = layout.allocate();
-	layout.set_utf8(&mut original, 0, &"x".repeat(1000));
-	layout.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
-	layout.set_int(&mut original, 2, &Int::from(i128::MAX));
-	layout.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
+	let mut original = schema.allocate();
+	schema.set_utf8(&mut original, 0, &"x".repeat(1000));
+	schema.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
+	schema.set_int(&mut original, 2, &Int::from(i128::MAX));
+	schema.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
 
 	let mut current = original.clone();
 
@@ -124,9 +124,9 @@ fn test_repeated_clone_stability() {
 		let next = current.clone();
 
 		// Verify data is still intact
-		assert_eq!(layout.get_utf8(&next, 0), "x".repeat(1000));
-		assert_eq!(layout.get_blob(&next, 1), Blob::from(vec![42u8; 1000]));
-		assert_eq!(layout.get_int(&next, 2), Int::from(i128::MAX));
+		assert_eq!(schema.get_utf8(&next, 0), "x".repeat(1000));
+		assert_eq!(schema.get_blob(&next, 1), Blob::from(vec![42u8; 1000]));
+		assert_eq!(schema.get_int(&next, 2), Int::from(i128::MAX));
 
 		current = next;
 	}
@@ -137,15 +137,15 @@ fn test_validity_bit_stress() {
 	// Test validity bit handling under stress
 	let field_count = 1000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let layout = EncodedValuesLayout::testing(&types);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&types);
+	let mut row = schema.allocate();
 
 	// Set every other field as undefined
 	for i in 0..field_count {
 		if i % 2 == 0 {
-			layout.set_i32(&mut row, i, i as i32);
+			schema.set_i32(&mut row, i, i as i32);
 		} else {
-			layout.set_undefined(&mut row, i);
+			schema.set_undefined(&mut row, i);
 		}
 	}
 
@@ -153,19 +153,19 @@ fn test_validity_bit_stress() {
 	for i in 0..field_count {
 		if i % 2 == 0 {
 			assert!(row.is_defined(i));
-			assert_eq!(layout.try_get_i32(&row, i), Some(i as i32));
+			assert_eq!(schema.try_get_i32(&row, i), Some(i as i32));
 		} else {
 			assert!(!row.is_defined(i));
-			assert_eq!(layout.try_get_i32(&row, i), None);
+			assert_eq!(schema.try_get_i32(&row, i), None);
 		}
 	}
 
 	// Flip all validity bits
 	for i in 0..field_count {
 		if i % 2 == 0 {
-			layout.set_undefined(&mut row, i);
+			schema.set_undefined(&mut row, i);
 		} else {
-			layout.set_i32(&mut row, i, -(i as i32));
+			schema.set_i32(&mut row, i, -(i as i32));
 		}
 	}
 
@@ -173,10 +173,10 @@ fn test_validity_bit_stress() {
 	for i in 0..field_count {
 		if i % 2 == 0 {
 			assert!(!row.is_defined(i));
-			assert_eq!(layout.try_get_i32(&row, i), None);
+			assert_eq!(schema.try_get_i32(&row, i), None);
 		} else {
 			assert!(row.is_defined(i));
-			assert_eq!(layout.try_get_i32(&row, i), Some(-(i as i32)));
+			assert_eq!(schema.try_get_i32(&row, i), Some(-(i as i32)));
 		}
 	}
 }
@@ -184,17 +184,17 @@ fn test_validity_bit_stress() {
 #[test]
 fn test_extreme_string_sizes() {
 	// Test handling of very large strings
-	let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
+	let schema = Schema::testing(&[Type::Utf8]);
 
 	// Test various string sizes - use separate rows since dynamic fields
 	// can only be set once
 	let sizes = [0, 1, 100, 1000, 10000, 100000, 1000000];
 
 	for size in sizes {
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 		let large_string = "a".repeat(size);
-		layout.set_utf8(&mut row, 0, &large_string);
-		let retrieved = layout.get_utf8(&row, 0);
+		schema.set_utf8(&mut row, 0, &large_string);
+		let retrieved = schema.get_utf8(&row, 0);
 		assert_eq!(retrieved.len(), size);
 
 		// Verify content for smaller strings
@@ -212,69 +212,69 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per encoded
-	let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
+	let schema = Schema::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
 
 	// Create many rows with rapid field setting
 	for i in 0..iterations {
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 
 		// Set all fields for this encoded
-		layout.set_i64(&mut row, 0, (i * 4) as i64);
-		layout.set_utf8(&mut row, 1, &(i * 4 + 1).to_string());
-		layout.set_i64(&mut row, 2, (i * 4 + 2) as i64);
-		layout.set_utf8(&mut row, 3, &(i * 4 + 3).to_string());
+		schema.set_i64(&mut row, 0, (i * 4) as i64);
+		schema.set_utf8(&mut row, 1, &(i * 4 + 1).to_string());
+		schema.set_i64(&mut row, 2, (i * 4 + 2) as i64);
+		schema.set_utf8(&mut row, 3, &(i * 4 + 3).to_string());
 
 		rows.push(row);
 	}
 
 	// Verify all rows maintain their correct data
 	for (i, row) in rows.iter().enumerate() {
-		assert_eq!(layout.get_i64(row, 0), (i * 4) as i64);
-		assert_eq!(layout.get_utf8(row, 1), (i * 4 + 1).to_string());
-		assert_eq!(layout.get_i64(row, 2), (i * 4 + 2) as i64);
-		assert_eq!(layout.get_utf8(row, 3), (i * 4 + 3).to_string());
+		assert_eq!(schema.get_i64(row, 0), (i * 4) as i64);
+		assert_eq!(schema.get_utf8(row, 1), (i * 4 + 1).to_string());
+		assert_eq!(schema.get_i64(row, 2), (i * 4 + 2) as i64);
+		assert_eq!(schema.get_utf8(row, 3), (i * 4 + 3).to_string());
 	}
 
 	// Test that static fields can still be updated repeatedly on a single
 	// encoded
-	let mut static_test_row = layout.allocate();
+	let mut static_test_row = schema.allocate();
 
 	for i in 0..1000 {
-		layout.set_i64(&mut static_test_row, 0, i as i64);
-		layout.set_i64(&mut static_test_row, 2, (i * 2) as i64);
+		schema.set_i64(&mut static_test_row, 0, i as i64);
+		schema.set_i64(&mut static_test_row, 2, (i * 2) as i64);
 
 		// Verify static fields can be read back correctly
-		assert_eq!(layout.get_i64(&static_test_row, 0), i as i64);
-		assert_eq!(layout.get_i64(&static_test_row, 2), (i * 2) as i64);
+		assert_eq!(schema.get_i64(&static_test_row, 0), i as i64);
+		assert_eq!(schema.get_i64(&static_test_row, 2), (i * 2) as i64);
 	}
 
 	// Set dynamic fields once on the static test encoded
-	layout.set_utf8(&mut static_test_row, 1, "dynamic1");
-	layout.set_utf8(&mut static_test_row, 3, "dynamic2");
+	schema.set_utf8(&mut static_test_row, 1, "dynamic1");
+	schema.set_utf8(&mut static_test_row, 3, "dynamic2");
 
 	// Verify final state
-	assert_eq!(layout.get_i64(&static_test_row, 0), 999);
-	assert_eq!(layout.get_utf8(&static_test_row, 1), "dynamic1");
-	assert_eq!(layout.get_i64(&static_test_row, 2), 1998);
-	assert_eq!(layout.get_utf8(&static_test_row, 3), "dynamic2");
+	assert_eq!(schema.get_i64(&static_test_row, 0), 999);
+	assert_eq!(schema.get_utf8(&static_test_row, 1), "dynamic1");
+	assert_eq!(schema.get_i64(&static_test_row, 2), 1998);
+	assert_eq!(schema.get_utf8(&static_test_row, 3), "dynamic2");
 }
 
 #[test]
 fn test_row_size_stability() {
 	// Ensure encoded sizes are stable and predictable for dynamic fields
-	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob]);
+	let schema = Schema::testing(&[Type::Utf8, Type::Blob]);
 
 	// Test that rows with similar sized content have similar sizes
 	let sizes = [10, 100, 1000];
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = layout.allocate();
-		layout.set_utf8(&mut row, 0, &"x".repeat(size));
-		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
+		let mut row = schema.allocate();
+		schema.set_utf8(&mut row, 0, &"x".repeat(size));
+		schema.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
 		row_sizes.push(row.len());
 	}
@@ -292,9 +292,9 @@ fn test_row_size_stability() {
 	// Test size consistency - rows with same content should have same size
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate();
-		layout.set_utf8(&mut row, 0, &"x".repeat(50));
-		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
+		let mut row = schema.allocate();
+		schema.set_utf8(&mut row, 0, &"x".repeat(50));
+		schema.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());
 	}
 

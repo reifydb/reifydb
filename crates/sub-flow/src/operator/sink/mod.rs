@@ -7,7 +7,7 @@ pub mod view;
 use std::sync::LazyLock;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, named::EncodedValuesNamedLayout},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{
 		catalog::{
 			column::ColumnDef,
@@ -144,18 +144,13 @@ pub(crate) fn coerce_subscription_columns(
 }
 
 /// Encode values at a specific row index directly from Columns without Row allocation
-pub(crate) fn encode_row_at_index(
-	columns: &Columns,
-	row_idx: usize,
-	layout: &EncodedValuesNamedLayout,
-) -> (RowNumber, EncodedValues) {
+pub(crate) fn encode_row_at_index(columns: &Columns, row_idx: usize, schema: &Schema) -> (RowNumber, EncodedValues) {
 	let row_number = columns.row_numbers[row_idx];
 
-	// Collect values in LAYOUT FIELD ORDER by matching column names
-	// This ensures values are in the same order as layout expects
-	let values: Vec<reifydb_type::value::Value> = layout
-		.names()
-		.iter()
+	// Collect values in SCHEMA FIELD ORDER by matching column names
+	// This ensures values are in the same order as schema expects
+	let values: Vec<reifydb_type::value::Value> = schema
+		.field_names()
 		.map(|field_name| {
 			// Find column with matching name
 			let col = columns
@@ -168,8 +163,8 @@ pub(crate) fn encode_row_at_index(
 		.collect();
 
 	// Encode directly
-	let mut encoded = layout.allocate();
-	layout.set_values(&mut encoded, &values);
+	let mut encoded = schema.allocate();
+	schema.set_values(&mut encoded, &values);
 
 	(row_number, encoded)
 }

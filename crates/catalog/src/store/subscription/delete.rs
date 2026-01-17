@@ -7,7 +7,7 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_subscription(
+	pub(crate) fn delete_subscription(
 		txn: &mut StandardCommandTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<()> {

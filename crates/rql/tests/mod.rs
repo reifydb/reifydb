@@ -3,11 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_catalog::{
-	CatalogStore,
-	catalog::Catalog,
-	store::{namespace::create::NamespaceToCreate, table::create::TableToCreate},
-};
+use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
@@ -64,17 +60,19 @@ impl Runner for TestRunner {
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
 					let mut dummy_tx = create_test_command_transaction();
+					let catalog = Catalog::testing();
 
-					let default_namespace = CatalogStore::create_namespace(
-						&mut dummy_tx,
-						NamespaceToCreate {
-							namespace_fragment: None,
-							name: "default".to_string(),
-						},
-					)
-					.unwrap();
+					let default_namespace = catalog
+						.create_namespace(
+							&mut dummy_tx,
+							NamespaceToCreate {
+								namespace_fragment: None,
+								name: "default".to_string(),
+							},
+						)
+						.unwrap();
 
-					CatalogStore::create_table(
+					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							fragment: None,
@@ -82,11 +80,12 @@ impl Runner for TestRunner {
 							namespace: default_namespace.id,
 							columns: vec![],
 							retention_policy: None,
+							primary_key_columns: None,
 						},
 					)
 					.unwrap();
 
-					CatalogStore::create_table(
+					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							fragment: None,
@@ -94,22 +93,24 @@ impl Runner for TestRunner {
 							namespace: default_namespace.id,
 							columns: vec![],
 							retention_policy: None,
+							primary_key_columns: None,
 						},
 					)
 					.unwrap();
 
 					// Also create test namespace for tests that
 					// explicitly use test.users
-					let test_ns = CatalogStore::create_namespace(
-						&mut dummy_tx,
-						NamespaceToCreate {
-							namespace_fragment: None,
-							name: "test".to_string(),
-						},
-					)
-					.unwrap();
+					let test_ns = catalog
+						.create_namespace(
+							&mut dummy_tx,
+							NamespaceToCreate {
+								namespace_fragment: None,
+								name: "test".to_string(),
+							},
+						)
+						.unwrap();
 
-					CatalogStore::create_table(
+					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							fragment: None,
@@ -117,11 +118,11 @@ impl Runner for TestRunner {
 							namespace: test_ns.id,
 							columns: vec![],
 							retention_policy: None,
+							primary_key_columns: None,
 						},
 					)
 					.unwrap();
 
-					let catalog = Catalog::testing();
 					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();
@@ -135,17 +136,19 @@ impl Runner for TestRunner {
 				let rt = tokio::runtime::Runtime::new().unwrap();
 				let result = rt.block_on(async {
 					let mut dummy_tx = create_test_command_transaction();
+					let catalog = Catalog::testing();
 
-					let namespace = CatalogStore::create_namespace(
-						&mut dummy_tx,
-						NamespaceToCreate {
-							namespace_fragment: None,
-							name: "default".to_string(),
-						},
-					)
-					.unwrap();
+					let namespace = catalog
+						.create_namespace(
+							&mut dummy_tx,
+							NamespaceToCreate {
+								namespace_fragment: None,
+								name: "default".to_string(),
+							},
+						)
+						.unwrap();
 
-					CatalogStore::create_table(
+					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							fragment: None,
@@ -153,11 +156,12 @@ impl Runner for TestRunner {
 							namespace: namespace.id,
 							columns: vec![],
 							retention_policy: None,
+							primary_key_columns: None,
 						},
 					)
 					.unwrap();
 
-					CatalogStore::create_table(
+					catalog.create_table(
 						&mut dummy_tx,
 						TableToCreate {
 							fragment: None,
@@ -165,11 +169,11 @@ impl Runner for TestRunner {
 							namespace: namespace.id,
 							columns: vec![],
 							retention_policy: None,
+							primary_key_columns: None,
 						},
 					)
 					.unwrap();
 
-					let catalog = Catalog::testing();
 					explain_physical_plan(&catalog, &mut dummy_tx, query).unwrap()
 				});
 				writeln!(output, "{}", result).unwrap();

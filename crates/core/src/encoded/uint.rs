@@ -7,10 +7,7 @@ use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use reifydb_type::value::{r#type::Type, uint::Uint};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 /// Uint storage modes using MSB of u128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -25,101 +22,6 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 /// Bit masks for dynamic mode (lower 127 bits contain offset+length)
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
-
-impl EncodedValuesLayout {
-	/// Set a Uint value with 2-tier storage optimization
-	/// - Values fitting in 127 bits: stored inline with MSB=0
-	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_uint(&self, row: &mut EncodedValues, index: usize, value: &Uint) {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Uint);
-
-		// Uint should already be non-negative, but let's ensure it
-		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
-
-		// Try u128 inline storage first (fits in 127 bits)
-		if let Some(u128_val) = unsigned_value.to_u128() {
-			// Check if value fits in 127 bits (MSB must be 0)
-			if u128_val < (1u128 << 127) {
-				// Mode 0: Store inline in lower 127 bits
-				let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
-				unsafe {
-					ptr::write_unaligned(
-						row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
-						packed.to_le(),
-					);
-				}
-				row.set_valid(index, true);
-				return;
-			}
-		}
-
-		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(!row.is_defined(index), "Uint field {} already set", index);
-
-		// Serialize as unsigned bytes
-		let bytes = unsigned_value.to_bytes_le();
-
-		let dynamic_offset = self.dynamic_section_size(row);
-		let total_size = bytes.len();
-
-		// Append to dynamic section
-		row.0.extend_from_slice(&bytes);
-
-		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part = ((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
-		let packed = MODE_DYNAMIC | offset_part | length_part;
-
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
-				packed.to_le(),
-			);
-		}
-		row.set_valid(index, true);
-	}
-
-	/// Get a Uint value, detecting storage mode from MSB
-	pub fn get_uint(&self, row: &EncodedValues, index: usize) -> Uint {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Uint);
-
-		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
-		let packed = u128::from_le(packed);
-
-		let mode = packed & MODE_MASK;
-
-		if mode == MODE_INLINE {
-			// Extract value from lower 127 bits
-			let value = packed & INLINE_VALUE_MASK;
-			// Convert to BigUint then to Uint
-			let unsigned = BigUint::from(value);
-			Uint::from(num_bigint::BigInt::from(unsigned))
-		} else {
-			// MODE_DYNAMIC: Extract offset and length for dynamic
-			// storage
-			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
-			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
-
-			let dynamic_start = self.dynamic_section_start();
-			let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
-
-			// Parse as unsigned bytes
-			let unsigned = BigUint::from_bytes_le(data_bytes);
-			Uint::from(num_bigint::BigInt::from(unsigned))
-		}
-	}
-
-	/// Try to get a Uint value, returning None if undefined
-	pub fn try_get_uint(&self, row: &EncodedValues, index: usize) -> Option<Uint> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Uint {
-			Some(self.get_uint(row, index))
-		} else {
-			None
-		}
-	}
-}
 
 impl Schema {
 	/// Set a Uint value with 2-tier storage optimization
@@ -221,7 +123,7 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{r#type::Type, uint::Uint};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_u64_inline() {

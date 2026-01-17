@@ -7,10 +7,7 @@ use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
 use reifydb_type::value::{int::Int, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 /// Int storage modes using MSB of i128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -25,97 +22,6 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 /// Bit masks for dynamic mode (lower 127 bits contain offset+length)
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
-
-impl EncodedValuesLayout {
-	/// Set a Int value with 2-tier storage optimization
-	/// - Values fitting in 127 bits: stored inline with MSB=0
-	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_int(&self, row: &mut EncodedValues, index: usize, value: &Int) {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Int);
-
-		// Try i128 inline storage first (fits in 127 bits)
-		if let Some(i128_val) = value.0.to_i128() {
-			// Check if value fits in 127 bits (MSB must be 0)
-			if i128_val >= -(1i128 << 126) && i128_val < (1i128 << 126) {
-				// Mode 0: Store inline in lower 127 bits
-				let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
-				unsafe {
-					ptr::write_unaligned(
-						row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
-						packed.to_le(),
-					);
-				}
-				row.set_valid(index, true);
-				return;
-			}
-		}
-
-		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(!row.is_defined(index), "Int field {} already set", index);
-
-		let bytes = value.0.to_signed_bytes_le();
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append to dynamic section
-		row.0.extend_from_slice(&bytes);
-
-		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part = ((bytes.len() as u128) << 64) & DYNAMIC_LENGTH_MASK;
-		let packed = MODE_DYNAMIC | offset_part | length_part;
-
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
-				packed.to_le(),
-			);
-		}
-		row.set_valid(index, true);
-	}
-
-	/// Get a Int value, detecting storage mode from MSB
-	pub fn get_int(&self, row: &EncodedValues, index: usize) -> Int {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Int);
-
-		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
-		let packed = u128::from_le(packed);
-
-		let mode = packed & MODE_MASK;
-
-		if mode == MODE_INLINE {
-			// Extract 127-bit value and sign-extend to i128
-			let value = (packed & INLINE_VALUE_MASK) as i128;
-			let signed = if value & (1i128 << 126) != 0 {
-				// Sign bit is set, extend with 1s
-				value | (1i128 << 127)
-			} else {
-				value
-			};
-			Int::from(signed)
-		} else {
-			// MODE_DYNAMIC: Extract offset and length for dynamic
-			// storage
-			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
-			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
-
-			let dynamic_start = self.dynamic_section_start();
-			let bigint_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
-
-			Int::from(StdBigInt::from_signed_bytes_le(bigint_bytes))
-		}
-	}
-
-	/// Try to get a Int value, returning None if undefined
-	pub fn try_get_int(&self, row: &EncodedValues, index: usize) -> Option<Int> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Int {
-			Some(self.get_int(row, index))
-		} else {
-			None
-		}
-	}
-}
 
 impl Schema {
 	/// Set a Int value with 2-tier storage optimization
@@ -212,7 +118,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{int::Int, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_i64_inline() {

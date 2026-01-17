@@ -19,7 +19,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_ringbuffer(
+	pub(crate) fn find_ringbuffer(
 		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
@@ -44,7 +44,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_ringbuffer_metadata(
+	pub(crate) fn find_ringbuffer_metadata(
 		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
@@ -69,7 +69,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_ringbuffer_by_name(
+	pub(crate) fn find_ringbuffer_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
@@ -286,7 +286,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: created.id.into(),
+				primitive: created.id.into(),
 				column_ids: vec![columns[0].id],
 			},
 		)

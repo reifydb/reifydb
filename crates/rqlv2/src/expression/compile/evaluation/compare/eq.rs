@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::expression::types::{EvalError, EvalResult};
+use std::fmt::Debug;
+
 use reifydb_core::value::column::{Column, data::ColumnData};
-use reifydb_type::value::is::IsUuid;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{
@@ -11,12 +11,13 @@ use reifydb_type::{
 			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
 			uuid::UuidContainer,
 		},
-		is::{IsNumber, IsTemporal},
+		is::{IsNumber, IsTemporal, IsUuid},
 		number::promote::Promote,
 		r#type::get::GetType,
 	},
 };
-use std::fmt::Debug;
+
+use crate::expression::types::{EvalError, EvalResult};
 
 pub(crate) fn eval_eq(left: &Column, right: &Column) -> EvalResult<Column> {
 	match (left.data(), right.data()) {

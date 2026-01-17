@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
@@ -18,6 +17,8 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 use reifydb_type::{
+	error,
+	error::diagnostic,
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{dictionary::DictionaryEntryId, r#type::Type},
@@ -33,11 +34,12 @@ pub(crate) struct TableScanNode {
 	table: ResolvedTable,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
 	dictionaries: Vec<Option<DictionaryDef>>,
+	/// Cached schema loaded from the first batch
+	schema: Option<Schema>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
@@ -54,7 +56,7 @@ impl TableScanNode {
 
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+				if let Some(dict) = context.executor.catalog.find_dictionary(rx, dict_id)? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -68,8 +70,6 @@ impl TableScanNode {
 			}
 		}
 
-		let row_layout = EncodedValuesLayout::testing(&storage_types);
-
 		let headers = ColumnHeaders {
 			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
@@ -78,12 +78,37 @@ impl TableScanNode {
 			table,
 			context: Some(context),
 			headers,
-			row_layout,
 			storage_types,
 			dictionaries,
+			schema: None,
 			last_key: None,
 			exhausted: false,
 		})
+	}
+
+	fn get_or_load_schema<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		first_row: &reifydb_core::encoded::encoded::EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			error!(diagnostic::internal::internal(format!(
+				"Schema with fingerprint {:?} not found for table {}",
+				fingerprint,
+				self.table.def().name
+			)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
 	}
 }
 
@@ -161,7 +186,8 @@ impl QueryNode for TableScanNode {
 
 		let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
 		{
-			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
+			let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
+			columns.append_rows(&schema, batch_rows.into_iter(), row_numbers.clone())?;
 		}
 		self.decode_dictionary_columns(&mut columns, rx)?;
 
@@ -217,6 +243,8 @@ impl QueryNode for TableScanNode {
 			}
 		}
 
+		drop(stream);
+
 		if encoded_rows.is_empty() {
 			self.exhausted = true;
 			return Ok(None);
@@ -239,7 +267,8 @@ impl QueryNode for TableScanNode {
 			})
 			.collect();
 
-		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, self.row_layout.clone(), column_metas)))
+		let schema = self.get_or_load_schema(rx, &encoded_rows[0])?;
+		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, &schema, column_metas)))
 	}
 }
 

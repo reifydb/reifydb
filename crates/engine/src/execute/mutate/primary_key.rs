@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::catalog::{key::PrimaryKeyDef, table::TableDef},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
@@ -16,7 +16,7 @@ pub fn encode_primary_key(
 	pk_def: &PrimaryKeyDef,
 	row: &EncodedValues,
 	table: &TableDef,
-	layout: &EncodedValuesLayout,
+	schema: &Schema,
 ) -> crate::Result<EncodedIndexKey> {
 	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
@@ -43,55 +43,55 @@ pub fn encode_primary_key(
 		// Copy value based on type
 		match pk_column.constraint.get_type() {
 			Type::Boolean => {
-				let val = layout.get_bool(row, table_idx);
+				let val = schema.get_bool(row, table_idx);
 				index_layout.set_bool(&mut index_key, pk_idx, val);
 			}
 			Type::Int1 => {
-				let val = layout.get_i8(row, table_idx);
+				let val = schema.get_i8(row, table_idx);
 				index_layout.set_i8(&mut index_key, pk_idx, val);
 			}
 			Type::Int2 => {
-				let val = layout.get_i16(row, table_idx);
+				let val = schema.get_i16(row, table_idx);
 				index_layout.set_i16(&mut index_key, pk_idx, val);
 			}
 			Type::Int4 => {
-				let val = layout.get_i32(row, table_idx);
+				let val = schema.get_i32(row, table_idx);
 				index_layout.set_i32(&mut index_key, pk_idx, val);
 			}
 			Type::Int8 => {
-				let val = layout.get_i64(row, table_idx);
+				let val = schema.get_i64(row, table_idx);
 				index_layout.set_i64(&mut index_key, pk_idx, val);
 			}
 			Type::Int16 => {
-				let val = layout.get_i128(row, table_idx);
+				let val = schema.get_i128(row, table_idx);
 				index_layout.set_i128(&mut index_key, pk_idx, val);
 			}
 			Type::Uint1 => {
-				let val = layout.get_u8(row, table_idx);
+				let val = schema.get_u8(row, table_idx);
 				index_layout.set_u8(&mut index_key, pk_idx, val);
 			}
 			Type::Uint2 => {
-				let val = layout.get_u16(row, table_idx);
+				let val = schema.get_u16(row, table_idx);
 				index_layout.set_u16(&mut index_key, pk_idx, val);
 			}
 			Type::Uint4 => {
-				let val = layout.get_u32(row, table_idx);
+				let val = schema.get_u32(row, table_idx);
 				index_layout.set_u32(&mut index_key, pk_idx, val);
 			}
 			Type::Uint8 => {
-				let val = layout.get_u64(row, table_idx);
+				let val = schema.get_u64(row, table_idx);
 				index_layout.set_u64(&mut index_key, pk_idx, val);
 			}
 			Type::Uint16 => {
-				let val = layout.get_u128(row, table_idx);
+				let val = schema.get_u128(row, table_idx);
 				index_layout.set_u128(&mut index_key, pk_idx, val);
 			}
 			Type::Float4 => {
-				let val = layout.get_f32(row, table_idx);
+				let val = schema.get_f32(row, table_idx);
 				index_layout.set_f32(&mut index_key, pk_idx, val);
 			}
 			Type::Float8 => {
-				let val = layout.get_f64(row, table_idx);
+				let val = schema.get_f64(row, table_idx);
 				index_layout.set_f64(&mut index_key, pk_idx, val);
 			}
 			Type::Utf8 => {
@@ -105,31 +105,31 @@ pub fn encode_primary_key(
 				panic!("Blob columns cannot be used in primary keys");
 			}
 			Type::Date => {
-				let val = layout.get_date(row, table_idx);
+				let val = schema.get_date(row, table_idx);
 				index_layout.set_date(&mut index_key, pk_idx, val);
 			}
 			Type::Time => {
-				let val = layout.get_time(row, table_idx);
+				let val = schema.get_time(row, table_idx);
 				index_layout.set_time(&mut index_key, pk_idx, val);
 			}
 			Type::DateTime => {
-				let val = layout.get_datetime(row, table_idx);
+				let val = schema.get_datetime(row, table_idx);
 				index_layout.set_datetime(&mut index_key, pk_idx, val);
 			}
 			Type::Duration => {
-				let val = layout.get_duration(row, table_idx);
+				let val = schema.get_duration(row, table_idx);
 				index_layout.set_duration(&mut index_key, pk_idx, val);
 			}
 			Type::Uuid4 => {
-				let val = layout.get_uuid4(row, table_idx);
+				let val = schema.get_uuid4(row, table_idx);
 				index_layout.set_uuid4(&mut index_key, pk_idx, val);
 			}
 			Type::Uuid7 => {
-				let val = layout.get_uuid7(row, table_idx);
+				let val = schema.get_uuid7(row, table_idx);
 				index_layout.set_uuid7(&mut index_key, pk_idx, val);
 			}
 			Type::IdentityId => {
-				let val = layout.get_identity_id(row, table_idx);
+				let val = schema.get_identity_id(row, table_idx);
 				index_layout.set_identity_id(&mut index_key, pk_idx, val);
 			}
 			Type::Int => {
@@ -165,11 +165,12 @@ pub fn encode_primary_key(
 
 /// Helper to load the primary key definition if the table has one
 pub fn get_primary_key<T: IntoStandardTransaction>(
+	catalog: &Catalog,
 	txn: &mut T,
 	table: &TableDef,
 ) -> crate::Result<Option<PrimaryKeyDef>> {
-	if let Some(_pk_id) = CatalogStore::get_table_pk_id(txn, table.id)? {
-		CatalogStore::find_primary_key(txn, table.id)
+	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
+		catalog.find_primary_key(txn, table.id)
 	} else {
 		Ok(None)
 	}

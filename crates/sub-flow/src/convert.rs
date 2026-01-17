@@ -5,7 +5,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{
 		catalog::primitive::PrimitiveId,
 		cdc::{Cdc, CdcChange},
@@ -103,23 +103,33 @@ pub(crate) fn create_row(
 
 	let raw_encoded = EncodedValues(CowVec::new(row_bytes));
 
-	// If no dictionary columns, return directly with value layout
+	// If no dictionary columns, return directly with value schema
 	if !metadata.has_dictionary_columns {
-		let layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
+		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = metadata
+			.value_types
+			.iter()
+			.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+			.collect();
+		let schema = Schema::new(fields);
 		return Ok(Row {
 			number: row_number,
 			encoded: raw_encoded,
-			layout,
+			schema,
 		});
 	}
 
 	// Decode dictionary columns
-	let storage_layout = EncodedValuesLayout::testing(&metadata.storage_types);
-	let value_layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
+	let storage_schema = Schema::testing(&metadata.storage_types);
+	let fields: Vec<reifydb_core::encoded::schema::SchemaField> = metadata
+		.value_types
+		.iter()
+		.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+		.collect();
+	let value_schema = Schema::new(fields);
 
 	let mut values: Vec<Value> = Vec::with_capacity(metadata.dictionaries.len());
 	for (idx, dict_opt) in metadata.dictionaries.iter().enumerate() {
-		let raw_value = storage_layout.get_value(&raw_encoded, idx);
+		let raw_value = storage_schema.get_value(&raw_encoded, idx);
 
 		if let Some(dictionary) = dict_opt {
 			// Decode dictionary ID to actual value
@@ -149,14 +159,14 @@ pub(crate) fn create_row(
 		}
 	}
 
-	// Re-encode with value layout
-	let mut encoded = value_layout.allocate();
-	value_layout.set_values(&mut encoded, &values);
+	// Re-encode with value schema
+	let mut encoded = value_schema.allocate();
+	value_schema.set_values(&mut encoded, &values);
 
 	Ok(Row {
 		number: row_number,
 		encoded,
-		layout: value_layout,
+		schema: value_schema,
 	})
 }
 

@@ -12,7 +12,7 @@ use crate::{CatalogStore, store::table::schema::table};
 impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
-	pub fn get_table_pk_id(
+	pub(crate) fn get_table_pk_id(
 		rx: &mut impl IntoStandardTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
@@ -36,6 +36,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, primitive::PrimitiveId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use crate::{
 		CatalogStore,
@@ -55,13 +56,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table.id,
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: reifydb_type::value::constraint::TypeConstraint::unconstrained(
-					reifydb_type::value::r#type::Type::Uint8,
-				),
-				if_not_exists: false,
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -74,7 +71,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)

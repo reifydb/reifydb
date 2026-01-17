@@ -15,10 +15,11 @@ mod from;
 
 use std::{
 	alloc::{Layout, alloc_zeroed, handle_alloc_error},
+	fmt::Debug,
+	ops::Deref,
 	sync::Arc,
 };
 
-pub use fingerprint::{SchemaFingerprint, compute_fingerprint};
 use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{constraint::TypeConstraint, r#type::Type},
@@ -26,6 +27,7 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use super::encoded::EncodedValues;
+use crate::encoded::schema::fingerprint::{SchemaFingerprint, compute_fingerprint};
 
 /// Size of schema header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
@@ -67,17 +69,48 @@ impl SchemaField {
 }
 
 /// A schema describing the structure of encoded row data.
+pub struct Schema(Arc<Inner>);
+
+/// Inner data for a schema describing the structure of encoded row data.
 ///
 /// Schemas are immutable and content-addressable via their fingerprint.
 /// The same field configuration always produces the same fingerprint,
 /// enabling schema deduplication in the registry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Schema {
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Inner {
 	/// Content-addressable fingerprint (hash of canonical field representation)
-	fingerprint: SchemaFingerprint,
+	pub fingerprint: SchemaFingerprint,
 	/// Fields in definition order
-	fields: Vec<SchemaField>,
+	pub fields: Vec<SchemaField>,
 }
+
+impl Deref for Schema {
+	type Target = Inner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl Clone for Schema {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl Debug for Schema {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
+	}
+}
+
+impl PartialEq for Schema {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.as_ref() == other.0.as_ref()
+	}
+}
+
+impl Eq for Schema {}
 
 impl Schema {
 	/// Create a new schema from a list of fields.
@@ -87,19 +120,19 @@ impl Schema {
 		let fields = Self::compute_layout(fields);
 		let fingerprint = compute_fingerprint(&fields);
 
-		Self {
+		Self(Arc::new(Inner {
 			fingerprint,
 			fields,
-		}
+		}))
 	}
 
 	/// Create a schema from pre-computed fields and fingerprint.
 	/// Used when loading from storage.
 	pub fn from_parts(fingerprint: SchemaFingerprint, fields: Vec<SchemaField>) -> Self {
-		Self {
+		Self(Arc::new(Inner {
 			fingerprint,
 			fields,
-		}
+		}))
 	}
 
 	/// Get the schema's fingerprint
@@ -122,9 +155,24 @@ impl Schema {
 		self.fields.iter().find(|f| f.name == name)
 	}
 
+	/// Find field index by name
+	pub fn find_field_index(&self, name: &str) -> Option<usize> {
+		self.fields.iter().position(|f| f.name == name)
+	}
+
 	/// Find a field by index
 	pub fn get_field(&self, index: usize) -> Option<&SchemaField> {
 		self.fields.get(index)
+	}
+
+	/// Get field name by index
+	pub fn get_field_name(&self, index: usize) -> Option<&str> {
+		self.fields.get(index).map(|f| f.name.as_str())
+	}
+
+	/// Get all field names as an iterator
+	pub fn field_names(&self) -> impl Iterator<Item = &str> {
+		self.fields.iter().map(|f| f.name.as_str())
 	}
 
 	/// Compute memory layout for fields.
@@ -215,17 +263,13 @@ impl Schema {
 	/// Useful for tests and simple state schemas.
 	pub fn testing(types: &[Type]) -> Self {
 		Schema::new(
-			types
-				.iter()
+			types.iter()
 				.enumerate()
 				.map(|(i, &t)| SchemaField::unconstrained(format!("f{}", i), t))
 				.collect(),
 		)
 	}
 }
-
-/// Wrapper for thread-safe schema sharing
-pub type SharedSchema = Arc<Schema>;
 
 #[cfg(test)]
 mod tests {

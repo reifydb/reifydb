@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub mod column;
-pub mod column_policy;
-pub mod dictionary;
-pub mod flow;
-pub mod flow_edge;
-pub mod flow_node;
-pub mod namespace;
-pub mod primary_key;
-pub mod primitive;
-pub mod retention_policy;
-pub mod ringbuffer;
-pub mod schema;
-pub mod sequence;
-pub mod subscription;
-pub mod table;
-pub mod view;
+pub(crate) mod column;
+pub(crate) mod column_policy;
+pub(crate) mod dictionary;
+pub(crate) mod flow;
+pub(crate) mod flow_edge;
+pub(crate) mod flow_node;
+pub(crate) mod namespace;
+#[allow(dead_code)]
+pub(crate) mod primary_key;
+pub(crate) mod primitive;
+#[allow(dead_code)]
+pub(crate) mod retention_policy;
+pub(crate) mod ringbuffer;
+pub(crate) mod schema;
+pub(crate) mod sequence;
+pub(crate) mod subscription;
+pub(crate) mod table;
+pub(crate) mod view;

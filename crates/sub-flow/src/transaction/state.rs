@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		layout::EncodedValuesLayout,
+		schema::Schema,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -139,7 +139,7 @@ impl FlowTransaction {
 	}
 
 	/// Load state for a key, creating if not exists
-	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, layout), fields(
+	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, schema), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		created
@@ -148,7 +148,7 @@ impl FlowTransaction {
 		&mut self,
 		id: FlowNodeId,
 		key: &EncodedKey,
-		layout: &EncodedValuesLayout,
+		schema: &Schema,
 	) -> reifydb_type::Result<EncodedValues> {
 		match self.state_get(id, key)? {
 			Some(row) => {
@@ -157,7 +157,7 @@ impl FlowTransaction {
 			}
 			None => {
 				Span::current().record("created", true);
-				Ok(layout.allocate())
+				Ok(schema.allocate())
 			}
 		}
 	}
@@ -180,7 +180,7 @@ pub mod tests {
 		encoded::{
 			encoded::EncodedValues,
 			key::{EncodedKey, EncodedKeyRange},
-			layout::EncodedValuesLayout,
+			schema::Schema,
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
@@ -393,13 +393,13 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Float8]);
+		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// load_or_create should return existing value
-		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
 		assert_eq!(result, value);
 	}
 
@@ -410,12 +410,12 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Float8]);
+		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
-		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
 
-		// Result should be a newly allocated row (layout.allocate())
+		// Result should be a newly allocated row (schema.allocate())
 		assert!(!result.as_ref().is_empty());
 	}
 

@@ -30,8 +30,7 @@ use reifydb_core::{
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		layout::EncodedValuesLayout,
-		named::EncodedValuesNamedLayout,
+		schema::Schema,
 	},
 	row::Row,
 	util::{clock, encoding::keycode::serializer::KeySerializer},
@@ -70,13 +69,13 @@ pub struct WindowEvent {
 
 impl WindowEvent {
 	pub fn from_row(row: &Row, timestamp: u64) -> Self {
-		let names = row.layout.names().to_vec();
-		let types: Vec<Type> = row.layout.fields().fields.iter().map(|f| f.r#type).collect();
+		let names: Vec<String> = row.schema.field_names().map(|s| s.to_string()).collect();
+		let types: Vec<Type> = row.schema.fields().iter().map(|f| f.constraint.get_type()).collect();
 
 		// Debug: Extract and log the actual values being stored
 		let mut stored_values = Vec::new();
-		for (i, _field) in row.layout.fields().fields.iter().enumerate() {
-			let value = row.layout.get_value_by_idx(&row.encoded, i);
+		for (i, _field) in row.schema.fields().iter().enumerate() {
+			let value = row.schema.get_value(&row.encoded, i);
 			stored_values.push(format!("{:?}", value));
 		}
 
@@ -90,16 +89,20 @@ impl WindowEvent {
 	}
 
 	pub fn to_row(&self) -> Row {
-		let fields: Vec<(String, Type)> =
-			self.layout_names.iter().cloned().zip(self.layout_types.iter().cloned()).collect();
+		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = self
+			.layout_names
+			.iter()
+			.zip(self.layout_types.iter())
+			.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+			.collect();
 
-		let layout = EncodedValuesNamedLayout::new(fields);
+		let layout = Schema::new(fields);
 		let encoded = EncodedValues(CowVec::new(self.encoded_bytes.clone()));
 
 		let row = Row {
 			number: self.row_number,
 			encoded,
-			layout,
+			schema: layout,
 		};
 
 		row
@@ -139,7 +142,7 @@ pub struct WindowOperator {
 	pub slide: Option<WindowSlide>,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub layout: EncodedValuesLayout,
+	pub layout: Schema,
 	pub column_evaluator: StandardColumnEvaluator,
 	pub row_number_provider: RowNumberProvider,
 	pub min_events: usize,               // Minimum events required before window becomes visible
@@ -168,7 +171,7 @@ impl WindowOperator {
 			slide,
 			group_by,
 			aggregations,
-			layout: EncodedValuesLayout::testing(&[Type::Blob]),
+			layout: Schema::testing(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
@@ -296,17 +299,15 @@ impl WindowOperator {
 			WindowType::Time(time_mode) => match time_mode {
 				WindowTimeMode::Processing => Ok(self.current_timestamp()),
 				WindowTimeMode::EventTime(column_name) => {
-					if let Some(timestamp_index) =
-						row.layout.names().iter().position(|name| name == column_name)
-					{
-						let timestamp_value =
-							row.layout.layout().get_i64(&row.encoded, timestamp_index);
+					if let Some(timestamp_index) = row.schema.find_field_index(column_name) {
+						let timestamp_value = row.schema.get_i64(&row.encoded, timestamp_index);
 						Ok(timestamp_value as u64)
 					} else {
+						let column_names: Vec<&str> = row.schema.field_names().collect();
 						Err(Error(internal!(
 							"Event time column '{}' not found in row with columns: {:?}",
 							column_name,
-							row.layout.names()
+							column_names
 						)))
 					}
 				}
@@ -354,7 +355,7 @@ impl WindowOperator {
 			// Collect values from all events for this column
 			for (_event_idx, event) in events.iter().enumerate() {
 				let row = event.to_row();
-				let value = row.layout.get_value_by_idx(&row.encoded, field_idx);
+				let value = row.schema.get_value(&row.encoded, field_idx);
 				column_data.push_value(value);
 			}
 
@@ -428,8 +429,12 @@ impl WindowOperator {
 		}
 
 		// Create result row with aggregated values
-		let layout =
-			EncodedValuesNamedLayout::new(result_names.iter().cloned().zip(result_types.iter().cloned()));
+		let fields: Vec<reifydb_core::encoded::schema::SchemaField> = result_names
+			.iter()
+			.zip(result_types.iter())
+			.map(|(name, ty)| reifydb_core::encoded::schema::SchemaField::unconstrained(name.clone(), *ty))
+			.collect();
+		let layout = Schema::new(fields);
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
@@ -439,7 +444,7 @@ impl WindowOperator {
 		let result_row = Row {
 			number: result_row_number,
 			encoded,
-			layout,
+			schema: layout,
 		};
 
 		Ok(Some((result_row, is_new)))
@@ -555,7 +560,7 @@ impl WindowOperator {
 impl RawStatefulOperator for WindowOperator {}
 
 impl WindowStateful for WindowOperator {
-	fn layout(&self) -> EncodedValuesLayout {
+	fn layout(&self) -> Schema {
 		self.layout.clone()
 	}
 }

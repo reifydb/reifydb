@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
-use reifydb_core::{
-	interface::catalog::{change::CatalogTrackFlowChangeOperations, flow::FlowStatus},
-	value::column::columns::Columns,
-};
+use reifydb_catalog::catalog::flow::FlowToCreate;
+use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateFlowNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::value::Value;
@@ -29,7 +26,7 @@ impl Executor {
 		}
 
 		// Create the flow entry first to get a FlowId
-		let flow_def = CatalogStore::create_flow(
+		let flow_def = self.catalog.create_flow(
 			txn,
 			FlowToCreate {
 				fragment: Some(plan.flow.clone()),
@@ -38,10 +35,9 @@ impl Executor {
 				status: FlowStatus::Active,
 			},
 		)?;
-		txn.track_flow_def_created(flow_def.clone())?;
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
-		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id)?;
+		let _flow = compile_flow(&self.catalog, txn, *plan.as_clause, None, flow_def.id)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

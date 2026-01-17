@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::{primary_key::create::PrimaryKeyToCreate, table::create::TableToCreate},
-};
+use reifydb_catalog::catalog::{primary_key::PrimaryKeyToCreate, table::TableToCreate};
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackTableChangeOperations, primitive::PrimitiveId},
 	value::column::columns::Columns,
@@ -34,7 +31,7 @@ impl Executor {
 			// table exists
 		}
 
-		let table = CatalogStore::create_table(
+		let table = self.catalog.create_table(
 			txn,
 			TableToCreate {
 				fragment: Some(plan.table.clone()),
@@ -42,6 +39,7 @@ impl Executor {
 				namespace: plan.namespace.def().id,
 				columns: plan.columns,
 				retention_policy: None,
+				primary_key_columns: None,
 			},
 		)?;
 		txn.track_table_def_created(table.clone())?;
@@ -49,7 +47,7 @@ impl Executor {
 		// If primary key is specified, create it immediately
 		if let Some(pk_def) = plan.primary_key {
 			// Get the table columns to resolve column IDs
-			let table_columns = CatalogStore::list_columns(txn, table.id)?;
+			let table_columns = self.catalog.list_columns(txn, table.id)?;
 
 			// Resolve column names to IDs
 			let mut column_ids = Vec::new();
@@ -62,7 +60,7 @@ impl Executor {
 			}
 
 			// Create primary key
-			CatalogStore::create_primary_key(
+			self.catalog.create_primary_key(
 				txn,
 				PrimaryKeyToCreate {
 					source: PrimitiveId::Table(table.id),

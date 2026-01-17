@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::encoded::{key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{key::EncodedKey, schema::Schema};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::{error::diagnostic::sequence::sequence_exhausted, return_error, value::r#type::Type};
 
@@ -20,8 +20,7 @@ macro_rules! impl_generator {
 		pub(crate) mod $mod_name {
 			use super::*;
 
-			pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> =
-				Lazy::new(|| EncodedValuesLayout::testing(&[$type_enum]));
+			pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| Schema::testing(&[$type_enum]));
 
 			pub(crate) struct $generator {}
 
@@ -44,14 +43,14 @@ macro_rules! impl_generator {
 					let result = match tx.get(key)? {
 						Some(row) => {
 							let mut row = row.values;
-							let current_value = LAYOUT.$getter(&row, 0);
+							let current_value = SCHEMA.$getter(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
 							if current_value == next_value {
 								return_error!(sequence_exhausted($type_enum));
 							}
 
-							LAYOUT.$setter(&mut row, 0, next_value);
+							SCHEMA.$setter(&mut row, 0, next_value);
 							tx.set(key, row)?;
 							next_value
 						}
@@ -60,8 +59,8 @@ macro_rules! impl_generator {
 								// When default is provided, initialize to that value
 								// (ignore incr) This allows resuming a sequence
 								// from a specific point
-								let mut new_row = LAYOUT.allocate();
-								LAYOUT.$setter(&mut new_row, 0, value);
+								let mut new_row = SCHEMA.allocate();
+								SCHEMA.$setter(&mut new_row, 0, value);
 								tx.set(key, new_row)?;
 								value
 							}
@@ -75,8 +74,8 @@ macro_rules! impl_generator {
 									return_error!(sequence_exhausted($type_enum));
 								}
 
-								let mut new_row = LAYOUT.allocate();
-								LAYOUT.$setter(&mut new_row, 0, last);
+								let mut new_row = SCHEMA.allocate();
+								SCHEMA.$setter(&mut new_row, 0, last);
 								tx.set(key, new_row)?;
 								last
 							}
@@ -94,9 +93,9 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
 						Some(row) => row.values,
-						None => LAYOUT.allocate(),
+						None => SCHEMA.allocate(),
 					};
-					LAYOUT.$setter(&mut row, 0, value);
+					SCHEMA.$setter(&mut row, 0, value);
 					tx.set(key, row)?;
 					tx.commit()?;
 					Ok(())
@@ -111,7 +110,7 @@ macro_rules! impl_generator {
 					error::diagnostic::sequence::sequence_exhausted, value::r#type::Type,
 				};
 
-				use super::{LAYOUT, $generator};
+				use super::{SCHEMA, $generator};
 
 				#[test]
 				fn test_ok() {
@@ -132,15 +131,15 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
 				}
 
 				#[test]
 				fn test_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
-					let mut row = LAYOUT.allocate();
-					LAYOUT.$setter(&mut row, 0, $max);
+					let mut row = SCHEMA.allocate();
+					SCHEMA.$setter(&mut row, 0, $max);
 
 					let key = EncodedKey::new("sequence");
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
@@ -222,7 +221,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
 
 					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {
@@ -244,14 +243,14 @@ macro_rules! impl_generator {
 				fn test_batched_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
-					let mut row = LAYOUT.allocate();
+					let mut row = SCHEMA.allocate();
 					// Choose batch size and initial value that will cause saturation to MAX
 					let batch_size_val =
 						5000u32.min((($max as u128).saturating_sub($start as u128) / 2) as u32);
 					let batch_size = batch_size_val as $prim;
 					let initial_val =
 						(($max as u128).saturating_sub((batch_size_val * 2) as u128)) as $prim;
-					LAYOUT.$setter(&mut row, 0, initial_val);
+					SCHEMA.$setter(&mut row, 0, initial_val);
 
 					let key = EncodedKey::new("sequence");
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();

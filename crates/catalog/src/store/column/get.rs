@@ -48,7 +48,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
+	pub(crate) fn get_column(rx: &mut impl IntoStandardTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
 		let mut txn = rx.into_standard_transaction();
 		let multi = txn.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(

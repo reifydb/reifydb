@@ -13,7 +13,7 @@ use crate::{CatalogStore, store::table::schema::table};
 impl CatalogStore {
 	/// Set the primary key ID for a table
 	/// Returns an internal error if the table doesn't exist
-	pub fn set_table_primary_key(
+	pub(crate) fn set_table_primary_key(
 		txn: &mut StandardCommandTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,

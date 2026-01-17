@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
 
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
@@ -9,7 +9,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedValuesLayout;
+	fn layout(&self) -> Schema;
 
 	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
@@ -37,11 +37,11 @@ pub trait SingleStateful: RawStatefulOperator {
 	/// Update state with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> reifydb_type::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> reifydb_type::Result<()>,
+		F: FnOnce(&Schema, &mut EncodedValues) -> reifydb_type::Result<()>,
 	{
-		let layout = self.layout();
+		let schema = self.layout();
 		let mut row = self.load_state(txn)?;
-		f(&layout, &mut row)?;
+		f(&schema, &mut row)?;
 		self.save_state(txn, row.clone())?;
 		Ok(row)
 	}
@@ -63,7 +63,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {
-		fn layout(&self) -> EncodedValuesLayout {
+		fn layout(&self) -> Schema {
 			self.layout.clone()
 		}
 	}
@@ -97,12 +97,13 @@ pub mod tests {
 
 		// Modify and save
 		let mut modified = state1.clone();
-		modified.make_mut()[0] = 0x33;
+		let layout = operator.layout();
+		layout.set_i64(&mut modified, 0, 0x33);
 		operator.save_state(&mut txn, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn).unwrap();
-		assert_eq!(state2.as_ref()[0], 0x33);
+		assert_eq!(layout.get_i64(&state2, 0), 0x33);
 	}
 
 	#[test]
@@ -113,17 +114,18 @@ pub mod tests {
 
 		// Update state with a function
 		let result = operator
-			.update_state(&mut txn, |_layout, row| {
-				row.make_mut()[0] = 0x77;
+			.update_state(&mut txn, |schema, row| {
+				schema.set_i64(row, 0, 0x77);
 				Ok(())
 			})
 			.unwrap();
 
-		assert_eq!(result.as_ref()[0], 0x77);
+		let layout = operator.layout();
+		assert_eq!(layout.get_i64(&result, 0), 0x77);
 
 		// Verify persistence
 		let loaded = operator.load_state(&mut txn).unwrap();
-		assert_eq!(loaded.as_ref()[0], 0x77);
+		assert_eq!(layout.get_i64(&loaded, 0), 0x77);
 	}
 
 	#[test]
@@ -133,8 +135,8 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
-		operator.update_state(&mut txn, |_layout, row| {
-			row.make_mut()[0] = 0x99;
+		operator.update_state(&mut txn, |schema, row| {
+			schema.set_i64(row, 0, 0x99);
 			Ok(())
 		})
 		.unwrap();
@@ -144,7 +146,8 @@ pub mod tests {
 
 		// Loading should create new default state
 		let new_state = operator.load_state(&mut txn).unwrap();
-		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
+		let layout = operator.layout();
+		assert_eq!(layout.get_i64(&new_state, 0), 0); // Should be default initialized
 	}
 
 	#[test]
@@ -156,15 +159,15 @@ pub mod tests {
 
 		// Set different states for each operator
 		operator1
-			.update_state(&mut txn, |_layout, row| {
-				row.make_mut()[0] = 0x11;
+			.update_state(&mut txn, |schema, row| {
+				schema.set_i64(row, 0, 0x11);
 				Ok(())
 			})
 			.unwrap();
 
 		operator2
-			.update_state(&mut txn, |_layout, row| {
-				row.make_mut()[0] = 0x22;
+			.update_state(&mut txn, |schema, row| {
+				schema.set_i64(row, 0, 0x22);
 				Ok(())
 			})
 			.unwrap();
@@ -173,8 +176,10 @@ pub mod tests {
 		let state1 = operator1.load_state(&mut txn).unwrap();
 		let state2 = operator2.load_state(&mut txn).unwrap();
 
-		assert_eq!(state1.as_ref()[0], 0x11);
-		assert_eq!(state2.as_ref()[0], 0x22);
+		let layout1 = operator1.layout();
+		let layout2 = operator2.layout();
+		assert_eq!(layout1.get_i64(&state1, 0), 0x11);
+		assert_eq!(layout2.get_i64(&state2, 0), 0x22);
 	}
 
 	#[test]
@@ -185,16 +190,17 @@ pub mod tests {
 
 		// Simulate a counter incrementing
 		for i in 1..=5 {
-			operator.update_state(&mut txn, |_layout, row| {
+			operator.update_state(&mut txn, |schema, row| {
 				// Assuming first field is an int8 counter
-				let current = row.as_ref()[0];
-				row.make_mut()[0] = current.wrapping_add(1);
+				let current = schema.get_i64(row, 0);
+				schema.set_i64(row, 0, current + 1);
 				Ok(())
 			})
 			.unwrap();
 
 			let state = operator.load_state(&mut txn).unwrap();
-			assert_eq!(state.as_ref()[0], i);
+			let layout = operator.layout();
+			assert_eq!(layout.get_i64(&state, 0), i);
 		}
 	}
 }

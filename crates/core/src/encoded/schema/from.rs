@@ -1,20 +1,12 @@
 //  SPDX-License-Identifier: AGPL-3.0-or-later
 //  Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::constraint::TypeConstraint;
 
 use crate::{
-	encoded::{layout::EncodedValuesLayout, schema::SchemaField},
-	interface::catalog::column::ColumnDef,
-	schema::Schema,
+	encoded::schema::{Schema, SchemaField},
+	interface::catalog::{column::ColumnDef, subscription::SubscriptionColumnDef},
 };
-
-impl From<&Schema> for EncodedValuesLayout {
-	fn from(schema: &Schema) -> Self {
-		let types: Vec<Type> = schema.fields().iter().map(|field| field.constraint.get_type()).collect();
-		EncodedValuesLayout::new(schema.fingerprint(), &types)
-	}
-}
 
 impl From<&Vec<ColumnDef>> for Schema {
 	fn from(value: &Vec<ColumnDef>) -> Self {
@@ -28,115 +20,26 @@ impl From<&[ColumnDef]> for Schema {
 	}
 }
 
+impl From<&Vec<SubscriptionColumnDef>> for Schema {
+	fn from(value: &Vec<SubscriptionColumnDef>) -> Self {
+		Schema::from(value.as_slice())
+	}
+}
+impl From<&[SubscriptionColumnDef]> for Schema {
+	fn from(value: &[SubscriptionColumnDef]) -> Self {
+		let fields = value
+			.iter()
+			.map(|col| SchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty)))
+			.collect();
+		Schema::new(fields)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	mod from_schema {
-		use reifydb_type::value::r#type::Type;
-
-		use crate::encoded::{
-			layout::EncodedValuesLayout,
-			schema::{Schema, SchemaField},
-		};
-
-		#[test]
-		fn test_from_schema_single_field() {
-			let schema = Schema::new(vec![SchemaField::unconstrained("id", Type::Int8)]);
-
-			let layout = EncodedValuesLayout::from(&schema);
-
-			assert_eq!(layout.fields.len(), 1);
-			assert_eq!(layout.fields[0].r#type, Type::Int8);
-			assert_eq!(layout.bitvec_size, 1);
-		}
-
-		#[test]
-		fn test_from_schema_multiple_fields_alignment() {
-			let schema = Schema::new(vec![
-				SchemaField::unconstrained("a", Type::Int1),
-				SchemaField::unconstrained("b", Type::Int2),
-				SchemaField::unconstrained("c", Type::Int4),
-			]);
-
-			let layout_from_schema = EncodedValuesLayout::from(&schema);
-			let layout_direct = EncodedValuesLayout::testing(&[Type::Int1, Type::Int2, Type::Int4]);
-
-			// Verify offsets match direct construction
-			assert_eq!(layout_from_schema.fields.len(), layout_direct.fields.len());
-			for (from_schema, direct) in layout_from_schema.fields.iter().zip(layout_direct.fields.iter()) {
-				assert_eq!(from_schema.offset, direct.offset);
-				assert_eq!(from_schema.size, direct.size);
-				assert_eq!(from_schema.align, direct.align);
-				assert_eq!(from_schema.r#type, direct.r#type);
-			}
-			assert_eq!(layout_from_schema.alignment, layout_direct.alignment);
-			assert_eq!(layout_from_schema.total_static_size(), layout_direct.total_static_size());
-		}
-
-		#[test]
-		fn test_from_schema_nine_fields_bitvec_size() {
-			let schema = Schema::new(vec![
-				SchemaField::unconstrained("f0", Type::Boolean),
-				SchemaField::unconstrained("f1", Type::Int1),
-				SchemaField::unconstrained("f2", Type::Int2),
-				SchemaField::unconstrained("f3", Type::Int4),
-				SchemaField::unconstrained("f4", Type::Int8),
-				SchemaField::unconstrained("f5", Type::Uint1),
-				SchemaField::unconstrained("f6", Type::Uint2),
-				SchemaField::unconstrained("f7", Type::Uint4),
-				SchemaField::unconstrained("f8", Type::Uint8),
-			]);
-
-			let layout = EncodedValuesLayout::from(&schema);
-
-			// 9 fields → bitvec grows to 2 bytes
-			assert_eq!(layout.bitvec_size, 2);
-			assert_eq!(layout.fields.len(), 9);
-		}
-
-		#[test]
-		fn test_from_schema_preserves_field_order() {
-			let schema = Schema::new(vec![
-				SchemaField::unconstrained("first", Type::Utf8),
-				SchemaField::unconstrained("second", Type::Int4),
-				SchemaField::unconstrained("third", Type::Boolean),
-			]);
-
-			let layout = EncodedValuesLayout::from(&schema);
-
-			assert_eq!(layout.fields[0].r#type, Type::Utf8);
-			assert_eq!(layout.fields[1].r#type, Type::Int4);
-			assert_eq!(layout.fields[2].r#type, Type::Boolean);
-		}
-
-		#[test]
-		fn test_from_schema_equivalence_with_direct_construction() {
-			let types = vec![Type::Uint1, Type::Uint2, Type::Uint4, Type::Uint8, Type::Uint16];
-
-			let schema = Schema::new(
-				types.iter()
-					.enumerate()
-					.map(|(i, t)| SchemaField::unconstrained(format!("f{}", i), *t))
-					.collect(),
-			);
-
-			let layout_from_schema = EncodedValuesLayout::from(&schema);
-			let layout_direct = EncodedValuesLayout::testing(&types);
-
-			// Full equivalence check
-			assert_eq!(layout_from_schema.fields.len(), layout_direct.fields.len());
-			assert_eq!(layout_from_schema.bitvec_size, layout_direct.bitvec_size);
-			assert_eq!(layout_from_schema.alignment, layout_direct.alignment);
-			assert_eq!(layout_from_schema.static_section_size, layout_direct.static_section_size);
-
-			for (i, (from_schema, direct)) in
-				layout_from_schema.fields.iter().zip(layout_direct.fields.iter()).enumerate()
-			{
-				assert_eq!(from_schema.offset, direct.offset, "offset mismatch at field {}", i);
-				assert_eq!(from_schema.size, direct.size, "size mismatch at field {}", i);
-				assert_eq!(from_schema.align, direct.align, "align mismatch at field {}", i);
-				assert_eq!(from_schema.r#type, direct.r#type, "type mismatch at field {}", i);
-			}
-		}
+		// Tests removed as From<&Schema> for EncodedValuesLayout has been removed
+		// EncodedValuesLayout is being phased out in favor of Schema
 	}
 
 	mod from_column_def {

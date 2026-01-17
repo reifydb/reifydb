@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	key::row::RowKey,
@@ -33,17 +32,16 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = self.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
-		else {
+		let Some(ringbuffer) = self.catalog.find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata
-		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
+		let Some(mut metadata) = self.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
@@ -159,7 +157,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		CatalogStore::update_ringbuffer_metadata(txn, metadata)?;
+		self.catalog.update_ringbuffer_metadata(txn, metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

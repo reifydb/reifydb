@@ -820,10 +820,7 @@ pub(crate) fn eval_ne(left: &Column, right: &Column) -> EvalResult<Column> {
 				data.push(false);
 				bitvec.push(false);
 			}
-			Ok(Column::new(
-				Fragment::internal("_ne"),
-				ColumnData::bool_with_bitvec(data, bitvec),
-			))
+			Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 		}
 
 		// Type mismatch error for incompatible types
@@ -894,10 +891,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ne"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for boolean inequality
@@ -930,10 +924,7 @@ fn compare_bool_ne(left: &BoolContainer, right: &BoolContainer) -> EvalResult<Co
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ne"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for temporal inequality
@@ -972,10 +963,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ne"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for text inequality
@@ -1011,10 +999,7 @@ fn compare_text_ne(left: &Utf8Container, right: &Utf8Container) -> EvalResult<Co
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ne"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for UUID inequality
@@ -1042,9 +1027,5 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ne"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
-
+	Ok(Column::new(Fragment::internal("_ne"), ColumnData::bool_with_bitvec(data, bitvec)))
 }

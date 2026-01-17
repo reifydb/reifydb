@@ -5,7 +5,7 @@
 
 use std::{collections::HashSet, time::Duration};
 
-use reifydb_core::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::schema::Schema;
 use reifydb_type::value::{
 	identity::IdentityId,
 	r#type::Type,
@@ -15,7 +15,7 @@ use tokio::time::sleep;
 
 #[test]
 fn test_uuid_uniqueness() {
-	let layout = EncodedValuesLayout::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -23,20 +23,20 @@ fn test_uuid_uniqueness() {
 	let mut identity_set = HashSet::new();
 
 	for _ in 0..1000 {
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate();
 		let identity = IdentityId::generate();
 
-		layout.set_uuid4(&mut row, 0, uuid4);
-		layout.set_uuid7(&mut row, 1, uuid7);
-		layout.set_identity_id(&mut row, 2, identity);
+		schema.set_uuid4(&mut row, 0, uuid4);
+		schema.set_uuid7(&mut row, 1, uuid7);
+		schema.set_identity_id(&mut row, 2, identity);
 
 		// Verify storage and retrieval
-		assert_eq!(layout.get_uuid4(&row, 0), uuid4);
-		assert_eq!(layout.get_uuid7(&row, 1), uuid7);
-		assert_eq!(layout.get_identity_id(&row, 2), identity);
+		assert_eq!(schema.get_uuid4(&row, 0), uuid4);
+		assert_eq!(schema.get_uuid7(&row, 1), uuid7);
+		assert_eq!(schema.get_identity_id(&row, 2), identity);
 
 		// Check uniqueness
 		assert!(uuid4_set.insert(uuid4), "UUID4 collision detected");
@@ -47,14 +47,14 @@ fn test_uuid_uniqueness() {
 
 #[tokio::test]
 async fn test_uuid7_timestamp_ordering() {
-	let layout = EncodedValuesLayout::testing(&[Type::Uuid7]);
+	let schema = Schema::testing(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 		let uuid = Uuid7::generate();
-		layout.set_uuid7(&mut row, 0, uuid);
-		uuids.push(layout.get_uuid7(&row, 0));
+		schema.set_uuid7(&mut row, 0, uuid);
+		uuids.push(schema.get_uuid7(&row, 0));
 
 		// Small delay to ensure timestamp progression
 		sleep(Duration::from_millis(1)).await;

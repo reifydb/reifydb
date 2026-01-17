@@ -10,7 +10,10 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::store::flow_edge::schema::{flow_edge, flow_edge_by_flow};
 
 impl crate::CatalogStore {
-	pub fn create_flow_edge(txn: &mut StandardCommandTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
+	pub(crate) fn create_flow_edge(
+		txn: &mut StandardCommandTransaction,
+		edge_def: &FlowEdgeDef,
+	) -> crate::Result<()> {
 		// Write to main flow_edge table
 		let mut row = flow_edge::SCHEMA.allocate();
 		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::ID, edge_def.id);

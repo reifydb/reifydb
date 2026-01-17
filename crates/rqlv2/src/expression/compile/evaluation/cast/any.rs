@@ -6,9 +6,8 @@
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::r#type::Type;
 
-use crate::expression::types::{EvalError, EvalResult};
-
 use super::cast_column_data;
+use crate::expression::types::{EvalError, EvalResult};
 
 pub(super) fn from_any(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 	let any_container = match data {
@@ -17,7 +16,7 @@ pub(super) fn from_any(data: &ColumnData, target: Type) -> EvalResult<ColumnData
 			return Err(EvalError::UnsupportedCast {
 				from: format!("{:?}", data.get_type()),
 				to: format!("{:?}", target),
-			})
+			});
 		}
 	};
 
@@ -153,14 +152,20 @@ pub(super) fn from_any(data: &ColumnData, target: Type) -> EvalResult<ColumnData
 							result.push_undefined();
 						}
 					}
-					ColumnData::Utf8 { container: c, .. } => {
+					ColumnData::Utf8 {
+						container: c,
+						..
+					} => {
 						if c.is_defined(0) {
 							result.push::<String>(c.get(0).unwrap().clone());
 						} else {
 							result.push_undefined();
 						}
 					}
-					ColumnData::Blob { container: c, .. } => {
+					ColumnData::Blob {
+						container: c,
+						..
+					} => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
@@ -216,21 +221,30 @@ pub(super) fn from_any(data: &ColumnData, target: Type) -> EvalResult<ColumnData
 							result.push_undefined();
 						}
 					}
-					ColumnData::Int { container: c, .. } => {
+					ColumnData::Int {
+						container: c,
+						..
+					} => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
 							result.push_undefined();
 						}
 					}
-					ColumnData::Uint { container: c, .. } => {
+					ColumnData::Uint {
+						container: c,
+						..
+					} => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {
 							result.push_undefined();
 						}
 					}
-					ColumnData::Decimal { container: c, .. } => {
+					ColumnData::Decimal {
+						container: c,
+						..
+					} => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap().clone());
 						} else {

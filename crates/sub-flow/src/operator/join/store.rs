@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::layout::EncodedValuesLayout, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId};
 use reifydb_hash::Hash128;
 use reifydb_type::{
 	error::Error,
@@ -50,8 +50,8 @@ impl Store {
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
-				let layout = EncodedValuesLayout::testing(&[Type::Blob]);
-				let blob = layout.get_blob(&row, 0);
+				let schema = Schema::testing(&[Type::Blob]);
+				let blob = schema.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
 				}
@@ -76,10 +76,10 @@ impl Store {
 			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
-		let layout = EncodedValuesLayout::testing(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let schema = Schema::testing(&[Type::Blob]);
+		let mut row = schema.allocate();
 		let blob = Blob::from(serialized);
-		layout.set_blob(&mut row, 0, &blob);
+		schema.set_blob(&mut row, 0, &blob);
 
 		state_set(self.node_id, txn, &key, row)?;
 		Ok(())

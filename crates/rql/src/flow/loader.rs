@@ -3,7 +3,7 @@
 
 //! Loader module for reconstructing Flows from catalog nodes and edges
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{error::Error, internal};
@@ -14,9 +14,13 @@ use crate::flow::{
 };
 
 /// Loads a Flow from the catalog by reconstructing it from nodes and edges
-pub fn load_flow_dag<T: IntoStandardTransaction>(txn: &mut T, flow_id: FlowId) -> crate::Result<FlowDag> {
-	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id)?;
-	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
+pub fn load_flow_dag<T: IntoStandardTransaction>(
+	catalog: &Catalog,
+	txn: &mut T,
+	flow_id: FlowId,
+) -> crate::Result<FlowDag> {
+	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
+	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 
 	let mut builder = FlowDag::builder(flow_id);
 

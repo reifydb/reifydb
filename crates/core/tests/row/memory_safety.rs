@@ -3,7 +3,7 @@
 
 //! Memory safety edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::schema::Schema;
 use reifydb_type::value::{blob::Blob, int::Int, r#type::Type};
 
 #[test]
@@ -42,53 +42,53 @@ fn test_unaligned_access_all_types() {
 	for target_type in types_to_test {
 		// Create unaligned layout: Int1 (1 byte) followed by target
 		// type
-		let layout = EncodedValuesLayout::testing(&[
+		let schema = Schema::testing(&[
 			Type::Int1,  // 1 byte - creates odd alignment
 			target_type, // At offset 1 (odd)
 			Type::Int1,  // Another 1 byte
 			target_type, // At another odd offset
 		]);
 
-		let mut row = layout.allocate();
+		let mut row = schema.allocate();
 
 		// Set values at odd offsets - this should not crash
 		match target_type {
 			Type::Boolean => {
-				layout.set_bool(&mut row, 1, true);
-				assert_eq!(layout.get_bool(&row, 1), true);
-				layout.set_bool(&mut row, 3, false);
-				assert_eq!(layout.get_bool(&row, 3), false);
+				schema.set_bool(&mut row, 1, true);
+				assert_eq!(schema.get_bool(&row, 1), true);
+				schema.set_bool(&mut row, 3, false);
+				assert_eq!(schema.get_bool(&row, 3), false);
 			}
 			Type::Int1 => {
-				layout.set_i8(&mut row, 1, 42);
-				assert_eq!(layout.get_i8(&row, 1), 42);
+				schema.set_i8(&mut row, 1, 42);
+				assert_eq!(schema.get_i8(&row, 1), 42);
 			}
 			Type::Int2 => {
-				layout.set_i16(&mut row, 1, 1234i16);
-				assert_eq!(layout.get_i16(&row, 1), 1234);
+				schema.set_i16(&mut row, 1, 1234i16);
+				assert_eq!(schema.get_i16(&row, 1), 1234);
 			}
 			Type::Int4 => {
-				layout.set_i32(&mut row, 1, 123456);
-				assert_eq!(layout.get_i32(&row, 1), 123456);
+				schema.set_i32(&mut row, 1, 123456);
+				assert_eq!(schema.get_i32(&row, 1), 123456);
 			}
 			Type::Int8 => {
-				layout.set_i64(&mut row, 1, 1234567890);
-				assert_eq!(layout.get_i64(&row, 1), 1234567890);
+				schema.set_i64(&mut row, 1, 1234567890);
+				assert_eq!(schema.get_i64(&row, 1), 1234567890);
 			}
 			Type::Float4 => {
-				layout.set_f32(&mut row, 1, 3.14);
-				assert!((layout.get_f32(&row, 1) - 3.14).abs() < f32::EPSILON);
+				schema.set_f32(&mut row, 1, 3.14);
+				assert!((schema.get_f32(&row, 1) - 3.14).abs() < f32::EPSILON);
 			}
 			Type::Float8 => {
-				layout.set_f64(&mut row, 1, 3.14159);
-				assert!((layout.get_f64(&row, 1) - 3.14159).abs() < f64::EPSILON);
+				schema.set_f64(&mut row, 1, 3.14159);
+				assert!((schema.get_f64(&row, 1) - 3.14159).abs() < f64::EPSILON);
 			}
 			Type::Utf8 => {
-				layout.set_utf8(&mut row, 1, "test");
-				assert_eq!(layout.get_utf8(&row, 1), "test");
+				schema.set_utf8(&mut row, 1, "test");
+				assert_eq!(schema.get_utf8(&row, 1), "test");
 			}
 			_ => {
-				layout.set_undefined(&mut row, 1);
+				schema.set_undefined(&mut row, 1);
 				assert!(!row.is_defined(1));
 			}
 		}
@@ -101,7 +101,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// types For dynamic types, test that memory usage is reasonable across
 	// multiple rows
 
-	let layout = EncodedValuesLayout::testing(&[
+	let schema = Schema::testing(&[
 		Type::Int4,   // Static
 		Type::Float8, // Static
 		Type::Utf8,   // Dynamic
@@ -109,22 +109,22 @@ fn test_repeated_overwrites_no_memory_leak() {
 		Type::Int,    // Dynamic/Static depending on value
 	]);
 
-	let mut row = layout.allocate();
+	let mut row = schema.allocate();
 	let initial_size = row.len();
 
 	// Repeatedly overwrite static fields - this should work fine
 	for i in 0..10000 {
-		layout.set_i32(&mut row, 0, i);
-		layout.set_f64(&mut row, 1, i as f64);
+		schema.set_i32(&mut row, 0, i);
+		schema.set_f64(&mut row, 1, i as f64);
 	}
 
 	// Size should not have grown for static fields
 	assert_eq!(row.len(), initial_size, "Static fields caused memory growth");
 
 	// Set dynamic fields once
-	layout.set_utf8(&mut row, 2, "constant");
-	layout.set_blob(&mut row, 3, &Blob::from(&b"fixed"[..]));
-	layout.set_int(&mut row, 4, &Int::from(123i64));
+	schema.set_utf8(&mut row, 2, "constant");
+	schema.set_blob(&mut row, 3, &Blob::from(&b"fixed"[..]));
+	schema.set_int(&mut row, 4, &Int::from(123i64));
 
 	let size_after_dynamic = row.len();
 	assert!(size_after_dynamic > initial_size, "Dynamic fields should increase size");
@@ -133,12 +133,12 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// Test that many rows with same dynamic content are memory efficient
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
-			let mut r = layout.allocate();
-			layout.set_i32(&mut r, 0, 42);
-			layout.set_f64(&mut r, 1, 3.14);
-			layout.set_utf8(&mut r, 2, "constant");
-			layout.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
-			layout.set_int(&mut r, 4, &Int::from(123i64));
+			let mut r = schema.allocate();
+			schema.set_i32(&mut r, 0, 42);
+			schema.set_f64(&mut r, 1, 3.14);
+			schema.set_utf8(&mut r, 2, "constant");
+			schema.set_blob(&mut r, 3, &Blob::from(&b"fixed"[..]));
+			schema.set_int(&mut r, 4, &Int::from(123i64));
 			r
 		})
 		.collect();
@@ -152,8 +152,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 #[test]
 fn test_minimal_row_handling() {
 	// Test edge case of encoded with minimal fields
-	let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
-	let row = layout.allocate();
+	let schema = Schema::testing(&[Type::Boolean]);
+	let row = schema.allocate();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
 
@@ -170,16 +170,16 @@ fn test_maximum_field_count() {
 		})
 		.collect();
 
-	let layout = EncodedValuesLayout::testing(&types);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&types);
+	let mut row = schema.allocate();
 
 	// Set and verify some fields
-	layout.set_bool(&mut row, 0, true);
-	assert_eq!(layout.get_bool(&row, 0), true);
+	schema.set_bool(&mut row, 0, true);
+	assert_eq!(schema.get_bool(&row, 0), true);
 
-	layout.set_i32(&mut row, 1, 42);
-	assert_eq!(layout.get_i32(&row, 1), 42);
+	schema.set_i32(&mut row, 1, 42);
+	assert_eq!(schema.get_i32(&row, 1), 42);
 
-	layout.set_utf8(&mut row, 253, "field 253");
-	assert_eq!(layout.get_utf8(&row, 253), "field 253");
+	schema.set_utf8(&mut row, 253, "field 253");
+	assert_eq!(schema.get_utf8(&row, 253), "field 253");
 }

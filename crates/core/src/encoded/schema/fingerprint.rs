@@ -12,7 +12,7 @@ use std::ops::Deref;
 use reifydb_hash::{Hash64, xxh::xxh3_64};
 use serde::{Deserialize, Serialize};
 
-use crate::schema::SchemaField;
+use crate::encoded::schema::SchemaField;
 
 /// A fingerprint that uniquely identifies a schema layout.
 ///

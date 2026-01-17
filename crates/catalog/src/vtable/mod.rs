@@ -88,6 +88,8 @@ impl VTableRegistry {
 			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table_def()),
 			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table_def()),
 			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table_def()),
+			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
+			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table_def()),
 			_ => None,
 		})
 	}
@@ -111,6 +113,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_flow_operators_table_def(),
 			SystemCatalog::get_system_dictionaries_table_def(),
 			SystemCatalog::get_system_ringbuffers_table_def(),
+			SystemCatalog::get_system_schemas_table_def(),
+			SystemCatalog::get_system_schema_fields_table_def(),
 		])
 	}
 }

@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_sequence(
+	pub(crate) fn find_sequence(
 		rx: &mut impl IntoStandardTransaction,
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {

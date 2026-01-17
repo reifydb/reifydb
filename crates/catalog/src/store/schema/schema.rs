@@ -23,7 +23,7 @@ pub(crate) mod schema_field {
 	/// Field name index
 	pub(crate) const NAME: usize = 0;
 	/// Base field type index (Type::to_u8())
-	pub(crate) const BASE_TYPE: usize = 1;
+	pub(crate) const TYPE: usize = 1;
 	/// Constraint type index (0=None, 1=MaxBytes, 2=PrecisionScale)
 	pub(crate) const CONSTRAINT_TYPE: usize = 2;
 	/// Constraint param 1 (MaxBytes value or precision)

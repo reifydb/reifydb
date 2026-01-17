@@ -24,7 +24,6 @@ use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use row::RowKey;
 use row_sequence::RowSequenceKey;
-pub use schema::{SchemaFieldKey, SchemaKey};
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;

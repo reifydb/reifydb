@@ -6,8 +6,7 @@
 //! This module provides the `FFISingleStateful` trait for operators that maintain
 //! a single state value, such as counters, accumulators, or running aggregates.
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
-use reifydb_core::schema::Schema;
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};

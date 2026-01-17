@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::layout::EncodedValuesLayout,
+	encoded::schema::Schema,
 	event::{
 		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
@@ -41,7 +41,7 @@ impl EventListener<OnStartEvent> for StartEventListener {
 
 impl StartEventListener {
 	fn handle_start(&self) -> crate::Result<()> {
-		let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
+		let schema = Schema::testing(&[Type::Uint1]);
 		let key = SystemVersionKey {
 			version: SystemVersion::Storage,
 		}
@@ -52,13 +52,13 @@ impl StartEventListener {
 
 		let created = match tx.get(&key)? {
 			None => {
-				let mut row = layout.allocate();
-				layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
+				let mut row = schema.allocate();
+				schema.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 				tx.set(&key, row)?;
 				true
 			}
 			Some(single) => {
-				let version = layout.get_u8(&single.values, 0);
+				let version = schema.get_u8(&single.values, 0);
 				assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
 				false
 			}

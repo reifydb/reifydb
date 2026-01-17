@@ -24,7 +24,8 @@ use super::{
 		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
 		primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
 		primitive_retention_policies::PrimitiveRetentionPolicies,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, sequences::Sequences,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
+		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
 		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
@@ -71,6 +72,8 @@ pub enum VTables {
 	FlowNodeStorageStats(FlowNodeStorageStats),
 	RingBufferStorageStats(RingBufferStorageStats),
 	DictionaryStorageStats(DictionaryStorageStats),
+	Schemas(Schemas),
+	SchemaFields(SchemaFields),
 
 	/// User-defined virtual table (callback-based)
 	UserDefined {
@@ -117,6 +120,8 @@ impl VTables {
 			Self::FlowNodeStorageStats(t) => &t.definition,
 			Self::RingBufferStorageStats(t) => &t.definition,
 			Self::DictionaryStorageStats(t) => &t.definition,
+			Self::Schemas(t) => &t.definition,
+			Self::SchemaFields(t) => &t.definition,
 			Self::UserDefined {
 				def,
 				..
@@ -158,6 +163,8 @@ impl VTables {
 			Self::FlowNodeStorageStats(t) => t.initialize(txn, ctx),
 			Self::RingBufferStorageStats(t) => t.initialize(txn, ctx),
 			Self::DictionaryStorageStats(t) => t.initialize(txn, ctx),
+			Self::Schemas(t) => t.initialize(txn, ctx),
+			Self::SchemaFields(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
 				exhausted,
@@ -213,6 +220,8 @@ impl VTables {
 			Self::FlowNodeStorageStats(t) => t.next(txn),
 			Self::RingBufferStorageStats(t) => t.next(txn),
 			Self::DictionaryStorageStats(t) => t.next(txn),
+			Self::Schemas(t) => t.next(txn),
+			Self::SchemaFields(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,
 				params: stored_params,

@@ -6,7 +6,7 @@ use std::ops::Deref;
 use reifydb_type::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
 
-use super::schema::SchemaFingerprint;
+use crate::encoded::schema::fingerprint::SchemaFingerprint;
 
 /// Size of schema header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;

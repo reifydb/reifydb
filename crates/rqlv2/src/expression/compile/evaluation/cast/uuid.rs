@@ -20,7 +20,10 @@ use crate::expression::types::{EvalError, EvalResult};
 
 pub(super) fn to_uuid(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 	match data {
-		ColumnData::Utf8 { container, .. } => from_text(container, target),
+		ColumnData::Utf8 {
+			container,
+			..
+		} => from_text(container, target),
 		ColumnData::Uuid4(container) => from_uuid4(container, target),
 		ColumnData::Uuid7(container) => from_uuid7(container, target),
 		_ => {
@@ -75,10 +78,9 @@ impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 #[inline]
 fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type) -> EvalResult<ColumnData> {
 	match target {
-		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(
-			container.data().to_vec(),
-			container.bitvec().clone(),
-		))),
+		Type::Uuid4 => {
+			Ok(ColumnData::Uuid4(UuidContainer::new(container.data().to_vec(), container.bitvec().clone())))
+		}
 		_ => Err(EvalError::UnsupportedCast {
 			from: "Uuid4".to_string(),
 			to: format!("{:?}", target),
@@ -89,10 +91,9 @@ fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type) -> EvalResult<Colu
 #[inline]
 fn from_uuid7(container: &UuidContainer<Uuid7>, target: Type) -> EvalResult<ColumnData> {
 	match target {
-		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(
-			container.data().to_vec(),
-			container.bitvec().clone(),
-		))),
+		Type::Uuid7 => {
+			Ok(ColumnData::Uuid7(UuidContainer::new(container.data().to_vec(), container.bitvec().clone())))
+		}
 		_ => Err(EvalError::UnsupportedCast {
 			from: "Uuid7".to_string(),
 			to: format!("{:?}", target),

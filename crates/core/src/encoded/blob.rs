@@ -3,60 +3,7 @@
 
 use reifydb_type::value::{blob::Blob, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Blob);
-		debug_assert!(!row.is_defined(index), "BLOB field {} already set", index);
-
-		let bytes = value.as_bytes();
-
-		// Calculate offset in dynamic section (relative to start of
-		// dynamic section)
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append blob bytes to dynamic section
-		row.0.extend_from_slice(bytes);
-
-		// Update reference in static section: [offset: u32][length:
-		// u32]
-		let ref_slice = &mut row.0.make_mut()[field.offset..field.offset + 8];
-		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
-		ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
-
-		row.set_valid(index, true);
-	}
-
-	pub fn get_blob(&self, row: &EncodedValues, index: usize) -> Blob {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Blob);
-
-		// Read offset and length from static section
-		let ref_slice = &row.as_slice()[field.offset..field.offset + 8];
-		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
-		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
-
-		// Get bytes from dynamic section
-		let dynamic_start = self.dynamic_section_start();
-		let blob_start = dynamic_start + offset;
-		let blob_slice = &row.as_slice()[blob_start..blob_start + length];
-
-		Blob::from_slice(blob_slice)
-	}
-
-	pub fn try_get_blob(&self, row: &EncodedValues, index: usize) -> Option<Blob> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Blob {
-			Some(self.get_blob(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
@@ -112,7 +59,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{blob::Blob, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_blob() {

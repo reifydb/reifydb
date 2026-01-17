@@ -13,16 +13,10 @@
 
 use dashmap::DashMap;
 use reifydb_core::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, named::EncodedValuesNamedLayout},
-	interface::catalog::{
-		id::SubscriptionId,
-		subscription::{SubscriptionColumnDef, SubscriptionDef},
-	},
+	encoded::{key::EncodedKey, schema::Schema},
+	interface::catalog::id::SubscriptionId,
 	key::{
 		Key,
-		subscription::SubscriptionKey,
-		subscription_column::SubscriptionColumnKey,
 		subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange},
 	},
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -195,55 +189,17 @@ impl SubscriptionPoller {
 		let engine = state.engine_clone();
 		let mut cmd_txn = engine.begin_command()?;
 
-		// Get subscription definition by scanning subscription columns
-		let sub_key = SubscriptionKey::encoded(db_subscription_id);
-		let sub_def = if let Some(entry) = cmd_txn.get(&sub_key)? {
-			// Scan subscription columns
-			let mut stream =
-				cmd_txn.range(SubscriptionColumnKey::subscription_range(db_subscription_id), 256)?;
-			let mut columns = Vec::new();
-
-			while let Some(result) = stream.next() {
-				let col_entry = result?;
-				if let Some(Key::SubscriptionColumn(col_key)) = Key::decode(&col_entry.key) {
-					use reifydb_catalog::store::subscription::schema::subscription_column;
-					let name = subscription_column::SCHEMA
-						.get_utf8(&col_entry.values, subscription_column::NAME)
-						.to_string();
-					let ty_u8 = subscription_column::SCHEMA
-						.get_u8(&col_entry.values, subscription_column::TYPE);
-					let ty = reifydb_type::value::r#type::Type::from_u8(ty_u8);
-
-					columns.push(SubscriptionColumnDef {
-						id: col_key.column,
-						name,
-						ty,
-					});
-				}
+		// Get subscription definition using catalog function
+		let sub_def = match reifydb_catalog::find_subscription(&mut cmd_txn, db_subscription_id)? {
+			Some(def) => def,
+			None => {
+				tracing::warn!("Subscription {} not found", db_subscription_id);
+				return Ok((Columns::empty(), Vec::new()));
 			}
-
-			// Sort by column ID (which is the index) - CRITICAL for correct encoding/decoding order
-			columns.sort_by_key(|c| c.id.0);
-
-			// Get acknowledged version
-			use reifydb_catalog::store::subscription::schema::subscription;
-			let acknowledged_version = CommitVersion(
-				subscription::SCHEMA.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
-			);
-
-			SubscriptionDef {
-				id: db_subscription_id,
-				columns,
-				primary_key: None,
-				acknowledged_version,
-			}
-		} else {
-			tracing::warn!("Subscription {} not found", db_subscription_id);
-			return Ok((Columns::empty(), Vec::new()));
 		};
 
-		// Build the encoded values layout from subscription definition
-		let layout: EncodedValuesNamedLayout = (&sub_def).into();
+		// Build the schema from subscription definition
+		let schema: Schema = (&sub_def).into();
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -275,7 +231,7 @@ impl SubscriptionPoller {
 
 				// Decode each column value
 				for (idx, (_, data)) in column_data.iter_mut().enumerate() {
-					let value = layout.get_value_by_idx(&entry.values, idx);
+					let value = schema.get_value(&entry.values, idx);
 					data.push_value(value);
 				}
 			}

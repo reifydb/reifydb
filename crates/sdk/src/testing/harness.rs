@@ -6,7 +6,7 @@ use std::{collections::HashMap, ffi::c_void, marker::PhantomData};
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 	interface::catalog::flow::FlowNodeId,
 	key::EncodableKey,
 	value::column::columns::Columns,
@@ -82,9 +82,9 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	{
 		let encoded_key = key.encode();
 		let store = self.state();
-		let layout = EncodedValuesLayout::testing(&[expected.get_type()]);
+		let schema = Schema::testing(&[expected.get_type()]);
 
-		store.assert_value(&encoded_key, &[expected], &layout);
+		store.assert_value(&encoded_key, &[expected], &schema);
 	}
 
 	/// Get captured log messages
@@ -280,7 +280,7 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{key::IntoEncodedKey, layout::EncodedValuesLayout},
+		encoded::{key::IntoEncodedKey, schema::Schema},
 		interface::catalog::flow::FlowNodeId,
 		value::column::columns::Columns,
 	};
@@ -367,12 +367,12 @@ pub mod tests {
 					let row = columns.to_single_row();
 					let row_key = format!("row_{}", row.number.0);
 
-					let first_value = row.layout.get_value_by_idx(&row.encoded, 0);
+					let first_value = row.schema.get_value(&row.encoded, 0);
 
 					// Encode the value and store in state
-					let layout = EncodedValuesLayout::testing(&[Type::Int8]);
-					let mut encoded = layout.allocate();
-					layout.set_values(&mut encoded, &[first_value]);
+					let schema = Schema::testing(&[Type::Int8]);
+					let mut encoded = schema.allocate();
+					schema.set_values(&mut encoded, &[first_value]);
 
 					state.set(&row_key.into_encoded_key(), &encoded)?;
 				}
@@ -427,11 +427,11 @@ pub mod tests {
 
 		// Verify the operator stored state correctly via FFI callbacks
 		let state = harness.state();
-		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+		let schema = Schema::testing(&[Type::Int8]);
 		let key = encode_key("row_1");
 
 		// Assert the state was set through the FFI bridge
-		state.assert_value(&key, &[Value::Int8(42i64)], &layout);
+		state.assert_value(&key, &[Value::Int8(42i64)], &schema);
 	}
 
 	#[test]
@@ -457,11 +457,11 @@ pub mod tests {
 
 		// Verify all three values were stored
 		let state = harness.state();
-		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+		let schema = Schema::testing(&[Type::Int8]);
 
-		state.assert_value(&encode_key("row_1"), &[Value::Int8(10i64)], &layout);
-		state.assert_value(&encode_key("row_2"), &[Value::Int8(20i64)], &layout);
-		state.assert_value(&encode_key("row_3"), &[Value::Int8(30i64)], &layout);
+		state.assert_value(&encode_key("row_1"), &[Value::Int8(10i64)], &schema);
+		state.assert_value(&encode_key("row_2"), &[Value::Int8(20i64)], &schema);
+		state.assert_value(&encode_key("row_3"), &[Value::Int8(30i64)], &schema);
 
 		// Verify total state count
 		assert_eq!(state.len(), 3);

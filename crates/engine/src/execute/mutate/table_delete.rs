@@ -3,11 +3,10 @@
 
 use std::{collections::Bound::Included, sync::Arc};
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	encoded::key::EncodedKeyRange,
 	interface::{
-		catalog::{id::IndexId, layout::GetEncodedRowLayout},
+		catalog::id::IndexId,
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
 	},
 	key::{
@@ -20,9 +19,11 @@ use reifydb_core::{
 use reifydb_rql::plan::physical::DeleteTableNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
 use reifydb_type::{
+	error,
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
+		internal::internal,
 	},
 	fragment::Fragment,
 	params::Params,
@@ -47,11 +48,11 @@ impl Executor {
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace().name();
-			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+			let Some(namespace) = self.catalog.find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+			let Some(table) = self.catalog.find_table_by_name(txn, namespace.id, target.name())? else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -120,7 +121,7 @@ impl Executor {
 			}
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(std_txn.command_mut(), &table)?;
+			let pk_def = primary_key::get_primary_key(&self.catalog, std_txn.command_mut(), &table)?;
 
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
@@ -134,9 +135,18 @@ impl Executor {
 
 				// Remove primary key index entry if table has one
 				if let Some(ref pk_def) = pk_def {
-					let layout = table.get_layout();
+					// Load schema from the row data
+					let fingerprint = row_values.fingerprint();
+					let schema =
+						self.catalog.schema.get_or_load(fingerprint, cmd)?.ok_or_else(
+							|| {
+								error!(reifydb_type::error::diagnostic::internal::internal(
+								format!("Schema with fingerprint {:?} not found for table {}", fingerprint, table.name)
+							))
+							},
+						)?;
 					let index_key =
-						primary_key::encode_primary_key(pk_def, &row_values, &table, &layout)?;
+						primary_key::encode_primary_key(pk_def, &row_values, &table, &schema)?;
 
 					cmd.remove(&IndexEntryKey::new(
 						table.id,
@@ -157,7 +167,7 @@ impl Executor {
 			};
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(txn, &table)?;
+			let pk_def = primary_key::get_primary_key(&self.catalog, txn, &table)?;
 
 			let rows: Vec<_> = txn
 				.range(
@@ -173,12 +183,21 @@ impl Executor {
 				// Remove primary key index entry if table has
 				// one
 				if let Some(ref pk_def) = pk_def {
-					let layout = table.get_layout();
-					let index_key = super::primary_key::encode_primary_key(
+					// Load schema from the row data
+					let fingerprint = multi.values.fingerprint();
+					let schema = self.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(
+						|| {
+							error!(internal(format!(
+								"Schema with fingerprint {:?} not found for table {}",
+								fingerprint, table.name
+							)))
+						},
+					)?;
+					let index_key = primary_key::encode_primary_key(
 						pk_def,
 						&multi.values,
 						&table,
-						&layout,
+						&schema,
 					)?;
 
 					txn.remove(&IndexEntryKey::new(

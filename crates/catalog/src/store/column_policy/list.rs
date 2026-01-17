@@ -13,7 +13,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::column_policy::schema::column_policy};
 
 impl CatalogStore {
-	pub fn list_column_policies(
+	pub(crate) fn list_column_policies(
 		rx: &mut impl IntoStandardTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
@@ -42,7 +42,9 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub fn list_column_policies_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnPolicy>> {
+	pub(crate) fn list_column_policies_all(
+		rx: &mut impl IntoStandardTransaction,
+	) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -84,11 +86,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				if_not_exists: false,
 				policies: vec![Saturation(Undefined)],
 				index: ColumnIndex(0),
 				auto_increment: false,

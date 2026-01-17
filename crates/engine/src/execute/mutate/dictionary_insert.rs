@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_rql::plan::physical::InsertDictionaryNode;
 use reifydb_transaction::standard::{StandardTransaction, command::StandardCommandTransaction};
@@ -30,11 +29,10 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
 
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = self.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let dictionary_name = plan.target.name();
-		let Some(dictionary) = CatalogStore::find_dictionary_by_name(txn, namespace.id, dictionary_name)?
-		else {
+		let Some(dictionary) = self.catalog.find_dictionary_by_name(txn, namespace.id, dictionary_name)? else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
 		};

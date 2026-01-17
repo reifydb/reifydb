@@ -6,45 +6,7 @@ use std::ptr;
 use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 use uuid::Uuid;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_uuid4(&self, row: &mut EncodedValues, index: usize, value: Uuid4) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Uuid4);
-		row.set_valid(index, true);
-		unsafe {
-			// UUIDs are 16 bytes
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut [u8; 16],
-				*value.as_bytes(),
-			);
-		}
-	}
-
-	pub fn get_uuid4(&self, row: &EncodedValues, index: usize) -> Uuid4 {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Uuid4);
-		unsafe {
-			// UUIDs are 16 bytes
-			let bytes: [u8; 16] = ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
-			Uuid4::from(Uuid::from_bytes(bytes))
-		}
-	}
-
-	pub fn try_get_uuid4(&self, row: &EncodedValues, index: usize) -> Option<Uuid4> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Uuid4 {
-			Some(self.get_uuid4(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_uuid4(&self, row: &mut EncodedValues, index: usize, value: Uuid4) {
@@ -86,7 +48,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_uuid4() {

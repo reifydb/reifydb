@@ -22,7 +22,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	value::column::{ColumnData, columns::Columns},
 };
 
@@ -56,15 +56,15 @@ impl Columns {
 impl Columns {
 	pub fn append_rows(
 		&mut self,
-		layout: &EncodedValuesLayout,
+		schema: &Schema,
 		rows: impl IntoIterator<Item = EncodedValues>,
 		row_numbers: Vec<RowNumber>,
 	) -> reifydb_type::Result<()> {
-		if self.len() != layout.fields.len() {
+		if self.len() != schema.field_count() {
 			return_error!(frame_error(format!(
 				"mismatched column count: expected {}, got {}",
 				self.len(),
-				layout.fields.len()
+				schema.field_count()
 			)));
 		}
 
@@ -79,22 +79,18 @@ impl Columns {
 			)));
 		}
 
-		// Append encoded numbers if provided
+		// Append row numbers if provided
 		if !row_numbers.is_empty() {
 			self.row_numbers.make_mut().extend(row_numbers);
 		}
 
-		let values = layout.fields.iter().map(|f| f.r#type.clone()).collect::<Vec<_>>();
-		let layout = EncodedValuesLayout::testing(&values);
-
-		// if there is an undefined column and the new data contains
-		// defined data convert this column into the new type and fill
-		// the undefined part
+		// Handle undefined column conversion
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
+			let field = schema.get_field(index).unwrap();
 			if let ColumnData::Undefined(container) = column.data() {
 				let size = container.len();
-				let new_data = match layout.value(index) {
+				let new_data = match field.constraint.get_type() {
 					Type::Boolean => ColumnData::bool_with_bitvec(
 						vec![false; size],
 						BitVec::repeat(size, false),
@@ -208,51 +204,49 @@ impl Columns {
 			}
 		}
 
+		// Append rows using Schema methods
 		for row in &rows {
-			if layout.all_defined(&row) {
-				// if all columns in the encoded are defined, then
-				// we can take a simpler implementation
-				self.append_all_defined(&layout, &row)?;
+			// Check if all fields are defined
+			let all_defined = (0..schema.field_count()).all(|i| row.is_defined(i));
+
+			if all_defined {
+				self.append_all_defined_from_schema(schema, &row)?;
 			} else {
-				// at least one column is undefined
-				self.append_fallback(&layout, &row)?;
+				self.append_fallback_from_schema(schema, &row)?;
 			}
 		}
 
 		Ok(())
 	}
 
-	fn append_all_defined(
-		&mut self,
-		layout: &EncodedValuesLayout,
-		row: &EncodedValues,
-	) -> reifydb_type::Result<()> {
+	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> reifydb_type::Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
-			match (column.data_mut(), layout.value(index)) {
+			let field = schema.get_field(index).unwrap();
+			match (column.data_mut(), field.constraint.get_type()) {
 				(ColumnData::Bool(container), Type::Boolean) => {
-					container.push(layout.get_bool(&row, index));
+					container.push(schema.get_bool(&row, index));
 				}
 				(ColumnData::Float4(container), Type::Float4) => {
-					container.push(layout.get_f32(&row, index));
+					container.push(schema.get_f32(&row, index));
 				}
 				(ColumnData::Float8(container), Type::Float8) => {
-					container.push(layout.get_f64(&row, index));
+					container.push(schema.get_f64(&row, index));
 				}
 				(ColumnData::Int1(container), Type::Int1) => {
-					container.push(layout.get_i8(&row, index));
+					container.push(schema.get_i8(&row, index));
 				}
 				(ColumnData::Int2(container), Type::Int2) => {
-					container.push(layout.get_i16(&row, index));
+					container.push(schema.get_i16(&row, index));
 				}
 				(ColumnData::Int4(container), Type::Int4) => {
-					container.push(layout.get_i32(&row, index));
+					container.push(schema.get_i32(&row, index));
 				}
 				(ColumnData::Int8(container), Type::Int8) => {
-					container.push(layout.get_i64(&row, index));
+					container.push(schema.get_i64(&row, index));
 				}
 				(ColumnData::Int16(container), Type::Int16) => {
-					container.push(layout.get_i128(&row, index));
+					container.push(schema.get_i128(&row, index));
 				}
 				(
 					ColumnData::Utf8 {
@@ -261,40 +255,40 @@ impl Columns {
 					},
 					Type::Utf8,
 				) => {
-					container.push(layout.get_utf8(&row, index).to_string());
+					container.push(schema.get_utf8(&row, index).to_string());
 				}
 				(ColumnData::Uint1(container), Type::Uint1) => {
-					container.push(layout.get_u8(&row, index));
+					container.push(schema.get_u8(&row, index));
 				}
 				(ColumnData::Uint2(container), Type::Uint2) => {
-					container.push(layout.get_u16(&row, index));
+					container.push(schema.get_u16(&row, index));
 				}
 				(ColumnData::Uint4(container), Type::Uint4) => {
-					container.push(layout.get_u32(&row, index));
+					container.push(schema.get_u32(&row, index));
 				}
 				(ColumnData::Uint8(container), Type::Uint8) => {
-					container.push(layout.get_u64(&row, index));
+					container.push(schema.get_u64(&row, index));
 				}
 				(ColumnData::Uint16(container), Type::Uint16) => {
-					container.push(layout.get_u128(&row, index));
+					container.push(schema.get_u128(&row, index));
 				}
 				(ColumnData::Date(container), Type::Date) => {
-					container.push(layout.get_date(&row, index));
+					container.push(schema.get_date(&row, index));
 				}
 				(ColumnData::DateTime(container), Type::DateTime) => {
-					container.push(layout.get_datetime(&row, index));
+					container.push(schema.get_datetime(&row, index));
 				}
 				(ColumnData::Time(container), Type::Time) => {
-					container.push(layout.get_time(&row, index));
+					container.push(schema.get_time(&row, index));
 				}
 				(ColumnData::Duration(container), Type::Duration) => {
-					container.push(layout.get_duration(&row, index));
+					container.push(schema.get_duration(&row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
-					container.push(layout.get_uuid4(&row, index));
+					container.push(schema.get_uuid4(&row, index));
 				}
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
-					container.push(layout.get_uuid7(&row, index));
+					container.push(schema.get_uuid7(&row, index));
 				}
 				(
 					ColumnData::Blob {
@@ -303,7 +297,7 @@ impl Columns {
 					},
 					Type::Blob,
 				) => {
-					container.push(layout.get_blob(&row, index));
+					container.push(schema.get_blob(&row, index));
 				}
 				(
 					ColumnData::Int {
@@ -312,7 +306,7 @@ impl Columns {
 					},
 					Type::Int,
 				) => {
-					container.push(layout.get_int(&row, index));
+					container.push(schema.get_int(&row, index));
 				}
 				(
 					ColumnData::Uint {
@@ -321,7 +315,7 @@ impl Columns {
 					},
 					Type::Uint,
 				) => {
-					container.push(layout.get_uint(&row, index));
+					container.push(schema.get_uint(&row, index));
 				}
 				(
 					ColumnData::Decimal {
@@ -332,7 +326,7 @@ impl Columns {
 						..
 					},
 				) => {
-					container.push(layout.get_decimal(&row, index));
+					container.push(schema.get_decimal(&row, index));
 				}
 				(_, v) => {
 					return_error!(frame_error(format!(
@@ -347,39 +341,40 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback(&mut self, layout: &EncodedValuesLayout, row: &EncodedValues) -> reifydb_type::Result<()> {
+	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> reifydb_type::Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
-			match (column.data_mut(), layout.value(index)) {
-				(ColumnData::Bool(container), Type::Boolean) => match layout.try_get_bool(row, index) {
+			let field = schema.get_field(index).unwrap();
+			match (column.data_mut(), field.constraint.get_type()) {
+				(ColumnData::Bool(container), Type::Boolean) => match schema.try_get_bool(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Float4(container), Type::Float4) => match layout.try_get_f32(row, index) {
+				(ColumnData::Float4(container), Type::Float4) => match schema.try_get_f32(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Float8(container), Type::Float8) => match layout.try_get_f64(row, index) {
+				(ColumnData::Float8(container), Type::Float8) => match schema.try_get_f64(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Int1(container), Type::Int1) => match layout.try_get_i8(row, index) {
+				(ColumnData::Int1(container), Type::Int1) => match schema.try_get_i8(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Int2(container), Type::Int2) => match layout.try_get_i16(row, index) {
+				(ColumnData::Int2(container), Type::Int2) => match schema.try_get_i16(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Int4(container), Type::Int4) => match layout.try_get_i32(row, index) {
+				(ColumnData::Int4(container), Type::Int4) => match schema.try_get_i32(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Int8(container), Type::Int8) => match layout.try_get_i64(row, index) {
+				(ColumnData::Int8(container), Type::Int8) => match schema.try_get_i64(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Int16(container), Type::Int16) => match layout.try_get_i128(row, index) {
+				(ColumnData::Int16(container), Type::Int16) => match schema.try_get_i128(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
@@ -389,57 +384,57 @@ impl Columns {
 						..
 					},
 					Type::Utf8,
-				) => match layout.try_get_utf8(row, index) {
+				) => match schema.try_get_utf8(row, index) {
 					Some(v) => container.push(v.to_string()),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Uint1(container), Type::Uint1) => match layout.try_get_u8(row, index) {
+				(ColumnData::Uint1(container), Type::Uint1) => match schema.try_get_u8(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Uint2(container), Type::Uint2) => match layout.try_get_u16(row, index) {
+				(ColumnData::Uint2(container), Type::Uint2) => match schema.try_get_u16(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Uint4(container), Type::Uint4) => match layout.try_get_u32(row, index) {
+				(ColumnData::Uint4(container), Type::Uint4) => match schema.try_get_u32(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Uint8(container), Type::Uint8) => match layout.try_get_u64(row, index) {
+				(ColumnData::Uint8(container), Type::Uint8) => match schema.try_get_u64(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
 				(ColumnData::Uint16(container), Type::Uint16) => {
-					match layout.try_get_u128(row, index) {
+					match schema.try_get_u128(row, index) {
 						Some(v) => container.push(v),
 						None => container.push_undefined(),
 					}
 				}
-				(ColumnData::Date(container), Type::Date) => match layout.try_get_date(row, index) {
+				(ColumnData::Date(container), Type::Date) => match schema.try_get_date(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
 				(ColumnData::DateTime(container), Type::DateTime) => {
-					match layout.try_get_datetime(row, index) {
+					match schema.try_get_datetime(row, index) {
 						Some(v) => container.push(v),
 						None => container.push_undefined(),
 					}
 				}
-				(ColumnData::Time(container), Type::Time) => match layout.try_get_time(row, index) {
+				(ColumnData::Time(container), Type::Time) => match schema.try_get_time(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
 				(ColumnData::Duration(container), Type::Duration) => {
-					match layout.try_get_duration(row, index) {
+					match schema.try_get_duration(row, index) {
 						Some(v) => container.push(v),
 						None => container.push_undefined(),
 					}
 				}
-				(ColumnData::Uuid4(container), Type::Uuid4) => match layout.try_get_uuid4(row, index) {
+				(ColumnData::Uuid4(container), Type::Uuid4) => match schema.try_get_uuid4(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Uuid7(container), Type::Uuid7) => match layout.try_get_uuid7(row, index) {
+				(ColumnData::Uuid7(container), Type::Uuid7) => match schema.try_get_uuid7(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
@@ -449,7 +444,7 @@ impl Columns {
 						..
 					},
 					Type::Int,
-				) => match layout.try_get_int(row, index) {
+				) => match schema.try_get_int(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
@@ -459,7 +454,7 @@ impl Columns {
 						..
 					},
 					Type::Uint,
-				) => match layout.try_get_uint(row, index) {
+				) => match schema.try_get_uint(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
@@ -471,7 +466,7 @@ impl Columns {
 					Type::Decimal {
 						..
 					},
-				) => match layout.try_get_decimal(row, index) {
+				) => match schema.try_get_decimal(row, index) {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
@@ -817,7 +812,7 @@ pub mod tests {
 		};
 
 		use crate::{
-			encoded::layout::EncodedValuesLayout,
+			encoded::schema::Schema,
 			value::column::{Column, ColumnData, columns::Columns},
 		};
 
@@ -825,11 +820,11 @@ pub mod tests {
 		fn test_before_undefined_bool() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Boolean(true)]);
+			let schema = Schema::testing(&[Type::Boolean]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Boolean(true)]);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -843,10 +838,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Float4]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Float4]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -860,10 +855,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Float8]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Float8]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -877,10 +872,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int1() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Int1]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int1(42)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Int1]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int1(42)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -891,10 +886,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int2() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int2(-1234)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Int2]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int2(-1234)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -905,10 +900,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Int4]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int4(56789)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Int4]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int4(56789)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -919,10 +914,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Int8]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int8(-987654321)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Int8]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int8(-987654321)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -936,10 +931,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int16() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Int16]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Int16]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -953,10 +948,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_string() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Utf8]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -970,10 +965,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Uint1(255)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Uint1]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Uint1(255)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -984,10 +979,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Uint2]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Uint2(65535)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Uint2]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Uint2(65535)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -998,10 +993,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Uint4]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Uint4]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Uint4(4294967295)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1015,10 +1010,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Uint8]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Uint8]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1032,10 +1027,10 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::testing(&[Type::Uint16]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			let schema = Schema::testing(&[Type::Uint16]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1050,11 +1045,11 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int2(2)]);
+			let schema = Schema::testing(&[Type::Int2]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int2(2)]);
 
-			let err = test_instance.append_rows(&layout, [row], vec![]).err().unwrap();
+			let err = test_instance.append_rows(&schema, [row], vec![]).err().unwrap();
 			assert!(err.to_string().contains("mismatched column count: expected 0, got 1"));
 		}
 
@@ -1062,13 +1057,13 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Boolean]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
+			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2([1, 2, 3]));
 			assert_eq!(*test_instance[1].data(), ColumnData::bool([true, true, false]));
@@ -1078,13 +1073,13 @@ pub mod tests {
 		fn test_all_defined_bool() {
 			let mut test_instance = Columns::new(vec![Column::bool("test_col", Vec::<bool>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
-			let mut row_one = layout.allocate();
-			layout.set_bool(&mut row_one, 0, true);
-			let mut row_two = layout.allocate();
-			layout.set_bool(&mut row_two, 0, false);
+			let schema = Schema::testing(&[Type::Boolean]);
+			let mut row_one = schema.allocate();
+			schema.set_bool(&mut row_one, 0, true);
+			let mut row_two = schema.allocate();
+			schema.set_bool(&mut row_two, 0, false);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::bool([true, false]));
 		}
@@ -1093,13 +1088,13 @@ pub mod tests {
 		fn test_all_defined_float4() {
 			let mut test_instance = Columns::new(vec![Column::float4("test_col", Vec::<f32>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Float4]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
+			let schema = Schema::testing(&[Type::Float4]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float4([1.0, 2.0]));
 		}
@@ -1108,13 +1103,13 @@ pub mod tests {
 		fn test_all_defined_float8() {
 			let mut test_instance = Columns::new(vec![Column::float8("test_col", Vec::<f64>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Float8]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
+			let schema = Schema::testing(&[Type::Float8]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float8([1.0, 2.0]));
 		}
@@ -1123,13 +1118,13 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![Column::int1("test_col", Vec::<i8>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int1]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int1(1)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int1(2)]);
+			let schema = Schema::testing(&[Type::Int1]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int1(1)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int1(2)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int1([1, 2]));
 		}
@@ -1138,13 +1133,13 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![Column::int2("test_col", Vec::<i16>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int2(100)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int2(200)]);
+			let schema = Schema::testing(&[Type::Int2]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int2(100)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int2(200)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2([100, 200]));
 		}
@@ -1153,13 +1148,13 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![Column::int4("test_col", Vec::<i32>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int4]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int4(1000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int4(2000)]);
+			let schema = Schema::testing(&[Type::Int4]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int4(1000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int4(2000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int4([1000, 2000]));
 		}
@@ -1168,13 +1163,13 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![Column::int8("test_col", Vec::<i64>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int8]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int8(10000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int8(20000)]);
+			let schema = Schema::testing(&[Type::Int8]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int8(10000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int8(20000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int8([10000, 20000]));
 		}
@@ -1183,13 +1178,13 @@ pub mod tests {
 		fn test_all_defined_int16() {
 			let mut test_instance = Columns::new(vec![Column::int16("test_col", Vec::<i128>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int16]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Int16(1000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Int16(2000)]);
+			let schema = Schema::testing(&[Type::Int16]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Int16(1000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Int16(2000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int16([1000, 2000]));
 		}
@@ -1198,13 +1193,13 @@ pub mod tests {
 		fn test_all_defined_string() {
 			let mut test_instance = Columns::new(vec![Column::utf8("test_col", Vec::<String>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Utf8("a".into())]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Utf8("b".into())]);
+			let schema = Schema::testing(&[Type::Utf8]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Utf8("a".into())]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::utf8(["a".to_string(), "b".to_string()]));
 		}
@@ -1213,13 +1208,13 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::uint1("test_col", Vec::<u8>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Uint1(1)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Uint1(2)]);
+			let schema = Schema::testing(&[Type::Uint1]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Uint1(1)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Uint1(2)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint1([1, 2]));
 		}
@@ -1228,13 +1223,13 @@ pub mod tests {
 		fn test_all_defined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::uint2("test_col", Vec::<u16>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint2]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Uint2(100)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Uint2(200)]);
+			let schema = Schema::testing(&[Type::Uint2]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Uint2(100)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Uint2(200)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint2([100, 200]));
 		}
@@ -1243,13 +1238,13 @@ pub mod tests {
 		fn test_all_defined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::uint4("test_col", Vec::<u32>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint4]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Uint4(1000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Uint4(2000)]);
+			let schema = Schema::testing(&[Type::Uint4]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Uint4(1000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint4([1000, 2000]));
 		}
@@ -1258,13 +1253,13 @@ pub mod tests {
 		fn test_all_defined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::uint8("test_col", Vec::<u64>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint8]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Uint8(10000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Uint8(20000)]);
+			let schema = Schema::testing(&[Type::Uint8]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Uint8(10000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint8([10000, 20000]));
 		}
@@ -1273,13 +1268,13 @@ pub mod tests {
 		fn test_all_defined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::uint16("test_col", Vec::<u128>::new())]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint16]);
-			let mut row_one = layout.allocate();
-			layout.set_values(&mut row_one, &[Value::Uint16(1000)]);
-			let mut row_two = layout.allocate();
-			layout.set_values(&mut row_two, &[Value::Uint16(2000)]);
+			let schema = Schema::testing(&[Type::Uint16]);
+			let mut row_one = schema.allocate();
+			schema.set_values(&mut row_one, &[Value::Uint16(1000)]);
+			let mut row_two = schema.allocate();
+			schema.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
-			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint16([1000, 2000]));
 		}
@@ -1288,11 +1283,11 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Boolean]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Undefined, Value::Boolean(false)]);
+			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Undefined, Value::Boolean(false)]);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1305,11 +1300,11 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::testing(&[Type::Boolean, Type::Boolean]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
+			let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
-			let result = test_instance.append_rows(&layout, [row], vec![]);
+			let result = test_instance.append_rows(&schema, [row], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("type mismatch"));
 		}
@@ -1318,11 +1313,11 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
-			let mut row = layout.allocate();
-			layout.set_values(&mut row, &[Value::Int2(2)]);
+			let schema = Schema::testing(&[Type::Int2]);
+			let mut row = schema.allocate();
+			schema.set_values(&mut row, &[Value::Int2(2)]);
 
-			let result = test_instance.append_rows(&layout, [row], vec![]);
+			let result = test_instance.append_rows(&schema, [row], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("mismatched column count"));
 		}
@@ -1334,12 +1329,12 @@ pub mod tests {
 				Column::bool("undefined", Vec::<bool>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Boolean, Type::Boolean]);
-			let mut row_one = layout.allocate();
-			layout.set_bool(&mut row_one, 0, true);
-			layout.set_undefined(&mut row_one, 1);
+			let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row_one = schema.allocate();
+			schema.set_bool(&mut row_one, 0, true);
+			schema.set_undefined(&mut row_one, 1);
 
-			test_instance.append_rows(&layout, [row_one], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row_one], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::bool_with_bitvec([true], [true]));
 
@@ -1353,12 +1348,12 @@ pub mod tests {
 				Column::float4("undefined", Vec::<f32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Float4, Type::Float4]);
-			let mut row = layout.allocate();
-			layout.set_f32(&mut row, 0, 1.5);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Float4, Type::Float4]);
+			let mut row = schema.allocate();
+			schema.set_f32(&mut row, 0, 1.5);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float4_with_bitvec([1.5], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::float4_with_bitvec([0.0], [false]));
@@ -1371,12 +1366,12 @@ pub mod tests {
 				Column::float8("undefined", Vec::<f64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Float8, Type::Float8]);
-			let mut row = layout.allocate();
-			layout.set_f64(&mut row, 0, 2.5);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Float8, Type::Float8]);
+			let mut row = schema.allocate();
+			schema.set_f64(&mut row, 0, 2.5);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float8_with_bitvec([2.5], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::float8_with_bitvec([0.0], [false]));
@@ -1389,12 +1384,12 @@ pub mod tests {
 				Column::int1("undefined", Vec::<i8>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int1, Type::Int1]);
-			let mut row = layout.allocate();
-			layout.set_i8(&mut row, 0, 42);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Int1, Type::Int1]);
+			let mut row = schema.allocate();
+			schema.set_i8(&mut row, 0, 42);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int1_with_bitvec([42], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int1_with_bitvec([0], [false]));
@@ -1407,12 +1402,12 @@ pub mod tests {
 				Column::int2("undefined", Vec::<i16>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Int2]);
-			let mut row = layout.allocate();
-			layout.set_i16(&mut row, 0, -1234i16);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Int2, Type::Int2]);
+			let mut row = schema.allocate();
+			schema.set_i16(&mut row, 0, -1234i16);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2_with_bitvec([-1234], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int2_with_bitvec([0], [false]));
@@ -1425,12 +1420,12 @@ pub mod tests {
 				Column::int4("undefined", Vec::<i32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int4, Type::Int4]);
-			let mut row = layout.allocate();
-			layout.set_i32(&mut row, 0, 56789);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Int4, Type::Int4]);
+			let mut row = schema.allocate();
+			schema.set_i32(&mut row, 0, 56789);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int4_with_bitvec([56789], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int4_with_bitvec([0], [false]));
@@ -1443,12 +1438,12 @@ pub mod tests {
 				Column::int8("undefined", Vec::<i64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Int8]);
-			let mut row = layout.allocate();
-			layout.set_i64(&mut row, 0, -987654321);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Int8, Type::Int8]);
+			let mut row = schema.allocate();
+			schema.set_i64(&mut row, 0, -987654321);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int8_with_bitvec([-987654321], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int8_with_bitvec([0], [false]));
@@ -1461,12 +1456,12 @@ pub mod tests {
 				Column::int16("undefined", Vec::<i128>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Int16, Type::Int16]);
-			let mut row = layout.allocate();
-			layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Int16, Type::Int16]);
+			let mut row = schema.allocate();
+			schema.set_i128(&mut row, 0, 123456789012345678901234567890i128);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1482,12 +1477,12 @@ pub mod tests {
 				Column::utf8("undefined", Vec::<String>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Utf8]);
-			let mut row = layout.allocate();
-			layout.set_utf8(&mut row, 0, "reifydb");
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Utf8, Type::Utf8]);
+			let mut row = schema.allocate();
+			schema.set_utf8(&mut row, 0, "reifydb");
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1503,12 +1498,12 @@ pub mod tests {
 				Column::uint1("undefined", Vec::<u8>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint1, Type::Uint1]);
-			let mut row = layout.allocate();
-			layout.set_u8(&mut row, 0, 255);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Uint1, Type::Uint1]);
+			let mut row = schema.allocate();
+			schema.set_u8(&mut row, 0, 255);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint1_with_bitvec([255], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint1_with_bitvec([0], [false]));
@@ -1521,12 +1516,12 @@ pub mod tests {
 				Column::uint2("undefined", Vec::<u16>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint2, Type::Uint2]);
-			let mut row = layout.allocate();
-			layout.set_u16(&mut row, 0, 65535u16);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Uint2, Type::Uint2]);
+			let mut row = schema.allocate();
+			schema.set_u16(&mut row, 0, 65535u16);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint2_with_bitvec([65535], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint2_with_bitvec([0], [false]));
@@ -1539,12 +1534,12 @@ pub mod tests {
 				Column::uint4("undefined", Vec::<u32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint4, Type::Uint4]);
-			let mut row = layout.allocate();
-			layout.set_u32(&mut row, 0, 4294967295u32);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Uint4, Type::Uint4]);
+			let mut row = schema.allocate();
+			schema.set_u32(&mut row, 0, 4294967295u32);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint4_with_bitvec([4294967295], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint4_with_bitvec([0], [false]));
@@ -1557,12 +1552,12 @@ pub mod tests {
 				Column::uint8("undefined", Vec::<u64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint8, Type::Uint8]);
-			let mut row = layout.allocate();
-			layout.set_u64(&mut row, 0, 18446744073709551615u64);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Uint8, Type::Uint8]);
+			let mut row = schema.allocate();
+			schema.set_u64(&mut row, 0, 18446744073709551615u64);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1578,12 +1573,12 @@ pub mod tests {
 				Column::uint16("undefined", Vec::<u128>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::testing(&[Type::Uint16, Type::Uint16]);
-			let mut row = layout.allocate();
-			layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
-			layout.set_undefined(&mut row, 1);
+			let schema = Schema::testing(&[Type::Uint16, Type::Uint16]);
+			let mut row = schema.allocate();
+			schema.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
+			schema.set_undefined(&mut row, 1);
 
-			test_instance.append_rows(&layout, [row], vec![]).unwrap();
+			test_instance.append_rows(&schema, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),

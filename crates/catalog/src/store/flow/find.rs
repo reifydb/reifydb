@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_flow(rx: &mut impl IntoStandardTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
+	pub(crate) fn find_flow(rx: &mut impl IntoStandardTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let Some(multi) = txn.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
@@ -37,7 +37,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_flow_by_name(
+	pub(crate) fn find_flow_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,

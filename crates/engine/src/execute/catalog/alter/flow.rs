@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::plan::physical::alter::flow::{AlterFlowAction, AlterFlowNode};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -25,7 +24,7 @@ impl Executor {
 		let flow_name = plan.flow.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan
 				.flow
 				.namespace
@@ -36,7 +35,7 @@ impl Executor {
 		};
 
 		// Find the flow
-		let Some(flow) = CatalogStore::find_flow_by_name(txn, namespace.id, flow_name)? else {
+		let Some(flow) = self.catalog.find_flow_by_name(txn, namespace.id, flow_name)? else {
 			return_error!(flow_not_found(plan.flow.name.clone(), &namespace.name, flow_name,));
 		};
 
@@ -45,7 +44,7 @@ impl Executor {
 			AlterFlowAction::Rename {
 				new_name,
 			} => {
-				CatalogStore::update_flow_name(txn, flow.id, new_name.text().to_string())?;
+				self.catalog.update_flow_name(txn, flow.id, new_name.text().to_string())?;
 				("RENAME", Value::Utf8(format!("{} -> {}", flow_name, new_name.text())))
 			}
 			AlterFlowAction::SetQuery {
@@ -54,11 +53,11 @@ impl Executor {
 				unimplemented!();
 			}
 			AlterFlowAction::Pause => {
-				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Paused)?;
+				self.catalog.update_flow_status(txn, flow.id, FlowStatus::Paused)?;
 				("PAUSE", Value::Utf8("Flow paused".to_string()))
 			}
 			AlterFlowAction::Resume => {
-				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Active)?;
+				self.catalog.update_flow_status(txn, flow.id, FlowStatus::Active)?;
 				("RESUME", Value::Utf8("Flow resumed".to_string()))
 			}
 		};

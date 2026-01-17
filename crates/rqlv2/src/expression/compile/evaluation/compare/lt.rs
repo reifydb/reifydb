@@ -823,10 +823,7 @@ pub(crate) fn eval_lt(left: &Column, right: &Column) -> EvalResult<Column> {
 				data.push(false);
 				bitvec.push(false);
 			}
-			Ok(Column::new(
-				Fragment::internal("_lt"),
-				ColumnData::bool_with_bitvec(data, bitvec),
-			))
+			Ok(Column::new(Fragment::internal("_lt"), ColumnData::bool_with_bitvec(data, bitvec)))
 		}
 
 		// Type mismatch error for incompatible types
@@ -896,10 +893,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_lt"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_lt"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for temporal less-than
@@ -938,10 +932,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_lt"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_lt"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for text less-than (lexicographic)
@@ -977,10 +968,7 @@ fn compare_text_lt(left: &Utf8Container, right: &Utf8Container) -> EvalResult<Co
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_lt"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_lt"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for UUID less-than (byte-wise)
@@ -1008,9 +996,5 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_lt"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
-
+	Ok(Column::new(Fragment::internal("_lt"), ColumnData::bool_with_bitvec(data, bitvec)))
 }

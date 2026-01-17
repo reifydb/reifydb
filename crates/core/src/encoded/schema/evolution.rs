@@ -6,8 +6,6 @@
 //! SchemaResolver handles reading data written with one schema
 //! using a different (but compatible) target schema.
 
-use std::sync::Arc;
-
 use reifydb_type::value::constraint::TypeConstraint;
 
 use crate::encoded::schema::Schema;
@@ -32,9 +30,9 @@ pub enum FieldMapping {
 #[derive(Debug)]
 pub struct SchemaResolver {
 	/// The schema the data was written with
-	source: Arc<Schema>,
+	source: Schema,
 	/// The schema we want to read as
-	target: Arc<Schema>,
+	target: Schema,
 	/// Mapping from target field index to source field
 	mappings: Vec<FieldMapping>,
 }
@@ -44,7 +42,7 @@ impl SchemaResolver {
 	///
 	/// Returns None if the schemas are incompatible (e.g., type mismatch
 	/// on same-named field without valid widening path).
-	pub fn new(source: Arc<Schema>, target: Arc<Schema>) -> Option<Self> {
+	pub fn new(source: Schema, target: Schema) -> Option<Self> {
 		// If fingerprints match, no resolution needed - schemas are identical
 		if source.fingerprint() == target.fingerprint() {
 			return Some(Self {
@@ -132,7 +130,7 @@ mod tests {
 		let fields =
 			vec![SchemaField::unconstrained("a", Type::Int4), SchemaField::unconstrained("b", Type::Utf8)];
 
-		let schema = Arc::new(Schema::new(fields));
+		let schema = Schema::new(fields);
 		let resolver = SchemaResolver::new(schema.clone(), schema.clone()).unwrap();
 
 		assert!(resolver.is_identity());
@@ -148,8 +146,8 @@ mod tests {
 			SchemaField::unconstrained("b", Type::Utf8), // new field
 		];
 
-		let source = Arc::new(Schema::new(source_fields));
-		let target = Arc::new(Schema::new(target_fields));
+		let source = Schema::new(source_fields);
+		let target = Schema::new(target_fields);
 
 		let resolver = SchemaResolver::new(source, target).unwrap();
 
@@ -168,8 +166,8 @@ mod tests {
 		let source_fields = vec![SchemaField::unconstrained("a", Type::Int4)];
 		let target_fields = vec![SchemaField::unconstrained("a", Type::Utf8)]; // type changed
 
-		let source = Arc::new(Schema::new(source_fields));
-		let target = Arc::new(Schema::new(target_fields));
+		let source = Schema::new(source_fields);
+		let target = Schema::new(target_fields);
 
 		// Should return None due to incompatible types
 		assert!(SchemaResolver::new(source, target).is_none());

@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_dictionary(
+	pub(crate) fn find_dictionary(
 		rx: &mut impl IntoStandardTransaction,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
@@ -42,7 +42,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_dictionary_by_name(
+	pub(crate) fn find_dictionary_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,

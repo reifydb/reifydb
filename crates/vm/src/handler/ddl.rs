@@ -5,17 +5,11 @@
 
 use std::str::FromStr;
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::{
-		namespace::create::NamespaceToCreate,
-		table::create::{TableColumnToCreate, TableToCreate},
-	},
+use reifydb_catalog::catalog::{
+	namespace::NamespaceToCreate,
+	table::{TableColumnToCreate, TableToCreate},
 };
-use reifydb_core::{
-	interface::catalog::change::{CatalogTrackNamespaceChangeOperations, CatalogTrackTableChangeOperations},
-	value::column::columns::Columns,
-};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rqlv2::bytecode::{opcode::ObjectType, program::DdlDef};
 use reifydb_type::{
 	fragment::Fragment,
@@ -38,15 +32,17 @@ pub fn create_namespace(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 	if let DdlDef::CreateNamespace(ns_def) = def {
 		let ns_def = ns_def.clone();
+		let catalog = ctx.vm.context.catalog.as_ref().ok_or(VmError::UnsupportedOperation {
+			operation: "Operation requires a catalog".into(),
+		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
 		let cmd_tx = tx.command_mut();
 
 		// Check if namespace already exists
-		if let Some(_) = CatalogStore::find_namespace_by_name(cmd_tx, &ns_def.name).map_err(|e| {
-			VmError::CatalogError {
+		if let Some(_) =
+			catalog.find_namespace_by_name(cmd_tx, &ns_def.name).map_err(|e| VmError::CatalogError {
 				message: e.to_string(),
-			}
-		})? {
+			})? {
 			if ns_def.if_not_exists {
 				// Return success with created=false
 				let result = Columns::single_row([
@@ -61,21 +57,18 @@ pub fn create_namespace(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			});
 		}
 
-		// Create the namespace
-		let result = CatalogStore::create_namespace(
-			cmd_tx,
-			NamespaceToCreate {
-				namespace_fragment: Some(Fragment::internal(ns_def.name.clone())),
-				name: ns_def.name.clone(),
-			},
-		)
-		.map_err(|e| VmError::CatalogError {
-			message: e.to_string(),
-		})?;
-
-		cmd_tx.track_namespace_def_created(result.clone()).map_err(|e| VmError::CatalogError {
-			message: e.to_string(),
-		})?;
+		// Create the namespace (tracking is done internally by catalog.create_namespace)
+		let result = catalog
+			.create_namespace(
+				cmd_tx,
+				NamespaceToCreate {
+					namespace_fragment: Some(Fragment::internal(ns_def.name.clone())),
+					name: ns_def.name.clone(),
+				},
+			)
+			.map_err(|e| VmError::CatalogError {
+				message: e.to_string(),
+			})?;
 
 		let columns = Columns::single_row([
 			("namespace", Value::Utf8(result.name)),
@@ -102,12 +95,16 @@ pub fn create_table(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 	if let DdlDef::CreateTable(table_def) = def {
 		let table_def = table_def.clone();
+		let catalog = ctx.vm.context.catalog.as_ref().ok_or(VmError::UnsupportedOperation {
+			operation: "Operation requires a catalog".into(),
+		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
 		let cmd_tx = tx.command_mut();
 
 		// Get namespace
 		let namespace_name = table_def.namespace.as_deref().unwrap_or("default");
-		let namespace = CatalogStore::find_namespace_by_name(cmd_tx, namespace_name)
+		let namespace = catalog
+			.find_namespace_by_name(cmd_tx, namespace_name)
 			.map_err(|e| VmError::CatalogError {
 				message: e.to_string(),
 			})?
@@ -116,12 +113,11 @@ pub fn create_table(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			})?;
 
 		// Check if table already exists
-		if let Some(_) =
-			CatalogStore::find_table_by_name(cmd_tx, namespace.id, &table_def.name).map_err(|e| {
-				VmError::CatalogError {
-					message: e.to_string(),
-				}
-			})? {
+		if let Some(_) = catalog.find_table_by_name(cmd_tx, namespace.id, &table_def.name).map_err(|e| {
+			VmError::CatalogError {
+				message: e.to_string(),
+			}
+		})? {
 			if table_def.if_not_exists {
 				let result = Columns::single_row([
 					("namespace", Value::Utf8(namespace_name.to_string())),
@@ -156,24 +152,22 @@ pub fn create_table(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			})
 			.collect();
 
-		// Create the table
-		let table = CatalogStore::create_table(
-			cmd_tx,
-			TableToCreate {
-				fragment: Some(Fragment::internal(table_def.name.clone())),
-				table: table_def.name.clone(),
-				namespace: namespace.id,
-				columns,
-				retention_policy: None,
-			},
-		)
-		.map_err(|e| VmError::CatalogError {
-			message: e.to_string(),
-		})?;
-
-		cmd_tx.track_table_def_created(table.clone()).map_err(|e| VmError::CatalogError {
-			message: e.to_string(),
-		})?;
+		// Create the table (tracking is done internally by catalog.create_table)
+		let table = catalog
+			.create_table(
+				cmd_tx,
+				TableToCreate {
+					fragment: Some(Fragment::internal(table_def.name.clone())),
+					table: table_def.name.clone(),
+					namespace: namespace.id,
+					columns,
+					retention_policy: None,
+					primary_key_columns: None,
+				},
+			)
+			.map_err(|e| VmError::CatalogError {
+				message: e.to_string(),
+			})?;
 
 		let result = Columns::single_row([
 			("namespace", Value::Utf8(namespace_name.to_string())),
@@ -202,6 +196,9 @@ pub fn drop_object(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 	if let DdlDef::Drop(drop_def) = def {
 		let drop_def = drop_def.clone();
+		let catalog = ctx.vm.context.catalog.as_ref().ok_or(VmError::UnsupportedOperation {
+			operation: "Operation requires a catalog".into(),
+		})?;
 		let tx = ctx.tx.as_mut().ok_or(VmError::TransactionRequired)?;
 		let cmd_tx = tx.command_mut();
 
@@ -216,26 +213,23 @@ pub fn drop_object(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 				};
 
 				let namespace =
-					CatalogStore::find_namespace_by_name(cmd_tx, namespace_name).map_err(|e| {
+					catalog.find_namespace_by_name(cmd_tx, namespace_name).map_err(|e| {
 						VmError::CatalogError {
 							message: e.to_string(),
 						}
 					})?;
 
 				if let Some(ns) = namespace {
-					let table = CatalogStore::find_table_by_name(cmd_tx, ns.id, table_name)
-						.map_err(|e| VmError::CatalogError {
-							message: e.to_string(),
-						})?;
-
-					if let Some(t) = table {
-						CatalogStore::delete_table(cmd_tx, t.id).map_err(|e| {
+					let table =
+						catalog.find_table_by_name(cmd_tx, ns.id, table_name).map_err(|e| {
 							VmError::CatalogError {
 								message: e.to_string(),
 							}
 						})?;
 
-						cmd_tx.track_table_def_deleted(t.clone()).map_err(|e| {
+					if let Some(t) = table {
+						// Delete table (tracking is done internally by catalog.delete_table)
+						catalog.delete_table(cmd_tx, t.clone()).map_err(|e| {
 							VmError::CatalogError {
 								message: e.to_string(),
 							}
@@ -274,20 +268,15 @@ pub fn drop_object(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			}
 			ObjectType::Namespace => {
 				let namespace =
-					CatalogStore::find_namespace_by_name(cmd_tx, &drop_def.name).map_err(|e| {
+					catalog.find_namespace_by_name(cmd_tx, &drop_def.name).map_err(|e| {
 						VmError::CatalogError {
 							message: e.to_string(),
 						}
 					})?;
 
 				if let Some(ns) = namespace {
-					CatalogStore::delete_namespace(cmd_tx, ns.id).map_err(|e| {
-						VmError::CatalogError {
-							message: e.to_string(),
-						}
-					})?;
-
-					cmd_tx.track_namespace_def_deleted(ns.clone()).map_err(|e| {
+					// Delete namespace (tracking is done internally by catalog.delete_namespace)
+					catalog.delete_namespace(cmd_tx, ns.clone()).map_err(|e| {
 						VmError::CatalogError {
 							message: e.to_string(),
 						}

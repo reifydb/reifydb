@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_flow_edges_by_flow(
+	pub(crate) fn list_flow_edges_by_flow(
 		rx: &mut impl IntoStandardTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowEdgeDef>> {
@@ -47,7 +47,7 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub fn list_flow_edges_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
+	pub(crate) fn list_flow_edges_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

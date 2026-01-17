@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::namespace::create::NamespaceToCreate};
+use reifydb_catalog::catalog::namespace::NamespaceToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackNamespaceChangeOperations, value::column::columns::Columns,
 };
@@ -29,7 +29,7 @@ impl Executor {
 			// namespace exists
 		}
 
-		let result = CatalogStore::create_namespace(
+		let result = self.catalog.create_namespace(
 			txn,
 			NamespaceToCreate {
 				namespace_fragment: Some(plan.namespace.clone()),

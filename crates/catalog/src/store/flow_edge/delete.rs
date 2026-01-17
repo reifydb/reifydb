@@ -10,7 +10,7 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_flow_edge(txn: &mut StandardCommandTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
+	pub(crate) fn delete_flow_edge(txn: &mut StandardCommandTransaction, edge_id: FlowEdgeId) -> crate::Result<()> {
 		// First, get the edge to find the flow ID for index deletion
 		let edge = CatalogStore::find_flow_edge(txn, edge_id)?;
 

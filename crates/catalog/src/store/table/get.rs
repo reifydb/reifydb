@@ -8,7 +8,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<TableDef> {
+	pub(crate) fn get_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<TableDef> {
 		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
 			Error(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

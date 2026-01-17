@@ -13,7 +13,7 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a retention policy for a source (table, view, or ring buffer)
 	/// Returns an error if no retention policy is set
-	pub fn get_primitive_retention_policy(
+	pub(crate) fn get_primitive_retention_policy(
 		txn: &mut impl IntoStandardTransaction,
 		source: PrimitiveId,
 	) -> crate::Result<RetentionPolicy> {
@@ -27,7 +27,7 @@ impl CatalogStore {
 
 	/// Get a retention policy for an operator (flow node)
 	/// Returns an error if no retention policy is set
-	pub fn get_operator_retention_policy(
+	pub(crate) fn get_operator_retention_policy(
 		txn: &mut impl IntoStandardTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<RetentionPolicy> {

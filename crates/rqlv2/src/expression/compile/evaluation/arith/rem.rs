@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use crate::expression::types::{EvalError, EvalResult};
 use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
-use reifydb_type::value::number::safe::remainder::SafeRemainder;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{
 		container::number::NumberContainer,
 		is::IsNumber,
-		number::promote::Promote,
+		number::{promote::Promote, safe::remainder::SafeRemainder},
 		r#type::{Type, get::GetType},
 	},
 };
+
+use crate::expression::types::{EvalError, EvalResult};
 
 pub(crate) fn eval_rem(left: &Column, right: &Column) -> EvalResult<Column> {
 	let target = Type::promote(left.get_type(), right.get_type());
@@ -820,12 +820,7 @@ pub(crate) fn eval_rem(left: &Column, right: &Column) -> EvalResult<Column> {
 }
 
 /// Generic helper function for Copy types (i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64)
-fn rem_numeric<L, R>(
-	left: &NumberContainer<L>,
-	right: &NumberContainer<R>,
-	target: Type,
-
-) -> EvalResult<Column>
+fn rem_numeric<L, R>(left: &NumberContainer<L>, right: &NumberContainer<R>, target: Type) -> EvalResult<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -884,12 +879,7 @@ where
 }
 
 /// Generic helper function for Clone types (Int, Uint, Decimal)
-fn rem_numeric_clone<L, R>(
-	left: &NumberContainer<L>,
-	right: &NumberContainer<R>,
-	target: Type,
-
-) -> EvalResult<Column>
+fn rem_numeric_clone<L, R>(left: &NumberContainer<L>, right: &NumberContainer<R>, target: Type) -> EvalResult<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

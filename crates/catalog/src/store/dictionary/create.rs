@@ -30,7 +30,7 @@ pub struct DictionaryToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_dictionary(
+	pub(crate) fn create_dictionary(
 		txn: &mut StandardCommandTransaction,
 		to_create: DictionaryToCreate,
 	) -> crate::Result<DictionaryDef> {

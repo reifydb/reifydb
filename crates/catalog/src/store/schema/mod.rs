@@ -7,9 +7,6 @@
 //! - Schema header (fingerprint, field count, row size) under SchemaKey
 //! - Individual fields under SchemaFieldKey for each field
 
-mod create;
-mod get;
+pub(crate) mod create;
+pub(crate) mod get;
 pub(crate) mod schema;
-
-pub use create::create_schema;
-pub use get::{find_schema_by_fingerprint, load_all_schemas};

@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_namespace_by_name(
+	pub(crate) fn find_namespace_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
@@ -40,7 +40,7 @@ impl CatalogStore {
 		Ok(None)
 	}
 
-	pub fn find_namespace(
+	pub(crate) fn find_namespace(
 		rx: &mut impl IntoStandardTransaction,
 		id: NamespaceId,
 	) -> crate::Result<Option<NamespaceDef>> {

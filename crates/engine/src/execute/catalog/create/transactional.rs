@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::view::create::ViewToCreate};
+use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -27,7 +27,7 @@ impl Executor {
 			return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name, &view.name,));
 		}
 
-		let result = CatalogStore::create_transactional_view(
+		let result = self.catalog.create_transactional_view(
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),

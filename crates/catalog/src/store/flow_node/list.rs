@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_flow_nodes_by_flow(
+	pub(crate) fn list_flow_nodes_by_flow(
 		rx: &mut impl IntoStandardTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
@@ -43,7 +43,7 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub fn list_flow_nodes_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowNodeDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

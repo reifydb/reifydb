@@ -48,7 +48,10 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_table(txn: &mut StandardCommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub(crate) fn create_table(
+		txn: &mut StandardCommandTransaction,
+		to_create: TableToCreate,
+	) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table)? {
@@ -122,11 +125,9 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: column_to_create.fragment.clone(),
 					namespace_name: namespace_name.clone(),
-					table,
-					table_name: to_create.table.clone(),
+					primitive_name: to_create.table.clone(),
 					column: column_to_create.name,
 					constraint: column_to_create.constraint.clone(),
-					if_not_exists: false,
 					policies: column_to_create.policies.clone(),
 					index: ColumnIndex(idx as u8),
 					auto_increment: column_to_create.auto_increment,

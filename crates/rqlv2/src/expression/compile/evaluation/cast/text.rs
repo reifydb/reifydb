@@ -7,9 +7,7 @@ use std::fmt::Display;
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{
-	container::{
-		bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer,
-	},
+	container::{bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer},
 	is::{IsNumber, IsTemporal, IsUuid},
 	r#type::Type,
 };
@@ -18,7 +16,10 @@ use crate::expression::types::{EvalError, EvalResult};
 
 pub(super) fn to_text(data: &ColumnData) -> EvalResult<ColumnData> {
 	match data {
-		ColumnData::Blob { container, .. } => from_blob(container),
+		ColumnData::Blob {
+			container,
+			..
+		} => from_blob(container),
 		ColumnData::Bool(container) => from_bool(container),
 		ColumnData::Int1(container) => from_number(container),
 		ColumnData::Int2(container) => from_number(container),

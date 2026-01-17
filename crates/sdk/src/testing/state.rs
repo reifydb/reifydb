@@ -3,9 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{
-	encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
-};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
 use reifydb_type::value::Value;
 
 /// Mock state store for testing operators
@@ -67,47 +65,37 @@ impl TestStateStore {
 		self.data.iter().map(|(k, v)| (k, v)).collect()
 	}
 
-	/// Decode a value using a layout
-	pub fn decode_value(&self, key: &EncodedKey, layout: &EncodedValuesLayout) -> Option<Vec<Value>> {
-		self.get(key).map(|encoded| super::helpers::get_values(layout, encoded))
+	/// Decode a value using a schema
+	pub fn decode_value(&self, key: &EncodedKey, schema: &Schema) -> Option<Vec<Value>> {
+		self.get(key).map(|encoded| super::helpers::get_values(schema, encoded))
 	}
 
-	/// Decode a value using a named layout
-	pub fn decode_named_value(
-		&self,
-		key: &EncodedKey,
-		layout: &EncodedValuesNamedLayout,
-	) -> Option<HashMap<String, Value>> {
+	/// Decode a value using a schema with field names
+	pub fn decode_named_value(&self, key: &EncodedKey, schema: &Schema) -> Option<HashMap<String, Value>> {
 		self.get(key).map(|encoded| {
-			let values = super::helpers::get_values(layout.layout(), encoded);
-			layout.names().iter().map(|n| n.as_str().to_string()).zip(values).collect()
+			let values = super::helpers::get_values(schema, encoded);
+			schema.field_names().map(|n| n.to_string()).zip(values).collect()
 		})
 	}
 
-	/// Set a value using a layout
-	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], layout: &EncodedValuesLayout) {
-		let mut encoded = layout.allocate();
-		layout.set_values(&mut encoded, values);
+	/// Set a value using a schema
+	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &Schema) {
+		let mut encoded = schema.allocate();
+		schema.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
 
-	/// Set a value using a named layout
-	pub fn set_named_value(
-		&mut self,
-		key: EncodedKey,
-		values: &HashMap<String, Value>,
-		layout: &EncodedValuesNamedLayout,
-	) {
-		let mut encoded = layout.layout().allocate();
+	/// Set a value using a schema with field names
+	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &Schema) {
+		let mut encoded = schema.allocate();
 
-		// Convert HashMap to ordered values based on layout names
-		let ordered_values: Vec<Value> = layout
-			.names()
-			.iter()
-			.map(|name| values.get(name.as_str()).cloned().unwrap_or(Value::Undefined))
+		// Convert HashMap to ordered values based on schema field names
+		let ordered_values: Vec<Value> = schema
+			.field_names()
+			.map(|name| values.get(name).cloned().unwrap_or(Value::Undefined))
 			.collect();
 
-		layout.layout().set_values(&mut encoded, &ordered_values);
+		schema.set_values(&mut encoded, &ordered_values);
 		self.set(key, encoded);
 	}
 
@@ -122,8 +110,8 @@ impl TestStateStore {
 	}
 
 	/// Assert that a key has a specific value
-	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], layout: &EncodedValuesLayout) {
-		let actual = self.decode_value(key, layout).expect(&format!("Key {:?} not found in state", key));
+	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &Schema) {
+		let actual = self.decode_value(key, schema).expect(&format!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
 
@@ -145,9 +133,7 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::{
-		encoded::EncodedValues, layout::EncodedValuesLayout, named::EncodedValuesNamedLayout,
-	};
+	use reifydb_core::encoded::{encoded::EncodedValues, schema::Schema};
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -173,24 +159,24 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_store_with_layout() {
+	fn test_state_store_with_schema() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Utf8]);
+		let schema = Schema::testing(&[Type::Int8, Type::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
-		store.set_value(key.clone(), &values, &layout);
+		store.set_value(key.clone(), &values, &schema);
 
-		let decoded = store.decode_value(&key, &layout).unwrap();
+		let decoded = store.decode_value(&key, &schema).unwrap();
 		assert_eq!(decoded, values);
 	}
 
 	#[test]
-	fn test_state_store_with_named_layout() {
+	fn test_state_store_with_named_schema() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesNamedLayout::new(vec![
-			("count".to_string(), Type::Int8),
-			("name".to_string(), Type::Utf8),
+		let schema = Schema::new(vec![
+			reifydb_core::encoded::schema::SchemaField::unconstrained("count", Type::Int8),
+			reifydb_core::encoded::schema::SchemaField::unconstrained("name", Type::Utf8),
 		]);
 		let key = encode_key("test_key");
 
@@ -198,9 +184,9 @@ pub mod tests {
 		values.insert("count".to_string(), Value::Int8(10i64));
 		values.insert("name".to_string(), Value::Utf8("test".into()));
 
-		store.set_named_value(key.clone(), &values, &layout);
+		store.set_named_value(key.clone(), &values, &schema);
 
-		let decoded = store.decode_named_value(&key, &layout).unwrap();
+		let decoded = store.decode_named_value(&key, &schema).unwrap();
 		assert_eq!(decoded, values);
 	}
 
@@ -229,14 +215,14 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+		let schema = Schema::testing(&[Type::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 
-		store.set_value(key.clone(), &values, &layout);
+		store.set_value(key.clone(), &values, &schema);
 
 		store.assert_exists(&key);
-		store.assert_value(&key, &values, &layout);
+		store.assert_value(&key, &values, &schema);
 		store.assert_count(1);
 
 		let missing_key = encode_key("missing");

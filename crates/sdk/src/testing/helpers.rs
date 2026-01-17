@@ -6,19 +6,13 @@
 use reifydb_core::encoded::{
 	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
-	layout::EncodedValuesLayout,
-	named::EncodedValuesNamedLayout,
+	schema::Schema,
 };
 use reifydb_type::value::Value;
 
-/// Get all values from an encoded row using a layout
-pub fn get_values(layout: &EncodedValuesLayout, row: &EncodedValues) -> Vec<Value> {
-	(0..layout.fields.len()).map(|i| layout.get_value(row, i)).collect()
-}
-
-/// Get all values from an encoded row using a named layout
-pub fn get_values_named(layout: &EncodedValuesNamedLayout, row: &EncodedValues) -> Vec<Value> {
-	(0..layout.names().len()).map(|i| layout.get_value_by_idx(row, i)).collect()
+/// Get all values from an encoded row using a schema
+pub fn get_values(schema: &Schema, row: &EncodedValues) -> Vec<Value> {
+	(0..schema.field_count()).map(|i| schema.get_value(row, i)).collect()
 }
 
 /// Helper to encode a key using IntoEncodedKey

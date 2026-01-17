@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{CatalogStore, store::sequence::row::RowSequence};
 use reifydb_core::{
-	encoded::{layout::EncodedValuesLayout, value::encode_value},
 	interface::resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	value::column::columns::Columns,
 };
@@ -17,7 +15,7 @@ use reifydb_type::{
 	internal_error,
 	params::Params,
 	return_error,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	value::{Value, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -37,35 +35,22 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = self.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let ringbuffer_name = plan.target.name();
-		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)?
-		else {
+		let Some(ringbuffer) = self.catalog.find_ringbuffer_by_name(txn, namespace.id, ringbuffer_name)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 		};
 
 		// Get current metadata
-		let Some(mut metadata) = CatalogStore::find_ringbuffer_metadata(txn, ringbuffer.id)? else {
+		let Some(mut metadata) = self.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
 			let fragment = Fragment::internal(plan.target.name());
 			return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
 		};
 
-		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let mut ringbuffer_types: Vec<Type> = Vec::new();
-		for c in &ringbuffer.columns {
-			if let Some(dict_id) = c.dictionary_id {
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
-					Ok(Some(d)) => d.id_type,
-					_ => c.constraint.get_type(),
-				};
-				ringbuffer_types.push(dict_type);
-			} else {
-				ringbuffer_types.push(c.constraint.get_type());
-			}
-		}
-		let layout = EncodedValuesLayout::testing(&ringbuffer_types);
+		// Get or create schema with proper field names and constraints
+		let schema = super::schema::get_or_create_ringbuffer_schema(&self.catalog, &ringbuffer, txn)?;
 
 		// Create resolved source for the ring buffer
 		let namespace_ident = Fragment::internal(namespace.name.clone());
@@ -100,7 +85,7 @@ impl Executor {
 			let row_count = columns.row_count();
 
 			for row_idx in 0..row_count {
-				let mut row = layout.allocate();
+				let mut row = schema.allocate();
 
 				// For each ring buffer column, find if it exists in the input columns
 				for (rb_idx, rb_column) in ringbuffer.columns.iter().enumerate() {
@@ -137,15 +122,16 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
-						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
-								.ok_or_else(|| {
-									internal_error!(
-										"Dictionary {:?} not found for column {}",
-										dict_id,
-										rb_column.name
-									)
-								})?;
+						let dictionary = self
+							.catalog
+							.find_dictionary(std_txn.command_mut(), dict_id)?
+							.ok_or_else(|| {
+								internal_error!(
+									"Dictionary {:?} not found for column {}",
+									dict_id,
+									rb_column.name
+								)
+							})?;
 						let entry_id = std_txn
 							.command_mut()
 							.insert_into_dictionary(&dictionary, &value)?;
@@ -154,7 +140,7 @@ impl Executor {
 						value
 					};
 
-					encode_value(&layout, &mut row, rb_idx, &value);
+					schema.set_value(&mut row, rb_idx, &value);
 				}
 
 				// TODO: Check for primary key and handle upsert logic if needed
@@ -169,10 +155,9 @@ impl Executor {
 				}
 
 				// Get next row number from sequence (monotonically increasing)
-				let row_number = RowSequence::next_row_number_for_ringbuffer(
-					std_txn.command_mut(),
-					ringbuffer.id,
-				)?;
+				let row_number = self
+					.catalog
+					.next_row_number_for_ringbuffer(std_txn.command_mut(), ringbuffer.id)?;
 
 				// Store the row
 				std_txn.command_mut().insert_ringbuffer_at(ringbuffer.clone(), row_number, row)?;
@@ -189,7 +174,7 @@ impl Executor {
 		}
 
 		// Save updated metadata
-		CatalogStore::update_ringbuffer_metadata(std_txn.command_mut(), metadata)?;
+		self.catalog.update_ringbuffer_metadata(std_txn.command_mut(), metadata)?;
 
 		// Return summary
 		Ok(Columns::single_row([

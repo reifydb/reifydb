@@ -5,54 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::{duration::Duration, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_duration(&self, row: &mut EncodedValues, index: usize, value: Duration) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Duration);
-		row.set_valid(index, true);
-
-		let months = value.get_months();
-		let days = value.get_days();
-		let nanos = value.get_nanos();
-		unsafe {
-			// Write months (i32) at offset
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i32, months);
-			// Write days (i32) at offset + 4
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 4) as *mut i32, days);
-			// Write nanos (i64) at offset + 8
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut i64, nanos);
-		}
-	}
-
-	pub fn get_duration(&self, row: &EncodedValues, index: usize) -> Duration {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Duration);
-		unsafe {
-			// Read months (i32) from offset
-			let months = (row.as_ptr().add(field.offset) as *const i32).read_unaligned();
-			// Read days (i32) from offset + 4
-			let days = (row.as_ptr().add(field.offset + 4) as *const i32).read_unaligned();
-			// Read nanos (i64) from offset + 8
-			let nanos = (row.as_ptr().add(field.offset + 8) as *const i64).read_unaligned();
-			Duration::new(months, days, nanos)
-		}
-	}
-
-	pub fn try_get_duration(&self, row: &EncodedValues, index: usize) -> Option<Duration> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Duration {
-			Some(self.get_duration(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_duration(&self, row: &mut EncodedValues, index: usize, value: Duration) {
@@ -111,7 +64,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{duration::Duration, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_duration() {

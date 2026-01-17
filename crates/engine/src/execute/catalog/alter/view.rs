@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::primary_key::create::PrimaryKeyToCreate};
+use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
 use reifydb_core::{interface::catalog::primitive::PrimitiveId, value::column::columns::Columns};
 use reifydb_rql::plan::{logical::alter::view::AlterViewOperation, physical::alter::view::AlterViewNode};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -27,7 +27,7 @@ impl Executor {
 		let view_name = plan.node.view.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan.node.view.namespace.clone().unwrap_or_else(|| {
 				use reifydb_type::fragment::Fragment;
 				Fragment::internal("default".to_string())
@@ -36,7 +36,7 @@ impl Executor {
 		};
 
 		// Find the view
-		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name)? else {
+		let Some(view) = self.catalog.find_view_by_name(txn, namespace.id, view_name)? else {
 			return_error!(view_not_found(plan.node.view.name.clone(), &namespace.name, view_name,));
 		};
 
@@ -51,7 +51,7 @@ impl Executor {
 				} => {
 					// Get all columns for the view to
 					// validate and resolve column IDs
-					let view_columns = CatalogStore::list_columns(txn, view.id)?;
+					let view_columns = &view.columns;
 
 					// Map column names to IDs
 					let mut column_ids = Vec::new();
@@ -69,7 +69,7 @@ impl Executor {
 					}
 
 					// Create the primary key
-					CatalogStore::create_primary_key(
+					self.catalog.create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
 							source: PrimitiveId::View(view.id),

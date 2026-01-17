@@ -997,5 +997,4 @@ where
 	}
 
 	Ok(Column::new(Fragment::internal("_gt"), ColumnData::bool_with_bitvec(data, bitvec)))
-
 }

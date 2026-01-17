@@ -2,16 +2,39 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
+	change::CatalogTrackDictionaryChangeOperations,
 	dictionary::DictionaryDef,
 	id::{DictionaryId, NamespaceId},
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
-	standard::{IntoStandardTransaction, StandardTransaction},
+	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
+use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog};
+use crate::{CatalogStore, catalog::Catalog, store::dictionary::create::DictionaryToCreate as StoreDictionaryToCreate};
+
+#[derive(Debug, Clone)]
+pub struct DictionaryToCreate {
+	pub fragment: Option<Fragment>,
+	pub dictionary: String,
+	pub namespace: NamespaceId,
+	pub value_type: Type,
+	pub id_type: Type,
+}
+
+impl From<DictionaryToCreate> for StoreDictionaryToCreate {
+	fn from(to_create: DictionaryToCreate) -> Self {
+		StoreDictionaryToCreate {
+			fragment: to_create.fragment,
+			dictionary: to_create.dictionary,
+			namespace: to_create.namespace,
+			value_type: to_create.value_type,
+			id_type: to_create.id_type,
+		}
+	}
+}
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
@@ -127,5 +150,42 @@ impl Catalog {
 				Ok(None)
 			}
 		}
+	}
+
+	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
+	pub fn get_dictionary<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		id: DictionaryId,
+	) -> crate::Result<DictionaryDef> {
+		CatalogStore::get_dictionary(txn, id)
+	}
+
+	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, txn, to_create))]
+	pub fn create_dictionary(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		to_create: DictionaryToCreate,
+	) -> crate::Result<DictionaryDef> {
+		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
+		txn.track_dictionary_def_created(dictionary.clone())?;
+		Ok(dictionary)
+	}
+
+	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
+	pub fn list_dictionaries<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		namespace: NamespaceId,
+	) -> crate::Result<Vec<DictionaryDef>> {
+		CatalogStore::list_dictionaries(txn, namespace)
+	}
+
+	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
+	pub fn list_all_dictionaries<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+	) -> crate::Result<Vec<DictionaryDef>> {
+		CatalogStore::list_all_dictionaries(txn)
 	}
 }

@@ -11,13 +11,17 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::layout::EncodedValuesLayout,
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::standard::StandardTransaction;
-use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
+use reifydb_type::{
+	error::diagnostic::internal::internal,
+	fragment::Fragment,
+	value::{row_number::RowNumber, r#type::Type},
+};
 use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
@@ -26,25 +30,48 @@ use crate::execute::{Batch, ExecutionContext, QueryNode};
 pub(crate) struct RowPointLookupNode {
 	source: ResolvedPrimitive,
 	row_number: u64,
-	#[allow(dead_code)]
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
+	schema: Option<Schema>,
 	exhausted: bool,
 }
 
 impl<'a> RowPointLookupNode {
 	pub fn new(source: ResolvedPrimitive, row_number: u64, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-		let (headers, row_layout) = build_headers_and_layout(&source)?;
+		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
 			source,
 			row_number,
 			context: Some(context),
 			headers,
-			row_layout,
+			schema: None,
 			exhausted: false,
 		})
+	}
+
+	fn get_or_load_schema(
+		&mut self,
+		rx: &mut StandardTransaction,
+		first_row: &EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+				"Schema with fingerprint {:?} not found",
+				fingerprint
+			)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
 	}
 }
 
@@ -71,8 +98,9 @@ impl QueryNode for RowPointLookupNode {
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_source(&self.source);
+			let schema = self.get_or_load_schema(rx, &multi_values.values)?;
 			columns.append_rows(
-				&self.row_layout,
+				&schema,
 				std::iter::once(multi_values.values),
 				vec![RowNumber(self.row_number)],
 			)?;
@@ -97,7 +125,7 @@ pub(crate) struct RowListLookupNode {
 	row_numbers: Vec<u64>,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
+	schema: Option<Schema>,
 	current_index: usize,
 }
 
@@ -107,16 +135,40 @@ impl<'a> RowListLookupNode {
 		row_numbers: Vec<u64>,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
-		let (headers, row_layout) = build_headers_and_layout(&source)?;
+		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
 			source,
 			row_numbers,
 			context: Some(context),
 			headers,
-			row_layout,
+			schema: None,
 			current_index: 0,
 		})
+	}
+
+	fn get_or_load_schema(
+		&mut self,
+		rx: &mut StandardTransaction,
+		first_row: &EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+				"Schema with fingerprint {:?} not found",
+				fingerprint
+			)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
 	}
 }
 
@@ -168,7 +220,8 @@ impl QueryNode for RowListLookupNode {
 		}
 
 		let mut columns = columns_from_source(&self.source);
-		columns.append_rows(&self.row_layout, batch_rows.into_iter(), found_row_numbers)?;
+		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
+		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
 		Ok(Some(Batch {
 			columns,
@@ -188,7 +241,7 @@ pub(crate) struct RowRangeScanNode {
 	end: u64,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
+	schema: Option<Schema>,
 	current_row: u64,
 	exhausted: bool,
 }
@@ -200,7 +253,7 @@ impl<'a> RowRangeScanNode {
 		end: u64,
 		context: Arc<ExecutionContext>,
 	) -> crate::Result<Self> {
-		let (headers, row_layout) = build_headers_and_layout(&source)?;
+		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
 			source,
@@ -208,10 +261,31 @@ impl<'a> RowRangeScanNode {
 			end,
 			context: Some(context),
 			headers,
-			row_layout,
+			schema: None,
 			current_row: start,
 			exhausted: false,
 		})
+	}
+
+	fn get_or_load_schema(
+		&mut self,
+		rx: &mut StandardTransaction,
+		first_row: &EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			reifydb_type::error!(internal(format!("Schema with fingerprint {:?} not found", fingerprint)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
 	}
 }
 
@@ -265,7 +339,8 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		let mut columns = columns_from_source(&self.source);
-		columns.append_rows(&self.row_layout, batch_rows.into_iter(), found_row_numbers)?;
+		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
+		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
 		Ok(Some(Batch {
 			columns,
@@ -279,7 +354,7 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_layout<'a>(source: &ResolvedPrimitive) -> crate::Result<(ColumnHeaders, EncodedValuesLayout)> {
+fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> crate::Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
 		ResolvedPrimitive::Table(table) => table.columns(),
 		ResolvedPrimitive::View(view) => view.columns(),
@@ -289,14 +364,13 @@ fn build_headers_and_layout<'a>(source: &ResolvedPrimitive) -> crate::Result<(Co
 		}
 	};
 
-	let data = columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-	let row_layout = EncodedValuesLayout::testing(&data);
+	let storage_types = columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
 	let headers = ColumnHeaders {
 		columns: columns.iter().map(|col| Fragment::internal(&col.name)).collect(),
 	};
 
-	Ok((headers, row_layout))
+	Ok((headers, storage_types))
 }
 
 fn get_source_id(source: &ResolvedPrimitive) -> crate::Result<PrimitiveId> {

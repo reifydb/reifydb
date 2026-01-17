@@ -5,35 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_i8(&self, row: &mut EncodedValues, index: usize, value: impl Into<i8>) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Int1);
-		row.set_valid(index, true);
-		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i8, value.into()) }
-	}
-
-	pub fn get_i8(&self, row: &EncodedValues, index: usize) -> i8 {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Int1);
-		unsafe { (row.as_ptr().add(field.offset) as *const i8).read_unaligned() }
-	}
-
-	pub fn try_get_i8(&self, row: &EncodedValues, index: usize) -> Option<i8> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Int1 {
-			Some(self.get_i8(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_i8(&self, row: &mut EncodedValues, index: usize, value: impl Into<i8>) {
@@ -69,7 +41,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_i8() {

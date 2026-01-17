@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::ringbuffer::create::RingBufferToCreate};
+use reifydb_catalog::catalog::ringbuffer::RingBufferToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackRingBufferChangeOperations, value::column::columns::Columns,
 };
@@ -32,7 +32,7 @@ impl Executor {
 			// the ring buffer exists
 		}
 
-		let result = CatalogStore::create_ringbuffer(
+		let result = self.catalog.create_ringbuffer(
 			txn,
 			RingBufferToCreate {
 				fragment: Some(plan.ringbuffer.clone()),

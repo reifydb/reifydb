@@ -5,48 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::DateTime);
-		row.set_valid(index, true);
-
-		let (seconds, nanos) = value.to_parts();
-		unsafe {
-			// Write seconds at offset
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i64, seconds);
-			// Write nanos at offset + 8
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut u32, nanos);
-		}
-	}
-
-	pub fn get_datetime(&self, row: &EncodedValues, index: usize) -> DateTime {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::DateTime);
-		unsafe {
-			// Read i64 seconds at offset
-			let seconds = (row.as_ptr().add(field.offset) as *const i64).read_unaligned();
-			// Read u32 nanos at offset + 8
-			let nanos = (row.as_ptr().add(field.offset + 8) as *const u32).read_unaligned();
-			DateTime::from_parts(seconds, nanos).unwrap()
-		}
-	}
-
-	pub fn try_get_datetime(&self, row: &EncodedValues, index: usize) -> Option<DateTime> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::DateTime {
-			Some(self.get_datetime(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
@@ -96,7 +55,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_datetime() {

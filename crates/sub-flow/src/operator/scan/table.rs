@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::named::EncodedValuesNamedLayout,
+	encoded::schema::Schema,
 	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -47,16 +47,15 @@ impl Operator for PrimitiveTableOperator {
 		}
 
 		// Get schema from table def
-		let layout: EncodedValuesNamedLayout = (&self.table).into();
-		let names = layout.names();
-		let fields = layout.fields();
+		let schema: Schema = (&self.table.columns).into();
+		let fields = schema.fields();
 
 		// Pre-allocate columns with capacity
-		let mut columns_vec: Vec<Column> = Vec::with_capacity(names.len());
-		for (name, field) in names.iter().zip(fields.fields.iter()) {
+		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
+		for field in fields.iter() {
 			columns_vec.push(Column {
-				name: Fragment::internal(name),
-				data: ColumnData::with_capacity(field.r#type, rows.len()),
+				name: Fragment::internal(&field.name),
+				data: ColumnData::with_capacity(field.constraint.get_type(), rows.len()),
 			});
 		}
 		let mut row_numbers = Vec::with_capacity(rows.len());
@@ -67,8 +66,8 @@ impl Operator for PrimitiveTableOperator {
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly
-				for (i, _field) in fields.fields.iter().enumerate() {
-					let value = layout.get_value_by_idx(&encoded, i);
+				for (i, _field) in fields.iter().enumerate() {
+					let value = schema.get_value(&encoded, i);
 					columns_vec[i].data.push_value(value);
 				}
 			}

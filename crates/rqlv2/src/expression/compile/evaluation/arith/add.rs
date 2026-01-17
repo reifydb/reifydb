@@ -820,11 +820,7 @@ pub(crate) fn eval_add(left: &Column, right: &Column) -> EvalResult<Column> {
 }
 
 /// Generic helper function for Copy types (i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64)
-fn add_numeric<L, R>(
-	left: &NumberContainer<L>,
-	right: &NumberContainer<R>,
-	target: Type,
-) -> EvalResult<Column>
+fn add_numeric<L, R>(left: &NumberContainer<L>, right: &NumberContainer<R>, target: Type) -> EvalResult<Column>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
@@ -883,11 +879,7 @@ where
 }
 
 /// Generic helper function for Clone types (Int, Uint, Decimal)
-fn add_numeric_clone<L, R>(
-	left: &NumberContainer<L>,
-	right: &NumberContainer<R>,
-	target: Type,
-) -> EvalResult<Column>
+fn add_numeric_clone<L, R>(left: &NumberContainer<L>, right: &NumberContainer<R>, target: Type) -> EvalResult<Column>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,

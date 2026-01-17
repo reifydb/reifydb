@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_core::interface::catalog::{
+	id::{ColumnId, RingBufferId, SequenceId, TableId},
+	primitive::PrimitiveId,
+};
+use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
+use reifydb_type::value::{Value, row_number::RowNumber};
+use tracing::instrument;
+
+use crate::{
+	CatalogStore,
+	catalog::Catalog,
+	store::sequence::{Sequence, column::ColumnSequence, row::RowSequence},
+};
+
+impl Catalog {
+	#[instrument(name = "catalog::sequence::find", level = "trace", skip(self, txn))]
+	pub fn find_sequence<T: IntoStandardTransaction>(
+		&self,
+		txn: &mut T,
+		id: SequenceId,
+	) -> crate::Result<Option<Sequence>> {
+		CatalogStore::find_sequence(txn, id)
+	}
+
+	#[instrument(name = "catalog::sequence::get", level = "trace", skip(self, txn))]
+	pub fn get_sequence<T: IntoStandardTransaction>(&self, txn: &mut T, id: SequenceId) -> crate::Result<Sequence> {
+		CatalogStore::get_sequence(txn, id)
+	}
+
+	#[instrument(name = "catalog::sequence::list", level = "debug", skip(self, txn))]
+	pub fn list_sequences<T: IntoStandardTransaction>(&self, txn: &mut T) -> crate::Result<Vec<Sequence>> {
+		CatalogStore::list_sequences(txn)
+	}
+
+	#[instrument(name = "catalog::sequence::next_row_number", level = "trace", skip(self, txn))]
+	pub fn next_row_number(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		table: TableId,
+	) -> crate::Result<RowNumber> {
+		RowSequence::next_row_number(txn, table)
+	}
+
+	#[instrument(name = "catalog::sequence::next_row_number_batch", level = "trace", skip(self, txn))]
+	pub fn next_row_number_batch(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		table: TableId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		RowSequence::next_row_number_batch(txn, table, count)
+	}
+
+	#[instrument(name = "catalog::sequence::next_row_number_for_ringbuffer", level = "trace", skip(self, txn))]
+	pub fn next_row_number_for_ringbuffer(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		ringbuffer: RingBufferId,
+	) -> crate::Result<RowNumber> {
+		RowSequence::next_row_number_for_ringbuffer(txn, ringbuffer)
+	}
+
+	#[instrument(
+		name = "catalog::sequence::next_row_number_batch_for_ringbuffer",
+		level = "trace",
+		skip(self, txn)
+	)]
+	pub fn next_row_number_batch_for_ringbuffer(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		ringbuffer: RingBufferId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
+	}
+
+	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, source))]
+	pub fn column_sequence_next_value(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		source: impl Into<PrimitiveId>,
+		column: ColumnId,
+	) -> crate::Result<Value> {
+		ColumnSequence::next_value(txn, source, column)
+	}
+
+	#[instrument(name = "catalog::sequence::column_sequence_set_value", level = "trace", skip(self, txn, source))]
+	pub fn column_sequence_set_value(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		source: impl Into<PrimitiveId>,
+		column: ColumnId,
+		value: Value,
+	) -> crate::Result<()> {
+		ColumnSequence::set_value(txn, source, column, value)
+	}
+}

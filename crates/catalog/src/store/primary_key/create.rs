@@ -27,12 +27,12 @@ use crate::{
 };
 
 pub struct PrimaryKeyToCreate {
-	pub source: PrimitiveId,
+	pub primitive: PrimitiveId,
 	pub column_ids: Vec<ColumnId>,
 }
 
 impl CatalogStore {
-	pub fn create_primary_key(
+	pub(crate) fn create_primary_key(
 		txn: &mut StandardCommandTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> crate::Result<PrimaryKeyId> {
@@ -43,7 +43,7 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let source_columns = Self::list_columns(txn, to_create.source)?;
+		let source_columns = Self::list_columns(txn, to_create.primitive)?;
 		let source_column_ids: std::collections::HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
@@ -58,14 +58,14 @@ impl CatalogStore {
 		// Create primary key encoded
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, primary_key::ID, id.0);
-		SCHEMA.set_u64(&mut row, primary_key::SOURCE, to_create.source.as_u64());
+		SCHEMA.set_u64(&mut row, primary_key::SOURCE, to_create.primitive.as_u64());
 		SCHEMA.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;
 
 		// Update the table or view to reference this primary key
-		match to_create.source {
+		match to_create.primitive {
 			PrimitiveId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
 			}
@@ -132,11 +132,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table.id,
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -151,11 +149,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table.id,
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "tenant_id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
@@ -168,7 +164,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: vec![col1.id, col2.id],
 			},
 		)
@@ -225,7 +221,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::View(view.id),
+				primitive: PrimitiveId::View(view.id),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -258,11 +254,9 @@ pub mod tests {
 				ColumnToCreate {
 					fragment: None,
 					namespace_name: "test_namespace".to_string(),
-					table: table.id,
-					table_name: "test_table".to_string(),
+					primitive_name: "test_table".to_string(),
 					column: format!("col_{}", i),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(i as u8),
 					auto_increment: false,
@@ -277,7 +271,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: column_ids.clone(),
 			},
 		)
@@ -311,11 +305,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table.id,
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -328,7 +320,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)
@@ -351,7 +343,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(TableId(999)),
+				primitive: PrimitiveId::Table(TableId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -373,7 +365,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::View(ViewId(999)),
+				primitive: PrimitiveId::View(ViewId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -394,7 +386,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: vec![],
 			},
 		);
@@ -413,7 +405,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table.id),
+				primitive: PrimitiveId::Table(table.id),
 				column_ids: vec![ColumnId(999)],
 			},
 		);
@@ -435,11 +427,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table1.id,
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -469,11 +459,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: table2.id,
-				table_name: "test_table2".to_string(),
+				primitive_name: "test_table2".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -488,7 +476,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::Table(table1.id),
+				primitive: PrimitiveId::Table(table1.id),
 				column_ids: vec![col2.id],
 			},
 		);

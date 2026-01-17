@@ -11,7 +11,7 @@ use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
-	pub fn update_flow_name(
+	pub(crate) fn update_flow_name(
 		txn: &mut StandardCommandTransaction,
 		flow_id: FlowId,
 		new_name: String,
@@ -32,7 +32,7 @@ impl CatalogStore {
 	}
 
 	/// Update the status of a flow
-	pub fn update_flow_status(
+	pub(crate) fn update_flow_status(
 		txn: &mut StandardCommandTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,

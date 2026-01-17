@@ -23,9 +23,8 @@ pub(crate) use cast::cast_column_data;
 pub(crate) use compare::{eval_eq, eval_ge, eval_gt, eval_le, eval_lt, eval_ne};
 pub(crate) use conditional::eval_conditional;
 pub(crate) use logical::{eval_logical_and, eval_logical_or, eval_logical_xor};
-pub(crate) use unary::eval_unary;
-
 use reifydb_core::value::column::Column;
+pub(crate) use unary::eval_unary;
 
 use crate::{
 	expression::types::{EvalError, EvalResult},
@@ -72,30 +71,22 @@ pub(crate) fn eval_binary(op: BinaryPlanOp, left: &Column, right: &Column) -> Ev
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::plan::node::expr::UnaryPlanOp;
 	use reifydb_core::value::column::data::ColumnData;
 	use reifydb_type::fragment::Fragment;
 
+	use super::*;
+	use crate::plan::node::expr::UnaryPlanOp;
+
 	fn create_bool_column(name: &str, data: Vec<bool>, bitvec: Vec<bool>) -> Column {
-		Column::new(
-			Fragment::internal(name),
-			ColumnData::bool_with_bitvec(data, bitvec),
-		)
+		Column::new(Fragment::internal(name), ColumnData::bool_with_bitvec(data, bitvec))
 	}
 
 	fn create_int8_column(name: &str, data: Vec<i64>, bitvec: Vec<bool>) -> Column {
-		Column::new(
-			Fragment::internal(name),
-			ColumnData::int8_with_bitvec(data, bitvec),
-		)
+		Column::new(Fragment::internal(name), ColumnData::int8_with_bitvec(data, bitvec))
 	}
 
 	fn create_float8_column(name: &str, data: Vec<f64>, bitvec: Vec<bool>) -> Column {
-		Column::new(
-			Fragment::internal(name),
-			ColumnData::float8_with_bitvec(data, bitvec),
-		)
+		Column::new(Fragment::internal(name), ColumnData::float8_with_bitvec(data, bitvec))
 	}
 
 	#[test]

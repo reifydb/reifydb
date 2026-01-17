@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::view::create::ViewToCreate};
+use reifydb_catalog::catalog::view::ViewToCreate;
 use reifydb_core::{interface::catalog::change::CatalogTrackViewChangeOperations, value::column::columns::Columns};
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -25,7 +25,7 @@ impl Executor {
 			}
 		}
 
-		let result = CatalogStore::create_deferred_view(
+		let result = self.catalog.create_deferred_view(
 			txn,
 			ViewToCreate {
 				fragment: Some(plan.view.clone()),

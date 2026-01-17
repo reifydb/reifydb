@@ -3,12 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::sequence::{column::ColumnSequence, row::RowSequence},
-};
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout, value::encode_value},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -28,7 +24,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::primary_key;
+use super::{primary_key, schema::get_or_create_table_schema};
 use crate::{
 	execute::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
@@ -48,30 +44,16 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace().name();
 
-		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
+		let namespace = self.catalog.find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let table_name = plan.target.name();
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
+		let Some(table) = self.catalog.find_table_by_name(txn, namespace.id, table_name)? else {
 			let fragment = plan.target.identifier().clone();
 			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 
-		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let mut table_types: Vec<Type> = Vec::new();
-		for c in &table.columns {
-			if let Some(dict_id) = c.dictionary_id {
-				// For dictionary columns, we store the dictionary ID, not the original value
-				// Look up the dictionary to get its ID type
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
-					Ok(Some(d)) => d.id_type,
-					_ => c.constraint.get_type(),
-				};
-				table_types.push(dict_type);
-			} else {
-				table_types.push(c.constraint.get_type());
-			}
-		}
-		let layout = EncodedValuesLayout::testing(&table_types);
+		// Get or create schema with proper field names and constraints
+		let schema = get_or_create_table_schema(&self.catalog, &table, txn)?;
 
 		// Create resolved source for the table
 		let namespace_ident = Fragment::internal(namespace.name.clone());
@@ -113,7 +95,7 @@ impl Executor {
 			}
 
 			for row_numberx in 0..row_count {
-				let mut row = layout.allocate();
+				let mut row = schema.allocate();
 
 				// For each table column, find if it exists in the input columns
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
@@ -126,7 +108,7 @@ impl Executor {
 
 					// Handle auto-increment columns
 					if table_column.auto_increment && matches!(value, Value::Undefined) {
-						value = ColumnSequence::next_value(
+						value = self.catalog.column_sequence_next_value(
 							std_txn.command_mut(),
 							table.id,
 							table_column.id,
@@ -155,15 +137,16 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = table_column.dictionary_id {
-						let dictionary =
-							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
-								.ok_or_else(|| {
-									internal_error!(
-										"Dictionary {:?} not found for column {}",
-										dict_id,
-										table_column.name
-									)
-								})?;
+						let dictionary = self
+							.catalog
+							.find_dictionary(std_txn.command_mut(), dict_id)?
+							.ok_or_else(|| {
+								internal_error!(
+									"Dictionary {:?} not found for column {}",
+									dict_id,
+									table_column.name
+								)
+							})?;
 						let entry_id = std_txn
 							.command_mut()
 							.insert_into_dictionary(&dictionary, &value)?;
@@ -172,7 +155,7 @@ impl Executor {
 						value
 					};
 
-					encode_value(&layout, &mut row, table_idx, &value);
+					schema.set_value(&mut row, table_idx, &value);
 				}
 
 				// Store the validated and encoded row for later insertion
@@ -192,7 +175,7 @@ impl Executor {
 		}
 
 		let row_numbers =
-			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64)?;
+			self.catalog.next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64)?;
 
 		assert_eq!(row_numbers.len(), validated_rows.len());
 
@@ -202,8 +185,10 @@ impl Executor {
 			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number)?;
 
 			// Store primary key index entry if table has one
-			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
-				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
+			if let Some(pk_def) =
+				primary_key::get_primary_key(&self.catalog, std_txn.command_mut(), &table)?
+			{
+				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &schema)?;
 
 				// Check if primary key already exists
 				let index_entry_key =
@@ -218,9 +203,9 @@ impl Executor {
 				}
 
 				// Store the index entry with the row number as value
-				let row_number_layout = EncodedValuesLayout::testing(&[Type::Uint8]);
-				let mut row_number_encoded = row_number_layout.allocate();
-				row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+				let row_number_schema = Schema::testing(&[Type::Uint8]);
+				let mut row_number_encoded = row_number_schema.allocate();
+				row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded)?;
 			}

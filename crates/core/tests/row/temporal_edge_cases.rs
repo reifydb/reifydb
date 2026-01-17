@@ -3,13 +3,13 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::schema::Schema;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]
 fn test_date_boundaries() {
-	let layout = EncodedValuesLayout::testing(&[Type::Date]);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&[Type::Date]);
+	let mut row = schema.allocate();
 
 	let dates = [
 		Date::from_ymd(1, 1, 1).unwrap(),      // Minimum reasonable date
@@ -20,20 +20,20 @@ fn test_date_boundaries() {
 	];
 
 	for date in dates {
-		layout.set_date(&mut row, 0, date);
-		assert_eq!(layout.get_date(&row, 0), date);
+		schema.set_date(&mut row, 0, date);
+		assert_eq!(schema.get_date(&row, 0), date);
 	}
 }
 
 #[test]
 fn test_datetime_precision_limits() {
-	let layout = EncodedValuesLayout::testing(&[Type::DateTime]);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&[Type::DateTime]);
+	let mut row = schema.allocate();
 
 	// Test nanosecond precision preservation
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
-	layout.set_datetime(&mut row, 0, dt);
-	let retrieved = layout.get_datetime(&row, 0);
+	schema.set_datetime(&mut row, 0, dt);
+	let retrieved = schema.get_datetime(&row, 0);
 	assert_eq!(retrieved, dt);
 
 	// Verify nanosecond precision
@@ -45,8 +45,8 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let layout = EncodedValuesLayout::testing(&[Type::Time]);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&[Type::Time]);
+	let mut row = schema.allocate();
 
 	let times = [
 		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -57,15 +57,15 @@ fn test_time_edge_values() {
 	];
 
 	for time in times {
-		layout.set_time(&mut row, 0, time);
-		assert_eq!(layout.get_time(&row, 0), time);
+		schema.set_time(&mut row, 0, time);
+		assert_eq!(schema.get_time(&row, 0), time);
 	}
 }
 
 #[test]
 fn test_interval_combinations() {
-	let layout = EncodedValuesLayout::testing(&[Type::Duration]);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&[Type::Duration]);
+	let mut row = schema.allocate();
 
 	let intervals = [
 		Duration::from_seconds(0),
@@ -79,7 +79,7 @@ fn test_interval_combinations() {
 	];
 
 	for interval in intervals {
-		layout.set_duration(&mut row, 0, interval);
-		assert_eq!(layout.get_duration(&row, 0), interval);
+		schema.set_duration(&mut row, 0, interval);
+		assert_eq!(schema.get_duration(&row, 0), interval);
 	}
 }

@@ -5,7 +5,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	interface::{
 		catalog::{id::NamespaceId, table::TableDef},
 		store::MultiVersionValues,
@@ -28,7 +28,7 @@ use crate::error::{Result, VmError};
 /// Stored in VM and used across multiple fetch operations.
 pub struct ScanState {
 	pub table_def: TableDef,
-	pub row_layout: EncodedValuesLayout,
+	pub schema: Option<Schema>,
 	pub storage_types: Vec<Type>,
 	pub last_key: Option<EncodedKey>,
 	pub exhausted: bool,
@@ -84,13 +84,12 @@ impl ScanTableOp {
 				name: self.table_name.clone(),
 			})?;
 
-		// Build storage types and layout
+		// Build storage types
 		let storage_types: Vec<_> = table_def.columns.iter().map(|col| col.constraint.get_type()).collect();
-		let row_layout = EncodedValuesLayout::testing(&storage_types);
 
 		Ok(ScanState {
 			table_def,
-			row_layout,
+			schema: None,
 			storage_types,
 			last_key: None,
 			exhausted: false,
@@ -102,6 +101,7 @@ impl ScanTableOp {
 	/// Called repeatedly by the VM to fetch batches one at a time.
 	/// Returns None when the scan is exhausted.
 	pub fn next_batch<'a>(
+		catalog: &Catalog,
 		state: &mut ScanState,
 		tx: &mut StandardTransaction<'a>,
 		batch_size: u64,
@@ -126,6 +126,9 @@ impl ScanTableOp {
 			}
 		}
 
+		// Drop the stream to release the borrow on tx
+		drop(stream);
+
 		if items.is_empty() {
 			state.exhausted = true;
 			return Ok(None);
@@ -133,11 +136,13 @@ impl ScanTableOp {
 
 		// Build LazyBatch from storage data
 		let lazy_batch = build_lazy_batch(
+			catalog,
 			items,
 			&state.table_def,
-			&state.row_layout,
+			&mut state.schema,
 			&state.storage_types,
 			&mut state.last_key,
+			tx,
 		)?;
 
 		Ok(Some(Batch::lazy(lazy_batch)))
@@ -148,11 +153,13 @@ impl ScanTableOp {
 ///
 /// This keeps data in encoded form for lazy evaluation through filters.
 fn build_lazy_batch(
+	catalog: &Catalog,
 	batch: impl IntoIterator<Item = MultiVersionValues>,
 	table_def: &TableDef,
-	row_layout: &EncodedValuesLayout,
+	schema_cache: &mut Option<Schema>,
 	storage_types: &[Type],
 	last_key: &mut Option<EncodedKey>,
+	tx: &mut StandardTransaction,
 ) -> Result<LazyBatch> {
 	let mut rows = Vec::new();
 	let mut row_numbers = Vec::new();
@@ -164,6 +171,31 @@ fn build_lazy_batch(
 			*last_key = Some(item.key);
 		}
 	}
+
+	// Load schema from first row if not cached
+	let schema = if let Some(schema) = schema_cache {
+		schema.clone()
+	} else if !rows.is_empty() {
+		let fingerprint = rows[0].fingerprint();
+		let schema = catalog
+			.schema
+			.get_or_load(fingerprint, tx)
+			.map_err(|e: reifydb_type::error::Error| VmError::CatalogError {
+				message: e.to_string(),
+			})?
+			.ok_or_else(|| VmError::CatalogError {
+				message: format!(
+					"Schema with fingerprint {:?} not found for table {}",
+					fingerprint, table_def.name
+				),
+			})?;
+		*schema_cache = Some(schema.clone());
+		schema
+	} else {
+		return Err(VmError::CatalogError {
+			message: "Cannot create LazyBatch without rows".to_string(),
+		});
+	};
 
 	let column_metas = table_def
 		.columns
@@ -177,5 +209,5 @@ fn build_lazy_batch(
 		})
 		.collect();
 
-	Ok(LazyBatch::new(rows, row_numbers, row_layout.clone(), column_metas))
+	Ok(LazyBatch::new(rows, row_numbers, &schema, column_metas))
 }

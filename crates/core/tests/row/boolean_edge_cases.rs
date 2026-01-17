@@ -3,30 +3,30 @@
 
 //! Boolean edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::layout::EncodedValuesLayout;
+use reifydb_core::encoded::schema::Schema;
 use reifydb_type::value::r#type::Type;
 
 #[test]
 fn test_boolean_bit_patterns() {
-	let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
-	let mut row = layout.allocate();
+	let schema = Schema::testing(&[Type::Boolean]);
+	let mut row = schema.allocate();
 
 	// Test standard values
-	layout.set_bool(&mut row, 0, true);
-	assert_eq!(layout.get_bool(&row, 0), true);
+	schema.set_bool(&mut row, 0, true);
+	assert_eq!(schema.get_bool(&row, 0), true);
 
-	layout.set_bool(&mut row, 0, false);
-	assert_eq!(layout.get_bool(&row, 0), false);
+	schema.set_bool(&mut row, 0, false);
+	assert_eq!(schema.get_bool(&row, 0), false);
 
 	// Test that undefined is different from false
-	layout.set_undefined(&mut row, 0);
-	assert!(layout.try_get_bool(&row, 0).is_none());
+	schema.set_undefined(&mut row, 0);
+	assert!(schema.try_get_bool(&row, 0).is_none());
 }
 
 #[test]
 fn test_boolean_field_independence() {
 	// Test that boolean fields don't interfere with each other
-	let layout = EncodedValuesLayout::testing(&[
+	let schema = Schema::testing(&[
 		Type::Boolean,
 		Type::Boolean,
 		Type::Boolean,
@@ -36,29 +36,29 @@ fn test_boolean_field_independence() {
 		Type::Boolean,
 		Type::Boolean,
 	]);
-	let mut row = layout.allocate();
+	let mut row = schema.allocate();
 
 	// Set alternating pattern
 	for i in 0..8 {
-		layout.set_bool(&mut row, i, i % 2 == 0);
+		schema.set_bool(&mut row, i, i % 2 == 0);
 	}
 
 	// Verify pattern
 	for i in 0..8 {
-		assert_eq!(layout.get_bool(&row, i), i % 2 == 0);
+		assert_eq!(schema.get_bool(&row, i), i % 2 == 0);
 	}
 
 	// Change some values
-	layout.set_bool(&mut row, 2, true);
-	layout.set_bool(&mut row, 5, false);
+	schema.set_bool(&mut row, 2, true);
+	schema.set_bool(&mut row, 5, false);
 
 	// Verify only targeted fields changed
-	assert_eq!(layout.get_bool(&row, 0), true);
-	assert_eq!(layout.get_bool(&row, 1), false);
-	assert_eq!(layout.get_bool(&row, 2), true); // Changed
-	assert_eq!(layout.get_bool(&row, 3), false);
-	assert_eq!(layout.get_bool(&row, 4), true);
-	assert_eq!(layout.get_bool(&row, 5), false); // Changed
-	assert_eq!(layout.get_bool(&row, 6), true);
-	assert_eq!(layout.get_bool(&row, 7), false);
+	assert_eq!(schema.get_bool(&row, 0), true);
+	assert_eq!(schema.get_bool(&row, 1), false);
+	assert_eq!(schema.get_bool(&row, 2), true); // Changed
+	assert_eq!(schema.get_bool(&row, 3), false);
+	assert_eq!(schema.get_bool(&row, 4), true);
+	assert_eq!(schema.get_bool(&row, 5), false); // Changed
+	assert_eq!(schema.get_bool(&row, 6), true);
+	assert_eq!(schema.get_bool(&row, 7), false);
 }

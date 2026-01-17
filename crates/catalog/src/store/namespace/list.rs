@@ -10,7 +10,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::namespace::schema::namespace};
 
 impl CatalogStore {
-	pub fn list_namespaces_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<NamespaceDef>> {
+	pub(crate) fn list_namespaces_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<NamespaceDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

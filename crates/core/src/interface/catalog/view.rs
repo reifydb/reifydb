@@ -3,13 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	encoded::named::EncodedValuesNamedLayout,
-	interface::catalog::{
-		column::ColumnDef,
-		id::{NamespaceId, ViewId},
-		key::PrimaryKeyDef,
-	},
+use crate::interface::catalog::{
+	column::ColumnDef,
+	id::{NamespaceId, ViewId},
+	key::PrimaryKeyDef,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -26,10 +23,4 @@ pub struct ViewDef {
 	pub kind: ViewKind,
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Option<PrimaryKeyDef>,
-}
-
-impl From<&ViewDef> for EncodedValuesNamedLayout {
-	fn from(value: &ViewDef) -> Self {
-		value.columns.as_slice().into()
-	}
 }

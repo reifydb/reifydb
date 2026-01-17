@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	encoded::named::EncodedValuesNamedLayout,
+	encoded::schema::Schema,
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
 		resolved::ResolvedSubscription,
@@ -70,7 +70,7 @@ impl Operator for SinkSubscriptionOperator {
 		_evaluator: &StandardColumnEvaluator,
 	) -> reifydb_type::Result<FlowChange> {
 		let subscription_def = self.subscription.def().clone();
-		let layout: EncodedValuesNamedLayout = (&subscription_def).into();
+		let schema: Schema = (&subscription_def).into();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -86,7 +86,7 @@ impl Operator for SinkSubscriptionOperator {
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
 						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &layout);
+							encode_row_at_index(&with_implicit, row_idx, &schema);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -106,7 +106,7 @@ impl Operator for SinkSubscriptionOperator {
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
 						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &layout);
+							encode_row_at_index(&with_implicit, row_idx, &schema);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -125,7 +125,7 @@ impl Operator for SinkSubscriptionOperator {
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
 						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &layout);
+							encode_row_at_index(&with_implicit, row_idx, &schema);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;

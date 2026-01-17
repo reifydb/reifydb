@@ -10,7 +10,7 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_flow_node(txn: &mut StandardCommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
+	pub(crate) fn delete_flow_node(txn: &mut StandardCommandTransaction, node_id: FlowNodeId) -> crate::Result<()> {
 		// First, get the node to find the flow ID for index deletion
 		let node = CatalogStore::find_flow_node(txn, node_id)?;
 

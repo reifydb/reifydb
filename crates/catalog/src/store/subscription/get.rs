@@ -8,7 +8,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_subscription(
+	pub(crate) fn get_subscription(
 		rx: &mut impl IntoStandardTransaction,
 		subscription: SubscriptionId,
 	) -> crate::Result<SubscriptionDef> {

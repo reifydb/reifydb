@@ -2,11 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{
-		id::{DictionaryId, TableId},
-		policy::ColumnPolicyKind,
-		primitive::PrimitiveId,
-	},
+	interface::catalog::{id::DictionaryId, policy::ColumnPolicyKind, primitive::PrimitiveId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -51,14 +47,12 @@ use crate::{
 	},
 };
 
-pub struct ColumnToCreate {
+pub(crate) struct ColumnToCreate {
 	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
-	pub table: TableId,     // FIXME refactor to source: PrimitiveId
-	pub table_name: String, // FIXME refactor to source_name
+	pub primitive_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
-	pub if_not_exists: bool,
 	pub policies: Vec<ColumnPolicyKind>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
@@ -78,7 +72,7 @@ impl CatalogStore {
 			return_error!(table_column_already_exists(
 				Fragment::None,
 				&column_to_create.namespace_name,
-				&column_to_create.table_name,
+				&column_to_create.primitive_name,
 				&column.name,
 			));
 		}
@@ -168,11 +162,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -187,11 +179,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "col_2".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
@@ -226,11 +216,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -260,11 +248,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "name".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Utf8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -284,11 +270,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "is_active".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -306,11 +290,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "price".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Float8),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -333,11 +315,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -353,11 +333,9 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,

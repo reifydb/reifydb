@@ -17,7 +17,7 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub fn list_columns(
+	pub(crate) fn list_columns(
 		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 	) -> crate::Result<Vec<ColumnDef>> {
@@ -45,7 +45,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
+	pub(crate) fn list_columns_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ColumnInfo>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -112,11 +112,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "b_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int4),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: true,
@@ -131,11 +129,9 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				table: TableId(1),
-				table_name: "test_table".to_string(),
+				primitive_name: "test_table".to_string(),
 				column: "a_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
-				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,

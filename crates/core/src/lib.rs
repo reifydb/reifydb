@@ -14,7 +14,6 @@ pub mod key;
 pub mod retention;
 pub mod row;
 pub mod runtime;
-pub use encoded::schema;
 pub mod sort;
 pub mod util;
 pub mod value;

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
-	encoded::named::EncodedValuesNamedLayout,
+	encoded::schema::{Schema, SchemaField},
 	interface::catalog::{
 		id::{NamespaceId, SubscriptionColumnId, SubscriptionId},
 		key::PrimaryKeyDef,
@@ -52,10 +52,15 @@ impl SubscriptionDef {
 	}
 }
 
-impl From<&SubscriptionDef> for EncodedValuesNamedLayout {
+impl From<&SubscriptionDef> for Schema {
 	fn from(value: &SubscriptionDef) -> Self {
-		// Use all columns (user + implicit) for layout
-		EncodedValuesNamedLayout::new(value.all_columns().iter().map(|col| (col.name.clone(), col.ty)))
+		// Use all columns (user + implicit) for schema
+		let fields = value
+			.all_columns()
+			.iter()
+			.map(|col| SchemaField::unconstrained(col.name.clone(), col.ty))
+			.collect();
+		Schema::new(fields)
 	}
 }
 

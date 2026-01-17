@@ -7,6 +7,7 @@ pub(crate) mod primary_key;
 pub mod ringbuffer_delete;
 pub mod ringbuffer_insert;
 pub mod ringbuffer_update;
+pub(crate) mod schema;
 pub mod table_delete;
 pub mod table_insert;
 pub mod table_update;

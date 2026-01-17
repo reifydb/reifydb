@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
+	encoded::schema::{Schema, SchemaField},
 	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
 	row::Row,
 	value::column::columns::Columns,
@@ -16,8 +16,7 @@ use crate::flow::{FlowChange, FlowChangeOrigin, FlowDiff};
 pub struct TestRowBuilder {
 	row_number: RowNumber,
 	values: Vec<Value>,
-	layout: Option<EncodedValuesLayout>,
-	named_layout: Option<EncodedValuesNamedLayout>,
+	schema: Option<Schema>,
 }
 
 impl TestRowBuilder {
@@ -26,8 +25,7 @@ impl TestRowBuilder {
 		Self {
 			row_number: row_number.into(),
 			values: Vec::new(),
-			layout: None,
-			named_layout: None,
+			schema: None,
 		}
 	}
 
@@ -43,53 +41,35 @@ impl TestRowBuilder {
 		self
 	}
 
-	/// Set the layout for the row (inferred from values if not set)
-	pub fn with_layout(mut self, layout: EncodedValuesLayout) -> Self {
-		self.layout = Some(layout);
-		self.named_layout = None;
-		self
-	}
-
-	/// Set a named layout for the row
-	pub fn with_named_layout(mut self, layout: EncodedValuesNamedLayout) -> Self {
-		self.named_layout = Some(layout);
-		self.layout = None;
+	/// Set the schema for the row (inferred from values if not set)
+	pub fn with_schema(mut self, schema: Schema) -> Self {
+		self.schema = Some(schema);
 		self
 	}
 
 	/// Build the row
 	pub fn build(self) -> Row {
-		if let Some(named_layout) = self.named_layout {
-			// Use named layout
-			let mut encoded = named_layout.allocate();
-			named_layout.set_values(&mut encoded, &self.values);
-
-			return Row {
-				number: self.row_number,
-				encoded,
-				layout: named_layout,
-			};
-		}
-
-		// Create a named layout from unnamed layout or infer from values
-		let types: Vec<Type> = if let Some(layout) = self.layout {
-			(0..layout.fields.len()).map(|i| layout.fields[i].r#type).collect()
+		// Use provided schema or infer from values
+		let schema = if let Some(schema) = self.schema {
+			schema
 		} else {
-			self.values.iter().map(|v| v.get_type()).collect()
+			// Infer types from values and create schema
+			let fields: Vec<SchemaField> = self
+				.values
+				.iter()
+				.enumerate()
+				.map(|(i, v)| SchemaField::unconstrained(format!("field{}", i), v.get_type()))
+				.collect();
+			Schema::new(fields)
 		};
 
-		// Generate field names as String
-		let fields: Vec<(String, Type)> =
-			types.iter().enumerate().map(|(i, t)| (format!("field{}", i), *t)).collect();
-
-		let named_layout = EncodedValuesNamedLayout::new(fields);
-		let mut encoded = named_layout.allocate();
-		named_layout.set_values(&mut encoded, &self.values);
+		let mut encoded = schema.allocate();
+		schema.set_values(&mut encoded, &self.values);
 
 		Row {
 			number: self.row_number,
 			encoded,
-			layout: named_layout,
+			schema,
 		}
 	}
 }
@@ -189,78 +169,63 @@ impl TestFlowChangeBuilder {
 	}
 }
 
-/// Builder for creating test layouts
+/// Builder for creating test schemas
 pub struct TestLayoutBuilder {
-	types: Vec<Type>,
-	names: Option<Vec<String>>,
+	fields: Vec<SchemaField>,
 }
 
 impl TestLayoutBuilder {
-	/// Create a new layout builder
+	/// Create a new schema builder
 	pub fn new() -> Self {
 		Self {
-			types: Vec::new(),
-			names: None,
+			fields: Vec::new(),
 		}
 	}
 
-	/// Add a type to the layout
+	/// Add a type to the schema with auto-generated name
 	pub fn add_type(mut self, ty: Type) -> Self {
-		self.types.push(ty);
+		let field_name = format!("field{}", self.fields.len());
+		self.fields.push(SchemaField::unconstrained(field_name, ty));
 		self
 	}
 
-	/// Add a named field to the layout
+	/// Add a named field to the schema
 	pub fn add_field(mut self, name: impl Into<String>, ty: Type) -> Self {
-		if self.names.is_none() {
-			self.names = Some(Vec::new());
-		}
-		self.names.as_mut().unwrap().push(name.into());
-		self.types.push(ty);
+		self.fields.push(SchemaField::unconstrained(name, ty));
 		self
 	}
 
-	/// Build an unnamed layout
-	pub fn build(self) -> EncodedValuesLayout {
-		EncodedValuesLayout::testing(&self.types)
+	/// Build the schema
+	pub fn build(self) -> Schema {
+		Schema::new(self.fields)
 	}
 
-	/// Build a named layout
-	pub fn build_named(self) -> EncodedValuesNamedLayout {
-		let names = self.names.unwrap_or_else(|| {
-			// Generate default names if not provided
-			(0..self.types.len()).map(|i| format!("field{}", i)).collect()
-		});
-
-		let fields: Vec<(String, Type)> = names.into_iter().zip(self.types.into_iter()).collect();
-
-		EncodedValuesNamedLayout::new(fields)
+	/// Build the schema (alias for backwards compatibility)
+	pub fn build_named(self) -> Schema {
+		self.build()
 	}
 }
 
 /// Helper functions for common test data patterns
 pub mod helpers {
-	use reifydb_core::{
-		encoded::{layout::EncodedValuesLayout, named::EncodedValuesNamedLayout},
-		row::Row,
-	};
+	use reifydb_core::{encoded::schema::Schema, row::Row};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
 	use crate::flow::FlowChange;
 
-	/// Create a simple counter layout (single int8 field)
-	pub fn counter_layout() -> EncodedValuesLayout {
+	/// Create a simple counter schema (single int8 field)
+	pub fn counter_layout() -> Schema {
 		TestLayoutBuilder::new().add_type(Type::Int8).build()
 	}
 
-	/// Create a key-value layout (utf8 key, int8 value)
-	pub fn key_value_layout() -> EncodedValuesLayout {
+	/// Create a key-value schema (utf8 key, int8 value)
+	pub fn key_value_layout() -> Schema {
 		TestLayoutBuilder::new().add_type(Type::Utf8).add_type(Type::Int8).build()
 	}
 
-	/// Create a named key-value layout
-	pub fn named_key_value_layout() -> EncodedValuesNamedLayout {
+	/// Create a named key-value schema
+	pub fn named_key_value_layout() -> Schema {
 		TestLayoutBuilder::new().add_field("key", Type::Utf8).add_field("value", Type::Int8).build_named()
 	}
 
@@ -312,7 +277,7 @@ pub mod tests {
 			.build();
 
 		assert_eq!(row.number, RowNumber(42));
-		assert_eq!(row.layout.names().len(), 2);
+		assert_eq!(row.schema.field_count(), 2);
 	}
 
 	#[test]
@@ -340,16 +305,16 @@ pub mod tests {
 	fn test_layout_builder() {
 		let unnamed = TestLayoutBuilder::new().add_type(Type::Int8).add_type(Type::Utf8).build();
 
-		assert_eq!(unnamed.fields.len(), 2);
+		assert_eq!(unnamed.field_count(), 2);
 
 		let named = TestLayoutBuilder::new()
 			.add_field("count", Type::Int8)
 			.add_field("name", Type::Utf8)
 			.build_named();
 
-		assert_eq!(named.fields().fields.len(), 2);
-		assert_eq!(named.names()[0].as_str(), "count");
-		assert_eq!(named.names()[1].as_str(), "name");
+		assert_eq!(named.field_count(), 2);
+		assert_eq!(named.get_field_name(0).unwrap(), "count");
+		assert_eq!(named.get_field_name(1).unwrap(), "name");
 	}
 
 	#[test]

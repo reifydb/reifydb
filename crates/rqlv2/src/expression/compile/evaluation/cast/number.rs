@@ -42,7 +42,9 @@ pub(super) fn to_number(data: &ColumnData, target: Type) -> EvalResult<ColumnDat
 	if data.is_utf8() {
 		return match target {
 			Type::Float4 | Type::Float8 => text_to_float(data, target),
-			Type::Decimal { .. } => text_to_decimal(data, target),
+			Type::Decimal {
+				..
+			} => text_to_decimal(data, target),
 			_ => text_to_integer(data, target),
 		};
 	}
@@ -62,7 +64,11 @@ fn boolean_to_number(data: &ColumnData, target: Type) -> EvalResult<ColumnData> 
 	macro_rules! boolean_to_number {
 		($target_ty:ty, $true_val:expr, $false_val:expr) => {{
 			|out: &mut ColumnData, val: bool| {
-				out.push::<$target_ty>(if val { $true_val } else { $false_val })
+				out.push::<$target_ty>(if val {
+					$true_val
+				} else {
+					$false_val
+				})
 			}
 		}};
 	}
@@ -83,13 +89,27 @@ fn boolean_to_number(data: &ColumnData, target: Type) -> EvalResult<ColumnData> 
 				Type::Float4 => boolean_to_number!(f32, 1.0f32, 0.0f32),
 				Type::Float8 => boolean_to_number!(f64, 1.0f64, 0.0f64),
 				Type::Int => |out: &mut ColumnData, val: bool| {
-					out.push::<Int>(if val { Int::from_i64(1) } else { Int::from_i64(0) })
+					out.push::<Int>(if val {
+						Int::from_i64(1)
+					} else {
+						Int::from_i64(0)
+					})
 				},
 				Type::Uint => |out: &mut ColumnData, val: bool| {
-					out.push::<Uint>(if val { Uint::from_u64(1) } else { Uint::from_u64(0) })
+					out.push::<Uint>(if val {
+						Uint::from_u64(1)
+					} else {
+						Uint::from_u64(0)
+					})
 				},
-				Type::Decimal { .. } => |out: &mut ColumnData, val: bool| {
-					let decimal = if val { Decimal::from_i64(1) } else { Decimal::from_i64(0) };
+				Type::Decimal {
+					..
+				} => |out: &mut ColumnData, val: bool| {
+					let decimal = if val {
+						Decimal::from_i64(1)
+					} else {
+						Decimal::from_i64(0)
+					};
 					out.push::<Decimal>(decimal)
 				},
 				_ => {
@@ -221,7 +241,10 @@ fn float_to_integer(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 
 fn text_to_integer(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 	match data {
-		ColumnData::Utf8 { container, .. } => {
+		ColumnData::Utf8 {
+			container,
+			..
+		} => {
 			let mut out = ColumnData::with_capacity(target, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
@@ -230,99 +253,121 @@ fn text_to_integer(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 
 					match target {
 						Type::Int1 => {
-							let result = parse_primitive_int::<i8>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int1", val),
-								}
+							let result = parse_primitive_int::<i8>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+								details: format!("Cannot parse '{}' as Int1", val),
 							})?;
 							out.push::<i8>(result);
 						}
 						Type::Int2 => {
-							let result = parse_primitive_int::<i16>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int2", val),
-								}
-							})?;
+							let result = parse_primitive_int::<i16>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Int2",
+										val
+									),
+								})?;
 							out.push::<i16>(result);
 						}
 						Type::Int4 => {
-							let result = parse_primitive_int::<i32>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int4", val),
-								}
-							})?;
+							let result = parse_primitive_int::<i32>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Int4",
+										val
+									),
+								})?;
 							out.push::<i32>(result);
 						}
 						Type::Int8 => {
-							let result = parse_primitive_int::<i64>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int8", val),
-								}
-							})?;
+							let result = parse_primitive_int::<i64>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Int8",
+										val
+									),
+								})?;
 							out.push::<i64>(result);
 						}
 						Type::Int16 => {
-							let result = parse_primitive_int::<i128>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int16", val),
-								}
-							})?;
+							let result = parse_primitive_int::<i128>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Int16",
+										val
+									),
+								})?;
 							out.push::<i128>(result);
 						}
 						Type::Uint1 => {
-							let result = parse_primitive_uint::<u8>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint1", val),
-								}
-							})?;
+							let result = parse_primitive_uint::<u8>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Uint1",
+										val
+									),
+								})?;
 							out.push::<u8>(result);
 						}
 						Type::Uint2 => {
-							let result = parse_primitive_uint::<u16>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint2", val),
-								}
-							})?;
+							let result = parse_primitive_uint::<u16>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Uint2",
+										val
+									),
+								})?;
 							out.push::<u16>(result);
 						}
 						Type::Uint4 => {
-							let result = parse_primitive_uint::<u32>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint4", val),
-								}
-							})?;
+							let result = parse_primitive_uint::<u32>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Uint4",
+										val
+									),
+								})?;
 							out.push::<u32>(result);
 						}
 						Type::Uint8 => {
-							let result = parse_primitive_uint::<u64>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint8", val),
-								}
-							})?;
+							let result = parse_primitive_uint::<u64>(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Uint8",
+										val
+									),
+								})?;
 							out.push::<u64>(result);
 						}
 						Type::Uint16 => {
-							let result = parse_primitive_uint::<u128>(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint16", val),
-								}
-							})?;
+							let result =
+								parse_primitive_uint::<u128>(temp_fragment.clone())
+									.map_err(|_e| EvalError::InvalidCast {
+										details: format!(
+											"Cannot parse '{}' as Uint16",
+											val
+										),
+									})?;
 							out.push::<u128>(result);
 						}
 						Type::Int => {
-							let result = parse_primitive_int(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Int", val),
-								}
-							})?;
+							let result = parse_primitive_int(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Int",
+										val
+									),
+								})?;
 							out.push::<Int>(result);
 						}
 						Type::Uint => {
-							let result = parse_primitive_uint(temp_fragment.clone()).map_err(|_e| {
-								EvalError::InvalidCast {
-									details: format!("Cannot parse '{}' as Uint", val),
-								}
-							})?;
+							let result = parse_primitive_uint(temp_fragment.clone())
+								.map_err(|_e| EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Uint",
+										val
+									),
+								})?;
 							out.push::<Uint>(result);
 						}
 						_ => {
@@ -350,7 +395,11 @@ fn text_to_integer(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 }
 
 fn text_to_float(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
-	if let ColumnData::Utf8 { container, .. } = data {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = data
+	{
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
@@ -359,19 +408,27 @@ fn text_to_float(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 
 				match target {
 					Type::Float4 => {
-						let result = parse_float::<f32>(temp_fragment.clone()).map_err(|_e| {
-							EvalError::InvalidCast {
-								details: format!("Cannot parse '{}' as Float4", val),
-							}
-						})?;
+						let result =
+							parse_float::<f32>(temp_fragment.clone()).map_err(|_e| {
+								EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Float4",
+										val
+									),
+								}
+							})?;
 						out.push::<f32>(result);
 					}
 					Type::Float8 => {
-						let result = parse_float::<f64>(temp_fragment.clone()).map_err(|_e| {
-							EvalError::InvalidCast {
-								details: format!("Cannot parse '{}' as Float8", val),
-							}
-						})?;
+						let result =
+							parse_float::<f64>(temp_fragment.clone()).map_err(|_e| {
+								EvalError::InvalidCast {
+									details: format!(
+										"Cannot parse '{}' as Float8",
+										val
+									),
+								}
+							})?;
 						out.push::<f64>(result);
 					}
 					_ => {
@@ -397,16 +454,21 @@ fn text_to_float(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
 }
 
 fn text_to_decimal(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
-	if let ColumnData::Utf8 { container, .. } = data {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = data
+	{
 		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
 				let temp_fragment = Fragment::internal(val);
 
-				let result = parse_decimal(temp_fragment.clone()).map_err(|_e| EvalError::InvalidCast {
-					details: format!("Cannot parse '{}' as Decimal", val),
-				})?;
+				let result =
+					parse_decimal(temp_fragment.clone()).map_err(|_e| EvalError::InvalidCast {
+						details: format!("Cannot parse '{}' as Decimal", val),
+					})?;
 				out.push::<Decimal>(result);
 			} else {
 				out.push_undefined();

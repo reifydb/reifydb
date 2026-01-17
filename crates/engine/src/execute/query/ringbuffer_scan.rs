@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	encoded::layout::EncodedValuesLayout,
+	encoded::schema::Schema,
 	interface::{
 		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
 		resolved::ResolvedRingBuffer,
@@ -29,7 +28,7 @@ pub struct RingBufferScan {
 	ringbuffer: ResolvedRingBuffer,
 	metadata: Option<RingBufferMetadata>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
+	schema: Option<Schema>,
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
@@ -52,7 +51,7 @@ impl RingBufferScan {
 
 		for col in ringbuffer.columns() {
 			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+				if let Some(dict) = context.executor.catalog.find_dictionary(rx, dict_id)? {
 					storage_types.push(dict.id_type);
 					dictionaries.push(Some(dict));
 				} else {
@@ -66,8 +65,6 @@ impl RingBufferScan {
 			}
 		}
 
-		let row_layout = EncodedValuesLayout::testing(&storage_types);
-
 		// Create columns headers
 		let headers = ColumnHeaders {
 			columns: ringbuffer.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
@@ -77,7 +74,7 @@ impl RingBufferScan {
 			ringbuffer,
 			metadata: None,
 			headers,
-			row_layout,
+			schema: None,
 			storage_types,
 			dictionaries,
 			current_position: 0,
@@ -86,21 +83,39 @@ impl RingBufferScan {
 			initialized: false,
 		})
 	}
+
+	fn get_or_load_schema(
+		&mut self,
+		rx: &mut StandardTransaction,
+		first_row: &reifydb_core::encoded::encoded::EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+				"Schema with fingerprint {:?} not found for ringbuffer {}",
+				fingerprint,
+				self.ringbuffer.def().name
+			)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
+	}
 }
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "query::scan::ringbuffer::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, txn: &mut StandardTransaction<'a>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize<'a>(&mut self, txn: &mut StandardTransaction<'a>, ctx: &ExecutionContext) -> crate::Result<()> {
 		if !self.initialized {
-			// Get ring buffer metadata from the appropriate transaction type
-			let metadata = match txn {
-				StandardTransaction::Command(cmd_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*cmd_txn, self.ringbuffer.def().id)?
-				}
-				StandardTransaction::Query(query_txn) => {
-					CatalogStore::find_ringbuffer_metadata(*query_txn, self.ringbuffer.def().id)?
-				}
-			};
+			// Get ring buffer metadata from the catalog
+			let metadata = ctx.executor.catalog.find_ringbuffer_metadata(txn, self.ringbuffer.def().id)?;
 			self.metadata = metadata;
 
 			if let Some(ref metadata) = self.metadata {
@@ -182,7 +197,8 @@ impl QueryNode for RingBufferScan {
 				.collect();
 
 			let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
-			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
+			let schema = self.get_or_load_schema(txn, &batch_rows[0])?;
+			columns.append_rows(&schema, batch_rows.into_iter(), row_numbers.clone())?;
 
 			// Decode dictionary columns
 			self.decode_dictionary_columns(&mut columns, txn)?;

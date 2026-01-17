@@ -7,7 +7,7 @@ use system::ids::sequences::ALL;
 use crate::{CatalogStore, store::sequence::Sequence, system};
 
 impl CatalogStore {
-	pub fn list_sequences(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<Sequence>> {
+	pub(crate) fn list_sequences(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<Sequence>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::with_capacity(ALL.len());
 

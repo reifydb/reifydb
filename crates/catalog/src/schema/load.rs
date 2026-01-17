@@ -3,12 +3,10 @@
 
 //! Schema Registry loading from storage.
 
-use std::sync::Arc;
-
 use reifydb_transaction::standard::IntoStandardTransaction;
 
 use super::SchemaRegistry;
-use crate::store::schema as schema_store;
+use crate::store::schema::get::load_all_schemas;
 
 /// Loads schemas from storage into the SchemaRegistry cache.
 pub struct SchemaRegistryLoader;
@@ -20,10 +18,10 @@ impl SchemaRegistryLoader {
 	/// with persisted schemas.
 	pub fn load_all(rx: &mut impl IntoStandardTransaction, registry: &SchemaRegistry) -> crate::Result<()> {
 		let mut txn = rx.into_standard_transaction();
-		let schemas = schema_store::load_all_schemas(&mut txn)?;
+		let schemas = load_all_schemas(&mut txn)?;
 
 		for schema in schemas {
-			registry.cache_schema(Arc::new(schema));
+			registry.cache_schema(schema);
 		}
 
 		Ok(())

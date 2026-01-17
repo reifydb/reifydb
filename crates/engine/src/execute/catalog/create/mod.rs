@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
+use reifydb_catalog::catalog::flow::FlowToCreate;
 use reifydb_core::interface::catalog::{
 	flow::FlowStatus,
 	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
@@ -37,7 +37,7 @@ impl Executor {
 		view: &ViewDef,
 		plan: Box<PhysicalPlan>,
 	) -> crate::Result<()> {
-		let flow_def = CatalogStore::create_flow(
+		let flow_def = self.catalog.create_flow(
 			txn,
 			FlowToCreate {
 				fragment: None,
@@ -47,7 +47,7 @@ impl Executor {
 			},
 		)?;
 
-		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id)?;
+		let _flow = compile_flow(&self.catalog, txn, *plan, Some(view), flow_def.id)?;
 		Ok(())
 	}
 
@@ -61,7 +61,7 @@ impl Executor {
 		subscription: &SubscriptionDef,
 		plan: PhysicalPlan,
 	) -> crate::Result<()> {
-		let flow_def = CatalogStore::create_flow(
+		let flow_def = self.catalog.create_flow(
 			txn,
 			FlowToCreate {
 				fragment: None,
@@ -71,7 +71,7 @@ impl Executor {
 			},
 		)?;
 
-		let _flow = compile_subscription_flow(txn, plan, subscription, flow_def.id)?;
+		let _flow = compile_subscription_flow(&self.catalog, txn, plan, subscription, flow_def.id)?;
 		Ok(())
 	}
 }

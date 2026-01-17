@@ -35,7 +35,7 @@ pub fn source(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 		// 2. Fetch first batch
 		let batch_size = ctx.vm.context.config.batch_size;
-		let batch_opt = ScanTableOp::next_batch(&mut scan_state, *tx, batch_size)?;
+		let batch_opt = ScanTableOp::next_batch(catalog, &mut scan_state, *tx, batch_size)?;
 
 		// 3. Store scan state
 		ctx.vm.active_scans.insert(source_index, scan_state);
@@ -131,14 +131,14 @@ pub fn merge(_ctx: &mut HandlerContext) -> Result<DispatchResult> {
 pub fn fetch_batch(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 	let source_index = ctx.read_u16()?;
 
-	if let Some(tx) = ctx.tx.as_mut() {
+	if let (Some(catalog), Some(tx)) = (&ctx.vm.context.catalog, ctx.tx.as_mut()) {
 		let scan_state =
 			ctx.vm.active_scans
 				.get_mut(&source_index)
 				.ok_or(VmError::Internal("scan not initialized".to_string()))?;
 
 		let batch_size = ctx.vm.context.config.batch_size;
-		let batch_opt = ScanTableOp::next_batch(scan_state, *tx, batch_size)?;
+		let batch_opt = ScanTableOp::next_batch(catalog, scan_state, *tx, batch_size)?;
 
 		if let Some(batch) = batch_opt {
 			// Has more data - push batch and true

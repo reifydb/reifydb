@@ -21,7 +21,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
+	pub(crate) fn list_primary_keys(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 
@@ -89,7 +89,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub fn list_primary_key_columns(
+	pub(crate) fn list_primary_key_columns(
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<(u64, u64, usize)>> {
 		let mut txn = rx.into_standard_transaction();

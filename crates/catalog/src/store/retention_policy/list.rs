@@ -33,7 +33,7 @@ pub struct OperatorRetentionPolicyEntry {
 
 impl CatalogStore {
 	/// List all retention policies for primitives (tables, views, ring buffers)
-	pub fn list_primitive_retention_policies(
+	pub(crate) fn list_primitive_retention_policies(
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<PrimitiveRetentionPolicyEntry>> {
 		let mut txn = rx.into_standard_transaction();
@@ -57,7 +57,7 @@ impl CatalogStore {
 	}
 
 	/// List all retention policies for operators
-	pub fn list_operator_retention_policies(
+	pub(crate) fn list_operator_retention_policies(
 		rx: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Vec<OperatorRetentionPolicyEntry>> {
 		let mut txn = rx.into_standard_transaction();

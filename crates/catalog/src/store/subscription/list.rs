@@ -6,12 +6,14 @@ use reifydb_core::{
 	interface::catalog::subscription::SubscriptionDef,
 	key::{Key, subscription::SubscriptionKey},
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub fn list_subscriptions_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<SubscriptionDef>> {
+	pub(crate) fn list_subscriptions_all(
+		rx: &mut impl IntoStandardTransaction,
+	) -> crate::Result<Vec<SubscriptionDef>> {
 		let mut txn = rx.into_standard_transaction();
 
 		// First, collect all subscription IDs and metadata
@@ -40,13 +42,8 @@ impl CatalogStore {
 		// Now load columns for each subscription
 		let mut result = Vec::new();
 		for (subscription_id, acknowledged_version) in subscription_data {
-			// Load columns based on transaction type
-			let columns = match &mut txn {
-				StandardTransaction::Command(cmd) => {
-					Self::list_subscription_columns(cmd, subscription_id)?
-				}
-				StandardTransaction::Query(_) => vec![],
-			};
+			// Load columns (works for all transaction types)
+			let columns = Self::list_subscription_columns(&mut txn, subscription_id)?;
 
 			let subscription_def = SubscriptionDef {
 				id: subscription_id,

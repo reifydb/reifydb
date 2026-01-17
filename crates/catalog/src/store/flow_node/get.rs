@@ -8,7 +8,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_flow_node(
+	pub(crate) fn get_flow_node(
 		txn: &mut impl IntoStandardTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<FlowNodeDef> {

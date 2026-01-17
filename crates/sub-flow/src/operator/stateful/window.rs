@@ -4,7 +4,7 @@ use reifydb_core::{
 	encoded::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		layout::EncodedValuesLayout,
+		schema::Schema,
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
@@ -16,7 +16,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedValuesLayout;
+	fn layout(&self) -> Schema;
 
 	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedValues {
@@ -94,7 +94,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement WindowStateful
 	impl WindowStateful for TestOperator {
-		fn layout(&self) -> EncodedValuesLayout {
+		fn layout(&self) -> Schema {
 			self.layout.clone()
 		}
 	}
@@ -136,12 +136,13 @@ pub mod tests {
 
 		// Modify and save
 		let mut modified = state1.clone();
-		modified.make_mut()[0] = 0xAB;
+		let layout = operator.layout();
+		layout.set_i64(&mut modified, 0, 0xAB);
 		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
-		assert_eq!(state2.as_ref()[0], 0xAB);
+		assert_eq!(layout.get_i64(&state2, 0), 0xAB);
 	}
 
 	#[test]
@@ -152,16 +153,17 @@ pub mod tests {
 
 		// Create states for multiple windows
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
+		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			state.make_mut()[0] = i as u8;
+			layout.set_i64(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
 		// Verify each window has its own state
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(state.as_ref()[0], i as u8);
+			assert_eq!(layout.get_i64(&state, 0), i as i64);
 		}
 	}
 
@@ -173,9 +175,10 @@ pub mod tests {
 
 		// Create windows 0 through 9
 		let window_keys: Vec<_> = (0..10).map(|i| test_window_key(i)).collect();
+		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			state.make_mut()[0] = i as u8;
+			layout.set_i64(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -190,13 +193,13 @@ pub mod tests {
 		// Verify windows 0-4 are gone
 		for i in 0..5 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
-			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
+			assert_eq!(layout.get_i64(&state, 0), 0); // Should be newly created (default)
 		}
 
 		// Verify windows 5-9 still exist
 		for i in 5..10 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
-			assert_eq!(state.as_ref()[0], i as u8);
+			assert_eq!(layout.get_i64(&state, 0), i as i64);
 		}
 	}
 
@@ -208,9 +211,10 @@ pub mod tests {
 
 		// Create windows 5 through 9
 		let window_keys: Vec<_> = (5..10).map(|i| test_window_key(i)).collect();
+		let layout = operator.layout();
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			state.make_mut()[0] = (idx + 5) as u8;
+			layout.set_i64(&mut state, 0, (idx + 5) as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -223,7 +227,7 @@ pub mod tests {
 		// All windows should still exist
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(state.as_ref()[0], (idx + 5) as u8);
+			assert_eq!(layout.get_i64(&state, 0), (idx + 5) as i64);
 		}
 	}
 
@@ -235,9 +239,10 @@ pub mod tests {
 
 		// Create windows 0 through 4
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
+		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
-			state.make_mut()[0] = i as u8;
+			layout.set_i64(&mut state, 0, i as i64);
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
@@ -250,7 +255,7 @@ pub mod tests {
 		// All windows should be gone
 		for window_key in &window_keys {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
-			assert_eq!(state.as_ref()[0], 0); // Should be newly created (default)
+			assert_eq!(layout.get_i64(&state, 0), 0); // Should be newly created (default)
 		}
 	}
 
@@ -263,13 +268,14 @@ pub mod tests {
 		// Simulate a sliding window maintaining last 3 windows
 		let window_size = 3;
 		let mut all_window_keys = Vec::new();
+		let layout = operator.layout();
 
 		for current_window in 0..10 {
 			// Add data to current window
 			let window_key = test_window_key(current_window);
 			all_window_keys.push(window_key.clone());
 			let mut state = operator.create_state();
-			state.make_mut()[0] = current_window as u8;
+			layout.set_i64(&mut state, 0, current_window as i64);
 			operator.save_state(&mut txn, &window_key, state).unwrap();
 
 			// Expire old windows
@@ -284,12 +290,12 @@ pub mod tests {
 		// Only windows 7, 8, 9 should exist
 		for i in 0..7 {
 			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
-			assert_eq!(state.as_ref()[0], 0); // Should be default (expired)
+			assert_eq!(layout.get_i64(&state, 0), 0); // Should be default (expired)
 		}
 
 		for i in 7..10 {
 			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
-			assert_eq!(state.as_ref()[0], i as u8); // Should have saved data
+			assert_eq!(layout.get_i64(&state, 0), i as i64); // Should have saved data
 		}
 	}
 }

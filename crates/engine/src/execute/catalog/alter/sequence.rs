@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::store::sequence::column::ColumnSequence;
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
 	value::column::columns::Columns,
@@ -73,7 +72,7 @@ impl Executor {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		ColumnSequence::set_value(txn, table.id, column.id, value.clone())?;
+		self.catalog.column_sequence_set_value(txn, table.id, column.id, value.clone())?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.sequence.namespace().name().to_string())),

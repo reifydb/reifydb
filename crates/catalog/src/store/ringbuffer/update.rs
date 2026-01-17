@@ -7,7 +7,7 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer_metadata};
 
 impl CatalogStore {
-	pub fn update_ringbuffer_metadata(
+	pub(crate) fn update_ringbuffer_metadata(
 		txn: &mut StandardCommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {

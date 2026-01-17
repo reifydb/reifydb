@@ -4,14 +4,13 @@
 //! Schema retrieval from storage.
 
 use reifydb_core::{
-	encoded::SchemaFingerprint,
-	key::{EncodableKey, SchemaFieldKey, SchemaKey},
-	schema::{Schema, SchemaField},
+	encoded::schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
+	key::{
+		EncodableKey,
+		schema::{SchemaFieldKey, SchemaKey},
+	},
 };
-use reifydb_transaction::{
-	single::svl::write::SvlCommandTransaction,
-	standard::IntoStandardTransaction,
-};
+use reifydb_transaction::{single::svl::write::SvlCommandTransaction, standard::IntoStandardTransaction};
 use reifydb_type::{
 	error::{Error, diagnostic::internal::internal},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -22,7 +21,7 @@ use super::schema::{schema_field, schema_header};
 /// Find a schema by its fingerprint.
 ///
 /// Returns None if the schema doesn't exist in storage.
-pub fn find_schema_by_fingerprint(
+pub(crate) fn find_schema_by_fingerprint(
 	txn: &mut SvlCommandTransaction,
 	fingerprint: SchemaFingerprint,
 ) -> crate::Result<Option<Schema>> {
@@ -43,7 +42,7 @@ pub fn find_schema_by_fingerprint(
 		})?;
 
 		let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
-		let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::BASE_TYPE);
+		let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::TYPE);
 		let constraint_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
 		let constraint_param1 = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P1);
 		let constraint_param2 = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P2);
@@ -109,7 +108,7 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 			})?;
 
 			let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
-			let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::BASE_TYPE);
+			let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::TYPE);
 			let constraint_type =
 				schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
 			let constraint_param1 =

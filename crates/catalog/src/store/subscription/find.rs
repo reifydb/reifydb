@@ -6,12 +6,12 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
 	key::subscription::SubscriptionKey,
 };
-use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
+use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub fn find_subscription(
+	pub(crate) fn find_subscription(
 		rx: &mut impl IntoStandardTransaction,
 		id: SubscriptionId,
 	) -> crate::Result<Option<SubscriptionDef>> {
@@ -26,15 +26,8 @@ impl CatalogStore {
 		let acknowledged_version =
 			CommitVersion(subscription::SCHEMA.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));
 
-		// Load columns using the new subscription column storage
-		let columns = match &mut txn {
-			StandardTransaction::Command(cmd) => Self::list_subscription_columns(cmd, id)?,
-			StandardTransaction::Query(_) => {
-				// For query transactions, we can't use StandardCommandTransaction
-				// This is a limitation - for now return empty columns for queries
-				vec![]
-			}
-		};
+		// Load columns (works for all transaction types)
+		let columns = Self::list_subscription_columns(&mut txn, id)?;
 
 		Ok(Some(SubscriptionDef {
 			id,

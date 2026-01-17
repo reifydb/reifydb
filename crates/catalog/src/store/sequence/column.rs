@@ -19,7 +19,7 @@ use crate::{
 pub struct ColumnSequence {}
 
 impl ColumnSequence {
-	pub fn next_value(
+	pub(crate) fn next_value(
 		txn: &mut StandardCommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,
@@ -42,7 +42,7 @@ impl ColumnSequence {
 		})
 	}
 
-	pub fn set_value(
+	pub(crate) fn set_value(
 		txn: &mut StandardCommandTransaction,
 		source: impl Into<PrimitiveId>,
 		column: ColumnId,

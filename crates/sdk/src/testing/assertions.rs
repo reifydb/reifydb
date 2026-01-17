@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	row::Row,
 	value::column::columns::Columns,
 };
@@ -211,20 +211,18 @@ impl<'a> RowAssertion<'a> {
 
 	/// Assert the row values match (using the row's layout)
 	pub fn has_values(&self, expected: &[Value]) -> &Self {
-		let actual = super::helpers::get_values_named(&self.row.layout, &self.row.encoded);
+		let actual = super::helpers::get_values(&self.row.schema, &self.row.encoded);
 		assert_eq!(actual, expected, "Row values mismatch. Expected: {:?}, Actual: {:?}", expected, actual);
 		self
 	}
 
 	/// Assert a specific field value (for named layouts)
 	pub fn has_field(&self, field_name: &str, expected: Value) -> &Self {
-		let values = super::helpers::get_values_named(&self.row.layout, &self.row.encoded);
+		let values = super::helpers::get_values(&self.row.schema, &self.row.encoded);
 		let field_index =
-			self.row.layout
-				.names()
-				.iter()
-				.position(|n| n.as_str() == field_name)
-				.expect(&format!("Field '{}' not found in layout", field_name));
+			self.row.schema
+				.find_field_index(field_name)
+				.unwrap_or_else(|| panic!("Field '{}' not found in layout", field_name));
 
 		assert_eq!(
 			values[field_index], expected,
@@ -236,7 +234,7 @@ impl<'a> RowAssertion<'a> {
 
 	/// Get the values from the row
 	pub fn values(&self) -> Vec<Value> {
-		super::helpers::get_values_named(&self.row.layout, &self.row.encoded)
+		super::helpers::get_values(&self.row.schema, &self.row.encoded)
 	}
 }
 
@@ -278,8 +276,8 @@ impl<'a> StateAssertion<'a> {
 	}
 
 	/// Assert a key has specific values
-	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], layout: &EncodedValuesLayout) -> &Self {
-		self.store.assert_value(key, expected, layout);
+	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], schema: &Schema) -> &Self {
+		self.store.assert_value(key, expected, schema);
 		self
 	}
 
@@ -339,7 +337,7 @@ impl Assertable for TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::layout::EncodedValuesLayout;
+	use reifydb_core::encoded::schema::Schema;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -389,18 +387,18 @@ pub mod tests {
 	#[test]
 	fn test_state_assertions() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+		let schema = Schema::testing(&[Type::Int8]);
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 
-		store.set_value(key1.clone(), &[Value::Int8(10i64)], &layout);
-		store.set_value(key2.clone(), &[Value::Int8(20i64)], &layout);
+		store.set_value(key1.clone(), &[Value::Int8(10i64)], &schema);
+		store.set_value(key2.clone(), &[Value::Int8(20i64)], &schema);
 
 		store.assert()
 			.has_entries(2)
 			.has_key(&key1)
 			.has_key(&key2)
-			.key_has_values(&key1, &[Value::Int8(10i64)], &layout)
+			.key_has_values(&key1, &[Value::Int8(10i64)], &schema)
 			.all_keys(|k| k.0.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
 	}
 

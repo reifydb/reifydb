@@ -823,10 +823,7 @@ pub(crate) fn eval_ge(left: &Column, right: &Column) -> EvalResult<Column> {
 				data.push(false);
 				bitvec.push(false);
 			}
-			Ok(Column::new(
-				Fragment::internal("_ge"),
-				ColumnData::bool_with_bitvec(data, bitvec),
-			))
+			Ok(Column::new(Fragment::internal("_ge"), ColumnData::bool_with_bitvec(data, bitvec)))
 		}
 
 		// Type mismatch error for incompatible types
@@ -877,7 +874,9 @@ where
 				(Some(lv), Some(rv)) => {
 					if let Some((lp, rp)) = lv.checked_promote(rv) {
 						let is_ge = match lp.partial_cmp(&rp) {
-							Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal) => true,
+							Some(
+								std::cmp::Ordering::Greater | std::cmp::Ordering::Equal,
+							) => true,
 							_ => false,
 						};
 						data.push(is_ge);
@@ -896,10 +895,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ge"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ge"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for temporal greater-or-equal
@@ -938,10 +934,7 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ge"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ge"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for text greater-or-equal (lexicographic)
@@ -977,10 +970,7 @@ fn compare_text_ge(left: &Utf8Container, right: &Utf8Container) -> EvalResult<Co
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ge"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
+	Ok(Column::new(Fragment::internal("_ge"), ColumnData::bool_with_bitvec(data, bitvec)))
 }
 
 /// Helper function for UUID greater-or-equal (byte-wise)
@@ -1008,9 +998,5 @@ where
 		}
 	}
 
-	Ok(Column::new(
-		Fragment::internal("_ge"),
-		ColumnData::bool_with_bitvec(data, bitvec),
-	))
-
+	Ok(Column::new(Fragment::internal("_ge"), ColumnData::bool_with_bitvec(data, bitvec)))
 }

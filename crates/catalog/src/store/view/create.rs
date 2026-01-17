@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, TableId, ViewId},
+		id::{NamespaceId, ViewId},
 		view::{
 			ViewDef, ViewKind,
 			ViewKind::{Deferred, Transactional},
@@ -43,14 +43,14 @@ pub struct ViewToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_deferred_view(
+	pub(crate) fn create_deferred_view(
 		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
-	pub fn create_transactional_view(
+	pub(crate) fn create_transactional_view(
 		txn: &mut StandardCommandTransaction,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
@@ -136,11 +136,9 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: column_to_create.fragment.clone(),
 					namespace_name: namespace.name.clone(),
-					table: TableId(view.0), // Convert ViewId to TableId (both are u64)
-					table_name: to_create.name.clone(),
+					primitive_name: to_create.name.clone(),
 					column: column_to_create.name,
 					constraint: column_to_create.constraint.clone(),
-					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,

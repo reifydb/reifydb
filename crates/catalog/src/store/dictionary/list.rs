@@ -18,7 +18,7 @@ use crate::{
 
 impl CatalogStore {
 	/// List all dictionaries in a namespace
-	pub fn list_dictionaries(
+	pub(crate) fn list_dictionaries(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
@@ -47,7 +47,9 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub fn list_all_dictionaries(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_all_dictionaries(
+		rx: &mut impl IntoStandardTransaction,
+	) -> crate::Result<Vec<DictionaryDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut dictionaries = Vec::new();
 

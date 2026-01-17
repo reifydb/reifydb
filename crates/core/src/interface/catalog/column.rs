@@ -6,12 +6,9 @@ use std::ops::Deref;
 use reifydb_type::value::constraint::TypeConstraint;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	encoded::named::EncodedValuesNamedLayout,
-	interface::catalog::{
-		id::{ColumnId, DictionaryId},
-		policy::ColumnPolicy,
-	},
+use crate::interface::catalog::{
+	id::{ColumnId, DictionaryId},
+	policy::ColumnPolicy,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,11 +43,5 @@ impl PartialEq<u8> for ColumnIndex {
 impl From<ColumnIndex> for u8 {
 	fn from(value: ColumnIndex) -> Self {
 		value.0
-	}
-}
-
-impl From<&[ColumnDef]> for EncodedValuesNamedLayout {
-	fn from(value: &[ColumnDef]) -> Self {
-		EncodedValuesNamedLayout::new(value.iter().map(|col| (col.name.clone(), col.constraint.get_type())))
 	}
 }

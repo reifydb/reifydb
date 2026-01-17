@@ -10,10 +10,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_catalog::{
-	CatalogStore,
-	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
-};
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::{FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::value::blob::Blob;
@@ -31,6 +28,7 @@ use crate::flow::{
 /// - Phase 2: `persist_flow()` - allocates real node/edge IDs and persists to catalog
 ///
 /// # Arguments
+/// * `catalog` - The catalog for ID generation and persistence
 /// * `txn` - The command transaction for catalog access
 /// * `plan` - The compiled flow plan from Phase 1
 /// * `flow_id` - The FlowId from the already-created FlowDef
@@ -39,9 +37,10 @@ use crate::flow::{
 /// The persisted `Flow` with real catalog IDs
 ///
 /// # Note
-/// The FlowDef must already be created via `CatalogStore::create_flow()` before
+/// The FlowDef must already be created via `catalog.create_flow()` before
 /// calling this function. This function only persists nodes and edges.
 pub fn persist_flow(
+	catalog: &Catalog,
 	txn: &mut StandardCommandTransaction,
 	plan: CompiledFlowPlan,
 	flow_id: FlowId,
@@ -54,7 +53,7 @@ pub fn persist_flow(
 
 	// Phase 2a: Persist all nodes and build ID mapping
 	for compiled_node in &plan.nodes {
-		let real_node_id = next_flow_node_id(txn)?;
+		let real_node_id = catalog.next_flow_node_id(txn)?;
 		node_map.insert(compiled_node.local_id, real_node_id);
 
 		// Serialize the node type
@@ -69,7 +68,7 @@ pub fn persist_flow(
 			node_type: compiled_node.node_type.discriminator(),
 			data: Blob::from(data),
 		};
-		CatalogStore::create_flow_node(txn, &node_def)?;
+		catalog.create_flow_node(txn, &node_def)?;
 
 		// Add to in-memory builder
 		builder.add_node(FlowNode::new(real_node_id, compiled_node.node_type.clone()));
@@ -77,7 +76,7 @@ pub fn persist_flow(
 
 	// Phase 2b: Persist all edges (now we can resolve local IDs to real IDs)
 	for compiled_edge in &plan.edges {
-		let real_edge_id = next_flow_edge_id(txn)?;
+		let real_edge_id = catalog.next_flow_edge_id(txn)?;
 		let real_source = *node_map.get(&compiled_edge.source).expect("Source node must exist in node map");
 		let real_target = *node_map.get(&compiled_edge.target).expect("Target node must exist in node map");
 
@@ -88,7 +87,7 @@ pub fn persist_flow(
 			source: real_source,
 			target: real_target,
 		};
-		CatalogStore::create_flow_edge(txn, &edge_def)?;
+		catalog.create_flow_edge(txn, &edge_def)?;
 
 		// Add to in-memory builder
 		builder.add_edge(FlowEdge::new(real_edge_id, real_source, real_target))?;

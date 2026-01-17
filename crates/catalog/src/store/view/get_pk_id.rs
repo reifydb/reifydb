@@ -12,7 +12,7 @@ use crate::{CatalogStore, store::view::schema::view};
 impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
-	pub fn get_view_pk_id(
+	pub(crate) fn get_view_pk_id(
 		rx: &mut impl IntoStandardTransaction,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
@@ -75,7 +75,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				source: PrimitiveId::View(view.id),
+				primitive: PrimitiveId::View(view.id),
 				column_ids: vec![columns[0].id],
 			},
 		)

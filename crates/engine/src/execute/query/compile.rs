@@ -15,7 +15,8 @@ use reifydb_catalog::vtable::{
 		namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
 		primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
 		primitive_retention_policies::PrimitiveRetentionPolicies,
-		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, sequences::Sequences,
+		ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers,
+		schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences,
 		table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual, types::Types,
 		versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
 	},
@@ -313,6 +314,10 @@ pub(crate) fn compile<'a>(
 					"dictionary_storage_stats" => VTables::DictionaryStorageStats(
 						DictionaryStorageStats::new(context.executor.stats_reader.clone()),
 					),
+					"schemas" => VTables::Schemas(Schemas::new(context.executor.catalog.clone())),
+					"schema_fields" => VTables::SchemaFields(SchemaFields::new(
+						context.executor.catalog.clone(),
+					)),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

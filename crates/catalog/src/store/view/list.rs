@@ -13,7 +13,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::view::schema::view};
 
 impl CatalogStore {
-	pub fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
+	pub(crate) fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

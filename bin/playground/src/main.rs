@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use reifydb::{WithSubsystem, server, sub_server_ws::factory::WsConfig};
 use reifydb_client::WsClient;
+use reifydb_type::params::Params;
 use tokio::{
 	runtime::Runtime,
 	time::{sleep, timeout},
@@ -134,4 +135,9 @@ fn main() {
 	println!("Database stopped!");
 
 	println!("\n=== Demo complete! ===");
+
+	let frame = db
+		.command_as_root("from system.schema_fields filter fingerprint == 12216087711891371105", Params::None)
+		.unwrap();
+	println!("{}", frame.first().unwrap());
 }

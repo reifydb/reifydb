@@ -3,60 +3,7 @@
 
 use reifydb_type::value::r#type::Type;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Utf8);
-		debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
-
-		let bytes = value.as_ref().as_bytes();
-
-		// Calculate offset in dynamic section (relative to start of
-		// dynamic section)
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append string to dynamic section
-		row.0.extend_from_slice(bytes);
-
-		// Update reference in static section: [offset: u32][length:
-		// u32]
-		let ref_slice = &mut row.0.make_mut()[field.offset..field.offset + 8];
-		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
-		ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
-
-		row.set_valid(index, true);
-	}
-
-	pub fn get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> &'a str {
-		let field = &self.fields[index];
-		debug_assert_eq!(field.r#type, Type::Utf8);
-
-		// Read offset and length from static section
-		let ref_slice = &row.as_slice()[field.offset..field.offset + 8];
-		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
-		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
-
-		// Get string from dynamic section
-		let dynamic_start = self.dynamic_section_start();
-		let string_start = dynamic_start + offset;
-		let string_slice = &row.as_slice()[string_start..string_start + length];
-
-		unsafe { std::str::from_utf8_unchecked(string_slice) }
-	}
-
-	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> Option<&'a str> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Utf8 {
-			Some(self.get_utf8(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
@@ -112,7 +59,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_utf8() {

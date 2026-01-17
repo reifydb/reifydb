@@ -5,43 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Date);
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut i32,
-				value.to_days_since_epoch(),
-			)
-		}
-	}
-
-	pub fn get_date(&self, row: &EncodedValues, index: usize) -> Date {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Date);
-		unsafe {
-			Date::from_days_since_epoch((row.as_ptr().add(field.offset) as *const i32).read_unaligned())
-				.unwrap()
-		}
-	}
-
-	pub fn try_get_date(&self, row: &EncodedValues, index: usize) -> Option<Date> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Date {
-			Some(self.get_date(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
@@ -82,7 +46,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{date::Date, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_date() {

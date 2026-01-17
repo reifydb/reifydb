@@ -11,7 +11,7 @@ use crate::{CatalogStore, vtable::VTableRegistry};
 impl CatalogStore {
 	/// Find a primitive (table, store::view, or virtual table) by its PrimitiveId
 	/// Returns None if the primitive doesn't exist
-	pub fn find_primitive(
+	pub(crate) fn find_primitive(
 		rx: &mut impl IntoStandardTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimitiveDef>> {

@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	encoded::layout::EncodedValuesLayout,
+	encoded::schema::Schema,
 	interface::{
 		catalog::id::IndexId,
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -48,11 +47,11 @@ impl Executor {
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace().name();
-			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+			let Some(namespace) = self.catalog.find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+			let Some(table) = self.catalog.find_table_by_name(txn, namespace.id, target.name())? else {
 				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
@@ -62,20 +61,8 @@ impl Executor {
 			unimplemented!("Cannot infer target table from pipeline - no table found")
 		};
 
-		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
-		let mut table_types: Vec<Type> = Vec::new();
-		for c in &table.columns {
-			if let Some(dict_id) = c.dictionary_id {
-				let dict_type = match CatalogStore::find_dictionary(txn, dict_id) {
-					Ok(Some(d)) => d.id_type,
-					_ => c.constraint.get_type(),
-				};
-				table_types.push(dict_type);
-			} else {
-				table_types.push(c.constraint.get_type());
-			}
-		}
-		let layout = EncodedValuesLayout::testing(&table_types);
+		// Get or create schema with proper field names and constraints
+		let schema = super::schema::get_or_create_table_schema(&self.catalog, &table, txn)?;
 
 		// Create resolved source for the table
 		let namespace_ident = Fragment::internal(namespace.name.clone());
@@ -115,7 +102,7 @@ impl Executor {
 				let row_count = columns.row_count();
 
 				for row_numberx in 0..row_count {
-					let mut row = layout.allocate();
+					let mut row = schema.allocate();
 
 					for (table_idx, table_column) in table.columns.iter().enumerate() {
 						let mut value = if let Some(input_column) =
@@ -147,17 +134,16 @@ impl Executor {
 						// Dictionary encoding: if column has a dictionary binding, encode the
 						// value
 						let value = if let Some(dict_id) = table_column.dictionary_id {
-							let dictionary = CatalogStore::find_dictionary(
-								wrapped_txn.command_mut(),
-								dict_id,
-							)?
-							.ok_or_else(|| {
-								internal_error!(
-									"Dictionary {:?} not found for column {}",
-									dict_id,
-									table_column.name
-								)
-							})?;
+							let dictionary = self
+								.catalog
+								.find_dictionary(wrapped_txn.command_mut(), dict_id)?
+								.ok_or_else(|| {
+									internal_error!(
+										"Dictionary {:?} not found for column {}",
+										dict_id,
+										table_column.name
+									)
+								})?;
 							let entry_id = wrapped_txn
 								.command_mut()
 								.insert_into_dictionary(&dictionary, &value)?;
@@ -166,58 +152,22 @@ impl Executor {
 							value
 						};
 
-						match value {
-							Value::Boolean(v) => layout.set_bool(&mut row, table_idx, v),
-							Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
-							Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
-							Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
-							Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
-							Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
-							Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
-							Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
-							Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
-							Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
-							Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
-							Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
-							Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
-							Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-							Value::Date(v) => layout.set_date(&mut row, table_idx, v),
-							Value::DateTime(v) => {
-								layout.set_datetime(&mut row, table_idx, v)
-							}
-							Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-							Value::Duration(v) => {
-								layout.set_duration(&mut row, table_idx, v)
-							}
-							Value::IdentityId(v) => {
-								layout.set_identity_id(&mut row, table_idx, v)
-							}
-							Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
-							Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
-							Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
-							Value::Int(v) => layout.set_int(&mut row, table_idx, &v),
-							Value::Uint(v) => layout.set_uint(&mut row, table_idx, &v),
-							Value::Decimal(v) => {
-								layout.set_decimal(&mut row, table_idx, &v)
-							}
-							Value::Undefined => layout.set_undefined(&mut row, table_idx),
-							Value::Any(_) => {
-								unreachable!("Any type cannot be stored in table")
-							}
-						}
+						schema.set_value(&mut row, table_idx, &value);
 					}
 
 					let row_number = row_numbers[row_numberx];
 
 					let row_key = RowKey::encoded(table.id, row_number);
 
-					if let Some(pk_def) =
-						primary_key::get_primary_key(wrapped_txn.command_mut(), &table)?
-					{
+					if let Some(pk_def) = primary_key::get_primary_key(
+						&self.catalog,
+						wrapped_txn.command_mut(),
+						&table,
+					)? {
 						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key)? {
 							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
-								&pk_def, &old_row, &table, &layout,
+								&pk_def, &old_row, &table, &schema,
 							)?;
 
 							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
@@ -229,12 +179,12 @@ impl Executor {
 						}
 
 						let new_key = primary_key::encode_primary_key(
-							&pk_def, &row, &table, &layout,
+							&pk_def, &row, &table, &schema,
 						)?;
 
-						let row_number_layout = EncodedValuesLayout::testing(&[Type::Uint8]);
-						let mut row_number_encoded = row_number_layout.allocate();
-						row_number_layout.set_u64(
+						let row_number_schema = Schema::testing(&[Type::Uint8]);
+						let mut row_number_encoded = row_number_schema.allocate();
+						row_number_schema.set_u64(
 							&mut row_number_encoded,
 							0,
 							u64::from(row_number),

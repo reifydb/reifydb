@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::dictionary::create::DictionaryToCreate};
+use reifydb_catalog::catalog::dictionary::DictionaryToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackDictionaryChangeOperations, value::column::columns::Columns,
 };
@@ -27,7 +27,7 @@ impl Executor {
 			}
 		}
 
-		let result = CatalogStore::create_dictionary(
+		let result = self.catalog.create_dictionary(
 			txn,
 			DictionaryToCreate {
 				fragment: Some(plan.dictionary.clone()),

@@ -7,7 +7,10 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_namespace(txn: &mut StandardCommandTransaction, namespace: NamespaceId) -> crate::Result<()> {
+	pub(crate) fn delete_namespace(
+		txn: &mut StandardCommandTransaction,
+		namespace: NamespaceId,
+	) -> crate::Result<()> {
 		// Delete the namespace metadata
 		txn.remove(&NamespaceKey::encoded(namespace))?;
 

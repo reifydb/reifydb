@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::subscription::create::SubscriptionToCreate};
+use reifydb_catalog::catalog::subscription::SubscriptionToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackSubscriptionChangeOperations, value::column::columns::Columns,
 };
@@ -17,7 +17,7 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateSubscriptionNode,
 	) -> crate::Result<Columns> {
-		let result = CatalogStore::create_subscription(
+		let result = self.catalog.create_subscription(
 			txn,
 			SubscriptionToCreate {
 				columns: plan.columns,

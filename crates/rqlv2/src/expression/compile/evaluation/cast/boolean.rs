@@ -9,7 +9,9 @@ use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
 	fragment::Fragment,
 	value::{
-		boolean::parse::parse_bool, container::{number::NumberContainer, utf8::Utf8Container}, is::IsNumber,
+		boolean::parse::parse_bool,
+		container::{number::NumberContainer, utf8::Utf8Container},
+		is::IsNumber,
 		r#type::Type,
 	},
 };
@@ -30,7 +32,10 @@ pub(super) fn to_boolean(data: &ColumnData) -> EvalResult<ColumnData> {
 		ColumnData::Uint16(container) => from_uint16(container),
 		ColumnData::Float4(container) => from_float4(container),
 		ColumnData::Float8(container) => from_float8(container),
-		ColumnData::Utf8 { container, .. } => from_utf8(container),
+		ColumnData::Utf8 {
+			container,
+			..
+		} => from_utf8(container),
 		_ => {
 			let source_type = data.get_type();
 			Err(EvalError::UnsupportedCast {
@@ -41,10 +46,7 @@ pub(super) fn to_boolean(data: &ColumnData) -> EvalResult<ColumnData> {
 	}
 }
 
-fn to_bool<T>(
-	container: &NumberContainer<T>,
-	validate: impl Fn(T) -> Option<bool>,
-) -> EvalResult<ColumnData>
+fn to_bool<T>(container: &NumberContainer<T>, validate: impl Fn(T) -> Option<bool>) -> EvalResult<ColumnData>
 where
 	T: Copy + Display + IsNumber + Default,
 {
@@ -55,7 +57,10 @@ where
 				Some(b) => out.push::<bool>(b),
 				None => {
 					return Err(EvalError::InvalidCast {
-						details: format!("Cannot cast {} to boolean (must be 0 or 1)", container[idx]),
+						details: format!(
+							"Cannot cast {} to boolean (must be 0 or 1)",
+							container[idx]
+						),
 					});
 				}
 			}

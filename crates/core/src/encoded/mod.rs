@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-pub use layout::SCHEMA_HEADER_SIZE;
-pub use schema::SchemaFingerprint;
-
 pub mod blob;
 pub mod boolean;
 pub mod date;
@@ -21,8 +18,6 @@ pub mod i8;
 pub mod identity;
 pub mod int;
 pub mod key;
-pub mod layout;
-pub mod named;
 pub mod schema;
 pub mod time;
 pub mod u128;

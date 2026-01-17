@@ -8,7 +8,7 @@ use reifydb_type::return_internal_error;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_dictionary(
+	pub(crate) fn get_dictionary(
 		rx: &mut impl IntoStandardTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {

@@ -8,7 +8,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	encoded::{encoded::EncodedValues, schema::Schema},
 	interface::catalog::dictionary::DictionaryDef,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -36,8 +36,8 @@ pub struct LazyBatch {
 	rows: Vec<EncodedValues>,
 	/// Row numbers from storage
 	row_numbers: Vec<RowNumber>,
-	/// Layout for interpreting encoded rows
-	layout: EncodedValuesLayout,
+	/// Schema for interpreting encoded rows
+	schema: Schema,
 	/// Column metadata (names, types, dictionary defs)
 	column_metas: Vec<LazyColumnMeta>,
 	/// Validity bitmap - rows that passed filters (true = valid)
@@ -45,21 +45,20 @@ pub struct LazyBatch {
 }
 
 impl LazyBatch {
-	/// Create a new lazy batch from encoded storage data
 	pub fn new(
 		rows: Vec<EncodedValues>,
 		row_numbers: Vec<RowNumber>,
-		layout: EncodedValuesLayout,
+		schema: &Schema,
 		column_metas: Vec<LazyColumnMeta>,
 	) -> Self {
 		debug_assert_eq!(rows.len(), row_numbers.len());
-		debug_assert_eq!(layout.fields.len(), column_metas.len());
+		debug_assert_eq!(schema.field_count(), column_metas.len());
 
 		let validity = BitVec::repeat(rows.len(), true);
 		Self {
 			rows,
 			row_numbers,
-			layout,
+			schema: schema.clone(),
 			column_metas,
 			validity,
 		}
@@ -98,7 +97,7 @@ impl LazyBatch {
 
 	/// Get a value from encoded row without full materialization
 	pub fn get_value(&self, row_idx: usize, col_idx: usize) -> Value {
-		self.layout.get_value(&self.rows[row_idx], col_idx)
+		self.schema.get_value(&self.rows[row_idx], col_idx)
 	}
 
 	/// Check if a value is defined (not null) without materializing
@@ -140,7 +139,7 @@ impl LazyBatch {
 
 			for (row_idx, row) in self.rows.iter().enumerate() {
 				if self.is_row_valid(row_idx) {
-					let value = self.layout.get_value(row, col_idx);
+					let value = self.schema.get_value(row, col_idx);
 					data.push_value(value);
 				}
 			}
@@ -159,9 +158,14 @@ impl LazyBatch {
 		self.column_metas.iter().map(|m| m.name.clone()).collect()
 	}
 
-	/// Get the layout
-	pub fn layout(&self) -> &EncodedValuesLayout {
-		&self.layout
+	/// Get the schema
+	pub fn schema(&self) -> &Schema {
+		&self.schema
+	}
+
+	#[deprecated(since = "0.1.0", note = "Use schema() instead")]
+	pub fn layout(&self) -> &Schema {
+		&self.schema
 	}
 
 	/// Get the column metas
@@ -191,8 +195,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_layout() -> EncodedValuesLayout {
-		EncodedValuesLayout::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
+	fn create_test_schema() -> Schema {
+		Schema::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
 	}
 
 	fn create_test_metas() -> Vec<LazyColumnMeta> {
@@ -220,21 +224,21 @@ pub mod tests {
 
 	#[test]
 	fn test_lazy_batch_creation() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
 		// Create some encoded rows
-		let mut row1 = layout.allocate();
-		layout.set_i32(&mut row1, 0, 1);
-		layout.set_utf8(&mut row1, 1, "Alice");
-		layout.set_bool(&mut row1, 2, true);
+		let mut row1 = schema.allocate();
+		schema.set_i32(&mut row1, 0, 1);
+		schema.set_utf8(&mut row1, 1, "Alice");
+		schema.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
-		layout.set_i32(&mut row2, 0, 2);
-		layout.set_utf8(&mut row2, 1, "Bob");
-		layout.set_bool(&mut row2, 2, false);
+		let mut row2 = schema.allocate();
+		schema.set_i32(&mut row2, 0, 2);
+		schema.set_utf8(&mut row2, 1, "Bob");
+		schema.set_bool(&mut row2, 2, false);
 
-		let batch = LazyBatch::new(vec![row1, row2], vec![RowNumber(100), RowNumber(101)], layout, metas);
+		let batch = LazyBatch::new(vec![row1, row2], vec![RowNumber(100), RowNumber(101)], &schema, metas);
 
 		assert_eq!(batch.total_row_count(), 2);
 		assert_eq!(batch.valid_row_count(), 2);
@@ -243,15 +247,15 @@ pub mod tests {
 
 	#[test]
 	fn test_get_value() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
-		layout.set_i32(&mut row1, 0, 42);
-		layout.set_utf8(&mut row1, 1, "Test");
-		layout.set_bool(&mut row1, 2, true);
+		let mut row1 = schema.allocate();
+		schema.set_i32(&mut row1, 0, 42);
+		schema.set_utf8(&mut row1, 1, "Test");
+		schema.set_bool(&mut row1, 2, true);
 
-		let batch = LazyBatch::new(vec![row1], vec![RowNumber(1)], layout, metas);
+		let batch = LazyBatch::new(vec![row1], vec![RowNumber(1)], &schema, metas);
 
 		assert_eq!(batch.get_value(0, 0), Value::Int4(42));
 		assert_eq!(batch.get_value(0, 1), Value::Utf8("Test".to_string()));
@@ -260,28 +264,28 @@ pub mod tests {
 
 	#[test]
 	fn test_apply_filter() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
-		layout.set_i32(&mut row1, 0, 1);
-		layout.set_utf8(&mut row1, 1, "A");
-		layout.set_bool(&mut row1, 2, true);
+		let mut row1 = schema.allocate();
+		schema.set_i32(&mut row1, 0, 1);
+		schema.set_utf8(&mut row1, 1, "A");
+		schema.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
-		layout.set_i32(&mut row2, 0, 2);
-		layout.set_utf8(&mut row2, 1, "B");
-		layout.set_bool(&mut row2, 2, false);
+		let mut row2 = schema.allocate();
+		schema.set_i32(&mut row2, 0, 2);
+		schema.set_utf8(&mut row2, 1, "B");
+		schema.set_bool(&mut row2, 2, false);
 
-		let mut row3 = layout.allocate();
-		layout.set_i32(&mut row3, 0, 3);
-		layout.set_utf8(&mut row3, 1, "C");
-		layout.set_bool(&mut row3, 2, true);
+		let mut row3 = schema.allocate();
+		schema.set_i32(&mut row3, 0, 3);
+		schema.set_utf8(&mut row3, 1, "C");
+		schema.set_bool(&mut row3, 2, true);
 
 		let mut batch = LazyBatch::new(
 			vec![row1, row2, row3],
 			vec![RowNumber(1), RowNumber(2), RowNumber(3)],
-			layout,
+			&schema,
 			metas,
 		);
 
@@ -300,28 +304,28 @@ pub mod tests {
 
 	#[test]
 	fn test_into_columns() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
-		layout.set_i32(&mut row1, 0, 1);
-		layout.set_utf8(&mut row1, 1, "Alice");
-		layout.set_bool(&mut row1, 2, true);
+		let mut row1 = schema.allocate();
+		schema.set_i32(&mut row1, 0, 1);
+		schema.set_utf8(&mut row1, 1, "Alice");
+		schema.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
-		layout.set_i32(&mut row2, 0, 2);
-		layout.set_utf8(&mut row2, 1, "Bob");
-		layout.set_bool(&mut row2, 2, false);
+		let mut row2 = schema.allocate();
+		schema.set_i32(&mut row2, 0, 2);
+		schema.set_utf8(&mut row2, 1, "Bob");
+		schema.set_bool(&mut row2, 2, false);
 
-		let mut row3 = layout.allocate();
-		layout.set_i32(&mut row3, 0, 3);
-		layout.set_utf8(&mut row3, 1, "Charlie");
-		layout.set_bool(&mut row3, 2, true);
+		let mut row3 = schema.allocate();
+		schema.set_i32(&mut row3, 0, 3);
+		schema.set_utf8(&mut row3, 1, "Charlie");
+		schema.set_bool(&mut row3, 2, true);
 
 		let mut batch = LazyBatch::new(
 			vec![row1, row2, row3],
 			vec![RowNumber(100), RowNumber(101), RowNumber(102)],
-			layout,
+			&schema,
 			metas,
 		);
 
@@ -344,11 +348,11 @@ pub mod tests {
 
 	#[test]
 	fn test_column_index() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
-		let row = layout.allocate();
-		let batch = LazyBatch::new(vec![row], vec![RowNumber(1)], layout, metas);
+		let row = schema.allocate();
+		let batch = LazyBatch::new(vec![row], vec![RowNumber(1)], &schema, metas);
 
 		assert_eq!(batch.column_index("id"), Some(0));
 		assert_eq!(batch.column_index("name"), Some(1));
@@ -358,22 +362,22 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_filters() {
-		let layout = create_test_layout();
+		let schema = create_test_schema();
 		let metas = create_test_metas();
 
 		let mut rows = Vec::new();
 		for i in 0..5 {
-			let mut row = layout.allocate();
-			layout.set_i32(&mut row, 0, i);
-			layout.set_utf8(&mut row, 1, &format!("row{}", i));
-			layout.set_bool(&mut row, 2, i % 2 == 0);
+			let mut row = schema.allocate();
+			schema.set_i32(&mut row, 0, i);
+			schema.set_utf8(&mut row, 1, &format!("row{}", i));
+			schema.set_bool(&mut row, 2, i % 2 == 0);
 			rows.push(row);
 		}
 
 		let mut batch = LazyBatch::new(
 			rows,
 			vec![RowNumber(10), RowNumber(11), RowNumber(12), RowNumber(13), RowNumber(14)],
-			layout,
+			&schema,
 			metas,
 		);
 

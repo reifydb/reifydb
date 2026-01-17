@@ -13,7 +13,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
-	pub fn list_ringbuffers_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<RingBufferDef>> {
+	pub(crate) fn list_ringbuffers_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<RingBufferDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

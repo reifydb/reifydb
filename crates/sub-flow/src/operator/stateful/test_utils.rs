@@ -4,7 +4,7 @@
 #[cfg(test)]
 pub mod test {
 	use reifydb_core::{
-		encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
+		encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 		interface::catalog::flow::FlowNodeId,
 		value::column::columns::Columns,
 	};
@@ -21,7 +21,7 @@ pub mod test {
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
 		pub id: FlowNodeId,
-		pub layout: EncodedValuesLayout,
+		pub layout: Schema,
 		pub key_types: Vec<Type>,
 	}
 
@@ -30,7 +30,7 @@ pub mod test {
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
+				layout: Schema::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
 				key_types: vec![Type::Utf8, Type::Int4],
 			}
 		}
@@ -39,7 +39,7 @@ pub mod test {
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::testing(&[Type::Int8]),
+				layout: Schema::testing(&[Type::Int8]),
 				key_types: vec![],
 			}
 		}
@@ -48,7 +48,7 @@ pub mod test {
 		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::testing(&[Type::Blob, Type::Int4]),
+				layout: Schema::testing(&[Type::Blob, Type::Int4]),
 				key_types,
 			}
 		}

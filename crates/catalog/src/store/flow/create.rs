@@ -28,7 +28,10 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_flow(txn: &mut StandardCommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub(crate) fn create_flow(
+		txn: &mut StandardCommandTransaction,
+		to_create: FlowToCreate,
+	) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists

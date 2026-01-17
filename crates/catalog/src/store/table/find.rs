@@ -16,7 +16,10 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_table(rx: &mut impl IntoStandardTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
+	pub(crate) fn find_table(
+		rx: &mut impl IntoStandardTransaction,
+		table: TableId,
+	) -> crate::Result<Option<TableDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let Some(multi) = txn.get(&TableKey::encoded(table))? else {
 			return Ok(None);
@@ -36,7 +39,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_table_by_name(
+	pub(crate) fn find_table_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,

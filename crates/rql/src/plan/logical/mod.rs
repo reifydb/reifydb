@@ -10,12 +10,9 @@ pub mod row_predicate;
 pub mod variable;
 
 use query::window::WindowNode;
-use reifydb_catalog::{
-	catalog::Catalog,
-	store::{
-		ringbuffer::create::RingBufferColumnToCreate, subscription::create::SubscriptionColumnToCreate,
-		table::create::TableColumnToCreate, view::create::ViewColumnToCreate,
-	},
+use reifydb_catalog::catalog::{
+	Catalog, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},

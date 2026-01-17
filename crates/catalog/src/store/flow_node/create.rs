@@ -10,7 +10,10 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::store::flow_node::schema::{flow_node, flow_node_by_flow};
 
 impl crate::CatalogStore {
-	pub fn create_flow_node(txn: &mut StandardCommandTransaction, node_def: &FlowNodeDef) -> crate::Result<()> {
+	pub(crate) fn create_flow_node(
+		txn: &mut StandardCommandTransaction,
+		node_def: &FlowNodeDef,
+	) -> crate::Result<()> {
 		// Write to main flow_node table
 		let mut row = flow_node::SCHEMA.allocate();
 		flow_node::SCHEMA.set_u64(&mut row, flow_node::ID, node_def.id);

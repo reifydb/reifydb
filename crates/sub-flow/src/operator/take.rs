@@ -3,9 +3,7 @@
 
 use std::{collections::BTreeMap, rc::Rc};
 
-use reifydb_core::{
-	encoded::layout::EncodedValuesLayout, interface::catalog::flow::FlowNodeId, value::column::columns::Columns,
-};
+use reifydb_core::{encoded::schema::Schema, interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{
@@ -42,7 +40,7 @@ pub struct TakeOperator {
 	parent: Rc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
-	layout: EncodedValuesLayout,
+	schema: Schema,
 }
 
 impl TakeOperator {
@@ -51,7 +49,7 @@ impl TakeOperator {
 			parent,
 			node,
 			limit,
-			layout: EncodedValuesLayout::testing(&[Type::Blob]),
+			schema: Schema::testing(&[Type::Blob]),
 		}
 	}
 
@@ -62,7 +60,7 @@ impl TakeOperator {
 			return Ok(TakeState::default());
 		}
 
-		let blob = self.layout.get_blob(&state_row, 0);
+		let blob = self.schema.get_blob(&state_row, 0);
 		if blob.is_empty() {
 			return Ok(TakeState::default());
 		}
@@ -75,9 +73,9 @@ impl TakeOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate();
+		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.layout.set_blob(&mut state_row, 0, &blob);
+		self.schema.set_blob(&mut state_row, 0, &blob);
 
 		self.save_state(txn, state_row)
 	}
@@ -141,8 +139,8 @@ impl TakeOperator {
 impl RawStatefulOperator for TakeOperator {}
 
 impl SingleStateful for TakeOperator {
-	fn layout(&self) -> EncodedValuesLayout {
-		self.layout.clone()
+	fn layout(&self) -> Schema {
+		self.schema.clone()
 	}
 }
 

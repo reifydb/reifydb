@@ -15,7 +15,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::named::EncodedValuesNamedLayout,
+	encoded::schema::{Schema, SchemaField},
 	interface::{
 		catalog::{table::TableDef, view::ViewDef},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
@@ -377,12 +377,12 @@ impl Columns {
 	pub fn from_row(row: &Row) -> Self {
 		let mut columns = Vec::new();
 
-		for (idx, field) in row.layout.fields().fields.iter().enumerate() {
-			let value = row.layout.get_value_by_idx(&row.encoded, idx);
+		for (idx, field) in row.schema.fields().iter().enumerate() {
+			let value = row.schema.get_value(&row.encoded, idx);
 
 			// Use the field type for the column data, handling undefined values
 			let column_type = if value.get_type() == Type::Undefined {
-				field.r#type
+				field.constraint.get_type()
 			} else {
 				value.get_type()
 			};
@@ -394,7 +394,7 @@ impl Columns {
 			};
 			data.push_value(value);
 
-			let name = row.layout.get_name(idx).expect("EncodedRowNamedLayout missing name for field");
+			let name = row.schema.get_field_name(idx).expect("Schema missing name for field");
 
 			columns.push(Column {
 				name: Fragment::internal(name),
@@ -421,11 +421,14 @@ impl Columns {
 
 		let row_number = self.row_numbers.first().unwrap().clone();
 
-		// Build names and types for the layout
-		let names_and_types: Vec<(String, Type)> =
-			self.columns.iter().map(|col| (col.name().text().to_string(), col.data().get_type())).collect();
+		// Build schema fields for the layout
+		let fields: Vec<SchemaField> = self
+			.columns
+			.iter()
+			.map(|col| SchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.collect();
 
-		let layout = EncodedValuesNamedLayout::new(names_and_types.into_iter());
+		let layout = Schema::new(fields);
 		let mut encoded = layout.allocate();
 
 		// Get values and set them
@@ -435,7 +438,7 @@ impl Columns {
 		Row {
 			number: row_number,
 			encoded,
-			layout,
+			schema: layout,
 		}
 	}
 }

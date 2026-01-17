@@ -11,7 +11,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::flow_edge::schema::flow_edge};
 
 impl CatalogStore {
-	pub fn find_flow_edge(
+	pub(crate) fn find_flow_edge(
 		rx: &mut impl IntoStandardTransaction,
 		edge: FlowEdgeId,
 	) -> crate::Result<Option<FlowEdgeDef>> {

@@ -11,7 +11,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::flow_node::schema::flow_node};
 
 impl CatalogStore {
-	pub fn find_flow_node(
+	pub(crate) fn find_flow_node(
 		rx: &mut impl IntoStandardTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<Option<FlowNodeDef>> {

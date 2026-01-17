@@ -36,7 +36,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 	value::{
 		batch::lazy::LazyBatch,
-		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders, Column},
+		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 	},
 };
 use reifydb_function::{math, registry::Functions, series, subscription};
@@ -77,10 +77,6 @@ pub trait ExecuteCommand {
 pub trait ExecuteQuery {
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }
-use crate::{
-	execute::query::join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
-	stack::{Stack, Variable},
-};
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::{
 	ast,
@@ -88,9 +84,14 @@ use reifydb_rql::{
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::standard::{
-	command::StandardCommandTransaction, query::StandardQueryTransaction, StandardTransaction,
+	StandardTransaction, command::StandardCommandTransaction, query::StandardQueryTransaction,
 };
 use tracing::instrument;
+
+use crate::{
+	execute::query::join::{inner::InnerJoinNode, left::LeftJoinNode, natural::NaturalJoinNode},
+	stack::{Stack, Variable},
+};
 
 pub mod catalog;
 pub(crate) mod mutate;

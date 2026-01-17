@@ -6,7 +6,7 @@ use std::{rc::Rc, sync::LazyLock};
 use indexmap::IndexMap;
 use reifydb_core::{
 	common::JoinType,
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns},
@@ -54,7 +54,7 @@ pub struct JoinOperator {
 	left_exprs: Vec<Expression>,
 	pub(crate) right_exprs: Vec<Expression>,
 	alias: Option<String>,
-	layout: EncodedValuesLayout,
+	schema: Schema,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	column_evaluator: StandardColumnEvaluator,
@@ -74,7 +74,7 @@ impl JoinOperator {
 		executor: Executor,
 	) -> Self {
 		let strategy = JoinStrategy::from(join_type);
-		let layout = Self::state_layout();
+		let schema = Self::state_schema();
 		let row_number_provider = RowNumberProvider::new(node);
 
 		Self {
@@ -87,15 +87,15 @@ impl JoinOperator {
 			left_exprs,
 			right_exprs,
 			alias,
-			layout,
+			schema,
 			row_number_provider,
 			executor,
 			column_evaluator: StandardColumnEvaluator::default(),
 		}
 	}
 
-	fn state_layout() -> EncodedValuesLayout {
-		EncodedValuesLayout::testing(&[Type::Blob])
+	fn state_schema() -> Schema {
+		Schema::testing(&[Type::Blob])
 	}
 
 	/// Compute join keys for all rows in Columns
@@ -425,8 +425,8 @@ impl JoinOperator {
 impl RawStatefulOperator for JoinOperator {}
 
 impl SingleStateful for JoinOperator {
-	fn layout(&self) -> EncodedValuesLayout {
-		self.layout.clone()
+	fn layout(&self) -> Schema {
+		self.schema.clone()
 	}
 }
 

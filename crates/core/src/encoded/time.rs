@@ -5,43 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::{time::Time, r#type::Type};
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_time(&self, row: &mut EncodedValues, index: usize, value: Time) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Time);
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut u64,
-				value.to_nanos_since_midnight(),
-			)
-		}
-	}
-
-	pub fn get_time(&self, row: &EncodedValues, index: usize) -> Time {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Time);
-		unsafe {
-			Time::from_nanos_since_midnight((row.as_ptr().add(field.offset) as *const u64).read_unaligned())
-				.unwrap()
-		}
-	}
-
-	pub fn try_get_time(&self, row: &EncodedValues, index: usize) -> Option<Time> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Time {
-			Some(self.get_time(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_time(&self, row: &mut EncodedValues, index: usize, value: Time) {
@@ -82,7 +46,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{time::Time, r#type::Type};
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_time() {

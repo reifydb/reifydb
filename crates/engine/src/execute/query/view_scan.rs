@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{key::EncodedKey, schema::Schema},
 	interface::resolved::ResolvedView,
 	key::{
 		EncodableKey,
@@ -22,16 +22,13 @@ pub(crate) struct ViewScanNode {
 	view: ResolvedView,
 	context: Option<Arc<ExecutionContext>>,
 	headers: ColumnHeaders,
-	row_layout: EncodedValuesLayout,
+	schema: Option<Schema>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
 
 impl ViewScanNode {
 	pub fn new(view: ResolvedView, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-		let data = view.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedValuesLayout::testing(&data);
-
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
@@ -40,10 +37,35 @@ impl ViewScanNode {
 			view,
 			context: Some(context),
 			headers,
-			row_layout,
+			schema: None,
 			last_key: None,
 			exhausted: false,
 		})
+	}
+
+	fn get_or_load_schema<'a>(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		first_row: &reifydb_core::encoded::encoded::EncodedValues,
+	) -> crate::Result<Schema> {
+		if let Some(schema) = &self.schema {
+			return Ok(schema.clone());
+		}
+
+		let fingerprint = first_row.fingerprint();
+
+		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
+		let schema = stored_ctx.executor.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			reifydb_type::error!(reifydb_type::error::diagnostic::internal::internal(format!(
+				"Schema with fingerprint {:?} not found for view {}",
+				fingerprint,
+				self.view.def().name
+			)))
+		})?;
+
+		self.schema = Some(schema.clone());
+
+		Ok(schema)
 	}
 }
 
@@ -92,6 +114,8 @@ impl QueryNode for ViewScanNode {
 			}
 		}
 
+		// Drop the stream to release the borrow on rx
+		drop(stream);
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			return Ok(None);
@@ -100,7 +124,8 @@ impl QueryNode for ViewScanNode {
 		self.last_key = new_last_key;
 
 		let mut columns = Columns::from_view(&self.view);
-		columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers)?;
+		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
+		columns.append_rows(&schema, batch_rows.into_iter(), row_numbers)?;
 
 		Ok(Some(Batch {
 			columns,

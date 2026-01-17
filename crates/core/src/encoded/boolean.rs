@@ -5,37 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_bool(&self, row: &mut EncodedValues, index: usize, value: impl Into<bool>) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Boolean);
-		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut bool, value.into())
-		}
-	}
-
-	pub fn get_bool(&self, row: &EncodedValues, index: usize) -> bool {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Boolean);
-		unsafe { (row.as_ptr().add(field.offset) as *const bool).read_unaligned() }
-	}
-
-	pub fn try_get_bool(&self, row: &EncodedValues, index: usize) -> Option<bool> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Boolean {
-			Some(self.get_bool(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_bool(&self, row: &mut EncodedValues, index: usize, value: impl Into<bool>) {
@@ -71,7 +41,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_bool() {

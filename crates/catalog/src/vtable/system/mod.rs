@@ -25,6 +25,8 @@ pub mod primary_keys;
 pub mod primitive_retention_policies;
 pub mod ringbuffer_storage_stats;
 pub mod ringbuffers;
+pub mod schema_fields;
+pub mod schemas;
 pub mod sequences;
 pub mod table_storage_stats;
 pub mod tables;

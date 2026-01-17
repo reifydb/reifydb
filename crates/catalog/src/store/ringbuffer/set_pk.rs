@@ -13,7 +13,7 @@ use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
 	/// Returns an internal error if the ring buffer doesn't exist
-	pub fn set_ringbuffer_primary_key(
+	pub(crate) fn set_ringbuffer_primary_key(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,

@@ -19,17 +19,14 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_primary_key(
+	pub(crate) fn find_primary_key(
 		rx: &mut impl IntoStandardTransaction,
-		source: impl Into<PrimitiveId>,
+		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
-		let source_id = source.into();
+		let primitive_id = primitive.into();
 		let mut txn = rx.into_standard_transaction();
 
-		// Get the primary key ID for the table or view
-		// Virtual tables and ring buffers don't have primary keys
-		// stored separately
-		let primary_key_id = match source_id {
+		let primary_key_id = match primitive_id {
 			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(&mut txn, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
@@ -93,7 +90,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	pub fn find_table_primary_key(
+	pub(crate) fn find_table_primary_key(
 		rx: &mut impl IntoStandardTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
@@ -101,7 +98,7 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	pub fn find_view_primary_key(
+	pub(crate) fn find_view_primary_key(
 		rx: &mut impl IntoStandardTransaction,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {

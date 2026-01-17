@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{CatalogStore, store::primary_key::create::PrimaryKeyToCreate};
+use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
 use reifydb_core::{interface::catalog::primitive::PrimitiveId, value::column::columns::Columns};
 use reifydb_rql::plan::{logical::alter::table::AlterTableOperation, physical::alter::table::AlterTableNode};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
@@ -28,7 +28,7 @@ impl Executor {
 		let table_name = plan.node.table.name.text();
 
 		// Find the namespace
-		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_name(txn, namespace_name)? else {
 			let ns_fragment = plan
 				.node
 				.table
@@ -39,7 +39,7 @@ impl Executor {
 		};
 
 		// Find the table
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
+		let Some(table) = self.catalog.find_table_by_name(txn, namespace.id, table_name)? else {
 			return_error!(table_not_found(plan.node.table.name.clone(), &namespace.name, table_name,));
 		};
 
@@ -54,7 +54,7 @@ impl Executor {
 				} => {
 					// Get all columns for the table to
 					// validate and resolve column IDs
-					let table_columns = CatalogStore::list_columns(txn, table.id)?;
+					let table_columns = self.catalog.list_columns(txn, table.id)?;
 
 					let mut column_ids = Vec::new();
 					for alter_column in columns {
@@ -72,7 +72,7 @@ impl Executor {
 						column_ids.push(column.id);
 					}
 
-					CatalogStore::create_primary_key(
+					self.catalog.create_primary_key(
 						txn,
 						PrimaryKeyToCreate {
 							source: PrimitiveId::Table(table.id),

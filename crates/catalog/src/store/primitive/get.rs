@@ -10,7 +10,7 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
 	/// Returns an error if the primitive doesn't exist
-	pub fn get_primitive(
+	pub(crate) fn get_primitive(
 		rx: &mut impl IntoStandardTransaction,
 		primitive: impl Into<PrimitiveId>,
 	) -> crate::Result<PrimitiveDef> {

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{DictionaryId, NamespaceId, RingBufferId, TableId},
+		id::{DictionaryId, NamespaceId, RingBufferId},
 		policy::ColumnPolicyKind,
 		ringbuffer::RingBufferDef,
 	},
@@ -41,7 +41,7 @@ pub struct RingBufferToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_ringbuffer(
+	pub(crate) fn create_ringbuffer(
 		txn: &mut StandardCommandTransaction,
 		to_create: RingBufferToCreate,
 	) -> crate::Result<RingBufferDef> {
@@ -122,17 +122,10 @@ impl CatalogStore {
 				ringbuffer_id,
 				ColumnToCreate {
 					fragment: col.fragment,
-					namespace_name: String::new(), /* Not used in
-					                                * create_column */
-					table: TableId(0), /* Not used in
-					                    * create_column -
-					                    * source is passed
-					                    * separately */
-					table_name: String::new(), /* Not used in
-					                            * create_column */
+					namespace_name: String::new(),
+					primitive_name: String::new(),
 					column: col.name,
 					constraint: col.constraint,
-					if_not_exists: false,
 					policies: col.policies,
 					index: ColumnIndex(idx as u8),
 					auto_increment: col.auto_increment,

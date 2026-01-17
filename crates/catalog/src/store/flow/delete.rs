@@ -10,7 +10,7 @@ use reifydb_transaction::standard::command::StandardCommandTransaction;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn delete_flow(txn: &mut StandardCommandTransaction, flow_id: FlowId) -> crate::Result<()> {
+	pub(crate) fn delete_flow(txn: &mut StandardCommandTransaction, flow_id: FlowId) -> crate::Result<()> {
 		// Get the flow to find namespace for index deletion
 		let flow_def = CatalogStore::find_flow(txn, flow_id)?;
 

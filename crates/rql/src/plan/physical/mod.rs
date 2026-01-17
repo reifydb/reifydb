@@ -5,12 +5,9 @@ pub mod alter;
 pub mod create;
 
 use alter::{flow::AlterFlowNode, table::AlterTableNode, view::AlterViewNode};
-use reifydb_catalog::{
-	catalog::Catalog,
-	store::{
-		ringbuffer::create::RingBufferColumnToCreate, subscription::create::SubscriptionColumnToCreate,
-		table::create::TableColumnToCreate, view::create::ViewColumnToCreate,
-	},
+use reifydb_catalog::catalog::{
+	Catalog, ringbuffer::RingBufferColumnToCreate, subscription::SubscriptionColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowSize, WindowSlide, WindowType},

@@ -16,13 +16,16 @@ use crate::store::sequence::generator::u64::GeneratorU64;
 pub struct RowSequence {}
 
 impl RowSequence {
-	pub fn next_row_number(txn: &mut StandardCommandTransaction, table: TableId) -> crate::Result<RowNumber> {
+	pub(crate) fn next_row_number(
+		txn: &mut StandardCommandTransaction,
+		table: TableId,
+	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
 	/// Returns a vector containing all allocated row numbers.
-	pub fn next_row_number_batch(
+	pub(crate) fn next_row_number_batch(
 		txn: &mut StandardCommandTransaction,
 		table: TableId,
 		count: u64,
@@ -31,7 +34,7 @@ impl RowSequence {
 	}
 
 	/// Allocates the next row number for a ring buffer.
-	pub fn next_row_number_for_ringbuffer(
+	pub(crate) fn next_row_number_for_ringbuffer(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
@@ -40,7 +43,7 @@ impl RowSequence {
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
 	/// Returns a vector containing all allocated row numbers.
-	pub fn next_row_number_batch_for_ringbuffer(
+	pub(crate) fn next_row_number_batch_for_ringbuffer(
 		txn: &mut StandardCommandTransaction,
 		ringbuffer: RingBufferId,
 		count: u64,

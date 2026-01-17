@@ -10,18 +10,23 @@
 //! 3. Check MaterializedCatalog at transaction version
 //! 4. Fall back to storage as defensive measure
 
+pub mod column;
 pub mod dictionary;
 pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
 pub mod namespace;
+pub mod primary_key;
+pub mod primitive;
 pub mod resolve;
 pub mod ringbuffer;
+pub mod sequence;
 pub mod subscription;
 pub mod table;
 pub mod view;
 pub mod vtable;
 
-use crate::materialized::MaterializedCatalog;
-use crate::schema::SchemaRegistry;
+use crate::{materialized::MaterializedCatalog, schema::SchemaRegistry};
 
 #[derive(Debug, Clone)]
 pub struct Catalog {

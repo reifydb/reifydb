@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout},
+	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::value::{Value, r#type::Type};
@@ -14,7 +14,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedValuesLayout;
+	fn layout(&self) -> Schema;
 
 	/// Schema for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
@@ -62,11 +62,11 @@ pub trait KeyedStateful: RawStatefulOperator {
 		f: F,
 	) -> reifydb_type::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> reifydb_type::Result<()>,
+		F: FnOnce(&Schema, &mut EncodedValues) -> reifydb_type::Result<()>,
 	{
-		let layout = self.layout();
+		let schema = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
-		f(&layout, &mut row)?;
+		f(&schema, &mut row)?;
 		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
 	}
@@ -91,7 +91,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
-		fn layout(&self) -> EncodedValuesLayout {
+		fn layout(&self) -> Schema {
 			self.layout.clone()
 		}
 
@@ -138,14 +138,15 @@ pub mod tests {
 		// Initially should create new state
 		let state1 = operator.load_state(&mut txn, &key).unwrap();
 
-		// Modify and save
+		// Modify and save - with_key_types uses [Type::Blob, Type::Int4]
 		let mut modified = state1.clone();
-		modified.make_mut()[0] = 0x42; // Modify first byte
+		let layout = operator.layout();
+		layout.set_i32(&mut modified, 1, 0x42); // Modify second field (Int4)
 		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &key).unwrap();
-		assert_eq!(state2.as_ref()[0], 0x42);
+		assert_eq!(layout.get_i32(&state2, 1), 0x42);
 	}
 
 	#[test]
@@ -157,18 +158,19 @@ pub mod tests {
 
 		// Update with a function
 		let result = operator
-			.update_state(&mut txn, &key, |_layout, row| {
-				// Set first byte to a specific value
-				row.make_mut()[0] = 0x55;
+			.update_state(&mut txn, &key, |schema, row| {
+				// Set second field (Int4) to a specific value
+				schema.set_i32(row, 1, 0x55);
 				Ok(())
 			})
 			.unwrap();
 
-		assert_eq!(result.as_ref()[0], 0x55);
+		let layout = operator.layout();
+		assert_eq!(layout.get_i32(&result, 1), 0x55);
 
 		// Verify it was persisted
 		let loaded = operator.load_state(&mut txn, &key).unwrap();
-		assert_eq!(loaded.as_ref()[0], 0x55);
+		assert_eq!(layout.get_i32(&loaded, 1), 0x55);
 	}
 
 	#[test]
@@ -187,7 +189,8 @@ pub mod tests {
 
 		// Loading should create new state (not find existing)
 		let new_state = operator.load_state(&mut txn, &key).unwrap();
-		assert_eq!(new_state.as_ref()[0], 0); // Should be default initialized
+		let layout = operator.layout();
+		assert_eq!(layout.get_i32(&new_state, 1), 0); // Should be default initialized
 	}
 
 	#[test]
@@ -199,18 +202,19 @@ pub mod tests {
 		// Create multiple keys with different states
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
-			operator.update_state(&mut txn, &key, |_layout, row| {
-				row.make_mut()[0] = i as u8;
+			operator.update_state(&mut txn, &key, |schema, row| {
+				schema.set_i32(row, 1, i);
 				Ok(())
 			})
 			.unwrap();
 		}
 
 		// Verify each key has its own state
+		let layout = operator.layout();
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
 			let state = operator.load_state(&mut txn, &key).unwrap();
-			assert_eq!(state.as_ref()[0], i as u8);
+			assert_eq!(layout.get_i32(&state, 1), i);
 		}
 	}
 

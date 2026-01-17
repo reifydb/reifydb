@@ -23,6 +23,8 @@ pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod primitive_retention_policies;
 pub mod ringbuffers;
+pub mod schema_fields;
+pub mod schemas;
 pub mod sequence;
 pub mod storage_stats_dictionary;
 pub mod storage_stats_flow;
@@ -54,6 +56,8 @@ use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use primitive_retention_policies::primitive_retention_policies;
+use schema_fields::schema_fields;
+use schemas::schemas;
 use sequence::sequences;
 use storage_stats_dictionary::dictionary_storage_stats;
 use storage_stats_flow::flow_storage_stats;
@@ -331,6 +335,43 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
 		}
+
+		pub mod schemas {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const FINGERPRINT: ColumnId = ColumnId(1);
+			pub const FIELD_COUNT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [FINGERPRINT, FIELD_COUNT];
+		}
+
+		pub mod schema_fields {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const SCHEMA_FINGERPRINT: ColumnId = ColumnId(1);
+			pub const FIELD_INDEX: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const CONSTRAINT_TYPE: ColumnId = ColumnId(5);
+			pub const CONSTRAINT_P1: ColumnId = ColumnId(6);
+			pub const CONSTRAINT_P2: ColumnId = ColumnId(7);
+			pub const OFFSET: ColumnId = ColumnId(8);
+			pub const SIZE: ColumnId = ColumnId(9);
+			pub const ALIGN: ColumnId = ColumnId(10);
+
+			pub const ALL: [ColumnId; 10] = [
+				SCHEMA_FINGERPRINT,
+				FIELD_INDEX,
+				NAME,
+				TYPE,
+				CONSTRAINT_TYPE,
+				CONSTRAINT_P1,
+				CONSTRAINT_P2,
+				OFFSET,
+				SIZE,
+				ALIGN,
+			];
+		}
 	}
 
 	pub mod sequences {
@@ -383,8 +424,10 @@ pub mod ids {
 		pub const RINGBUFFER_STORAGE_STATS: VTableId = VTableId(29);
 		pub const DICTIONARY_STORAGE_STATS: VTableId = VTableId(30);
 		pub const FLOW_LAGS: VTableId = VTableId(31);
+		pub const SCHEMAS: VTableId = VTableId(32);
+		pub const SCHEMA_FIELDS: VTableId = VTableId(33);
 
-		pub const ALL: [VTableId; 31] = [
+		pub const ALL: [VTableId; 33] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -416,6 +459,8 @@ pub mod ids {
 			RINGBUFFER_STORAGE_STATS,
 			DICTIONARY_STORAGE_STATS,
 			FLOW_LAGS,
+			SCHEMAS,
+			SCHEMA_FIELDS,
 		];
 	}
 }
@@ -595,5 +640,15 @@ impl SystemCatalog {
 	/// Get the dictionary_storage_stats virtual table definition
 	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<VTableDef> {
 		dictionary_storage_stats()
+	}
+
+	/// Get the schemas virtual table definition
+	pub fn get_system_schemas_table_def() -> Arc<VTableDef> {
+		schemas()
+	}
+
+	/// Get the schema_fields virtual table definition
+	pub fn get_system_schema_fields_table_def() -> Arc<VTableDef> {
+		schema_fields()
 	}
 }

@@ -10,7 +10,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::column::schema::primitive_column};
 
 impl CatalogStore {
-	pub fn find_column_by_name(
+	pub(crate) fn find_column_by_name(
 		rx: &mut impl IntoStandardTransaction,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,

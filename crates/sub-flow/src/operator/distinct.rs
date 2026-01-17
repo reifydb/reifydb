@@ -5,7 +5,7 @@ use std::{rc::Rc, sync::LazyLock};
 
 use indexmap::IndexMap;
 use reifydb_core::{
-	encoded::layout::EncodedValuesLayout,
+	encoded::schema::Schema,
 	interface::catalog::flow::FlowNodeId,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -166,7 +166,7 @@ pub struct DistinctOperator {
 	parent: Rc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
-	layout: EncodedValuesLayout,
+	schema: Schema,
 	column_evaluator: StandardColumnEvaluator,
 }
 
@@ -176,7 +176,7 @@ impl DistinctOperator {
 			parent,
 			node,
 			expressions,
-			layout: EncodedValuesLayout::testing(&[Type::Blob]),
+			schema: Schema::testing(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
 		}
 	}
@@ -241,7 +241,7 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		let blob = self.layout.get_blob(&state_row, 0);
+		let blob = self.schema.get_blob(&state_row, 0);
 		if blob.is_empty() {
 			return Ok(DistinctState::default());
 		}
@@ -254,9 +254,9 @@ impl DistinctOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate();
+		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.layout.set_blob(&mut state_row, 0, &blob);
+		self.schema.set_blob(&mut state_row, 0, &blob);
 
 		self.save_state(txn, state_row)
 	}
@@ -447,8 +447,8 @@ impl DistinctOperator {
 impl RawStatefulOperator for DistinctOperator {}
 
 impl SingleStateful for DistinctOperator {
-	fn layout(&self) -> EncodedValuesLayout {
-		self.layout.clone()
+	fn layout(&self) -> Schema {
+		self.schema.clone()
 	}
 }
 

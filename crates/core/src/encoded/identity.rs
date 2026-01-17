@@ -6,47 +6,7 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::IdentityId);
-		row.set_valid(index, true);
-		unsafe {
-			// IdentityId wraps Uuid7 which is 16 bytes
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset) as *mut [u8; 16],
-				*value.as_bytes(),
-			);
-		}
-	}
-
-	pub fn get_identity_id(&self, row: &EncodedValues, index: usize) -> IdentityId {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::IdentityId);
-		unsafe {
-			// IdentityId wraps Uuid7 which is 16 bytes
-			let bytes: [u8; 16] = ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
-			let uuid = Uuid::from_bytes(bytes);
-			let uuid7 = Uuid7::from(uuid);
-			IdentityId::from(uuid7)
-		}
-	}
-
-	pub fn try_get_identity_id(&self, row: &EncodedValues, index: usize) -> Option<IdentityId> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::IdentityId {
-			Some(self.get_identity_id(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
@@ -93,7 +53,7 @@ pub mod tests {
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 	use tokio::time::sleep;
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_identity_id() {

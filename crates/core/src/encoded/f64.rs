@@ -5,35 +5,7 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::{
-	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
-	schema::Schema,
-};
-
-impl EncodedValuesLayout {
-	pub fn set_f64(&self, row: &mut EncodedValues, index: usize, value: impl Into<f64>) {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Float8);
-		row.set_valid(index, true);
-		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f64, value.into()) }
-	}
-
-	pub fn get_f64(&self, row: &EncodedValues, index: usize) -> f64 {
-		let field = &self.fields[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.r#type, Type::Float8);
-		unsafe { (row.as_ptr().add(field.offset) as *const f64).read_unaligned() }
-	}
-
-	pub fn try_get_f64(&self, row: &EncodedValues, index: usize) -> Option<f64> {
-		if row.is_defined(index) && self.fields[index].r#type == Type::Float8 {
-			Some(self.get_f64(row, index))
-		} else {
-			None
-		}
-	}
-}
+use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_f64(&self, row: &mut EncodedValues, index: usize, value: impl Into<f64>) {
@@ -70,7 +42,7 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::schema::Schema;
+	use crate::encoded::schema::Schema;
 
 	#[test]
 	fn test_set_get_f64() {

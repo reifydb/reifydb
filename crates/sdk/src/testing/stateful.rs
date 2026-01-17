@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::encoded::{
 	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
-	layout::EncodedValuesLayout,
+	schema::Schema,
 };
 use reifydb_type::{
 	util::cowvec::CowVec,
@@ -15,28 +15,28 @@ use reifydb_type::{
 
 /// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
-	layout: EncodedValuesLayout,
+	schema: Schema,
 	state: Option<Vec<u8>>,
 }
 
 impl SingleStatefulTestHelper {
 	/// Create a new single stateful test helper
-	pub fn new(layout: EncodedValuesLayout) -> Self {
+	pub fn new(schema: Schema) -> Self {
 		Self {
-			layout,
+			schema,
 			state: None,
 		}
 	}
 
-	/// Create with a simple counter layout (single int8)
+	/// Create with a simple counter schema (single int8)
 	pub fn counter() -> Self {
-		Self::new(EncodedValuesLayout::testing(&[Type::Int8]))
+		Self::new(Schema::testing(&[Type::Int8]))
 	}
 
 	/// Set the current state
 	pub fn set_state(&mut self, values: &[Value]) {
-		let mut encoded = self.layout.allocate();
-		self.layout.set_values(&mut encoded, values);
+		let mut encoded = self.schema.allocate();
+		self.schema.set_values(&mut encoded, values);
 		self.state = Some(encoded.0.to_vec());
 	}
 
@@ -44,7 +44,7 @@ impl SingleStatefulTestHelper {
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
 			let encoded = EncodedValues(CowVec::new(bytes.clone()));
-			super::helpers::get_values(&self.layout, &encoded)
+			super::helpers::get_values(&self.schema, &encoded)
 		})
 	}
 
@@ -67,27 +67,27 @@ impl SingleStatefulTestHelper {
 
 /// Test helper for FFIKeyedStateful operators
 pub struct KeyedStatefulTestHelper {
-	layout: EncodedValuesLayout,
+	schema: Schema,
 	states: HashMap<EncodedKey, EncodedValues>,
 }
 
 impl KeyedStatefulTestHelper {
 	/// Create a new keyed stateful test helper
-	pub fn new(layout: EncodedValuesLayout) -> Self {
+	pub fn new(schema: Schema) -> Self {
 		Self {
-			layout,
+			schema,
 			states: HashMap::new(),
 		}
 	}
 
-	/// Create with a simple counter layout (single int8)
+	/// Create with a simple counter schema (single int8)
 	pub fn counter() -> Self {
-		Self::new(EncodedValuesLayout::testing(&[Type::Int8]))
+		Self::new(Schema::testing(&[Type::Int8]))
 	}
 
-	/// Create with a sum layout (single int8 or int4)
+	/// Create with a sum schema (single int8 or int4)
 	pub fn sum() -> Self {
-		Self::new(EncodedValuesLayout::testing(&[Type::Int4]))
+		Self::new(Schema::testing(&[Type::Int4]))
 	}
 
 	/// Set state for a key
@@ -95,8 +95,8 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate();
-		self.layout.set_values(&mut encoded, values);
+		let mut encoded = self.schema.allocate();
+		self.schema.set_values(&mut encoded, values);
 		self.states.insert(key.into_encoded_key(), encoded);
 	}
 
@@ -107,7 +107,7 @@ impl KeyedStatefulTestHelper {
 	{
 		self.states
 			.get(&key.into_encoded_key())
-			.map(|encoded| super::helpers::get_values(&self.layout, encoded))
+			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
 	}
 
 	/// Assert state for a key matches expected values
@@ -119,7 +119,7 @@ impl KeyedStatefulTestHelper {
 		let actual = self
 			.states
 			.get(&key_encoded)
-			.map(|encoded| super::helpers::get_values(&self.layout, encoded))
+			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
 			.expect("No state for key");
 		assert_eq!(actual, expected, "State mismatch for key");
 	}
@@ -131,7 +131,7 @@ impl KeyedStatefulTestHelper {
 	{
 		self.states
 			.remove(&key.into_encoded_key())
-			.map(|encoded| super::helpers::get_values(&self.layout, &encoded))
+			.map(|encoded| super::helpers::get_values(&self.schema, &encoded))
 	}
 
 	/// Check if a key has state
@@ -165,29 +165,29 @@ impl KeyedStatefulTestHelper {
 
 /// Test helper for FFIWindowStateful operators
 pub struct WindowStatefulTestHelper {
-	layout: EncodedValuesLayout,
+	schema: Schema,
 	windows: HashMap<i64, HashMap<EncodedKey, EncodedValues>>, // window_id -> key -> state
 	window_size: i64,
 }
 
 impl WindowStatefulTestHelper {
 	/// Create a new window stateful test helper
-	pub fn new(layout: EncodedValuesLayout, window_size: i64) -> Self {
+	pub fn new(schema: Schema, window_size: i64) -> Self {
 		Self {
-			layout,
+			schema,
 			windows: HashMap::new(),
 			window_size,
 		}
 	}
 
-	/// Create with a counter layout for time windows
+	/// Create with a counter schema for time windows
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
-		Self::new(EncodedValuesLayout::testing(&[Type::Int8]), window_size_seconds)
+		Self::new(Schema::testing(&[Type::Int8]), window_size_seconds)
 	}
 
-	/// Create with a sum layout for count windows
+	/// Create with a sum schema for count windows
 	pub fn count_window_sum(window_size_count: i64) -> Self {
-		Self::new(EncodedValuesLayout::testing(&[Type::Int4]), window_size_count)
+		Self::new(Schema::testing(&[Type::Int4]), window_size_count)
 	}
 
 	/// Set state for a window and key
@@ -195,8 +195,8 @@ impl WindowStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate();
-		self.layout.set_values(&mut encoded, values);
+		let mut encoded = self.schema.allocate();
+		self.schema.set_values(&mut encoded, values);
 
 		self.windows.entry(window_id).or_insert_with(HashMap::new).insert(key.into_encoded_key(), encoded);
 	}
@@ -209,7 +209,7 @@ impl WindowStatefulTestHelper {
 		self.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key.into_encoded_key()))
-			.map(|encoded| super::helpers::get_values(&self.layout, encoded))
+			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
 	}
 
 	/// Assert state for a window and key
@@ -222,7 +222,7 @@ impl WindowStatefulTestHelper {
 			.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key_encoded))
-			.map(|encoded| super::helpers::get_values(&self.layout, encoded))
+			.map(|encoded| super::helpers::get_values(&self.schema, encoded))
 			.expect("No state for window and key");
 		assert_eq!(actual, expected, "State mismatch for window {} and key", window_id);
 	}

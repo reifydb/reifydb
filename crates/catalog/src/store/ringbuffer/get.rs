@@ -11,7 +11,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_ringbuffer(
+	pub(crate) fn get_ringbuffer(
 		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
@@ -23,7 +23,7 @@ impl CatalogStore {
 		})
 	}
 
-	pub fn get_ringbuffer_metadata(
+	pub(crate) fn get_ringbuffer_metadata(
 		rx: &mut impl IntoStandardTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {

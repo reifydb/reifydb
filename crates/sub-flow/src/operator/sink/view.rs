@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use reifydb_core::{
-	encoded::named::EncodedValuesNamedLayout,
+	encoded::schema::Schema,
 	interface::{
 		catalog::{flow::FlowNodeId, primitive::PrimitiveId},
 		resolved::ResolvedView,
@@ -49,7 +49,7 @@ impl Operator for SinkViewOperator {
 	) -> reifydb_type::Result<FlowChange> {
 		// Write rows to the view storage
 		let view_def = self.view.def().clone();
-		let layout: EncodedValuesNamedLayout = (&view_def).into();
+		let schema: Schema = (&view_def.columns).into();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -61,7 +61,7 @@ impl Operator for SinkViewOperator {
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let (row_number, encoded) =
-							encode_row_at_index(&coerced, row_idx, &layout);
+							encode_row_at_index(&coerced, row_idx, &schema);
 
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
 						txn.set(&key, encoded)?;
@@ -77,9 +77,9 @@ impl Operator for SinkViewOperator {
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
 						let (pre_row_number, _) =
-							encode_row_at_index(&coerced_pre, row_idx, &layout);
+							encode_row_at_index(&coerced_pre, row_idx, &schema);
 						let (post_row_number, post_encoded) =
-							encode_row_at_index(&coerced_post, row_idx, &layout);
+							encode_row_at_index(&coerced_post, row_idx, &schema);
 
 						let old_key =
 							RowKey::encoded(PrimitiveId::view(view_def.id), pre_row_number);

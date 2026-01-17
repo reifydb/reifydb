@@ -4,8 +4,8 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::{
-		SchemaFingerprint,
 		key::{EncodedKey, EncodedKeyRange},
+		schema::fingerprint::SchemaFingerprint,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
@@ -68,7 +68,7 @@ impl SchemaKey {
 
 	fn scan_end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 + 1);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }

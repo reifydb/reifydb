@@ -15,7 +15,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_transaction::standard::IntoStandardTransaction;
-use reifydb_type::{value::r#type::Type, Result};
+use reifydb_type::{Result, value::r#type::Type};
 
 /// Pre-computed metadata for a source, avoiding repeated catalog lookups.
 ///
@@ -145,7 +145,7 @@ impl FlowCatalog {
 		}
 
 		// Slow path: load and cache
-		let flow = load_flow_dag(txn, flow_id)?;
+		let flow = load_flow_dag(&self.catalog, txn, flow_id)?;
 		let mut cache = self.flows.write();
 
 		let is_new = !cache.contains_key(&flow_id);

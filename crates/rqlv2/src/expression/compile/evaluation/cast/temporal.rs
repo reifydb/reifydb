@@ -11,18 +11,22 @@ use reifydb_type::{
 		date::Date,
 		datetime::DateTime,
 		duration::Duration,
-		r#type::Type,
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
 		time::Time,
+		r#type::Type,
 	},
 };
 
 use crate::expression::types::{EvalError, EvalResult};
 
 pub(super) fn to_temporal(data: &ColumnData, target: Type) -> EvalResult<ColumnData> {
-	if let ColumnData::Utf8 { container, .. } = data {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = data
+	{
 		match target {
 			Type::Date => to_date(container),
 			Type::DateTime => to_datetime(container),

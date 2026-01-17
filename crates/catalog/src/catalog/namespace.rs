@@ -1,15 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{id::NamespaceId, namespace::NamespaceDef};
+use reifydb_core::interface::catalog::{
+	change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::NamespaceDef,
+};
 use reifydb_transaction::{
 	change::TransactionalNamespaceChanges,
-	standard::{IntoStandardTransaction, StandardTransaction},
+	standard::{IntoStandardTransaction, StandardTransaction, command::StandardCommandTransaction},
 };
 use reifydb_type::{error, error::diagnostic::catalog::namespace_not_found, fragment::Fragment, internal};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, catalog::Catalog};
+use crate::{CatalogStore, catalog::Catalog, store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate};
+
+/// Namespace creation specification for the Catalog API.
+#[derive(Debug, Clone)]
+pub struct NamespaceToCreate {
+	pub namespace_fragment: Option<Fragment>,
+	pub name: String,
+}
+
+impl From<NamespaceToCreate> for StoreNamespaceToCreate {
+	fn from(to_create: NamespaceToCreate) -> Self {
+		StoreNamespaceToCreate {
+			namespace_fragment: to_create.namespace_fragment,
+			name: to_create.name,
+		}
+	}
+}
 
 impl Catalog {
 	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self, txn))]
@@ -143,5 +161,32 @@ impl Catalog {
 		let name = name.into();
 		self.find_namespace_by_name(txn, name.text())?
 			.ok_or_else(|| error!(namespace_not_found(name.clone(), name.text())))
+	}
+
+	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, txn, to_create))]
+	pub fn create_namespace(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		to_create: NamespaceToCreate,
+	) -> crate::Result<NamespaceDef> {
+		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
+		txn.track_namespace_def_created(namespace.clone())?;
+		Ok(namespace)
+	}
+
+	#[instrument(name = "catalog::namespace::delete", level = "debug", skip(self, txn))]
+	pub fn delete_namespace(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		namespace: NamespaceDef,
+	) -> crate::Result<()> {
+		CatalogStore::delete_namespace(txn, namespace.id)?;
+		txn.track_namespace_def_deleted(namespace)?;
+		Ok(())
+	}
+
+	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
+	pub fn list_namespaces_all<T: IntoStandardTransaction>(&self, txn: &mut T) -> crate::Result<Vec<NamespaceDef>> {
+		CatalogStore::list_namespaces_all(txn)
 	}
 }

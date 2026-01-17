@@ -13,7 +13,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub fn list_flows_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowDef>> {
+	pub(crate) fn list_flows_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

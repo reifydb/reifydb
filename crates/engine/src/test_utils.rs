@@ -3,15 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::schema::SchemaRegistry;
 use reifydb_catalog::{
-	catalog::Catalog,
-	materialized::MaterializedCatalog,
-	store::{
-		namespace::create::NamespaceToCreate,
-		table::create::{TableColumnToCreate, TableToCreate},
+	catalog::{
+		Catalog,
+		namespace::NamespaceToCreate,
+		table::{TableColumnToCreate, TableToCreate},
 	},
-	CatalogStore,
+	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
 };
 use reifydb_cdc::{
 	produce::{listener::CdcEventListener, worker::CdcWorker},
@@ -21,9 +20,9 @@ use reifydb_cdc::{
 use reifydb_core::util::clock::mock_time_set;
 use reifydb_core::{
 	event::{
+		EventBus,
 		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
-		EventBus,
 	},
 	runtime::{SharedRuntime, SharedRuntimeConfig},
 	util::ioc::IocContainer,
@@ -35,7 +34,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::StandardInterceptorFactory, interceptors::Interceptors},
 	multi::transaction::TransactionMulti,
-	single::{svl::TransactionSvl, TransactionSingle},
+	single::{TransactionSingle, svl::TransactionSvl},
 	standard::command::StandardCommandTransaction,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -62,18 +61,25 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let single_svl = TransactionSvl::new(single_store, event_bus.clone());
 	let single = TransactionSingle::SingleVersionLock(single_svl.clone());
 	let multi = TransactionMulti::new(multi_store, single.clone(), event_bus.clone()).unwrap();
-	let mut result = StandardCommandTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap();
+	let mut result =
+		StandardCommandTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
 
-	let namespace = CatalogStore::create_namespace(
-		&mut result,
-		NamespaceToCreate {
-			namespace_fragment: None,
-			name: "reifydb".to_string(),
-		},
-	)
-	.unwrap();
+	// Create a temporary catalog instance for creating internal schema
+	let materialized_catalog = MaterializedCatalog::new();
+	let schema_registry = SchemaRegistry::new(single);
+	let catalog = Catalog::new(materialized_catalog, schema_registry);
 
-	CatalogStore::create_table(
+	let namespace = catalog
+		.create_namespace(
+			&mut result,
+			NamespaceToCreate {
+				namespace_fragment: None,
+				name: "reifydb".to_string(),
+			},
+		)
+		.unwrap();
+
+	catalog.create_table(
 		&mut result,
 		TableToCreate {
 			fragment: None,
@@ -98,6 +104,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 				},
 			],
 			retention_policy: None,
+			primary_key_columns: None,
 		},
 	)
 	.unwrap();

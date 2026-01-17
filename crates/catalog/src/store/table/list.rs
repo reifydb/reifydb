@@ -10,7 +10,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use crate::{CatalogStore, store::table::schema::table};
 
 impl CatalogStore {
-	pub fn list_tables_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<TableDef>> {
+	pub(crate) fn list_tables_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<TableDef>> {
 		let mut txn = rx.into_standard_transaction();
 		let mut result = Vec::new();
 

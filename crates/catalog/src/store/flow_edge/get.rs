@@ -8,7 +8,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_flow_edge(
+	pub(crate) fn get_flow_edge(
 		txn: &mut impl IntoStandardTransaction,
 		edge_id: FlowEdgeId,
 	) -> crate::Result<FlowEdgeDef> {

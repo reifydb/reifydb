@@ -8,7 +8,7 @@ use reifydb_type::{error::Error, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_namespace(
+	pub(crate) fn get_namespace(
 		rx: &mut impl IntoStandardTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<NamespaceDef> {

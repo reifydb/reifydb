@@ -13,7 +13,7 @@ use crate::{CatalogStore, store::view::schema::view};
 impl CatalogStore {
 	/// Set the primary key ID for a view
 	/// Returns an internal error if the view doesn't exist
-	pub fn set_view_primary_key(
+	pub(crate) fn set_view_primary_key(
 		txn: &mut StandardCommandTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
