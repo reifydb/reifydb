@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::view::layout::view};
+use crate::{CatalogStore, store::view::schema::view};
 
 impl CatalogStore {
 	pub fn list_views_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<ViewDef>> {
@@ -28,12 +28,12 @@ impl CatalogStore {
 						let view_id = view_key.view;
 
 						let namespace_id = NamespaceId(
-							view::LAYOUT.get_u64(&entry.values, view::NAMESPACE),
+							view::SCHEMA.get_u64(&entry.values, view::NAMESPACE),
 						);
 
-						let name = view::LAYOUT.get_utf8(&entry.values, view::NAME).to_string();
+						let name = view::SCHEMA.get_utf8(&entry.values, view::NAME).to_string();
 
-						let kind_value = view::LAYOUT.get_u8(&entry.values, view::KIND);
+						let kind_value = view::SCHEMA.get_u8(&entry.values, view::KIND);
 						let kind = if kind_value == 0 {
 							ViewKind::Deferred
 						} else {

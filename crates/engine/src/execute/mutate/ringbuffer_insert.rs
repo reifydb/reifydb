@@ -65,7 +65,7 @@ impl Executor {
 				ringbuffer_types.push(c.constraint.get_type());
 			}
 		}
-		let layout = EncodedValuesLayout::new(&ringbuffer_types);
+		let layout = EncodedValuesLayout::testing(&ringbuffer_types);
 
 		// Create resolved source for the ring buffer
 		let namespace_ident = Fragment::internal(namespace.name.clone());
@@ -100,7 +100,7 @@ impl Executor {
 			let row_count = columns.row_count();
 
 			for row_idx in 0..row_count {
-				let mut row = layout.allocate_deprecated();
+				let mut row = layout.allocate();
 
 				// For each ring buffer column, find if it exists in the input columns
 				for (rb_idx, rb_column) in ringbuffer.columns.iter().enumerate() {

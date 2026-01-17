@@ -6,19 +6,19 @@ use reifydb_core::interface::{
 	store::MultiVersionValues,
 };
 
-use crate::store::namespace::layout::namespace;
+use crate::store::namespace::schema::namespace;
 
 pub mod create;
 pub mod delete;
 pub mod find;
 pub mod get;
-pub mod layout;
 pub mod list;
+pub mod schema;
 
 pub(crate) fn convert_namespace(multi: MultiVersionValues) -> NamespaceDef {
 	let row = multi.values;
-	let id = NamespaceId(namespace::LAYOUT.get_u64(&row, namespace::ID));
-	let name = namespace::LAYOUT.get_utf8(&row, namespace::NAME).to_string();
+	let id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::ID));
+	let name = namespace::SCHEMA.get_utf8(&row, namespace::NAME).to_string();
 
 	NamespaceDef {
 		id,

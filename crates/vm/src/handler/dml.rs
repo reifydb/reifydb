@@ -69,7 +69,7 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 			// Build storage layout types
 			let table_types: Vec<reifydb_type::value::r#type::Type> =
 				table.columns.iter().map(|c| c.constraint.get_type()).collect();
-			let layout = EncodedValuesLayout::new(&table_types);
+			let layout = EncodedValuesLayout::testing(&table_types);
 
 			// Insert each row
 			let row_count = input_columns.row_count();
@@ -97,7 +97,7 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 			// Insert each row
 			for row_idx in 0..row_count {
-				let mut row = layout.allocate_deprecated();
+				let mut row = layout.allocate();
 
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
 					let value = if let Some(&input_idx) = column_map.get(table_column.name.as_str())

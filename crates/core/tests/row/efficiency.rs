@@ -27,8 +27,8 @@ fn test_large_row() {
 			})
 			.collect();
 
-		let layout = EncodedValuesLayout::new(&types);
-		let mut row = layout.allocate_for_testing();
+		let layout = EncodedValuesLayout::testing(&types);
+		let mut row = layout.allocate();
 
 		// Set all fields
 		for i in 0..count {
@@ -86,7 +86,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob, Type::Int]);
 
 	let iterations = 1000;
 
@@ -95,7 +95,7 @@ fn test_dynamic_field_reallocation() {
 	let mut rows = Vec::with_capacity(iterations);
 
 	for i in 0..iterations {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		let size = (i % 100) + 1;
 		let string = "x".repeat(size);
 		let bytes = vec![0u8; size];
@@ -126,12 +126,12 @@ fn test_memory_efficiency() {
 	// Test that memory usage is reasonable
 
 	// Static types should have predictable size
-	let layout = EncodedValuesLayout::new(&[
+	let layout = EncodedValuesLayout::testing(&[
 		Type::Boolean, // 1 bit validity + 1 byte
 		Type::Int4,    // 1 bit validity + 4 bytes
 		Type::Float8,  // 1 bit validity + 8 bytes
 	]);
-	let row = layout.allocate_for_testing();
+	let row = layout.allocate();
 
 	// Expected: validity bits (rounded up) + data
 	// 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
@@ -140,15 +140,15 @@ fn test_memory_efficiency() {
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once
-	let layout = EncodedValuesLayout::new(&[Type::Utf8]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
 
-	let initial_size = layout.allocate_for_testing().len();
+	let initial_size = layout.allocate().len();
 
-	let mut row1 = layout.allocate_for_testing();
+	let mut row1 = layout.allocate();
 	layout.set_utf8(&mut row1, 0, "short");
 	let small_size = row1.len();
 
-	let mut row2 = layout.allocate_for_testing();
+	let mut row2 = layout.allocate();
 	layout.set_utf8(&mut row2, 0, &"x".repeat(1000));
 	let large_size = row2.len();
 
@@ -161,7 +161,7 @@ fn test_memory_efficiency() {
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, &"x".repeat(size));
 		row_sizes.push(row.len());
 	}

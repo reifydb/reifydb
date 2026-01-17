@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use flow_edge::LAYOUT;
+use flow_edge::SCHEMA;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
 	key::flow_edge::FlowEdgeKey,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::flow_edge::layout::flow_edge};
+use crate::{CatalogStore, store::flow_edge::schema::flow_edge};
 
 impl CatalogStore {
 	pub fn find_flow_edge(
@@ -21,10 +21,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = FlowEdgeId(LAYOUT.get_u64(&row, flow_edge::ID));
-		let flow = FlowId(LAYOUT.get_u64(&row, flow_edge::FLOW));
-		let source = FlowNodeId(LAYOUT.get_u64(&row, flow_edge::SOURCE));
-		let target = FlowNodeId(LAYOUT.get_u64(&row, flow_edge::TARGET));
+		let id = FlowEdgeId(SCHEMA.get_u64(&row, flow_edge::ID));
+		let flow = FlowId(SCHEMA.get_u64(&row, flow_edge::FLOW));
+		let source = FlowNodeId(SCHEMA.get_u64(&row, flow_edge::SOURCE));
+		let target = FlowNodeId(SCHEMA.get_u64(&row, flow_edge::TARGET));
 
 		Ok(Some(FlowEdgeDef {
 			id,

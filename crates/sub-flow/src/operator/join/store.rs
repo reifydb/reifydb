@@ -50,7 +50,7 @@ impl Store {
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
-				let layout = EncodedValuesLayout::new(&[Type::Blob]);
+				let layout = EncodedValuesLayout::testing(&[Type::Blob]);
 				let blob = layout.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
@@ -76,8 +76,8 @@ impl Store {
 			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
-		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate_deprecated();
+		let layout = EncodedValuesLayout::testing(&[Type::Blob]);
+		let mut row = layout.allocate();
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
 

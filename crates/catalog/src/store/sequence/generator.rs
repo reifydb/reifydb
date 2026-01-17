@@ -21,7 +21,7 @@ macro_rules! impl_generator {
 			use super::*;
 
 			pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> =
-				Lazy::new(|| EncodedValuesLayout::new(&[$type_enum]));
+				Lazy::new(|| EncodedValuesLayout::testing(&[$type_enum]));
 
 			pub(crate) struct $generator {}
 
@@ -60,7 +60,7 @@ macro_rules! impl_generator {
 								// When default is provided, initialize to that value
 								// (ignore incr) This allows resuming a sequence
 								// from a specific point
-								let mut new_row = LAYOUT.allocate_deprecated();
+								let mut new_row = LAYOUT.allocate();
 								LAYOUT.$setter(&mut new_row, 0, value);
 								tx.set(key, new_row)?;
 								value
@@ -75,7 +75,7 @@ macro_rules! impl_generator {
 									return_error!(sequence_exhausted($type_enum));
 								}
 
-								let mut new_row = LAYOUT.allocate_deprecated();
+								let mut new_row = LAYOUT.allocate();
 								LAYOUT.$setter(&mut new_row, 0, last);
 								tx.set(key, new_row)?;
 								last
@@ -94,7 +94,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
 						Some(row) => row.values,
-						None => LAYOUT.allocate_deprecated(),
+						None => LAYOUT.allocate(),
 					};
 					LAYOUT.$setter(&mut row, 0, value);
 					tx.set(key, row)?;
@@ -139,7 +139,7 @@ macro_rules! impl_generator {
 				fn test_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
-					let mut row = LAYOUT.allocate_deprecated();
+					let mut row = LAYOUT.allocate();
 					LAYOUT.$setter(&mut row, 0, $max);
 
 					let key = EncodedKey::new("sequence");
@@ -244,7 +244,7 @@ macro_rules! impl_generator {
 				fn test_batched_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
-					let mut row = LAYOUT.allocate_deprecated();
+					let mut row = LAYOUT.allocate();
 					// Choose batch size and initial value that will cause saturation to MAX
 					let batch_size_val =
 						5000u32.min((($max as u128).saturating_sub($start as u128) / 2) as u32);

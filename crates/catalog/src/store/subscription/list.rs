@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 
-use crate::{CatalogStore, store::subscription::layout::subscription};
+use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
 	pub fn list_subscriptions_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<SubscriptionDef>> {
@@ -26,7 +26,7 @@ impl CatalogStore {
 						let subscription_id = sub_key.subscription;
 
 						let acknowledged_version =
-							CommitVersion(subscription::LAYOUT.get_u64(
+							CommitVersion(subscription::SCHEMA.get_u64(
 								&entry.values,
 								subscription::ACKNOWLEDGED_VERSION,
 							));

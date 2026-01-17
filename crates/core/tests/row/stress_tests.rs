@@ -23,7 +23,7 @@ use reifydb_type::value::{
 #[test]
 fn test_mixed_type_stress() {
 	// Comprehensive test with all types interacting
-	let layout = EncodedValuesLayout::new(&[
+	let layout = EncodedValuesLayout::testing(&[
 		Type::Boolean,
 		Type::Int1,
 		Type::Int2,
@@ -51,7 +51,7 @@ fn test_mixed_type_stress() {
 		Type::Decimal,
 	]);
 
-	let mut row = layout.allocate_for_testing();
+	let mut row = layout.allocate();
 
 	// Set all fields
 	layout.set_bool(&mut row, 0, true);

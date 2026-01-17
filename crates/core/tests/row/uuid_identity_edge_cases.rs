@@ -15,7 +15,7 @@ use tokio::time::sleep;
 
 #[test]
 fn test_uuid_uniqueness() {
-	let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let layout = EncodedValuesLayout::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -23,7 +23,7 @@ fn test_uuid_uniqueness() {
 	let mut identity_set = HashSet::new();
 
 	for _ in 0..1000 {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate();
@@ -47,11 +47,11 @@ fn test_uuid_uniqueness() {
 
 #[tokio::test]
 async fn test_uuid7_timestamp_ordering() {
-	let layout = EncodedValuesLayout::new(&[Type::Uuid7]);
+	let layout = EncodedValuesLayout::testing(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		let uuid = Uuid7::generate();
 		layout.set_uuid7(&mut row, 0, uuid);
 		uuids.push(layout.get_uuid7(&row, 0));

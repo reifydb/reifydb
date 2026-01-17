@@ -12,7 +12,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
-	store::table::layout::{table, table_namespace},
+	store::table::schema::{table, table_namespace},
 };
 
 impl CatalogStore {
@@ -23,9 +23,9 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
-		let namespace = NamespaceId(table::LAYOUT.get_u64(&row, table::NAMESPACE));
-		let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
+		let id = TableId(table::SCHEMA.get_u64(&row, table::ID));
+		let namespace = NamespaceId(table::SCHEMA.get_u64(&row, table::NAMESPACE));
+		let name = table::SCHEMA.get_utf8(&row, table::NAME).to_string();
 
 		Ok(Some(TableDef {
 			id,
@@ -49,9 +49,9 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
-			let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
+			let table_name = table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME);
 			if name == table_name {
-				found_table = Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)));
+				found_table = Some(TableId(table_namespace::SCHEMA.get_u64(row, table_namespace::ID)));
 				break;
 			}
 		}

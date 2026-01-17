@@ -5,7 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	schema::Schema,
+};
 
 impl EncodedValuesLayout {
 	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
@@ -40,47 +43,82 @@ impl EncodedValuesLayout {
 	}
 }
 
+impl Schema {
+	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::Date);
+		row.set_valid(index, true);
+		unsafe {
+			ptr::write_unaligned(
+				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i32,
+				value.to_days_since_epoch(),
+			)
+		}
+	}
+
+	pub fn get_date(&self, row: &EncodedValues, index: usize) -> Date {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::Date);
+		unsafe {
+			Date::from_days_since_epoch(
+				(row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned(),
+			)
+			.unwrap()
+		}
+	}
+
+	pub fn try_get_date(&self, row: &EncodedValues, index: usize) -> Option<Date> {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Date {
+			Some(self.get_date(row, index))
+		} else {
+			None
+		}
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
 	use reifydb_type::value::{date::Date, r#type::Type};
 
-	use crate::encoded::layout::EncodedValuesLayout;
+	use crate::schema::Schema;
 
 	#[test]
 	fn test_set_get_date() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date]);
+		let mut row = schema.allocate();
 
 		let value = Date::new(2021, 1, 1).unwrap();
-		layout.set_date(&mut row, 0, value.clone());
-		assert_eq!(layout.get_date(&row, 0), value);
+		schema.set_date(&mut row, 0, value.clone());
+		assert_eq!(schema.get_date(&row, 0), value);
 	}
 
 	#[test]
 	fn test_try_get_date() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date]);
+		let mut row = schema.allocate();
 
-		assert_eq!(layout.try_get_date(&row, 0), None);
+		assert_eq!(schema.try_get_date(&row, 0), None);
 
 		let test_date = Date::from_ymd(2025, 1, 15).unwrap();
-		layout.set_date(&mut row, 0, test_date.clone());
-		assert_eq!(layout.try_get_date(&row, 0), Some(test_date));
+		schema.set_date(&mut row, 0, test_date.clone());
+		assert_eq!(schema.try_get_date(&row, 0), Some(test_date));
 	}
 
 	#[test]
 	fn test_epoch() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date]);
+		let mut row = schema.allocate();
 
 		let epoch = Date::default(); // Unix epoch
-		layout.set_date(&mut row, 0, epoch.clone());
-		assert_eq!(layout.get_date(&row, 0), epoch);
+		schema.set_date(&mut row, 0, epoch.clone());
+		assert_eq!(schema.get_date(&row, 0), epoch);
 	}
 
 	#[test]
 	fn test_various_dates() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
+		let schema = Schema::testing(&[Type::Date]);
 
 		let test_dates = [
 			Date::new(1970, 1, 1).unwrap(),   // Unix epoch
@@ -90,15 +128,15 @@ pub mod tests {
 		];
 
 		for date in test_dates {
-			let mut row = layout.allocate_for_testing();
-			layout.set_date(&mut row, 0, date.clone());
-			assert_eq!(layout.get_date(&row, 0), date);
+			let mut row = schema.allocate();
+			schema.set_date(&mut row, 0, date.clone());
+			assert_eq!(schema.get_date(&row, 0), date);
 		}
 	}
 
 	#[test]
 	fn test_boundaries() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
+		let schema = Schema::testing(&[Type::Date]);
 
 		// Test various boundary dates that should work
 		let boundary_dates = [
@@ -109,55 +147,55 @@ pub mod tests {
 		];
 
 		for date in boundary_dates {
-			let mut row = layout.allocate_for_testing();
-			layout.set_date(&mut row, 0, date.clone());
-			assert_eq!(layout.get_date(&row, 0), date);
+			let mut row = schema.allocate();
+			schema.set_date(&mut row, 0, date.clone());
+			assert_eq!(schema.get_date(&row, 0), date);
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedValuesLayout::new(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
+		let mut row = schema.allocate();
 
 		let date1 = Date::new(2025, 6, 15).unwrap();
 		let date2 = Date::new(1995, 3, 22).unwrap();
 
-		layout.set_date(&mut row, 0, date1.clone());
-		layout.set_bool(&mut row, 1, true);
-		layout.set_date(&mut row, 2, date2.clone());
-		layout.set_i32(&mut row, 3, 42);
+		schema.set_date(&mut row, 0, date1.clone());
+		schema.set_bool(&mut row, 1, true);
+		schema.set_date(&mut row, 2, date2.clone());
+		schema.set_i32(&mut row, 3, 42);
 
-		assert_eq!(layout.get_date(&row, 0), date1);
-		assert_eq!(layout.get_bool(&row, 1), true);
-		assert_eq!(layout.get_date(&row, 2), date2);
-		assert_eq!(layout.get_i32(&row, 3), 42);
+		assert_eq!(schema.get_date(&row, 0), date1);
+		assert_eq!(schema.get_bool(&row, 1), true);
+		assert_eq!(schema.get_date(&row, 2), date2);
+		assert_eq!(schema.get_i32(&row, 3), 42);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedValuesLayout::new(&[Type::Date, Type::Date]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date, Type::Date]);
+		let mut row = schema.allocate();
 
 		let date = Date::new(2025, 7, 4).unwrap();
-		layout.set_date(&mut row, 0, date.clone());
+		schema.set_date(&mut row, 0, date.clone());
 
-		assert_eq!(layout.try_get_date(&row, 0), Some(date));
-		assert_eq!(layout.try_get_date(&row, 1), None);
+		assert_eq!(schema.try_get_date(&row, 0), Some(date));
+		assert_eq!(schema.try_get_date(&row, 1), None);
 
-		layout.set_undefined(&mut row, 0);
-		assert_eq!(layout.try_get_date(&row, 0), None);
+		schema.set_undefined(&mut row, 0);
+		assert_eq!(schema.try_get_date(&row, 0), None);
 	}
 
 	#[test]
 	fn test_clone_consistency() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Date]);
+		let mut row = schema.allocate();
 
 		let original_date = Date::new(2023, 9, 15).unwrap();
-		layout.set_date(&mut row, 0, original_date.clone());
+		schema.set_date(&mut row, 0, original_date.clone());
 
-		let retrieved_date = layout.get_date(&row, 0);
+		let retrieved_date = schema.get_date(&row, 0);
 		assert_eq!(retrieved_date, original_date);
 
 		// Verify that the retrieved date is functionally equivalent
@@ -166,7 +204,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_years() {
-		let layout = EncodedValuesLayout::new(&[Type::Date]);
+		let schema = Schema::testing(&[Type::Date]);
 
 		// Test leap years and century boundaries
 		let special_dates = [
@@ -179,19 +217,19 @@ pub mod tests {
 		];
 
 		for date in special_dates {
-			let mut row = layout.allocate_for_testing();
-			layout.set_date(&mut row, 0, date.clone());
-			assert_eq!(layout.get_date(&row, 0), date);
+			let mut row = schema.allocate();
+			schema.set_date(&mut row, 0, date.clone());
+			assert_eq!(schema.get_date(&row, 0), date);
 		}
 	}
 
 	#[test]
 	fn test_try_get_date_wrong_type() {
-		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Boolean]);
+		let mut row = schema.allocate();
 
-		layout.set_bool(&mut row, 0, true);
+		schema.set_bool(&mut row, 0, true);
 
-		assert_eq!(layout.try_get_date(&row, 0), None);
+		assert_eq!(schema.try_get_date(&row, 0), None);
 	}
 }

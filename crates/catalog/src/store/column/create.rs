@@ -42,10 +42,10 @@ use reifydb_core::interface::catalog::column::{ColumnDef, ColumnIndex};
 use crate::{
 	CatalogStore,
 	store::{
-		column::layout::{
+		column::schema::{
 			column,
-			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, SOURCE, VALUE},
-			source_column,
+			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, PRIMITIVE, VALUE},
+			primitive_column,
 		},
 		sequence::system::SystemSequence,
 	},
@@ -105,29 +105,29 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_id(txn)?;
 
-		let mut row = column::LAYOUT.allocate_deprecated();
-		column::LAYOUT.set_u64(&mut row, ID, id);
-		column::LAYOUT.set_u64(&mut row, SOURCE, source);
-		column::LAYOUT.set_utf8(&mut row, NAME, &column_to_create.column);
-		column::LAYOUT.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
-		column::LAYOUT.set_u8(&mut row, INDEX, column_to_create.index);
-		column::LAYOUT.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
+		let mut row = column::SCHEMA.allocate();
+		column::SCHEMA.set_u64(&mut row, ID, id);
+		column::SCHEMA.set_u64(&mut row, PRIMITIVE, source);
+		column::SCHEMA.set_utf8(&mut row, NAME, &column_to_create.column);
+		column::SCHEMA.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
+		column::SCHEMA.set_u8(&mut row, INDEX, column_to_create.index);
+		column::SCHEMA.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = Blob::from(constraint_bytes);
-		column::LAYOUT.set_blob(&mut row, CONSTRAINT, &blob);
+		column::SCHEMA.set_blob(&mut row, CONSTRAINT, &blob);
 
 		// Store dictionary_id (0 means no dictionary)
 		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
-		column::LAYOUT.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+		column::SCHEMA.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
 		txn.set(&ColumnsKey::encoded(id), row)?;
 
-		let mut row = source_column::LAYOUT.allocate_deprecated();
-		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
-		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
-		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);
+		let mut row = primitive_column::SCHEMA.allocate();
+		primitive_column::SCHEMA.set_u64(&mut row, primitive_column::ID, id);
+		primitive_column::SCHEMA.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
+		primitive_column::SCHEMA.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
 		txn.set(&ColumnKey::encoded(source, id), row)?;
 
 		for policy in column_to_create.policies {

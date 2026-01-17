@@ -15,7 +15,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
-	store::ringbuffer::layout::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+	store::ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
 };
 
 impl CatalogStore {
@@ -29,10 +29,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = RingBufferId(ringbuffer::LAYOUT.get_u64(&row, ringbuffer::ID));
-		let namespace = NamespaceId(ringbuffer::LAYOUT.get_u64(&row, ringbuffer::NAMESPACE));
-		let name = ringbuffer::LAYOUT.get_utf8(&row, ringbuffer::NAME).to_string();
-		let capacity = ringbuffer::LAYOUT.get_u64(&row, ringbuffer::CAPACITY);
+		let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ringbuffer::ID));
+		let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, ringbuffer::NAMESPACE));
+		let name = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::NAME).to_string();
+		let capacity = ringbuffer::SCHEMA.get_u64(&row, ringbuffer::CAPACITY);
 
 		Ok(Some(RingBufferDef {
 			id,
@@ -54,11 +54,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let buffer_id = RingBufferId(ringbuffer_metadata::LAYOUT.get_u64(&row, ringbuffer_metadata::ID));
-		let capacity = ringbuffer_metadata::LAYOUT.get_u64(&row, ringbuffer_metadata::CAPACITY);
-		let head = ringbuffer_metadata::LAYOUT.get_u64(&row, ringbuffer_metadata::HEAD);
-		let tail = ringbuffer_metadata::LAYOUT.get_u64(&row, ringbuffer_metadata::TAIL);
-		let current_size = ringbuffer_metadata::LAYOUT.get_u64(&row, ringbuffer_metadata::COUNT);
+		let buffer_id = RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::ID));
+		let capacity = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::CAPACITY);
+		let head = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::HEAD);
+		let tail = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::TAIL);
+		let current_size = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::COUNT);
 
 		Ok(Some(RingBufferMetadata {
 			id: buffer_id,
@@ -82,10 +82,10 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
-			let ringbuffer_name = ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME);
+			let ringbuffer_name = ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME);
 			if name == ringbuffer_name {
 				found_ringbuffer = Some(RingBufferId(
-					ringbuffer_namespace::LAYOUT.get_u64(row, ringbuffer_namespace::ID),
+					ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID),
 				));
 				break;
 			}

@@ -6,7 +6,10 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	schema::Schema,
+};
 
 impl EncodedValuesLayout {
 	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
@@ -45,6 +48,44 @@ impl EncodedValuesLayout {
 	}
 }
 
+impl Schema {
+	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::IdentityId);
+		row.set_valid(index, true);
+		unsafe {
+			// IdentityId wraps Uuid7 which is 16 bytes
+			ptr::write_unaligned(
+				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut [u8; 16],
+				*value.as_bytes(),
+			);
+		}
+	}
+
+	pub fn get_identity_id(&self, row: &EncodedValues, index: usize) -> IdentityId {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::IdentityId);
+		unsafe {
+			// IdentityId wraps Uuid7 which is 16 bytes
+			let bytes: [u8; 16] =
+				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
+			let uuid = Uuid::from_bytes(bytes);
+			let uuid7 = Uuid7::from(uuid);
+			IdentityId::from(uuid7)
+		}
+	}
+
+	pub fn try_get_identity_id(&self, row: &EncodedValues, index: usize) -> Option<IdentityId> {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::IdentityId {
+			Some(self.get_identity_id(row, index))
+		} else {
+			None
+		}
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
 	use std::time::Duration;
@@ -52,41 +93,41 @@ pub mod tests {
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 	use tokio::time::sleep;
 
-	use crate::encoded::layout::EncodedValuesLayout;
+	use crate::schema::Schema;
 
 	#[test]
 	fn test_set_get_identity_id() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, id.clone());
-		assert_eq!(layout.get_identity_id(&row, 0), id);
+		schema.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(schema.get_identity_id(&row, 0), id);
 	}
 
 	#[test]
 	fn test_try_get_identity_id() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
-		assert_eq!(layout.try_get_identity_id(&row, 0), None);
+		assert_eq!(schema.try_get_identity_id(&row, 0), None);
 
 		let id = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, id.clone());
-		assert_eq!(layout.try_get_identity_id(&row, 0), Some(id));
+		schema.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(schema.try_get_identity_id(&row, 0), Some(id));
 	}
 
 	#[test]
 	fn test_multiple_generations() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
+		let schema = Schema::testing(&[Type::IdentityId]);
 
 		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
 		for _ in 0..10 {
-			let mut row = layout.allocate_for_testing();
+			let mut row = schema.allocate();
 			let id = IdentityId::generate();
-			layout.set_identity_id(&mut row, 0, id.clone());
-			let retrieved = layout.get_identity_id(&row, 0);
+			schema.set_identity_id(&mut row, 0, id.clone());
+			let retrieved = schema.get_identity_id(&row, 0);
 			assert_eq!(retrieved, id);
 			ids.push(id);
 		}
@@ -101,12 +142,12 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7_properties() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = layout.get_identity_id(&row, 0);
+		schema.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = schema.get_identity_id(&row, 0);
 
 		// Verify it's backed by a version 7 UUID
 		assert_eq!(retrieved.get_version_num(), 7);
@@ -115,16 +156,16 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_timestamp_ordering() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
+		let schema = Schema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
 		// timestamp
 		let mut ids = Vec::new();
 		for _ in 0..5 {
-			let mut row = layout.allocate_for_testing();
+			let mut row = schema.allocate();
 			let id = IdentityId::generate();
-			layout.set_identity_id(&mut row, 0, id.clone());
-			let retrieved = layout.get_identity_id(&row, 0);
+			schema.set_identity_id(&mut row, 0, id.clone());
+			let retrieved = schema.get_identity_id(&row, 0);
 			assert_eq!(retrieved, id);
 			ids.push(id);
 
@@ -140,48 +181,48 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
+		let mut row = schema.allocate();
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 
-		layout.set_identity_id(&mut row, 0, id1.clone());
-		layout.set_bool(&mut row, 1, true);
-		layout.set_identity_id(&mut row, 2, id2.clone());
-		layout.set_i32(&mut row, 3, 42);
+		schema.set_identity_id(&mut row, 0, id1.clone());
+		schema.set_bool(&mut row, 1, true);
+		schema.set_identity_id(&mut row, 2, id2.clone());
+		schema.set_i32(&mut row, 3, 42);
 
-		assert_eq!(layout.get_identity_id(&row, 0), id1);
-		assert_eq!(layout.get_bool(&row, 1), true);
-		assert_eq!(layout.get_identity_id(&row, 2), id2);
-		assert_eq!(layout.get_i32(&row, 3), 42);
+		assert_eq!(schema.get_identity_id(&row, 0), id1);
+		assert_eq!(schema.get_bool(&row, 1), true);
+		assert_eq!(schema.get_identity_id(&row, 2), id2);
+		assert_eq!(schema.get_i32(&row, 3), 42);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId, Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, id.clone());
+		schema.set_identity_id(&mut row, 0, id.clone());
 
-		assert_eq!(layout.try_get_identity_id(&row, 0), Some(id));
-		assert_eq!(layout.try_get_identity_id(&row, 1), None);
+		assert_eq!(schema.try_get_identity_id(&row, 0), Some(id));
+		assert_eq!(schema.try_get_identity_id(&row, 1), None);
 
-		layout.set_undefined(&mut row, 0);
-		assert_eq!(layout.try_get_identity_id(&row, 0), None);
+		schema.set_undefined(&mut row, 0);
+		assert_eq!(schema.try_get_identity_id(&row, 0), None);
 	}
 
 	#[test]
 	fn test_persistence() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
 		let id_string = id.to_string();
 
-		layout.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = layout.get_identity_id(&row, 0);
+		schema.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = schema.get_identity_id(&row, 0);
 
 		assert_eq!(retrieved, id);
 		assert_eq!(retrieved.to_string(), id_string);
@@ -190,13 +231,13 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let original_id = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, original_id.clone());
+		schema.set_identity_id(&mut row, 0, original_id.clone());
 
-		let retrieved_id = layout.get_identity_id(&row, 0);
+		let retrieved_id = schema.get_identity_id(&row, 0);
 		assert_eq!(retrieved_id, original_id);
 
 		// Verify that the underlying UUID7 byte representation is
@@ -206,20 +247,20 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
 		let id3 = IdentityId::generate();
 
-		layout.set_identity_id(&mut row, 0, id1.clone());
-		layout.set_identity_id(&mut row, 1, id2.clone());
-		layout.set_identity_id(&mut row, 2, id3.clone());
+		schema.set_identity_id(&mut row, 0, id1.clone());
+		schema.set_identity_id(&mut row, 1, id2.clone());
+		schema.set_identity_id(&mut row, 2, id3.clone());
 
-		assert_eq!(layout.get_identity_id(&row, 0), id1);
-		assert_eq!(layout.get_identity_id(&row, 1), id2);
-		assert_eq!(layout.get_identity_id(&row, 2), id3);
+		assert_eq!(schema.get_identity_id(&row, 0), id1);
+		assert_eq!(schema.get_identity_id(&row, 1), id2);
+		assert_eq!(schema.get_identity_id(&row, 2), id3);
 
 		// Ensure all Identity IDs are different
 		assert_ne!(id1, id2);
@@ -229,14 +270,14 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
 		let original_string = id.to_string();
 
-		layout.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = layout.get_identity_id(&row, 0);
+		schema.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = schema.get_identity_id(&row, 0);
 		let retrieved_string = retrieved.to_string();
 
 		assert_eq!(original_string, retrieved_string);
@@ -249,14 +290,14 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::IdentityId]);
+		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
 		let original_bytes = *id.as_bytes();
 
-		layout.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = layout.get_identity_id(&row, 0);
+		schema.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = schema.get_identity_id(&row, 0);
 		let retrieved_bytes = *retrieved.as_bytes();
 
 		assert_eq!(original_bytes, retrieved_bytes);
@@ -268,21 +309,21 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_time_based_properties() {
-		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
+		let schema = Schema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate();
 		sleep(Duration::from_millis(2)).await;
 		let id2 = IdentityId::generate();
 
-		let mut row1 = layout.allocate_for_testing();
-		let mut row2 = layout.allocate_for_testing();
+		let mut row1 = schema.allocate();
+		let mut row2 = schema.allocate();
 
-		layout.set_identity_id(&mut row1, 0, id1.clone());
-		layout.set_identity_id(&mut row2, 0, id2.clone());
+		schema.set_identity_id(&mut row1, 0, id1.clone());
+		schema.set_identity_id(&mut row2, 0, id2.clone());
 
-		let retrieved1 = layout.get_identity_id(&row1, 0);
-		let retrieved2 = layout.get_identity_id(&row2, 0);
+		let retrieved1 = schema.get_identity_id(&row1, 0);
+		let retrieved2 = schema.get_identity_id(&row2, 0);
 
 		// The second Identity ID should be "greater" due to timestamp
 		// ordering
@@ -291,22 +332,22 @@ pub mod tests {
 
 	#[test]
 	fn test_as_primary_key() {
-		let layout = EncodedValuesLayout::new(&[
+		let schema = Schema::testing(&[
 			Type::IdentityId, // Primary key
 			Type::Utf8,       // Name field
 			Type::Int4,       // Age field
 		]);
-		let mut row = layout.allocate_for_testing();
+		let mut row = schema.allocate();
 
 		// Simulate a database record with Identity ID as primary key
 		let primary_key = IdentityId::generate();
-		layout.set_identity_id(&mut row, 0, primary_key.clone());
-		layout.set_utf8(&mut row, 1, "John Doe");
-		layout.set_i32(&mut row, 2, 30);
+		schema.set_identity_id(&mut row, 0, primary_key.clone());
+		schema.set_utf8(&mut row, 1, "John Doe");
+		schema.set_i32(&mut row, 2, 30);
 
-		assert_eq!(layout.get_identity_id(&row, 0), primary_key);
-		assert_eq!(layout.get_utf8(&row, 1), "John Doe");
-		assert_eq!(layout.get_i32(&row, 2), 30);
+		assert_eq!(schema.get_identity_id(&row, 0), primary_key);
+		assert_eq!(schema.get_utf8(&row, 1), "John Doe");
+		assert_eq!(schema.get_i32(&row, 2), 30);
 
 		// Verify that the primary key is suitable for ordering/indexing
 		assert_eq!(primary_key.get_version_num(), 7);
@@ -314,11 +355,11 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_identity_id_wrong_type() {
-		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Boolean]);
+		let mut row = schema.allocate();
 
-		layout.set_bool(&mut row, 0, true);
+		schema.set_bool(&mut row, 0, true);
 
-		assert_eq!(layout.try_get_identity_id(&row, 0), None);
+		assert_eq!(schema.try_get_identity_id(&row, 0), None);
 	}
 }

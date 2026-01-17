@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
+use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
 	pub fn list_ringbuffers_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<RingBufferDef>> {
@@ -29,16 +29,16 @@ impl CatalogStore {
 						let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 						let namespace_id = NamespaceId(
-							ringbuffer::LAYOUT
+							ringbuffer::SCHEMA
 								.get_u64(&entry.values, ringbuffer::NAMESPACE),
 						);
 
-						let name = ringbuffer::LAYOUT
+						let name = ringbuffer::SCHEMA
 							.get_utf8(&entry.values, ringbuffer::NAME)
 							.to_string();
 
 						let capacity =
-							ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
+							ringbuffer::SCHEMA.get_u64(&entry.values, ringbuffer::CAPACITY);
 
 						ringbuffer_data.push((ringbuffer_id, namespace_id, name, capacity));
 					}

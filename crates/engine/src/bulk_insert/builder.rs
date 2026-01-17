@@ -175,7 +175,7 @@ fn execute_table_insert<V: ValidationMode>(
 		};
 		table_types.push(ty);
 	}
-	let layout = EncodedValuesLayout::new(&table_types);
+	let layout = EncodedValuesLayout::testing(&table_types);
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -218,7 +218,7 @@ fn execute_table_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate_deprecated();
+		let mut row = layout.allocate();
 		for (idx, value) in values.iter().enumerate() {
 			encode_value(&layout, &mut row, idx, value);
 		}
@@ -260,8 +260,8 @@ fn execute_table_insert<V: ValidationMode>(
 			}
 
 			// Store the index entry
-			let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-			let mut row_number_encoded = row_number_layout.allocate_deprecated();
+			let row_number_layout = EncodedValuesLayout::testing(&[Type::Uint8]);
+			let mut row_number_encoded = row_number_layout.allocate();
 			row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
@@ -304,7 +304,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		};
 		rb_types.push(ty);
 	}
-	let layout = EncodedValuesLayout::new(&rb_types);
+	let layout = EncodedValuesLayout::testing(&rb_types);
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == std::any::TypeId::of::<Validated>();
@@ -341,7 +341,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate_deprecated();
+		let mut row = layout.allocate();
 		for (idx, value) in values.iter().enumerate() {
 			encode_value(&layout, &mut row, idx, value);
 		}

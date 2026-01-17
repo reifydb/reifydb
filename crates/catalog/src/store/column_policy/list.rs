@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::column_policy::layout::column_policy};
+use crate::{CatalogStore, store::column_policy::schema::column_policy};
 
 impl CatalogStore {
 	pub fn list_column_policies(
@@ -24,12 +24,12 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.values;
-			let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
-			let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
+			let id = ColumnPolicyId(column_policy::SCHEMA.get_u64(&row, column_policy::ID));
+			let column = ColumnId(column_policy::SCHEMA.get_u64(&row, column_policy::COLUMN));
 
 			let policy = ColumnPolicyKind::from_u8(
-				column_policy::LAYOUT.get_u8(&row, column_policy::POLICY),
-				column_policy::LAYOUT.get_u8(&row, column_policy::VALUE),
+				column_policy::SCHEMA.get_u8(&row, column_policy::POLICY),
+				column_policy::SCHEMA.get_u8(&row, column_policy::VALUE),
 			);
 
 			result.push(ColumnPolicy {

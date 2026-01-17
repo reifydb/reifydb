@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_type::value::constraint::TypeConstraint;
 
 use crate::encoded::schema::Schema;
 
@@ -65,7 +65,7 @@ impl SchemaResolver {
 				source.fields().iter().enumerate().find(|(_, f)| f.name == target_field.name)
 			{
 				// Field exists in both - check type compatibility
-				if !Self::types_compatible(&source_field.field_type, &target_field.field_type) {
+				if !Self::types_compatible(&source_field.constraint, &target_field.constraint) {
 					return None; // Incompatible types
 				}
 				mappings.push(FieldMapping::Direct {
@@ -84,9 +84,13 @@ impl SchemaResolver {
 		})
 	}
 
-	/// Check if source type can be read as target type.
-	fn types_compatible(source: &Type, target: &Type) -> bool {
-		if source == target {
+	/// Check if source constraint can be read as target constraint.
+	/// For now, just compares base types - constraint widening could be added later.
+	fn types_compatible(source: &TypeConstraint, target: &TypeConstraint) -> bool {
+		let source_type = source.get_type();
+		let target_type = target.get_type();
+
+		if source_type == target_type {
 			return true;
 		}
 
@@ -125,7 +129,8 @@ mod tests {
 
 	#[test]
 	fn test_resolver_identity() {
-		let fields = vec![SchemaField::new("a", Type::Int4), SchemaField::new("b", Type::Utf8)];
+		let fields =
+			vec![SchemaField::unconstrained("a", Type::Int4), SchemaField::unconstrained("b", Type::Utf8)];
 
 		let schema = Arc::new(Schema::new(fields));
 		let resolver = SchemaResolver::new(schema.clone(), schema.clone()).unwrap();
@@ -136,11 +141,11 @@ mod tests {
 
 	#[test]
 	fn test_resolver_added_field() {
-		let source_fields = vec![SchemaField::new("a", Type::Int4)];
+		let source_fields = vec![SchemaField::unconstrained("a", Type::Int4)];
 
 		let target_fields = vec![
-			SchemaField::new("a", Type::Int4),
-			SchemaField::new("b", Type::Utf8), // new field
+			SchemaField::unconstrained("a", Type::Int4),
+			SchemaField::unconstrained("b", Type::Utf8), // new field
 		];
 
 		let source = Arc::new(Schema::new(source_fields));
@@ -160,8 +165,8 @@ mod tests {
 
 	#[test]
 	fn test_resolver_incompatible_types() {
-		let source_fields = vec![SchemaField::new("a", Type::Int4)];
-		let target_fields = vec![SchemaField::new("a", Type::Utf8)]; // type changed
+		let source_fields = vec![SchemaField::unconstrained("a", Type::Int4)];
+		let target_fields = vec![SchemaField::unconstrained("a", Type::Utf8)]; // type changed
 
 		let source = Arc::new(Schema::new(source_fields));
 		let target = Arc::new(Schema::new(target_fields));

@@ -42,14 +42,14 @@ fn test_unaligned_access_all_types() {
 	for target_type in types_to_test {
 		// Create unaligned layout: Int1 (1 byte) followed by target
 		// type
-		let layout = EncodedValuesLayout::new(&[
+		let layout = EncodedValuesLayout::testing(&[
 			Type::Int1,  // 1 byte - creates odd alignment
 			target_type, // At offset 1 (odd)
 			Type::Int1,  // Another 1 byte
 			target_type, // At another odd offset
 		]);
 
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 
 		// Set values at odd offsets - this should not crash
 		match target_type {
@@ -101,7 +101,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// types For dynamic types, test that memory usage is reasonable across
 	// multiple rows
 
-	let layout = EncodedValuesLayout::new(&[
+	let layout = EncodedValuesLayout::testing(&[
 		Type::Int4,   // Static
 		Type::Float8, // Static
 		Type::Utf8,   // Dynamic
@@ -109,7 +109,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 		Type::Int,    // Dynamic/Static depending on value
 	]);
 
-	let mut row = layout.allocate_for_testing();
+	let mut row = layout.allocate();
 	let initial_size = row.len();
 
 	// Repeatedly overwrite static fields - this should work fine
@@ -133,7 +133,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// Test that many rows with same dynamic content are memory efficient
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
-			let mut r = layout.allocate_for_testing();
+			let mut r = layout.allocate();
 			layout.set_i32(&mut r, 0, 42);
 			layout.set_f64(&mut r, 1, 3.14);
 			layout.set_utf8(&mut r, 2, "constant");
@@ -152,8 +152,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 #[test]
 fn test_minimal_row_handling() {
 	// Test edge case of encoded with minimal fields
-	let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-	let row = layout.allocate_for_testing();
+	let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
+	let row = layout.allocate();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
 
@@ -170,8 +170,8 @@ fn test_maximum_field_count() {
 		})
 		.collect();
 
-	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate_for_testing();
+	let layout = EncodedValuesLayout::testing(&types);
+	let mut row = layout.allocate();
 
 	// Set and verify some fields
 	layout.set_bool(&mut row, 0, true);

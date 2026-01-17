@@ -13,7 +13,7 @@ use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 use crate::{
 	CatalogStore,
-	store::subscription::layout::{subscription, subscription_column},
+	store::subscription::schema::{subscription, subscription_column},
 };
 
 #[derive(Debug, Clone)]
@@ -41,10 +41,10 @@ impl CatalogStore {
 	}
 
 	fn store_subscription(txn: &mut StandardCommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
-		let mut row = subscription::LAYOUT.allocate_deprecated();
-		subscription::LAYOUT.set_uuid7(&mut row, subscription::ID, Uuid7::from(subscription.0));
-		subscription::LAYOUT.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
-		subscription::LAYOUT.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
+		let mut row = subscription::SCHEMA.allocate();
+		subscription::SCHEMA.set_uuid7(&mut row, subscription::ID, Uuid7::from(subscription.0));
+		subscription::SCHEMA.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
+		subscription::SCHEMA.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
 
 		txn.set(&SubscriptionKey::encoded(subscription), row)?;
 
@@ -59,14 +59,14 @@ impl CatalogStore {
 		for (idx, column_to_create) in to_create.columns.iter().enumerate() {
 			let column_id = SubscriptionColumnId(idx as u64);
 
-			let mut row = subscription_column::LAYOUT.allocate_deprecated();
-			subscription_column::LAYOUT.set_u64(&mut row, subscription_column::ID, column_id);
-			subscription_column::LAYOUT.set_utf8(
+			let mut row = subscription_column::SCHEMA.allocate();
+			subscription_column::SCHEMA.set_u64(&mut row, subscription_column::ID, column_id);
+			subscription_column::SCHEMA.set_utf8(
 				&mut row,
 				subscription_column::NAME,
 				&column_to_create.name,
 			);
-			subscription_column::LAYOUT.set_u8(
+			subscription_column::SCHEMA.set_u8(
 				&mut row,
 				subscription_column::TYPE,
 				column_to_create.ty as u8,
@@ -88,9 +88,9 @@ impl CatalogStore {
 			let multi = result?;
 			let row = &multi.values;
 			let id =
-				SubscriptionColumnId(subscription_column::LAYOUT.get_u64(row, subscription_column::ID));
-			let name = subscription_column::LAYOUT.get_utf8(row, subscription_column::NAME).to_string();
-			let ty_u8 = subscription_column::LAYOUT.get_u8(row, subscription_column::TYPE);
+				SubscriptionColumnId(subscription_column::SCHEMA.get_u64(row, subscription_column::ID));
+			let name = subscription_column::SCHEMA.get_utf8(row, subscription_column::NAME).to_string();
+			let ty_u8 = subscription_column::SCHEMA.get_u8(row, subscription_column::TYPE);
 			let ty = Type::from_u8(ty_u8);
 
 			columns.push(SubscriptionColumnDef {

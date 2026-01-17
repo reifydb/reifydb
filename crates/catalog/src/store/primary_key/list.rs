@@ -12,7 +12,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
-	store::primary_key::layout::{primary_key, primary_key::deserialize_column_ids},
+	store::primary_key::schema::{primary_key, primary_key::deserialize_column_ids},
 };
 
 pub struct PrimaryKeyInfo {
@@ -50,11 +50,11 @@ impl CatalogStore {
 				if let Key::PrimaryKey(pk_key) = key {
 					// Get the source ID from the primary
 					// key record
-					let source_id = primary_key::LAYOUT.get_u64(&entry.values, primary_key::SOURCE);
+					let source_id = primary_key::SCHEMA.get_u64(&entry.values, primary_key::SOURCE);
 
 					// Deserialize column IDs
 					let column_ids_blob =
-						primary_key::LAYOUT.get_blob(&entry.values, primary_key::COLUMN_IDS);
+						primary_key::SCHEMA.get_blob(&entry.values, primary_key::COLUMN_IDS);
 					let column_ids = deserialize_column_ids(&column_ids_blob);
 
 					// Fetch full ColumnDef for each column
@@ -114,7 +114,7 @@ impl CatalogStore {
 					// Deserialize column IDs from the
 					// primary key record
 					let column_ids_blob =
-						primary_key::LAYOUT.get_blob(&entry.values, primary_key::COLUMN_IDS);
+						primary_key::SCHEMA.get_blob(&entry.values, primary_key::COLUMN_IDS);
 					let column_ids = deserialize_column_ids(&column_ids_blob);
 
 					// Add each column with its position

@@ -3,18 +3,21 @@
 
 pub(crate) mod primary_key {
 	use once_cell::sync::Lazy;
-	use reifydb_core::{encoded::layout::EncodedValuesLayout, interface::catalog::id::ColumnId};
+	use reifydb_core::{
+		encoded::schema::{Schema, SchemaField},
+		interface::catalog::id::ColumnId,
+	};
 	use reifydb_type::value::{blob::Blob, r#type::Type};
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const SOURCE: usize = 1;
 	pub(crate) const COLUMN_IDS: usize = 2;
 
-	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
-		EncodedValuesLayout::new(&[
-			Type::Uint8, // id - Primary key ID
-			Type::Uint8, // source
-			Type::Blob,  // column_ids
+	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
+		Schema::new(vec![
+			SchemaField::unconstrained("id", Type::Uint8),
+			SchemaField::unconstrained("source", Type::Uint8),
+			SchemaField::unconstrained("column_ids", Type::Blob),
 		])
 	});
 

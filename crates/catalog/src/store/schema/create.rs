@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 
-use super::layout::{schema_field, schema_header};
+use super::schema::{schema_field, schema_header};
 
 /// Persist a schema to storage.
 ///
@@ -20,18 +20,23 @@ pub fn create_schema(cmd: &mut StandardCommandTransaction, schema: &Schema) -> c
 	let fingerprint = schema.fingerprint();
 
 	// Write schema header
-	let mut header_row = schema_header::LAYOUT.allocate_deprecated();
-	schema_header::LAYOUT.set_u16(&mut header_row, schema_header::FIELD_COUNT, schema.field_count() as u16);
+	let mut header_row = schema_header::SCHEMA.allocate();
+	schema_header::SCHEMA.set_u16(&mut header_row, schema_header::FIELD_COUNT, schema.field_count() as u16);
 	cmd.set(&SchemaKey::encoded(fingerprint), header_row)?;
 
 	// Write each field
 	for (idx, field) in schema.fields().iter().enumerate() {
-		let mut field_row = schema_field::LAYOUT.allocate_deprecated();
-		schema_field::LAYOUT.set_utf8(&mut field_row, schema_field::NAME, &field.name);
-		schema_field::LAYOUT.set_u8(&mut field_row, schema_field::FIELD_TYPE, field.field_type.to_u8());
-		schema_field::LAYOUT.set_u32(&mut field_row, schema_field::OFFSET, field.offset);
-		schema_field::LAYOUT.set_u32(&mut field_row, schema_field::SIZE, field.size);
-		schema_field::LAYOUT.set_u8(&mut field_row, schema_field::ALIGN, field.align);
+		let ffi = field.constraint.to_ffi();
+
+		let mut field_row = schema_field::SCHEMA.allocate();
+		schema_field::SCHEMA.set_utf8(&mut field_row, schema_field::NAME, &field.name);
+		schema_field::SCHEMA.set_u8(&mut field_row, schema_field::BASE_TYPE, ffi.base_type);
+		schema_field::SCHEMA.set_u8(&mut field_row, schema_field::CONSTRAINT_TYPE, ffi.constraint_type);
+		schema_field::SCHEMA.set_u32(&mut field_row, schema_field::CONSTRAINT_P1, ffi.constraint_param1);
+		schema_field::SCHEMA.set_u32(&mut field_row, schema_field::CONSTRAINT_P2, ffi.constraint_param2);
+		schema_field::SCHEMA.set_u32(&mut field_row, schema_field::OFFSET, field.offset);
+		schema_field::SCHEMA.set_u32(&mut field_row, schema_field::SIZE, field.size);
+		schema_field::SCHEMA.set_u8(&mut field_row, schema_field::ALIGN, field.align);
 
 		cmd.set(&SchemaFieldKey::encoded(fingerprint, idx as u16), field_row)?;
 	}

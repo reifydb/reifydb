@@ -8,7 +8,7 @@ use reifydb_type::{error::diagnostic::catalog::namespace_already_exists, fragmen
 use crate::{
 	CatalogStore,
 	store::{
-		namespace::layout::namespace::{ID, LAYOUT, NAME},
+		namespace::schema::namespace::{ID, NAME, SCHEMA},
 		sequence::system::SystemSequence,
 	},
 };
@@ -33,9 +33,9 @@ impl CatalogStore {
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
 
-		let mut row = LAYOUT.allocate_deprecated();
-		LAYOUT.set_u64(&mut row, ID, namespace_id);
-		LAYOUT.set_utf8(&mut row, NAME, &to_create.name);
+		let mut row = SCHEMA.allocate();
+		SCHEMA.set_u64(&mut row, ID, namespace_id);
+		SCHEMA.set_utf8(&mut row, NAME, &to_create.name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 

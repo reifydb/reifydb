@@ -30,12 +30,12 @@ impl SingleStatefulTestHelper {
 
 	/// Create with a simple counter layout (single int8)
 	pub fn counter() -> Self {
-		Self::new(EncodedValuesLayout::new(&[Type::Int8]))
+		Self::new(EncodedValuesLayout::testing(&[Type::Int8]))
 	}
 
 	/// Set the current state
 	pub fn set_state(&mut self, values: &[Value]) {
-		let mut encoded = self.layout.allocate_deprecated();
+		let mut encoded = self.layout.allocate();
 		self.layout.set_values(&mut encoded, values);
 		self.state = Some(encoded.0.to_vec());
 	}
@@ -82,12 +82,12 @@ impl KeyedStatefulTestHelper {
 
 	/// Create with a simple counter layout (single int8)
 	pub fn counter() -> Self {
-		Self::new(EncodedValuesLayout::new(&[Type::Int8]))
+		Self::new(EncodedValuesLayout::testing(&[Type::Int8]))
 	}
 
 	/// Create with a sum layout (single int8 or int4)
 	pub fn sum() -> Self {
-		Self::new(EncodedValuesLayout::new(&[Type::Int4]))
+		Self::new(EncodedValuesLayout::testing(&[Type::Int4]))
 	}
 
 	/// Set state for a key
@@ -95,7 +95,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate_deprecated();
+		let mut encoded = self.layout.allocate();
 		self.layout.set_values(&mut encoded, values);
 		self.states.insert(key.into_encoded_key(), encoded);
 	}
@@ -182,12 +182,12 @@ impl WindowStatefulTestHelper {
 
 	/// Create with a counter layout for time windows
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
-		Self::new(EncodedValuesLayout::new(&[Type::Int8]), window_size_seconds)
+		Self::new(EncodedValuesLayout::testing(&[Type::Int8]), window_size_seconds)
 	}
 
 	/// Create with a sum layout for count windows
 	pub fn count_window_sum(window_size_count: i64) -> Self {
-		Self::new(EncodedValuesLayout::new(&[Type::Int4]), window_size_count)
+		Self::new(EncodedValuesLayout::testing(&[Type::Int4]), window_size_count)
 	}
 
 	/// Set state for a window and key
@@ -195,7 +195,7 @@ impl WindowStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate_deprecated();
+		let mut encoded = self.layout.allocate();
 		self.layout.set_values(&mut encoded, values);
 
 		self.windows.entry(window_id).or_insert_with(HashMap::new).insert(key.into_encoded_key(), encoded);

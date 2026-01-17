@@ -13,7 +13,7 @@ use reifydb_type::value::r#type::Type;
 
 use crate::{
 	CatalogStore,
-	store::dictionary::layout::{dictionary, dictionary_namespace},
+	store::dictionary::schema::{dictionary, dictionary_namespace},
 };
 
 impl CatalogStore {
@@ -27,11 +27,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = DictionaryId(dictionary::LAYOUT.get_u64(&row, dictionary::ID));
-		let namespace = NamespaceId(dictionary::LAYOUT.get_u64(&row, dictionary::NAMESPACE));
-		let name = dictionary::LAYOUT.get_utf8(&row, dictionary::NAME).to_string();
-		let value_type_ordinal = dictionary::LAYOUT.get_u8(&row, dictionary::VALUE_TYPE);
-		let id_type_ordinal = dictionary::LAYOUT.get_u8(&row, dictionary::ID_TYPE);
+		let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
+		let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
+		let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();
+		let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
+		let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
 
 		Ok(Some(DictionaryDef {
 			id,
@@ -55,10 +55,10 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
-			let dictionary_name = dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
+			let dictionary_name = dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME);
 			if name == dictionary_name {
 				found_dictionary_id = Some(DictionaryId(
-					dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID),
+					dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID),
 				));
 				break;
 			}

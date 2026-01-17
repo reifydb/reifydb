@@ -11,6 +11,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::layout::EncodedValuesLayout,
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
+	schema::{Schema, SchemaField},
 };
 use reifydb_type::{Result, value::r#type::Type};
 
@@ -48,27 +49,33 @@ pub struct StandardVersionProvider {
 	current_block_end: Arc<AtomicU64>,
 	// Mutex for block boundary persistence (rare - 1 in BLOCK_SIZE operations)
 	block_persist_lock: Arc<Mutex<()>>,
+	layout: EncodedValuesLayout,
 }
 
 impl StandardVersionProvider {
 	pub fn new(single: TransactionSingle) -> Result<Self> {
+		let layout = EncodedValuesLayout::from_schema(Schema::new(vec![SchemaField::unconstrained(
+			"version",
+			Type::Uint8,
+		)]));
+
 		// Load current version and allocate first block
-		let current_version = Self::load_current_version(&single)?;
+		let current_version = Self::load_current_version(&layout, &single)?;
 		let first_block = VersionBlock::new(current_version);
 
 		// Persist the end of first block to storage
-		Self::persist_version(&single, first_block.last)?;
+		Self::persist_version(&layout, &single, first_block.last)?;
 
 		Ok(Self {
 			single,
 			next_version: Arc::new(AtomicU64::new(first_block.current)),
 			current_block_end: Arc::new(AtomicU64::new(first_block.last)),
 			block_persist_lock: Arc::new(Mutex::new(())),
+			layout,
 		})
 	}
 
-	fn load_current_version(single: &TransactionSingle) -> Result<u64> {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+	fn load_current_version(layout: &EncodedValuesLayout, single: &TransactionSingle) -> Result<u64> {
 		let key = TransactionVersionKey {}.encode();
 
 		let mut tx = single.begin_query([&key])?;
@@ -78,10 +85,9 @@ impl StandardVersionProvider {
 		}
 	}
 
-	fn persist_version(single: &TransactionSingle, version: u64) -> Result<()> {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+	fn persist_version(layout: &EncodedValuesLayout, single: &TransactionSingle, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
-		let mut values = layout.allocate_deprecated();
+		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
@@ -118,7 +124,7 @@ impl VersionProvider for StandardVersionProvider {
 		let new_block_end = new_block_start + BLOCK_SIZE;
 
 		// Persist the new block boundary to storage
-		Self::persist_version(&self.single, new_block_end)?;
+		Self::persist_version(&self.layout, &self.single, new_block_end)?;
 
 		// Update the block end atomically
 		self.current_block_end.store(new_block_end, Ordering::SeqCst);
@@ -263,9 +269,9 @@ pub mod tests {
 		let single = TransactionSingle::testing();
 
 		// Manually set a version in storage
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut values = layout.allocate_deprecated();
+		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, 500u64);
 
 		{

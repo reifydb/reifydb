@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_transaction::standard::IntoStandardTransaction;
 
 use super::MaterializedCatalog;
-use crate::store::subscription::layout::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY};
+use crate::store::subscription::schema::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY};
 
 pub(crate) fn load_subscriptions(
 	rx: &mut impl IntoStandardTransaction,
@@ -42,9 +42,9 @@ pub(crate) fn load_subscriptions(
 
 fn convert_subscription(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> SubscriptionDef {
 	let row = multi.values;
-	let uuid = subscription::LAYOUT.get_uuid7(&row, ID);
+	let uuid = subscription::SCHEMA.get_uuid7(&row, ID);
 	let id = SubscriptionId(uuid.into());
-	let acknowledged_version = CommitVersion(subscription::LAYOUT.get_u64(&row, ACKNOWLEDGED_VERSION));
+	let acknowledged_version = CommitVersion(subscription::SCHEMA.get_u64(&row, ACKNOWLEDGED_VERSION));
 
 	SubscriptionDef {
 		id,
@@ -55,7 +55,7 @@ fn convert_subscription(multi: MultiVersionValues, primary_key: Option<PrimaryKe
 }
 
 fn get_subscription_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = subscription::LAYOUT.get_u64(&multi.values, PRIMARY_KEY);
+	let pk_id_raw = subscription::SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

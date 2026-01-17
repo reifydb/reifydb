@@ -12,7 +12,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
-	store::view::layout::{view, view_namespace},
+	store::view::schema::{view, view_namespace},
 };
 
 impl CatalogStore {
@@ -23,11 +23,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-		let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
-		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
+		let id = ViewId(view::SCHEMA.get_u64(&row, view::ID));
+		let namespace = NamespaceId(view::SCHEMA.get_u64(&row, view::NAMESPACE));
+		let name = view::SCHEMA.get_utf8(&row, view::NAME).to_string();
 
-		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
+		let kind = match view::SCHEMA.get_u8(&row, view::KIND) {
 			0 => ViewKind::Deferred,
 			1 => ViewKind::Transactional,
 			_ => unimplemented!(),
@@ -56,9 +56,9 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.values;
-			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
+			let view_name = view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME);
 			if name == view_name {
-				found_view = Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)));
+				found_view = Some(ViewId(view_namespace::SCHEMA.get_u64(row, view_namespace::ID)));
 				break;
 			}
 		}

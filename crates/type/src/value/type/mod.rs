@@ -194,7 +194,7 @@ impl Type {
 }
 
 impl Type {
-	pub fn size(&self) -> usize {
+	pub const fn size(&self) -> usize {
 		match self {
 			Type::Boolean => 1,
 			Type::Float4 => 4,
@@ -232,7 +232,7 @@ impl Type {
 		}
 	}
 
-	pub fn alignment(&self) -> usize {
+	pub const fn alignment(&self) -> usize {
 		match self {
 			Type::Boolean => 1,
 			Type::Float4 => 4,

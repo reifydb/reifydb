@@ -6,7 +6,8 @@
 //! This module provides helper functions for working with state in FFI operators,
 //! mirroring the functionality available to internal operators.
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::schema::Schema;
 
 use crate::{error::Result, operator::context::OperatorContext};
 
@@ -34,22 +35,22 @@ pub fn empty_key() -> EncodedKey {
 ///
 /// * `ctx` - The operator context
 /// * `key` - The key to load
-/// * `layout` - The layout defining the structure and default values
+/// * `schema` - The schema defining the structure and default values
 ///
 /// # Example
 ///
 /// ```ignore
-/// let layout = EncodedValuesLayout::new(&[Type::Int32, Type::Float8]);
-/// let row = load_or_create_row(ctx, &key, &layout)?;
+/// let schema = Schema::testing(&[Type::Int32, Type::Float8]);
+/// let row = load_or_create_row(ctx, &key, &schema)?;
 /// ```
 pub fn load_or_create_row(
 	ctx: &mut OperatorContext,
 	key: &EncodedKey,
-	layout: &EncodedValuesLayout,
+	schema: &Schema,
 ) -> Result<EncodedValues> {
 	match ctx.state().get(key)? {
 		Some(row) => Ok(row),
-		None => Ok(layout.allocate_deprecated()),
+		None => Ok(schema.allocate()),
 	}
 }
 

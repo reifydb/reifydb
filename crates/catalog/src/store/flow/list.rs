@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::flow::layout::flow};
+use crate::{CatalogStore, store::flow::schema::flow};
 
 impl CatalogStore {
 	pub fn list_flows_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<FlowDef>> {
@@ -26,9 +26,9 @@ impl CatalogStore {
 					let flow_id = flow_key.flow;
 
 					let namespace_id =
-						NamespaceId(flow::LAYOUT.get_u64(&entry.values, flow::NAMESPACE));
-					let name = flow::LAYOUT.get_utf8(&entry.values, flow::NAME).to_string();
-					let status_u8 = flow::LAYOUT.get_u8(&entry.values, flow::STATUS);
+						NamespaceId(flow::SCHEMA.get_u64(&entry.values, flow::NAMESPACE));
+					let name = flow::SCHEMA.get_utf8(&entry.values, flow::NAME).to_string();
+					let status_u8 = flow::SCHEMA.get_u8(&entry.values, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
 					let flow_def = FlowDef {

@@ -14,7 +14,7 @@ use reifydb_type::{error::diagnostic::catalog::flow_already_exists, fragment::Fr
 use crate::{
 	CatalogStore,
 	store::{
-		flow::layout::{flow, flow_namespace},
+		flow::schema::{flow, flow_namespace},
 		sequence::flow::next_flow_id,
 	},
 };
@@ -54,11 +54,11 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
 	) -> crate::Result<()> {
-		let mut row = flow::LAYOUT.allocate_deprecated();
-		flow::LAYOUT.set_u64(&mut row, flow::ID, flow);
-		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, namespace);
-		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
-		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
+		let mut row = flow::SCHEMA.allocate();
+		flow::SCHEMA.set_u64(&mut row, flow::ID, flow);
+		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, namespace);
+		flow::SCHEMA.set_utf8(&mut row, flow::NAME, &to_create.name);
+		flow::SCHEMA.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -72,9 +72,9 @@ impl CatalogStore {
 		flow: FlowId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = flow_namespace::LAYOUT.allocate_deprecated();
-		flow_namespace::LAYOUT.set_u64(&mut row, flow_namespace::ID, flow);
-		flow_namespace::LAYOUT.set_utf8(&mut row, flow_namespace::NAME, name);
+		let mut row = flow_namespace::SCHEMA.allocate();
+		flow_namespace::SCHEMA.set_u64(&mut row, flow_namespace::ID, flow);
+		flow_namespace::SCHEMA.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);
 		txn.set(&key, row)?;
 		Ok(())
@@ -94,7 +94,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::flow::{create::FlowToCreate, layout::flow_namespace},
+		store::flow::{create::FlowToCreate, schema::flow_namespace},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -158,8 +158,8 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.values;
-			let id = flow_namespace::LAYOUT.get_u64(row, flow_namespace::ID);
-			let name = flow_namespace::LAYOUT.get_utf8(row, flow_namespace::NAME);
+			let id = flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID);
+			let name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
 
 			match name {
 				"flow_one" => {

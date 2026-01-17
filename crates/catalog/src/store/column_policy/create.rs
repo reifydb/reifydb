@@ -13,7 +13,7 @@ use reifydb_type::{error::diagnostic::catalog::table_column_policy_already_exist
 
 use crate::{
 	CatalogStore,
-	store::{column_policy::layout::column_policy, sequence::system::SystemSequence},
+	store::{column_policy::schema::column_policy, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
@@ -34,14 +34,14 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_policy_id(txn)?;
 
-		let mut row = column_policy::LAYOUT.allocate_deprecated();
-		column_policy::LAYOUT.set_u64(&mut row, column_policy::ID, id);
-		column_policy::LAYOUT.set_u64(&mut row, column_policy::COLUMN, column);
+		let mut row = column_policy::SCHEMA.allocate();
+		column_policy::SCHEMA.set_u64(&mut row, column_policy::ID, id);
+		column_policy::SCHEMA.set_u64(&mut row, column_policy::COLUMN, column);
 
 		{
 			let (policy, value) = policy.to_u8();
-			column_policy::LAYOUT.set_u8(&mut row, column_policy::POLICY, policy);
-			column_policy::LAYOUT.set_u8(&mut row, column_policy::VALUE, value);
+			column_policy::SCHEMA.set_u8(&mut row, column_policy::POLICY, policy);
+			column_policy::SCHEMA.set_u8(&mut row, column_policy::VALUE, value);
 		}
 
 		txn.set(&ColumnPolicyKey::encoded(column, id), row)?;

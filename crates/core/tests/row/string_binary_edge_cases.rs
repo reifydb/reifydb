@@ -8,7 +8,7 @@ use reifydb_type::value::{blob::Blob, int::Int, r#type::Type};
 
 #[test]
 fn test_utf8_special_sequences() {
-	let layout = EncodedValuesLayout::new(&[Type::Utf8]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
 
 	let test_strings = [
 		"",                 // Empty string
@@ -26,7 +26,7 @@ fn test_utf8_special_sequences() {
 	];
 
 	for &test_str in &test_strings {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, test_str);
 		let retrieved = layout.get_utf8(&row, 0);
 		assert_eq!(retrieved, test_str, "Failed for string: {:?}", test_str);
@@ -35,10 +35,10 @@ fn test_utf8_special_sequences() {
 
 #[test]
 fn test_blob_all_byte_values() {
-	let layout = EncodedValuesLayout::new(&[Type::Blob]);
+	let layout = EncodedValuesLayout::testing(&[Type::Blob]);
 
 	// Test all possible byte values
-	let mut row = layout.allocate_for_testing();
+	let mut row = layout.allocate();
 	let all_bytes: Vec<u8> = (0..=255).collect();
 	layout.set_blob(&mut row, 0, &Blob::from(all_bytes.clone()));
 	assert_eq!(layout.get_blob(&row, 0), Blob::from(all_bytes));
@@ -54,7 +54,7 @@ fn test_blob_all_byte_values() {
 	// Create a new encoded for each pattern since dynamic fields can only be
 	// set once
 	for pattern in patterns {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		layout.set_blob(&mut row, 0, &Blob::from(pattern.clone()));
 		assert_eq!(layout.get_blob(&row, 0), Blob::from(pattern));
 	}
@@ -63,10 +63,10 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Tests multiple dynamic fields to ensure they don't corrupt each other
-	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
 
 	// Test initial setting with various sizes
-	let mut row = layout.allocate_for_testing();
+	let mut row = layout.allocate();
 	layout.set_utf8(&mut row, 0, "first");
 	layout.set_blob(&mut row, 1, &Blob::from(&b"second"[..]));
 	layout.set_utf8(&mut row, 2, "third");
@@ -80,7 +80,7 @@ fn test_dynamic_field_interleaving() {
 
 	// Test with different sizes in a new encoded (since dynamic fields can only
 	// be set once)
-	let mut row2 = layout.allocate_for_testing();
+	let mut row2 = layout.allocate();
 	layout.set_utf8(&mut row2, 0, "much longer string than before");
 	layout.set_blob(&mut row2, 1, &Blob::from(&b"x"[..]));
 	layout.set_utf8(&mut row2, 2, "");

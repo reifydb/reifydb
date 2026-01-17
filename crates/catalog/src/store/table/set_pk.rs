@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 use reifydb_type::return_internal_error;
 
-use crate::{CatalogStore, store::table::layout::table};
+use crate::{CatalogStore, store::table::schema::table};
 
 impl CatalogStore {
 	/// Set the primary key ID for a table
@@ -27,7 +27,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.values.clone();
-		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
+		table::SCHEMA.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&TableKey::encoded(table_id), updated_row)?;
 

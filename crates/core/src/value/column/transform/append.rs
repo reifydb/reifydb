@@ -85,7 +85,7 @@ impl Columns {
 		}
 
 		let values = layout.fields.iter().map(|f| f.r#type.clone()).collect::<Vec<_>>();
-		let layout = EncodedValuesLayout::new(&values);
+		let layout = EncodedValuesLayout::testing(&values);
 
 		// if there is an undefined column and the new data contains
 		// defined data convert this column into the new type and fill
@@ -825,8 +825,8 @@ pub mod tests {
 		fn test_before_undefined_bool() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Boolean(true)]);
 
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
@@ -843,8 +843,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Float4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float4]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -860,8 +860,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Float8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float8]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -877,8 +877,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int1() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Int1]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int1]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int1(42)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -891,8 +891,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int2() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Int2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int2(-1234)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -905,8 +905,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Int4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int4]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int4(56789)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -919,8 +919,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Int8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int8(-987654321)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -936,8 +936,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int16() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Int16]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int16]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -953,8 +953,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_string() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -970,8 +970,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Uint1]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Uint1(255)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -984,8 +984,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Uint2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint2]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Uint2(65535)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -998,8 +998,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Uint4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint4]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -1015,8 +1015,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Uint8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint8]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -1032,8 +1032,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::undefined("test_col", 2)]);
-			let layout = EncodedValuesLayout::new(&[Type::Uint16]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint16]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
 
@@ -1050,8 +1050,8 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int2(2)]);
 
 			let err = test_instance.append_rows(&layout, [row], vec![]).err().unwrap();
@@ -1062,10 +1062,10 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2, Type::Boolean]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Boolean]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1078,10 +1078,10 @@ pub mod tests {
 		fn test_all_defined_bool() {
 			let mut test_instance = Columns::new(vec![Column::bool("test_col", Vec::<bool>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Boolean]);
+			let mut row_one = layout.allocate();
 			layout.set_bool(&mut row_one, 0, true);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_bool(&mut row_two, 0, false);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1093,10 +1093,10 @@ pub mod tests {
 		fn test_all_defined_float4() {
 			let mut test_instance = Columns::new(vec![Column::float4("test_col", Vec::<f32>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Float4]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float4]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1108,10 +1108,10 @@ pub mod tests {
 		fn test_all_defined_float8() {
 			let mut test_instance = Columns::new(vec![Column::float8("test_col", Vec::<f64>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Float8]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float8]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1123,10 +1123,10 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![Column::int1("test_col", Vec::<i8>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int1]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int1]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int1(1)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int1(2)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1138,10 +1138,10 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![Column::int2("test_col", Vec::<i16>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int2(100)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int2(200)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1153,10 +1153,10 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![Column::int4("test_col", Vec::<i32>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int4]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int4]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int4(1000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int4(2000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1168,10 +1168,10 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![Column::int8("test_col", Vec::<i64>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int8]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int8]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int8(10000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int8(20000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1183,10 +1183,10 @@ pub mod tests {
 		fn test_all_defined_int16() {
 			let mut test_instance = Columns::new(vec![Column::int16("test_col", Vec::<i128>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int16]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int16]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Int16(1000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Int16(2000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1198,10 +1198,10 @@ pub mod tests {
 		fn test_all_defined_string() {
 			let mut test_instance = Columns::new(vec![Column::utf8("test_col", Vec::<String>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Utf8("a".into())]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1213,10 +1213,10 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::uint1("test_col", Vec::<u8>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint1]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Uint1(1)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Uint1(2)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1228,10 +1228,10 @@ pub mod tests {
 		fn test_all_defined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::uint2("test_col", Vec::<u16>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint2]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint2]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Uint2(100)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Uint2(200)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1243,10 +1243,10 @@ pub mod tests {
 		fn test_all_defined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::uint4("test_col", Vec::<u32>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint4]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint4]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Uint4(1000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1258,10 +1258,10 @@ pub mod tests {
 		fn test_all_defined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::uint8("test_col", Vec::<u64>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint8]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint8]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Uint8(10000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1273,10 +1273,10 @@ pub mod tests {
 		fn test_all_defined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::uint16("test_col", Vec::<u128>::new())]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint16]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint16]);
+			let mut row_one = layout.allocate();
 			layout.set_values(&mut row_one, &[Value::Uint16(1000)]);
-			let mut row_two = layout.allocate_for_testing();
+			let mut row_two = layout.allocate();
 			layout.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
 			test_instance.append_rows(&layout, [row_one, row_two], vec![]).unwrap();
@@ -1288,8 +1288,8 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2, Type::Boolean]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Boolean]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Undefined, Value::Boolean(false)]);
 
 			test_instance.append_rows(&layout, [row], vec![]).unwrap();
@@ -1305,8 +1305,8 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Boolean]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
 			let result = test_instance.append_rows(&layout, [row], vec![]);
@@ -1318,8 +1318,8 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2]);
+			let mut row = layout.allocate();
 			layout.set_values(&mut row, &[Value::Int2(2)]);
 
 			let result = test_instance.append_rows(&layout, [row], vec![]);
@@ -1334,8 +1334,8 @@ pub mod tests {
 				Column::bool("undefined", Vec::<bool>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Boolean]);
-			let mut row_one = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row_one = layout.allocate();
 			layout.set_bool(&mut row_one, 0, true);
 			layout.set_undefined(&mut row_one, 1);
 
@@ -1353,8 +1353,8 @@ pub mod tests {
 				Column::float4("undefined", Vec::<f32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float4, Type::Float4]);
+			let mut row = layout.allocate();
 			layout.set_f32(&mut row, 0, 1.5);
 			layout.set_undefined(&mut row, 1);
 
@@ -1371,8 +1371,8 @@ pub mod tests {
 				Column::float8("undefined", Vec::<f64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Float8, Type::Float8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Float8, Type::Float8]);
+			let mut row = layout.allocate();
 			layout.set_f64(&mut row, 0, 2.5);
 			layout.set_undefined(&mut row, 1);
 
@@ -1389,8 +1389,8 @@ pub mod tests {
 				Column::int1("undefined", Vec::<i8>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int1, Type::Int1]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int1, Type::Int1]);
+			let mut row = layout.allocate();
 			layout.set_i8(&mut row, 0, 42);
 			layout.set_undefined(&mut row, 1);
 
@@ -1407,8 +1407,8 @@ pub mod tests {
 				Column::int2("undefined", Vec::<i16>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int2, Type::Int2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int2, Type::Int2]);
+			let mut row = layout.allocate();
 			layout.set_i16(&mut row, 0, -1234i16);
 			layout.set_undefined(&mut row, 1);
 
@@ -1425,8 +1425,8 @@ pub mod tests {
 				Column::int4("undefined", Vec::<i32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int4, Type::Int4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int4, Type::Int4]);
+			let mut row = layout.allocate();
 			layout.set_i32(&mut row, 0, 56789);
 			layout.set_undefined(&mut row, 1);
 
@@ -1443,8 +1443,8 @@ pub mod tests {
 				Column::int8("undefined", Vec::<i64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Int8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Int8]);
+			let mut row = layout.allocate();
 			layout.set_i64(&mut row, 0, -987654321);
 			layout.set_undefined(&mut row, 1);
 
@@ -1461,8 +1461,8 @@ pub mod tests {
 				Column::int16("undefined", Vec::<i128>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Int16, Type::Int16]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Int16, Type::Int16]);
+			let mut row = layout.allocate();
 			layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
 			layout.set_undefined(&mut row, 1);
 
@@ -1482,8 +1482,8 @@ pub mod tests {
 				Column::utf8("undefined", Vec::<String>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Utf8]);
+			let mut row = layout.allocate();
 			layout.set_utf8(&mut row, 0, "reifydb");
 			layout.set_undefined(&mut row, 1);
 
@@ -1503,8 +1503,8 @@ pub mod tests {
 				Column::uint1("undefined", Vec::<u8>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint1, Type::Uint1]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint1, Type::Uint1]);
+			let mut row = layout.allocate();
 			layout.set_u8(&mut row, 0, 255);
 			layout.set_undefined(&mut row, 1);
 
@@ -1521,8 +1521,8 @@ pub mod tests {
 				Column::uint2("undefined", Vec::<u16>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint2, Type::Uint2]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint2, Type::Uint2]);
+			let mut row = layout.allocate();
 			layout.set_u16(&mut row, 0, 65535u16);
 			layout.set_undefined(&mut row, 1);
 
@@ -1539,8 +1539,8 @@ pub mod tests {
 				Column::uint4("undefined", Vec::<u32>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint4, Type::Uint4]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint4, Type::Uint4]);
+			let mut row = layout.allocate();
 			layout.set_u32(&mut row, 0, 4294967295u32);
 			layout.set_undefined(&mut row, 1);
 
@@ -1557,8 +1557,8 @@ pub mod tests {
 				Column::uint8("undefined", Vec::<u64>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint8, Type::Uint8]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint8, Type::Uint8]);
+			let mut row = layout.allocate();
 			layout.set_u64(&mut row, 0, 18446744073709551615u64);
 			layout.set_undefined(&mut row, 1);
 
@@ -1578,8 +1578,8 @@ pub mod tests {
 				Column::uint16("undefined", Vec::<u128>::new()),
 			]);
 
-			let layout = EncodedValuesLayout::new(&[Type::Uint16, Type::Uint16]);
-			let mut row = layout.allocate_for_testing();
+			let layout = EncodedValuesLayout::testing(&[Type::Uint16, Type::Uint16]);
+			let mut row = layout.allocate();
 			layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 			layout.set_undefined(&mut row, 1);
 

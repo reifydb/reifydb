@@ -30,7 +30,7 @@ pub mod test {
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::new(&[Type::Int8, Type::Float8, Type::Utf8]),
+				layout: EncodedValuesLayout::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
 				key_types: vec![Type::Utf8, Type::Int4],
 			}
 		}
@@ -39,7 +39,7 @@ pub mod test {
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::new(&[Type::Int8]),
+				layout: EncodedValuesLayout::testing(&[Type::Int8]),
 				key_types: vec![],
 			}
 		}
@@ -48,7 +48,7 @@ pub mod test {
 		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
 			Self {
 				id,
-				layout: EncodedValuesLayout::new(&[Type::Blob, Type::Int4]),
+				layout: EncodedValuesLayout::testing(&[Type::Blob, Type::Int4]),
 				key_types,
 			}
 		}

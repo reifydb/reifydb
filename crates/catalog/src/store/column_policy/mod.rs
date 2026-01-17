@@ -2,5 +2,5 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod create;
-pub mod layout;
 pub mod list;
+pub mod schema;

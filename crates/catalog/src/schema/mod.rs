@@ -153,7 +153,10 @@ mod tests {
 	fn test_schema_registry_caching() {
 		let registry = SchemaRegistry::new();
 
-		let fields = vec![SchemaField::new("id", Type::Int8), SchemaField::new("name", Type::Utf8)];
+		let fields = vec![
+			SchemaField::unconstrained("id", Type::Int8),
+			SchemaField::unconstrained("name", Type::Utf8),
+		];
 
 		// Create schema and insert into cache manually for testing
 		let schema = Arc::new(Schema::new(fields));
@@ -172,7 +175,7 @@ mod tests {
 	fn test_schema_registry_get() {
 		let registry = SchemaRegistry::new();
 
-		let fields = vec![SchemaField::new("x", Type::Float8)];
+		let fields = vec![SchemaField::unconstrained("x", Type::Float8)];
 		let schema = Arc::new(Schema::new(fields));
 		let fingerprint = schema.fingerprint();
 

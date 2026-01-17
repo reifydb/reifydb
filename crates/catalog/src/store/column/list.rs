@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::column::layout::source_column};
+use crate::{CatalogStore, store::column::schema::primitive_column};
 
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
@@ -32,7 +32,7 @@ impl CatalogStore {
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = multi.values;
-				ids.push(ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID)));
+				ids.push(ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID)));
 			}
 		}
 

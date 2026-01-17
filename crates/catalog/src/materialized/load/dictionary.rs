@@ -15,7 +15,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::value::r#type::Type;
 
 use super::MaterializedCatalog;
-use crate::store::dictionary::layout::dictionary::{ID, ID_TYPE, LAYOUT, NAME, NAMESPACE, VALUE_TYPE};
+use crate::store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE};
 
 pub(crate) fn load_dictionaries(
 	rx: &mut impl IntoStandardTransaction,
@@ -37,11 +37,11 @@ pub(crate) fn load_dictionaries(
 
 fn convert_dictionary(multi: MultiVersionValues) -> DictionaryDef {
 	let row = multi.values;
-	let id = DictionaryId(LAYOUT.get_u64(&row, ID));
-	let namespace = NamespaceId(LAYOUT.get_u64(&row, NAMESPACE));
-	let name = LAYOUT.get_utf8(&row, NAME).to_string();
-	let value_type_ordinal = LAYOUT.get_u8(&row, VALUE_TYPE);
-	let id_type_ordinal = LAYOUT.get_u8(&row, ID_TYPE);
+	let id = DictionaryId(SCHEMA.get_u64(&row, ID));
+	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
+	let name = SCHEMA.get_utf8(&row, NAME).to_string();
+	let value_type_ordinal = SCHEMA.get_u8(&row, VALUE_TYPE);
+	let id_type_ordinal = SCHEMA.get_u8(&row, ID_TYPE);
 
 	DictionaryDef {
 		id,

@@ -69,14 +69,14 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
 	) -> crate::Result<()> {
-		use crate::store::dictionary::layout::dictionary;
+		use crate::store::dictionary::schema::dictionary;
 
-		let mut row = dictionary::LAYOUT.allocate_deprecated();
-		dictionary::LAYOUT.set_u64(&mut row, dictionary::ID, dictionary);
-		dictionary::LAYOUT.set_u64(&mut row, dictionary::NAMESPACE, namespace);
-		dictionary::LAYOUT.set_utf8(&mut row, dictionary::NAME, &to_create.dictionary);
-		dictionary::LAYOUT.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
-		dictionary::LAYOUT.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
+		let mut row = dictionary::SCHEMA.allocate();
+		dictionary::SCHEMA.set_u64(&mut row, dictionary::ID, dictionary);
+		dictionary::SCHEMA.set_u64(&mut row, dictionary::NAMESPACE, namespace);
+		dictionary::SCHEMA.set_utf8(&mut row, dictionary::NAME, &to_create.dictionary);
+		dictionary::SCHEMA.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
+		dictionary::SCHEMA.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
 
 		txn.set(&DictionaryKey::encoded(dictionary), row)?;
 
@@ -89,11 +89,11 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		name: &str,
 	) -> crate::Result<()> {
-		use crate::store::dictionary::layout::dictionary_namespace;
+		use crate::store::dictionary::schema::dictionary_namespace;
 
-		let mut row = dictionary_namespace::LAYOUT.allocate_deprecated();
-		dictionary_namespace::LAYOUT.set_u64(&mut row, dictionary_namespace::ID, dictionary);
-		dictionary_namespace::LAYOUT.set_utf8(&mut row, dictionary_namespace::NAME, name);
+		let mut row = dictionary_namespace::SCHEMA.allocate();
+		dictionary_namespace::SCHEMA.set_u64(&mut row, dictionary_namespace::ID, dictionary);
+		dictionary_namespace::SCHEMA.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
 		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
 
@@ -121,7 +121,7 @@ pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::{store::dictionary::layout::dictionary_namespace, test_utils::ensure_test_namespace};
+	use crate::{store::dictionary::schema::dictionary_namespace, test_utils::ensure_test_namespace};
 
 	#[test]
 	fn test_create_simple_dictionary() {
@@ -205,16 +205,16 @@ pub mod tests {
 		// Check first link (descending order, so dict2 comes first)
 		let link = &links[0];
 		let row = &link.values;
-		let id2 = dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID);
+		let id2 = dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME), "dict2");
+		assert_eq!(dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME), "dict2");
 
 		// Check second link (dict1 comes second)
 		let link = &links[1];
 		let row = &link.values;
-		let id1 = dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID);
+		let id1 = dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME), "dict1");
+		assert_eq!(dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME), "dict1");
 	}
 
 	#[test]

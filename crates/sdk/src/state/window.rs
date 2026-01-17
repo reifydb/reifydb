@@ -6,7 +6,8 @@
 //! This module provides the `FFIWindowStateful` trait for operators that use
 //! time-based or count-based windowing with state.
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, layout::EncodedValuesLayout};
+use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::schema::Schema;
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
@@ -22,17 +23,17 @@ use crate::{error::Result, operator::context::OperatorContext};
 /// - Count-based: Use sequence number as part of the key
 /// - Composite: Combine time/count with other dimensions
 pub trait FFIWindowStateful: FFIRawStatefulOperator {
-	/// Get or create the layout for state rows
+	/// Get or create the schema for state rows
 	///
 	/// This defines the structure of each window's state.
-	fn layout(&self) -> EncodedValuesLayout;
+	fn schema(&self) -> Schema;
 
 	/// Create a new state encoded with default values
 	///
-	/// Allocates a new window state row based on the layout, initialized with default values.
+	/// Allocates a new window state row based on the schema, initialized with default values.
 	fn create_state(&self) -> EncodedValues {
-		let layout = self.layout();
-		layout.allocate_deprecated()
+		let schema = self.schema();
+		schema.allocate()
 	}
 
 	/// Load state for a window
@@ -48,7 +49,7 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	///
 	/// The loaded or newly created state for this window
 	fn load_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<EncodedValues> {
-		utils::load_or_create_row(ctx, window_key, &self.layout())
+		utils::load_or_create_row(ctx, window_key, &self.schema())
 	}
 
 	/// Save state for a window
@@ -84,18 +85,18 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	///
 	/// * `ctx` - The operator context
 	/// * `window_key` - The key identifying the window
-	/// * `f` - Function that modifies the state. Receives the layout and mutable state row.
+	/// * `f` - Function that modifies the state. Receives the schema and mutable state row.
 	///
 	/// # Returns
 	///
 	/// The updated state after applying the function
 	fn update_window<F>(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, f: F) -> Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
 	{
-		let layout = self.layout();
+		let schema = self.schema();
 		let mut row = self.load_state(ctx, window_key)?;
-		f(&layout, &mut row)?;
+		f(&schema, &mut row)?;
 		self.save_state(ctx, window_key, &row)?;
 		Ok(row)
 	}

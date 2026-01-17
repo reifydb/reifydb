@@ -5,6 +5,6 @@ pub mod create;
 pub mod delete;
 pub mod find;
 pub mod get;
-pub(crate) mod layout;
 pub mod list;
+pub(crate) mod schema;
 pub mod update;

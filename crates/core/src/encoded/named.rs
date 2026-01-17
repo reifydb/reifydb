@@ -37,7 +37,7 @@ impl EncodedValuesNamedLayout {
 		let (names, types): (Vec<String>, Vec<Type>) =
 			fields.into_iter().map(|(name, r#type)| (name, r#type)).unzip();
 
-		let layout = EncodedValuesLayout::new(&types);
+		let layout = EncodedValuesLayout::testing(&types);
 
 		let name_to_index = names.iter().enumerate().map(|(idx, name)| (name.clone(), idx)).collect();
 
@@ -71,7 +71,7 @@ impl EncodedValuesNamedLayout {
 	}
 
 	pub fn allocate(&self) -> EncodedValues {
-		self.layout.allocate_for_testing()
+		self.layout.allocate()
 	}
 
 	pub fn get_value(&self, row: &EncodedValues, name: &str) -> Option<Value> {
@@ -513,6 +513,6 @@ impl EncodedValuesNamedLayout {
 
 impl From<&Schema> for EncodedValuesNamedLayout {
 	fn from(schema: &Schema) -> Self {
-		EncodedValuesNamedLayout::new(schema.fields().iter().map(|f| (f.name.clone(), f.field_type)))
+		EncodedValuesNamedLayout::new(schema.fields().iter().map(|f| (f.name.clone(), f.constraint.get_type())))
 	}
 }

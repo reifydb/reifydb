@@ -86,7 +86,7 @@ impl TestStateStore {
 
 	/// Set a value using a layout
 	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], layout: &EncodedValuesLayout) {
-		let mut encoded = layout.allocate_deprecated();
+		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
@@ -98,7 +98,7 @@ impl TestStateStore {
 		values: &HashMap<String, Value>,
 		layout: &EncodedValuesNamedLayout,
 	) {
-		let mut encoded = layout.layout().allocate_deprecated();
+		let mut encoded = layout.layout().allocate();
 
 		// Convert HashMap to ordered values based on layout names
 		let ordered_values: Vec<Value> = layout
@@ -175,7 +175,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_layout() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Utf8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
@@ -229,7 +229,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::new(&[Type::Int8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 

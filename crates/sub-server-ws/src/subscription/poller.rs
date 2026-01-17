@@ -206,11 +206,11 @@ impl SubscriptionPoller {
 			while let Some(result) = stream.next() {
 				let col_entry = result?;
 				if let Some(Key::SubscriptionColumn(col_key)) = Key::decode(&col_entry.key) {
-					use reifydb_catalog::store::subscription::layout::subscription_column;
-					let name = subscription_column::LAYOUT
+					use reifydb_catalog::store::subscription::schema::subscription_column;
+					let name = subscription_column::SCHEMA
 						.get_utf8(&col_entry.values, subscription_column::NAME)
 						.to_string();
-					let ty_u8 = subscription_column::LAYOUT
+					let ty_u8 = subscription_column::SCHEMA
 						.get_u8(&col_entry.values, subscription_column::TYPE);
 					let ty = reifydb_type::value::r#type::Type::from_u8(ty_u8);
 
@@ -226,9 +226,9 @@ impl SubscriptionPoller {
 			columns.sort_by_key(|c| c.id.0);
 
 			// Get acknowledged version
-			use reifydb_catalog::store::subscription::layout::subscription;
+			use reifydb_catalog::store::subscription::schema::subscription;
 			let acknowledged_version = CommitVersion(
-				subscription::LAYOUT.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
+				subscription::SCHEMA.get_u64(&entry.values, subscription::ACKNOWLEDGED_VERSION),
 			);
 
 			SubscriptionDef {

@@ -95,7 +95,7 @@ impl JoinOperator {
 	}
 
 	fn state_layout() -> EncodedValuesLayout {
-		EncodedValuesLayout::new(&[Type::Blob])
+		EncodedValuesLayout::testing(&[Type::Blob])
 	}
 
 	/// Compute join keys for all rows in Columns

@@ -114,7 +114,7 @@ pub(crate) fn create_row(
 	}
 
 	// Decode dictionary columns
-	let storage_layout = EncodedValuesLayout::new(&metadata.storage_types);
+	let storage_layout = EncodedValuesLayout::testing(&metadata.storage_types);
 	let value_layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
 
 	let mut values: Vec<Value> = Vec::with_capacity(metadata.dictionaries.len());

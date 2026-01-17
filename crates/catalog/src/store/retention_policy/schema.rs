@@ -3,7 +3,7 @@
 
 pub(crate) mod retention_policy {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::layout::EncodedValuesLayout;
+	use reifydb_core::encoded::schema::{Schema, SchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	// Retention policy discriminators
@@ -19,11 +19,11 @@ pub(crate) mod retention_policy {
 	pub(crate) const CLEANUP_MODE: usize = 1; // u8: cleanup mode (for applicable policies)
 	pub(crate) const VALUE: usize = 2; // u64: numeric value (version count, duration secs, or commit version)
 
-	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
-		EncodedValuesLayout::new(&[
-			Type::Uint1, // policy_type
-			Type::Uint1, // cleanup_mode
-			Type::Uint8, // value (multi-purpose u64)
+	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
+		Schema::new(vec![
+			SchemaField::unconstrained("policy_type", Type::Uint1),
+			SchemaField::unconstrained("cleanup_mode", Type::Uint1),
+			SchemaField::unconstrained("value", Type::Uint8),
 		])
 	});
 }

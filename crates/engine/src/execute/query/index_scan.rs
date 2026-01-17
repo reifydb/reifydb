@@ -26,7 +26,7 @@ pub(crate) struct IndexScanNode {
 impl IndexScanNode {
 	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedValuesLayout::new(&data);
+		let row_layout = EncodedValuesLayout::testing(&data);
 
 		let headers = ColumnHeaders {
 			columns: table.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),

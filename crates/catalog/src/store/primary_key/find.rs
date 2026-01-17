@@ -15,7 +15,7 @@ use reifydb_type::return_internal_error;
 
 use crate::{
 	CatalogStore,
-	store::primary_key::layout::{primary_key, primary_key::deserialize_column_ids},
+	store::primary_key::schema::{primary_key, primary_key::deserialize_column_ids},
 };
 
 impl CatalogStore {
@@ -68,7 +68,7 @@ impl CatalogStore {
 		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::LAYOUT.get_blob(&primary_key_multi.values, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::SCHEMA.get_blob(&primary_key_multi.values, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		// Fetch full ColumnDef for each column ID

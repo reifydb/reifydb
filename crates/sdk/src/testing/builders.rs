@@ -222,7 +222,7 @@ impl TestLayoutBuilder {
 
 	/// Build an unnamed layout
 	pub fn build(self) -> EncodedValuesLayout {
-		EncodedValuesLayout::new(&self.types)
+		EncodedValuesLayout::testing(&self.types)
 	}
 
 	/// Build a named layout

@@ -151,7 +151,7 @@ pub fn load_or_create_row(
 ) -> reifydb_type::Result<EncodedValues> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
-		None => Ok(layout.allocate_deprecated()),
+		None => Ok(layout.allocate()),
 	}
 }
 
@@ -396,7 +396,7 @@ pub mod tests {
 		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1), Catalog::default());
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
-		let layout = EncodedValuesLayout::new(&[Type::Int4]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int4]);
 
 		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();

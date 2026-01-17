@@ -75,7 +75,7 @@ impl Executor {
 				table_types.push(c.constraint.get_type());
 			}
 		}
-		let layout = EncodedValuesLayout::new(&table_types);
+		let layout = EncodedValuesLayout::testing(&table_types);
 
 		// Create resolved source for the table
 		let namespace_ident = Fragment::internal(namespace.name.clone());
@@ -115,7 +115,7 @@ impl Executor {
 				let row_count = columns.row_count();
 
 				for row_numberx in 0..row_count {
-					let mut row = layout.allocate_deprecated();
+					let mut row = layout.allocate();
 
 					for (table_idx, table_column) in table.columns.iter().enumerate() {
 						let mut value = if let Some(input_column) =
@@ -232,8 +232,8 @@ impl Executor {
 							&pk_def, &row, &table, &layout,
 						)?;
 
-						let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-						let mut row_number_encoded = row_number_layout.allocate_deprecated();
+						let row_number_layout = EncodedValuesLayout::testing(&[Type::Uint8]);
+						let mut row_number_encoded = row_number_layout.allocate();
 						row_number_layout.set_u64(
 							&mut row_number_encoded,
 							0,

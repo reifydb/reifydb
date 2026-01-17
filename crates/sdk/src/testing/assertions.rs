@@ -389,7 +389,7 @@ pub mod tests {
 	#[test]
 	fn test_state_assertions() {
 		let mut store = TestStateStore::new();
-		let layout = EncodedValuesLayout::new(&[Type::Int8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int8]);
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 

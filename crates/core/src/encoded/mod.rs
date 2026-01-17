@@ -18,7 +18,7 @@ pub mod i16;
 pub mod i32;
 pub mod i64;
 pub mod i8;
-pub mod identity_id;
+pub mod identity;
 pub mod int;
 pub mod key;
 pub mod layout;

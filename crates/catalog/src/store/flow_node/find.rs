@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
-use flow_node::LAYOUT;
+use flow_node::SCHEMA;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
 	key::flow_node::FlowNodeKey,
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::flow_node::layout::flow_node};
+use crate::{CatalogStore, store::flow_node::schema::flow_node};
 
 impl CatalogStore {
 	pub fn find_flow_node(
@@ -21,10 +21,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let id = FlowNodeId(LAYOUT.get_u64(&row, flow_node::ID));
-		let flow = FlowId(LAYOUT.get_u64(&row, flow_node::FLOW));
-		let node_type = LAYOUT.get_u8(&row, flow_node::TYPE);
-		let data = LAYOUT.get_blob(&row, flow_node::DATA).clone();
+		let id = FlowNodeId(SCHEMA.get_u64(&row, flow_node::ID));
+		let flow = FlowId(SCHEMA.get_u64(&row, flow_node::FLOW));
+		let node_type = SCHEMA.get_u8(&row, flow_node::TYPE);
+		let data = SCHEMA.get_blob(&row, flow_node::DATA).clone();
 
 		Ok(Some(FlowNodeDef {
 			id,

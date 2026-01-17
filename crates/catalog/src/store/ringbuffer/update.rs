@@ -4,19 +4,19 @@
 use reifydb_core::{interface::catalog::ringbuffer::RingBufferMetadata, key::ringbuffer::RingBufferMetadataKey};
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 
-use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer_metadata};
+use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer_metadata};
 
 impl CatalogStore {
 	pub fn update_ringbuffer_metadata(
 		txn: &mut StandardCommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
-		let mut row = ringbuffer_metadata::LAYOUT.allocate_deprecated();
-		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
-		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
-		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);
-		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
-		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
+		let mut row = ringbuffer_metadata::SCHEMA.allocate();
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 
 		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
 

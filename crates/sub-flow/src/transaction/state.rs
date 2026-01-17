@@ -157,7 +157,7 @@ impl FlowTransaction {
 			}
 			None => {
 				Span::current().record("created", true);
-				Ok(layout.allocate_deprecated())
+				Ok(layout.allocate())
 			}
 		}
 	}
@@ -393,7 +393,7 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Float8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
@@ -410,7 +410,7 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Float8]);
+		let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
 		let result = txn.load_or_create_row(node_id, &key, &layout).unwrap();

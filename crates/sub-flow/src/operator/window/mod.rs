@@ -168,7 +168,7 @@ impl WindowOperator {
 			slide,
 			group_by,
 			aggregations,
-			layout: EncodedValuesLayout::new(&[Type::Blob]),
+			layout: EncodedValuesLayout::testing(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
 			row_number_provider: RowNumberProvider::new(node),
 			min_events: min_events.max(1), // Ensure at least 1 event is required
@@ -501,7 +501,7 @@ impl WindowOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate_deprecated();
+		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
@@ -534,7 +534,7 @@ impl WindowOperator {
 		let serialized = postcard::to_stdvec(&new_count)
 			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
-		let mut count_state_row = self.layout.allocate_deprecated();
+		let mut count_state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut count_state_row, 0, &blob);
 

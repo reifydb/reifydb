@@ -68,7 +68,7 @@ impl TableScanNode {
 			}
 		}
 
-		let row_layout = EncodedValuesLayout::new(&storage_types);
+		let row_layout = EncodedValuesLayout::testing(&storage_types);
 
 		let headers = ColumnHeaders {
 			columns: table.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),

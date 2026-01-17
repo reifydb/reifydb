@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore,
 	store::sequence::{
 		Sequence,
-		layout::sequence::{LAYOUT, VALUE},
+		schema::sequence::{SCHEMA, VALUE},
 	},
 };
 
@@ -41,7 +41,7 @@ impl CatalogStore {
 
 		let mut txn = rx.into_standard_transaction();
 		let value = match txn.get(&sequence_key)? {
-			Some(row) => LAYOUT.get_u64(&row.values, VALUE),
+			Some(row) => SCHEMA.get_u64(&row.values, VALUE),
 			None => 0,
 		};
 

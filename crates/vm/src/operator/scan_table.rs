@@ -86,7 +86,7 @@ impl ScanTableOp {
 
 		// Build storage types and layout
 		let storage_types: Vec<_> = table_def.columns.iter().map(|col| col.constraint.get_type()).collect();
-		let row_layout = EncodedValuesLayout::new(&storage_types);
+		let row_layout = EncodedValuesLayout::testing(&storage_types);
 
 		Ok(ScanState {
 			table_def,

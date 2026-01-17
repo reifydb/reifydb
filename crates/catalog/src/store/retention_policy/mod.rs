@@ -4,23 +4,23 @@
 pub mod create;
 pub mod find;
 pub mod get;
-pub(crate) mod layout;
 pub mod list;
+pub(crate) mod schema;
 
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	retention::{CleanupMode, RetentionPolicy},
 };
 
-use self::layout::retention_policy;
+use self::schema::retention_policy;
 
 /// Encode a RetentionPolicy into EncodedValues
 pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues {
-	let mut row = retention_policy::LAYOUT.allocate_deprecated();
+	let mut row = retention_policy::SCHEMA.allocate();
 
 	match policy {
 		RetentionPolicy::KeepForever => {
-			retention_policy::LAYOUT.set_u8(
+			retention_policy::SCHEMA.set_u8(
 				&mut row,
 				retention_policy::POLICY_TYPE,
 				retention_policy::POLICY_KEEP_FOREVER,
@@ -31,17 +31,17 @@ pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues
 			count,
 			cleanup_mode,
 		} => {
-			retention_policy::LAYOUT.set_u8(
+			retention_policy::SCHEMA.set_u8(
 				&mut row,
 				retention_policy::POLICY_TYPE,
 				retention_policy::POLICY_KEEP_VERSIONS,
 			);
-			retention_policy::LAYOUT.set_u8(
+			retention_policy::SCHEMA.set_u8(
 				&mut row,
 				retention_policy::CLEANUP_MODE,
 				encode_cleanup_mode(cleanup_mode),
 			);
-			retention_policy::LAYOUT.set_u64(&mut row, retention_policy::VALUE, *count);
+			retention_policy::SCHEMA.set_u64(&mut row, retention_policy::VALUE, *count);
 		}
 	}
 
@@ -50,16 +50,16 @@ pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues
 
 /// Decode a RetentionPolicy from EncodedValues
 pub(crate) fn decode_retention_policy(row: &EncodedValues) -> Option<RetentionPolicy> {
-	let policy_type = retention_policy::LAYOUT.get_u8(row, retention_policy::POLICY_TYPE);
+	let policy_type = retention_policy::SCHEMA.get_u8(row, retention_policy::POLICY_TYPE);
 
 	match policy_type {
 		retention_policy::POLICY_KEEP_FOREVER => Some(RetentionPolicy::KeepForever),
 
 		retention_policy::POLICY_KEEP_VERSIONS => {
 			let cleanup_mode = decode_cleanup_mode(
-				retention_policy::LAYOUT.get_u8(row, retention_policy::CLEANUP_MODE),
+				retention_policy::SCHEMA.get_u8(row, retention_policy::CLEANUP_MODE),
 			)?;
-			let count = retention_policy::LAYOUT.get_u64(row, retention_policy::VALUE);
+			let count = retention_policy::SCHEMA.get_u64(row, retention_policy::VALUE);
 			Some(RetentionPolicy::KeepVersions {
 				count,
 				cleanup_mode,

@@ -5,7 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, layout::EncodedValuesLayout};
+use crate::{
+	encoded::{encoded::EncodedValues, layout::EncodedValuesLayout},
+	schema::Schema,
+};
 
 impl EncodedValuesLayout {
 	pub fn set_u64(&self, row: &mut EncodedValues, index: usize, value: impl Into<u64>) {
@@ -32,51 +35,81 @@ impl EncodedValuesLayout {
 	}
 }
 
+impl Schema {
+	pub fn set_u64(&self, row: &mut EncodedValues, index: usize, value: impl Into<u64>) {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::Uint8);
+		row.set_valid(index, true);
+		unsafe {
+			ptr::write_unaligned(
+				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u64,
+				value.into(),
+			)
+		}
+	}
+
+	pub fn get_u64(&self, row: &EncodedValues, index: usize) -> u64 {
+		let field = &self.fields()[index];
+		debug_assert!(row.len() >= self.total_static_size());
+		debug_assert_eq!(field.constraint.get_type(), Type::Uint8);
+		unsafe { (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned() }
+	}
+
+	pub fn try_get_u64(&self, row: &EncodedValues, index: usize) -> Option<u64> {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint8 {
+			Some(self.get_u64(row, index))
+		} else {
+			None
+		}
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::layout::EncodedValuesLayout;
+	use crate::schema::Schema;
 
 	#[test]
 	fn test_set_get_u64() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
-		let mut row = layout.allocate_for_testing();
-		layout.set_u64(&mut row, 0, 18446744073709551615u64);
-		assert_eq!(layout.get_u64(&row, 0), 18446744073709551615u64);
+		let schema = Schema::testing(&[Type::Uint8]);
+		let mut row = schema.allocate();
+		schema.set_u64(&mut row, 0, 18446744073709551615u64);
+		assert_eq!(schema.get_u64(&row, 0), 18446744073709551615u64);
 	}
 
 	#[test]
 	fn test_try_get_u64() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Uint8]);
+		let mut row = schema.allocate();
 
-		assert_eq!(layout.try_get_u64(&row, 0), None);
+		assert_eq!(schema.try_get_u64(&row, 0), None);
 
-		layout.set_u64(&mut row, 0, 18446744073709551615u64);
-		assert_eq!(layout.try_get_u64(&row, 0), Some(18446744073709551615u64));
+		schema.set_u64(&mut row, 0, 18446744073709551615u64);
+		assert_eq!(schema.try_get_u64(&row, 0), Some(18446744073709551615u64));
 	}
 
 	#[test]
 	fn test_extremes() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Uint8]);
+		let mut row = schema.allocate();
 
-		layout.set_u64(&mut row, 0, u64::MAX);
-		assert_eq!(layout.get_u64(&row, 0), u64::MAX);
+		schema.set_u64(&mut row, 0, u64::MAX);
+		assert_eq!(schema.get_u64(&row, 0), u64::MAX);
 
-		let mut row2 = layout.allocate_for_testing();
-		layout.set_u64(&mut row2, 0, u64::MIN);
-		assert_eq!(layout.get_u64(&row2, 0), u64::MIN);
+		let mut row2 = schema.allocate();
+		schema.set_u64(&mut row2, 0, u64::MIN);
+		assert_eq!(schema.get_u64(&row2, 0), u64::MIN);
 
-		let mut row3 = layout.allocate_for_testing();
-		layout.set_u64(&mut row3, 0, 0u64);
-		assert_eq!(layout.get_u64(&row3, 0), 0u64);
+		let mut row3 = schema.allocate();
+		schema.set_u64(&mut row3, 0, 0u64);
+		assert_eq!(schema.get_u64(&row3, 0), 0u64);
 	}
 
 	#[test]
 	fn test_large_values() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+		let schema = Schema::testing(&[Type::Uint8]);
 
 		let test_values = [
 			0u64,
@@ -91,15 +124,15 @@ pub mod tests {
 		];
 
 		for value in test_values {
-			let mut row = layout.allocate_for_testing();
-			layout.set_u64(&mut row, 0, value);
-			assert_eq!(layout.get_u64(&row, 0), value);
+			let mut row = schema.allocate();
+			schema.set_u64(&mut row, 0, value);
+			assert_eq!(schema.get_u64(&row, 0), value);
 		}
 	}
 
 	#[test]
 	fn test_memory_sizes() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+		let schema = Schema::testing(&[Type::Uint8]);
 
 		// Test values representing memory sizes in bytes
 		let memory_sizes = [
@@ -112,15 +145,15 @@ pub mod tests {
 		];
 
 		for size in memory_sizes {
-			let mut row = layout.allocate_for_testing();
-			layout.set_u64(&mut row, 0, size);
-			assert_eq!(layout.get_u64(&row, 0), size);
+			let mut row = schema.allocate();
+			schema.set_u64(&mut row, 0, size);
+			assert_eq!(schema.get_u64(&row, 0), size);
 		}
 	}
 
 	#[test]
 	fn test_nanosecond_timestamps() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
+		let schema = Schema::testing(&[Type::Uint8]);
 
 		// Test nanosecond precision timestamps
 		let ns_timestamps = [
@@ -131,47 +164,47 @@ pub mod tests {
 		];
 
 		for timestamp in ns_timestamps {
-			let mut row = layout.allocate_for_testing();
-			layout.set_u64(&mut row, 0, timestamp);
-			assert_eq!(layout.get_u64(&row, 0), timestamp);
+			let mut row = schema.allocate();
+			schema.set_u64(&mut row, 0, timestamp);
+			assert_eq!(schema.get_u64(&row, 0), timestamp);
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8, Type::Float8, Type::Uint8]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
+		let mut row = schema.allocate();
 
-		layout.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
-		layout.set_f64(&mut row, 1, 3.14159265359);
-		layout.set_u64(&mut row, 2, 12_000_000_000_000_000_000u64);
+		schema.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
+		schema.set_f64(&mut row, 1, 3.14159265359);
+		schema.set_u64(&mut row, 2, 12_000_000_000_000_000_000u64);
 
-		assert_eq!(layout.get_u64(&row, 0), 15_000_000_000_000_000_000u64);
-		assert_eq!(layout.get_f64(&row, 1), 3.14159265359);
-		assert_eq!(layout.get_u64(&row, 2), 12_000_000_000_000_000_000u64);
+		assert_eq!(schema.get_u64(&row, 0), 15_000_000_000_000_000_000u64);
+		assert_eq!(schema.get_f64(&row, 1), 3.14159265359);
+		assert_eq!(schema.get_u64(&row, 2), 12_000_000_000_000_000_000u64);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedValuesLayout::new(&[Type::Uint8, Type::Uint8]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Uint8, Type::Uint8]);
+		let mut row = schema.allocate();
 
-		layout.set_u64(&mut row, 0, 1234567890123456789u64);
+		schema.set_u64(&mut row, 0, 1234567890123456789u64);
 
-		assert_eq!(layout.try_get_u64(&row, 0), Some(1234567890123456789));
-		assert_eq!(layout.try_get_u64(&row, 1), None);
+		assert_eq!(schema.try_get_u64(&row, 0), Some(1234567890123456789));
+		assert_eq!(schema.try_get_u64(&row, 1), None);
 
-		layout.set_undefined(&mut row, 0);
-		assert_eq!(layout.try_get_u64(&row, 0), None);
+		schema.set_undefined(&mut row, 0);
+		assert_eq!(schema.try_get_u64(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_u64_wrong_type() {
-		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_for_testing();
+		let schema = Schema::testing(&[Type::Boolean]);
+		let mut row = schema.allocate();
 
-		layout.set_bool(&mut row, 0, true);
+		schema.set_bool(&mut row, 0, true);
 
-		assert_eq!(layout.try_get_u64(&row, 0), None);
+		assert_eq!(schema.try_get_u64(&row, 0), None);
 	}
 }

@@ -290,7 +290,7 @@ fn build_headers_and_layout<'a>(source: &ResolvedPrimitive) -> crate::Result<(Co
 	};
 
 	let data = columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-	let row_layout = EncodedValuesLayout::new(&data);
+	let row_layout = EncodedValuesLayout::testing(&data);
 
 	let headers = ColumnHeaders {
 		columns: columns.iter().map(|col| Fragment::internal(&col.name)).collect(),

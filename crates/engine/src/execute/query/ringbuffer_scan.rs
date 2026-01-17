@@ -66,7 +66,7 @@ impl RingBufferScan {
 			}
 		}
 
-		let row_layout = EncodedValuesLayout::new(&storage_types);
+		let row_layout = EncodedValuesLayout::testing(&storage_types);
 
 		// Create columns headers
 		let headers = ColumnHeaders {

@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
+use crate::{CatalogStore, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
 	/// Get the primary key ID for a ring buffer
@@ -22,7 +22,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = ringbuffer::LAYOUT.get_u64(&multi.values, ringbuffer::PRIMARY_KEY);
+		let pk_id = ringbuffer::SCHEMA.get_u64(&multi.values, ringbuffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

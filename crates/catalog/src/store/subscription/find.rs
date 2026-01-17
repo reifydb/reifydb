@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::{IntoStandardTransaction, StandardTransaction};
 
-use crate::{CatalogStore, store::subscription::layout::subscription};
+use crate::{CatalogStore, store::subscription::schema::subscription};
 
 impl CatalogStore {
 	pub fn find_subscription(
@@ -21,10 +21,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.values;
-		let uuid = subscription::LAYOUT.get_uuid7(&row, subscription::ID);
+		let uuid = subscription::SCHEMA.get_uuid7(&row, subscription::ID);
 		let id = SubscriptionId(uuid.into());
 		let acknowledged_version =
-			CommitVersion(subscription::LAYOUT.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));
+			CommitVersion(subscription::SCHEMA.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));
 
 		// Load columns using the new subscription column storage
 		let columns = match &mut txn {

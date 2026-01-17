@@ -11,10 +11,10 @@ use reifydb_core::{
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{
 	error::{Error, diagnostic::internal::internal},
-	value::r#type::Type,
+	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
 
-use super::layout::{schema_field, schema_header};
+use super::schema::{schema_field, schema_header};
 
 /// Find a schema by its fingerprint.
 ///
@@ -32,7 +32,7 @@ pub fn find_schema_by_fingerprint(
 		None => return Ok(None),
 	};
 
-	let field_count = schema_header::LAYOUT.get_u16(&header_entry.values, schema_header::FIELD_COUNT) as usize;
+	let field_count = schema_header::SCHEMA.get_u16(&header_entry.values, schema_header::FIELD_COUNT) as usize;
 
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
@@ -41,16 +41,24 @@ pub fn find_schema_by_fingerprint(
 			Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 		})?;
 
-		let name = schema_field::LAYOUT.get_utf8(&field_entry.values, schema_field::NAME).to_string();
-		let field_type_u8 = schema_field::LAYOUT.get_u8(&field_entry.values, schema_field::FIELD_TYPE);
-		let field_type = Type::from_u8(field_type_u8);
-		let offset = schema_field::LAYOUT.get_u32(&field_entry.values, schema_field::OFFSET);
-		let size = schema_field::LAYOUT.get_u32(&field_entry.values, schema_field::SIZE);
-		let align = schema_field::LAYOUT.get_u8(&field_entry.values, schema_field::ALIGN);
+		let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
+		let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::BASE_TYPE);
+		let constraint_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
+		let constraint_param1 = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P1);
+		let constraint_param2 = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P2);
+		let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+			base_type,
+			constraint_type,
+			constraint_param1,
+			constraint_param2,
+		});
+		let offset = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::OFFSET);
+		let size = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::SIZE);
+		let align = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::ALIGN);
 
 		fields.push(SchemaField {
 			name,
-			field_type,
+			constraint,
 			offset,
 			size,
 			align,
@@ -81,7 +89,7 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 				.ok_or_else(|| Error(internal("Failed to decode schema key")))?;
 
 			let field_count =
-				schema_header::LAYOUT.get_u16(&entry.values, schema_header::FIELD_COUNT) as usize;
+				schema_header::SCHEMA.get_u16(&entry.values, schema_header::FIELD_COUNT) as usize;
 
 			schema_headers.push((schema_key.fingerprint, field_count));
 		}
@@ -99,16 +107,27 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 			})?;
 
-			let name = schema_field::LAYOUT.get_utf8(&field_entry.values, schema_field::NAME).to_string();
-			let field_type_u8 = schema_field::LAYOUT.get_u8(&field_entry.values, schema_field::FIELD_TYPE);
-			let field_type = Type::from_u8(field_type_u8);
-			let offset = schema_field::LAYOUT.get_u32(&field_entry.values, schema_field::OFFSET);
-			let size = schema_field::LAYOUT.get_u32(&field_entry.values, schema_field::SIZE);
-			let align = schema_field::LAYOUT.get_u8(&field_entry.values, schema_field::ALIGN);
+			let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
+			let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::BASE_TYPE);
+			let constraint_type =
+				schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
+			let constraint_param1 =
+				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P1);
+			let constraint_param2 =
+				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P2);
+			let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+				base_type,
+				constraint_type,
+				constraint_param1,
+				constraint_param2,
+			});
+			let offset = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::OFFSET);
+			let size = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::SIZE);
+			let align = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::ALIGN);
 
 			fields.push(SchemaField {
 				name,
-				field_type,
+				constraint,
 				offset,
 				size,
 				align,

@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::namespace::layout::namespace};
+use crate::{CatalogStore, store::namespace::schema::namespace};
 
 impl CatalogStore {
 	pub fn list_namespaces_all(rx: &mut impl IntoStandardTransaction) -> crate::Result<Vec<NamespaceDef>> {
@@ -25,7 +25,7 @@ impl CatalogStore {
 					let namespace_id = namespace_key.namespace;
 
 					let name =
-						namespace::LAYOUT.get_utf8(&entry.values, namespace::NAME).to_string();
+						namespace::SCHEMA.get_utf8(&entry.values, namespace::NAME).to_string();
 					let namespace_def = NamespaceDef {
 						id: namespace_id,
 						name,

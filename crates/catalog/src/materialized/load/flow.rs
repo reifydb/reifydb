@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::standard::IntoStandardTransaction;
 
 use super::MaterializedCatalog;
-use crate::store::flow::layout::{
+use crate::store::flow::schema::{
 	flow,
 	flow::{ID, NAME, NAMESPACE, STATUS},
 };
@@ -36,10 +36,10 @@ pub(crate) fn load_flows(rx: &mut impl IntoStandardTransaction, catalog: &Materi
 
 fn convert_flow(multi: MultiVersionValues) -> FlowDef {
 	let row = multi.values;
-	let id = FlowId(flow::LAYOUT.get_u64(&row, ID));
-	let namespace = NamespaceId(flow::LAYOUT.get_u64(&row, NAMESPACE));
-	let name = flow::LAYOUT.get_utf8(&row, NAME).to_string();
-	let status = FlowStatus::from_u8(flow::LAYOUT.get_u8(&row, STATUS));
+	let id = FlowId(flow::SCHEMA.get_u64(&row, ID));
+	let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, NAMESPACE));
+	let name = flow::SCHEMA.get_utf8(&row, NAME).to_string();
+	let status = FlowStatus::from_u8(flow::SCHEMA.get_u8(&row, STATUS));
 
 	FlowDef {
 		id,

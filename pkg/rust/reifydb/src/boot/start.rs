@@ -41,7 +41,7 @@ impl EventListener<OnStartEvent> for StartEventListener {
 
 impl StartEventListener {
 	fn handle_start(&self) -> crate::Result<()> {
-		let layout = EncodedValuesLayout::new(&[Type::Uint1]);
+		let layout = EncodedValuesLayout::testing(&[Type::Uint1]);
 		let key = SystemVersionKey {
 			version: SystemVersion::Storage,
 		}
@@ -52,7 +52,7 @@ impl StartEventListener {
 
 		let created = match tx.get(&key)? {
 			None => {
-				let mut row = layout.allocate_deprecated();
+				let mut row = layout.allocate();
 				layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 				tx.set(&key, row)?;
 				true

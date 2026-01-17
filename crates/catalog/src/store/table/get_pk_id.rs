@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::IntoStandardTransaction;
 
-use crate::{CatalogStore, store::table::layout::table};
+use crate::{CatalogStore, store::table::schema::table};
 
 impl CatalogStore {
 	/// Get the primary key ID for a table
@@ -22,7 +22,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::LAYOUT.get_u64(&multi.values, table::PRIMARY_KEY);
+		let pk_id = table::SCHEMA.get_u64(&multi.values, table::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

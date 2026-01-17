@@ -9,7 +9,7 @@ use reifydb_transaction::standard::IntoStandardTransaction;
 
 use crate::{
 	CatalogStore,
-	store::flow_node::layout::{flow_node, flow_node_by_flow},
+	store::flow_node::schema::{flow_node, flow_node_by_flow},
 };
 
 impl CatalogStore {
@@ -27,7 +27,7 @@ impl CatalogStore {
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
-					flow_node_by_flow::LAYOUT.get_u64(&multi.values, flow_node_by_flow::ID),
+					flow_node_by_flow::SCHEMA.get_u64(&multi.values, flow_node_by_flow::ID),
 				));
 			}
 		}
@@ -53,9 +53,9 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {
 				let node_id = flow_node_key.node;
-				let flow_id = FlowId(flow_node::LAYOUT.get_u64(&entry.values, flow_node::FLOW));
-				let node_type = flow_node::LAYOUT.get_u8(&entry.values, flow_node::TYPE);
-				let data = flow_node::LAYOUT.get_blob(&entry.values, flow_node::DATA).clone();
+				let flow_id = FlowId(flow_node::SCHEMA.get_u64(&entry.values, flow_node::FLOW));
+				let node_type = flow_node::SCHEMA.get_u8(&entry.values, flow_node::TYPE);
+				let data = flow_node::SCHEMA.get_blob(&entry.values, flow_node::DATA).clone();
 
 				let node_def = FlowNodeDef {
 					id: node_id,

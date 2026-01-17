@@ -24,7 +24,7 @@ use crate::{
 		column::create::ColumnToCreate,
 		retention_policy::create::create_primitive_retention_policy,
 		sequence::system::SystemSequence,
-		table::layout::{table, table_namespace},
+		table::schema::{table, table_namespace},
 	},
 };
 
@@ -79,13 +79,13 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> crate::Result<()> {
-		let mut row = table::LAYOUT.allocate_deprecated();
-		table::LAYOUT.set_u64(&mut row, table::ID, table);
-		table::LAYOUT.set_u64(&mut row, table::NAMESPACE, namespace);
-		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
+		let mut row = table::SCHEMA.allocate();
+		table::SCHEMA.set_u64(&mut row, table::ID, table);
+		table::SCHEMA.set_u64(&mut row, table::NAMESPACE, namespace);
+		table::SCHEMA.set_utf8(&mut row, table::NAME, &to_create.table);
 
 		// Initialize with no primary key
-		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SCHEMA.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
 		txn.set(&TableKey::encoded(table), row)?;
 
@@ -98,9 +98,9 @@ impl CatalogStore {
 		table: TableId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = table_namespace::LAYOUT.allocate_deprecated();
-		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
-		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
+		let mut row = table_namespace::SCHEMA.allocate();
+		table_namespace::SCHEMA.set_u64(&mut row, table_namespace::ID, table);
+		table_namespace::SCHEMA.set_utf8(&mut row, table_namespace::NAME, name);
 		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
 		Ok(())
 	}
@@ -148,7 +148,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::table::{create::TableToCreate, layout::table_namespace},
+		store::table::{create::TableToCreate, schema::table_namespace},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -210,12 +210,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.values;
-		assert_eq!(table_namespace::LAYOUT.get_u64(row, table_namespace::ID), 1025);
-		assert_eq!(table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME), "test_table");
+		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.values;
-		assert_eq!(table_namespace::LAYOUT.get_u64(row, table_namespace::ID), 1026);
-		assert_eq!(table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME), "another_table");
+		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

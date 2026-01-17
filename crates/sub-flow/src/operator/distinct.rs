@@ -176,7 +176,7 @@ impl DistinctOperator {
 			parent,
 			node,
 			expressions,
-			layout: EncodedValuesLayout::new(&[Type::Blob]),
+			layout: EncodedValuesLayout::testing(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
 		}
 	}
@@ -254,7 +254,7 @@ impl DistinctOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate_deprecated();
+		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 

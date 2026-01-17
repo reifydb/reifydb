@@ -23,7 +23,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
-		view::layout::{view, view_namespace},
+		view::schema::{view, view_namespace},
 	},
 };
 
@@ -89,11 +89,11 @@ impl CatalogStore {
 		to_create: &ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<()> {
-		let mut row = view::LAYOUT.allocate_deprecated();
-		view::LAYOUT.set_u64(&mut row, view::ID, view);
-		view::LAYOUT.set_u64(&mut row, view::NAMESPACE, namespace);
-		view::LAYOUT.set_utf8(&mut row, view::NAME, &to_create.name);
-		view::LAYOUT.set_u8(
+		let mut row = view::SCHEMA.allocate();
+		view::SCHEMA.set_u64(&mut row, view::ID, view);
+		view::SCHEMA.set_u64(&mut row, view::NAMESPACE, namespace);
+		view::SCHEMA.set_utf8(&mut row, view::NAME, &to_create.name);
+		view::SCHEMA.set_u8(
 			&mut row,
 			view::KIND,
 			match kind {
@@ -101,7 +101,7 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::LAYOUT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
+		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
 		txn.set(&ViewKey::encoded(view), row)?;
 
@@ -114,9 +114,9 @@ impl CatalogStore {
 		view: ViewId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = view_namespace::LAYOUT.allocate_deprecated();
-		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
-		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
+		let mut row = view_namespace::SCHEMA.allocate();
+		view_namespace::SCHEMA.set_u64(&mut row, view_namespace::ID, view);
+		view_namespace::SCHEMA.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
 		Ok(())
 	}
@@ -162,7 +162,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::view::{create::ViewToCreate, layout::view_namespace},
+		store::view::{create::ViewToCreate, schema::view_namespace},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -221,13 +221,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.values;
-		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1025);
-		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "test_view");
+		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.values;
-		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1026);
-		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "another_view");
+		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 
 	#[test]

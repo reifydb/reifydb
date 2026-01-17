@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_transaction::standard::IntoStandardTransaction;
 
 use super::MaterializedCatalog;
-use crate::store::ringbuffer::layout::{
+use crate::store::ringbuffer::schema::{
 	ringbuffer,
 	ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
@@ -44,10 +44,10 @@ pub(crate) fn load_ringbuffers(
 
 fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> RingBufferDef {
 	let row = multi.values;
-	let id = RingBufferId(ringbuffer::LAYOUT.get_u64(&row, ID));
-	let namespace = NamespaceId(ringbuffer::LAYOUT.get_u64(&row, NAMESPACE));
-	let name = ringbuffer::LAYOUT.get_utf8(&row, NAME).to_string();
-	let capacity = ringbuffer::LAYOUT.get_u64(&row, CAPACITY);
+	let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ID));
+	let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, NAMESPACE));
+	let name = ringbuffer::SCHEMA.get_utf8(&row, NAME).to_string();
+	let capacity = ringbuffer::SCHEMA.get_u64(&row, CAPACITY);
 
 	RingBufferDef {
 		id,
@@ -60,7 +60,7 @@ fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyD
 }
 
 fn get_ringbuffer_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::LAYOUT.get_u64(&multi.values, PRIMARY_KEY);
+	let pk_id_raw = ringbuffer::SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

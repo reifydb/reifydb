@@ -7,23 +7,23 @@ use reifydb_core::{
 };
 use reifydb_transaction::standard::command::StandardCommandTransaction;
 
-use crate::store::flow_edge::layout::{flow_edge, flow_edge_by_flow};
+use crate::store::flow_edge::schema::{flow_edge, flow_edge_by_flow};
 
 impl crate::CatalogStore {
 	pub fn create_flow_edge(txn: &mut StandardCommandTransaction, edge_def: &FlowEdgeDef) -> crate::Result<()> {
 		// Write to main flow_edge table
-		let mut row = flow_edge::LAYOUT.allocate_deprecated();
-		flow_edge::LAYOUT.set_u64(&mut row, flow_edge::ID, edge_def.id);
-		flow_edge::LAYOUT.set_u64(&mut row, flow_edge::FLOW, edge_def.flow);
-		flow_edge::LAYOUT.set_u64(&mut row, flow_edge::SOURCE, edge_def.source);
-		flow_edge::LAYOUT.set_u64(&mut row, flow_edge::TARGET, edge_def.target);
+		let mut row = flow_edge::SCHEMA.allocate();
+		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::ID, edge_def.id);
+		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::FLOW, edge_def.flow);
+		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::SOURCE, edge_def.source);
+		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::TARGET, edge_def.target);
 
 		txn.set(&FlowEdgeKey::encoded(edge_def.id), row)?;
 
 		// Write to flow_edge_by_flow index
-		let mut index_row = flow_edge_by_flow::LAYOUT.allocate_deprecated();
-		flow_edge_by_flow::LAYOUT.set_u64(&mut index_row, flow_edge_by_flow::FLOW, edge_def.flow);
-		flow_edge_by_flow::LAYOUT.set_u64(&mut index_row, flow_edge_by_flow::ID, edge_def.id);
+		let mut index_row = flow_edge_by_flow::SCHEMA.allocate();
+		flow_edge_by_flow::SCHEMA.set_u64(&mut index_row, flow_edge_by_flow::FLOW, edge_def.flow);
+		flow_edge_by_flow::SCHEMA.set_u64(&mut index_row, flow_edge_by_flow::ID, edge_def.id);
 
 		txn.set(&FlowEdgeByFlowKey::encoded(edge_def.flow, edge_def.id), index_row)?;
 

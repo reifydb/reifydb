@@ -14,8 +14,8 @@ fn test_massive_field_count() {
 	// Test with an extreme number of fields
 	let field_count = 10000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate_for_testing();
+	let layout = EncodedValuesLayout::testing(&types);
+	let mut row = layout.allocate();
 
 	// Set and verify a sampling of fields
 	for i in (0..field_count).step_by(100) {
@@ -40,11 +40,11 @@ fn test_mixed_static_dynamic_stress() {
 		})
 		.collect();
 
-	let layout = EncodedValuesLayout::new(&types);
+	let layout = EncodedValuesLayout::testing(&types);
 
 	// Create a encoded and set all dynamic fields once, then repeatedly update
 	// static fields
-	let mut row = layout.allocate_for_testing();
+	let mut row = layout.allocate();
 
 	// First, set all dynamic fields once
 	for i in (1..100).step_by(2) {
@@ -76,7 +76,7 @@ fn test_mixed_static_dynamic_stress() {
 	// Test creating multiple rows with different dynamic content
 	let mut test_rows = Vec::new();
 	for row_idx in 0..10 {
-		let mut test_row = layout.allocate_for_testing();
+		let mut test_row = layout.allocate();
 
 		// Set static fields
 		for i in (0..100).step_by(2) {
@@ -109,9 +109,9 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
 
-	let mut original = layout.allocate_for_testing();
+	let mut original = layout.allocate();
 	layout.set_utf8(&mut original, 0, &"x".repeat(1000));
 	layout.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
 	layout.set_int(&mut original, 2, &Int::from(i128::MAX));
@@ -137,8 +137,8 @@ fn test_validity_bit_stress() {
 	// Test validity bit handling under stress
 	let field_count = 1000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate_for_testing();
+	let layout = EncodedValuesLayout::testing(&types);
+	let mut row = layout.allocate();
 
 	// Set every other field as undefined
 	for i in 0..field_count {
@@ -184,14 +184,14 @@ fn test_validity_bit_stress() {
 #[test]
 fn test_extreme_string_sizes() {
 	// Test handling of very large strings
-	let layout = EncodedValuesLayout::new(&[Type::Utf8]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8]);
 
 	// Test various string sizes - use separate rows since dynamic fields
 	// can only be set once
 	let sizes = [0, 1, 100, 1000, 10000, 100000, 1000000];
 
 	for size in sizes {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		let large_string = "a".repeat(size);
 		layout.set_utf8(&mut row, 0, &large_string);
 		let retrieved = layout.get_utf8(&row, 0);
@@ -212,14 +212,14 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per encoded
-	let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
+	let layout = EncodedValuesLayout::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
 
 	// Create many rows with rapid field setting
 	for i in 0..iterations {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 
 		// Set all fields for this encoded
 		layout.set_i64(&mut row, 0, (i * 4) as i64);
@@ -240,7 +240,7 @@ fn test_concurrent_field_updates() {
 
 	// Test that static fields can still be updated repeatedly on a single
 	// encoded
-	let mut static_test_row = layout.allocate_for_testing();
+	let mut static_test_row = layout.allocate();
 
 	for i in 0..1000 {
 		layout.set_i64(&mut static_test_row, 0, i as i64);
@@ -265,14 +265,14 @@ fn test_concurrent_field_updates() {
 #[test]
 fn test_row_size_stability() {
 	// Ensure encoded sizes are stable and predictable for dynamic fields
-	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob]);
+	let layout = EncodedValuesLayout::testing(&[Type::Utf8, Type::Blob]);
 
 	// Test that rows with similar sized content have similar sizes
 	let sizes = [10, 100, 1000];
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, &"x".repeat(size));
 		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
@@ -292,7 +292,7 @@ fn test_row_size_stability() {
 	// Test size consistency - rows with same content should have same size
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate_for_testing();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, &"x".repeat(50));
 		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());

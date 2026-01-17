@@ -30,7 +30,7 @@ pub(crate) struct ViewScanNode {
 impl ViewScanNode {
 	pub fn new(view: ResolvedView, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let data = view.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedValuesLayout::new(&data);
+		let row_layout = EncodedValuesLayout::testing(&data);
 
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
