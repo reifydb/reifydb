@@ -49,6 +49,8 @@ pub enum KeyKind {
 	Subscription = 0x27,
 	SubscriptionRow = 0x28,
 	SubscriptionColumn = 0x29,
+	Schema = 0x2A,
+	SchemaField = 0x2B,
 }
 
 impl From<KeyKind> for u8 {
@@ -102,6 +104,8 @@ impl TryFrom<u8> for KeyKind {
 			0x27 => Ok(Self::Subscription),
 			0x28 => Ok(Self::SubscriptionRow),
 			0x29 => Ok(Self::SubscriptionColumn),
+			0x2A => Ok(Self::Schema),
+			0x2B => Ok(Self::SchemaField),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

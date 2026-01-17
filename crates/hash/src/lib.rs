@@ -11,7 +11,7 @@ use core::hash::{Hash, Hasher};
 use serde::{Deserialize, Serialize};
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash32(pub u32);
 
@@ -34,7 +34,7 @@ impl Hash for Hash32 {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash64(pub u64);
 

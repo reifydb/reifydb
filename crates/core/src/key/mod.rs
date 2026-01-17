@@ -24,6 +24,7 @@ use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use row::RowKey;
 use row_sequence::RowSequenceKey;
+pub use schema::{SchemaFieldKey, SchemaKey};
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;
@@ -65,6 +66,7 @@ pub mod retention_policy;
 pub mod ringbuffer;
 pub mod row;
 pub mod row_sequence;
+pub mod schema;
 pub mod subscription;
 pub mod subscription_column;
 pub mod subscription_row;
@@ -260,6 +262,10 @@ impl Key {
 				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
 			}
 			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
+			KeyKind::Schema | KeyKind::SchemaField => {
+				// Schema keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
 		}
 	}
 }

@@ -7,6 +7,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 
 pub mod catalog;
 pub mod materialized;
+pub mod schema;
 pub mod store;
 pub mod system;
 pub mod test_utils;

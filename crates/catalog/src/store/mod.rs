@@ -12,6 +12,7 @@ pub mod primary_key;
 pub mod primitive;
 pub mod retention_policy;
 pub mod ringbuffer;
+pub mod schema;
 pub mod sequence;
 pub mod subscription;
 pub mod table;

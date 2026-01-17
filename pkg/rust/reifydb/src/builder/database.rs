@@ -8,6 +8,7 @@ use reifydb_catalog::{
 	CatalogVersion,
 	catalog::Catalog,
 	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
+	schema::{SchemaRegistry, load::SchemaRegistryLoader},
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -70,6 +71,7 @@ impl DatabaseBuilder {
 	pub fn new(multi: TransactionMulti, single: TransactionSingle, eventbus: EventBus) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
+			.register(SchemaRegistry::new())
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -162,11 +164,13 @@ impl DatabaseBuilder {
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
+		let schema_registry = self.ioc.resolve::<SchemaRegistry>()?;
 		let multi = self.ioc.resolve::<TransactionMulti>()?;
 		let single = self.ioc.resolve::<TransactionSingle>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		Self::load_materialized_catalog(&multi, &single, &catalog)?;
+		Self::load_schema_registry(&multi, &single, &schema_registry)?;
 
 		// Create and register Compiler (requires SharedRuntime to be registered first)
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
@@ -303,6 +307,20 @@ impl DatabaseBuilder {
 
 		debug!("Loading materialized catalog");
 		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
+
+		Ok(())
+	}
+
+	/// Load the schema registry from storage
+	fn load_schema_registry(
+		multi: &TransactionMulti,
+		single: &TransactionSingle,
+		registry: &SchemaRegistry,
+	) -> crate::Result<()> {
+		let mut qt = StandardQueryTransaction::new(multi.begin_query()?, single.clone());
+
+		debug!("Loading schema registry");
+		SchemaRegistryLoader::load_all(&mut qt, registry)?;
 
 		Ok(())
 	}

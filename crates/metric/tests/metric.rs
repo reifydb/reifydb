@@ -421,7 +421,6 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-
 				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
