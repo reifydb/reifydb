@@ -79,7 +79,7 @@ impl CatalogStore {
 	) -> crate::Result<()> {
 		use crate::store::ringbuffer::layout::ringbuffer;
 
-		let mut row = ringbuffer::LAYOUT.allocate();
+		let mut row = ringbuffer::LAYOUT.allocate_deprecated();
 		ringbuffer::LAYOUT.set_u64(&mut row, ringbuffer::ID, ringbuffer);
 		ringbuffer::LAYOUT.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
 		ringbuffer::LAYOUT.set_utf8(&mut row, ringbuffer::NAME, &to_create.ringbuffer);
@@ -100,7 +100,7 @@ impl CatalogStore {
 	) -> crate::Result<()> {
 		use crate::store::ringbuffer::layout::ringbuffer_namespace;
 
-		let mut row = ringbuffer_namespace::LAYOUT.allocate();
+		let mut row = ringbuffer_namespace::LAYOUT.allocate_deprecated();
 		ringbuffer_namespace::LAYOUT.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
 		ringbuffer_namespace::LAYOUT.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
@@ -151,7 +151,7 @@ impl CatalogStore {
 	) -> crate::Result<()> {
 		use crate::store::ringbuffer::layout::ringbuffer_metadata;
 
-		let mut row = ringbuffer_metadata::LAYOUT.allocate();
+		let mut row = ringbuffer_metadata::LAYOUT.allocate_deprecated();
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::HEAD, 0u64);

@@ -151,7 +151,7 @@ pub fn load_or_create_row(
 ) -> reifydb_type::Result<EncodedValues> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
-		None => Ok(layout.allocate()),
+		None => Ok(layout.allocate_deprecated()),
 	}
 }
 

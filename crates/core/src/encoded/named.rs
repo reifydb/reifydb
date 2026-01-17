@@ -21,6 +21,7 @@ use reifydb_type::value::{
 use super::{
 	encoded::EncodedValues,
 	layout::{EncodedValuesLayout, EncodedValuesLayoutInner},
+	schema::Schema,
 };
 
 /// An encoded named layout that includes field names
@@ -70,7 +71,7 @@ impl EncodedValuesNamedLayout {
 	}
 
 	pub fn allocate(&self) -> EncodedValues {
-		self.layout.allocate()
+		self.layout.allocate_for_testing()
 	}
 
 	pub fn get_value(&self, row: &EncodedValues, name: &str) -> Option<Value> {
@@ -507,5 +508,11 @@ impl EncodedValuesNamedLayout {
 			let value = self.layout.get_value(row, idx);
 			(name.as_str(), value)
 		})
+	}
+}
+
+impl From<&Schema> for EncodedValuesNamedLayout {
+	fn from(schema: &Schema) -> Self {
+		EncodedValuesNamedLayout::new(schema.fields().iter().map(|f| (f.name.clone(), f.field_type)))
 	}
 }

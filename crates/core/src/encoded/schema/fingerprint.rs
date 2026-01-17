@@ -7,9 +7,78 @@
 //! ensuring that identical schemas always produce the same fingerprint regardless
 //! of when or where they are created.
 
-use reifydb_hash::{Hash64, xxh::xxh3_64};
+use std::ops::Deref;
 
-use super::SchemaField;
+use reifydb_hash::{Hash64, xxh::xxh3_64};
+use serde::{Deserialize, Serialize};
+
+use crate::schema::SchemaField;
+
+/// A fingerprint that uniquely identifies a schema layout.
+///
+/// This is an 8-byte hash stored in the header of every encoded row,
+/// allowing the schema to be identified without external metadata.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SchemaFingerprint(pub Hash64);
+
+impl Deref for SchemaFingerprint {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0.0
+	}
+}
+
+impl SchemaFingerprint {
+	/// Create a new schema fingerprint from a u64 value.
+	#[inline]
+	pub const fn new(value: u64) -> Self {
+		Self(Hash64(value))
+	}
+
+	/// Create a zero/empty fingerprint.
+	#[inline]
+	pub const fn zero() -> Self {
+		Self(Hash64(0))
+	}
+
+	/// Get the underlying u64 value.
+	#[inline]
+	pub const fn as_u64(&self) -> u64 {
+		self.0.0
+	}
+
+	/// Convert to little-endian bytes.
+	#[inline]
+	pub const fn to_le_bytes(&self) -> [u8; 8] {
+		self.0.0.to_le_bytes()
+	}
+
+	/// Create from little-endian bytes.
+	#[inline]
+	pub const fn from_le_bytes(bytes: [u8; 8]) -> Self {
+		Self(Hash64(u64::from_le_bytes(bytes)))
+	}
+}
+
+impl From<Hash64> for SchemaFingerprint {
+	fn from(hash: Hash64) -> Self {
+		Self(hash)
+	}
+}
+
+impl From<SchemaFingerprint> for Hash64 {
+	fn from(fp: SchemaFingerprint) -> Self {
+		fp.0
+	}
+}
+
+impl From<u64> for SchemaFingerprint {
+	fn from(value: u64) -> Self {
+		Self(Hash64(value))
+	}
+}
 
 /// Compute a deterministic fingerprint for a schema based on its fields.
 ///
@@ -23,7 +92,7 @@ use super::SchemaField;
 /// - For each field:
 ///   - Field name length (u16) + name bytes (UTF-8)
 ///   - Field type (u8)
-pub fn compute_fingerprint(fields: &[SchemaField]) -> Hash64 {
+pub fn compute_fingerprint(fields: &[SchemaField]) -> SchemaFingerprint {
 	// Estimate buffer size: 2 bytes for count + ~32 bytes per field average
 	let estimated_size = 2 + fields.len() * 32;
 	let mut buffer = Vec::with_capacity(estimated_size);
@@ -44,7 +113,7 @@ pub fn compute_fingerprint(fields: &[SchemaField]) -> Hash64 {
 		buffer.push(field.field_type.to_u8());
 	}
 
-	xxh3_64(&buffer)
+	SchemaFingerprint(xxh3_64(&buffer))
 }
 
 #[cfg(test)]
@@ -57,7 +126,6 @@ mod tests {
 		SchemaField {
 			name: name.to_string(),
 			field_type,
-			field_index: 0,
 			offset: 0,
 			size: 0,
 			align: 0,
@@ -103,6 +171,6 @@ mod tests {
 		let fields: Vec<SchemaField> = vec![];
 		// Should not panic and should produce a valid hash
 		let fp = compute_fingerprint(&fields);
-		assert_ne!(fp.0, 0); // Very unlikely to be zero
+		assert_ne!(*fp, 0);
 	}
 }

@@ -16,7 +16,7 @@ use self::layout::retention_policy;
 
 /// Encode a RetentionPolicy into EncodedValues
 pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues {
-	let mut row = retention_policy::LAYOUT.allocate();
+	let mut row = retention_policy::LAYOUT.allocate_deprecated();
 
 	match policy {
 		RetentionPolicy::KeepForever => {

@@ -49,7 +49,7 @@ pub fn load_or_create_row(
 ) -> Result<EncodedValues> {
 	match ctx.state().get(key)? {
 		Some(row) => Ok(row),
-		None => Ok(layout.allocate()),
+		None => Ok(layout.allocate_deprecated()),
 	}
 }
 

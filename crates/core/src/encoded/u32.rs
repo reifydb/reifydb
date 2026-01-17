@@ -41,7 +41,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_u32() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_u32(&mut row, 0, 4294967295u32);
 		assert_eq!(layout.get_u32(&row, 0), 4294967295u32);
 	}
@@ -49,7 +49,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_u32() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_u32(&row, 0), None);
 
@@ -60,16 +60,16 @@ pub mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u32(&mut row, 0, u32::MAX);
 		assert_eq!(layout.get_u32(&row, 0), u32::MAX);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_u32(&mut row2, 0, u32::MIN);
 		assert_eq!(layout.get_u32(&row2, 0), u32::MIN);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_u32(&mut row3, 0, 0u32);
 		assert_eq!(layout.get_u32(&row3, 0), 0u32);
 	}
@@ -91,7 +91,7 @@ pub mod tests {
 		];
 
 		for value in test_values {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_u32(&mut row, 0, value);
 			assert_eq!(layout.get_u32(&row, 0), value);
 		}
@@ -110,7 +110,7 @@ pub mod tests {
 		];
 
 		for timestamp in timestamps {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_u32(&mut row, 0, timestamp);
 			assert_eq!(layout.get_u32(&row, 0), timestamp);
 		}
@@ -119,7 +119,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint4, Type::Float4, Type::Uint4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u32(&mut row, 0, 3_000_000_000u32);
 		layout.set_f32(&mut row, 1, 3.14f32);
@@ -133,7 +133,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint4, Type::Uint4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u32(&mut row, 0, 123456789u32);
 
@@ -147,7 +147,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_u32_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

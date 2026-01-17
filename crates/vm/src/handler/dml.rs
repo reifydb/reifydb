@@ -97,7 +97,7 @@ pub fn insert_row(ctx: &mut HandlerContext) -> Result<DispatchResult> {
 
 			// Insert each row
 			for row_idx in 0..row_count {
-				let mut row = layout.allocate();
+				let mut row = layout.allocate_deprecated();
 
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
 					let value = if let Some(&input_idx) = column_map.get(table_column.name.as_str())

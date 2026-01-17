@@ -23,7 +23,7 @@ fn test_uuid_uniqueness() {
 	let mut identity_set = HashSet::new();
 
 	for _ in 0..1000 {
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate();
@@ -51,7 +51,7 @@ async fn test_uuid7_timestamp_ordering() {
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		let uuid = Uuid7::generate();
 		layout.set_uuid7(&mut row, 0, uuid);
 		uuids.push(layout.get_uuid7(&row, 0));

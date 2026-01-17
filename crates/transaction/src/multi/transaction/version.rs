@@ -81,7 +81,7 @@ impl StandardVersionProvider {
 	fn persist_version(single: &TransactionSingle, version: u64) -> Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut values = layout.allocate();
+		let mut values = layout.allocate_deprecated();
 		layout.set_u64(&mut values, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
@@ -265,7 +265,7 @@ pub mod tests {
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut values = layout.allocate();
+		let mut values = layout.allocate_deprecated();
 		layout.set_u64(&mut values, 0, 500u64);
 
 		{

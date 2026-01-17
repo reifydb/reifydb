@@ -501,7 +501,7 @@ impl WindowOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate();
+		let mut state_row = self.layout.allocate_deprecated();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
@@ -534,7 +534,7 @@ impl WindowOperator {
 		let serialized = postcard::to_stdvec(&new_count)
 			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
-		let mut count_state_row = self.layout.allocate();
+		let mut count_state_row = self.layout.allocate_deprecated();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut count_state_row, 0, &blob);
 

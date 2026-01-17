@@ -41,7 +41,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_u8() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_u8(&mut row, 0, 255u8);
 		assert_eq!(layout.get_u8(&row, 0), 255u8);
 	}
@@ -49,7 +49,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_u8() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_u8(&row, 0), None);
 
@@ -60,16 +60,16 @@ pub mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u8(&mut row, 0, u8::MAX);
 		assert_eq!(layout.get_u8(&row, 0), u8::MAX);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_u8(&mut row2, 0, u8::MIN);
 		assert_eq!(layout.get_u8(&row2, 0), u8::MIN);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_u8(&mut row3, 0, 0u8);
 		assert_eq!(layout.get_u8(&row3, 0), 0u8);
 	}
@@ -81,7 +81,7 @@ pub mod tests {
 		let test_values = [0u8, 1u8, 127u8, 128u8, 254u8, 255u8];
 
 		for value in test_values {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_u8(&mut row, 0, value);
 			assert_eq!(layout.get_u8(&row, 0), value);
 		}
@@ -90,7 +90,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1, Type::Boolean, Type::Uint1]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u8(&mut row, 0, 200u8);
 		layout.set_bool(&mut row, 1, true);
@@ -104,7 +104,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint1, Type::Uint1]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_u8(&mut row, 0, 42);
 
@@ -118,7 +118,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_u8_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

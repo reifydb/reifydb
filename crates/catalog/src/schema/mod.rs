@@ -13,8 +13,10 @@ pub mod load;
 use std::sync::{Arc, Mutex};
 
 use crossbeam_skiplist::SkipMap;
-use reifydb_core::schema::{Schema, SchemaField};
-use reifydb_hash::Hash64;
+use reifydb_core::{
+	encoded::SchemaFingerprint,
+	schema::{Schema, SchemaField},
+};
 use reifydb_transaction::standard::{IntoStandardTransaction, command::StandardCommandTransaction};
 
 use crate::store::schema as schema_store;
@@ -30,7 +32,7 @@ pub struct SchemaRegistry(Arc<SchemaRegistryInner>);
 #[derive(Debug)]
 struct SchemaRegistryInner {
 	/// Cache of schemas by fingerprint
-	cache: SkipMap<Hash64, Arc<Schema>>,
+	cache: SkipMap<SchemaFingerprint, Arc<Schema>>,
 	/// Write lock for serializing creates
 	write_lock: Mutex<()>,
 }
@@ -97,14 +99,14 @@ impl SchemaRegistry {
 	/// Look up a schema by fingerprint (cache only).
 	///
 	/// Returns None if the schema is not in the cache.
-	pub fn get(&self, fingerprint: Hash64) -> Option<Arc<Schema>> {
+	pub fn get(&self, fingerprint: SchemaFingerprint) -> Option<Arc<Schema>> {
 		self.0.cache.get(&fingerprint).map(|entry| entry.value().clone())
 	}
 
 	/// Look up a schema by fingerprint, checking storage if not cached.
 	pub fn get_or_load(
 		&self,
-		fingerprint: Hash64,
+		fingerprint: SchemaFingerprint,
 		txn: &mut impl IntoStandardTransaction,
 	) -> crate::Result<Option<Arc<Schema>>> {
 		// Check cache first
@@ -180,6 +182,6 @@ mod tests {
 		assert!(registry.get(fingerprint).is_some());
 
 		// Unknown fingerprint should return None
-		assert!(registry.get(Hash64(0xDEADBEEF)).is_none());
+		assert!(registry.get(SchemaFingerprint::new(0xDEADBEEF)).is_none());
 	}
 }

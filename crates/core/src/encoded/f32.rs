@@ -42,7 +42,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_f32() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_f32(&mut row, 0, 1.25f32);
 		assert_eq!(layout.get_f32(&row, 0), 1.25f32);
 	}
@@ -50,7 +50,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_f32() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_f32(&row, 0), None);
 
@@ -61,29 +61,29 @@ pub mod tests {
 	#[test]
 	fn test_special_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test zero
 		layout.set_f32(&mut row, 0, 0.0f32);
 		assert_eq!(layout.get_f32(&row, 0), 0.0f32);
 
 		// Test negative zero
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_f32(&mut row2, 0, -0.0f32);
 		assert_eq!(layout.get_f32(&row2, 0), -0.0f32);
 
 		// Test infinity
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_f32(&mut row3, 0, f32::INFINITY);
 		assert_eq!(layout.get_f32(&row3, 0), f32::INFINITY);
 
 		// Test negative infinity
-		let mut row4 = layout.allocate();
+		let mut row4 = layout.allocate_for_testing();
 		layout.set_f32(&mut row4, 0, f32::NEG_INFINITY);
 		assert_eq!(layout.get_f32(&row4, 0), f32::NEG_INFINITY);
 
 		// Test NaN
-		let mut row5 = layout.allocate();
+		let mut row5 = layout.allocate_for_testing();
 		layout.set_f32(&mut row5, 0, f32::NAN);
 		assert!(layout.get_f32(&row5, 0).is_nan());
 	}
@@ -91,16 +91,16 @@ pub mod tests {
 	#[test]
 	fn test_extreme_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f32(&mut row, 0, f32::MAX);
 		assert_eq!(layout.get_f32(&row, 0), f32::MAX);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_f32(&mut row2, 0, f32::MIN);
 		assert_eq!(layout.get_f32(&row2, 0), f32::MIN);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_f32(&mut row3, 0, f32::MIN_POSITIVE);
 		assert_eq!(layout.get_f32(&row3, 0), f32::MIN_POSITIVE);
 	}
@@ -108,7 +108,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Int4, Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f32(&mut row, 0, 3.14f32);
 		layout.set_i32(&mut row, 1, 42);
@@ -122,7 +122,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f32(&mut row, 0, 3.14f32);
 
@@ -136,7 +136,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_f32_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 
@@ -146,7 +146,7 @@ pub mod tests {
 	#[test]
 	fn test_subnormal_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test smallest positive subnormal
 		let min_subnormal = f32::from_bits(0x00000001);
@@ -167,7 +167,7 @@ pub mod tests {
 	#[test]
 	fn test_nan_payload_preservation() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test different NaN representations
 		let quiet_nan = f32::NAN;
@@ -188,7 +188,7 @@ pub mod tests {
 	#[test]
 	fn test_repeated_operations() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		let initial_len = row.len();
 
 		// Set same field many times with different values
@@ -205,7 +205,7 @@ pub mod tests {
 	#[test]
 	fn test_unaligned_access() {
 		let layout = create_unaligned_layout(Type::Float4);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test at odd offset (index 1)
 		layout.set_f32(&mut row, 1, std::f32::consts::PI);
@@ -223,7 +223,7 @@ pub mod tests {
 	#[test]
 	fn test_denormalized_transitions() {
 		let layout = EncodedValuesLayout::new(&[Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test transition from normal to subnormal
 		let values = [

@@ -71,7 +71,7 @@ impl CatalogStore {
 	) -> crate::Result<()> {
 		use crate::store::dictionary::layout::dictionary;
 
-		let mut row = dictionary::LAYOUT.allocate();
+		let mut row = dictionary::LAYOUT.allocate_deprecated();
 		dictionary::LAYOUT.set_u64(&mut row, dictionary::ID, dictionary);
 		dictionary::LAYOUT.set_u64(&mut row, dictionary::NAMESPACE, namespace);
 		dictionary::LAYOUT.set_utf8(&mut row, dictionary::NAME, &to_create.dictionary);
@@ -91,7 +91,7 @@ impl CatalogStore {
 	) -> crate::Result<()> {
 		use crate::store::dictionary::layout::dictionary_namespace;
 
-		let mut row = dictionary_namespace::LAYOUT.allocate();
+		let mut row = dictionary_namespace::LAYOUT.allocate_deprecated();
 		dictionary_namespace::LAYOUT.set_u64(&mut row, dictionary_namespace::ID, dictionary);
 		dictionary_namespace::LAYOUT.set_utf8(&mut row, dictionary_namespace::NAME, name);
 

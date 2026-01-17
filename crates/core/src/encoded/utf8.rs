@@ -64,7 +64,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_utf8() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_utf8(&mut row, 0, "reifydb");
 		assert_eq!(layout.get_utf8(&row, 0), "reifydb");
 	}
@@ -72,7 +72,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_utf8() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_utf8(&row, 0), None);
 
@@ -83,7 +83,7 @@ pub mod tests {
 	#[test]
 	fn test_empty_string() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_utf8(&mut row, 0, "");
 		assert_eq!(layout.get_utf8(&row, 0), "");
 		assert_eq!(layout.try_get_utf8(&row, 0), Some(""));
@@ -92,7 +92,7 @@ pub mod tests {
 	#[test]
 	fn test_unicode() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let unicode_text = "🚀✨🌟 Hello 世界 🎉";
 		layout.set_utf8(&mut row, 0, unicode_text);
@@ -103,7 +103,7 @@ pub mod tests {
 	#[test]
 	fn test_large_string() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let large_string = "A".repeat(1000);
 		layout.set_utf8(&mut row, 0, &large_string);
@@ -114,7 +114,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_utf8(&mut row, 0, "first");
 		layout.set_utf8(&mut row, 1, "second string");
@@ -128,7 +128,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_static_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Utf8, Type::Int4, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 		layout.set_utf8(&mut row, 1, "hello world");
@@ -144,7 +144,7 @@ pub mod tests {
 	#[test]
 	fn test_different_sizes() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_utf8(&mut row, 0, "");
 		layout.set_utf8(&mut row, 1, "medium length string here");
@@ -158,7 +158,7 @@ pub mod tests {
 	#[test]
 	fn test_arbitrary_setting_order() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Set in reverse order
 		layout.set_utf8(&mut row, 3, "fourth");
@@ -190,7 +190,7 @@ pub mod tests {
 		];
 
 		for special_str in special_strings {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_utf8(&mut row, 0, special_str);
 			assert_eq!(layout.get_utf8(&row, 0), special_str);
 		}
@@ -199,7 +199,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Set only some fields
 		layout.set_utf8(&mut row, 0, "defined");
@@ -218,7 +218,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_utf8_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

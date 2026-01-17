@@ -49,7 +49,7 @@ fn test_unaligned_access_all_types() {
 			target_type, // At another odd offset
 		]);
 
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Set values at odd offsets - this should not crash
 		match target_type {
@@ -109,7 +109,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 		Type::Int,    // Dynamic/Static depending on value
 	]);
 
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 	let initial_size = row.len();
 
 	// Repeatedly overwrite static fields - this should work fine
@@ -133,7 +133,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// Test that many rows with same dynamic content are memory efficient
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
-			let mut r = layout.allocate();
+			let mut r = layout.allocate_for_testing();
 			layout.set_i32(&mut r, 0, 42);
 			layout.set_f64(&mut r, 1, 3.14);
 			layout.set_utf8(&mut r, 2, "constant");
@@ -153,7 +153,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 fn test_minimal_row_handling() {
 	// Test edge case of encoded with minimal fields
 	let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-	let row = layout.allocate();
+	let row = layout.allocate_for_testing();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
 
@@ -171,7 +171,7 @@ fn test_maximum_field_count() {
 		.collect();
 
 	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 
 	// Set and verify some fields
 	layout.set_bool(&mut row, 0, true);

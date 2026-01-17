@@ -57,7 +57,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_identity_id() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		layout.set_identity_id(&mut row, 0, id.clone());
@@ -67,7 +67,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_identity_id() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_identity_id(&row, 0), None);
 
@@ -83,7 +83,7 @@ pub mod tests {
 		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
 		for _ in 0..10 {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			let id = IdentityId::generate();
 			layout.set_identity_id(&mut row, 0, id.clone());
 			let retrieved = layout.get_identity_id(&row, 0);
@@ -102,7 +102,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid7_properties() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		layout.set_identity_id(&mut row, 0, id.clone());
@@ -121,7 +121,7 @@ pub mod tests {
 		// timestamp
 		let mut ids = Vec::new();
 		for _ in 0..5 {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			let id = IdentityId::generate();
 			layout.set_identity_id(&mut row, 0, id.clone());
 			let retrieved = layout.get_identity_id(&row, 0);
@@ -141,7 +141,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
@@ -160,7 +160,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		layout.set_identity_id(&mut row, 0, id.clone());
@@ -175,7 +175,7 @@ pub mod tests {
 	#[test]
 	fn test_persistence() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		let id_string = id.to_string();
@@ -191,7 +191,7 @@ pub mod tests {
 	#[test]
 	fn test_clone_consistency() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let original_id = IdentityId::generate();
 		layout.set_identity_id(&mut row, 0, original_id.clone());
@@ -207,7 +207,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id1 = IdentityId::generate();
 		let id2 = IdentityId::generate();
@@ -230,7 +230,7 @@ pub mod tests {
 	#[test]
 	fn test_format_consistency() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		let original_string = id.to_string();
@@ -250,7 +250,7 @@ pub mod tests {
 	#[test]
 	fn test_byte_level_storage() {
 		let layout = EncodedValuesLayout::new(&[Type::IdentityId]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let id = IdentityId::generate();
 		let original_bytes = *id.as_bytes();
@@ -275,8 +275,8 @@ pub mod tests {
 		sleep(Duration::from_millis(2)).await;
 		let id2 = IdentityId::generate();
 
-		let mut row1 = layout.allocate();
-		let mut row2 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
+		let mut row2 = layout.allocate_for_testing();
 
 		layout.set_identity_id(&mut row1, 0, id1.clone());
 		layout.set_identity_id(&mut row2, 0, id2.clone());
@@ -296,7 +296,7 @@ pub mod tests {
 			Type::Utf8,       // Name field
 			Type::Int4,       // Age field
 		]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Simulate a database record with Identity ID as primary key
 		let primary_key = IdentityId::generate();
@@ -315,7 +315,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_identity_id_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

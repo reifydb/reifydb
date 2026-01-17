@@ -224,12 +224,12 @@ pub mod tests {
 		let metas = create_test_metas();
 
 		// Create some encoded rows
-		let mut row1 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
 		layout.set_i32(&mut row1, 0, 1);
 		layout.set_utf8(&mut row1, 1, "Alice");
 		layout.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_i32(&mut row2, 0, 2);
 		layout.set_utf8(&mut row2, 1, "Bob");
 		layout.set_bool(&mut row2, 2, false);
@@ -246,7 +246,7 @@ pub mod tests {
 		let layout = create_test_layout();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
 		layout.set_i32(&mut row1, 0, 42);
 		layout.set_utf8(&mut row1, 1, "Test");
 		layout.set_bool(&mut row1, 2, true);
@@ -263,17 +263,17 @@ pub mod tests {
 		let layout = create_test_layout();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
 		layout.set_i32(&mut row1, 0, 1);
 		layout.set_utf8(&mut row1, 1, "A");
 		layout.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_i32(&mut row2, 0, 2);
 		layout.set_utf8(&mut row2, 1, "B");
 		layout.set_bool(&mut row2, 2, false);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_i32(&mut row3, 0, 3);
 		layout.set_utf8(&mut row3, 1, "C");
 		layout.set_bool(&mut row3, 2, true);
@@ -303,17 +303,17 @@ pub mod tests {
 		let layout = create_test_layout();
 		let metas = create_test_metas();
 
-		let mut row1 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
 		layout.set_i32(&mut row1, 0, 1);
 		layout.set_utf8(&mut row1, 1, "Alice");
 		layout.set_bool(&mut row1, 2, true);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_i32(&mut row2, 0, 2);
 		layout.set_utf8(&mut row2, 1, "Bob");
 		layout.set_bool(&mut row2, 2, false);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_i32(&mut row3, 0, 3);
 		layout.set_utf8(&mut row3, 1, "Charlie");
 		layout.set_bool(&mut row3, 2, true);
@@ -347,7 +347,7 @@ pub mod tests {
 		let layout = create_test_layout();
 		let metas = create_test_metas();
 
-		let row = layout.allocate();
+		let row = layout.allocate_for_testing();
 		let batch = LazyBatch::new(vec![row], vec![RowNumber(1)], layout, metas);
 
 		assert_eq!(batch.column_index("id"), Some(0));
@@ -363,7 +363,7 @@ pub mod tests {
 
 		let mut rows = Vec::new();
 		for i in 0..5 {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_i32(&mut row, 0, i);
 			layout.set_utf8(&mut row, 1, &format!("row{}", i));
 			layout.set_bool(&mut row, 2, i % 2 == 0);

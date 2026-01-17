@@ -14,8 +14,7 @@ pub mod fingerprint;
 
 use std::sync::Arc;
 
-pub use fingerprint::compute_fingerprint;
-use reifydb_hash::Hash64;
+pub use fingerprint::{SchemaFingerprint, compute_fingerprint};
 use reifydb_type::value::r#type::Type;
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +25,6 @@ pub struct SchemaField {
 	pub name: String,
 	/// Field data type
 	pub field_type: Type,
-	/// Field index within the schema (0-based)
-	pub field_index: u8,
 	/// Byte offset within the encoded row
 	pub offset: u32,
 	/// Size in bytes
@@ -43,17 +40,10 @@ impl SchemaField {
 		Self {
 			name: name.into(),
 			field_type,
-			field_index: 0,
 			offset: 0,
 			size: field_type.size() as u32,
 			align: field_type.alignment() as u8,
 		}
-	}
-
-	/// Builder method to set the field index
-	pub fn with_index(mut self, index: u8) -> Self {
-		self.field_index = index;
-		self
 	}
 }
 
@@ -65,7 +55,7 @@ impl SchemaField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schema {
 	/// Content-addressable fingerprint (hash of canonical field representation)
-	fingerprint: Hash64,
+	fingerprint: SchemaFingerprint,
 	/// Fields in definition order
 	fields: Vec<SchemaField>,
 }
@@ -86,7 +76,7 @@ impl Schema {
 
 	/// Create a schema from pre-computed fields and fingerprint.
 	/// Used when loading from storage.
-	pub fn from_parts(fingerprint: Hash64, fields: Vec<SchemaField>) -> Self {
+	pub fn from_parts(fingerprint: SchemaFingerprint, fields: Vec<SchemaField>) -> Self {
 		Self {
 			fingerprint,
 			fields,
@@ -94,7 +84,7 @@ impl Schema {
 	}
 
 	/// Get the schema's fingerprint
-	pub fn fingerprint(&self) -> Hash64 {
+	pub fn fingerprint(&self) -> SchemaFingerprint {
 		self.fingerprint
 	}
 
@@ -123,8 +113,7 @@ impl Schema {
 	fn compute_layout(mut fields: Vec<SchemaField>) -> Vec<SchemaField> {
 		let mut offset: u32 = 0;
 
-		for (idx, field) in fields.iter_mut().enumerate() {
-			field.field_index = idx as u8;
+		for field in fields.iter_mut() {
 			field.size = field.field_type.size() as u32;
 			field.align = field.field_type.alignment() as u8;
 
@@ -163,11 +152,6 @@ mod tests {
 		assert_eq!(schema.fields()[0].name, "id");
 		assert_eq!(schema.fields()[1].name, "name");
 		assert_eq!(schema.fields()[2].name, "active");
-
-		// Check indices were assigned
-		assert_eq!(schema.fields()[0].field_index, 0);
-		assert_eq!(schema.fields()[1].field_index, 1);
-		assert_eq!(schema.fields()[2].field_index, 2);
 	}
 
 	#[test]

@@ -9,7 +9,7 @@ use reifydb_type::value::r#type::Type;
 #[test]
 fn test_boolean_bit_patterns() {
 	let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 
 	// Test standard values
 	layout.set_bool(&mut row, 0, true);
@@ -36,7 +36,7 @@ fn test_boolean_field_independence() {
 		Type::Boolean,
 		Type::Boolean,
 	]);
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 
 	// Set alternating pattern
 	for i in 0..8 {

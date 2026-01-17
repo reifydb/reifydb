@@ -42,7 +42,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_f64() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 		layout.set_f64(&mut row, 0, 2.5f64);
 		assert_eq!(layout.get_f64(&row, 0), 2.5f64);
 	}
@@ -50,7 +50,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_f64() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_f64(&row, 0), None);
 
@@ -61,29 +61,29 @@ pub mod tests {
 	#[test]
 	fn test_special_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test zero
 		layout.set_f64(&mut row, 0, 0.0f64);
 		assert_eq!(layout.get_f64(&row, 0), 0.0f64);
 
 		// Test negative zero
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_f64(&mut row2, 0, -0.0f64);
 		assert_eq!(layout.get_f64(&row2, 0), -0.0f64);
 
 		// Test infinity
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_f64(&mut row3, 0, f64::INFINITY);
 		assert_eq!(layout.get_f64(&row3, 0), f64::INFINITY);
 
 		// Test negative infinity
-		let mut row4 = layout.allocate();
+		let mut row4 = layout.allocate_for_testing();
 		layout.set_f64(&mut row4, 0, f64::NEG_INFINITY);
 		assert_eq!(layout.get_f64(&row4, 0), f64::NEG_INFINITY);
 
 		// Test NaN
-		let mut row5 = layout.allocate();
+		let mut row5 = layout.allocate_for_testing();
 		layout.set_f64(&mut row5, 0, f64::NAN);
 		assert!(layout.get_f64(&row5, 0).is_nan());
 	}
@@ -91,16 +91,16 @@ pub mod tests {
 	#[test]
 	fn test_extreme_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f64(&mut row, 0, f64::MAX);
 		assert_eq!(layout.get_f64(&row, 0), f64::MAX);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		layout.set_f64(&mut row2, 0, f64::MIN);
 		assert_eq!(layout.get_f64(&row2, 0), f64::MIN);
 
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		layout.set_f64(&mut row3, 0, f64::MIN_POSITIVE);
 		assert_eq!(layout.get_f64(&row3, 0), f64::MIN_POSITIVE);
 	}
@@ -108,13 +108,13 @@ pub mod tests {
 	#[test]
 	fn test_high_precision() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let pi = std::f64::consts::PI;
 		layout.set_f64(&mut row, 0, pi);
 		assert_eq!(layout.get_f64(&row, 0), pi);
 
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		let e = std::f64::consts::E;
 		layout.set_f64(&mut row2, 0, e);
 		assert_eq!(layout.get_f64(&row2, 0), e);
@@ -123,7 +123,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8, Type::Int8, Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f64(&mut row, 0, 3.14159265359);
 		layout.set_i64(&mut row, 1, 9223372036854775807i64);
@@ -137,7 +137,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Float8, Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_f64(&mut row, 0, 2.718281828459045);
 
@@ -151,7 +151,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_f64_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

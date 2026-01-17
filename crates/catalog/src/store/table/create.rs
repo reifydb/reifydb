@@ -79,7 +79,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> crate::Result<()> {
-		let mut row = table::LAYOUT.allocate();
+		let mut row = table::LAYOUT.allocate_deprecated();
 		table::LAYOUT.set_u64(&mut row, table::ID, table);
 		table::LAYOUT.set_u64(&mut row, table::NAMESPACE, namespace);
 		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
@@ -98,7 +98,7 @@ impl CatalogStore {
 		table: TableId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = table_namespace::LAYOUT.allocate();
+		let mut row = table_namespace::LAYOUT.allocate_deprecated();
 		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
 		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
 		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;

@@ -9,7 +9,7 @@ use reifydb_type::value::r#type::Type;
 #[test]
 fn test_float_special_values_preservation() {
 	let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float8]);
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 
 	// Test f32 special values
 	let f32_values = [
@@ -75,7 +75,7 @@ fn test_float_special_values_preservation() {
 #[test]
 fn test_float_precision_boundaries() {
 	let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float8]);
-	let mut row = layout.allocate();
+	let mut row = layout.allocate_for_testing();
 
 	// Test f32 precision boundary (about 7 decimal digits)
 	let f32_precise = 1.2345678_f32;

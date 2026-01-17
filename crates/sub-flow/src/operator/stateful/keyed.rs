@@ -34,7 +34,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
-		layout.allocate()
+		layout.allocate_deprecated()
 	}
 
 	/// Load state for a specific key

@@ -218,7 +218,7 @@ fn execute_table_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_deprecated();
 		for (idx, value) in values.iter().enumerate() {
 			encode_value(&layout, &mut row, idx, value);
 		}
@@ -261,7 +261,7 @@ fn execute_table_insert<V: ValidationMode>(
 
 			// Store the index entry
 			let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-			let mut row_number_encoded = row_number_layout.allocate();
+			let mut row_number_encoded = row_number_layout.allocate_deprecated();
 			row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
@@ -341,7 +341,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_deprecated();
 		for (idx, value) in values.iter().enumerate() {
 			encode_value(&layout, &mut row, idx, value);
 		}

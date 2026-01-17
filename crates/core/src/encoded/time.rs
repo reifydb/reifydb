@@ -49,7 +49,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_time() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let value = Time::new(20, 50, 0, 0).unwrap();
 		layout.set_time(&mut row, 0, value.clone());
@@ -59,7 +59,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_time() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_time(&row, 0), None);
 
@@ -71,7 +71,7 @@ pub mod tests {
 	#[test]
 	fn test_time_midnight() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let midnight = Time::default(); // 00:00:00
 		layout.set_time(&mut row, 0, midnight.clone());
@@ -81,7 +81,7 @@ pub mod tests {
 	#[test]
 	fn test_time_with_nanoseconds() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test with high precision nanoseconds
 		let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
@@ -102,7 +102,7 @@ pub mod tests {
 		];
 
 		for time in test_times {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_time(&mut row, 0, time.clone());
 			assert_eq!(layout.get_time(&row, 0), time);
 		}
@@ -121,7 +121,7 @@ pub mod tests {
 		];
 
 		for time in boundary_times {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_time(&mut row, 0, time.clone());
 			assert_eq!(layout.get_time(&row, 0), time);
 		}
@@ -130,7 +130,7 @@ pub mod tests {
 	#[test]
 	fn test_time_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
 		let time2 = Time::new(21, 45, 0, 250000000).unwrap();
@@ -149,7 +149,7 @@ pub mod tests {
 	#[test]
 	fn test_time_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Time, Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let time = Time::new(16, 20, 45, 333000000).unwrap();
 		layout.set_time(&mut row, 0, time.clone());
@@ -164,7 +164,7 @@ pub mod tests {
 	#[test]
 	fn test_time_precision_preservation() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test that nanosecond precision is preserved
 		let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
@@ -178,7 +178,7 @@ pub mod tests {
 	#[test]
 	fn test_time_microsecond_precision() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test microsecond precision (common in databases)
 		let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
@@ -189,7 +189,7 @@ pub mod tests {
 	#[test]
 	fn test_time_millisecond_precision() {
 		let layout = EncodedValuesLayout::new(&[Type::Time]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test millisecond precision
 		let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
@@ -211,7 +211,7 @@ pub mod tests {
 		];
 
 		for time in common_times {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_time(&mut row, 0, time.clone());
 			assert_eq!(layout.get_time(&row, 0), time);
 		}
@@ -220,7 +220,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_time_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

@@ -77,7 +77,7 @@ impl Store {
 
 		// Store as a blob in an EncodedRow
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_deprecated();
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
 

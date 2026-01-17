@@ -215,7 +215,7 @@ pub mod tests {
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let value1 = Value::Utf8("hello".to_string());
 		let value2 = Value::Int4(42);
@@ -234,7 +234,7 @@ pub mod tests {
 	fn test_set_values_with_mixed_dynamic_content() {
 		let layout =
 			EncodedValuesLayout::new(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Boolean(true),
@@ -256,7 +256,7 @@ pub mod tests {
 	#[test]
 	fn test_set_with_empty_and_large_utf8() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let large_string = "X".repeat(2000);
 		let values = vec![
@@ -276,7 +276,7 @@ pub mod tests {
 	#[test]
 	fn test_get_from_dynamic_content() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Int8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_utf8(&mut row, 0, "test_string");
 		layout.set_i64(&mut row, 1, 9876543210i64);
@@ -305,7 +305,7 @@ pub mod tests {
 	#[test]
 	fn test_set_undefined_with_utf8_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Boolean, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Set some values
 		layout.set_value(&mut row, 0, &Value::Utf8("hello".to_string()));
@@ -343,7 +343,7 @@ pub mod tests {
 			Type::Float8,
 			Type::Utf8,
 		]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 		layout.set_i8(&mut row, 1, -42);
@@ -377,7 +377,7 @@ pub mod tests {
 	#[test]
 	fn test_set_values_sparse_with_utf8() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Only set some values
 		let values = vec![
@@ -401,7 +401,7 @@ pub mod tests {
 	#[test]
 	fn test_set_values_unicode_strings() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Int4, Type::Utf8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Utf8("🎉🚀✨".to_string()),
@@ -419,7 +419,7 @@ pub mod tests {
 	#[test]
 	fn test_static_fields_only_no_dynamic_with_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Int4, Type::Float8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Boolean(false),
@@ -441,7 +441,7 @@ pub mod tests {
 	#[test]
 	fn test_temporal_types_roundtrip() {
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let original_values = vec![
 			Value::Date(Date::new(2025, 7, 15).unwrap()),
@@ -460,7 +460,7 @@ pub mod tests {
 	#[test]
 	fn test_temporal_types_with_undefined() {
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Date(Date::new(2000, 1, 1).unwrap()),
@@ -495,7 +495,7 @@ pub mod tests {
 			Type::Time,
 			Type::Duration,
 		]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Boolean(true),
@@ -517,7 +517,7 @@ pub mod tests {
 	#[test]
 	fn test_roundtrip_with_dynamic_content() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let original_values = vec![
 			Value::Utf8("roundtrip_test".to_string()),
@@ -538,7 +538,7 @@ pub mod tests {
 	#[test]
 	fn test_blob_roundtrip() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Int4, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
 		let blob2 = Blob::new(vec![]);
@@ -565,7 +565,7 @@ pub mod tests {
 	#[test]
 	fn test_blob_with_undefined() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Blob(Blob::new(vec![0x00, 0x01, 0x02])),
@@ -589,7 +589,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid_roundtrip() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate();
@@ -605,7 +605,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid_with_undefined() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![Value::Undefined, Value::Uuid7(Uuid7::generate())];
 
@@ -630,7 +630,7 @@ pub mod tests {
 			Type::Uuid7,
 			Type::Int4,
 		]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Blob(Blob::new(vec![0xCA, 0xFE, 0xBA, 0xBE])),
@@ -678,7 +678,7 @@ pub mod tests {
 			Type::Uuid7,
 			Type::Blob,
 		]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let values = vec![
 			Value::Boolean(true),

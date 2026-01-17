@@ -86,7 +86,7 @@ impl TestStateStore {
 
 	/// Set a value using a layout
 	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], layout: &EncodedValuesLayout) {
-		let mut encoded = layout.allocate();
+		let mut encoded = layout.allocate_deprecated();
 		layout.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
@@ -98,7 +98,7 @@ impl TestStateStore {
 		values: &HashMap<String, Value>,
 		layout: &EncodedValuesNamedLayout,
 	) {
-		let mut encoded = layout.layout().allocate();
+		let mut encoded = layout.layout().allocate_deprecated();
 
 		// Convert HashMap to ordered values based on layout names
 		let ordered_values: Vec<Value> = layout

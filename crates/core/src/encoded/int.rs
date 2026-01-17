@@ -123,7 +123,7 @@ pub mod tests {
 	#[test]
 	fn test_i64_inline() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test small positive value
 		let small = Int::from(42i64);
@@ -134,7 +134,7 @@ pub mod tests {
 		assert_eq!(retrieved, small);
 
 		// Test small negative value
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		let negative = Int::from(-999999i64);
 		layout.set_int(&mut row2, 0, &negative);
 		assert_eq!(layout.get_int(&row2, 0), negative);
@@ -143,7 +143,7 @@ pub mod tests {
 	#[test]
 	fn test_i128_boundary() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Value that doesn't fit in 62 bits but fits in i128
 		let large = Int::from(i64::MAX);
@@ -154,13 +154,13 @@ pub mod tests {
 		assert_eq!(retrieved, large);
 
 		// Test i128::MAX
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		let max_i128 = Int::from(i128::MAX);
 		layout.set_int(&mut row2, 0, &max_i128);
 		assert_eq!(layout.get_int(&row2, 0), max_i128);
 
 		// Test i128::MIN
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		let min_i128 = Int::from(i128::MIN);
 		layout.set_int(&mut row3, 0, &min_i128);
 		assert_eq!(layout.get_int(&row3, 0), min_i128);
@@ -169,7 +169,7 @@ pub mod tests {
 	#[test]
 	fn test_dynamic_storage() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Create a value larger than i128 can hold
 		let huge_str = "999999999999999999999999999999999999999999999999";
@@ -186,7 +186,7 @@ pub mod tests {
 	#[test]
 	fn test_zero() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let zero = Int::from(0);
 		layout.set_int(&mut row, 0, &zero);
@@ -199,7 +199,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Undefined initially
 		assert_eq!(layout.try_get_int(&row, 0), None);
@@ -213,7 +213,7 @@ pub mod tests {
 	#[test]
 	fn test_clone_on_write() {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
-		let row1 = layout.allocate();
+		let row1 = layout.allocate_for_testing();
 		let mut row2 = row1.clone();
 
 		let value = Int::from(999999999999999i64);
@@ -228,7 +228,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4, Type::Int, Type::Utf8, Type::Int]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_i32(&mut row, 0, 42);
 
@@ -251,19 +251,19 @@ pub mod tests {
 		let layout = EncodedValuesLayout::new(&[Type::Int]);
 
 		// Small negative (i64 inline)
-		let mut row1 = layout.allocate();
+		let mut row1 = layout.allocate_for_testing();
 		let small_neg = Int::from(-42);
 		layout.set_int(&mut row1, 0, &small_neg);
 		assert_eq!(layout.get_int(&row1, 0), small_neg);
 
 		// Large negative (i128 overflow)
-		let mut row2 = layout.allocate();
+		let mut row2 = layout.allocate_for_testing();
 		let large_neg = Int::from(i64::MIN);
 		layout.set_int(&mut row2, 0, &large_neg);
 		assert_eq!(layout.get_int(&row2, 0), large_neg);
 
 		// Huge negative (dynamic)
-		let mut row3 = layout.allocate();
+		let mut row3 = layout.allocate_for_testing();
 		let huge_neg_str = "-999999999999999999999999999999999999999999999999";
 		let huge_neg = Int::from(
 			-num_bigint::BigInt::parse_bytes(huge_neg_str.trim_start_matches('-').as_bytes(), 10).unwrap(),
@@ -275,7 +275,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_int_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

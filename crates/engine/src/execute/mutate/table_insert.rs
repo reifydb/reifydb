@@ -113,7 +113,7 @@ impl Executor {
 			}
 
 			for row_numberx in 0..row_count {
-				let mut row = layout.allocate();
+				let mut row = layout.allocate_deprecated();
 
 				// For each table column, find if it exists in the input columns
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
@@ -219,7 +219,7 @@ impl Executor {
 
 				// Store the index entry with the row number as value
 				let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-				let mut row_number_encoded = row_number_layout.allocate();
+				let mut row_number_encoded = row_number_layout.allocate_deprecated();
 				row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded)?;

@@ -20,7 +20,7 @@ impl CatalogStore {
 		let flow = Self::get_flow(txn, flow_id)?;
 
 		// Update the name field
-		let mut row = flow::LAYOUT.allocate();
+		let mut row = flow::LAYOUT.allocate_deprecated();
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &new_name);
@@ -41,7 +41,7 @@ impl CatalogStore {
 		let flow = Self::get_flow(txn, flow_id)?;
 
 		// Update the status field
-		let mut row = flow::LAYOUT.allocate();
+		let mut row = flow::LAYOUT.allocate_deprecated();
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &flow.name);

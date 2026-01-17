@@ -35,7 +35,7 @@ impl SingleStatefulTestHelper {
 
 	/// Set the current state
 	pub fn set_state(&mut self, values: &[Value]) {
-		let mut encoded = self.layout.allocate();
+		let mut encoded = self.layout.allocate_deprecated();
 		self.layout.set_values(&mut encoded, values);
 		self.state = Some(encoded.0.to_vec());
 	}
@@ -95,7 +95,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate();
+		let mut encoded = self.layout.allocate_deprecated();
 		self.layout.set_values(&mut encoded, values);
 		self.states.insert(key.into_encoded_key(), encoded);
 	}
@@ -195,7 +195,7 @@ impl WindowStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.layout.allocate();
+		let mut encoded = self.layout.allocate_deprecated();
 		self.layout.set_values(&mut encoded, values);
 
 		self.windows.entry(window_id).or_insert_with(HashMap::new).insert(key.into_encoded_key(), encoded);

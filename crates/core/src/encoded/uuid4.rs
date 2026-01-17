@@ -52,7 +52,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_uuid4() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		layout.set_uuid4(&mut row, 0, uuid.clone());
@@ -62,7 +62,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_uuid4() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_uuid4(&row, 0), None);
 
@@ -78,7 +78,7 @@ pub mod tests {
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
 		for _ in 0..10 {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			let uuid = Uuid4::generate();
 			layout.set_uuid4(&mut row, 0, uuid.clone());
 			let retrieved = layout.get_uuid4(&row, 0);
@@ -97,7 +97,7 @@ pub mod tests {
 	#[test]
 	fn test_version_check() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		layout.set_uuid4(&mut row, 0, uuid.clone());
@@ -110,7 +110,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Boolean, Type::Uuid4, Type::Int4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
@@ -129,7 +129,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		layout.set_uuid4(&mut row, 0, uuid.clone());
@@ -144,7 +144,7 @@ pub mod tests {
 	#[test]
 	fn test_persistence() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		let uuid_string = uuid.to_string();
@@ -160,7 +160,7 @@ pub mod tests {
 	#[test]
 	fn test_clone_consistency() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let original_uuid = Uuid4::generate();
 		layout.set_uuid4(&mut row, 0, original_uuid.clone());
@@ -175,7 +175,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid4, Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
@@ -198,7 +198,7 @@ pub mod tests {
 	#[test]
 	fn test_format_consistency() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		let original_string = uuid.to_string();
@@ -217,7 +217,7 @@ pub mod tests {
 	#[test]
 	fn test_byte_level_storage() {
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let uuid = Uuid4::generate();
 		let original_bytes = *uuid.as_bytes();
@@ -236,7 +236,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_uuid4_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

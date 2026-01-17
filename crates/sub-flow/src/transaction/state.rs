@@ -157,7 +157,7 @@ impl FlowTransaction {
 			}
 			None => {
 				Span::current().record("created", true);
-				Ok(layout.allocate())
+				Ok(layout.allocate_deprecated())
 			}
 		}
 	}

@@ -115,7 +115,7 @@ impl Executor {
 				let row_count = columns.row_count();
 
 				for row_numberx in 0..row_count {
-					let mut row = layout.allocate();
+					let mut row = layout.allocate_deprecated();
 
 					for (table_idx, table_column) in table.columns.iter().enumerate() {
 						let mut value = if let Some(input_column) =
@@ -233,7 +233,7 @@ impl Executor {
 						)?;
 
 						let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-						let mut row_number_encoded = row_number_layout.allocate();
+						let mut row_number_encoded = row_number_layout.allocate_deprecated();
 						row_number_layout.set_u64(
 							&mut row_number_encoded,
 							0,

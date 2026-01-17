@@ -36,7 +36,7 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 	/// This allocates a new state row based on the layout, initialized with default values.
 	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
-		layout.allocate()
+		layout.allocate_deprecated()
 	}
 
 	/// Load the operator's single state

@@ -4,10 +4,10 @@
 //! Schema retrieval from storage.
 
 use reifydb_core::{
+	encoded::SchemaFingerprint,
 	key::{EncodableKey, SchemaFieldKey, SchemaKey},
 	schema::{Schema, SchemaField},
 };
-use reifydb_hash::Hash64;
 use reifydb_transaction::standard::IntoStandardTransaction;
 use reifydb_type::{
 	error::{Error, diagnostic::internal::internal},
@@ -21,7 +21,7 @@ use super::layout::{schema_field, schema_header};
 /// Returns None if the schema doesn't exist in storage.
 pub fn find_schema_by_fingerprint(
 	txn: &mut impl IntoStandardTransaction,
-	fingerprint: Hash64,
+	fingerprint: SchemaFingerprint,
 ) -> crate::Result<Option<Schema>> {
 	let mut std_txn = txn.into_standard_transaction();
 
@@ -36,7 +36,7 @@ pub fn find_schema_by_fingerprint(
 
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
-		let field_key = SchemaFieldKey::encoded(fingerprint, i as u8);
+		let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
 		let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
 			Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 		})?;
@@ -51,7 +51,6 @@ pub fn find_schema_by_fingerprint(
 		fields.push(SchemaField {
 			name,
 			field_type,
-			field_index: i as u8,
 			offset,
 			size,
 			align,
@@ -68,7 +67,7 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 	let mut std_txn = txn.into_standard_transaction();
 
 	// First pass: collect all schema headers (fingerprint, field_count)
-	let mut schema_headers: Vec<(Hash64, usize)> = Vec::new();
+	let mut schema_headers: Vec<(SchemaFingerprint, usize)> = Vec::new();
 
 	{
 		let range = SchemaKey::full_scan();
@@ -95,7 +94,7 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 		let mut fields = Vec::with_capacity(field_count);
 
 		for i in 0..field_count {
-			let field_key = SchemaFieldKey::encoded(fingerprint, i as u8);
+			let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
 			let field_entry = std_txn.get(&field_key)?.ok_or_else(|| {
 				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 			})?;
@@ -110,7 +109,6 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 			fields.push(SchemaField {
 				name,
 				field_type,
-				field_index: i as u8,
 				offset,
 				size,
 				align,

@@ -60,7 +60,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_duration() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let value = Duration::from_seconds(-7200);
 		layout.set_duration(&mut row, 0, value.clone());
@@ -70,7 +70,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_duration() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_duration(&row, 0), None);
 
@@ -82,7 +82,7 @@ pub mod tests {
 	#[test]
 	fn test_zero() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let zero = Duration::default(); // Zero duration
 		layout.set_duration(&mut row, 0, zero.clone());
@@ -104,7 +104,7 @@ pub mod tests {
 		];
 
 		for duration in test_durations {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_duration(&mut row, 0, duration.clone());
 			assert_eq!(layout.get_duration(&row, 0), duration);
 		}
@@ -123,7 +123,7 @@ pub mod tests {
 		];
 
 		for duration in negative_durations {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_duration(&mut row, 0, duration.clone());
 			assert_eq!(layout.get_duration(&row, 0), duration);
 		}
@@ -132,7 +132,7 @@ pub mod tests {
 	#[test]
 	fn test_complex_parts() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Create a duration with all components
 		let complex_duration = Duration::new(
@@ -147,7 +147,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let duration1 = Duration::from_hours(24);
 		let duration2 = Duration::from_minutes(-30);
@@ -166,7 +166,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration, Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let duration = Duration::from_days(100);
 		layout.set_duration(&mut row, 0, duration.clone());
@@ -181,7 +181,7 @@ pub mod tests {
 	#[test]
 	fn test_large_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test with large values
 		let large_duration = Duration::new(
@@ -196,7 +196,7 @@ pub mod tests {
 	#[test]
 	fn test_precision_preservation() {
 		let layout = EncodedValuesLayout::new(&[Type::Duration]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test that all components are preserved exactly
 		let precise_duration = Duration::new(
@@ -238,7 +238,7 @@ pub mod tests {
 		];
 
 		for duration in common_durations {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_duration(&mut row, 0, duration.clone());
 			assert_eq!(layout.get_duration(&row, 0), duration);
 		}
@@ -259,7 +259,7 @@ pub mod tests {
 		];
 
 		for duration in boundary_durations {
-			let mut row = layout.allocate();
+			let mut row = layout.allocate_for_testing();
 			layout.set_duration(&mut row, 0, duration.clone());
 			assert_eq!(layout.get_duration(&row, 0), duration);
 		}
@@ -268,7 +268,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_duration_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

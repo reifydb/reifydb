@@ -371,7 +371,7 @@ pub mod tests {
 
 					// Encode the value and store in state
 					let layout = EncodedValuesLayout::new(&[Type::Int8]);
-					let mut encoded = layout.allocate();
+					let mut encoded = layout.allocate_deprecated();
 					layout.set_values(&mut encoded, &[first_value]);
 
 					state.set(&row_key.into_encoded_key(), &encoded)?;

@@ -62,7 +62,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// Allocates a new state row based on the layout, initialized with default values.
 	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
-		layout.allocate()
+		layout.allocate_deprecated()
 	}
 
 	/// Load state for a specific key

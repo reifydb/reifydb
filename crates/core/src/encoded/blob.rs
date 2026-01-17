@@ -64,7 +64,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_blob() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
 		layout.set_blob(&mut row, 0, &blob);
@@ -74,7 +74,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_blob() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		assert_eq!(layout.try_get_blob(&row, 0), None);
 
@@ -86,7 +86,7 @@ pub mod tests {
 	#[test]
 	fn test_empty() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let empty_blob = Blob::from_slice(&[]);
 		layout.set_blob(&mut row, 0, &empty_blob);
@@ -97,7 +97,7 @@ pub mod tests {
 	#[test]
 	fn test_binary_data() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Test with various binary data patterns
 		let binary_data = vec![
@@ -111,7 +111,7 @@ pub mod tests {
 	#[test]
 	fn test_large_data() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Create a large blob (1KB)
 		let large_data: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
@@ -123,7 +123,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob1 = Blob::from_slice(&[1, 2, 3]);
 		let blob2 = Blob::from_slice(&[4, 5, 6, 7, 8]);
@@ -141,7 +141,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_static_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Blob, Type::Int4, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob1 = Blob::from_slice(&[0xFF, 0x00, 0xAA]);
 		let blob2 = Blob::from_slice(&[0x11, 0x22, 0x33, 0x44]);
@@ -160,7 +160,7 @@ pub mod tests {
 	#[test]
 	fn test_different_sizes() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let empty_blob = Blob::from_slice(&[]);
 		let medium_blob = Blob::from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -178,7 +178,7 @@ pub mod tests {
 	#[test]
 	fn test_arbitrary_setting_order() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob0 = Blob::from_slice(&[10, 20]);
 		let blob1 = Blob::from_slice(&[30, 40, 50]);
@@ -200,7 +200,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		let blob = Blob::from_slice(&[1, 2, 3, 4]);
 
@@ -221,7 +221,7 @@ pub mod tests {
 	#[test]
 	fn test_all_byte_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		// Create blob with all possible byte values (0-255)
 		let all_bytes: Vec<u8> = (0..=255).collect();
@@ -233,7 +233,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_blob_wrong_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
+		let mut row = layout.allocate_for_testing();
 
 		layout.set_bool(&mut row, 0, true);
 

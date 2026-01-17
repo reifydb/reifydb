@@ -54,7 +54,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
 	) -> crate::Result<()> {
-		let mut row = flow::LAYOUT.allocate();
+		let mut row = flow::LAYOUT.allocate_deprecated();
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
@@ -72,7 +72,7 @@ impl CatalogStore {
 		flow: FlowId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = flow_namespace::LAYOUT.allocate();
+		let mut row = flow_namespace::LAYOUT.allocate_deprecated();
 		flow_namespace::LAYOUT.set_u64(&mut row, flow_namespace::ID, flow);
 		flow_namespace::LAYOUT.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);

@@ -41,7 +41,7 @@ impl CatalogStore {
 	}
 
 	fn store_subscription(txn: &mut StandardCommandTransaction, subscription: SubscriptionId) -> crate::Result<()> {
-		let mut row = subscription::LAYOUT.allocate();
+		let mut row = subscription::LAYOUT.allocate_deprecated();
 		subscription::LAYOUT.set_uuid7(&mut row, subscription::ID, Uuid7::from(subscription.0));
 		subscription::LAYOUT.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
 		subscription::LAYOUT.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
@@ -59,7 +59,7 @@ impl CatalogStore {
 		for (idx, column_to_create) in to_create.columns.iter().enumerate() {
 			let column_id = SubscriptionColumnId(idx as u64);
 
-			let mut row = subscription_column::LAYOUT.allocate();
+			let mut row = subscription_column::LAYOUT.allocate_deprecated();
 			subscription_column::LAYOUT.set_u64(&mut row, subscription_column::ID, column_id);
 			subscription_column::LAYOUT.set_utf8(
 				&mut row,

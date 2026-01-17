@@ -11,7 +11,7 @@ impl CatalogStore {
 		txn: &mut StandardCommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
-		let mut row = ringbuffer_metadata::LAYOUT.allocate();
+		let mut row = ringbuffer_metadata::LAYOUT.allocate_deprecated();
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);

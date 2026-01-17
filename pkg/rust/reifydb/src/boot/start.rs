@@ -52,7 +52,7 @@ impl StartEventListener {
 
 		let created = match tx.get(&key)? {
 			None => {
-				let mut row = layout.allocate();
+				let mut row = layout.allocate_deprecated();
 				layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 				tx.set(&key, row)?;
 				true

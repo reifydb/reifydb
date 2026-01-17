@@ -89,7 +89,7 @@ impl CatalogStore {
 		to_create: &ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<()> {
-		let mut row = view::LAYOUT.allocate();
+		let mut row = view::LAYOUT.allocate_deprecated();
 		view::LAYOUT.set_u64(&mut row, view::ID, view);
 		view::LAYOUT.set_u64(&mut row, view::NAMESPACE, namespace);
 		view::LAYOUT.set_utf8(&mut row, view::NAME, &to_create.name);
@@ -114,7 +114,7 @@ impl CatalogStore {
 		view: ViewId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = view_namespace::LAYOUT.allocate();
+		let mut row = view_namespace::LAYOUT.allocate_deprecated();
 		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
 		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;

@@ -105,7 +105,7 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_id(txn)?;
 
-		let mut row = column::LAYOUT.allocate();
+		let mut row = column::LAYOUT.allocate_deprecated();
 		column::LAYOUT.set_u64(&mut row, ID, id);
 		column::LAYOUT.set_u64(&mut row, SOURCE, source);
 		column::LAYOUT.set_utf8(&mut row, NAME, &column_to_create.column);
@@ -124,7 +124,7 @@ impl CatalogStore {
 
 		txn.set(&ColumnsKey::encoded(id), row)?;
 
-		let mut row = source_column::LAYOUT.allocate();
+		let mut row = source_column::LAYOUT.allocate_deprecated();
 		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
 		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
 		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);

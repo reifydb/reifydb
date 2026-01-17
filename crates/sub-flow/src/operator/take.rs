@@ -75,7 +75,7 @@ impl TakeOperator {
 		let serialized = postcard::to_stdvec(state)
 			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate();
+		let mut state_row = self.layout.allocate_deprecated();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
