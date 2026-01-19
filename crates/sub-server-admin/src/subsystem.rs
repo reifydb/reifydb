@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{
 	error,
-	error::diagnostic::subsystem::{address_unavailable, bind_failed, socket_config_failed},
+	error::diagnostic::subsystem::{address_unavailable, bind_failed},
 };
 use tokio::{net::TcpListener, sync::oneshot};
 
@@ -105,15 +105,11 @@ impl Subsystem for AdminSubsystem {
 			return Ok(());
 		}
 
-		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| error!(bind_failed(&addr, e)))?;
-		std_listener.set_nonblocking(true).map_err(|e| error!(socket_config_failed(e)))?;
+		let runtime = self.runtime.clone();
+		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| error!(bind_failed(&addr, e)))?;
 
-		let actual_addr = std_listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
-
-		// Convert std listener to tokio (we're already in async context)
-		let listener = TcpListener::from_std(std_listener).map_err(|e| error!(socket_config_failed(e)))?;
+		let actual_addr = listener.local_addr().map_err(|e| error!(address_unavailable(e)))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("Admin server bound to {}", actual_addr);
 

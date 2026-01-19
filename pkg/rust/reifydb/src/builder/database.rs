@@ -41,6 +41,7 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
+use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
 #[cfg(feature = "sub_tracing")]
@@ -51,7 +52,7 @@ use reifydb_transaction::{
 };
 use tracing::debug;
 
-use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems};
+use crate::{database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks};
 
 pub struct DatabaseBuilder {
 	interceptors: StandardInterceptorBuilder,
@@ -64,6 +65,7 @@ pub struct DatabaseBuilder {
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
+	task_factory: Option<Box<dyn SubsystemFactory>>,
 }
 
 impl DatabaseBuilder {
@@ -87,6 +89,7 @@ impl DatabaseBuilder {
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
+			task_factory: None,
 		}
 	}
 
@@ -156,6 +159,10 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "sub_flow")]
 		if let Some(ref factory) = self.flow_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
+		}
+
+		if let Some(ref factory) = self.task_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
@@ -258,7 +265,6 @@ impl DatabaseBuilder {
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
-		// 1. Add tracing subsystem first (stopped last during shutdown)
 		#[cfg(feature = "sub_tracing")]
 		if let Some(factory) = self.tracing_factory {
 			let subsystem = factory.create(&self.ioc)?;
@@ -266,7 +272,6 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// 3. Add flow subsystem third
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
 			let subsystem = factory.create(&self.ioc)?;
@@ -274,14 +279,22 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// 4. Add other custom subsystems last (stopped first during shutdown)
+		{
+			// Task subsystem - enabled by default with memory monitoring
+			let factory = self.task_factory.unwrap_or_else(|| {
+				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
+			});
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
 		for factory in self.factories {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {
 			all_versions.push(SystemVersion {
 				name: "git-hash".to_string(),

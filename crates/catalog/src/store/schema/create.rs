@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+//! Schema creation/persistence.
+
 use reifydb_core::{
 	encoded::schema::Schema,
 	key::schema::{SchemaFieldKey, SchemaKey},

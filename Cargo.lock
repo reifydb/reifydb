@@ -1582,6 +1582,7 @@ dependencies = [
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
+ "reifydb-sub-task",
  "reifydb-sub-tracing",
  "reifydb-transaction",
  "reifydb-type",
@@ -2012,6 +2013,20 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-sub-task"
+version = "0.2.0"
+dependencies = [
+ "dashmap",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-sub-api",
+ "reifydb-transaction",
+ "reifydb-type",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

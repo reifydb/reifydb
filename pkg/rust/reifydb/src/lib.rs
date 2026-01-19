@@ -10,6 +10,7 @@ pub mod event;
 mod health;
 mod session;
 pub mod subsystem;
+pub mod system;
 pub mod vendor;
 
 pub use api::*;
@@ -47,6 +48,7 @@ pub use reifydb_sub_server_http as sub_server_http;
 pub use reifydb_sub_server_otel as sub_server_otel;
 #[cfg(feature = "sub_server_ws")]
 pub use reifydb_sub_server_ws as sub_server_ws;
+pub use reifydb_sub_task as sub_task;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_transaction as transaction;

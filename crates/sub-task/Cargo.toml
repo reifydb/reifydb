@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-sub-task"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+dashmap = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

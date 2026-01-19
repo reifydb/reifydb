@@ -29,6 +29,7 @@ members = [
     "crates/sub-api",
     "crates/sub-server-admin",
     "crates/sub-flow",
+    "crates/sub-task",
     "crates/sub-tracing",
     "crates/sub-server",
     "crates/sub-server-http",
@@ -78,6 +79,7 @@ default-members = [
     "crates/sub-api",
     "crates/sub-server-admin",
     "crates/sub-flow",
+    "crates/sub-task",
     "crates/sub-tracing",
     "crates/sub-server",
     "crates/sub-server-http",
@@ -162,6 +164,7 @@ reifydb-macro-impl = { version = "0.2.0", path = "crates/macro-impl" }
 reifydb-sub-api = { version = "0.2.0", path = "crates/sub-api" }
 reifydb-sub-server-admin = { version = "0.2.0", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.2.0", path = "crates/sub-flow" }
+reifydb-sub-task = { version = "0.2.0", path = "crates/sub-task" }
 reifydb-sub-tracing = { version = "0.2.0", path = "crates/sub-tracing" }
 reifydb-sub-server = { version = "0.2.0", path = "crates/sub-server" }
 reifydb-sub-server-http = { version = "0.2.0", path = "crates/sub-server-http" }

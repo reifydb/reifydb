@@ -23,6 +23,7 @@ use reifydb_sub_flow::subsystem::FlowSubsystem;
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
+use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 use reifydb_type::{Result, params::Params, value::frame::frame::Frame};
 use tracing::{debug, error, instrument, warn};
 
@@ -56,6 +57,13 @@ impl Database {
 	#[cfg(feature = "sub_server_ws")]
 	pub fn sub_server_ws(&self) -> Option<&WsSubsystem> {
 		self.subsystem::<WsSubsystem>()
+	}
+
+	/// Get a handle to the task scheduler subsystem
+	///
+	/// Returns None if the task subsystem is not registered or not running
+	pub fn task_handle(&self) -> Option<TaskHandle> {
+		self.subsystem::<TaskSubsystem>().and_then(|subsystem| subsystem.handle())
 	}
 }
 
