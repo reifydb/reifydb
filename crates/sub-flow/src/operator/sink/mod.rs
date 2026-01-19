@@ -37,6 +37,11 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 		return Ok(Columns::empty());
 	}
 
+	// If target columns are empty, use input columns as-is
+	if target_columns.is_empty() {
+		return Ok(columns.clone());
+	}
+
 	let mut result_columns = Vec::with_capacity(target_columns.len());
 
 	for target_col in target_columns {
@@ -94,6 +99,12 @@ pub(crate) fn coerce_subscription_columns(
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
+	}
+
+	// If target columns are empty (schema-less subscription),
+	// use the input columns as-is (inferred from query)
+	if target_columns.is_empty() {
+		return Ok(columns.clone());
 	}
 
 	let mut result_columns = Vec::with_capacity(target_columns.len());

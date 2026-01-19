@@ -153,7 +153,23 @@ impl Parser {
 	fn parse_subscription(&mut self, token: Token) -> crate::Result<AstCreate> {
 		// Subscriptions don't have names - they're identified only by UUID v7
 		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
-		let columns = self.parse_columns()?;
+		// Or schema-less: CREATE SUBSCRIPTION AS { query }
+
+		// Check if we have columns or go straight to AS
+		let columns = if self.current()?.is_operator(Operator::As) {
+			// Schema-less: no columns, will be inferred from query
+			Vec::new()
+		} else if self.current()?.is_operator(Operator::OpenCurly) {
+			// Has column definitions
+			self.parse_columns()?
+		} else {
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"'{' or 'AS'",
+					self.current()?.fragment.clone(),
+				),
+			));
+		};
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -193,6 +209,18 @@ impl Parser {
 		} else {
 			None
 		};
+
+		// Validation: schema-less subscriptions require AS clause
+		if columns.is_empty() && as_clause.is_none() {
+			return Err(reifydb_type::error::Error(
+				reifydb_type::error::diagnostic::ast::unexpected_token_error(
+					"AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)",
+					self.current().ok().and_then(|t| Some(t.fragment.clone())).unwrap_or_else(
+						|| reifydb_type::fragment::Fragment::internal("end of input"),
+					),
+				),
+			));
+		}
 
 		Ok(AstCreate::Subscription(AstCreateSubscription {
 			token,
@@ -1926,6 +1954,112 @@ pub mod tests {
 				..
 			}) => {
 				assert!(as_clause.is_none(), "AS clause should not be present");
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_schemaless() {
+		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo.events }
+		let tokens = tokenize("CREATE SUBSCRIPTION AS { FROM demo.events }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(columns.len(), 0, "Schema-less should have no columns");
+				assert!(as_clause.is_some(), "AS clause should be present");
+
+				let as_clause = as_clause.as_ref().unwrap();
+				assert_eq!(as_clause.nodes.len(), 1, "Should have one FROM node");
+
+				match &as_clause.nodes[0] {
+					Ast::From(_) => {
+						// Expected: FROM node
+					}
+					_ => panic!("Expected FROM node in AS clause"),
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_schemaless_with_filter() {
+		// Test schema-less subscription with filter
+		let tokens =
+			tokenize("CREATE SUBSCRIPTION AS { FROM demo.events | FILTER id > 1 and id < 3 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(columns.len(), 0, "Schema-less should have no columns");
+				assert!(as_clause.is_some(), "AS clause should be present");
+
+				let as_clause = as_clause.as_ref().unwrap();
+				assert!(as_clause.nodes.len() >= 1, "Should have at least FROM node");
+				assert!(as_clause.has_pipes, "Should have pipes");
+
+				match &as_clause.nodes[0] {
+					Ast::From(_) => {
+						// Expected: FROM node
+					}
+					_ => panic!("Expected FROM node as first node"),
+				}
+			}
+			_ => unreachable!("Expected Subscription create"),
+		}
+	}
+
+	#[test]
+	fn test_create_subscription_schemaless_missing_as_fails() {
+		// Test that schema-less subscription without AS clause fails
+		let tokens = tokenize("CREATE SUBSCRIPTION").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse();
+
+		// Should fail with an error
+		assert!(result.is_err(), "Schema-less subscription without AS should fail");
+	}
+
+	#[test]
+	fn test_create_subscription_backward_compat_with_columns() {
+		// Test backward compatibility: subscriptions with columns and AS still work
+		let tokens = tokenize("CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo.events }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Subscription(AstCreateSubscription {
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(columns.len(), 1, "Should have one column");
+				assert_eq!(columns[0].name.text(), "id");
+				assert!(as_clause.is_some(), "AS clause should be present");
 			}
 			_ => unreachable!("Expected Subscription create"),
 		}

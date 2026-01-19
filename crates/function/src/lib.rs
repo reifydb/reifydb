@@ -21,6 +21,7 @@ pub mod text;
 pub struct GeneratorContext<'a> {
 	pub params: Columns,
 	pub txn: &'a mut StandardTransaction<'a>,
+	pub catalog: &'a reifydb_catalog::catalog::Catalog,
 }
 
 pub trait GeneratorFunction: Send + Sync {

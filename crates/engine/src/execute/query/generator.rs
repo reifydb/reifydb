@@ -87,6 +87,12 @@ impl QueryNode for GeneratorNode {
 			txn: unsafe {
 				std::mem::transmute::<&mut StandardTransaction, &'a mut StandardTransaction<'a>>(txn)
 			},
+			catalog: unsafe {
+				std::mem::transmute::<
+					&reifydb_catalog::catalog::Catalog,
+					&'a reifydb_catalog::catalog::Catalog,
+				>(&stored_ctx.executor.catalog)
+			},
 		})?;
 
 		self.exhausted = true;

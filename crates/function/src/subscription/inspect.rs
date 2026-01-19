@@ -2,12 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
 	interface::catalog::id::SubscriptionId,
 	key::{Key, subscription_row::SubscriptionRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{fragment::Fragment, value::uuid::parse::parse_uuid7};
+use reifydb_type::{
+	error::{Error, diagnostic::internal::internal},
+	fragment::Fragment,
+	value::uuid::parse::parse_uuid7,
+};
 
 use crate::{GeneratorContext, GeneratorFunction};
 
@@ -51,9 +54,6 @@ impl GeneratorFunction for InspectSubscription {
 		let subscription_def = reifydb_catalog::find_subscription(txn, subscription_id)?
 			.unwrap_or_else(|| panic!("Subscription {} not found", subscription_id_uuid));
 
-		// Build schema for all columns (user + implicit)
-		let schema: Schema = (&subscription_def).into();
-
 		// Scan subscription rows
 		let range = SubscriptionRowKey::full_scan(subscription_id);
 		let mut stream = txn.range(range, 1024)?;
@@ -67,14 +67,26 @@ impl GeneratorFunction for InspectSubscription {
 
 		let mut row_numbers = Vec::new();
 
-		// Scan all rows
+		// Collect all entries first to avoid borrow checker issues
+		let mut entries = Vec::new();
 		while let Some(result) = stream.next() {
-			let entry = result?;
+			entries.push(result?);
+		}
+		drop(stream); // Explicitly drop to release the borrow on txn
 
+		let catalog = ctx.catalog;
+		let schema_registry = &catalog.schema;
+
+		// Process collected entries
+		for entry in entries {
 			if let Some(Key::SubscriptionRow(sub_row_key)) = Key::decode(&entry.key) {
 				row_numbers.push(sub_row_key.row);
 
-				// Extract values for each column
+				let fingerprint = entry.values.fingerprint();
+				let schema = schema_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+					Error(internal(format!("Schema not found for fingerprint: {:?}", fingerprint)))
+				})?;
+
 				for (idx, (_, data)) in column_data_builders.iter_mut().enumerate() {
 					let value = schema.get_value(&entry.values, idx);
 					data.push_value(value);
@@ -82,7 +94,6 @@ impl GeneratorFunction for InspectSubscription {
 			}
 		}
 
-		// Build final columns
 		let columns: Vec<Column> = column_data_builders
 			.into_iter()
 			.map(|(name, data)| Column {

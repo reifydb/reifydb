@@ -13,7 +13,7 @@
 
 use dashmap::DashMap;
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::key::EncodedKey,
 	interface::catalog::id::SubscriptionId,
 	key::{
 		Key,
@@ -25,7 +25,10 @@ use reifydb_sub_server::{
 	response::{ResponseColumn, ResponseFrame},
 	state::AppState,
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{
+	error::{Error, diagnostic::internal::internal},
+	fragment::Fragment,
+};
 use tokio::sync::mpsc;
 
 use super::{PushMessage, SubscriptionRegistry};
@@ -190,7 +193,7 @@ impl SubscriptionPoller {
 		let mut cmd_txn = engine.begin_command()?;
 
 		// Get subscription definition using catalog function
-		let sub_def = match reifydb_catalog::find_subscription(&mut cmd_txn, db_subscription_id)? {
+		let _sub_def = match reifydb_catalog::find_subscription(&mut cmd_txn, db_subscription_id)? {
 			Some(def) => def,
 			None => {
 				tracing::warn!("Subscription {} not found", db_subscription_id);
@@ -198,8 +201,9 @@ impl SubscriptionPoller {
 			}
 		};
 
-		// Build the schema from subscription definition
-		let schema: Schema = (&sub_def).into();
+		// Get schema registry for resolving per-row schemas
+		let catalog = engine.catalog();
+		let schema_registry = &catalog.schema;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -208,36 +212,56 @@ impl SubscriptionPoller {
 			SubscriptionRowKey::full_scan(db_subscription_id)
 		};
 
-		// Scan rows
+		// Scan rows and collect entries first
 		let mut stream = cmd_txn.range(range, self.batch_size)?;
+		let mut entries = Vec::new();
+		while let Some(result) = stream.next() {
+			entries.push(result?);
+		}
+		drop(stream); // Explicitly drop to release the borrow on cmd_txn
 
-		// Build columns structure - use all_columns() to include implicit _op column
-		let all_columns = sub_def.all_columns();
-		let mut column_data: Vec<_> = all_columns
-			.iter()
-			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty, 0)))
-			.collect();
+		// Build dynamic column structure
+		use std::collections::HashMap;
+		let mut column_data: HashMap<String, ColumnData> = HashMap::new();
 
 		let mut row_numbers = Vec::new();
 		let mut row_keys = Vec::new();
 
-		while let Some(result) = stream.next() {
-			let entry = result?;
-
+		// Process collected entries
+		for entry in entries {
 			// Decode row key
 			if let Some(Key::SubscriptionRow(sub_row_key)) = Key::decode(&entry.key) {
 				row_numbers.push(sub_row_key.row);
 				row_keys.push(entry.key.clone());
 
-				// Decode each column value
-				for (idx, (_, data)) in column_data.iter_mut().enumerate() {
+				// Extract schema fingerprint from the encoded row
+				let fingerprint = entry.values.fingerprint();
+
+				// Resolve schema using SchemaRegistry
+				let schema =
+					schema_registry.get_or_load(fingerprint, &mut cmd_txn)?.ok_or_else(|| {
+						Error(internal(format!(
+							"Schema not found for fingerprint: {:?}",
+							fingerprint
+						)))
+					})?;
+
+				// Decode each field using the resolved schema
+				for (idx, field) in schema.fields().iter().enumerate() {
 					let value = schema.get_value(&entry.values, idx);
-					data.push_value(value);
+
+					// Get or create column data for this field
+					column_data
+						.entry(field.name.clone())
+						.or_insert_with(|| {
+							ColumnData::with_capacity(field.constraint.get_type(), 0)
+						})
+						.push_value(value);
 				}
 			}
 		}
 
-		// Build columns
+		// Convert HashMap to Vec for Columns
 		let columns: Vec<Column> = column_data
 			.into_iter()
 			.map(|(name, data)| Column {

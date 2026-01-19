@@ -8,11 +8,11 @@ use crate::data::column::ColumnsFFI;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowDiffType {
 	/// Insert a new row
-	Insert = 0,
+	Insert = 1,
 	/// Update an existing row
-	Update = 1,
+	Update = 2,
 	/// Remove a row
-	Remove = 2,
+	Remove = 3,
 }
 
 /// FFI-safe flow diff (batch version using columnar format)

@@ -40,7 +40,7 @@ impl SubscriptionDef {
 		vec![SubscriptionColumnDef {
 			id: SubscriptionColumnId(u64::MAX - 2), // Use high IDs for implicit columns
 			name: IMPLICIT_COLUMN_OP.to_string(),
-			ty: Type::Uint1, // 0=INSERT, 1=UPDATE, 2=DELETE
+			ty: Type::Uint1, // 1=INSERT, 2=UPDATE, 3=DELETE
 		}]
 	}
 
@@ -54,12 +54,9 @@ impl SubscriptionDef {
 
 impl From<&SubscriptionDef> for Schema {
 	fn from(value: &SubscriptionDef) -> Self {
-		// Use all columns (user + implicit) for schema
-		let fields = value
-			.all_columns()
-			.iter()
-			.map(|col| SchemaField::unconstrained(col.name.clone(), col.ty))
-			.collect();
+		// Use only user-defined columns for schema (implicit columns like _op removed)
+		let fields =
+			value.columns.iter().map(|col| SchemaField::unconstrained(col.name.clone(), col.ty)).collect();
 		Schema::new(fields)
 	}
 }

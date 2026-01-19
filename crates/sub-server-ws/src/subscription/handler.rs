@@ -13,6 +13,7 @@ use reifydb_type::{
 	value::{Value, uuid::Uuid7},
 };
 use tokio::sync::mpsc;
+use tracing::{debug, error};
 
 use crate::{
 	handler::error_to_response,
@@ -61,12 +62,9 @@ pub(crate) async fn handle_subscribe(
 	let timeout = state.query_timeout();
 	let user_query = sub.query.clone();
 
-	// TODO: For now, hard code the CREATE SUBSCRIPTION for demo.events
-	// In the future, we'll need to infer schema from the query result
-	let create_sub_statement =
-		format!("CREATE SUBSCRIPTION {{ id: Int4, message: Utf8, timestamp: Uint8 }} AS {{ {} }}", user_query);
+	let create_sub_statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", user_query);
 
-	tracing::debug!("Generated subscription statement: {}", create_sub_statement);
+	debug!("Generated subscription statement: {}", create_sub_statement);
 
 	// Execute CREATE SUBSCRIPTION command
 	match execute_command(state.pool(), state.engine_clone(), vec![create_sub_statement], id, params, timeout).await
@@ -82,7 +80,7 @@ pub(crate) async fn handle_subscribe(
 						match value {
 							Value::Uuid7(uuid) => Some(DbSubscriptionId(uuid.0)),
 							_ => {
-								tracing::error!(
+								error!(
 									"subscription_id column has wrong type: {:?}",
 									value
 								);
@@ -93,7 +91,7 @@ pub(crate) async fn handle_subscribe(
 						None
 					}
 				} else {
-					tracing::error!("No subscription_id column in CREATE SUBSCRIPTION result");
+					error!("No subscription_id column in CREATE SUBSCRIPTION result");
 					None
 				}
 			} else {
