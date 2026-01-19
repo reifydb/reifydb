@@ -68,7 +68,7 @@ fn main() {
 
 		// 7. Subscribe to changes on demo.events
 		println!("\n>>> Subscribing to 'from demo.events'...");
-		let subscription_id = client.subscribe("from demo.events | filter id > 1 and id < 3").await.unwrap();
+		let subscription_id = client.subscribe("from demo.events").await.unwrap();
 
 		println!("Subscribed! Subscription ID: {}", subscription_id);
 
@@ -94,15 +94,12 @@ fn main() {
 		.unwrap();
 		println!("Data inserted!");
 
-		// 9. Receive change notifications
-		println!("\n>>> Waiting for change notifications...");
-		println!("    (The server sends test frames every 2 seconds)");
+		// 9. Receive INSERT notification
 
-		// Try to receive a few change notifications
-		println!("\n--- Waiting for notification ---");
+		println!("\n--- Waiting for INSERT notification ---");
 		match timeout(Duration::from_secs(5), client.recv()).await {
 			Ok(Some(change)) => {
-				println!("Received change notification!");
+				println!("Received INSERT notification!");
 				println!("  Subscription ID: {}", change.subscription_id);
 				println!("  Frame:");
 				for col in &change.frame.columns {
@@ -118,18 +115,88 @@ fn main() {
 			}
 		}
 
-		// 11. Unsubscribe
+		// 10. UPDATE operation test
+		println!("\n>>> Updating record with id=2...");
+		println!("    Changing message to 'Updated event' and timestamp to 2500");
+		client.command(
+			r#"from demo.events | map {id, timestamp, message: "updated"} | update demo.events"#,
+			None,
+		)
+		.await
+		.unwrap();
+		println!("Record updated!");
+
+		// Receive UPDATE notification
+		println!("\n--- Waiting for UPDATE notification ---");
+		match timeout(Duration::from_secs(5), client.recv()).await {
+			Ok(Some(change)) => {
+				println!("Received UPDATE notification!");
+				println!("  Subscription ID: {}", change.subscription_id);
+				println!("  Frame:");
+				for col in &change.frame.columns {
+					println!("    Column '{}' ({}): {:?}", col.name, col.r#type, col.data);
+				}
+			}
+			Ok(None) => {
+				println!("Connection closed");
+				return;
+			}
+			Err(_) => {
+				println!("Timeout waiting for notification");
+			}
+		}
+
+		// 11. DELETE operation test - outside filter (no notification expected)
+		println!("\n>>> Deleting record with id=3 (outside filter)...");
+		println!("    This delete is outside the subscription filter, so NO notification is expected");
+		client.command(
+			"from demo.events | filter id == 3 | delete demo.events",
+			None,
+		)
+		.await
+		.unwrap();
+		println!("Record deleted (id=3)!");
+
+		client.command(
+			"from demo.events | filter id == 2 | delete demo.events",
+			None,
+		)
+		.await
+		.unwrap();
+		println!("Record deleted (id=2)!");
+
+		// Receive REMOVE notification
+		println!("\n--- Waiting for REMOVE notification ---");
+		match timeout(Duration::from_secs(5), client.recv()).await {
+			Ok(Some(change)) => {
+				println!("Received REMOVE notification!");
+				println!("  Subscription ID: {}", change.subscription_id);
+				println!("  Frame:");
+				for col in &change.frame.columns {
+					println!("    Column '{}' ({}): {:?}", col.name, col.r#type, col.data);
+				}
+			}
+			Ok(None) => {
+				println!("Connection closed");
+				return;
+			}
+			Err(_) => {
+				println!("Timeout waiting for notification");
+			}
+		}
+
+		// 13. Unsubscribe
 		println!("\n>>> Unsubscribing...");
 		client.unsubscribe(&subscription_id).await.unwrap();
 		println!("Unsubscribed!");
 
-		// 12. Close client
+		// 14. Close client
 		println!("\n>>> Closing client...");
 		client.close().await.unwrap();
 		println!("Client closed!");
 	});
 
-	// 13. Stop database
+	// 15. Stop database
 	println!(">>> Stopping database...");
 	db.stop().unwrap();
 	println!("Database stopped!");
@@ -138,6 +205,11 @@ fn main() {
 
 	let frame = db
 		.command_as_root("from system.schema_fields filter fingerprint == 12216087711891371105", Params::None)
+		.unwrap();
+	println!("{}", frame.first().unwrap());
+
+	let frame = db
+		.command_as_root("from demo.events", Params::None)
 		.unwrap();
 	println!("{}", frame.first().unwrap());
 }

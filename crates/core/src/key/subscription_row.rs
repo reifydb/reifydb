@@ -156,12 +156,12 @@ impl SubscriptionRowKey {
 
 	pub fn full_scan(subscription: SubscriptionId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::subscription_start(subscription)),
-			Some(Self::subscription_end(subscription)),
+			Some(Self::start(subscription)),
+			Some(Self::end(subscription)),
 		)
 	}
 
-	pub fn subscription_start(subscription: SubscriptionId) -> EncodedKey {
+	fn start(subscription: SubscriptionId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
 			.extend_u8(VERSION)
@@ -171,7 +171,7 @@ impl SubscriptionRowKey {
 		serializer.to_encoded_key()
 	}
 
-	pub fn subscription_end(subscription: SubscriptionId) -> EncodedKey {
+	fn end(subscription: SubscriptionId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
 			.extend_u8(VERSION)

@@ -6,8 +6,7 @@ import {
 } from "@reifydb/core";
 import type {
     SchemaNode,
-    InferSchemas,
-    FrameResults
+    FrameResults,
 } from "@reifydb/core";
 
 import type {
@@ -16,8 +15,13 @@ import type {
     QueryRequest,
     QueryResponse,
     Column,
-    Params,
-    ErrorResponse
+    ErrorResponse,
+    SubscribeRequest,
+    SubscribedResponse,
+    UnsubscribeRequest,
+    UnsubscribedResponse,
+    ChangeMessage,
+    SubscriptionCallbacks
 } from "./types";
 import {
     ReifyError
@@ -32,7 +36,15 @@ export interface WsClientOptions {
     reconnectDelayMs?: number;
 }
 
-type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse;
+interface SubscriptionState<T = any> {
+    subscriptionId: string;
+    query: string;
+    params?: any;
+    schema?: SchemaNode;
+    callbacks: SubscriptionCallbacks<T>;
+}
+
+type ResponsePayload = ErrorResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -53,6 +65,7 @@ export class WsClient {
     private reconnectAttempts: number = 0;
     private shouldReconnect: boolean = true;
     private isReconnecting: boolean = false;
+    private subscriptions = new Map<string, SubscriptionState>();
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
@@ -183,6 +196,71 @@ export class WsClient {
         });
 
         return transformedFrames as FrameResults<S>;
+    }
+
+    async subscribe<T = any>(
+        query: string,
+        params: any,
+        schema: SchemaNode | undefined,
+        callbacks: SubscriptionCallbacks<T>
+    ): Promise<string> {
+        const id = `sub-${this.nextId++}`;
+
+        const request: SubscribeRequest = {
+            id,
+            type: "Subscribe",
+            payload: {query}
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, (response) => {
+                if (response.type === "Err") {
+                    reject(new ReifyError(response));
+                } else if (response.type === "Subscribed") {
+                    const subscriptionId = response.payload.subscription_id;
+
+                    // Store subscription state
+                    this.subscriptions.set(subscriptionId, {
+                        subscriptionId,
+                        query,
+                        params,
+                        schema,
+                        callbacks
+                    });
+
+                    resolve(subscriptionId);
+                } else {
+                    reject(new Error("Unexpected response type"));
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+    }
+
+    async unsubscribe(subscriptionId: string): Promise<void> {
+        const id = `unsub-${this.nextId++}`;
+
+        const request: UnsubscribeRequest = {
+            id,
+            type: "Unsubscribe",
+            payload: {subscription_id: subscriptionId}
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, (response) => {
+                if (response.type === "Err") {
+                    reject(new ReifyError(response));
+                } else if (response.type === "Unsubscribed") {
+                    this.subscriptions.delete(subscriptionId);
+                    resolve();
+                } else {
+                    reject(new Error("Unexpected response type"));
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
     }
 
     async send(req: CommandRequest | QueryRequest): Promise<any> {
@@ -321,6 +399,7 @@ export class WsClient {
 
     disconnect() {
         this.shouldReconnect = false;
+        this.subscriptions.clear();
         this.socket.close();
     }
 
@@ -389,15 +468,118 @@ export class WsClient {
             this.setupSocketHandlers();
             this.reconnectAttempts = 0;
             this.isReconnecting = false;
+
+            // Re-establish all active subscriptions
+            await this.resubscribeAll();
         } catch (error) {
             this.isReconnecting = false;
             this.handleDisconnect();
         }
     }
 
+    private async resubscribeAll(): Promise<void> {
+        const subscriptionsToReestablish = Array.from(this.subscriptions.values());
+
+        // Clear current subscriptions map (will be repopulated)
+        this.subscriptions.clear();
+
+        for (const state of subscriptionsToReestablish) {
+            try {
+                // Re-subscribe with same parameters
+                // Cast to avoid overload resolution issues in internal call
+                await (this.subscribe as any)(state.query, state.params, state.schema, state.callbacks);
+            } catch (err) {
+                console.error(`Failed to resubscribe to ${state.query}:`, err);
+            }
+        }
+    }
+
+    private handleChangeMessage(msg: ChangeMessage): void {
+        const {subscription_id, frame} = msg.payload;
+        const state = this.subscriptions.get(subscription_id);
+
+        if (!state) return;
+
+        // Extract _op column to determine operation type
+        const opColumn = frame.columns.find(c => c.name === "_op");
+        if (!opColumn || opColumn.data.length === 0) return;
+
+        // Transform frame to rows using existing transformResult logic
+        const rows = this.frameToRows(frame, state.schema);
+
+        // Group rows by operation type (defensive - usually all same type)
+        // Process in order to maintain sequential execution
+        const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const opValue = parseInt(opColumn.data[i]);
+            const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
+                opValue === 1 ? 'INSERT' :
+                    opValue === 2 ? 'UPDATE' :
+                        opValue === 3 ? 'REMOVE' : 'INSERT';
+
+            // Remove _op from this row
+            const {_op, ...cleanRow} = rows[i];
+
+            // Batch consecutive rows of same operation type
+            if (batches.length > 0 && batches[batches.length - 1].op === operation) {
+                batches[batches.length - 1].rows.push(cleanRow);
+            } else {
+                batches.push({op: operation, rows: [cleanRow]});
+            }
+        }
+
+        // Execute callbacks sequentially in order
+        for (const batch of batches) {
+            switch (batch.op) {
+                case 'INSERT':
+                    state.callbacks.onInsert?.(batch.rows);
+                    break;
+                case 'UPDATE':
+                    state.callbacks.onUpdate?.(batch.rows);
+                    break;
+                case 'REMOVE':
+                    state.callbacks.onRemove?.(batch.rows);
+                    break;
+            }
+        }
+    }
+
+    private frameToRows(frame: any, schema?: SchemaNode): any[] {
+        // Convert frame columns to array of row objects
+        if (!frame.columns || frame.columns.length === 0) return [];
+
+        const rowCount = frame.columns[0].data.length;
+        const rows: any[] = [];
+
+        for (let i = 0; i < rowCount; i++) {
+            const row: any = {};
+            for (const col of frame.columns) {
+                row[col.name] = decode({type: col.type, value: col.data[i]});
+            }
+            rows.push(row);
+        }
+
+        // Apply schema transformation if provided
+        if (schema) {
+            return rows.map(row => this.transformResult(row, schema));
+        }
+
+        return rows;
+    }
+
     private setupSocketHandlers() {
         this.socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
+
+            // Handle server-initiated messages (no id)
+            if (!msg.id) {
+                if (msg.type === "Change") {
+                    this.handleChangeMessage(msg);
+                }
+                return;
+            }
+
             const {id, type, payload} = msg;
 
             const handler = this.pending.get(id);

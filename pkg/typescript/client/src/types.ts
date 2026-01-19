@@ -40,3 +40,52 @@ export interface QueryResponse {
         frames: Frame[];
     };
 }
+
+export interface SubscribeRequest {
+    id: string;
+    type: "Subscribe";
+    payload: {
+        query: string;
+    };
+}
+
+export interface SubscribedResponse {
+    id: string;
+    type: "Subscribed";
+    payload: {
+        subscription_id: string;
+    };
+}
+
+export interface UnsubscribeRequest {
+    id: string;
+    type: "Unsubscribe";
+    payload: {
+        subscription_id: string;
+    };
+}
+
+export interface UnsubscribedResponse {
+    id: string;
+    type: "Unsubscribed";
+    payload: {
+        subscription_id: string;
+    };
+}
+
+export interface ChangeMessage {
+    // No id field - server-initiated
+    type: "Change";
+    payload: {
+        subscription_id: string;
+        frame: Frame;
+    };
+}
+
+export type SubscriptionOperation = 'INSERT' | 'UPDATE' | 'REMOVE';
+
+export interface SubscriptionCallbacks<T = any> {
+    onInsert?: (rows: T[]) => void;
+    onUpdate?: (rows: T[]) => void;
+    onRemove?: (rows: T[]) => void;
+}

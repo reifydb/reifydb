@@ -14,7 +14,10 @@ use reifydb_core::{
 use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
-	operator::stateful::utils::{internal_state_get, internal_state_set},
+	operator::stateful::{
+		counter::{Counter, CounterDirection},
+		utils::{internal_state_get, internal_state_set},
+	},
 	transaction::FlowTransaction,
 };
 
@@ -29,6 +32,7 @@ use crate::{
 /// false.
 pub struct RowNumberProvider {
 	node: FlowNodeId,
+	counter: Counter,
 }
 
 impl RowNumberProvider {
@@ -36,6 +40,7 @@ impl RowNumberProvider {
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
+			counter: Counter::with_prefix(node, b'C', CounterDirection::Ascending),
 		}
 	}
 
@@ -51,8 +56,6 @@ impl RowNumberProvider {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		let mut results = Vec::new();
-		let mut counter = self.load_counter(txn)?;
-		let initial_counter = counter;
 
 		for key in keys {
 			let map_key = self.make_map_key(key);
@@ -69,10 +72,10 @@ impl RowNumberProvider {
 				}
 			}
 
-			let new_row_number = RowNumber(counter);
+			let new_row_number = self.counter.next(txn)?;
 
 			// Save the mapping from key to encoded number
-			let row_num_bytes = counter.to_be_bytes().to_vec();
+			let row_num_bytes = new_row_number.0.to_be_bytes().to_vec();
 			internal_state_set(self.node, txn, &map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
 
 			// Save the reverse mapping from row_number to key
@@ -85,12 +88,6 @@ impl RowNumberProvider {
 			)?;
 
 			results.push((new_row_number, true));
-			counter += 1;
-		}
-
-		// Save the updated counter if we allocated any new row numbers
-		if counter != initial_counter {
-			self.save_counter(txn, counter)?;
 		}
 
 		Ok(results)
@@ -119,41 +116,6 @@ impl RowNumberProvider {
 		} else {
 			Ok(None)
 		}
-	}
-
-	/// Load the current counter value
-	fn load_counter(&self, txn: &mut FlowTransaction) -> reifydb_type::Result<u64> {
-		let key = self.make_counter_key();
-		match internal_state_get(self.node, txn, &key)? {
-			None => Ok(1), // First time, start at 1
-			Some(state_row) => {
-				// Parse the stored counter
-				let bytes = state_row.as_ref();
-				if bytes.len() >= 8 {
-					Ok(u64::from_be_bytes([
-						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-						bytes[7],
-					]))
-				} else {
-					Ok(1)
-				}
-			}
-		}
-	}
-
-	/// Save the counter value
-	fn save_counter(&self, txn: &mut FlowTransaction, counter: u64) -> reifydb_type::Result<()> {
-		let key = self.make_counter_key();
-		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
-		internal_state_set(self.node, txn, &key, value)?;
-		Ok(())
-	}
-
-	/// Create a key for the counter (node_id added by FlowNodeInternalStateKey wrapper)
-	fn make_counter_key(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'C'); // 'C' for counter
-		EncodedKey::new(serializer.finish())
 	}
 
 	/// Create a mapping key for a given encoded key (node_id added by FlowNodeInternalStateKey wrapper)

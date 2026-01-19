@@ -6,7 +6,7 @@ use std::rc::Rc;
 use reifydb_abi::flow::diff::FlowDiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::schema::{Schema, SchemaField},
+	encoded::{schema::{Schema, SchemaField}},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
 		resolved::ResolvedSubscription,
@@ -14,26 +14,43 @@ use reifydb_core::{
 	key::subscription_row::SubscriptionRowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_core::encoded::key::EncodedKey;
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
 
 use super::encode_row_at_index;
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{
+	Operator,
+	operator::{
+		Operators,
+		stateful::counter::{Counter, CounterDirection},
+	},
+	transaction::FlowTransaction,
+};
+use reifydb_core::util::encoding::keycode::serializer::KeySerializer;
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: Rc<Operators>,
 	node: FlowNodeId,
 	subscription: ResolvedSubscription,
+	counter: Counter,
 }
 
 impl SinkSubscriptionOperator {
 	pub fn new(parent: Rc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
+		let counter_key = {
+			let mut serializer = KeySerializer::new();
+			serializer.extend_bytes(subscription.def().id.as_bytes());
+			EncodedKey::new(serializer.finish())
+		};
+
 		Self {
 			parent,
 			node,
 			subscription,
+			counter: Counter::with_key(node, counter_key, CounterDirection::Descending),
 		}
 	}
 
@@ -53,6 +70,7 @@ impl SinkSubscriptionOperator {
 		// Preserve row numbers
 		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
 	}
+
 }
 
 impl Operator for SinkSubscriptionOperator {
@@ -84,8 +102,11 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema);
+						// Get unique, incrementing row number for this notification
+						let row_number = self.counter.next(txn)?;
+
+						let (_, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -106,8 +127,11 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema);
+						// Get unique, incrementing row number for this notification
+						let row_number = self.counter.next(txn)?;
+
+						let (_, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -127,8 +151,11 @@ impl Operator for SinkSubscriptionOperator {
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
-						let (row_number, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema);
+						// Get unique, incrementing row number for this notification
+						let row_number = self.counter.next(txn)?;
+
+						let (_, encoded) =
+							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;

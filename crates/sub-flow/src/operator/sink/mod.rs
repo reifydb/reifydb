@@ -154,9 +154,14 @@ pub(crate) fn coerce_subscription_columns(
 	Ok(Columns::with_row_numbers(result_columns, row_numbers))
 }
 
-/// Encode values at a specific row index directly from Columns without Row allocation
-pub(crate) fn encode_row_at_index(columns: &Columns, row_idx: usize, schema: &Schema) -> (RowNumber, EncodedValues) {
-	let row_number = columns.row_numbers[row_idx];
+/// Encode values at a specific row index with explicit row number
+pub(crate) fn encode_row_at_index(
+	columns: &Columns,
+	row_idx: usize,
+	schema: &Schema,
+	row_number: RowNumber,
+) -> (RowNumber, EncodedValues) {
+	// Use row_number parameter instead of columns.row_numbers[row_idx]
 
 	// Collect values in SCHEMA FIELD ORDER by matching column names
 	// This ensures values are in the same order as schema expects

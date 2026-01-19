@@ -18,3 +18,12 @@ export {ReifyError, asFrameResults} from "@reifydb/core";
 export type {FrameResults, SingleFrameResult, Diagnostic, Fragment, DiagnosticColumn} from "@reifydb/core";
 export {WsClient} from "./ws";
 export type {WsClientOptions} from "./ws";
+export type {
+    SubscribeRequest,
+    SubscribedResponse,
+    UnsubscribeRequest,
+    UnsubscribedResponse,
+    ChangeMessage,
+    SubscriptionCallbacks,
+    SubscriptionOperation
+} from './types';

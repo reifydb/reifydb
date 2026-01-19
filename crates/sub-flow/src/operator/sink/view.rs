@@ -60,8 +60,9 @@ impl Operator for SinkViewOperator {
 					let coerced = coerce_columns(post, &view_def.columns)?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
-						let (row_number, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema);
+						let row_number = coerced.row_numbers[row_idx];
+						let (_, encoded) =
+							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
 						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
 						txn.set(&key, encoded)?;
@@ -76,10 +77,12 @@ impl Operator for SinkViewOperator {
 					let coerced_post = coerce_columns(post, &view_def.columns)?;
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
-						let (pre_row_number, _) =
-							encode_row_at_index(&coerced_pre, row_idx, &schema);
-						let (post_row_number, post_encoded) =
-							encode_row_at_index(&coerced_post, row_idx, &schema);
+						let pre_row_number = coerced_pre.row_numbers[row_idx];
+						let post_row_number = coerced_post.row_numbers[row_idx];
+						let (_, _) =
+							encode_row_at_index(&coerced_pre, row_idx, &schema, pre_row_number);
+						let (_, post_encoded) =
+							encode_row_at_index(&coerced_post, row_idx, &schema, post_row_number);
 
 						let old_key =
 							RowKey::encoded(PrimitiveId::view(view_def.id), pre_row_number);

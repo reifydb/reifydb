@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::store::MultiVersionBatch,
 };
 
+pub mod counter;
 pub mod keyed;
 pub mod raw;
 pub mod row;
