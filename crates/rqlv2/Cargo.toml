@@ -11,6 +11,7 @@ description = "ReifyDB Query Language (RQL)"
 bumpalo = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-function = { workspace = true }
 reifydb-hash = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }

@@ -111,34 +111,101 @@ pub(super) fn compile_cast<'bump>(expr: &PlanExpr<'bump>, target_type: Type) -> 
 	})
 }
 
-pub(super) fn compile_call<'bump>(function_name: String, arguments: &[&PlanExpr<'bump>]) -> CompiledExpr {
+pub fn compile_scalar_call<'bump>(function_name: String, arguments: &[&PlanExpr<'bump>]) -> CompiledExpr {
+	use reifydb_core::value::column::columns::Columns;
+	use reifydb_function::ScalarFunctionContext;
+
 	let arg_fns: Vec<_> = arguments.iter().map(|e| compile_plan_expr(e)).collect();
 
 	CompiledExpr::new(move |columns, ctx| {
-		// Evaluate all arguments
+		// Evaluate all arguments to columns
+		let mut arg_cols = Vec::with_capacity(arg_fns.len());
+		for arg_fn in &arg_fns {
+			arg_cols.push(arg_fn.eval(columns, ctx)?);
+		}
+		let args = Columns::new(arg_cols);
+
+		// Get function registry from context
+		let functions = ctx.functions.as_ref().ok_or_else(|| EvalError::UnsupportedOperation {
+			operation: format!("scalar function '{}' (no registry available)", function_name),
+		})?;
+
+		// Look up scalar function
+		let scalar_func = functions.get_scalar(&function_name).ok_or_else(|| EvalError::UnsupportedOperation {
+			operation: format!("unknown scalar function '{}'", function_name),
+		})?;
+
+		// Call scalar function
+		let result_data = scalar_func
+			.scalar(ScalarFunctionContext {
+				columns: &args,
+				row_count: columns.row_count(),
+			})
+			.map_err(|e| EvalError::SubqueryError {
+				message: format!("Scalar function '{}' error: {}", function_name, e),
+			})?;
+
+		Ok(Column::new(Fragment::internal(&function_name), result_data))
+	})
+}
+
+pub fn compile_aggregate_call<'bump>(
+	function_name: String,
+	arguments: &[&PlanExpr<'bump>],
+	_distinct: bool, // TODO: handle distinct in future
+) -> CompiledExpr {
+	use reifydb_core::value::column::view::group_by::GroupByView;
+	use reifydb_function::AggregateFunctionContext;
+
+	let arg_fns: Vec<_> = arguments.iter().map(|e| compile_plan_expr(e)).collect();
+
+	CompiledExpr::new(move |columns, ctx| {
+		// Evaluate arguments
 		let mut arg_cols = Vec::with_capacity(arg_fns.len());
 		for arg_fn in &arg_fns {
 			arg_cols.push(arg_fn.eval(columns, ctx)?);
 		}
 
-		// TODO: Call function registry
-		let _ = function_name;
-		Err(EvalError::UnsupportedOperation {
-			operation: "function calls".to_string(),
-		})
-	})
-}
+		// Get function registry
+		let functions = ctx.functions.as_ref().ok_or_else(|| EvalError::UnsupportedOperation {
+			operation: format!("aggregate function '{}' (no registry available)", function_name),
+		})?;
 
-pub(super) fn compile_aggregate<'bump>(
-	_function_name: String,
-	_arguments: &[&PlanExpr<'bump>],
-	_distinct: bool,
-) -> CompiledExpr {
-	// Aggregates are handled by the Apply(Aggregate) plan node
-	CompiledExpr::new(|_, _| {
-		Err(EvalError::UnsupportedOperation {
-			operation: "aggregate in expression context".to_string(),
-		})
+		// Look up aggregate function
+		let mut agg_func = functions.get_aggregate(&function_name).ok_or_else(|| {
+			EvalError::UnsupportedOperation {
+				operation: format!("unknown aggregate function '{}'", function_name),
+			}
+		})?;
+
+		// Create single-group view for expression context
+		// (In plan operators like GroupBy, this would be multiple groups)
+		let mut group_view = GroupByView::new();
+		let all_indices: Vec<usize> = (0..columns.row_count()).collect();
+		group_view.insert(vec![], all_indices);
+
+		// Get first argument or create dummy for count()
+		let column = if arg_cols.is_empty() {
+			Column::new(Fragment::internal("_count"), ColumnData::undefined(columns.row_count()))
+		} else {
+			arg_cols[0].clone()
+		};
+
+		// Execute aggregate
+		agg_func
+			.aggregate(AggregateFunctionContext {
+				column: &column,
+				groups: &group_view,
+			})
+			.map_err(|e| EvalError::SubqueryError {
+				message: format!("Aggregate '{}' error: {}", function_name, e),
+			})?;
+
+		let (_keys, result_data) = agg_func.finalize().map_err(|e| EvalError::SubqueryError {
+			message: format!("Aggregate '{}' finalize error: {}", function_name, e),
+		})?;
+
+		Ok(Column::new(Fragment::internal(&function_name), result_data))
 	})
 }
 

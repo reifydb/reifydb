@@ -5,7 +5,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::value::column::{columns::Columns, data::ColumnData};
+use reifydb_core::{
+	interface::catalog::policy::ColumnSaturationPolicy,
+	value::column::{columns::Columns, data::ColumnData},
+};
+use reifydb_function::registry::Functions;
 use reifydb_type::value::Value;
 
 use super::{ScriptFunctionCaller, value::EvalValue};
@@ -24,6 +28,10 @@ pub struct EvalContext {
 	/// Script function caller for executing user-defined functions.
 	/// Provided by the VM at runtime.
 	pub script_functions: Option<Arc<dyn ScriptFunctionCaller>>,
+
+	/// Function registry for scalar, aggregate, and generator functions.
+	/// Provided by the engine/catalog at runtime.
+	pub functions: Option<Arc<Functions>>,
 }
 
 impl EvalContext {
@@ -33,6 +41,7 @@ impl EvalContext {
 			variables: HashMap::new(),
 			current_row_values: None,
 			script_functions: None,
+			functions: None,
 		}
 	}
 
@@ -42,6 +51,7 @@ impl EvalContext {
 			variables,
 			current_row_values: None,
 			script_functions: None,
+			functions: None,
 		}
 	}
 
@@ -51,7 +61,14 @@ impl EvalContext {
 			variables: HashMap::new(),
 			current_row_values: None,
 			script_functions: Some(caller),
+			functions: None,
 		}
+	}
+
+	/// Add a function registry to the context (builder pattern).
+	pub fn with_functions(mut self, functions: Arc<Functions>) -> Self {
+		self.functions = Some(functions);
+		self
 	}
 
 	/// Get a variable value by ID.
@@ -75,7 +92,15 @@ impl EvalContext {
 			variables: self.variables.clone(),
 			current_row_values: Some(outer_values),
 			script_functions: self.script_functions.clone(),
+			functions: self.functions.clone(),
 		}
+	}
+
+	/// Returns the saturation policy for numeric overflow handling.
+	/// Currently hardcoded to Error policy - can be extended later
+	/// to lookup from target column metadata if needed.
+	pub fn saturation_policy(&self) -> ColumnSaturationPolicy {
+		ColumnSaturationPolicy::Error
 	}
 
 	/// Call a script function by name with columnar arguments.

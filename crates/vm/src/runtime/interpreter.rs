@@ -126,7 +126,14 @@ impl VmState {
 	pub fn capture_scope_context(&self) -> EvalContext {
 		// Create a script function caller that can execute bytecode
 		let caller = Arc::new(BytecodeScriptCaller::new(self.program.clone()));
-		EvalContext::with_script_functions(caller)
+		let mut ctx = EvalContext::with_script_functions(caller);
+
+		// Add function registry if available
+		if let Some(functions) = &self.context.functions {
+			ctx = ctx.with_functions(Arc::clone(functions));
+		}
+
+		ctx
 	}
 
 	/// Execute a subquery and return the collected result.

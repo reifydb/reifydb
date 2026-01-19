@@ -12,11 +12,12 @@ default = ["trace"]
 trace = []
 
 [dependencies]
-reifydb-core = { workspace = true }
-reifydb-type = { workspace = true }
 reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-function = { workspace = true }
 reifydb-rqlv2 = { workspace = true }
 reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
 
 
 [dev-dependencies]

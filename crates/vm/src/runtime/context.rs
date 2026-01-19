@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_catalog::catalog::Catalog;
+use reifydb_function::registry::Functions;
 
 /// VM configuration.
 #[derive(Debug, Clone)]
@@ -41,6 +44,9 @@ pub struct VmContext {
 
 	/// Optional catalog for real storage lookups.
 	pub catalog: Option<Catalog>,
+
+	/// Function registry for scalar, aggregate, and generator functions.
+	pub functions: Option<Arc<Functions>>,
 }
 
 impl VmContext {
@@ -49,6 +55,7 @@ impl VmContext {
 		Self {
 			config: VmConfig::default(),
 			catalog: None,
+			functions: None,
 		}
 	}
 
@@ -57,6 +64,7 @@ impl VmContext {
 		Self {
 			config,
 			catalog: None,
+			functions: None,
 		}
 	}
 
@@ -65,6 +73,7 @@ impl VmContext {
 		Self {
 			config: VmConfig::default(),
 			catalog: Some(catalog),
+			functions: None,
 		}
 	}
 
@@ -73,7 +82,14 @@ impl VmContext {
 		Self {
 			config,
 			catalog: Some(catalog),
+			functions: None,
 		}
+	}
+
+	/// Add a function registry to the context (builder pattern).
+	pub fn with_functions(mut self, functions: Arc<Functions>) -> Self {
+		self.functions = Some(functions);
+		self
 	}
 }
 

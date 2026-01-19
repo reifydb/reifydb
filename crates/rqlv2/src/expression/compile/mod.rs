@@ -21,8 +21,8 @@ use literal::{
 	compile_literal_string, compile_literal_undefined,
 };
 use operator::{
-	compile_aggregate, compile_between, compile_binary, compile_call, compile_cast, compile_conditional,
-	compile_in, compile_list, compile_record, compile_tuple, compile_unary,
+	compile_aggregate_call, compile_between, compile_binary, compile_cast, compile_conditional,
+	compile_in, compile_list, compile_record, compile_scalar_call, compile_tuple, compile_unary,
 };
 use reference::{compile_column_ref, compile_field_access, compile_rownum, compile_variable_ref, compile_wildcard};
 use reifydb_core::value::column::{Column, columns::Columns};
@@ -82,13 +82,13 @@ pub fn compile_plan_expr<'bump>(expr: &PlanExpr<'bump>) -> CompiledExpr {
 			function,
 			arguments,
 			..
-		} => compile_call(function.name.to_string(), arguments),
+		} => compile_scalar_call(function.name.to_string(), arguments),
 		PlanExpr::Aggregate {
 			function,
 			arguments,
 			distinct,
 			..
-		} => compile_aggregate(function.name.to_string(), arguments, *distinct),
+		} => compile_aggregate_call(function.name.to_string(), arguments, *distinct),
 		PlanExpr::Conditional {
 			condition,
 			then_expr,
