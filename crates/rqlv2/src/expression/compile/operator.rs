@@ -98,9 +98,17 @@ pub(super) fn compile_in<'bump>(expr: &PlanExpr<'bump>, list: &[&PlanExpr<'bump>
 	})
 }
 
-pub(super) fn compile_cast<'bump>(expr: &PlanExpr<'bump>, _target_type: Type) -> CompiledExpr {
-	// TODO: Implement proper type casting
-	compile_plan_expr(expr)
+pub(super) fn compile_cast<'bump>(expr: &PlanExpr<'bump>, target_type: Type) -> CompiledExpr {
+	use super::evaluation::cast_column_data;
+
+	let expr_fn = compile_plan_expr(expr);
+
+	CompiledExpr::new(move |columns, ctx| {
+		let col = expr_fn.eval(columns, ctx)?;
+		let casted_data = cast_column_data(&col.data(), target_type)?;
+
+		Ok(Column::new(col.name.clone(), casted_data))
+	})
 }
 
 pub(super) fn compile_call<'bump>(function_name: String, arguments: &[&PlanExpr<'bump>]) -> CompiledExpr {

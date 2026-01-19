@@ -49,6 +49,15 @@ pub enum EvalError {
 	SubqueryError {
 		message: String,
 	},
+	/// Unsupported cast.
+	UnsupportedCast {
+		from: String,
+		to: String,
+	},
+	/// Invalid cast (e.g., invalid format during conversion).
+	InvalidCast {
+		details: String,
+	},
 }
 
 impl std::fmt::Display for EvalError {
@@ -80,6 +89,13 @@ impl std::fmt::Display for EvalError {
 			EvalError::SubqueryError {
 				message,
 			} => write!(f, "subquery error: {}", message),
+			EvalError::UnsupportedCast {
+				from,
+				to,
+			} => write!(f, "unsupported cast from {} to {}", from, to),
+			EvalError::InvalidCast {
+				details,
+			} => write!(f, "invalid cast: {}", details),
 		}
 	}
 }

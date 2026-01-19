@@ -450,6 +450,17 @@ impl From<EvalError> for VmError {
 			EvalError::SubqueryError {
 				message,
 			} => VmError::Internal(message),
+			EvalError::UnsupportedCast {
+				from,
+				to,
+			} => VmError::UnsupportedOperation {
+				operation: format!("CAST from {} to {}", from, to),
+			},
+			EvalError::InvalidCast {
+				details,
+			} => VmError::CompileError {
+				message: format!("Invalid CAST: {}", details),
+			},
 		}
 	}
 }

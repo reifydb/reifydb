@@ -9,14 +9,17 @@
 //! - `logical`: And, Or, Xor operations
 //! - `conditional`: If/Then/Else expressions
 //! - `unary`: Not, Neg, Plus operations
+//! - `cast`: Type conversion operations
 
 mod arith;
+mod cast;
 mod compare;
 mod conditional;
 mod logical;
 mod unary;
 
 pub(crate) use arith::{eval_add, eval_div, eval_mul, eval_rem, eval_sub};
+pub(crate) use cast::cast_column_data;
 pub(crate) use compare::{eval_eq, eval_ge, eval_gt, eval_le, eval_lt, eval_ne};
 pub(crate) use conditional::eval_conditional;
 pub(crate) use logical::{eval_logical_and, eval_logical_or, eval_logical_xor};
