@@ -9,7 +9,6 @@ import type { ConnectionConfig } from '../connection/connection';
 export interface SubscriptionExecutorOptions {
     connectionConfig?: ConnectionConfig;
     maxChanges?: number;       // Max change events to retain (default: 50)
-    accumulate?: boolean;      // Whether to accumulate data (default: true)
 }
 
 export interface ChangeEvent<T> {
@@ -58,22 +57,12 @@ export function useSubscriptionExecutor<T = any>(
                 timestamp: Date.now()
             };
 
-            let newData = prev.data;
-
-            // Accumulate changes if enabled
-            if (options?.accumulate !== false) {
-                if (operation === 'INSERT') {
-                    newData = [...prev.data, ...rows];
-                }
-                // TODO: Implement UPDATE/REMOVE with key-based matching in future
-            }
-
             const maxChanges = options?.maxChanges ?? 50;
             const newChanges = [...prev.changes, newChange].slice(-maxChanges);
 
             return {
                 ...prev,
-                data: newData,
+                data: prev.data,
                 changes: newChanges
             };
         });
