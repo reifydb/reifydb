@@ -41,7 +41,7 @@ struct SqlitePrimitiveStorageInner {
 
 impl SqlitePrimitiveStorage {
 	/// Create a new SQLite primitive storage with the given configuration.
-	#[instrument(name = "store::multi::sqlite::new", level = "info", skip(config), fields(
+	#[instrument(name = "store::multi::sqlite::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size,
 		journal_mode = %config.journal_mode.as_str()

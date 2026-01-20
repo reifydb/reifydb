@@ -17,7 +17,7 @@ use std::{
 	alloc::{Layout, alloc_zeroed, handle_alloc_error},
 	fmt::Debug,
 	ops::Deref,
-	sync::Arc,
+	sync::{Arc, OnceLock},
 };
 
 use reifydb_type::{
@@ -76,13 +76,24 @@ pub struct Schema(Arc<Inner>);
 /// Schemas are immutable and content-addressable via their fingerprint.
 /// The same field configuration always produces the same fingerprint,
 /// enabling schema deduplication in the registry.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Inner {
 	/// Content-addressable fingerprint (hash of canonical field representation)
 	pub fingerprint: SchemaFingerprint,
 	/// Fields in definition order
 	pub fields: Vec<SchemaField>,
+	/// Cached layout computation (total_size, max_align) - computed once on first use
+	#[serde(skip)]
+	cached_layout: OnceLock<(usize, usize)>,
 }
+
+impl PartialEq for Inner {
+	fn eq(&self, other: &Self) -> bool {
+		self.fingerprint == other.fingerprint && self.fields == other.fields
+	}
+}
+
+impl Eq for Inner {}
 
 impl Deref for Schema {
 	type Target = Inner;
@@ -123,6 +134,7 @@ impl Schema {
 		Self(Arc::new(Inner {
 			fingerprint,
 			fields,
+			cached_layout: OnceLock::new(),
 		}))
 	}
 
@@ -132,6 +144,7 @@ impl Schema {
 		Self(Arc::new(Inner {
 			fingerprint,
 			fields,
+			cached_layout: OnceLock::new(),
 		}))
 	}
 
@@ -210,16 +223,30 @@ impl Schema {
 		SCHEMA_HEADER_SIZE + self.bitvec_size()
 	}
 
+	/// Compute and cache the layout (total_size, max_align).
+	/// This is called once and the result is cached for subsequent calls.
+	fn get_cached_layout(&self) -> (usize, usize) {
+		*self.cached_layout.get_or_init(|| {
+			// Compute max_align
+			let max_align = self.fields.iter().map(|f| f.align as usize).max().unwrap_or(1);
+
+			// Compute total_size
+			let total_size = if self.fields.is_empty() {
+				SCHEMA_HEADER_SIZE + self.bitvec_size()
+			} else {
+				let last_field = &self.fields[self.fields.len() - 1];
+				let end = last_field.offset as usize + last_field.size as usize;
+				// Align to maximum field alignment
+				Self::align_up(end, max_align)
+			};
+
+			(total_size, max_align)
+		})
+	}
+
 	/// Total size of the static section
 	pub fn total_static_size(&self) -> usize {
-		if self.fields.is_empty() {
-			return SCHEMA_HEADER_SIZE + self.bitvec_size();
-		}
-		let last_field = &self.fields[self.fields.len() - 1];
-		let end = last_field.offset as usize + last_field.size as usize;
-		// Align to maximum field alignment
-		let max_align = self.fields.iter().map(|f| f.align as usize).max().unwrap_or(1);
-		Self::align_up(end, max_align)
+		self.get_cached_layout().0
 	}
 
 	/// Start of the dynamic section
@@ -234,8 +261,7 @@ impl Schema {
 
 	/// Allocate a new encoded row
 	pub fn allocate(&self) -> EncodedValues {
-		let total_size = self.total_static_size();
-		let max_align = self.fields.iter().map(|f| f.align as usize).max().unwrap_or(1);
+		let (total_size, max_align) = self.get_cached_layout();
 		let layout = Layout::from_size_align(total_size, max_align).unwrap();
 		unsafe {
 			let ptr = alloc_zeroed(layout);

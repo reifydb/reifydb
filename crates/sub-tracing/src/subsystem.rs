@@ -52,7 +52,7 @@ impl Subsystem for TracingSubsystem {
 		"sub-tracing"
 	}
 
-	#[instrument(name = "tracing::subsystem::start", level = "info", skip(self))]
+	#[instrument(name = "tracing::subsystem::start", level = "debug", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		// Set running flag - tracing_subscriber is already initialized
 		// by the builder
@@ -63,7 +63,7 @@ impl Subsystem for TracingSubsystem {
 		Ok(())
 	}
 
-	#[instrument(name = "tracing::subsystem::shutdown", level = "info", skip(self))]
+	#[instrument(name = "tracing::subsystem::shutdown", level = "debug", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already shutdown

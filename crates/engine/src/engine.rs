@@ -86,7 +86,7 @@ impl StandardEngine {
 		Ok(StandardQueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
 	}
 
-	#[instrument(name = "engine::command", level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_command()?;
@@ -107,7 +107,7 @@ impl StandardEngine {
 		})
 	}
 
-	#[instrument(name = "engine::query", level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
 		(|| {
 			let mut txn = self.begin_query()?;
@@ -202,7 +202,7 @@ impl StandardEngine {
 		Ok(table_id)
 	}
 
-	#[instrument(name = "engine::query_new", level = "info", skip(self, _params), fields(rql = %rql))]
+	#[instrument(name = "engine::query_new", level = "debug", skip(self, _params), fields(rql = %rql))]
 	pub fn query_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
 		let catalog = self.catalog();
 		let rql_for_errors = rql.to_string();
@@ -286,7 +286,7 @@ impl StandardEngine {
 	/// Execute a DDL/DML command using the new RQLv2/VM stack.
 	///
 	/// This is similar to `command_as()` but uses the new bytecode-based execution.
-	#[instrument(name = "engine::command_new", level = "info", skip(self, _params), fields(rql = %rql))]
+	#[instrument(name = "engine::command_new", level = "debug", skip(self, _params), fields(rql = %rql))]
 	pub fn command_new_as(&self, _identity: &Identity, rql: &str, _params: Params) -> Result<Vec<Frame>, Error> {
 		let catalog = self.catalog();
 		let rql_for_errors = rql.to_string();

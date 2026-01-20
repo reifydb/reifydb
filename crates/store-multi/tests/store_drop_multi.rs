@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
-
+use std::thread::sleep;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -267,6 +267,10 @@ impl testscript::runner::Runner for Runner {
 					],
 					version,
 				)?;
+
+				// Wait for background worker to process drops
+				// Default flush interval is 50ms, so 150ms should be enough
+				sleep(Duration::from_millis(150));
 			}
 
 			// count_versions KEY - counts how many versions of a key exist
@@ -288,6 +292,14 @@ impl testscript::runner::Runner for Runner {
 					prev_value = current;
 				}
 				writeln!(output, "{} => {} versions", Raw::key(&key), count)?;
+			}
+
+			// sleep MILLIS - waits for background worker to process drops
+			"sleep" => {
+				let mut args = command.consume_args();
+				let millis: u64 = args.next_pos().ok_or("milliseconds not given")?.value.parse()?;
+				args.reject_rest()?;
+				sleep(Duration::from_millis(millis));
 			}
 
 			name => {

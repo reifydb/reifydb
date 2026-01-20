@@ -3,16 +3,18 @@
 
 //! Schema retrieval from storage.
 
+use tracing::{instrument, Span};
+
 use reifydb_core::{
-	encoded::schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
+	encoded::schema::{fingerprint::SchemaFingerprint, Schema, SchemaField},
 	key::{
-		EncodableKey,
 		schema::{SchemaFieldKey, SchemaKey},
+		EncodableKey,
 	},
 };
 use reifydb_transaction::{single::svl::write::SvlCommandTransaction, standard::IntoStandardTransaction};
 use reifydb_type::{
-	error::{Error, diagnostic::internal::internal},
+	error::{diagnostic::internal::internal, Error},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
 
@@ -21,6 +23,16 @@ use super::schema::{schema_field, schema_header};
 /// Find a schema by its fingerprint.
 ///
 /// Returns None if the schema doesn't exist in storage.
+#[instrument(
+	name = "schema_store::find",
+	level = "trace",
+	skip(txn),
+	fields(
+		fingerprint = ?fingerprint,
+		found = tracing::field::Empty,
+		field_count = tracing::field::Empty
+	)
+)]
 pub(crate) fn find_schema_by_fingerprint(
 	txn: &mut SvlCommandTransaction,
 	fingerprint: SchemaFingerprint,
@@ -29,7 +41,11 @@ pub(crate) fn find_schema_by_fingerprint(
 	let header_key = SchemaKey::encoded(fingerprint);
 	let header_entry = match txn.get(&header_key)? {
 		Some(entry) => entry,
-		None => return Ok(None),
+		None => {
+			Span::current().record("found", false);
+			Span::current().record("field_count", 0);
+			return Ok(None);
+		}
 	};
 
 	let field_count = schema_header::SCHEMA.get_u16(&header_entry.values, schema_header::FIELD_COUNT) as usize;
@@ -65,12 +81,23 @@ pub(crate) fn find_schema_by_fingerprint(
 		});
 	}
 
+	Span::current().record("found", true);
+	Span::current().record("field_count", field_count);
 	Ok(Some(Schema::from_parts(fingerprint, fields)))
 }
 
 /// Load all schemas from storage.
 ///
 /// Used during startup to populate the schema registry cache.
+#[instrument(
+	name = "schema_store::load_all",
+	level = "debug",
+	skip(txn),
+	fields(
+		schema_count = tracing::field::Empty,
+		total_fields = tracing::field::Empty
+	)
+)]
 pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result<Vec<Schema>> {
 	let mut std_txn = txn.into_standard_transaction();
 
@@ -136,6 +163,10 @@ pub fn load_all_schemas(txn: &mut impl IntoStandardTransaction) -> crate::Result
 
 		schemas.push(Schema::from_parts(fingerprint, fields));
 	}
+
+	let total_fields: usize = schemas.iter().map(|s| s.field_count()).sum();
+	tracing::Span::current().record("schema_count", schemas.len());
+	tracing::Span::current().record("total_fields", total_fields);
 
 	Ok(schemas)
 }

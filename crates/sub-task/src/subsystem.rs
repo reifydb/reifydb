@@ -77,7 +77,7 @@ impl Subsystem for TaskSubsystem {
 		"sub-task"
 	}
 
-	#[instrument(name = "task::subsystem::start", level = "info", skip(self))]
+	#[instrument(name = "task::subsystem::start", level = "debug", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Acquire) {
 			// Already running
@@ -123,7 +123,7 @@ impl Subsystem for TaskSubsystem {
 		Ok(())
 	}
 
-	#[instrument(name = "task::subsystem::shutdown", level = "info", skip(self))]
+	#[instrument(name = "task::subsystem::shutdown", level = "debug", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already shutdown

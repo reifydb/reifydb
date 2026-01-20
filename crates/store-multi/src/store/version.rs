@@ -51,6 +51,51 @@ pub fn encode_versioned_key(key: &[u8], version: CommitVersion) -> Vec<u8> {
 	result
 }
 
+/// Pre-compute the version suffix (terminator + encoded version) for batch encoding.
+///
+/// This allows reusing the same version suffix across multiple keys in a commit batch,
+/// reducing allocations and redundant version encoding.
+///
+/// # Performance
+/// In a commit with N deltas, this eliminates N-1 version suffix computations.
+pub fn compute_version_suffix(version: CommitVersion) -> [u8; VERSION_SIZE] {
+	let mut suffix = [0u8; VERSION_SIZE];
+	suffix[0..2].copy_from_slice(&TERMINATOR);
+	suffix[2..10].copy_from_slice(&(!version.0).to_be_bytes());
+	suffix
+}
+
+/// Encode a versioned key using a pre-computed version suffix.
+///
+/// This is more efficient than `encode_versioned_key()` when encoding multiple keys
+/// with the same version, as it reuses the version suffix and can reuse a buffer.
+///
+/// # Parameters
+/// - `key`: The logical key to encode
+/// - `version_suffix`: Pre-computed suffix from `compute_version_suffix()`
+/// - `buffer`: Reusable buffer (will be cleared and reused)
+///
+/// # Performance
+/// Eliminates per-key version encoding and can reuse allocations when called
+/// multiple times with the same buffer.
+pub fn encode_versioned_key_with_suffix(key: &[u8], version_suffix: &[u8; VERSION_SIZE], buffer: &mut Vec<u8>) {
+	buffer.clear();
+	buffer.reserve(key.len() + VERSION_SIZE);
+
+	// Escape 0x00 bytes in key (0x00 -> 0x00 0xFF)
+	for &byte in key {
+		if byte == 0x00 {
+			buffer.push(0x00);
+			buffer.push(0xFF);
+		} else {
+			buffer.push(byte);
+		}
+	}
+
+	// Add pre-computed version suffix
+	buffer.extend_from_slice(version_suffix);
+}
+
 /// Find the terminator position in a versioned key
 fn find_terminator(versioned_key: &[u8]) -> Option<usize> {
 	let mut i = 0;
@@ -237,5 +282,74 @@ pub mod tests {
 		// Higher versions should sort before lower versions (descending order)
 		assert!(v10 < v2);
 		assert!(v2 < v1);
+	}
+
+	#[test]
+	fn test_compute_version_suffix() {
+		let version = CommitVersion(42);
+		let suffix = compute_version_suffix(version);
+
+		// Verify suffix structure: [terminator (2 bytes)][inverted version (8 bytes)]
+		assert_eq!(suffix.len(), VERSION_SIZE);
+		assert_eq!(&suffix[0..2], &TERMINATOR);
+
+		// Extract and verify version
+		let version_bytes: [u8; 8] = suffix[2..10].try_into().unwrap();
+		let decoded_version = CommitVersion(!u64::from_be_bytes(version_bytes));
+		assert_eq!(decoded_version, version);
+	}
+
+	#[test]
+	fn test_encode_versioned_key_with_suffix_matches_original() {
+		let key = b"test_key";
+		let version = CommitVersion(100);
+
+		// Encode using original function
+		let expected = encode_versioned_key(key, version);
+
+		// Encode using new helper with suffix
+		let suffix = compute_version_suffix(version);
+		let mut buffer = Vec::new();
+		encode_versioned_key_with_suffix(key, &suffix, &mut buffer);
+
+		// Should produce identical results
+		assert_eq!(buffer, expected);
+	}
+
+	#[test]
+	fn test_encode_versioned_key_with_suffix_null_bytes() {
+		let key = b"test\x00key\x00";
+		let version = CommitVersion(200);
+
+		// Encode using original function
+		let expected = encode_versioned_key(key, version);
+
+		// Encode using new helper with suffix
+		let suffix = compute_version_suffix(version);
+		let mut buffer = Vec::new();
+		encode_versioned_key_with_suffix(key, &suffix, &mut buffer);
+
+		// Should produce identical results (with proper null byte escaping)
+		assert_eq!(buffer, expected);
+	}
+
+	#[test]
+	fn test_encode_versioned_key_with_suffix_buffer_reuse() {
+		let version = CommitVersion(42);
+		let suffix = compute_version_suffix(version);
+		let mut buffer = Vec::new();
+
+		// Encode multiple keys with the same buffer
+		let key1 = b"key1";
+		encode_versioned_key_with_suffix(key1, &suffix, &mut buffer);
+		let result1 = buffer.clone();
+
+		let key2 = b"longer_key_2";
+		encode_versioned_key_with_suffix(key2, &suffix, &mut buffer);
+		let result2 = buffer.clone();
+
+		// Verify each result is correct
+		assert_eq!(result1, encode_versioned_key(key1, version));
+		assert_eq!(result2, encode_versioned_key(key2, version));
 	}
 }

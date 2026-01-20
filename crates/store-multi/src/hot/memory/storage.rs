@@ -7,12 +7,11 @@
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
-use rayon::prelude::*;
 use reifydb_core::runtime::compute::ComputePool;
-use reifydb_type::{Result, util::cowvec::CowVec};
-use tracing::{Span, instrument};
+use reifydb_type::{util::cowvec::CowVec, Result};
+use tracing::{instrument, Span};
 
-use super::entry::{Entries, Entry, OrderedMap, entry_id_to_key};
+use super::entry::{entry_id_to_key, Entries, Entry, OrderedMap};
 use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Memory-based primitive storage implementation.
@@ -26,8 +25,7 @@ pub struct MemoryPrimitiveStorage {
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each type
 	entries: Entries,
-	/// Compute pool for parallel processing
-	compute_pool: ComputePool,
+	_compute_pool: ComputePool,
 }
 
 impl MemoryPrimitiveStorage {
@@ -36,7 +34,7 @@ impl MemoryPrimitiveStorage {
 		Self {
 			inner: Arc::new(MemoryPrimitiveStorageInner {
 				entries: Entries::default(),
-				compute_pool,
+				_compute_pool: compute_pool,
 			}),
 		}
 	}
@@ -97,10 +95,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 	fn set(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
-		self.inner.compute_pool.install(|| {
-			batches.into_par_iter().for_each(|(table, entries)| {
-				self.process_table(table, entries);
-			});
+		batches.into_iter().for_each(|(table, entries)| {
+			self.process_table(table, entries);
 		});
 
 		Span::current().record("total_entry_count", total_entries);

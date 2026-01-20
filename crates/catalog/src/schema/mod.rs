@@ -10,25 +10,26 @@
 
 pub mod load;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tracing::{instrument, Span};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
-		schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
+		schema::{fingerprint::SchemaFingerprint, Schema, SchemaField},
 	},
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::{single::TransactionSingle, standard::IntoStandardTransaction};
 use reifydb_type::{
-	error::{Error, diagnostic::internal::internal},
+	error::{diagnostic::internal::internal, Error},
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };
 
 use crate::store::schema::{
 	create::create_schema,
-	get::find_schema_by_fingerprint,
+	find::find_schema_by_fingerprint,
 	schema::{schema_field, schema_header},
 };
 
@@ -44,14 +45,18 @@ struct SchemaRegistryInner {
 	single: TransactionSingle,
 	/// Cache of schemas by fingerprint
 	cache: SkipMap<SchemaFingerprint, Schema>,
-	/// Write lock for serializing creates
-	write_lock: Mutex<()>,
 }
 
 /// Compute all storage keys for a schema.
 ///
 /// Single-version transactions require upfront key declaration for lock ordering.
 /// This computes the header key and all field keys for a given schema.
+#[instrument(
+	name = "schema_registry::compute_keys",
+	level = "trace",
+	skip_all,
+	fields(fingerprint = ?fingerprint, key_count = field_count + 1)
+)]
 fn compute_schema_keys(fingerprint: SchemaFingerprint, field_count: usize) -> Vec<EncodedKey> {
 	let mut keys = Vec::with_capacity(1 + field_count);
 
@@ -72,7 +77,6 @@ impl SchemaRegistry {
 		Self(Arc::new(SchemaRegistryInner {
 			single,
 			cache: SkipMap::new(),
-			write_lock: Mutex::new(()),
 		}))
 	}
 
@@ -86,27 +90,29 @@ impl SchemaRegistry {
 	/// - Cache reads are lock-free (via SkipMap)
 	/// - Creates are serialized via write_lock
 	/// - Double-check pattern prevents duplicate creates
+	#[instrument(
+		name = "schema_registry::get_or_create",
+		level = "debug",
+		skip(fields),
+		fields(fingerprint = tracing::field::Empty, field_count = fields.len())
+	)]
 	pub fn get_or_create(&self, fields: Vec<SchemaField>) -> crate::Result<Schema> {
 		let schema = Schema::new(fields);
 		let fingerprint = schema.fingerprint();
+		Span::current().record("fingerprint", tracing::field::debug(&fingerprint));
 
 		// Fast path
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
 			return Ok(entry.value().clone());
 		}
 
-		// Slow path
-		let _guard = self.0.write_lock.lock().unwrap();
-
 		// Double-check after acquiring lock
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
 			return Ok(entry.value().clone());
 		}
 
-		// Compute keys for transaction (header + all fields)
 		let keys = compute_schema_keys(fingerprint, schema.field_count());
 
-		// Begin single-version command transaction
 		let mut cmd = self.0.single.begin_command(&keys)?;
 
 		if let Some(stored_schema) = find_schema_by_fingerprint(&mut cmd, fingerprint)? {
@@ -115,13 +121,10 @@ impl SchemaRegistry {
 			return Ok(stored_schema);
 		}
 
-		// Create new schema and persist
 		create_schema(&mut cmd, &schema)?;
 
-		// Commit the transaction
 		cmd.commit()?;
 
-		// Cache only after successful commit
 		self.0.cache.insert(fingerprint, schema.clone());
 
 		Ok(schema)
@@ -130,6 +133,11 @@ impl SchemaRegistry {
 	/// Look up a schema by fingerprint (cache only).
 	///
 	/// Returns None if the schema is not in the cache.
+	#[instrument(
+		name = "schema_registry::get",
+		level = "trace",
+		fields(fingerprint = ?fingerprint)
+	)]
 	pub fn get(&self, fingerprint: SchemaFingerprint) -> Option<Schema> {
 		self.0.cache.get(&fingerprint).map(|entry| entry.value().clone())
 	}
@@ -138,6 +146,16 @@ impl SchemaRegistry {
 	///
 	/// This method accepts an external transaction for reading schemas.
 	/// For creating new schemas, use `get_or_create()` instead.
+	#[instrument(
+		name = "schema_registry::get_or_load",
+		level = "debug",
+		skip(txn),
+		fields(
+			fingerprint = ?fingerprint,
+			cache_hit = tracing::field::Empty,
+			field_count = tracing::field::Empty
+		)
+	)]
 	pub fn get_or_load(
 		&self,
 		fingerprint: SchemaFingerprint,
@@ -145,7 +163,10 @@ impl SchemaRegistry {
 	) -> crate::Result<Option<Schema>> {
 		// Check cache first
 		if let Some(entry) = self.0.cache.get(&fingerprint) {
-			return Ok(Some(entry.value().clone()));
+			let schema = entry.value().clone();
+			Span::current().record("cache_hit", true);
+			Span::current().record("field_count", schema.field_count());
+			return Ok(Some(schema));
 		}
 
 		// Check storage (inlined from find_schema_by_fingerprint for StandardTransaction)
@@ -155,7 +176,11 @@ impl SchemaRegistry {
 		let header_key = SchemaKey::encoded(fingerprint);
 		let header_entry = match std_txn.get(&header_key)? {
 			Some(entry) => entry,
-			None => return Ok(None),
+			None => {
+				Span::current().record("cache_hit", false);
+				Span::current().record("field_count", 0);
+				return Ok(None);
+			}
 		};
 
 		let field_count =
@@ -200,6 +225,8 @@ impl SchemaRegistry {
 		}
 
 		let schema = Schema::from_parts(fingerprint, fields);
+		Span::current().record("cache_hit", false);
+		Span::current().record("field_count", schema.field_count());
 		self.0.cache.insert(fingerprint, schema.clone());
 
 		Ok(Some(schema))
@@ -208,6 +235,12 @@ impl SchemaRegistry {
 	/// Insert a schema into the cache (used by loader during startup).
 	///
 	/// This does NOT persist the schema - it assumes it already exists in storage.
+	#[instrument(
+		name = "schema_registry::cache_schema",
+		level = "trace",
+		skip(schema),
+		fields(fingerprint = ?schema.fingerprint(), field_count = schema.field_count())
+	)]
 	pub(crate) fn cache_schema(&self, schema: Schema) {
 		self.0.cache.insert(schema.fingerprint(), schema);
 	}

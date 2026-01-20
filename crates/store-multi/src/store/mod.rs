@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use parking_lot::Mutex;
+use crossbeam_channel::Sender;
 use reifydb_core::{event::EventBus, runtime::compute::ComputePool};
 use tracing::instrument;
 
@@ -15,7 +15,7 @@ pub mod router;
 pub mod version;
 pub mod worker;
 
-use worker::{DropWorker, DropWorkerConfig};
+use worker::{DropMessage, DropWorker, DropWorkerConfig};
 
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
@@ -24,14 +24,16 @@ pub struct StandardMultiStoreInner {
 	pub(crate) hot: Option<HotStorage>,
 	pub(crate) warm: Option<WarmStorage>,
 	pub(crate) cold: Option<ColdStorage>,
-	/// Background drop worker.
-	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
+	/// Sender for background drop worker.
+	pub(crate) drop_sender: Sender<DropMessage>,
+	/// Background drop worker (kept alive for thread lifecycle).
+	_drop_worker: DropWorker,
 	/// Event bus for emitting storage statistics events.
 	pub(crate) event_bus: EventBus,
 }
 
 impl StandardMultiStore {
-	#[instrument(name = "store::multi::new", level = "info", skip(config), fields(
+	#[instrument(name = "store::multi::new", level = "debug", skip(config), fields(
 		has_hot = config.hot.is_some(),
 		has_warm = config.warm.is_some(),
 		has_cold = config.cold.is_some(),
@@ -48,12 +50,14 @@ impl StandardMultiStore {
 		let storage = hot.as_ref().expect("hot tier is required");
 		let drop_config = DropWorkerConfig::default();
 		let drop_worker = DropWorker::new(drop_config, storage.clone(), config.event_bus.clone());
+		let drop_sender = drop_worker.sender();
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			hot,
 			warm,
 			cold,
-			drop_worker: Arc::new(Mutex::new(drop_worker)),
+			drop_sender,
+			_drop_worker: drop_worker,
 			event_bus: config.event_bus,
 		})))
 	}

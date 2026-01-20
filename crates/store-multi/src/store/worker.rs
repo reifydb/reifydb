@@ -6,26 +6,26 @@
 //! This module provides an asynchronous drop processing worker that executes
 //! version cleanup operations off the critical commit path.
 
-use std::{
-	collections::HashMap,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
-	thread::{self, JoinHandle},
-	time::Duration,
-};
-
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	event::{
-		EventBus,
 		metric::{StorageDrop, StorageStatsRecordedEvent},
+		EventBus,
 	},
 };
 use reifydb_type::util::cowvec::CowVec;
+use std::time::Instant;
+use std::{
+	collections::HashMap,
+	sync::{
+		atomic::{AtomicBool, Ordering},
+		Arc,
+	},
+	thread::{self, JoinHandle},
+	time::Duration,
+};
 use tracing::{debug, error, trace};
 
 use super::drop::find_keys_to_drop;
@@ -37,8 +37,6 @@ use crate::{
 /// Configuration for the drop worker.
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
-	/// Maximum number of pending drop requests in the channel.
-	pub channel_capacity: usize,
 	/// How many drop requests to batch before executing.
 	pub batch_size: usize,
 	/// Maximum time to wait before flushing a partial batch.
@@ -48,7 +46,6 @@ pub struct DropWorkerConfig {
 impl Default for DropWorkerConfig {
 	fn default() -> Self {
 		Self {
-			channel_capacity: 10_000,
 			batch_size: 100,
 			flush_interval: Duration::from_millis(50),
 		}
@@ -66,14 +63,18 @@ pub struct DropRequest {
 	pub up_to_version: Option<CommitVersion>,
 	/// Keep this many most recent versions (if Some).
 	pub keep_last_versions: Option<usize>,
+	/// The commit version that created this drop request.
+	pub commit_version: CommitVersion,
 	/// A version being written in the same batch (to avoid race).
 	pub pending_version: Option<CommitVersion>,
 }
 
 /// Control messages for the drop worker.
-enum DropMessage {
+pub enum DropMessage {
 	/// A drop request to process.
 	Request(DropRequest),
+	/// A batch of drop requests to process.
+	Batch(Vec<DropRequest>),
 	/// Shutdown the worker.
 	Shutdown,
 }
@@ -88,7 +89,7 @@ pub struct DropWorker {
 impl DropWorker {
 	/// Create and start a new drop worker.
 	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus) -> Self {
-		let (sender, receiver) = bounded(config.channel_capacity);
+		let (sender, receiver) = unbounded();
 		let running = Arc::new(AtomicBool::new(true));
 
 		let worker_running = Arc::clone(&running);
@@ -106,25 +107,9 @@ impl DropWorker {
 		}
 	}
 
-	/// Queue a drop request for processing.
-	#[inline]
-	pub fn queue_drop(
-		&self,
-		table: EntryKind,
-		key: CowVec<u8>,
-		up_to_version: Option<CommitVersion>,
-		keep_last_versions: Option<usize>,
-		pending_version: Option<CommitVersion>,
-	) {
-		let request = DropRequest {
-			table,
-			key,
-			up_to_version,
-			keep_last_versions,
-			pending_version,
-		};
-		// Fire and forget - if channel is full, drop will happen on next commit
-		let _ = self.sender.try_send(DropMessage::Request(request));
+	/// Get a clone of the sender for queueing drop requests.
+	pub fn sender(&self) -> Sender<DropMessage> {
+		self.sender.clone()
 	}
 
 	/// Stop the worker gracefully.
@@ -152,7 +137,7 @@ impl DropWorker {
 		debug!("Drop worker started");
 
 		let mut pending_requests: Vec<DropRequest> = Vec::with_capacity(config.batch_size);
-		let mut last_flush = std::time::Instant::now();
+		let mut last_flush = Instant::now();
 
 		while running.load(Ordering::Acquire) {
 			// Use timeout to allow periodic flush checks
@@ -169,7 +154,19 @@ impl DropWorker {
 									&mut pending_requests,
 									&event_bus,
 								);
-								last_flush = std::time::Instant::now();
+								last_flush = Instant::now();
+							}
+						}
+						DropMessage::Batch(requests) => {
+							pending_requests.extend(requests);
+
+							if pending_requests.len() >= config.batch_size {
+								Self::process_batch(
+									&storage,
+									&mut pending_requests,
+									&event_bus,
+								);
+								last_flush = Instant::now();
 							}
 						}
 						DropMessage::Shutdown => {
@@ -198,7 +195,7 @@ impl DropWorker {
 			// Periodic flush
 			if !pending_requests.is_empty() && last_flush.elapsed() >= config.flush_interval {
 				Self::process_batch(&storage, &mut pending_requests, &event_bus);
-				last_flush = std::time::Instant::now();
+				last_flush = Instant::now();
 			}
 		}
 
@@ -215,11 +212,10 @@ impl DropWorker {
 		let mut max_pending_version = CommitVersion(0);
 
 		for request in requests.drain(..) {
-			// Track highest version for event
-			if let Some(pv) = request.pending_version {
-				if pv > max_pending_version {
-					max_pending_version = pv;
-				}
+			// Track highest version for event (prefer pending_version if set, otherwise use commit_version)
+			let version_for_event = request.pending_version.unwrap_or(request.commit_version);
+			if version_for_event > max_pending_version {
+				max_pending_version = version_for_event;
 			}
 
 			match find_keys_to_drop(
