@@ -62,16 +62,16 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_type::
 
 		// Emit event for loaded operator
 		let event_bus = event_bus.clone();
-		let event = FlowOperatorLoadedEvent {
-			operator: info.operator,
-			library_path: info.library_path,
-			api: info.api,
-			version: info.version,
-			description: info.description,
-			input: convert_column_defs(&info.input_columns),
-			output: convert_column_defs(&info.output_columns),
-			capabilities: info.capabilities,
-		};
+		let event = FlowOperatorLoadedEvent::new(
+			info.operator,
+			info.library_path,
+			info.api,
+			info.version,
+			info.description,
+			convert_column_defs(&info.input_columns),
+			convert_column_defs(&info.output_columns),
+			info.capabilities,
+		);
 
 		event_bus.emit(event);
 	}

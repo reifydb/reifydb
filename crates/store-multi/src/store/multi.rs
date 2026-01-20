@@ -224,12 +224,12 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		// Emit storage stats event for this commit
 		if !writes.is_empty() || !deletes.is_empty() {
-			self.event_bus.emit(StorageStatsRecordedEvent {
+			self.event_bus.emit(StorageStatsRecordedEvent::new(
 				writes,
 				deletes,
-				drops: vec![],
+				vec![],
 				version,
-			});
+			));
 		}
 
 		Ok(())

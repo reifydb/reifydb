@@ -255,12 +255,12 @@ impl DropWorker {
 
 		// Emit stats event for metrics tracking
 		if !drops_with_stats.is_empty() {
-			event_bus.emit(StorageStatsRecordedEvent {
-				writes: vec![],
-				deletes: vec![],
-				drops: drops_with_stats,
-				version: max_pending_version,
-			});
+			event_bus.emit(StorageStatsRecordedEvent::new(
+				vec![],
+				vec![],
+				drops_with_stats,
+				max_pending_version,
+			));
 		}
 	}
 }

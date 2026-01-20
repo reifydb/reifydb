@@ -26,6 +26,7 @@ indexmap = { workspace = true }
 parking_lot = { workspace = true }
 rayon = { workspace = true }
 num_cpus = { workspace = true }
+paste = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = {workspace = true}

@@ -110,7 +110,7 @@ impl Database {
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		self.engine.event_bus().emit(OnStartEvent {});
+		self.engine.event_bus().emit(OnStartEvent::new());
 
 		// Start all subsystems
 		match self.subsystems.start_all() {

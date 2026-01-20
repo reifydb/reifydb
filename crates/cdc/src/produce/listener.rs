@@ -39,9 +39,9 @@ impl CdcEventListener {
 impl EventListener<PostCommitEvent> for CdcEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let item = CdcWorkItem {
-			version: event.version,
+			version: *event.version(),
 			timestamp: now_millis(),
-			deltas: event.deltas.iter().cloned().collect(),
+			deltas: event.deltas().iter().cloned().collect(),
 		};
 
 		let _ = self.sender.send(item);
@@ -83,10 +83,7 @@ pub mod tests {
 			},
 		]);
 
-		let event = PostCommitEvent {
-			deltas,
-			version: CommitVersion(42),
-		};
+		let event = PostCommitEvent::new(deltas, CommitVersion(42));
 
 		listener.on(&event);
 

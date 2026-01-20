@@ -76,10 +76,7 @@ impl CommandTransaction {
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
 
-		self.engine.event_bus.emit(PostCommitEvent {
-			deltas,
-			version: commit_version,
-		});
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
 
 		Ok(commit_version)
 	}

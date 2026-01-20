@@ -16,7 +16,7 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
-	event::{EventBus, EventListener, store::StatsProcessed},
+	event::{EventBus, EventListener, store::StatsProcessedEvent},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
 	runtime::compute::ComputePool,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -51,7 +51,7 @@ fn test_memory(path: &Path) {
 	let event_bus = EventBus::new();
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();
-	event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
+	event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
 	runner::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
 		.expect("test failed")
 }
@@ -62,7 +62,7 @@ fn test_sqlite(path: &Path) {
 		let event_bus = EventBus::new();
 		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 		let stats_waiter = StatsWaiter::new();
-		event_bus.register::<StatsProcessed, _>(stats_waiter.clone());
+		event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
 		runner::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter), path)
 	})
 	.expect("test failed")
@@ -98,11 +98,11 @@ impl StatsWaiter {
 	}
 }
 
-impl EventListener<StatsProcessed> for StatsWaiter {
-	fn on(&self, event: &StatsProcessed) {
+impl EventListener<StatsProcessedEvent> for StatsWaiter {
+	fn on(&self, event: &StatsProcessedEvent) {
 		let mut v = self.inner.processed_up_to.lock().unwrap();
-		if event.up_to > *v {
-			*v = event.up_to;
+		if *event.up_to() > *v {
+			*v = *event.up_to();
 		}
 		self.inner.condvar.notify_all();
 	}

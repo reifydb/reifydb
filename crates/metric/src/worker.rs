@@ -21,7 +21,7 @@ use reifydb_core::{
 	event::{
 		EventBus, EventListener,
 		metric::{CdcStatsRecordedEvent, StorageStatsRecordedEvent},
-		store::StatsProcessed,
+		store::StatsProcessedEvent,
 	},
 	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
 };
@@ -295,9 +295,7 @@ impl MetricsWorker {
 
 	fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {
 		if max_version.0 > 0 {
-			event_bus.emit(StatsProcessed {
-				up_to: *max_version,
-			});
+			event_bus.emit(StatsProcessedEvent::new(*max_version));
 			*max_version = CommitVersion(0);
 		}
 	}
@@ -328,9 +326,9 @@ impl StorageStatsListener {
 
 impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
 	fn on(&self, event: &StorageStatsRecordedEvent) {
-		let mut ops = Vec::with_capacity(event.writes.len() + event.deletes.len() + event.drops.len());
+		let mut ops = Vec::with_capacity(event.writes().len() + event.deletes().len() + event.drops().len());
 
-		for write in &event.writes {
+		for write in event.writes() {
 			ops.push(MultiStorageOperation::Write {
 				tier: Tier::Hot,
 				key: write.key.clone(),
@@ -338,7 +336,7 @@ impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
 			});
 		}
 
-		for delete in &event.deletes {
+		for delete in event.deletes() {
 			ops.push(MultiStorageOperation::Delete {
 				tier: Tier::Hot,
 				key: delete.key.clone(),
@@ -346,7 +344,7 @@ impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
 			});
 		}
 
-		for drop in &event.drops {
+		for drop in event.drops() {
 			ops.push(MultiStorageOperation::Drop {
 				tier: Tier::Hot,
 				key: drop.key.clone(),
@@ -357,7 +355,7 @@ impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
 		if !ops.is_empty() {
 			let _ = self.sender.send(MetricsEvent::Multi {
 				ops,
-				version: event.version,
+				version: *event.version(),
 			});
 		}
 	}
@@ -379,7 +377,7 @@ impl CdcStatsListener {
 impl EventListener<CdcStatsRecordedEvent> for CdcStatsListener {
 	fn on(&self, event: &CdcStatsRecordedEvent) {
 		let ops: Vec<CdcOperation> = event
-			.entries
+			.entries()
 			.iter()
 			.map(|entry| CdcOperation {
 				key: entry.key.clone(),
@@ -390,7 +388,7 @@ impl EventListener<CdcStatsRecordedEvent> for CdcStatsListener {
 		if !ops.is_empty() {
 			let _ = self.sender.send(MetricsEvent::Cdc {
 				ops,
-				version: event.version,
+				version: *event.version(),
 			});
 		}
 	}

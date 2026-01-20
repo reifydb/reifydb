@@ -75,7 +75,7 @@ impl StartEventListener {
 	}
 
 	fn trigger_database_creation(&self) -> crate::Result<()> {
-		self.single.event_bus().emit(OnCreateEvent {});
+		self.single.event_bus().emit(OnCreateEvent::new());
 		Ok(())
 	}
 }

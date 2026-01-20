@@ -68,12 +68,12 @@ impl FlowOperatorEventListener {
 impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 	fn on(&self, event: &FlowOperatorLoadedEvent) {
 		self.store.add(FlowOperatorInfo {
-			operator: event.operator.clone(),
-			library_path: event.library_path.clone(),
-			api: event.api,
-			capabilities: event.capabilities,
+			operator: event.operator().clone(),
+			library_path: event.library_path().clone(),
+			api: *event.api(),
+			capabilities: *event.capabilities(),
 			input_columns: event
-				.input
+				.input()
 				.iter()
 				.map(|c| OperatorColumnInfo {
 					name: c.name.clone(),
@@ -82,7 +82,7 @@ impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 				})
 				.collect(),
 			output_columns: event
-				.output
+				.output()
 				.iter()
 				.map(|c| OperatorColumnInfo {
 					name: c.name.clone(),
