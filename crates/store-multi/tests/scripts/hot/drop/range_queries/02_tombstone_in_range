@@ -1,0 +1,48 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that tombstones appear in range queries (show difference from drop)
+
+# Insert entries
+set a=1
+set b=2
+set c=3
+---
+ok
+ok
+ok
+
+# Range query shows all entries
+range a..d
+---
+"a" => "1"
+"b" => "2"
+"c" => "3"
+
+# Delete with tombstone
+delete b
+---
+ok
+
+# Range query shows tombstone (value is None)
+range a..d
+---
+"a" => "1"
+"b" => None
+"c" => "3"
+
+# Drop physically removes entry
+drop a
+---
+ok
+
+# Range query shows tombstone but not dropped entry
+range a..d
+---
+"b" => None
+"c" => "3"
+
+# Tombstones persist in range queries
+count_tombstones
+---
+tombstones: 1

@@ -1,0 +1,49 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that drop after tombstone removes both
+
+# Insert entry
+set a=hello
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Delete with tombstone
+delete a
+---
+ok
+
+# Storage still has 1 entry (tombstone)
+storage_size
+---
+size: 1
+
+# Count tombstones shows 1
+count_tombstones
+---
+tombstones: 1
+
+# Drop the tombstone physically
+drop a
+---
+ok
+
+# Storage is now empty
+storage_size
+---
+size: 0
+
+# No tombstones
+count_tombstones
+---
+tombstones: 0
+
+# Entry is gone
+contains a
+---
+false

@@ -1,0 +1,68 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify boundary cases work correctly after drop
+
+# Insert entries
+set a=1
+set b=2
+set c=3
+set d=4
+set e=5
+---
+ok
+ok
+ok
+ok
+ok
+
+# Drop first and last
+drop a
+drop e
+---
+ok
+ok
+
+# Range from beginning to d
+range a..e
+---
+"b" => "2"
+"c" => "3"
+"d" => "4"
+
+# Range from b onwards
+range b..f
+---
+"b" => "2"
+"c" => "3"
+"d" => "4"
+
+# Full scan
+scan
+---
+"b" => "2"
+"c" => "3"
+"d" => "4"
+
+# Drop middle entry
+drop c
+---
+ok
+
+# Range still works with gaps
+range b..e
+---
+"b" => "2"
+"d" => "4"
+
+# Drop all
+drop b
+drop d
+---
+ok
+ok
+
+# Empty scan
+scan
+---
+ok

@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that drop actually removes entry from storage
+
+# Insert entry
+set a=hello
+---
+ok
+
+# Verify it exists
+contains a
+---
+true
+
+# Check storage has 1 entry
+storage_size
+---
+size: 1
+
+# Get the value
+get a
+---
+"a" => "hello"
+
+# Drop the entry physically
+drop a
+---
+ok
+
+# Verify it's gone
+contains a
+---
+false
+
+# Storage size is now 0
+storage_size
+---
+size: 0
+
+# Get returns None
+get a
+---
+"a" => None

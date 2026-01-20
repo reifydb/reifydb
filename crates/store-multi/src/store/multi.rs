@@ -6,7 +6,6 @@ use std::{
 	ops::{Bound, RangeBounds},
 };
 
-use drop::find_keys_to_drop;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -14,7 +13,7 @@ use reifydb_core::{
 		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
 	},
-	event::metric::{StorageDelete, StorageDrop, StorageStatsRecordedEvent, StorageWrite},
+	event::metric::{StorageDelete, StorageStatsRecordedEvent, StorageWrite},
 	interface::store::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
 		MultiVersionStore, MultiVersionValues,
@@ -24,10 +23,15 @@ use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use super::{
-	StandardMultiStore, drop,
+	StandardMultiStore,
 	router::{classify_key, is_single_version_semantics_key},
-	version::{VersionedGetResult, encode_versioned_key, get_at_version},
+	version::{
+		VersionedGetResult, compute_version_suffix, encode_versioned_key, encode_versioned_key_with_suffix,
+		get_at_version,
+	},
 };
+#[cfg(feature = "native")]
+use super::worker::{DropMessage, DropRequest};
 use crate::tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage};
 
 /// Fixed chunk size for internal tier scans.
@@ -105,93 +109,81 @@ impl MultiVersionContains for StandardMultiStore {
 }
 
 impl MultiVersionCommit for StandardMultiStore {
-	#[instrument(name = "store::multi::commit", level = "info", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
+	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
 		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
 		};
 
-		// For flow state keys (single-version semantics), track pending Set operations.
-		// Drops are queued to a background worker after the commit.
-		let pending_set_keys: HashSet<Vec<u8>> = deltas
-			.iter()
-			.filter_map(|delta| {
-				if let Delta::Set {
-					key,
-					..
-				} = delta
-				{
-					if is_single_version_semantics_key(key) {
-						return Some(key.as_ref().to_vec());
-					}
-				}
-				None
-			})
-			.collect();
+		let version_suffix = compute_version_suffix(version);
+		let mut key_buffer = Vec::with_capacity(256);
 
-		// Collect storage statistics for batch sending.
-		// Stats are emitted via EventBus for the metrics worker to process.
-		// CDC stats are collected by the async CDC shard workers.
+		let mut pending_set_keys: HashSet<Vec<u8>> = HashSet::new();
 		let mut writes: Vec<StorageWrite> = Vec::new();
 		let mut deletes: Vec<StorageDelete> = Vec::new();
-		let mut drops: Vec<StorageDrop> = Vec::new();
+		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
+		let mut explicit_drops: Vec<(EntryKind, EncodedKey, Option<CommitVersion>, Option<usize>)> = Vec::new();
 
 		for delta in deltas.iter() {
 			let key = delta.key();
 
-			match delta {
-				Delta::Set {
-					values,
-					..
-				} => {
-					writes.push(StorageWrite {
-						key: key.clone(),
-						value_bytes: values.len() as u64,
-					});
-				}
-				Delta::Unset {
-					values,
-					..
-				} => {
-					deletes.push(StorageDelete {
-						key: key.clone(),
-						value_bytes: values.len() as u64,
-					});
-				}
-				Delta::Remove {
-					..
-				}
-				| Delta::Drop {
-					..
-				} => {}
-			}
-		}
-
-		// Batch deltas by table for efficient storage writes
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
-
-		for delta in deltas.iter() {
-			let table = classify_key(delta.key());
+			let table = classify_key(key);
+			let is_single_version = is_single_version_semantics_key(key);
 
 			match delta {
 				Delta::Set {
 					key,
 					values,
 				} => {
-					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
+					if is_single_version {
+						pending_set_keys.insert(key.as_ref().to_vec());
+					}
+
+					writes.push(StorageWrite {
+						key: key.clone(),
+						value_bytes: values.len() as u64,
+					});
+
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
+
+					let versioned_key = CowVec::new(key_buffer.clone());
 					batches.entry(table)
 						.or_default()
 						.push((versioned_key, Some(CowVec::new(values.as_ref().to_vec()))));
 				}
 				Delta::Unset {
 					key,
-					..
+					values,
+				} => {
+					deletes.push(StorageDelete {
+						key: key.clone(),
+						value_bytes: values.len() as u64,
+					});
+
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
+
+					let versioned_key = CowVec::new(key_buffer.clone());
+					batches.entry(table).or_default().push((versioned_key, None));
 				}
-				| Delta::Remove {
+				Delta::Remove {
 					key,
 				} => {
-					let versioned_key = CowVec::new(encode_versioned_key(key.as_ref(), version));
+					encode_versioned_key_with_suffix(
+						key.as_ref(),
+						&version_suffix,
+						&mut key_buffer,
+					);
+
+					let versioned_key = CowVec::new(key_buffer.clone());
 					batches.entry(table).or_default().push((versioned_key, None));
 				}
 				Delta::Drop {
@@ -199,64 +191,63 @@ impl MultiVersionCommit for StandardMultiStore {
 					up_to_version,
 					keep_last_versions,
 				} => {
-					// Drop scans for versioned entries and deletes them based on constraints.
-					// For single-version keys with a pending Set in this commit, pass the version
-					// so find_keys_to_drop knows about the new version being written.
-					let pending_version = if pending_set_keys.contains(key.as_ref()) {
-						Some(version)
-					} else {
-						None
-					};
-					let entries_to_drop = find_keys_to_drop(
-						storage,
-						table,
-						key.as_ref(),
-						*up_to_version,
-						*keep_last_versions,
-						pending_version,
-					)?;
-					for entry in entries_to_drop {
-						// Collect stats for each dropped entry
-						drops.push(StorageDrop {
-							key: key.clone(),
-							value_bytes: entry.value_bytes,
-						});
-						batches.entry(table).or_default().push((entry.versioned_key, None));
-					}
+					explicit_drops.push((table, key.clone(), *up_to_version, *keep_last_versions));
 				}
 			}
 		}
 
-		// Queue deferred drops for single-version-semantics keys to background worker
+		// Process explicit drops now that pending_set_keys is complete (native only - uses background worker)
 		#[cfg(feature = "native")]
-		let drop_worker = self.drop_worker.lock();
-		#[cfg(feature = "wasm")]
-		let drop_worker = self.drop_worker.lock().unwrap();
+		{
+			let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
+			for (table, key, up_to_version, keep_last_versions) in explicit_drops {
+				let pending_version = if pending_set_keys.contains(key.as_ref()) {
+					Some(version)
+				} else {
+					None
+				};
 
-		for key_bytes in pending_set_keys.iter() {
-			let key = CowVec::new(key_bytes.clone());
-			let table = classify_key(&EncodedKey(key.clone()));
-			drop_worker.queue_drop(
-				table,
-				key,
-				None,          // up_to_version
-				Some(1),       // keep_last_versions
-				Some(version), // pending_version
-			);
+				drop_batch.push(DropRequest {
+					table,
+					key: key.0.clone(),
+					up_to_version,
+					keep_last_versions,
+					commit_version: version,
+					pending_version,
+				});
+			}
+
+			// Add implicit drops for single-version-semantics keys
+			for key_bytes in pending_set_keys.iter() {
+				let key = CowVec::new(key_bytes.clone());
+				let table = classify_key(&EncodedKey(key.clone()));
+				drop_batch.push(DropRequest {
+					table,
+					key,
+					up_to_version: None,
+					keep_last_versions: Some(1),
+					commit_version: version,
+					pending_version: Some(version),
+				});
+			}
+
+			if !drop_batch.is_empty() {
+				let _ = self.drop_sender.send(DropMessage::Batch(drop_batch));
+			}
 		}
-		drop(drop_worker);
 
-		// Write versioned entries to storage
+		// Suppress unused warnings in WASM
+		#[cfg(feature = "wasm")]
+		{
+			let _ = explicit_drops;
+			let _ = pending_set_keys;
+		}
+
 		storage.set(batches)?;
 
 		// Emit storage stats event for this commit
-		if !writes.is_empty() || !deletes.is_empty() || !drops.is_empty() {
-			self.event_bus.emit(StorageStatsRecordedEvent {
-				writes,
-				deletes,
-				drops,
-				version,
-			});
+		if !writes.is_empty() || !deletes.is_empty() {
+			self.event_bus.emit(StorageStatsRecordedEvent::new(writes, deletes, vec![], version));
 		}
 
 		Ok(())

@@ -246,10 +246,7 @@ where
 			})
 			.collect();
 
-		event_bus.emit(CdcStatsRecordedEvent {
-			entries,
-			version: item.version,
-		});
+		event_bus.emit(CdcStatsRecordedEvent::new(entries, item.version));
 	}
 }
 

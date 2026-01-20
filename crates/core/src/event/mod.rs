@@ -14,6 +14,8 @@ use reifydb_runtime::sync::rwlock::wasm::RwLock;
 
 pub mod flow;
 pub mod lifecycle;
+#[macro_use]
+pub mod r#macro;
 pub mod metric;
 pub mod store;
 pub mod transaction;
@@ -131,36 +133,19 @@ impl EventBus {
 	}
 }
 
-#[macro_export]
-macro_rules! impl_event {
-	($ty:ty) => {
-		impl $crate::event::Event for $ty {
-			fn as_any(&self) -> &dyn std::any::Any {
-				self
-			}
-
-			fn into_any(self) -> Box<dyn std::any::Any + Send> {
-				Box::new(self)
-			}
-		}
-	};
-}
-
 #[cfg(test)]
 pub mod tests {
 	use std::sync::{Arc, Mutex};
 
 	use crate::event::{Event, EventBus, EventListener};
 
-	#[derive(Debug, Clone)]
-	pub struct TestEvent {}
+	define_event! {
+		pub struct TestEvent{}
+	}
 
-	impl_event!(TestEvent);
-
-	#[derive(Debug, Clone)]
-	pub struct AnotherEvent {}
-
-	impl_event!(AnotherEvent);
+	define_event! {
+		pub struct AnotherEvent{}
+	}
 
 	#[derive(Default, Debug, Clone)]
 	pub struct TestEventListener(Arc<TestHandlerInner>);
@@ -187,13 +172,13 @@ pub mod tests {
 	#[test]
 	fn test_event_bus_new() {
 		let event_bus = EventBus::new();
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 	}
 
 	#[test]
 	fn test_event_bus_default() {
 		let event_bus = EventBus::default();
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 	}
 
 	#[test]
@@ -202,14 +187,14 @@ pub mod tests {
 		let listener = TestEventListener::default();
 
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
 	#[test]
 	fn test_emit_unregistered_event() {
 		let event_bus = EventBus::new();
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 	}
 
 	#[test]
@@ -221,7 +206,7 @@ pub mod tests {
 		event_bus.register::<TestEvent, TestEventListener>(listener1.clone());
 		event_bus.register::<TestEvent, TestEventListener>(listener2.clone());
 
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
 		assert_eq!(*listener2.0.counter.lock().unwrap(), 1);
 	}
@@ -233,7 +218,7 @@ pub mod tests {
 		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let event_bus2 = event_bus1.clone();
-		event_bus2.emit(TestEvent {});
+		event_bus2.emit(TestEvent::new());
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
 
@@ -254,7 +239,7 @@ pub mod tests {
 			handle.join().unwrap();
 		}
 
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 	}
 
 	#[test]
@@ -268,7 +253,7 @@ pub mod tests {
 		for _ in 0..10 {
 			let event_bus = event_bus.clone();
 			handles.push(std::thread::spawn(move || {
-				event_bus.emit(TestEvent {});
+				event_bus.emit(TestEvent::new());
 			}));
 		}
 
@@ -279,21 +264,18 @@ pub mod tests {
 		assert!(*listener.0.counter.lock().unwrap() >= 10);
 	}
 
-	#[derive(Debug, Clone)]
-	pub struct MacroTestEvent {
-		pub value: i32,
+	define_event! {
+		pub struct MacroTestEvent {
+			pub value: i32,
+		}
 	}
 
-	impl_event!(MacroTestEvent);
-
 	#[test]
-	fn test_impl_event_macro() {
-		let event = MacroTestEvent {
-			value: 42,
-		};
+	fn test_define_event_macro() {
+		let event = MacroTestEvent::new(42);
 		let any_ref = event.as_any();
 		assert!(any_ref.downcast_ref::<MacroTestEvent>().is_some());
-		assert_eq!(any_ref.downcast_ref::<MacroTestEvent>().unwrap().value, 42);
+		assert_eq!(any_ref.downcast_ref::<MacroTestEvent>().unwrap().value(), &42);
 	}
 
 	#[test]
@@ -305,13 +287,13 @@ pub mod tests {
 		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone());
 
 		// Each event type triggers only its own listeners
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 
-		event_bus.emit(TestEvent {});
+		event_bus.emit(TestEvent::new());
 		assert_eq!(*listener.0.counter.lock().unwrap(), 2);
 
-		event_bus.emit(AnotherEvent {});
+		event_bus.emit(AnotherEvent::new());
 		assert_eq!(*listener.0.counter.lock().unwrap(), 4); // 2 * 2
 	}
 }

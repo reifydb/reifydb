@@ -1,0 +1,62 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that double drop is idempotent
+
+# Insert entry
+set a=value
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1
+
+# Drop entry
+drop a
+---
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0
+
+# Drop again (idempotent)
+drop a
+---
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Entry doesn't exist
+contains a
+---
+false
+
+# Insert multiple times and drop multiple times
+set b=v1
+---
+ok
+
+drop b
+drop b
+drop b
+---
+ok
+ok
+ok
+
+# Storage still empty
+storage_size
+---
+size: 0
+
+# Entry doesn't exist
+contains b
+---
+false

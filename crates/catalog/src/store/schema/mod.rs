@@ -8,5 +8,5 @@
 //! - Individual fields under SchemaFieldKey for each field
 
 pub(crate) mod create;
-pub(crate) mod get;
+pub(crate) mod find;
 pub(crate) mod schema;

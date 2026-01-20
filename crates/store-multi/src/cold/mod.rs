@@ -56,6 +56,10 @@ impl TierStorage for ColdStorage {
 	fn clear_table(&self, _table: EntryKind) -> Result<()> {
 		match *self {}
 	}
+
+	fn drop(&self, _batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+		match *self {}
+	}
 }
 
 impl TierBackend for ColdStorage {}

@@ -150,6 +150,13 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	/// Delete all entries in a table.
 	fn clear_table(&self, table: EntryKind) -> Result<()>;
+
+	/// Physically drop entries from storage (no tombstones).
+	///
+	/// Unlike `set()` with None values which inserts tombstones for MVCC,
+	/// this method actually removes entries from storage to reclaim memory.
+	/// Used by the drop worker to erase old versions after they're no longer needed.
+	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

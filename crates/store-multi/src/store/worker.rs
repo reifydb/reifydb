@@ -19,10 +19,10 @@ use std::{
 };
 
 #[cfg(feature = "native")]
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 
 #[cfg(feature = "native")]
-use tracing::{debug, error, trace};
+use tracing::{Span, debug, error, instrument};
 
 #[cfg(feature = "native")]
 use reifydb_runtime::time::native::Instant;
@@ -53,8 +53,6 @@ use crate::{
 /// Configuration for the drop worker.
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
-	/// Maximum number of pending drop requests in the channel.
-	pub channel_capacity: usize,
 	/// How many drop requests to batch before executing.
 	pub batch_size: usize,
 	/// Maximum time to wait before flushing a partial batch.
@@ -64,7 +62,6 @@ pub struct DropWorkerConfig {
 impl Default for DropWorkerConfig {
 	fn default() -> Self {
 		Self {
-			channel_capacity: 10_000,
 			batch_size: 100,
 			flush_interval: Duration::from_millis(50),
 		}
@@ -82,15 +79,18 @@ pub struct DropRequest {
 	pub up_to_version: Option<CommitVersion>,
 	/// Keep this many most recent versions (if Some).
 	pub keep_last_versions: Option<usize>,
+	/// The commit version that created this drop request.
+	pub commit_version: CommitVersion,
 	/// A version being written in the same batch (to avoid race).
 	pub pending_version: Option<CommitVersion>,
 }
 
 /// Control messages for the drop worker.
-#[cfg(feature = "native")]
-enum DropMessage {
+pub enum DropMessage {
 	/// A drop request to process.
 	Request(DropRequest),
+	/// A batch of drop requests to process.
+	Batch(Vec<DropRequest>),
 	/// Shutdown the worker.
 	Shutdown,
 }
@@ -113,7 +113,7 @@ pub struct DropWorker {
 impl DropWorker {
 	/// Create and start a new drop worker.
 	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus) -> Self {
-		let (sender, receiver) = bounded(config.channel_capacity);
+		let (sender, receiver) = unbounded();
 		let running = Arc::new(AtomicBool::new(true));
 
 		let worker_running = Arc::clone(&running);
@@ -131,25 +131,9 @@ impl DropWorker {
 		}
 	}
 
-	/// Queue a drop request for processing.
-	#[inline]
-	pub fn queue_drop(
-		&self,
-		table: EntryKind,
-		key: CowVec<u8>,
-		up_to_version: Option<CommitVersion>,
-		keep_last_versions: Option<usize>,
-		pending_version: Option<CommitVersion>,
-	) {
-		let request = DropRequest {
-			table,
-			key,
-			up_to_version,
-			keep_last_versions,
-			pending_version,
-		};
-		// Fire and forget - if channel is full, drop will happen on next commit
-		let _ = self.sender.try_send(DropMessage::Request(request));
+	/// Get a clone of the sender for queueing drop requests.
+	pub fn sender(&self) -> Sender<DropMessage> {
+		self.sender.clone()
 	}
 
 	/// Stop the worker gracefully.
@@ -187,7 +171,18 @@ impl DropWorker {
 						DropMessage::Request(request) => {
 							pending_requests.push(request);
 
-							// Flush if batch is full
+							if pending_requests.len() >= config.batch_size {
+								Self::process_batch(
+									&storage,
+									&mut pending_requests,
+									&event_bus,
+								);
+								last_flush = Instant::now();
+							}
+						}
+						DropMessage::Batch(requests) => {
+							pending_requests.extend(requests);
+
 							if pending_requests.len() >= config.batch_size {
 								Self::process_batch(
 									&storage,
@@ -230,21 +225,19 @@ impl DropWorker {
 		debug!("Drop worker stopped");
 	}
 
+	#[instrument(name = "drop_worker::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		trace!("Drop worker processing {} requests", requests.len());
-
-		// Collect all entries to delete, grouped by table
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
+		// Collect all keys to drop, grouped by table
+		let mut batches: HashMap<EntryKind, Vec<CowVec<u8>>> = HashMap::new();
 		// Collect drop stats for metrics
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
 
 		for request in requests.drain(..) {
-			// Track highest version for event
-			if let Some(pv) = request.pending_version {
-				if pv > max_pending_version {
-					max_pending_version = pv;
-				}
+			// Track highest version for event (prefer pending_version if set, otherwise use commit_version)
+			let version_for_event = request.pending_version.unwrap_or(request.commit_version);
+			if version_for_event > max_pending_version {
+				max_pending_version = version_for_event;
 			}
 
 			match find_keys_to_drop(
@@ -263,10 +256,8 @@ impl DropWorker {
 							value_bytes: entry.value_bytes,
 						});
 
-						// Queue for deletion (None value = delete)
-						batches.entry(request.table)
-							.or_default()
-							.push((entry.versioned_key, None));
+						// Queue for physical deletion
+						batches.entry(request.table).or_default().push(entry.versioned_key);
 					}
 				}
 				Err(e) => {
@@ -275,22 +266,16 @@ impl DropWorker {
 			}
 		}
 
-		// Execute all deletes in a single batch write
 		if !batches.is_empty() {
-			if let Err(e) = storage.set(batches) {
-				error!("Drop worker failed to execute deletes: {}", e);
+			if let Err(e) = storage.drop(batches) {
+				error!("Drop worker failed to execute drops: {}", e);
 			}
 		}
 
-		// Emit stats event for metrics tracking
-		if !drops_with_stats.is_empty() {
-			event_bus.emit(StorageStatsRecordedEvent {
-				writes: vec![],
-				deletes: vec![],
-				drops: drops_with_stats,
-				version: max_pending_version,
-			});
-		}
+		let total_dropped = drops_with_stats.len();
+		Span::current().record("total_dropped", total_dropped);
+
+		event_bus.emit(StorageStatsRecordedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
 	}
 }
 

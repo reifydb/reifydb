@@ -1,0 +1,71 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Insert entries
+set a=1
+set b=2
+set c=3
+set d=4
+---
+ok
+ok
+ok
+ok
+
+# Storage has 4 entries
+storage_size
+---
+size: 4
+
+# Drop 2 entries
+drop a
+drop c
+---
+ok
+ok
+
+# Storage now has 2 entries
+storage_size
+---
+size: 2
+
+# Verify dropped entries are gone
+contains a
+contains b
+contains c
+contains d
+---
+false
+true
+false
+true
+
+# Scan shows remaining entries
+scan
+---
+"b" => "2"
+"d" => "4"
+
+# Create tombstone
+delete b
+---
+ok
+
+# Storage still has 2 entries (1 value + 1 tombstone)
+storage_size
+count_entries
+count_tombstones
+---
+size: 2
+entries: 1
+tombstones: 1
+
+# Drop tombstone
+drop b
+---
+ok
+
+# Storage has 1 entry
+storage_size
+---
+size: 1

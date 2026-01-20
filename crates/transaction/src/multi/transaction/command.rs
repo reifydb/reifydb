@@ -46,7 +46,7 @@ impl CommandTransaction {
 }
 
 impl CommandTransaction {
-	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
+	#[instrument(name = "transaction::command::commit", level = "debug", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		// For read-only transactions (no pending writes), skip conflict detection
 		if self.tm.pending_writes().is_empty() {
@@ -76,10 +76,7 @@ impl CommandTransaction {
 		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
 
-		self.engine.event_bus.emit(PostCommitEvent {
-			deltas,
-			version: commit_version,
-		});
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
 
 		Ok(commit_version)
 	}

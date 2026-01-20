@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Side-by-side comparison: tombstone vs physical drop
+
+# Insert two entries
+set a=hello
+set b=world
+---
+ok
+ok
+
+# Both exist
+contains a
+contains b
+---
+true
+true
+
+# Storage has 2 entries
+storage_size
+---
+size: 2
+
+# Delete 'a' with tombstone
+delete a
+---
+ok
+
+# Storage still has 2 entries (1 value + 1 tombstone)
+storage_size
+---
+size: 2
+
+# Count: 1 entry, 1 tombstone
+count_entries
+count_tombstones
+---
+entries: 1
+tombstones: 1
+
+# Drop 'b' physically
+drop b
+---
+ok
+
+# Storage now has 1 entry (just the tombstone for 'a')
+storage_size
+---
+size: 1
+
+# Count: 0 entries, 1 tombstone
+count_entries
+count_tombstones
+---
+entries: 0
+tombstones: 1
+
+# Neither exists from user perspective
+contains a
+contains b
+---
+false
+false
+
+# Scan shows only the tombstone
+scan
+---
+"a" => None

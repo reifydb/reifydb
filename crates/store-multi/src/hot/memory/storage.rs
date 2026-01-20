@@ -237,6 +237,25 @@ impl TierStorage for MemoryPrimitiveStorage {
 		}
 		Ok(())
 	}
+
+	#[instrument(name = "store::multi::memory::drop", level = "debug", skip(self, batches), fields(
+		table_count = batches.len(),
+		total_entry_count = tracing::field::Empty
+	))]
+	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+		let total_entries: usize = batches.values().map(|v| v.len()).sum();
+
+		for (table, keys) in batches {
+			let table_entry = self.get_or_create_table(table);
+			let mut map = table_entry.data.write();
+			for key in keys {
+				map.remove(&key);
+			}
+		}
+
+		Span::current().record("total_entry_count", total_entries);
+		Ok(())
+	}
 }
 
 impl TierBackend for MemoryPrimitiveStorage {}

@@ -1,0 +1,49 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that drop removes exact key (storage layer has no version concept)
+
+# Insert entry with key "a_v1" (simulating versioned key)
+set a_v1=value1
+---
+ok
+
+# Insert entry with key "a_v2" (simulating versioned key)
+set a_v2=value2
+---
+ok
+
+# Insert entry with key "a_v3" (simulating versioned key)
+set a_v3=value3
+---
+ok
+
+# Storage has 3 entries
+storage_size
+---
+size: 3
+
+# Drop only "a_v1"
+drop a_v1
+---
+ok
+
+# Storage now has 2 entries
+storage_size
+---
+size: 2
+
+# v1 is gone, v2 and v3 remain
+contains a_v1
+contains a_v2
+contains a_v3
+---
+false
+true
+true
+
+# Scan shows v2 and v3
+scan
+---
+"a_v2" => "value2"
+"a_v3" => "value3"

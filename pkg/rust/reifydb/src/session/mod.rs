@@ -33,7 +33,7 @@ impl CommandSession {
 		}
 	}
 
-	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "api::session::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.command_as(&self.identity, rql, params.into())
 	}
@@ -48,7 +48,7 @@ impl QuerySession {
 		}
 	}
 
-	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "api::session::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::error::Error> {
 		self.engine.query_as(&self.identity, rql, params.into())
 	}

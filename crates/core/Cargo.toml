@@ -29,6 +29,7 @@ num-traits = { workspace = true }
 futures-util = { workspace = true, optional = true }
 indexmap = { workspace = true }
 num_cpus = { workspace = true }
+paste = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = {workspace = true}

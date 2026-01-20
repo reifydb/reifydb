@@ -125,6 +125,15 @@ impl TierStorage for HotStorage {
 			Self::Sqlite(s) => s.clear_table(table),
 		}
 	}
+
+	#[inline]
+	fn drop(&self, batches: HashMap<EntryKind, Vec<CowVec<u8>>>) -> Result<()> {
+		match self {
+			Self::Memory(s) => s.drop(batches),
+			#[cfg(feature = "sqlite")]
+			Self::Sqlite(s) => s.drop(batches),
+		}
+	}
 }
 
 impl TierBackend for HotStorage {}

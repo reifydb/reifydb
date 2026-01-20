@@ -49,7 +49,7 @@ pub struct FlowEngine {
 }
 
 impl FlowEngine {
-	#[instrument(name = "flow::engine::new", level = "info", skip(catalog, evaluator, executor, event_bus))]
+	#[instrument(name = "flow::engine::new", level = "debug", skip(catalog, evaluator, executor, event_bus))]
 	pub fn new(
 		catalog: Catalog,
 		evaluator: StandardColumnEvaluator,

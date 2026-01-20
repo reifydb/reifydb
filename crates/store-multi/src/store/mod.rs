@@ -4,23 +4,22 @@
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 #[cfg(feature = "native")]
-use parking_lot::Mutex;
-
-#[cfg(feature = "wasm")]
-use std::sync::Mutex;
-
+use crossbeam_channel::Sender;
 use reifydb_core::event::EventBus;
+#[cfg(feature = "native")]
 use tracing::instrument;
 
 use crate::{HotConfig, cold::ColdStorage, config::MultiStoreConfig, hot::storage::HotStorage, warm::WarmStorage};
 
+#[cfg(feature = "native")]
 pub mod drop;
 pub mod multi;
 pub mod router;
 pub mod version;
 pub mod worker;
 
-use worker::{DropWorker, DropWorkerConfig};
+#[cfg(feature = "native")]
+use worker::{DropMessage, DropWorker, DropWorkerConfig};
 
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
@@ -29,18 +28,22 @@ pub struct StandardMultiStoreInner {
 	pub(crate) hot: Option<HotStorage>,
 	pub(crate) warm: Option<WarmStorage>,
 	pub(crate) cold: Option<ColdStorage>,
-	/// Background drop worker.
-	pub(crate) drop_worker: Arc<Mutex<DropWorker>>,
+	/// Sender for background drop worker (native only).
+	#[cfg(feature = "native")]
+	pub(crate) drop_sender: Sender<DropMessage>,
+	/// Background drop worker (kept alive for thread lifecycle).
+	#[cfg(feature = "native")]
+	_drop_worker: DropWorker,
 	/// Event bus for emitting storage statistics events.
 	pub(crate) event_bus: EventBus,
 }
 
 impl StandardMultiStore {
-	#[instrument(name = "store::multi::new", level = "info", skip(config), fields(
+	#[cfg_attr(feature = "native", instrument(name = "store::multi::new", level = "debug", skip(config), fields(
 		has_hot = config.hot.is_some(),
 		has_warm = config.warm.is_some(),
 		has_cold = config.cold.is_some(),
-	))]
+	)))]
 	pub fn new(config: MultiStoreConfig) -> crate::Result<Self> {
 		let hot = config.hot.map(|c| c.storage);
 		// TODO: warm and cold are placeholders for now
@@ -49,18 +52,33 @@ impl StandardMultiStore {
 		let _ = config.warm;
 		let _ = config.cold;
 
-		// Drop worker
-		let storage = hot.as_ref().expect("hot tier is required");
-		let drop_config = DropWorkerConfig::default();
-		let drop_worker = DropWorker::new(drop_config, storage.clone(), config.event_bus.clone());
+		#[cfg(feature = "native")]
+		{
+			// Drop worker (native only - uses background thread)
+			let storage = hot.as_ref().expect("hot tier is required");
+			let drop_config = DropWorkerConfig::default();
+			let drop_worker = DropWorker::new(drop_config, storage.clone(), config.event_bus.clone());
+			let drop_sender = drop_worker.sender();
 
-		Ok(Self(Arc::new(StandardMultiStoreInner {
-			hot,
-			warm,
-			cold,
-			drop_worker: Arc::new(Mutex::new(drop_worker)),
-			event_bus: config.event_bus,
-		})))
+			Ok(Self(Arc::new(StandardMultiStoreInner {
+				hot,
+				warm,
+				cold,
+				drop_sender,
+				_drop_worker: drop_worker,
+				event_bus: config.event_bus,
+			})))
+		}
+
+		#[cfg(feature = "wasm")]
+		{
+			Ok(Self(Arc::new(StandardMultiStoreInner {
+				hot,
+				warm,
+				cold,
+				event_bus: config.event_bus,
+			})))
+		}
 	}
 
 	/// Get access to the hot storage tier.

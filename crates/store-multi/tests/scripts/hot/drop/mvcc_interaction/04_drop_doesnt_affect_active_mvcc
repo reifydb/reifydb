@@ -1,0 +1,70 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify drop operations don't affect other concurrent operations
+
+# Insert entries representing different "transactions"
+set tx1_key1=value1
+set tx2_key1=value2
+set tx3_key1=value3
+---
+ok
+ok
+ok
+
+# Storage has 3 entries
+storage_size
+---
+size: 3
+
+# Drop tx1's entry
+drop tx1_key1
+---
+ok
+
+# Other transactions' entries unaffected
+contains tx1_key1
+contains tx2_key1
+contains tx3_key1
+---
+false
+true
+true
+
+# Storage has 2 entries
+storage_size
+---
+size: 2
+
+# Insert new entries while dropping others
+set tx4_key1=value4
+drop tx2_key1
+set tx5_key1=value5
+---
+ok
+ok
+ok
+
+# Verify correct state
+storage_size
+---
+size: 3
+
+contains tx1_key1
+contains tx2_key1
+contains tx3_key1
+contains tx4_key1
+contains tx5_key1
+---
+false
+false
+true
+true
+true
+
+# Scan shows tx3, tx4, tx5
+scan
+---
+"tx3_key1" => "value3"
+"tx4_key1" => "value4"
+"tx5_key1" => "value5"

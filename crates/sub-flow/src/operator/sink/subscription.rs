@@ -6,15 +6,18 @@ use std::rc::Rc;
 use reifydb_abi::flow::diff::FlowDiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{schema::{Schema, SchemaField}},
+	encoded::{
+		key::EncodedKey,
+		schema::{Schema, SchemaField},
+	},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
 		resolved::ResolvedSubscription,
 	},
 	key::subscription_row::SubscriptionRowKey,
+	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_core::encoded::key::EncodedKey;
 use reifydb_engine::evaluate::column::StandardColumnEvaluator;
 use reifydb_sdk::flow::{FlowChange, FlowDiff};
 use reifydb_type::{fragment::Fragment, value::row_number::RowNumber};
@@ -28,7 +31,6 @@ use crate::{
 	},
 	transaction::FlowTransaction,
 };
-use reifydb_core::util::encoding::keycode::serializer::KeySerializer;
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
@@ -70,7 +72,6 @@ impl SinkSubscriptionOperator {
 		// Preserve row numbers
 		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
 	}
-
 }
 
 impl Operator for SinkSubscriptionOperator {
@@ -105,8 +106,12 @@ impl Operator for SinkSubscriptionOperator {
 						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
-						let (_, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
+						let (_, encoded) = encode_row_at_index(
+							&with_implicit,
+							row_idx,
+							&schema,
+							row_number,
+						);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -130,8 +135,12 @@ impl Operator for SinkSubscriptionOperator {
 						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
-						let (_, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
+						let (_, encoded) = encode_row_at_index(
+							&with_implicit,
+							row_idx,
+							&schema,
+							row_number,
+						);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;
@@ -154,8 +163,12 @@ impl Operator for SinkSubscriptionOperator {
 						// Get unique, incrementing row number for this notification
 						let row_number = self.counter.next(txn)?;
 
-						let (_, encoded) =
-							encode_row_at_index(&with_implicit, row_idx, &schema, row_number);
+						let (_, encoded) = encode_row_at_index(
+							&with_implicit,
+							row_idx,
+							&schema,
+							row_number,
+						);
 
 						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
 						txn.set(&key, encoded)?;

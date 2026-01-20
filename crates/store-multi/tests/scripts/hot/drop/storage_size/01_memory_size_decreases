@@ -1,0 +1,53 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify that storage size decreases after drop operations
+
+# Start with empty storage
+storage_size
+---
+size: 0
+
+# Insert 5 entries
+set a=1
+set b=2
+set c=3
+set d=4
+set e=5
+---
+ok
+ok
+ok
+ok
+ok
+
+# Storage has 5 entries
+storage_size
+---
+size: 5
+
+# Drop 2 entries
+drop a
+drop c
+---
+ok
+ok
+
+# Storage now has 3 entries
+storage_size
+---
+size: 3
+
+# Drop remaining entries
+drop b
+drop d
+drop e
+---
+ok
+ok
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0

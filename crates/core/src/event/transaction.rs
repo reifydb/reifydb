@@ -3,12 +3,11 @@
 
 use reifydb_type::util::cowvec::CowVec;
 
-use crate::{common::CommitVersion, delta::Delta, impl_event};
+use crate::{common::CommitVersion, delta::Delta};
 
-#[derive(Debug, Clone)]
-pub struct PostCommitEvent {
-	pub deltas: CowVec<Delta>,
-	pub version: CommitVersion,
+define_event! {
+	pub struct PostCommitEvent {
+		pub deltas: CowVec<Delta>,
+		pub version: CommitVersion,
+	}
 }
-
-impl_event!(PostCommitEvent);

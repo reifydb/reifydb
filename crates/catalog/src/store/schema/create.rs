@@ -8,9 +8,16 @@ use reifydb_core::{
 	key::schema::{SchemaFieldKey, SchemaKey},
 };
 use reifydb_transaction::single::svl::write::SvlCommandTransaction;
+use tracing::instrument;
 
 use super::schema::{schema_field, schema_header};
 
+#[instrument(
+	name = "schema_store::create",
+	level = "debug",
+	skip(cmd, schema),
+	fields(fingerprint = ?schema.fingerprint(), field_count = schema.field_count())
+)]
 pub(crate) fn create_schema(cmd: &mut SvlCommandTransaction, schema: &Schema) -> crate::Result<()> {
 	let fingerprint = schema.fingerprint();
 

@@ -35,7 +35,7 @@ pub struct StandardSingleStoreInner {
 }
 
 impl StandardSingleStore {
-	#[instrument(name = "store::single::new", level = "info", skip(config), fields(
+	#[instrument(name = "store::single::new", level = "debug", skip(config), fields(
 		has_hot = config.hot.is_some(),
 	))]
 	pub fn new(config: SingleStoreConfig) -> crate::Result<Self> {

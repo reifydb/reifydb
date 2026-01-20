@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify dropping specific versioned keys (simulated with key suffixes)
+
+# Insert multiple versions of key "user:123"
+set user_123_v1=name_alice
+set user_123_v2=name_bob
+set user_123_v3=name_charlie
+set user_123_v4=name_diana
+---
+ok
+ok
+ok
+ok
+
+# Storage has 4 entries
+storage_size
+---
+size: 4
+
+# Drop specific versions (v1 and v3)
+drop user_123_v1
+drop user_123_v3
+---
+ok
+ok
+
+# Storage now has 2 entries
+storage_size
+---
+size: 2
+
+# Only v2 and v4 remain
+contains user_123_v1
+contains user_123_v2
+contains user_123_v3
+contains user_123_v4
+---
+false
+true
+false
+true
+
+# Scan shows only v2 and v4
+scan
+---
+"user_123_v2" => "name_bob"
+"user_123_v4" => "name_diana"
+
+# Drop all remaining versions
+drop user_123_v2
+drop user_123_v4
+---
+ok
+ok
+
+# Storage is empty
+storage_size
+---
+size: 0
