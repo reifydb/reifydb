@@ -40,12 +40,21 @@ export function useSubscriptionExecutor<T = any>(
         subscriptionId: undefined
     });
 
+    // Use a ref for client to avoid recreating callbacks when client changes
+    const clientRef = useRef(client);
+
     const subscriptionIdRef = useRef<string | undefined>(undefined);
     const queryRef = useRef<string | undefined>(undefined);
     const paramsRef = useRef<any>(undefined);
     const schemaRef = useRef<SchemaNode | undefined>(undefined);
 
+    // Keep clientRef in sync with client
+    useEffect(() => {
+        clientRef.current = client;
+    }, [client]);
+
     // Helper to add change event and accumulate data
+    const maxChangesOption = options?.maxChanges;
     const addChangeEvent = useCallback((
         operation: 'INSERT' | 'UPDATE' | 'REMOVE',
         rows: T[]
@@ -57,7 +66,7 @@ export function useSubscriptionExecutor<T = any>(
                 timestamp: Date.now()
             };
 
-            const maxChanges = options?.maxChanges ?? 50;
+            const maxChanges = maxChangesOption ?? 50;
             const newChanges = [...prev.changes, newChange].slice(-maxChanges);
 
             return {
@@ -66,7 +75,7 @@ export function useSubscriptionExecutor<T = any>(
                 changes: newChanges
             };
         });
-    }, [options]);
+    }, [maxChangesOption]);
 
     // Separate callbacks for each operation type
     const handleInsert = useCallback((rows: T[]) => {
@@ -86,7 +95,8 @@ export function useSubscriptionExecutor<T = any>(
         params?: any,
         schema?: SchemaNode
     ) => {
-        if (!client) {
+        const currentClient = clientRef.current;
+        if (!currentClient) {
             setState(prev => ({ ...prev, error: 'Client not connected' }));
             return;
         }
@@ -103,7 +113,7 @@ export function useSubscriptionExecutor<T = any>(
         }));
 
         try {
-            const subId = await client.subscribe(query, params, schema, {
+            const subId = await currentClient.subscribe(query, params, schema, {
                 onInsert: handleInsert,
                 onUpdate: handleUpdate,
                 onRemove: handleRemove
@@ -123,13 +133,14 @@ export function useSubscriptionExecutor<T = any>(
                 error: err.message || 'Subscription failed'
             }));
         }
-    }, [client, handleInsert, handleUpdate, handleRemove]);
+    }, [handleInsert, handleUpdate, handleRemove]);
 
     const unsubscribe = useCallback(async () => {
-        if (!client || !subscriptionIdRef.current) return;
+        const currentClient = clientRef.current;
+        if (!currentClient || !subscriptionIdRef.current) return;
 
         try {
-            await client.unsubscribe(subscriptionIdRef.current);
+            await currentClient.unsubscribe(subscriptionIdRef.current);
             subscriptionIdRef.current = undefined;
             queryRef.current = undefined;
             paramsRef.current = undefined;
@@ -146,7 +157,7 @@ export function useSubscriptionExecutor<T = any>(
                 error: err.message || 'Unsubscribe failed'
             }));
         }
-    }, [client]);
+    }, []);
 
     const clearChanges = useCallback(() => {
         setState(prev => ({ ...prev, changes: [] }));
@@ -159,11 +170,11 @@ export function useSubscriptionExecutor<T = any>(
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (subscriptionIdRef.current && client) {
-                client.unsubscribe(subscriptionIdRef.current).catch(console.error);
+            if (subscriptionIdRef.current && clientRef.current) {
+                clientRef.current.unsubscribe(subscriptionIdRef.current).catch(console.error);
             }
         };
-    }, [client]);
+    }, []);
 
     return {
         state,
